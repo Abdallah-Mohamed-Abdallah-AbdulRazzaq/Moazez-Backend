@@ -115,8 +115,14 @@ describe('Students tenancy isolation (security)', () => {
         }),
       ]);
 
-    if (!schoolAdminRole || !recordsViewPermission || !guardiansViewPermission) {
-      throw new Error('Students permissions missing - run `npm run seed` first.');
+    if (
+      !schoolAdminRole ||
+      !recordsViewPermission ||
+      !guardiansViewPermission
+    ) {
+      throw new Error(
+        'Students permissions missing - run `npm run seed` first.',
+      );
     }
 
     schoolAdminRoleId = schoolAdminRole.id;
@@ -131,7 +137,9 @@ describe('Students tenancy isolation (security)', () => {
 
     if (existingLimitedRole) {
       limitedRoleId = existingLimitedRole.id;
-      await prisma.rolePermission.deleteMany({ where: { roleId: limitedRoleId } });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: limitedRoleId },
+      });
     } else {
       const createdRole = await prisma.role.create({
         data: {
@@ -704,21 +712,31 @@ describe('Students tenancy isolation (security)', () => {
         },
       });
       await prisma.guardian.deleteMany({
-        where: { id: { in: [demoGuardianId, tenantBGuardianId].filter(Boolean) } },
+        where: {
+          id: { in: [demoGuardianId, tenantBGuardianId].filter(Boolean) },
+        },
       });
       await prisma.student.deleteMany({
-        where: { id: { in: [demoStudentId, tenantBStudentId].filter(Boolean) } },
+        where: {
+          id: { in: [demoStudentId, tenantBStudentId].filter(Boolean) },
+        },
       });
       await prisma.session.deleteMany({
-        where: { userId: { in: [limitedUserId, tenantBUserId].filter(Boolean) } },
+        where: {
+          userId: { in: [limitedUserId, tenantBUserId].filter(Boolean) },
+        },
       });
       await prisma.membership.deleteMany({
-        where: { userId: { in: [limitedUserId, tenantBUserId].filter(Boolean) } },
+        where: {
+          userId: { in: [limitedUserId, tenantBUserId].filter(Boolean) },
+        },
       });
       await prisma.user.deleteMany({
         where: { id: { in: [limitedUserId, tenantBUserId].filter(Boolean) } },
       });
-      await prisma.rolePermission.deleteMany({ where: { roleId: limitedRoleId } });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: limitedRoleId },
+      });
       await prisma.role.deleteMany({ where: { id: limitedRoleId } });
       await prisma.classroom.deleteMany({
         where: {
@@ -756,7 +774,9 @@ describe('Students tenancy isolation (security)', () => {
         },
       });
       await prisma.school.deleteMany({ where: { id: tenantBSchoolId } });
-      await prisma.organization.deleteMany({ where: { slug: TENANT_B_ORG_SLUG } });
+      await prisma.organization.deleteMany({
+        where: { slug: TENANT_B_ORG_SLUG },
+      });
       await prisma.$disconnect();
     }
   });
@@ -836,6 +856,19 @@ describe('Students tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('not_found');
   });
 
+  it('returns 404 when school A admin requests primary guardians for a school B student id', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/guardians/primary`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
   it('returns 404 when school A admin links a guardian to a school B student id', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
@@ -856,7 +889,33 @@ describe('Students tenancy isolation (security)', () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/students-guardians/enrollments/${tenantBEnrollmentId}`)
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/enrollments/${tenantBEnrollmentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin requests the current enrollment for a school B student id', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/students-guardians/enrollments/current`)
+      .query({ studentId: tenantBStudentId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin requests the enrollment history for a school B student id', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/students-guardians/enrollments/history`)
+      .query({ studentId: tenantBStudentId })
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
 
@@ -993,6 +1052,19 @@ describe('Students tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('not_found');
   });
 
+  it('returns 404 when school A admin requests school B student missing documents', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/documents/missing`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
   it('returns 404 when school A admin links a document to a school B student', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
@@ -1014,7 +1086,9 @@ describe('Students tenancy isolation (security)', () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     const response = await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/students-guardians/documents/${tenantBDocumentId}`)
+      .patch(
+        `${GLOBAL_PREFIX}/students-guardians/documents/${tenantBDocumentId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ notes: 'Should Not Work' })
       .expect(404);
@@ -1026,7 +1100,9 @@ describe('Students tenancy isolation (security)', () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     const response = await request(app.getHttpServer())
-      .delete(`${GLOBAL_PREFIX}/students-guardians/documents/${tenantBDocumentId}`)
+      .delete(
+        `${GLOBAL_PREFIX}/students-guardians/documents/${tenantBDocumentId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
 
@@ -1064,7 +1140,9 @@ describe('Students tenancy isolation (security)', () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/notes`)
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/notes`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
 
@@ -1075,7 +1153,9 @@ describe('Students tenancy isolation (security)', () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     const response = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/notes`)
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/notes`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
         category: 'general',
@@ -1116,7 +1196,10 @@ describe('Students tenancy isolation (security)', () => {
   });
 
   it('returns 403 when the same-school actor lacks the students manage permission', async () => {
-    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
       .patch(`${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}`)
@@ -1128,10 +1211,15 @@ describe('Students tenancy isolation (security)', () => {
   });
 
   it('returns 403 when the same-school actor lacks the student documents view permission', async () => {
-    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}/documents`)
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}/documents`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(403);
 
@@ -1139,7 +1227,10 @@ describe('Students tenancy isolation (security)', () => {
   });
 
   it('returns 403 when the same-school actor lacks the student documents manage permission', async () => {
-    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
       .patch(`${GLOBAL_PREFIX}/students-guardians/documents/${demoDocumentId}`)
@@ -1151,7 +1242,10 @@ describe('Students tenancy isolation (security)', () => {
   });
 
   it('returns 403 when the same-school actor lacks the medical profile view permission', async () => {
-    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
       .get(
@@ -1164,7 +1258,10 @@ describe('Students tenancy isolation (security)', () => {
   });
 
   it('returns 403 when the same-school actor lacks the medical profile manage permission', async () => {
-    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
       .patch(
@@ -1178,10 +1275,15 @@ describe('Students tenancy isolation (security)', () => {
   });
 
   it('returns 403 when the same-school actor lacks the student notes view permission', async () => {
-    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}/notes`)
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}/notes`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(403);
 
@@ -1189,7 +1291,10 @@ describe('Students tenancy isolation (security)', () => {
   });
 
   it('returns 403 when the same-school actor lacks the student notes manage permission', async () => {
-    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
       .patch(
@@ -1203,7 +1308,10 @@ describe('Students tenancy isolation (security)', () => {
   });
 
   it('returns 403 when the same-school actor lacks the guardians manage permission', async () => {
-    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
       .post(
@@ -1219,10 +1327,15 @@ describe('Students tenancy isolation (security)', () => {
   });
 
   it('returns 403 when the same-school actor lacks the enrollments view permission', async () => {
-    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/students-guardians/enrollments/${demoEnrollmentId}`)
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/enrollments/${demoEnrollmentId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(403);
 
@@ -1230,7 +1343,10 @@ describe('Students tenancy isolation (security)', () => {
   });
 
   it('returns 403 when the same-school actor lacks the enrollments manage permission', async () => {
-    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/students-guardians/enrollments`)
@@ -1247,7 +1363,10 @@ describe('Students tenancy isolation (security)', () => {
   });
 
   it('returns 403 when the same-school actor lacks the lifecycle manage permission for withdrawal', async () => {
-    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/students-guardians/enrollments/withdraw`)
@@ -1264,7 +1383,10 @@ describe('Students tenancy isolation (security)', () => {
   });
 
   it('returns 403 when the same-school actor lacks the lifecycle manage permission for transfer', async () => {
-    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/students-guardians/enrollments/transfer`)
@@ -1282,7 +1404,10 @@ describe('Students tenancy isolation (security)', () => {
   });
 
   it('returns 403 when the same-school actor lacks the lifecycle manage permission for promotion', async () => {
-    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/students-guardians/enrollments/promote`)

@@ -78,8 +78,8 @@ export async function seedDemoAcademics(prisma: PrismaClient): Promise<void> {
     );
   }
 
-  const academicYear = await ensureAcademicYear(prisma, school.id);
-  await ensureTerm(prisma, school.id, academicYear.id);
+  const academicYear = await ensureDemoAcademicYear(prisma, school.id);
+  await ensureTerm(prisma, school.id, academicYear.id, academicYear.isActive);
   const stage = await ensureStage(prisma, school.id);
   const grade = await ensureGrade(prisma, school.id, stage.id);
   const section = await ensureSection(prisma, school.id, grade.id);
@@ -92,32 +92,52 @@ export async function seedDemoAcademics(prisma: PrismaClient): Promise<void> {
   );
 }
 
-async function ensureAcademicYear(prisma: PrismaClient, schoolId: string) {
-  const existing = await prisma.academicYear.findFirst({
-    where: {
-      schoolId,
-      nameEn: DEMO_YEAR.nameEn,
-    },
-    select: { id: true },
-  });
+export async function ensureDemoAcademicYear(
+  prisma: PrismaClient,
+  schoolId: string,
+) {
+  return prisma.$transaction(async (tx) => {
+    const existingDemoYear = await tx.academicYear.findUnique({
+      where: {
+        schoolId_nameEn: {
+          schoolId,
+          nameEn: DEMO_YEAR.nameEn,
+        },
+      },
+      select: { id: true },
+    });
 
-  if (existing) {
-    return prisma.academicYear.update({
-      where: { id: existing.id },
-      data: {
-        ...DEMO_YEAR,
+    const existingActiveYear = await tx.academicYear.findFirst({
+      where: {
+        schoolId,
+        isActive: true,
         deletedAt: null,
       },
       select: { id: true },
     });
-  }
 
-  return prisma.academicYear.create({
-    data: {
-      schoolId,
-      ...DEMO_YEAR,
-    },
-    select: { id: true },
+    const shouldActivateDemoYear =
+      !existingActiveYear || existingActiveYear.id === existingDemoYear?.id;
+
+    return tx.academicYear.upsert({
+      where: {
+        schoolId_nameEn: {
+          schoolId,
+          nameEn: DEMO_YEAR.nameEn,
+        },
+      },
+      update: {
+        ...DEMO_YEAR,
+        isActive: shouldActivateDemoYear,
+        deletedAt: null,
+      },
+      create: {
+        schoolId,
+        ...DEMO_YEAR,
+        isActive: shouldActivateDemoYear,
+      },
+      select: { id: true, isActive: true },
+    });
   });
 }
 
@@ -125,6 +145,7 @@ async function ensureTerm(
   prisma: PrismaClient,
   schoolId: string,
   academicYearId: string,
+  isAcademicYearActive: boolean,
 ) {
   const existing = await prisma.term.findFirst({
     where: {
@@ -141,6 +162,7 @@ async function ensureTerm(
       data: {
         ...DEMO_TERM,
         academicYearId,
+        isActive: isAcademicYearActive,
         deletedAt: null,
       },
       select: { id: true },
@@ -152,6 +174,7 @@ async function ensureTerm(
       schoolId,
       academicYearId,
       ...DEMO_TERM,
+      isActive: isAcademicYearActive,
     },
     select: { id: true },
   });

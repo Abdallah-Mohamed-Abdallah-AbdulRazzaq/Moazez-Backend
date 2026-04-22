@@ -230,6 +230,58 @@ Local URLs:
 - App: `http://localhost:3000/api/v1`
 - Swagger: `http://localhost:3000/api/v1/docs`
 
+## Sprint 2B Students Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Ensure SEED_DEMO_DATA=true
+
+npm run infra:up
+npm run verify:sprint2b
+```
+
+`npm run verify:sprint2b` runs the Sprint 2B preflight check, migrations, seed, build, unit tests, security tests, and the high-value Students e2e closeout flow.
+
+For a human demo against a running app:
+
+```bash
+npm run start:dev
+npm run demo:sprint2b
+```
+
+Sprint 2B students verification covers:
+
+- login -> create student -> create guardian -> link guardian -> enforce primary guardian protection
+- create enrollment -> verify current/history -> reject placement conflict -> reject inactive academic year
+- link a student document -> secure file download -> fetch/update medical profile -> create/update note -> fetch bounded timeline events
+- transfer -> withdraw on a fresh active enrollment -> promote on a fresh active enrollment -> verify audit logs and no attendance/grades/reinforcement side effects
+
+Local verification commands:
+
+```bash
+npm run build
+npm run test -- --runInBand
+npm run test:security -- --runInBand
+npm run test:e2e:sprint2b
+```
+
+Local URLs:
+
+- App: `http://localhost:3000/api/v1`
+- Swagger: `http://localhost:3000/api/v1/docs`
+
+Sprint 2B Students endpoints:
+
+- `POST`, `GET`, `PATCH /api/v1/students-guardians/students`
+- `POST`, `GET`, `PATCH`, `DELETE /api/v1/students-guardians/students/:studentId/guardians`
+- `POST`, `GET /api/v1/students-guardians/enrollments` and `GET /api/v1/students-guardians/enrollments/current|history|academic-years`
+- `POST /api/v1/students-guardians/enrollments/validate|transfer|withdraw|promote`
+- `GET`, `POST`, `PATCH`, `DELETE /api/v1/students-guardians/students/:studentId/documents`, `/medical-profile`, `/notes`, `/timeline`
+- `GET /api/v1/files/:id/download`
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -249,6 +301,7 @@ Local URLs:
 | `npm run test:e2e`                  | Integration / e2e tests                                                                          |
 | `npm run test:e2e:sprint1c`         | Run the three Sprint 1C Files e2e flows                                                          |
 | `npm run test:e2e:sprint2a`         | Run the Sprint 2A Admissions closeout e2e flows                                                  |
+| `npm run test:e2e:sprint2b`         | Run the Sprint 2B Students closeout e2e flows                                                    |
 | `npm run test:security`             | Tenancy isolation tests                                                                          |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                     |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                           |
@@ -256,7 +309,10 @@ Local URLs:
 | `npm run verify:sprint1c`           | Run preflight, migrations, seed, build, unit tests, security tests, and Sprint 1C Files e2e      |
 | `npm run verify:sprint2a:preflight` | Fail fast if `.env` or required local services are not ready                                     |
 | `npm run verify:sprint2a`           | Run preflight, migrations, seed, build, unit tests, security tests, and Sprint 2A Admissions e2e |
+| `npm run verify:sprint2b:preflight` | Fail fast if `.env` or required local services are not ready                                     |
+| `npm run verify:sprint2b`           | Run preflight, migrations, seed, build, unit tests, security tests, and Sprint 2B Students e2e   |
 | `npm run seed`                      | Re-run idempotent seeds                                                                          |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                            |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                       |
 | `npm run demo:sprint2a`             | Run the Sprint 2A Admissions demo flow against a running server                                  |
+| `npm run demo:sprint2b`             | Run the Sprint 2B Students demo flow against a running server                                    |

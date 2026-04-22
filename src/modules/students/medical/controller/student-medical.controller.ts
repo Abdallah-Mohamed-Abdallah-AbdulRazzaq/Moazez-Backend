@@ -6,11 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOkResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetStudentMedicalProfileUseCase } from '../application/get-student-medical-profile.use-case';
 import { UpsertStudentMedicalProfileUseCase } from '../application/upsert-student-medical-profile.use-case';
@@ -29,7 +25,7 @@ export class StudentMedicalController {
   ) {}
 
   @Get(':studentId/medical-profile')
-  @ApiOkResponse({ type: StudentMedicalProfileResponseDto })
+  @ApiOkResponse({ type: StudentMedicalProfileResponseDto, nullable: true })
   @RequiredPermissions('students.medical.view')
   getMedicalProfile(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,

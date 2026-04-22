@@ -23,6 +23,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:e2e:sprint1c": "jest --config ./test/jest-e2e.json --runInBand test/e2e/files-upload-download.e2e-spec.ts test/e2e/files-attachments-preview.e2e-spec.ts test/e2e/files-imports-skeleton.e2e-spec.ts",
     "test:e2e:sprint2a": "jest --config ./test/jest-e2e.json --runInBand test/e2e/admissions-flow.e2e-spec.ts",
+    "test:e2e:sprint2b": "jest --config ./test/jest-e2e.json --runInBand test/e2e/students-guardians-flow.e2e-spec.ts test/e2e/students-phase4-operations.e2e-spec.ts test/e2e/students-phase5-lifecycle.e2e-spec.ts",
     "test:security": "jest --config ./test/jest-e2e.json test/security",
     "seed": "prisma db seed",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",
@@ -31,11 +32,11 @@
     "verify:sprint1c": "npm run verify:sprint1c:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint1c",
     "verify:sprint2a:preflight": "node scripts/check-local-readiness.cjs",
     "verify:sprint2a": "npm run verify:sprint2a:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2a",
+    "verify:sprint2b:preflight": "node scripts/check-local-readiness.cjs",
+    "verify:sprint2b": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b",
     "demo:sprint1c": "node scripts/demo-sprint1c.cjs",
-    "demo:sprint2a": "node scripts/demo-sprint2a.cjs"
-  },
-  "prisma": {
-    "seed": "ts-node prisma/seeds/index.ts"
+    "demo:sprint2a": "node scripts/demo-sprint2a.cjs",
+    "demo:sprint2b": "node scripts/demo-sprint2b.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

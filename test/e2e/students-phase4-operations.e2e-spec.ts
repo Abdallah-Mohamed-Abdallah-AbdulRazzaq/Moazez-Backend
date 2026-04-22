@@ -158,7 +158,9 @@ describe('Students Phase 4 operational flow (e2e)', () => {
     );
 
     const initialMedicalResponse = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/students-guardians/students/${student.id}/medical-profile`)
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/students/${student.id}/medical-profile`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
@@ -177,7 +179,9 @@ describe('Students Phase 4 operational flow (e2e)', () => {
     await registerStoredFile(uploadResponse.body.id);
 
     const linkDocumentResponse = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/students-guardians/students/${student.id}/documents`)
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/students/${student.id}/documents`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
         type: 'Birth Certificate',
@@ -202,7 +206,9 @@ describe('Students Phase 4 operational flow (e2e)', () => {
     });
 
     const listDocumentsResponse = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/students-guardians/students/${student.id}/documents`)
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/students/${student.id}/documents`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
@@ -215,7 +221,9 @@ describe('Students Phase 4 operational flow (e2e)', () => {
     ]);
 
     const createMedicalProfileResponse = await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/students-guardians/students/${student.id}/medical-profile`)
+      .patch(
+        `${GLOBAL_PREFIX}/students-guardians/students/${student.id}/medical-profile`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
         bloodType: 'O+',
@@ -239,7 +247,9 @@ describe('Students Phase 4 operational flow (e2e)', () => {
     });
 
     const updateMedicalProfileResponse = await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/students-guardians/students/${student.id}/medical-profile`)
+      .patch(
+        `${GLOBAL_PREFIX}/students-guardians/students/${student.id}/medical-profile`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
         allergies: 'Pollen',
@@ -316,9 +326,19 @@ describe('Students Phase 4 operational flow (e2e)', () => {
     ]);
 
     const timelineResponse = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/students-guardians/students/${student.id}/timeline`)
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/students/${student.id}/timeline`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
+
+    const allowedTimelineEventTypes = new Set([
+      'student_created',
+      'document_linked',
+      'medical_profile_created',
+      'medical_profile_updated',
+      'note_added',
+    ]);
 
     expect(timelineResponse.body).toEqual(
       expect.arrayContaining([
@@ -348,6 +368,12 @@ describe('Students Phase 4 operational flow (e2e)', () => {
         }),
       ]),
     );
+
+    expect(
+      timelineResponse.body.every((event: { type: string }) =>
+        allowedTimelineEventTypes.has(event.type),
+      ),
+    ).toBe(true);
 
     expect(
       timelineResponse.body.some(

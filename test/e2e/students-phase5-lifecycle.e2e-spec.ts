@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { PrismaClient, StudentEnrollmentStatus } from '@prisma/client';
+import { Prisma, PrismaClient, StudentEnrollmentStatus } from '@prisma/client';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
@@ -11,6 +11,17 @@ const GLOBAL_PREFIX = '/api/v1';
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
 const DEMO_ADMIN_PASSWORD = 'School123!';
 const DEMO_SCHOOL_SLUG = 'moazez-academy';
+const OUT_OF_SCOPE_TABLES = [
+  'attendance_entries',
+  'attendance_excuses',
+  'attendance_sessions',
+  'grade_assessments',
+  'grade_items',
+  'reinforcement_rewards',
+  'reinforcement_reviews',
+  'reinforcement_tasks',
+  'reinforcement_xp_ledgers',
+] as const;
 
 jest.setTimeout(30000);
 
@@ -188,9 +199,96 @@ describe('Students Phase 5 lifecycle flow (e2e)', () => {
     return response.body.enrollmentId;
   }
 
+  async function getOutOfScopeDomainSnapshot(): Promise<
+    Record<string, number>
+  > {
+    const tables = await prisma.$queryRaw<Array<{ table_name: string }>>(
+      Prisma.sql`
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name IN (${Prisma.join(OUT_OF_SCOPE_TABLES)})
+        ORDER BY table_name
+      `,
+    );
+
+    const snapshot: Record<string, number> = {};
+
+    for (const { table_name: tableName } of tables) {
+      switch (tableName) {
+        case 'attendance_entries': {
+          const result = await prisma.$queryRaw<Array<{ count: number }>>(
+            Prisma.sql`SELECT COUNT(*)::int AS count FROM public.attendance_entries`,
+          );
+          snapshot[tableName] = Number(result[0]?.count ?? 0);
+          break;
+        }
+        case 'attendance_excuses': {
+          const result = await prisma.$queryRaw<Array<{ count: number }>>(
+            Prisma.sql`SELECT COUNT(*)::int AS count FROM public.attendance_excuses`,
+          );
+          snapshot[tableName] = Number(result[0]?.count ?? 0);
+          break;
+        }
+        case 'attendance_sessions': {
+          const result = await prisma.$queryRaw<Array<{ count: number }>>(
+            Prisma.sql`SELECT COUNT(*)::int AS count FROM public.attendance_sessions`,
+          );
+          snapshot[tableName] = Number(result[0]?.count ?? 0);
+          break;
+        }
+        case 'grade_assessments': {
+          const result = await prisma.$queryRaw<Array<{ count: number }>>(
+            Prisma.sql`SELECT COUNT(*)::int AS count FROM public.grade_assessments`,
+          );
+          snapshot[tableName] = Number(result[0]?.count ?? 0);
+          break;
+        }
+        case 'grade_items': {
+          const result = await prisma.$queryRaw<Array<{ count: number }>>(
+            Prisma.sql`SELECT COUNT(*)::int AS count FROM public.grade_items`,
+          );
+          snapshot[tableName] = Number(result[0]?.count ?? 0);
+          break;
+        }
+        case 'reinforcement_rewards': {
+          const result = await prisma.$queryRaw<Array<{ count: number }>>(
+            Prisma.sql`SELECT COUNT(*)::int AS count FROM public.reinforcement_rewards`,
+          );
+          snapshot[tableName] = Number(result[0]?.count ?? 0);
+          break;
+        }
+        case 'reinforcement_reviews': {
+          const result = await prisma.$queryRaw<Array<{ count: number }>>(
+            Prisma.sql`SELECT COUNT(*)::int AS count FROM public.reinforcement_reviews`,
+          );
+          snapshot[tableName] = Number(result[0]?.count ?? 0);
+          break;
+        }
+        case 'reinforcement_tasks': {
+          const result = await prisma.$queryRaw<Array<{ count: number }>>(
+            Prisma.sql`SELECT COUNT(*)::int AS count FROM public.reinforcement_tasks`,
+          );
+          snapshot[tableName] = Number(result[0]?.count ?? 0);
+          break;
+        }
+        case 'reinforcement_xp_ledgers': {
+          const result = await prisma.$queryRaw<Array<{ count: number }>>(
+            Prisma.sql`SELECT COUNT(*)::int AS count FROM public.reinforcement_xp_ledgers`,
+          );
+          snapshot[tableName] = Number(result[0]?.count ?? 0);
+          break;
+        }
+      }
+    }
+
+    return snapshot;
+  }
+
   it('covers withdrawal, transfer, promotion, and bounded lifecycle failures', async () => {
     const { accessToken } = await login();
     const suffix = randomUUID().split('-')[0];
+    const outOfScopeDomainSnapshotBefore = await getOutOfScopeDomainSnapshot();
 
     const existingActiveYear = await prisma.academicYear.findFirst({
       where: {
@@ -697,5 +795,10 @@ describe('Students Phase 5 lifecycle flow (e2e)', () => {
     ]);
 
     expect(unrelatedStudentSideEffects).toEqual([0, 0, 0]);
+
+    const outOfScopeDomainSnapshotAfter = await getOutOfScopeDomainSnapshot();
+    expect(outOfScopeDomainSnapshotAfter).toEqual(
+      outOfScopeDomainSnapshotBefore,
+    );
   });
 });
