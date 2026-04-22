@@ -56,9 +56,13 @@ describe('Students tenancy isolation (security)', () => {
   let tenantBUserId: string;
 
   let demoAcademicYearId: string;
+  let demoAcademicYearName: string;
   let createdDemoAcademicYearId: string | null = null;
+  let demoSectionId: string;
   let demoClassroomId: string;
   let tenantBAcademicYearId: string;
+  let tenantBAcademicYearName: string;
+  let tenantBSectionId: string;
   let tenantBClassroomId: string;
 
   let demoStudentId: string;
@@ -393,11 +397,12 @@ describe('Students tenancy isolation (security)', () => {
         deletedAt: null,
       },
       orderBy: { createdAt: 'asc' },
-      select: { id: true },
+      select: { id: true, nameEn: true },
     });
 
     if (demoAcademicYear) {
       demoAcademicYearId = demoAcademicYear.id;
+      demoAcademicYearName = demoAcademicYear.nameEn;
     } else {
       const createdDemoAcademicYear = await prisma.academicYear.create({
         data: {
@@ -408,9 +413,10 @@ describe('Students tenancy isolation (security)', () => {
           endDate: new Date('2027-06-30T00:00:00.000Z'),
           isActive: true,
         },
-        select: { id: true },
+        select: { id: true, nameEn: true },
       });
       demoAcademicYearId = createdDemoAcademicYear.id;
+      demoAcademicYearName = createdDemoAcademicYear.nameEn;
       createdDemoAcademicYearId = createdDemoAcademicYear.id;
     }
 
@@ -447,6 +453,7 @@ describe('Students tenancy isolation (security)', () => {
       },
       select: { id: true },
     });
+    demoSectionId = demoSection.id;
 
     const demoClassroom = await prisma.classroom.create({
       data: {
@@ -470,9 +477,10 @@ describe('Students tenancy isolation (security)', () => {
         endDate: new Date('2027-06-30T00:00:00.000Z'),
         isActive: true,
       },
-      select: { id: true },
+      select: { id: true, nameEn: true },
     });
     tenantBAcademicYearId = tenantBAcademicYear.id;
+    tenantBAcademicYearName = tenantBAcademicYear.nameEn;
 
     const tenantBStage = await prisma.stage.create({
       data: {
@@ -507,6 +515,7 @@ describe('Students tenancy isolation (security)', () => {
       },
       select: { id: true },
     });
+    tenantBSectionId = tenantBSection.id;
 
     const tenantBClassroom = await prisma.classroom.create({
       data: {
@@ -888,6 +897,76 @@ describe('Students tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('not_found');
   });
 
+  it('returns 404 when school A admin withdraws a school B student lifecycle enrollment', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/students-guardians/enrollments/withdraw`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        studentId: tenantBStudentId,
+        effectiveDate: '2026-10-01',
+        reason: 'Should Not Work',
+        actionType: 'withdrawn',
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin transfers a school B student lifecycle enrollment', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/students-guardians/enrollments/transfer`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        studentId: tenantBStudentId,
+        targetSectionId: tenantBSectionId,
+        targetClassroomId: tenantBClassroomId,
+        effectiveDate: '2026-10-01',
+        reason: 'Should Not Work',
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin transfers a demo student into a school B placement context', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/students-guardians/enrollments/transfer`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        studentId: demoStudentId,
+        targetSectionId: tenantBSectionId,
+        targetClassroomId: tenantBClassroomId,
+        effectiveDate: '2026-10-01',
+        reason: 'Should Not Work',
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin promotes a school B student lifecycle enrollment', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/students-guardians/enrollments/promote`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        studentId: tenantBStudentId,
+        targetAcademicYear: tenantBAcademicYearName,
+        effectiveDate: '2026-09-01',
+        notes: 'Should Not Work',
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
   it('returns 404 when school A admin unlinks a school B guardian relationship', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
@@ -1161,6 +1240,58 @@ describe('Students tenancy isolation (security)', () => {
         academicYearId: demoAcademicYearId,
         classroomId: demoClassroomId,
         enrollmentDate: '2026-09-02',
+      })
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks the lifecycle manage permission for withdrawal', async () => {
+    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/students-guardians/enrollments/withdraw`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        studentId: demoStudentId,
+        effectiveDate: '2026-10-01',
+        reason: 'Forbidden',
+        actionType: 'withdrawn',
+      })
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks the lifecycle manage permission for transfer', async () => {
+    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/students-guardians/enrollments/transfer`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        studentId: demoStudentId,
+        targetSectionId: demoSectionId,
+        targetClassroomId: demoClassroomId,
+        effectiveDate: '2026-10-01',
+        reason: 'Forbidden',
+      })
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks the lifecycle manage permission for promotion', async () => {
+    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/students-guardians/enrollments/promote`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        studentId: demoStudentId,
+        targetAcademicYear: demoAcademicYearName,
+        effectiveDate: '2026-09-01',
+        notes: 'Forbidden',
       })
       .expect(403);
 

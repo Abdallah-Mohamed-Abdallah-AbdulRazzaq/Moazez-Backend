@@ -66,6 +66,11 @@ export type EnrollmentRecord = Prisma.EnrollmentGetPayload<
   typeof ENROLLMENT_RECORD_ARGS
 >;
 
+export interface EnrollmentTransitionResult {
+  previousEnrollment: EnrollmentRecord;
+  nextEnrollment: EnrollmentRecord;
+}
+
 function buildAcademicYearFilter(
   academicYearId?: string,
   academicYearName?: string,
@@ -172,6 +177,117 @@ export class EnrollmentsRepository {
     return this.prisma.enrollment.create({
       data,
       ...ENROLLMENT_RECORD_ARGS,
+    });
+  }
+
+  countActiveEnrollmentsInPlacement(params: {
+    academicYearId: string;
+    classroomId: string;
+    excludeEnrollmentId?: string;
+  }): Promise<number> {
+    return this.scopedPrisma.enrollment.count({
+      where: {
+        academicYearId: params.academicYearId,
+        classroomId: params.classroomId,
+        status: StudentEnrollmentStatus.ACTIVE,
+        ...(params.excludeEnrollmentId
+          ? {
+              id: {
+                not: params.excludeEnrollmentId,
+              },
+            }
+          : {}),
+      },
+    });
+  }
+
+  withdrawEnrollment(params: {
+    enrollmentId: string;
+    effectiveDate: Date;
+    exitReason?: string | null;
+  }): Promise<EnrollmentRecord | null> {
+    const scopedPrisma = this.scopedPrisma;
+
+    return scopedPrisma.$transaction(async (tx) => {
+      const result = await tx.enrollment.updateMany({
+        where: {
+          id: params.enrollmentId,
+          status: StudentEnrollmentStatus.ACTIVE,
+        },
+        data: {
+          status: StudentEnrollmentStatus.WITHDRAWN,
+          endedAt: params.effectiveDate,
+          exitReason: params.exitReason ?? null,
+        },
+      });
+
+      if (result.count === 0) {
+        return null;
+      }
+
+      return tx.enrollment.findFirstOrThrow({
+        where: { id: params.enrollmentId },
+        ...ENROLLMENT_RECORD_ARGS,
+      });
+    });
+  }
+
+  completeEnrollmentAndCreateNext(params: {
+    currentEnrollmentId: string;
+    effectiveDate: Date;
+    exitReason?: string | null;
+    newEnrollment: {
+      schoolId: string;
+      studentId: string;
+      academicYearId: string;
+      termId?: string | null;
+      classroomId: string;
+      enrolledAt: Date;
+    };
+  }): Promise<EnrollmentTransitionResult | null> {
+    const scopedPrisma = this.scopedPrisma;
+
+    return scopedPrisma.$transaction(async (tx) => {
+      const result = await tx.enrollment.updateMany({
+        where: {
+          id: params.currentEnrollmentId,
+          status: StudentEnrollmentStatus.ACTIVE,
+        },
+        data: {
+          status: StudentEnrollmentStatus.COMPLETED,
+          endedAt: params.effectiveDate,
+          exitReason: params.exitReason ?? null,
+        },
+      });
+
+      if (result.count === 0) {
+        return null;
+      }
+
+      const nextEnrollment = await tx.enrollment.create({
+        data: {
+          schoolId: params.newEnrollment.schoolId,
+          studentId: params.newEnrollment.studentId,
+          academicYearId: params.newEnrollment.academicYearId,
+          termId: params.newEnrollment.termId ?? null,
+          classroomId: params.newEnrollment.classroomId,
+          status: StudentEnrollmentStatus.ACTIVE,
+          enrolledAt: params.newEnrollment.enrolledAt,
+          endedAt: null,
+          exitReason: null,
+        },
+        ...ENROLLMENT_RECORD_ARGS,
+      });
+
+      const previousEnrollment = await tx.enrollment.findFirstOrThrow({
+        where: { id: params.currentEnrollmentId },
+        ...ENROLLMENT_RECORD_ARGS,
+      });
+
+      return {
+        previousEnrollment,
+        nextEnrollment,
+      };
     });
   }
 
