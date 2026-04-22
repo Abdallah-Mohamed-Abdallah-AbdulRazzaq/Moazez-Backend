@@ -1,11 +1,14 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  FileVisibility,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
   SchoolStatus,
+  StudentDocumentStatus,
   StudentEnrollmentStatus,
+  StudentNoteCategory,
   StudentStatus,
   UserStatus,
   UserType,
@@ -61,10 +64,18 @@ describe('Students tenancy isolation (security)', () => {
   let demoStudentId: string;
   let demoGuardianId: string;
   let demoEnrollmentId: string;
+  let demoFileId: string;
+  let demoDocumentId: string;
+  let demoMedicalProfileId: string;
+  let demoNoteId: string;
 
   let tenantBStudentId: string;
   let tenantBGuardianId: string;
   let tenantBEnrollmentId: string;
+  let tenantBFileId: string;
+  let tenantBDocumentId: string;
+  let tenantBMedicalProfileId: string;
+  let tenantBNoteId: string;
 
   const testSuffix = `students-security-${Date.now()}`;
 
@@ -523,6 +534,62 @@ describe('Students tenancy isolation (security)', () => {
     });
     demoEnrollmentId = demoEnrollment.id;
 
+    const demoFile = await prisma.file.create({
+      data: {
+        organizationId: demoOrganizationId,
+        schoolId: demoSchoolId,
+        uploaderId: null,
+        bucket: 'security-fixtures',
+        objectKey: `${testSuffix}/demo-student-document.pdf`,
+        originalName: 'security-demo-document.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: BigInt(256),
+        checksumSha256: 'security-demo-document',
+        visibility: FileVisibility.PRIVATE,
+      },
+      select: { id: true },
+    });
+    demoFileId = demoFile.id;
+
+    const demoDocument = await prisma.studentDocument.create({
+      data: {
+        schoolId: demoSchoolId,
+        studentId: demoStudentId,
+        fileId: demoFileId,
+        documentType: 'Birth Certificate',
+        status: StudentDocumentStatus.COMPLETE,
+        notes: 'Security fixture document A',
+      },
+      select: { id: true },
+    });
+    demoDocumentId = demoDocument.id;
+
+    const demoMedicalProfile = await prisma.studentMedicalProfile.create({
+      data: {
+        schoolId: demoSchoolId,
+        studentId: demoStudentId,
+        bloodType: 'O+',
+        allergies: 'Dust',
+        conditions: ['Asthma'],
+        medications: ['Inhaler'],
+        emergencyNotes: 'Carries inhaler',
+      },
+      select: { id: true },
+    });
+    demoMedicalProfileId = demoMedicalProfile.id;
+
+    const demoNote = await prisma.studentNote.create({
+      data: {
+        schoolId: demoSchoolId,
+        studentId: demoStudentId,
+        note: 'Security note A',
+        category: StudentNoteCategory.GENERAL,
+        authorUserId: limitedUserId,
+      },
+      select: { id: true },
+    });
+    demoNoteId = demoNote.id;
+
     const tenantBEnrollment = await prisma.enrollment.create({
       data: {
         schoolId: tenantBSchoolId,
@@ -535,6 +602,62 @@ describe('Students tenancy isolation (security)', () => {
       select: { id: true },
     });
     tenantBEnrollmentId = tenantBEnrollment.id;
+
+    const tenantBFile = await prisma.file.create({
+      data: {
+        organizationId: tenantBOrganizationId,
+        schoolId: tenantBSchoolId,
+        uploaderId: null,
+        bucket: 'security-fixtures',
+        objectKey: `${testSuffix}/tenant-b-student-document.pdf`,
+        originalName: 'security-tenant-b-document.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: BigInt(256),
+        checksumSha256: 'security-tenant-b-document',
+        visibility: FileVisibility.PRIVATE,
+      },
+      select: { id: true },
+    });
+    tenantBFileId = tenantBFile.id;
+
+    const tenantBDocument = await prisma.studentDocument.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        studentId: tenantBStudentId,
+        fileId: tenantBFileId,
+        documentType: 'Passport',
+        status: StudentDocumentStatus.COMPLETE,
+        notes: 'Security fixture document B',
+      },
+      select: { id: true },
+    });
+    tenantBDocumentId = tenantBDocument.id;
+
+    const tenantBMedicalProfile = await prisma.studentMedicalProfile.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        studentId: tenantBStudentId,
+        bloodType: 'A+',
+        allergies: 'Peanuts',
+        conditions: ['Asthma'],
+        medications: ['Inhaler'],
+        emergencyNotes: 'School B medical profile',
+      },
+      select: { id: true },
+    });
+    tenantBMedicalProfileId = tenantBMedicalProfile.id;
+
+    const tenantBNote = await prisma.studentNote.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        studentId: tenantBStudentId,
+        note: 'Security note B',
+        category: StudentNoteCategory.BEHAVIOR,
+        authorUserId: tenantBUserId,
+      },
+      select: { id: true },
+    });
+    tenantBNoteId = tenantBNote.id;
   });
 
   afterAll(async () => {
@@ -543,6 +666,24 @@ describe('Students tenancy isolation (security)', () => {
     }
 
     if (prisma) {
+      await prisma.studentNote.deleteMany({
+        where: { id: { in: [demoNoteId, tenantBNoteId].filter(Boolean) } },
+      });
+      await prisma.studentMedicalProfile.deleteMany({
+        where: {
+          id: {
+            in: [demoMedicalProfileId, tenantBMedicalProfileId].filter(Boolean),
+          },
+        },
+      });
+      await prisma.studentDocument.deleteMany({
+        where: {
+          id: { in: [demoDocumentId, tenantBDocumentId].filter(Boolean) },
+        },
+      });
+      await prisma.file.deleteMany({
+        where: { id: { in: [demoFileId, tenantBFileId].filter(Boolean) } },
+      });
       await prisma.enrollment.deleteMany({
         where: {
           id: { in: [demoEnrollmentId, tenantBEnrollmentId].filter(Boolean) },
@@ -760,6 +901,141 @@ describe('Students tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('not_found');
   });
 
+  it('returns 404 when school A admin requests school B student documents', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/documents`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin links a document to a school B student', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/documents`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        type: 'Birth Certificate',
+        fileId: demoFileId,
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin updates a school B document link', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/students-guardians/documents/${tenantBDocumentId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ notes: 'Should Not Work' })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin deletes a school B document link', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/students-guardians/documents/${tenantBDocumentId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin requests a school B medical profile', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/medical-profile`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin updates a school B medical profile', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/medical-profile`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ allergies: 'Should Not Work' })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin requests school B student notes', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/notes`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin creates a school B student note', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/notes`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        category: 'general',
+        note: 'Should Not Work',
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin updates a school B student note', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/notes/${tenantBNoteId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        note: 'Should Not Work',
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A admin requests a school B student timeline', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/students/${tenantBStudentId}/timeline`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
   it('returns 403 when the same-school actor lacks the students manage permission', async () => {
     const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
 
@@ -767,6 +1043,81 @@ describe('Students tenancy isolation (security)', () => {
       .patch(`${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ family_name_en: 'Viewer' })
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks the student documents view permission', async () => {
+    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}/documents`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks the student documents manage permission', async () => {
+    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/students-guardians/documents/${demoDocumentId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ notes: 'Forbidden' })
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks the medical profile view permission', async () => {
+    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}/medical-profile`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks the medical profile manage permission', async () => {
+    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}/medical-profile`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ allergies: 'Forbidden' })
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks the student notes view permission', async () => {
+    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}/notes`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks the student notes manage permission', async () => {
+    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}/notes/${demoNoteId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ note: 'Forbidden' })
       .expect(403);
 
     expect(response.body?.error?.code).toBe('auth.scope.missing');
