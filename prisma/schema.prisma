@@ -1,0 +1,1391 @@
+// Moazez backend Prisma schema.
+// Sections are ordered: generator, datasource, enums, then models grouped by module.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserType {
+  PLATFORM_USER
+  ORGANIZATION_USER
+  SCHOOL_USER
+  TEACHER
+  PARENT
+  STUDENT
+  APPLICANT
+  PICKUP_DELEGATE
+  SERVICE_ACCOUNT
+
+  @@map("user_type")
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INACTIVE
+  TRANSFERRED
+  SUSPENDED
+
+  @@map("membership_status")
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+
+  @@map("organization_status")
+}
+
+enum SchoolStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+
+  @@map("school_status")
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  DISABLED
+
+  @@map("user_status")
+}
+
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+
+  @@map("audit_outcome")
+}
+
+enum FileVisibility {
+  PRIVATE
+  PUBLIC
+
+  @@map("file_visibility")
+}
+
+enum NotificationTemplateStatus {
+  ACTIVE
+  DRAFT
+
+  @@map("notification_template_status")
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  IN_APP
+
+  @@map("notification_channel")
+}
+
+enum IntegrationConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  NEEDS_ATTENTION
+
+  @@map("integration_connection_status")
+}
+
+enum IntegrationFieldType {
+  TEXT
+  PASSWORD
+  URL
+  EMAIL
+  SELECT
+
+  @@map("integration_field_type")
+}
+
+enum BackupJobStatus {
+  COMPLETED
+  RUNNING
+  FAILED
+
+  @@map("backup_job_status")
+}
+
+enum BackupJobType {
+  BACKUP
+  EXPORT
+  IMPORT
+  MIGRATION
+
+  @@map("backup_job_type")
+}
+
+enum ImportJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+
+  @@map("import_job_status")
+}
+
+enum LeadChannel {
+  IN_APP
+  REFERRAL
+  WALK_IN
+  OTHER
+
+  @@map("lead_channel")
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  CONVERTED
+  CLOSED
+
+  @@map("lead_status")
+}
+
+enum AdmissionApplicationStatus {
+  SUBMITTED
+  DOCUMENTS_PENDING
+  UNDER_REVIEW
+  ACCEPTED
+  WAITLISTED
+  REJECTED
+
+  @@map("admission_application_status")
+}
+
+enum AdmissionApplicationSource {
+  IN_APP
+  REFERRAL
+  WALK_IN
+  OTHER
+
+  @@map("admission_application_source")
+}
+
+enum AdmissionDocumentStatus {
+  COMPLETE
+  MISSING
+
+  @@map("admission_document_status")
+}
+
+enum PlacementTestStatus {
+  SCHEDULED
+  COMPLETED
+  FAILED
+  CANCELLED
+  RESCHEDULED
+
+  @@map("placement_test_status")
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  RESCHEDULED
+
+  @@map("interview_status")
+}
+
+enum AdmissionDecisionType {
+  ACCEPT
+  WAITLIST
+  REJECT
+
+  @@map("admission_decision_type")
+}
+
+enum StudentStatus {
+  ACTIVE
+  SUSPENDED
+  WITHDRAWN
+
+  @@map("student_status")
+}
+
+enum StudentEnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  WITHDRAWN
+
+  @@map("student_enrollment_status")
+}
+
+enum StudentDocumentStatus {
+  COMPLETE
+  MISSING
+
+  @@map("student_document_status")
+}
+
+enum StudentNoteCategory {
+  BEHAVIOR
+  ACADEMIC
+  ATTENDANCE
+  GENERAL
+
+  @@map("student_note_category")
+}
+
+// ============================================================
+// PLATFORM — organizations & schools (tenant roots)
+// ============================================================
+
+model Organization {
+  id     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name   String
+  slug   String             @unique
+  status OrganizationStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  schools      School[]
+  memberships  Membership[]
+  auditLogs    AuditLog[]
+  files        File[]
+  leads        Lead[]
+  applications Application[]
+  students     Student[]
+  guardians    Guardian[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("organizations")
+}
+
+model School {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  name           String
+  slug           String
+  status         SchoolStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  memberships                       Membership[]
+  roles                             Role[]
+  schoolProfile                     SchoolProfile?
+  securitySetting                   SecuritySetting?
+  notificationTemplates             NotificationTemplate[]
+  notificationTemplateChannelStates NotificationTemplateChannelState[]
+  integrationConnections            IntegrationConnection[]
+  backupJobs                        BackupJob[]
+  academicYears                     AcademicYear[]
+  terms                             Term[]
+  stages                            Stage[]
+  grades                            Grade[]
+  sections                          Section[]
+  classrooms                        Classroom[]
+  subjects                          Subject[]
+  teacherSubjectAllocations         TeacherSubjectAllocation[]
+  rooms                             Room[]
+  attachments                       Attachment[]
+  importJobs                        ImportJob[]
+  auditLogs                         AuditLog[]
+  files                             File[]
+  leads                             Lead[]
+  applications                      Application[]
+  applicationDocuments              ApplicationDocument[]
+  placementTests                    PlacementTest[]
+  interviews                        Interview[]
+  admissionDecisions                AdmissionDecision[]
+  students                          Student[]
+  guardians                         Guardian[]
+  studentGuardians                  StudentGuardian[]
+  enrollments                       Enrollment[]
+  studentDocuments                  StudentDocument[]
+  studentMedicalProfiles            StudentMedicalProfile[]
+  studentNotes                      StudentNote[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("schools")
+}
+
+// ============================================================
+// IAM — users, roles, permissions, memberships, sessions
+// ============================================================
+
+model User {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String     @unique
+  phone        String?    @unique
+  passwordHash String?    @map("password_hash")
+  firstName    String     @map("first_name")
+  lastName     String     @map("last_name")
+  userType     UserType   @map("user_type")
+  status       UserStatus @default(ACTIVE)
+  lastLoginAt  DateTime?  @map("last_login_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  memberships               Membership[]
+  sessions                  Session[]
+  auditLogsActing           AuditLog[]                 @relation("AuditLogActor")
+  filesUploaded             File[]                     @relation("FileUploader")
+  schoolProfilesUpdated     SchoolProfile[]            @relation("SchoolProfileUpdatedBy")
+  securitySettingsUpdated   SecuritySetting[]          @relation("SecuritySettingUpdatedBy")
+  backupJobsCreated         BackupJob[]                @relation("BackupJobCreatedBy")
+  attachmentsCreated        Attachment[]               @relation("AttachmentCreatedBy")
+  importJobsCreated         ImportJob[]                @relation("ImportJobCreatedBy")
+  ownedLeads                Lead[]                     @relation("LeadOwner")
+  admissionInterviews       Interview[]                @relation("AdmissionInterviewInterviewer")
+  admissionDecisionsCreated AdmissionDecision[]        @relation("AdmissionDecisionDecidedBy")
+  teacherSubjectAllocations TeacherSubjectAllocation[] @relation("TeacherSubjectAllocationTeacher")
+  guardianProfiles          Guardian[]                 @relation("GuardianUser")
+  studentNotesAuthored      StudentNote[]              @relation("StudentNoteAuthor")
+
+  @@index([userType])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model Membership {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  schoolId       String?          @map("school_id") @db.Uuid
+  roleId         String           @map("role_id") @db.Uuid
+  userType       UserType         @map("user_type")
+  status         MembershipStatus @default(ACTIVE)
+  startedAt      DateTime         @default(now()) @map("started_at")
+  endedAt        DateTime?        @map("ended_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  school       School?      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([schoolId])
+  @@index([roleId])
+  @@index([status])
+  @@index([userType])
+  @@index([deletedAt])
+  // Teacher single-active-membership constraint is enforced via a
+  // PostgreSQL partial unique index added manually in the migration SQL:
+  //   CREATE UNIQUE INDEX unique_active_teacher_membership
+  //     ON memberships (user_id)
+  //     WHERE status = 'ACTIVE' AND user_type = 'TEACHER';
+  @@map("memberships")
+}
+
+model Role {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId    String? @map("school_id") @db.Uuid
+  key         String
+  name        String
+  description String?
+  isSystem    Boolean @default(false) @map("is_system")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school          School?          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  memberships     Membership[]
+  rolePermissions RolePermission[]
+
+  @@unique([schoolId, key])
+  @@index([schoolId])
+  @@index([isSystem])
+  @@index([deletedAt])
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String  @unique
+  module      String
+  resource    String
+  action      String
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+
+  @@index([module])
+  @@index([resource])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model Session {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  userAgent        String?   @map("user_agent")
+  ipAddress        String?   @map("ip_address")
+  issuedAt         DateTime  @default(now()) @map("issued_at")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("sessions")
+}
+
+// ============================================================
+// AUDIT — append-only activity trail
+// ============================================================
+
+// ============================================================
+// SETTINGS — branding, profile, templates, integrations, backup
+// ============================================================
+
+model SchoolProfile {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId         String   @unique @map("school_id") @db.Uuid
+  schoolName       String?  @map("school_name")
+  shortName        String?  @map("short_name")
+  timezone         String?
+  addressLine      String?  @map("address_line")
+  formattedAddress String?  @map("formatted_address")
+  city             String?
+  country          String?
+  footerSignature  String?  @map("footer_signature")
+  logoUrl          String?  @map("logo_url")
+  latitude         Decimal? @db.Decimal(9, 6)
+  longitude        Decimal? @db.Decimal(9, 6)
+  mapPlaceLabel    String?  @map("map_place_label")
+  updatedById      String?  @map("updated_by_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school    School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  updatedBy User?  @relation("SchoolProfileUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([updatedById])
+  @@map("settings_school_profile")
+}
+
+model SecuritySetting {
+  id                    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId              String  @unique @map("school_id") @db.Uuid
+  enforceTwoFactor      Boolean @default(false) @map("enforce_two_factor")
+  ipAllowlistEnabled    Boolean @default(false) @map("ip_allowlist_enabled")
+  ipAllowlist           String? @map("ip_allowlist")
+  sessionTimeoutMinutes Int     @default(30) @map("session_timeout_minutes")
+  suspiciousLoginAlerts Boolean @default(true) @map("suspicious_login_alerts")
+  passwordMinLength     Int     @default(10) @map("password_min_length")
+  passwordRotationDays  Int     @default(90) @map("password_rotation_days")
+  updatedById           String? @map("updated_by_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school    School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  updatedBy User?  @relation("SecuritySettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([updatedById])
+  @@map("settings_security_controls")
+}
+
+model NotificationTemplate {
+  id             String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                     @map("school_id") @db.Uuid
+  key            String
+  name           String
+  status         NotificationTemplateStatus @default(DRAFT)
+  variables      String[]                   @default([])
+  title          String?
+  titleAr        String?                    @map("title_ar")
+  message        String?
+  messageAr      String?                    @map("message_ar")
+  emailSubject   String?                    @map("email_subject")
+  emailSubjectAr String?                    @map("email_subject_ar")
+  smsMessage     String?                    @map("sms_message")
+  smsMessageAr   String?                    @map("sms_message_ar")
+  priority       String?
+  stage          String?
+  lastTestAt     DateTime?                  @map("last_test_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school        School                             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  channelStates NotificationTemplateChannelState[]
+
+  @@unique([schoolId, key])
+  @@unique([id, schoolId])
+  @@index([schoolId, status])
+  @@map("settings_notification_templates")
+}
+
+model NotificationTemplateChannelState {
+  id                     String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId               String              @map("school_id") @db.Uuid
+  notificationTemplateId String              @map("notification_template_id") @db.Uuid
+  channel                NotificationChannel
+  enabled                Boolean             @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school               School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  notificationTemplate NotificationTemplate @relation(fields: [notificationTemplateId, schoolId], references: [id, schoolId], onDelete: Cascade)
+
+  @@unique([notificationTemplateId, channel])
+  @@index([schoolId])
+  @@map("settings_notification_template_channel_states")
+}
+
+model IntegrationProvider {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String  @unique
+  name        String
+  category    String
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  fields      IntegrationProviderField[]
+  connections IntegrationConnection[]
+
+  @@index([category])
+  @@map("settings_integration_providers")
+}
+
+model IntegrationProviderField {
+  id                    String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  integrationProviderId String               @map("integration_provider_id") @db.Uuid
+  key                   String
+  label                 String
+  type                  IntegrationFieldType
+  isRequired            Boolean              @default(false) @map("is_required")
+  placeholder           String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  integrationProvider IntegrationProvider @relation(fields: [integrationProviderId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationProviderId, key])
+  @@index([integrationProviderId])
+  @@map("settings_integration_provider_fields")
+}
+
+model IntegrationConnection {
+  id                     String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId               String                      @map("school_id") @db.Uuid
+  integrationProviderId  String                      @map("integration_provider_id") @db.Uuid
+  status                 IntegrationConnectionStatus @default(DISCONNECTED)
+  configuration          Json?
+  configurationUpdatedAt DateTime?                   @map("configuration_updated_at")
+  lastCheckedAt          DateTime?                   @map("last_checked_at")
+  lastTestAt             DateTime?                   @map("last_test_at")
+  lastSyncAt             DateTime?                   @map("last_sync_at")
+  healthNote             String?                     @map("health_note")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school              School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  integrationProvider IntegrationProvider @relation(fields: [integrationProviderId], references: [id], onDelete: Restrict)
+
+  @@unique([schoolId, integrationProviderId])
+  @@index([schoolId, status])
+  @@index([integrationProviderId])
+  @@map("settings_integration_connections")
+}
+
+model BackupJob {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId    String          @map("school_id") @db.Uuid
+  type        BackupJobType
+  status      BackupJobStatus @default(RUNNING)
+  fileName    String          @map("file_name")
+  note        String?
+  createdById String?         @map("created_by_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school    School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  createdBy User?  @relation("BackupJobCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, createdAt(sort: Desc)])
+  @@index([schoolId, status])
+  @@index([schoolId, type])
+  @@index([createdById])
+  @@map("settings_backup_jobs")
+}
+
+// ============================================================
+// ACADEMICS — years, terms, structure, subjects, rooms, allocations
+// ============================================================
+
+// ============================================================
+// ADMISSIONS - leads, applications, documents, tests, interviews, decisions
+// ============================================================
+
+model Lead {
+  id                 String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String      @map("school_id") @db.Uuid
+  organizationId     String      @map("organization_id") @db.Uuid
+  studentName        String      @map("student_name")
+  primaryContactName String?     @map("primary_contact_name")
+  phone              String
+  email              String?
+  channel            LeadChannel
+  status             LeadStatus  @default(NEW)
+  notes              String?
+  ownerUserId        String?     @map("owner_user_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school       School        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  ownerUser    User?         @relation("LeadOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  applications Application[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([organizationId])
+  @@index([ownerUserId])
+  @@index([schoolId, status, createdAt(sort: Desc)])
+  @@index([schoolId, channel, createdAt(sort: Desc)])
+  @@index([deletedAt])
+  @@map("admission_leads")
+}
+
+model Application {
+  id                      String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                String                     @map("school_id") @db.Uuid
+  organizationId          String                     @map("organization_id") @db.Uuid
+  leadId                  String?                    @map("lead_id") @db.Uuid
+  studentName             String                     @map("student_name")
+  requestedAcademicYearId String?                    @map("requested_academic_year_id") @db.Uuid
+  requestedGradeId        String?                    @map("requested_grade_id") @db.Uuid
+  status                  AdmissionApplicationStatus @default(SUBMITTED)
+  source                  AdmissionApplicationSource
+  submittedAt             DateTime?                  @map("submitted_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school                School                @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  lead                  Lead?                 @relation(fields: [leadId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  requestedAcademicYear AcademicYear?         @relation(fields: [requestedAcademicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  requestedGrade        Grade?                @relation(fields: [requestedGradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  documents             ApplicationDocument[]
+  placementTests        PlacementTest[]
+  interviews            Interview[]
+  decision              AdmissionDecision?
+  student               Student?
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([organizationId])
+  @@index([leadId])
+  @@index([requestedAcademicYearId])
+  @@index([requestedGradeId])
+  @@index([schoolId, status, createdAt(sort: Desc)])
+  @@index([schoolId, submittedAt(sort: Desc)])
+  @@index([deletedAt])
+  @@map("admission_applications")
+}
+
+model ApplicationDocument {
+  id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String                  @map("school_id") @db.Uuid
+  applicationId String                  @map("application_id") @db.Uuid
+  fileId        String                  @map("file_id") @db.Uuid
+  documentType  String                  @map("document_type")
+  status        AdmissionDocumentStatus @default(MISSING)
+  notes         String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school      School      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  application Application @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  file        File        @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@index([schoolId])
+  @@index([applicationId])
+  @@index([fileId])
+  @@index([schoolId, status])
+  @@index([schoolId, applicationId, documentType])
+  @@map("admission_application_documents")
+}
+
+model PlacementTest {
+  id            String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String              @map("school_id") @db.Uuid
+  applicationId String              @map("application_id") @db.Uuid
+  subjectId     String?             @map("subject_id") @db.Uuid
+  type          String
+  scheduledAt   DateTime?           @map("scheduled_at")
+  score         Decimal?            @db.Decimal(5, 2)
+  result        String?
+  status        PlacementTestStatus @default(SCHEDULED)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school      School      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  application Application @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject     Subject?    @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@index([schoolId])
+  @@index([applicationId])
+  @@index([subjectId])
+  @@index([schoolId, status, scheduledAt(sort: Desc)])
+  @@map("admission_tests")
+}
+
+model Interview {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String          @map("school_id") @db.Uuid
+  applicationId     String          @map("application_id") @db.Uuid
+  scheduledAt       DateTime?       @map("scheduled_at")
+  interviewerUserId String?         @map("interviewer_user_id") @db.Uuid
+  status            InterviewStatus @default(SCHEDULED)
+  notes             String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school          School      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  application     Application @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  interviewerUser User?       @relation("AdmissionInterviewInterviewer", fields: [interviewerUserId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId])
+  @@index([applicationId])
+  @@index([interviewerUserId])
+  @@index([schoolId, status, scheduledAt(sort: Desc)])
+  @@map("admission_interviews")
+}
+
+model AdmissionDecision {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                @map("school_id") @db.Uuid
+  applicationId   String                @unique @map("application_id") @db.Uuid
+  decision        AdmissionDecisionType
+  reason          String?
+  decidedByUserId String                @map("decided_by_user_id") @db.Uuid
+  decidedAt       DateTime              @map("decided_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school        School      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  application   Application @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  decidedByUser User        @relation("AdmissionDecisionDecidedBy", fields: [decidedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([applicationId, schoolId])
+  @@index([schoolId])
+  @@index([decidedByUserId])
+  @@index([schoolId, decision, decidedAt(sort: Desc)])
+  @@map("admission_decisions")
+}
+
+// ============================================================
+// ACADEMICS - years, terms, structure, subjects, rooms, allocations
+// ============================================================
+
+model AcademicYear {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId  String   @map("school_id") @db.Uuid
+  nameAr    String   @map("name_ar")
+  nameEn    String   @map("name_en")
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+  isActive  Boolean  @default(false) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school                School        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  terms                 Term[]
+  requestedApplications Application[]
+  enrollments           Enrollment[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, nameAr])
+  @@unique([schoolId, nameEn])
+  @@index([schoolId])
+  @@index([schoolId, isActive])
+  @@index([deletedAt])
+  @@map("academic_years")
+}
+
+model Term {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String   @map("school_id") @db.Uuid
+  academicYearId String   @map("academic_year_id") @db.Uuid
+  nameAr         String   @map("name_ar")
+  nameEn         String   @map("name_en")
+  startDate      DateTime @map("start_date") @db.Date
+  endDate        DateTime @map("end_date") @db.Date
+  isActive       Boolean  @default(false) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school                    School                     @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear              AcademicYear               @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  teacherSubjectAllocations TeacherSubjectAllocation[]
+  enrollments               Enrollment[]
+
+  @@unique([id, schoolId])
+  @@unique([academicYearId, nameAr])
+  @@unique([academicYearId, nameEn])
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([schoolId, isActive])
+  @@index([deletedAt])
+  @@map("terms")
+}
+
+model Stage {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId  String @map("school_id") @db.Uuid
+  nameAr    String @map("name_ar")
+  nameEn    String @map("name_en")
+  sortOrder Int    @default(0) @map("sort_order")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school School  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  grades Grade[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, nameAr])
+  @@unique([schoolId, nameEn])
+  @@index([schoolId])
+  @@index([deletedAt])
+  @@map("stages")
+}
+
+model Grade {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId  String @map("school_id") @db.Uuid
+  stageId   String @map("stage_id") @db.Uuid
+  nameAr    String @map("name_ar")
+  nameEn    String @map("name_en")
+  sortOrder Int    @default(0) @map("sort_order")
+  capacity  Int?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school                School        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  stage                 Stage         @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  sections              Section[]
+  requestedApplications Application[]
+
+  @@unique([id, schoolId])
+  @@unique([stageId, nameAr])
+  @@unique([stageId, nameEn])
+  @@index([schoolId])
+  @@index([stageId])
+  @@index([deletedAt])
+  @@map("grades")
+}
+
+model Section {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId  String @map("school_id") @db.Uuid
+  gradeId   String @map("grade_id") @db.Uuid
+  nameAr    String @map("name_ar")
+  nameEn    String @map("name_en")
+  sortOrder Int    @default(0) @map("sort_order")
+  capacity  Int?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school     School      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  grade      Grade       @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classrooms Classroom[]
+
+  @@unique([id, schoolId])
+  @@unique([gradeId, nameAr])
+  @@unique([gradeId, nameEn])
+  @@index([schoolId])
+  @@index([gradeId])
+  @@index([deletedAt])
+  @@map("sections")
+}
+
+model Classroom {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId  String  @map("school_id") @db.Uuid
+  sectionId String  @map("section_id") @db.Uuid
+  roomId    String? @map("room_id") @db.Uuid
+  nameAr    String  @map("name_ar")
+  nameEn    String  @map("name_en")
+  sortOrder Int     @default(0) @map("sort_order")
+  capacity  Int?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school                    School                     @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  section                   Section                    @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  room                      Room?                      @relation(fields: [roomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  teacherSubjectAllocations TeacherSubjectAllocation[]
+  enrollments               Enrollment[]
+
+  @@unique([id, schoolId])
+  @@unique([sectionId, nameAr])
+  @@unique([sectionId, nameEn])
+  @@index([schoolId])
+  @@index([sectionId])
+  @@index([roomId])
+  @@index([deletedAt])
+  @@map("classrooms")
+}
+
+model Subject {
+  id       String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId String  @map("school_id") @db.Uuid
+  nameAr   String  @map("name_ar")
+  nameEn   String  @map("name_en")
+  code     String?
+  color    String?
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school                    School                     @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  teacherSubjectAllocations TeacherSubjectAllocation[]
+  placementTests            PlacementTest[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, code])
+  @@index([schoolId])
+  @@index([schoolId, isActive])
+  @@index([deletedAt])
+  @@map("subjects")
+}
+
+model TeacherSubjectAllocation {
+  id            String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String @map("school_id") @db.Uuid
+  teacherUserId String @map("teacher_user_id") @db.Uuid
+  subjectId     String @map("subject_id") @db.Uuid
+  classroomId   String @map("classroom_id") @db.Uuid
+  termId        String @map("term_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school      School    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  teacherUser User      @relation("TeacherSubjectAllocationTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
+  subject     Subject   @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom   Classroom @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term        Term      @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([teacherUserId, subjectId, classroomId, termId])
+  @@index([schoolId])
+  @@index([teacherUserId])
+  @@index([subjectId])
+  @@index([classroomId])
+  @@index([termId])
+  @@index([schoolId, termId])
+  @@map("teacher_subject_allocations")
+}
+
+model Room {
+  id       String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId String  @map("school_id") @db.Uuid
+  nameAr   String  @map("name_ar")
+  nameEn   String  @map("name_en")
+  capacity Int?
+  floor    String?
+  building String?
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school     School      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  classrooms Classroom[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, isActive])
+  @@index([deletedAt])
+  @@map("rooms")
+}
+
+// ============================================================
+// AUDIT â€” append-only activity trail
+// ============================================================
+
+// ============================================================
+// STUDENTS - source-of-truth learner records and placements
+// ============================================================
+
+model Student {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String        @map("school_id") @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  applicationId  String?       @map("application_id") @db.Uuid
+  firstName      String        @map("first_name")
+  lastName       String        @map("last_name")
+  birthDate      DateTime?     @map("birth_date") @db.Date
+  status         StudentStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school         School                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  application    Application?           @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  guardians      StudentGuardian[]
+  enrollments    Enrollment[]
+  documents      StudentDocument[]
+  medicalProfile StudentMedicalProfile?
+  notes          StudentNote[]
+
+  @@unique([id, schoolId])
+  @@unique([applicationId, schoolId])
+  @@index([schoolId])
+  @@index([organizationId])
+  @@index([applicationId])
+  @@index([schoolId, status, createdAt(sort: Desc)])
+  @@index([deletedAt])
+  @@map("students")
+}
+
+model Guardian {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String  @map("school_id") @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  userId         String? @map("user_id") @db.Uuid
+  firstName      String  @map("first_name")
+  lastName       String  @map("last_name")
+  phone          String
+  email          String?
+  relation       String
+  isPrimary      Boolean @default(false) @map("is_primary")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school       School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User?             @relation("GuardianUser", fields: [userId], references: [id], onDelete: SetNull)
+  students     StudentGuardian[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([schoolId, relation])
+  @@index([deletedAt])
+  @@map("guardians")
+}
+
+model StudentGuardian {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId   String  @map("school_id") @db.Uuid
+  studentId  String  @map("student_id") @db.Uuid
+  guardianId String  @map("guardian_id") @db.Uuid
+  isPrimary  Boolean @default(false) @map("is_primary")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school   School   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student  Student  @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  guardian Guardian @relation(fields: [guardianId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([schoolId, studentId, guardianId])
+  @@index([schoolId])
+  @@index([studentId])
+  @@index([guardianId])
+  @@index([schoolId, studentId, isPrimary])
+  @@map("student_guardian_links")
+}
+
+model Enrollment {
+  id             String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                  @map("school_id") @db.Uuid
+  studentId      String                  @map("student_id") @db.Uuid
+  academicYearId String                  @map("academic_year_id") @db.Uuid
+  termId         String?                 @map("term_id") @db.Uuid
+  classroomId    String                  @map("classroom_id") @db.Uuid
+  status         StudentEnrollmentStatus @default(ACTIVE)
+  enrolledAt     DateTime                @map("enrolled_at")
+  endedAt        DateTime?               @map("ended_at")
+  exitReason     String?                 @map("exit_reason")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student      Student      @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  academicYear AcademicYear @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term?        @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom    Classroom    @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([studentId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([classroomId])
+  @@index([schoolId, studentId, status])
+  @@index([schoolId, academicYearId, termId, status])
+  @@index([deletedAt])
+  @@map("student_enrollments")
+}
+
+model StudentDocument {
+  id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId     String                @map("school_id") @db.Uuid
+  studentId    String                @map("student_id") @db.Uuid
+  fileId       String                @map("file_id") @db.Uuid
+  documentType String                @map("document_type")
+  status       StudentDocumentStatus @default(MISSING)
+  notes        String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school  School  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student Student @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  file    File    @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@index([schoolId])
+  @@index([studentId])
+  @@index([fileId])
+  @@index([schoolId, status])
+  @@index([schoolId, studentId, documentType])
+  @@map("student_documents")
+}
+
+model StudentMedicalProfile {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String   @map("school_id") @db.Uuid
+  studentId      String   @map("student_id") @db.Uuid
+  bloodType      String?  @map("blood_type")
+  allergies      String?
+  conditions     String[] @default([])
+  medications    String[] @default([])
+  emergencyNotes String?  @map("emergency_notes")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school  School  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student Student @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([studentId, schoolId])
+  @@index([schoolId])
+  @@index([studentId])
+  @@map("student_medical_profiles")
+}
+
+model StudentNote {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId     String               @map("school_id") @db.Uuid
+  studentId    String               @map("student_id") @db.Uuid
+  note         String
+  category     StudentNoteCategory?
+  authorUserId String               @map("author_user_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school     School  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student    Student @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  authorUser User    @relation("StudentNoteAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@index([schoolId])
+  @@index([studentId])
+  @@index([authorUserId])
+  @@index([schoolId, studentId, createdAt(sort: Desc)])
+  @@map("student_notes")
+}
+
+// ============================================================
+// AUDIT - append-only activity trail
+// ============================================================
+
+model AuditLog {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId        String?      @map("actor_id") @db.Uuid
+  userType       UserType?    @map("user_type")
+  organizationId String?      @map("organization_id") @db.Uuid
+  schoolId       String?      @map("school_id") @db.Uuid
+  module         String
+  action         String
+  resourceType   String       @map("resource_type")
+  resourceId     String?      @map("resource_id")
+  before         Json?
+  after          Json?
+  outcome        AuditOutcome
+  ipAddress      String?      @map("ip_address")
+  userAgent      String?      @map("user_agent")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  actor        User?         @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  school       School?       @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([module, action])
+  @@index([resourceType, resourceId])
+  @@map("audit_logs")
+}
+
+// ============================================================
+// FILES — object storage metadata (bytes live in S3/MinIO)
+// ============================================================
+
+model File {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String?        @map("organization_id") @db.Uuid
+  schoolId       String?        @map("school_id") @db.Uuid
+  uploaderId     String?        @map("uploader_id") @db.Uuid
+  bucket         String
+  objectKey      String         @map("object_key")
+  originalName   String         @map("original_name")
+  mimeType       String         @map("mime_type")
+  sizeBytes      BigInt         @map("size_bytes")
+  checksumSha256 String?        @map("checksum_sha256")
+  visibility     FileVisibility @default(PRIVATE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  organization         Organization?         @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  school               School?               @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  uploader             User?                 @relation("FileUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
+  attachments          Attachment[]
+  applicationDocuments ApplicationDocument[]
+  studentDocuments     StudentDocument[]
+  importJobsUploaded   ImportJob[]           @relation("ImportJobUploadedFile")
+
+  @@unique([bucket, objectKey])
+  @@index([organizationId])
+  @@index([schoolId])
+  @@index([uploaderId])
+  @@index([visibility])
+  @@index([deletedAt])
+  @@map("files")
+}
+
+model Attachment {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fileId       String  @map("file_id") @db.Uuid
+  schoolId     String  @map("school_id") @db.Uuid
+  resourceType String  @map("resource_type")
+  resourceId   String  @map("resource_id")
+  createdById  String? @map("created_by_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  file      File   @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  school    School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  createdBy User?  @relation("AttachmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([fileId, resourceType, resourceId])
+  @@index([fileId])
+  @@index([schoolId])
+  @@index([schoolId, resourceType, resourceId])
+  @@index([createdById])
+  @@map("attachments")
+}
+
+model ImportJob {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String          @map("school_id") @db.Uuid
+  uploadedFileId String          @map("uploaded_file_id") @db.Uuid
+  type           String
+  status         ImportJobStatus @default(PENDING)
+  reportJson     Json?           @map("report_json")
+  createdById    String?         @map("created_by_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school       School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  uploadedFile File   @relation("ImportJobUploadedFile", fields: [uploadedFileId], references: [id], onDelete: Restrict)
+  createdBy    User?  @relation("ImportJobCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([schoolId])
+  @@index([schoolId, status, createdAt(sort: Desc)])
+  @@index([schoolId, type])
+  @@index([uploadedFileId])
+  @@index([createdById])
+  @@map("import_jobs")
+}
