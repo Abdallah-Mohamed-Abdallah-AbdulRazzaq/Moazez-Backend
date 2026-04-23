@@ -1,0 +1,5248 @@
+{
+  "name": "Backend-1",
+  "path": "e:\\Work and Projects\\Moazez\\Back-end\\Backend-1",
+  "type": "directory",
+  "children": [
+    {
+      "name": "adr",
+      "type": "folder",
+      "icon": "📁",
+      "children": [
+        {
+          "name": "Parent-App",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": "parent_applicant_portal.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_auth.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_behavior.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_children.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_grades.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_home.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_homeworks.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_messages.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_onboarding.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_parent_ADD_CHILD_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_profile.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_progress.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_reports.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_schedule.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_smart_pickup.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "parent_tasks.md",
+              "type": "file",
+              "icon": "📝"
+            }
+          ]
+        },
+        {
+          "name": "School-Dashboard",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": "sis_dashboard-academics_backend_handoff_spec.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "sis_dashboard-admissions_backend_handoff_spec_updated.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "sis_dashboard-attendance_backend_handoff_spec.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "sis_dashboard-grades_backend_handoff_spec.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "sis_dashboard-hero_journey_backend_handoff_spec.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "sis_dashboard-reinforcement_backend_handoff_spec.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "sis_dashboard-school-dashboard-api-handoff.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "sis_dashboard-settings_backend_handoff_spec_v2.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "sis_dashboard-students_guardians_backend_handoff_spec_v2.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "sis_dashboard-teachers_backend_handoff_spec.md",
+              "type": "file",
+              "icon": "📝"
+            }
+          ]
+        },
+        {
+          "name": "Student-App",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": "student_ANNOUNCEMENTS_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_ATTACHMENTS_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_BEHAVIOR_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_EXAMS_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_GRADES_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_HERO_JOURNEY_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_HOMEWORKS_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_HOME_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_MESSAGES_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_PICKUP_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_PROFILE_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_PROGRESS_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_SCHEDULE_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_SUBJECTS_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_SUBJECT_DETAILS_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "student_TASKS_BACKEND_MODEL.md",
+              "type": "file",
+              "icon": "📝"
+            }
+          ]
+        },
+        {
+          "name": "Teacher-App",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": "teacher_CLASSROOM_BACKEND_MODELS.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "teacher_HOMEWORKS_BACKEND_MODELS.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "teacher_HOME_BACKEND_MODELS.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "teacher_MESSAGES_BACKEND_MODELS.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "teacher_MY_CLASSES_BACKEND_MODELS.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "teacher_PROFILE_BACKEND_MODELS.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "teacher_SCHEDULE_BACKEND_MODELS.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "teacher_SETTINGS_BACKEND_MODELS.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "teacher_TASKS_BACKEND_MODELS.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "teacher_XP_BACKEND_MODELS.md",
+              "type": "file",
+              "icon": "📝"
+            }
+          ]
+        },
+        {
+          "name": "ADR-0001-multi-tenancy-enforcement.md",
+          "type": "file",
+          "icon": "📝"
+        }
+      ]
+    },
+    {
+      "name": "docs",
+      "type": "folder",
+      "icon": "📁",
+      "children": [
+        {
+          "name": ".gitkeep",
+          "type": "file",
+          "icon": "📁"
+        }
+      ]
+    },
+    {
+      "name": "prisma",
+      "type": "folder",
+      "icon": "📁",
+      "children": [
+        {
+          "name": "migrations",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": "20260416225721_0001_core_identity",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260419145548_0002_settings_baseline",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260419162438_0003_academic_structure",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260420170535_0004_files_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260421164924_0005_admissions_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260421223439_0006_students_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": ".gitkeep",
+              "type": "file",
+              "icon": "📁"
+            },
+            {
+              "name": "migration_lock.toml",
+              "type": "file",
+              "icon": "⚙️"
+            }
+          ]
+        },
+        {
+          "name": "seeds",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": ".gitkeep",
+              "type": "file",
+              "icon": "📁"
+            },
+            {
+              "name": "01-permissions.seed.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "02-system-roles.seed.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "03-platform-admin.seed.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "04-demo-org.seed.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "05-demo-academics.seed.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "index.ts",
+              "type": "file",
+              "icon": "📘"
+            }
+          ]
+        },
+        {
+          "name": "schema.prisma",
+          "type": "file",
+          "icon": "📄"
+        }
+      ]
+    },
+    {
+      "name": "scripts",
+      "type": "folder",
+      "icon": "📁",
+      "children": [
+        {
+          "name": ".gitkeep",
+          "type": "file",
+          "icon": "📁"
+        },
+        {
+          "name": "check-local-readiness.cjs",
+          "type": "file",
+          "icon": "📄"
+        },
+        {
+          "name": "demo-sprint1c.cjs",
+          "type": "file",
+          "icon": "📄"
+        },
+        {
+          "name": "demo-sprint2a.cjs",
+          "type": "file",
+          "icon": "📄"
+        },
+        {
+          "name": "demo-sprint2b.cjs",
+          "type": "file",
+          "icon": "📄"
+        },
+        {
+          "name": "demo.sh",
+          "type": "file",
+          "icon": "📄"
+        },
+        {
+          "name": "infra-up.cjs",
+          "type": "file",
+          "icon": "📄"
+        }
+      ]
+    },
+    {
+      "name": "src",
+      "type": "folder",
+      "icon": "📁",
+      "children": [
+        {
+          "name": "bootstrap",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": ".gitkeep",
+              "type": "file",
+              "icon": "📁"
+            }
+          ]
+        },
+        {
+          "name": "common",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": "context",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "context.middleware.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "request-context.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "decorators",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "current-actor.decorator.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "current-school.decorator.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "platform-scope.decorator.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "public-route.decorator.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "required-permissions.decorator.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "exceptions",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "domain-exception.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "global-exception.filter.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "guards",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "jwt-auth.guard.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "permissions.guard.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "scope-resolver.guard.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": ".gitkeep",
+              "type": "file",
+              "icon": "📁"
+            }
+          ]
+        },
+        {
+          "name": "config",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": "env.validation.ts",
+              "type": "file",
+              "icon": "📘"
+            }
+          ]
+        },
+        {
+          "name": "infrastructure",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": "database",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": ".gitkeep",
+                  "type": "file",
+                  "icon": "📁"
+                },
+                {
+                  "name": "platform-bypass.helper.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "prisma.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "prisma.service.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "school-scope.extension.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "logger",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": ".gitkeep",
+                  "type": "file",
+                  "icon": "📁"
+                }
+              ]
+            },
+            {
+              "name": "queue",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": ".gitkeep",
+                  "type": "file",
+                  "icon": "📁"
+                },
+                {
+                  "name": "bullmq.service.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "queue.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "realtime",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": ".gitkeep",
+                  "type": "file",
+                  "icon": "📁"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "modules",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": "academics",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "rooms",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-room.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-room.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-rooms.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-room.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "rooms.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "room-inputs.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "room-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "room.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "rooms.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "rooms.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "rooms.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "rooms.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "structure",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-classroom.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-grade.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-section.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-stage.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-term.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-year.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-classroom.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-grade.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-section.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-stage.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-tree.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-terms.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-years.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reorder-classroom.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reorder-grade.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reorder-section.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reorder-stage.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-classroom.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-grade.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-section.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-stage.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-term.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-year.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "structure.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "structure-inputs.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "structure.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "academic-year.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "classroom.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-terms-query.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reorder-node.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "section.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "sortable-node.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "stage.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "structure-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "term.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "tree-query.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "academic-years.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "structure.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "terms.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "structure.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "academic-years.repository.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-year.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-stage.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "structure.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "structure.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "subjects",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-subject.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-subject.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-subjects.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-subject.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "subjects.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "subject-inputs.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "subject.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "subject-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "subject.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "subjects.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "subjects.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "subjects.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "subjects.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "teacher-allocation",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-teacher-allocation.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-teacher-allocation.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-teacher-allocations.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-allocation.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-allocation.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-allocation-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-allocation.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-allocation.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-allocation.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-allocation.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "teacher-allocation.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "academics-context.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "academics.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "admissions",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "applications",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "create-application.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "enroll-application-handoff.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-application.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-applications.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "submit-application.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-application.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "applications.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "application-inputs.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "application.enums.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "application.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "application.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "applications.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "application.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "applications.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "enroll-application-handoff.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "application-enrollment-handoff.validator.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "applications-scope.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "applications.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "decisions",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "create-admission-decision.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-admission-decision.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-admission-decisions.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "admission-decisions.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "admission-decision.enums.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "admission-decision.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "admission-decision.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "admission-decisions.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "admission-decision.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "admission-decisions.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "decision-workflow.validator.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "decisions.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "documents",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "create-application-document.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-application-document.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-application-documents.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "application-documents.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "application-document.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "application-documents.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "application-document.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "application-documents.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "documents.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "interviews",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "create-interview.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-interview.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-interviews.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-interview.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "interviews.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "interview.enums.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "interview.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "interviews.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "interview.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "interviews.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "interview-workflow.validator.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "interviews.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "leads",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "create-lead.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-lead.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-leads.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-lead.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "leads.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "lead-inputs.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "lead.enums.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "lead.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "leads.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "lead.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "leads.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "leads-scope.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "leads.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "tests",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "create-placement-test.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-placement-test.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-placement-tests.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-placement-test.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "placement-tests.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "placement-test.enums.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "placement-test.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "placement-test.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "placement-tests.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "placement-test.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "placement-tests.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "placement-test-schedule.validator.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "admissions.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "files",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "attachments",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "delete-attachment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "link-attachment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-attachments.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attachments.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attachment-record.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "attachment.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "link-attachment.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attachments.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attachment.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attachment.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "link-attachment.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attachment-target.validator.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "attachments-scope.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "attachments.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "imports",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-import-job.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-import-job.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-import-report.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "process-import-validation.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "imports.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "import-job.report.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "import-job.types.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "import-upload.constraints.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-import-job.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "import-jobs.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "import-validation.worker.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "import-job.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-import-job.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "import-job.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "import-job.validator.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "imports-scope.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "imports.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "uploads",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-file-download-url.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "register-file-metadata.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "upload-file.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "uploads.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "file-upload.constraints.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "file-upload.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "stored-file-metadata.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "uploaded-file.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "register-file-metadata.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "upload-file-request.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "files.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "file-record.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "file-record.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "upload-file.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "checksum.validator.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "files-scope.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "uploads.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "files.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "health",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "health.controller.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "health.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "health.service.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "iam",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "auth",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "login.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "logout.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "me.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "membership.mapper.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "refresh.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "auth.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "auth.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "password.service.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "token.service.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "login-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "login.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "me-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "refresh.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "auth.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "auth.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "iam.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "settings",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "branding",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-branding.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-branding.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "branding.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "branding-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-branding.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "branding.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "branding.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "update-branding.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "branding.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "overview",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-overview.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "overview.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "overview-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "overview.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "overview.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "overview.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "permissions",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "list-permissions.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "permissions.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "permission-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "permissions.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "permissions.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "permissions.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "roles",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "clone-role.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-role.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-role.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-roles.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "replace-role-permissions.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-role.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "roles.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "normalize-role-key.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "role.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "clone-role.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-role.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "role-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-role-permissions.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-role.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "roles.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "roles.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "clone-role.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-role.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-role.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "replace-role-permissions.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "roles.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "security",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-security.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-security.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "security.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "security-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-security.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "security.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "security.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "update-security.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "security.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "users",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-user.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "invite-user.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-users.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "resend-invite.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reset-password.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-user-status.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-user.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "users.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "split-full-name.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "user-type-from-role.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "user.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-user.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-users-query.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-user-status.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-user.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "user-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "users.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "users.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-user.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-user-status.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "users.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "settings-context.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "settings.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "students",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "documents",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "create-student-document.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-student-document.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-missing-student-documents.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-student-documents.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-student-document.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "documents.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-documents.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-document-status.enums.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-document.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-documents.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-document.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-document.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-documents.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "documents.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "enrollments",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "create-enrollment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-current-enrollment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-enrollment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-enrollment-academic-years.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-enrollment-history.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-enrollments.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "shared.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "upsert-enrollment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "validate-enrollment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "enrollments.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "enrollment-placement.service.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "enrollment-status.enums.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "enrollment.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "enrollment.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "enrollments.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "enrollment.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "enrollment.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "enrollments.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "enrollments.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "guardians",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "create-guardian.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-guardian-students.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-guardian.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-primary-student-guardians.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "link-guardian-to-student.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-guardians.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-student-guardians.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "unlink-guardian-from-student.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-guardian.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-student-guardian-link.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "guardians.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-guardians.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "guardian.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "guardian.inputs.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "guardian.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "guardians.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "guardian.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "guardian.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "guardians.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "guardians.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "medical",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "get-student-medical-profile.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "upsert-student-medical-profile.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-medical.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-medical-profile.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-medical.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-medical-profile.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-medical-profile.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-medical.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "medical.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "notes",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "create-student-note.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-student-notes.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-student-note.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-notes.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-note.enums.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-note.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-notes.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-note.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-note.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-notes.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "notes.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "students",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "create-student.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-student-timeline.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-student.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-students.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-student.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "students.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "person-name.helper.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-record.inputs.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-status.enums.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "students-scope.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-timeline.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-timeline.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "students.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-timeline.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "student-timeline.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "students.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "students.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "transfers-withdrawals",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "promote-student-enrollment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "shared.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "transfer-student-enrollment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "withdraw-student-enrollment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "enrollment-lifecycle.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "enrollment-lifecycle.enums.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "lifecycle.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "promotion-placement.service.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "enrollment-lifecycle.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "enrollment-lifecycle.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        },
+                        {
+                          "name": "enrollment-lifecycle.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "enrollment-lifecycle.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "validators",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": ".gitkeep",
+                          "type": "file",
+                          "icon": "📁"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "transfers-withdrawals.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "students.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": ".gitkeep",
+              "type": "file",
+              "icon": "📁"
+            }
+          ]
+        },
+        {
+          "name": "shared",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": ".gitkeep",
+              "type": "file",
+              "icon": "📁"
+            }
+          ]
+        },
+        {
+          "name": "app.controller.spec.ts",
+          "type": "file",
+          "icon": "📘"
+        },
+        {
+          "name": "app.controller.ts",
+          "type": "file",
+          "icon": "📘"
+        },
+        {
+          "name": "app.module.ts",
+          "type": "file",
+          "icon": "📘"
+        },
+        {
+          "name": "app.service.ts",
+          "type": "file",
+          "icon": "📘"
+        },
+        {
+          "name": "main.ts",
+          "type": "file",
+          "icon": "📘"
+        }
+      ]
+    },
+    {
+      "name": "test",
+      "type": "folder",
+      "icon": "📁",
+      "children": [
+        {
+          "name": "e2e",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": ".gitkeep",
+              "type": "file",
+              "icon": "📁"
+            },
+            {
+              "name": "admissions-flow.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "files-attachments-preview.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "files-imports-skeleton.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "files-upload-download.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "students-guardians-flow.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "students-phase4-operations.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "students-phase5-lifecycle.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            }
+          ]
+        },
+        {
+          "name": "integration",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": ".gitkeep",
+              "type": "file",
+              "icon": "📁"
+            }
+          ]
+        },
+        {
+          "name": "security",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": ".gitkeep",
+              "type": "file",
+              "icon": "📁"
+            },
+            {
+              "name": "tenancy.academics.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.admissions.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.files.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.settings.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.students.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            }
+          ]
+        },
+        {
+          "name": "unit",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": ".gitkeep",
+              "type": "file",
+              "icon": "📁"
+            }
+          ]
+        },
+        {
+          "name": "app.e2e-spec.ts",
+          "type": "file",
+          "icon": "📘"
+        },
+        {
+          "name": "jest-e2e.json",
+          "type": "file",
+          "icon": "⚙️"
+        }
+      ]
+    },
+    {
+      "name": ".env.example",
+      "type": "file",
+      "icon": "📄"
+    },
+    {
+      "name": ".gitignore",
+      "type": "file",
+      "icon": "📁"
+    },
+    {
+      "name": ".prettierrc",
+      "type": "file",
+      "icon": "📄"
+    },
+    {
+      "name": "AGENTS.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "AGENT_CONTEXT_PRIMER.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "API_CONTRACT_RULES.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "ARCHITECTURE_DECISION.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "CLAUDE.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "DIRECTORY_STRUCTURE_VISUAL.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "DOMAIN_GLOSSARY.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "ENGINEERING_RULES.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "ERROR_CATALOG.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "MODULES.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "OBSERVABILITY.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "PRISMA_CONVENTIONS.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "PROJECT_OVERVIEW.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "README.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "SECURITY_MODEL.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "SPRINT_1A_DAY_BY_DAY.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "SPRINT_1_REVISED.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "SPRINT_ZERO_CHECKLIST.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "TESTING_STRATEGY.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "USER_TYPES.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "V1_SCOPE.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
+      "name": "docker-compose.yml",
+      "type": "file",
+      "icon": "⚙️"
+    },
+    {
+      "name": "eslint.config.mjs",
+      "type": "file",
+      "icon": "📄"
+    },
+    {
+      "name": "nest-cli.json",
+      "type": "file",
+      "icon": "⚙️"
+    },
+    {
+      "name": "package-lock.json",
+      "type": "file",
+      "icon": "⚙️"
+    },
+    {
+      "name": "package.json",
+      "type": "file",
+      "icon": "📦"
+    },
+    {
+      "name": "tsconfig.json",
+      "type": "file",
+      "icon": "⚙️"
+    }
+  ],
+  "metadata": {
+    "generated": "2026-04-22T03:02:27.306Z",
+    "generator": "FileTree Pro Extension",
+    "version": "0.2.0",
+    "showIcons": true,
+    "maxDepth": 10
+  }
+}
