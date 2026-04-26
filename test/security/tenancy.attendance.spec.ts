@@ -48,6 +48,9 @@ describe('Attendance policies tenancy isolation (security)', () => {
   let demoStudentId: string;
   let demoEnrollmentId: string;
   let demoSessionId: string;
+  let demoDraftEntryId: string;
+  let demoSubmittedSessionId: string;
+  let demoSubmittedEntryId: string;
   let tenantBStageId: string;
   let tenantBGradeId: string;
   let tenantBSectionId: string;
@@ -56,6 +59,8 @@ describe('Attendance policies tenancy isolation (security)', () => {
   let tenantBEnrollmentId: string;
   let tenantBSessionId: string;
   let tenantBEntryId: string;
+  let tenantBSubmittedSessionId: string;
+  let tenantBSubmittedEntryId: string;
 
   const testSuffix = `attendance-security-${Date.now()}`;
 
@@ -384,6 +389,19 @@ describe('Attendance policies tenancy isolation (security)', () => {
     });
     demoSessionId = demoSession.id;
 
+    const demoDraftEntry = await prisma.attendanceEntry.create({
+      data: {
+        schoolId: demoSchoolId,
+        sessionId: demoSessionId,
+        studentId: demoStudentId,
+        enrollmentId: demoEnrollmentId,
+        status: AttendanceStatus.LATE,
+        lateMinutes: 5,
+      },
+      select: { id: true },
+    });
+    demoDraftEntryId = demoDraftEntry.id;
+
     const tenantBSession = await prisma.attendanceSession.create({
       data: {
         schoolId: tenantBSchoolId,
@@ -411,11 +429,80 @@ describe('Attendance policies tenancy isolation (security)', () => {
         sessionId: tenantBSessionId,
         studentId: tenantBStudentId,
         enrollmentId: tenantBEnrollmentId,
-        status: AttendanceStatus.PRESENT,
+        status: AttendanceStatus.LATE,
+        lateMinutes: 9,
       },
       select: { id: true },
     });
     tenantBEntryId = tenantBEntry.id;
+
+    const demoSubmittedSession = await prisma.attendanceSession.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        date: new Date('2026-09-16T00:00:00.000Z'),
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: `classroom:${demoClassroomId}`,
+        stageId: demoStageId,
+        gradeId: demoGradeId,
+        sectionId: demoSectionId,
+        classroomId: demoClassroomId,
+        mode: AttendanceMode.DAILY,
+        periodKey: 'daily',
+        policyId: demoPolicyId,
+        status: AttendanceSessionStatus.SUBMITTED,
+        submittedAt: new Date('2026-09-16T07:20:00.000Z'),
+      },
+      select: { id: true },
+    });
+    demoSubmittedSessionId = demoSubmittedSession.id;
+
+    const demoSubmittedEntry = await prisma.attendanceEntry.create({
+      data: {
+        schoolId: demoSchoolId,
+        sessionId: demoSubmittedSessionId,
+        studentId: demoStudentId,
+        enrollmentId: demoEnrollmentId,
+        status: AttendanceStatus.ABSENT,
+      },
+      select: { id: true },
+    });
+    demoSubmittedEntryId = demoSubmittedEntry.id;
+
+    const tenantBSubmittedSession = await prisma.attendanceSession.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        academicYearId: tenantBYearId,
+        termId: tenantBTermId,
+        date: new Date('2026-09-16T00:00:00.000Z'),
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: `classroom:${tenantBClassroomId}`,
+        stageId: tenantBStageId,
+        gradeId: tenantBGradeId,
+        sectionId: tenantBSectionId,
+        classroomId: tenantBClassroomId,
+        mode: AttendanceMode.DAILY,
+        periodKey: 'daily',
+        policyId: tenantBPolicyId,
+        status: AttendanceSessionStatus.SUBMITTED,
+        submittedAt: new Date('2026-09-16T07:20:00.000Z'),
+      },
+      select: { id: true },
+    });
+    tenantBSubmittedSessionId = tenantBSubmittedSession.id;
+
+    const tenantBSubmittedEntry = await prisma.attendanceEntry.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        sessionId: tenantBSubmittedSessionId,
+        studentId: tenantBStudentId,
+        enrollmentId: tenantBEnrollmentId,
+        status: AttendanceStatus.ABSENT,
+      },
+      select: { id: true },
+    });
+    tenantBSubmittedEntryId = tenantBSubmittedEntry.id;
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -437,11 +524,27 @@ describe('Attendance policies tenancy isolation (security)', () => {
     if (app) await app.close();
     if (prisma) {
       await prisma.attendanceEntry.deleteMany({
-        where: { id: { in: [tenantBEntryId].filter(Boolean) } },
+        where: {
+          id: {
+            in: [
+              demoDraftEntryId,
+              demoSubmittedEntryId,
+              tenantBEntryId,
+              tenantBSubmittedEntryId,
+            ].filter(Boolean),
+          },
+        },
       });
       await prisma.attendanceSession.deleteMany({
         where: {
-          id: { in: [demoSessionId, tenantBSessionId].filter(Boolean) },
+          id: {
+            in: [
+              demoSessionId,
+              demoSubmittedSessionId,
+              tenantBSessionId,
+              tenantBSubmittedSessionId,
+            ].filter(Boolean),
+          },
         },
       });
       await prisma.attendancePolicy.deleteMany({
@@ -655,5 +758,50 @@ describe('Attendance policies tenancy isolation (security)', () => {
     );
     expect(studentIds).toContain(demoStudentId);
     expect(studentIds).not.toContain(tenantBStudentId);
+  });
+
+  it('lists school A absence incidents without leaking school B or draft incidents', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/attendance/absences`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        dateFrom: '2026-09-15',
+        dateTo: '2026-09-16',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const ids = response.body.items.map((item: { id: string }) => item.id);
+    expect(ids).toContain(demoSubmittedEntryId);
+    expect(ids).not.toContain(demoDraftEntryId);
+    expect(ids).not.toContain(tenantBEntryId);
+    expect(ids).not.toContain(tenantBSubmittedEntryId);
+  });
+
+  it('summarizes school A absence incidents without leaking school B or draft incidents', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/attendance/absences/summary`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        dateFrom: '2026-09-15',
+        dateTo: '2026-09-16',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      totalIncidents: 1,
+      absentCount: 1,
+      lateCount: 0,
+      earlyLeaveCount: 0,
+      excusedCount: 0,
+      affectedStudentsCount: 1,
+    });
   });
 });
