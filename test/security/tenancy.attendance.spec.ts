@@ -3,11 +3,14 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   AttendanceMode,
   AttendanceScopeType,
+  AttendanceSessionStatus,
+  AttendanceStatus,
   DailyComputationStrategy,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
   SchoolStatus,
+  StudentEnrollmentStatus,
   UserType,
 } from '@prisma/client';
 import request from 'supertest';
@@ -29,13 +32,30 @@ describe('Attendance policies tenancy isolation (security)', () => {
   let prisma: PrismaClient;
 
   let demoSchoolId: string;
+  let demoOrganizationId: string;
   let tenantBSchoolId: string;
+  let tenantBOrganizationId: string;
   let demoYearId: string;
   let demoTermId: string;
   let demoPolicyId: string;
   let tenantBYearId: string;
   let tenantBTermId: string;
   let tenantBPolicyId: string;
+  let demoStageId: string;
+  let demoGradeId: string;
+  let demoSectionId: string;
+  let demoClassroomId: string;
+  let demoStudentId: string;
+  let demoEnrollmentId: string;
+  let demoSessionId: string;
+  let tenantBStageId: string;
+  let tenantBGradeId: string;
+  let tenantBSectionId: string;
+  let tenantBClassroomId: string;
+  let tenantBStudentId: string;
+  let tenantBEnrollmentId: string;
+  let tenantBSessionId: string;
+  let tenantBEntryId: string;
 
   const testSuffix = `attendance-security-${Date.now()}`;
 
@@ -51,6 +71,7 @@ describe('Attendance policies tenancy isolation (security)', () => {
       throw new Error('Demo school not found - run `npm run seed` first.');
     }
     demoSchoolId = demoSchool.id;
+    demoOrganizationId = demoSchool.organizationId;
 
     const schoolAdminRole = await prisma.role.findFirst({
       where: { key: 'school_admin', schoolId: null, isSystem: true },
@@ -110,6 +131,7 @@ describe('Attendance policies tenancy isolation (security)', () => {
       },
     });
     tenantBSchoolId = schoolB.id;
+    tenantBOrganizationId = orgB.id;
 
     const demoYear = await prisma.academicYear.create({
       data: {
@@ -197,6 +219,204 @@ describe('Attendance policies tenancy isolation (security)', () => {
     });
     tenantBPolicyId = tenantBPolicy.id;
 
+    const demoStage = await prisma.stage.create({
+      data: {
+        schoolId: demoSchoolId,
+        nameAr: `${testSuffix}-stage-a-ar`,
+        nameEn: `${testSuffix}-stage-a`,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    demoStageId = demoStage.id;
+
+    const demoGrade = await prisma.grade.create({
+      data: {
+        schoolId: demoSchoolId,
+        stageId: demoStageId,
+        nameAr: `${testSuffix}-grade-a-ar`,
+        nameEn: `${testSuffix}-grade-a`,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    demoGradeId = demoGrade.id;
+
+    const demoSection = await prisma.section.create({
+      data: {
+        schoolId: demoSchoolId,
+        gradeId: demoGradeId,
+        nameAr: `${testSuffix}-section-a-ar`,
+        nameEn: `${testSuffix}-section-a`,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    demoSectionId = demoSection.id;
+
+    const demoClassroom = await prisma.classroom.create({
+      data: {
+        schoolId: demoSchoolId,
+        sectionId: demoSectionId,
+        nameAr: `${testSuffix}-classroom-a-ar`,
+        nameEn: `${testSuffix}-classroom-a`,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    demoClassroomId = demoClassroom.id;
+
+    const demoStudent = await prisma.student.create({
+      data: {
+        schoolId: demoSchoolId,
+        organizationId: demoOrganizationId,
+        firstName: `${testSuffix}-student-a`,
+        lastName: 'RollCall',
+      },
+      select: { id: true },
+    });
+    demoStudentId = demoStudent.id;
+
+    const demoEnrollment = await prisma.enrollment.create({
+      data: {
+        schoolId: demoSchoolId,
+        studentId: demoStudentId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        classroomId: demoClassroomId,
+        status: StudentEnrollmentStatus.ACTIVE,
+        enrolledAt: new Date('2026-09-01T00:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    demoEnrollmentId = demoEnrollment.id;
+
+    const tenantBStage = await prisma.stage.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        nameAr: `${testSuffix}-stage-b-ar`,
+        nameEn: `${testSuffix}-stage-b`,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    tenantBStageId = tenantBStage.id;
+
+    const tenantBGrade = await prisma.grade.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        stageId: tenantBStageId,
+        nameAr: `${testSuffix}-grade-b-ar`,
+        nameEn: `${testSuffix}-grade-b`,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    tenantBGradeId = tenantBGrade.id;
+
+    const tenantBSection = await prisma.section.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        gradeId: tenantBGradeId,
+        nameAr: `${testSuffix}-section-b-ar`,
+        nameEn: `${testSuffix}-section-b`,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    tenantBSectionId = tenantBSection.id;
+
+    const tenantBClassroom = await prisma.classroom.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        sectionId: tenantBSectionId,
+        nameAr: `${testSuffix}-classroom-b-ar`,
+        nameEn: `${testSuffix}-classroom-b`,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    tenantBClassroomId = tenantBClassroom.id;
+
+    const tenantBStudent = await prisma.student.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        organizationId: tenantBOrganizationId,
+        firstName: `${testSuffix}-student-b`,
+        lastName: 'RollCall',
+      },
+      select: { id: true },
+    });
+    tenantBStudentId = tenantBStudent.id;
+
+    const tenantBEnrollment = await prisma.enrollment.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        studentId: tenantBStudentId,
+        academicYearId: tenantBYearId,
+        termId: tenantBTermId,
+        classroomId: tenantBClassroomId,
+        status: StudentEnrollmentStatus.ACTIVE,
+        enrolledAt: new Date('2026-09-01T00:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    tenantBEnrollmentId = tenantBEnrollment.id;
+
+    const demoSession = await prisma.attendanceSession.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        date: new Date('2026-09-15T00:00:00.000Z'),
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: `classroom:${demoClassroomId}`,
+        stageId: demoStageId,
+        gradeId: demoGradeId,
+        sectionId: demoSectionId,
+        classroomId: demoClassroomId,
+        mode: AttendanceMode.DAILY,
+        periodKey: 'daily',
+        policyId: demoPolicyId,
+        status: AttendanceSessionStatus.DRAFT,
+      },
+      select: { id: true },
+    });
+    demoSessionId = demoSession.id;
+
+    const tenantBSession = await prisma.attendanceSession.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        academicYearId: tenantBYearId,
+        termId: tenantBTermId,
+        date: new Date('2026-09-15T00:00:00.000Z'),
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: `classroom:${tenantBClassroomId}`,
+        stageId: tenantBStageId,
+        gradeId: tenantBGradeId,
+        sectionId: tenantBSectionId,
+        classroomId: tenantBClassroomId,
+        mode: AttendanceMode.DAILY,
+        periodKey: 'daily',
+        policyId: tenantBPolicyId,
+        status: AttendanceSessionStatus.DRAFT,
+      },
+      select: { id: true },
+    });
+    tenantBSessionId = tenantBSession.id;
+
+    const tenantBEntry = await prisma.attendanceEntry.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        sessionId: tenantBSessionId,
+        studentId: tenantBStudentId,
+        enrollmentId: tenantBEnrollmentId,
+        status: AttendanceStatus.PRESENT,
+      },
+      select: { id: true },
+    });
+    tenantBEntryId = tenantBEntry.id;
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -216,8 +436,40 @@ describe('Attendance policies tenancy isolation (security)', () => {
   afterAll(async () => {
     if (app) await app.close();
     if (prisma) {
+      await prisma.attendanceEntry.deleteMany({
+        where: { id: { in: [tenantBEntryId].filter(Boolean) } },
+      });
+      await prisma.attendanceSession.deleteMany({
+        where: {
+          id: { in: [demoSessionId, tenantBSessionId].filter(Boolean) },
+        },
+      });
       await prisma.attendancePolicy.deleteMany({
         where: { id: { in: [demoPolicyId, tenantBPolicyId].filter(Boolean) } },
+      });
+      await prisma.enrollment.deleteMany({
+        where: {
+          id: { in: [demoEnrollmentId, tenantBEnrollmentId].filter(Boolean) },
+        },
+      });
+      await prisma.student.deleteMany({
+        where: { id: { in: [demoStudentId, tenantBStudentId].filter(Boolean) } },
+      });
+      await prisma.classroom.deleteMany({
+        where: {
+          id: { in: [demoClassroomId, tenantBClassroomId].filter(Boolean) },
+        },
+      });
+      await prisma.section.deleteMany({
+        where: {
+          id: { in: [demoSectionId, tenantBSectionId].filter(Boolean) },
+        },
+      });
+      await prisma.grade.deleteMany({
+        where: { id: { in: [demoGradeId, tenantBGradeId].filter(Boolean) } },
+      });
+      await prisma.stage.deleteMany({
+        where: { id: { in: [demoStageId, tenantBStageId].filter(Boolean) } },
       });
       await prisma.term.deleteMany({
         where: { id: { in: [demoTermId, tenantBTermId].filter(Boolean) } },
@@ -292,5 +544,72 @@ describe('Attendance policies tenancy isolation (security)', () => {
       .expect(404);
 
     expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('lists only roll-call sessions from the active school scope', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/attendance/roll-call/sessions`)
+      .query({ date: '2026-09-15' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const ids = response.body.items.map((item: { id: string }) => item.id);
+    expect(ids).toContain(demoSessionId);
+    expect(ids).not.toContain(tenantBSessionId);
+  });
+
+  it('returns 404 when school A reads school B roll-call session detail', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/attendance/roll-call/sessions/${tenantBSessionId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A updates entries in school B roll-call session', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${tenantBSessionId}/entries`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        entries: [
+          {
+            studentId: tenantBStudentId,
+            status: AttendanceStatus.PRESENT,
+          },
+        ],
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('does not leak school B students through school A roster', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/attendance/roll-call/roster`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        date: '2026-09-15',
+        scopeType: AttendanceScopeType.SCHOOL,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const studentIds = response.body.items.map(
+      (item: { studentId: string }) => item.studentId,
+    );
+    expect(studentIds).toContain(demoStudentId);
+    expect(studentIds).not.toContain(tenantBStudentId);
   });
 });
