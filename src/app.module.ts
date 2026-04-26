@@ -12,6 +12,7 @@ import { validateEnv } from './config/env.validation';
 import { PrismaModule } from './infrastructure/database/prisma.module';
 import { AcademicsModule } from './modules/academics/academics.module';
 import { AdmissionsModule } from './modules/admissions/admissions.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
 import { FilesModule } from './modules/files/files.module';
 import { HealthModule } from './modules/health/health.module';
 import { IamModule } from './modules/iam/iam.module';
@@ -33,6 +34,7 @@ import { StudentsModule } from './modules/students/students.module';
     FilesModule,
     AdmissionsModule,
     StudentsModule,
+    AttendanceModule,
   ],
   controllers: [AppController],
   providers: [
