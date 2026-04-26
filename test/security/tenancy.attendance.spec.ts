@@ -804,4 +804,80 @@ describe('Attendance policies tenancy isolation (security)', () => {
       affectedStudentsCount: 1,
     });
   });
+
+  it('reports school A summary without leaking school B or draft sessions', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/attendance/reports/summary`)
+      .query({
+        dateFrom: '2026-09-15',
+        dateTo: '2026-09-16',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      totalSessions: 1,
+      totalEntries: 1,
+      presentCount: 0,
+      absentCount: 1,
+      lateCount: 0,
+      earlyLeaveCount: 0,
+      excusedCount: 0,
+      unmarkedCount: 0,
+      incidentCount: 1,
+      affectedStudentsCount: 1,
+    });
+  });
+
+  it('reports school A daily trend without leaking school B or draft sessions', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/attendance/reports/daily-trend`)
+      .query({
+        dateFrom: '2026-09-15',
+        dateTo: '2026-09-16',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body.items).toEqual([
+      expect.objectContaining({
+        date: '2026-09-16',
+        totalEntries: 1,
+        absentCount: 1,
+        incidentCount: 1,
+      }),
+    ]);
+  });
+
+  it('reports school A scope breakdown without leaking school B or draft sessions', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/attendance/reports/scope-breakdown`)
+      .query({
+        dateFrom: '2026-09-15',
+        dateTo: '2026-09-16',
+        groupBy: 'classroom',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const scopeIds = response.body.items.map(
+      (item: { scopeId: string }) => item.scopeId,
+    );
+    expect(scopeIds).toContain(demoClassroomId);
+    expect(scopeIds).not.toContain(tenantBClassroomId);
+    expect(response.body.items).toEqual([
+      expect.objectContaining({
+        scopeId: demoClassroomId,
+        totalEntries: 1,
+        absentCount: 1,
+        incidentCount: 1,
+      }),
+    ]);
+  });
 });
