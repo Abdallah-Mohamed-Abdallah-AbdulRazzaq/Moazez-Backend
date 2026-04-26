@@ -495,6 +495,34 @@ export class AttendanceRollCallRepository {
     });
   }
 
+  submitSession(params: {
+    sessionId: string;
+    submittedAt: Date;
+    submittedById: string | null;
+  }): Promise<RollCallSessionDetailRecord> {
+    return this.scopedPrisma.attendanceSession.update({
+      where: { id: params.sessionId },
+      data: {
+        status: AttendanceSessionStatus.SUBMITTED,
+        submittedAt: params.submittedAt,
+        submittedById: params.submittedById,
+      },
+      ...ATTENDANCE_SESSION_DETAIL_ARGS,
+    });
+  }
+
+  unsubmitSession(sessionId: string): Promise<RollCallSessionDetailRecord> {
+    return this.scopedPrisma.attendanceSession.update({
+      where: { id: sessionId },
+      data: {
+        status: AttendanceSessionStatus.DRAFT,
+        submittedAt: null,
+        submittedById: null,
+      },
+      ...ATTENDANCE_SESSION_DETAIL_ARGS,
+    });
+  }
+
   bulkUpsertEntries(params: {
     schoolId: string;
     sessionId: string;

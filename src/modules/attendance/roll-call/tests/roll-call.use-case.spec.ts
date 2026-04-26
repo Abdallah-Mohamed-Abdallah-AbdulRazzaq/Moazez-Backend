@@ -3,6 +3,7 @@ import {
   AttendanceScopeType,
   AttendanceSessionStatus,
   AttendanceStatus,
+  AuditOutcome,
   UserType,
 } from '@prisma/client';
 import {
@@ -12,10 +13,17 @@ import {
   setActor,
 } from '../../../../common/context/request-context';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
+import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { GetRollCallRosterUseCase } from '../application/get-roll-call-roster.use-case';
 import { ResolveRollCallSessionUseCase } from '../application/resolve-roll-call-session.use-case';
 import { SaveRollCallEntriesUseCase } from '../application/save-roll-call-entries.use-case';
-import { AttendanceSessionAlreadySubmittedException } from '../domain/roll-call.exceptions';
+import { SubmitRollCallSessionUseCase } from '../application/submit-roll-call-session.use-case';
+import { UnsubmitRollCallSessionUseCase } from '../application/unsubmit-roll-call-session.use-case';
+import { UpsertRollCallEntryUseCase } from '../application/upsert-roll-call-entry.use-case';
+import {
+  AttendanceSessionAlreadySubmittedException,
+  AttendanceSessionNotSubmittedException,
+} from '../domain/roll-call.exceptions';
 import { AttendanceRollCallRepository } from '../infrastructure/attendance-roll-call.repository';
 
 describe('Attendance roll-call use cases', () => {
@@ -30,6 +38,7 @@ describe('Attendance roll-call use cases', () => {
         permissions: [
           'attendance.sessions.view',
           'attendance.sessions.manage',
+          'attendance.sessions.submit',
           'attendance.entries.manage',
         ],
       });
@@ -66,6 +75,9 @@ describe('Attendance roll-call use cases', () => {
       id: string;
       policyId: string | null;
       status: AttendanceSessionStatus;
+      submittedAt: Date | null;
+      submittedById: string | null;
+      updatedAt: Date;
       entries: unknown[];
     }>,
   ) {
@@ -88,10 +100,10 @@ describe('Attendance roll-call use cases', () => {
       periodLabelEn: null,
       policyId: overrides?.policyId ?? null,
       status: overrides?.status ?? AttendanceSessionStatus.DRAFT,
-      submittedAt: null,
-      submittedById: null,
+      submittedAt: overrides?.submittedAt ?? null,
+      submittedById: overrides?.submittedById ?? null,
       createdAt: new Date('2026-09-15T07:00:00.000Z'),
-      updatedAt: new Date('2026-09-15T07:00:00.000Z'),
+      updatedAt: overrides?.updatedAt ?? new Date('2026-09-15T07:00:00.000Z'),
       deletedAt: null,
       entries: overrides?.entries ?? [],
     };
@@ -180,12 +192,33 @@ describe('Attendance roll-call use cases', () => {
       findSessionByKey: jest.fn().mockResolvedValue(null),
       createSession: jest.fn().mockResolvedValue(sessionRecord()),
       findSessionById: jest.fn().mockResolvedValue(sessionRecord()),
-      listRosterStudents: jest
-        .fn()
-        .mockResolvedValue([rosterEnrollment()]),
+      submitSession: jest.fn().mockImplementation((params) =>
+        Promise.resolve(
+          sessionRecord({
+            status: AttendanceSessionStatus.SUBMITTED,
+            submittedAt: params.submittedAt,
+            submittedById: params.submittedById,
+          }),
+        ),
+      ),
+      unsubmitSession: jest.fn().mockResolvedValue(
+        sessionRecord({
+          status: AttendanceSessionStatus.DRAFT,
+          submittedAt: null,
+          submittedById: null,
+        }),
+      ),
+      listRosterStudents: jest.fn().mockResolvedValue([rosterEnrollment()]),
       bulkUpsertEntries: jest.fn().mockResolvedValue([entryRecord()]),
       ...overrides,
     } as unknown as AttendanceRollCallRepository;
+  }
+
+  function baseAuthRepository(overrides?: Partial<Record<string, jest.Mock>>) {
+    return {
+      createAuditLog: jest.fn().mockResolvedValue(undefined),
+      ...overrides,
+    } as unknown as AuthRepository;
   }
 
   it('creates a draft session when no matching session exists', async () => {
@@ -274,6 +307,159 @@ describe('Attendance roll-call use cases', () => {
     expect(result.session.policyId).toBe('policy-1');
   });
 
+  it('submits a draft session and writes an audit record', async () => {
+    const submittedAt = new Date('2026-09-15T07:20:00.000Z');
+    const repository = baseRepository({
+      submitSession: jest.fn().mockImplementation((params) =>
+        Promise.resolve(
+          sessionRecord({
+            status: AttendanceSessionStatus.SUBMITTED,
+            submittedAt: params.submittedAt,
+            submittedById: params.submittedById,
+            updatedAt: submittedAt,
+          }),
+        ),
+      ),
+    });
+    const authRepository = baseAuthRepository();
+    const useCase = new SubmitRollCallSessionUseCase(
+      repository,
+      authRepository,
+    );
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute('session-1'),
+    );
+
+    expect(repository.submitSession).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      submittedAt: expect.any(Date),
+      submittedById: 'user-1',
+    });
+    expect(result.session.status).toBe(AttendanceSessionStatus.SUBMITTED);
+    expect(result.session.submittedById).toBe('user-1');
+    expect(result.session.submittedAt).not.toBeNull();
+    expect(authRepository.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 'user-1',
+        userType: UserType.SCHOOL_USER,
+        organizationId: 'org-1',
+        schoolId: 'school-1',
+        module: 'attendance',
+        action: 'attendance.session.submit',
+        resourceType: 'attendance_session',
+        resourceId: 'session-1',
+        outcome: AuditOutcome.SUCCESS,
+        before: {
+          status: AttendanceSessionStatus.DRAFT,
+          submittedAt: null,
+          submittedById: null,
+        },
+        after: {
+          status: AttendanceSessionStatus.SUBMITTED,
+          submittedAt: expect.any(String),
+          submittedById: 'user-1',
+        },
+      }),
+    );
+  });
+
+  it('rejects submitting an already submitted session', async () => {
+    const repository = baseRepository({
+      findSessionById: jest.fn().mockResolvedValue(
+        sessionRecord({
+          status: AttendanceSessionStatus.SUBMITTED,
+          submittedAt: new Date('2026-09-15T07:20:00.000Z'),
+          submittedById: 'user-1',
+        }),
+      ),
+      submitSession: jest.fn(),
+    });
+    const authRepository = baseAuthRepository();
+    const useCase = new SubmitRollCallSessionUseCase(
+      repository,
+      authRepository,
+    );
+
+    await expect(
+      withAttendanceScope(() => useCase.execute('session-1')),
+    ).rejects.toBeInstanceOf(AttendanceSessionAlreadySubmittedException);
+    expect(repository.submitSession).not.toHaveBeenCalled();
+    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('unsubmits a submitted session and clears submission metadata', async () => {
+    const submittedAt = new Date('2026-09-15T07:20:00.000Z');
+    const repository = baseRepository({
+      findSessionById: jest.fn().mockResolvedValue(
+        sessionRecord({
+          status: AttendanceSessionStatus.SUBMITTED,
+          submittedAt,
+          submittedById: 'user-1',
+        }),
+      ),
+      unsubmitSession: jest.fn().mockResolvedValue(
+        sessionRecord({
+          status: AttendanceSessionStatus.DRAFT,
+          submittedAt: null,
+          submittedById: null,
+        }),
+      ),
+    });
+    const authRepository = baseAuthRepository();
+    const useCase = new UnsubmitRollCallSessionUseCase(
+      repository,
+      authRepository,
+    );
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute('session-1'),
+    );
+
+    expect(repository.unsubmitSession).toHaveBeenCalledWith('session-1');
+    expect(result.session.status).toBe(AttendanceSessionStatus.DRAFT);
+    expect(result.session.submittedAt).toBeNull();
+    expect(result.session.submittedById).toBeNull();
+    expect(authRepository.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 'user-1',
+        module: 'attendance',
+        action: 'attendance.session.unsubmit',
+        resourceType: 'attendance_session',
+        resourceId: 'session-1',
+        outcome: AuditOutcome.SUCCESS,
+        before: {
+          status: AttendanceSessionStatus.SUBMITTED,
+          submittedAt: submittedAt.toISOString(),
+          submittedById: 'user-1',
+        },
+        after: {
+          status: AttendanceSessionStatus.DRAFT,
+          submittedAt: null,
+          submittedById: null,
+        },
+      }),
+    );
+  });
+
+  it('rejects unsubmitting a draft session', async () => {
+    const repository = baseRepository({
+      findSessionById: jest.fn().mockResolvedValue(sessionRecord()),
+      unsubmitSession: jest.fn(),
+    });
+    const authRepository = baseAuthRepository();
+    const useCase = new UnsubmitRollCallSessionUseCase(
+      repository,
+      authRepository,
+    );
+
+    await expect(
+      withAttendanceScope(() => useCase.execute('session-1')),
+    ).rejects.toBeInstanceOf(AttendanceSessionNotSubmittedException);
+    expect(repository.unsubmitSession).not.toHaveBeenCalled();
+    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
+  });
+
   it('upserts draft entries for roster students', async () => {
     const repository = baseRepository();
     const useCase = new SaveRollCallEntriesUseCase(repository);
@@ -326,6 +512,28 @@ describe('Attendance roll-call use cases', () => {
               status: AttendanceStatus.PRESENT,
             },
           ],
+        }),
+      ),
+    ).rejects.toBeInstanceOf(AttendanceSessionAlreadySubmittedException);
+    expect(repository.bulkUpsertEntries).not.toHaveBeenCalled();
+  });
+
+  it('rejects targeted entry upsert when session is submitted', async () => {
+    const repository = baseRepository({
+      findSessionById: jest
+        .fn()
+        .mockResolvedValue(
+          sessionRecord({ status: AttendanceSessionStatus.SUBMITTED }),
+        ),
+      bulkUpsertEntries: jest.fn(),
+    });
+    const saveUseCase = new SaveRollCallEntriesUseCase(repository);
+    const useCase = new UpsertRollCallEntryUseCase(saveUseCase);
+
+    await expect(
+      withAttendanceScope(() =>
+        useCase.execute('session-1', 'student-1', {
+          status: AttendanceStatus.PRESENT,
         }),
       ),
     ).rejects.toBeInstanceOf(AttendanceSessionAlreadySubmittedException);

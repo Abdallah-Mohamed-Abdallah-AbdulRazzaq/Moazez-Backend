@@ -453,7 +453,9 @@ describe('Attendance policies tenancy isolation (security)', () => {
         },
       });
       await prisma.student.deleteMany({
-        where: { id: { in: [demoStudentId, tenantBStudentId].filter(Boolean) } },
+        where: {
+          id: { in: [demoStudentId, tenantBStudentId].filter(Boolean) },
+        },
       });
       await prisma.classroom.deleteMany({
         where: {
@@ -571,6 +573,32 @@ describe('Attendance policies tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('not_found');
   });
 
+  it('returns 404 when school A submits a school B roll-call session', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${tenantBSessionId}/submit`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A unsubmits a school B roll-call session', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${tenantBSessionId}/unsubmit`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
   it('returns 404 when school A updates entries in school B roll-call session', async () => {
     const { accessToken } = await login();
 
@@ -586,6 +614,22 @@ describe('Attendance policies tenancy isolation (security)', () => {
             status: AttendanceStatus.PRESENT,
           },
         ],
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A updates a targeted entry in school B roll-call session', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${tenantBSessionId}/entries/${tenantBStudentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        status: AttendanceStatus.PRESENT,
       })
       .expect(404);
 

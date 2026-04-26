@@ -398,6 +398,18 @@
               ]
             },
             {
+              "name": "20260426120000_0007_attendance_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -2392,6 +2404,315 @@
                 },
                 {
                   "name": "admissions.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "attendance",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "policies",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-attendance-policy.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-attendance-policy.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-effective-attendance-policy.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-attendance-policies.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "policy-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-attendance-policy.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "validate-attendance-policy-name.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-policies.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "policy-scope.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "policy.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-policy.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-policies.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-policy.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-policy.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "attendance-policy.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "policy-scope.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "policies.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "roll-call",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-roll-call-roster.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-roll-call-session-detail.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-roll-call-sessions.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "resolve-roll-call-session.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "roll-call-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "save-roll-call-entries.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "submit-roll-call-session.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "unsubmit-roll-call-session.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "upsert-roll-call-entry.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-roll-call.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "roll-call.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "session-key.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-roll-call.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-roll-call.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-roll-call.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-roll-call.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "roll-call.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "session-key.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "roll-call.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "attendance-context.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "attendance.module.ts",
                   "type": "file",
                   "icon": "📘"
                 }
@@ -5054,6 +5375,11 @@
               "icon": "📘"
             },
             {
+              "name": "tenancy.attendance.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "tenancy.files.spec.ts",
               "type": "file",
               "icon": "📘"
@@ -5261,7 +5587,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-04-26T14:20:01.912Z",
+    "generated": "2026-04-26T22:31:43.175Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,

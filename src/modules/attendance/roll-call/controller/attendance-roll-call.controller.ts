@@ -15,6 +15,8 @@ import { GetRollCallSessionDetailUseCase } from '../application/get-roll-call-se
 import { ListRollCallSessionsUseCase } from '../application/list-roll-call-sessions.use-case';
 import { ResolveRollCallSessionUseCase } from '../application/resolve-roll-call-session.use-case';
 import { SaveRollCallEntriesUseCase } from '../application/save-roll-call-entries.use-case';
+import { SubmitRollCallSessionUseCase } from '../application/submit-roll-call-session.use-case';
+import { UnsubmitRollCallSessionUseCase } from '../application/unsubmit-roll-call-session.use-case';
 import { UpsertRollCallEntryUseCase } from '../application/upsert-roll-call-entry.use-case';
 import {
   AttendanceRollCallEntryResponseDto,
@@ -40,6 +42,8 @@ export class AttendanceRollCallController {
     private readonly getRollCallSessionDetailUseCase: GetRollCallSessionDetailUseCase,
     private readonly saveRollCallEntriesUseCase: SaveRollCallEntriesUseCase,
     private readonly upsertRollCallEntryUseCase: UpsertRollCallEntryUseCase,
+    private readonly submitRollCallSessionUseCase: SubmitRollCallSessionUseCase,
+    private readonly unsubmitRollCallSessionUseCase: UnsubmitRollCallSessionUseCase,
   ) {}
 
   @Get('roster')
@@ -72,6 +76,22 @@ export class AttendanceRollCallController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<RollCallSessionResponseDto> {
     return this.getRollCallSessionDetailUseCase.execute(id);
+  }
+
+  @Post('sessions/:id/submit')
+  @RequiredPermissions('attendance.sessions.submit')
+  submitSession(
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<RollCallSessionResponseDto> {
+    return this.submitRollCallSessionUseCase.execute(id);
+  }
+
+  @Post('sessions/:id/unsubmit')
+  @RequiredPermissions('attendance.sessions.submit')
+  unsubmitSession(
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<RollCallSessionResponseDto> {
+    return this.unsubmitRollCallSessionUseCase.execute(id);
   }
 
   @Put('sessions/:id/entries')

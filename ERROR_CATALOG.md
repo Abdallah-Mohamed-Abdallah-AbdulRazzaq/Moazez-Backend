@@ -104,6 +104,7 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | Code                                       | HTTP | Message                                         |
 | ------------------------------------------ | ---- | ----------------------------------------------- |
 | `attendance.session.already_submitted`     | 409  | Session is already submitted                    |
+| `attendance.session.not_submitted`         | 409  | Session is not submitted                        |
 | `attendance.policy.conflict`               | 409  | An active policy already exists for this scope  |
 | `attendance.entry.requires_excuse_attachment` | 422 | This policy requires an attachment for excuses |
 | `attendance.session.outside_term`          | 422  | Date is outside the active term                 |

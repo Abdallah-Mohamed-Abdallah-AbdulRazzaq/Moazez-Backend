@@ -11,3 +11,14 @@ export class AttendanceSessionAlreadySubmittedException extends DomainException 
     });
   }
 }
+
+export class AttendanceSessionNotSubmittedException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'attendance.session.not_submitted',
+      message: 'Session is not submitted',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
