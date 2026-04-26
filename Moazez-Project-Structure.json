@@ -611,6 +611,18 @@
               ]
             },
             {
+              "name": "tests",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "demo-academics.seed.spec.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -5153,6 +5165,11 @@
       "icon": "📝"
     },
     {
+      "name": "Moazez-Project-Structure.json",
+      "type": "file",
+      "icon": "⚙️"
+    },
+    {
       "name": "OBSERVABILITY.md",
       "type": "file",
       "icon": "📝"
@@ -5233,13 +5250,18 @@
       "icon": "📦"
     },
     {
+      "name": "prisma.config.ts",
+      "type": "file",
+      "icon": "📘"
+    },
+    {
       "name": "tsconfig.json",
       "type": "file",
       "icon": "⚙️"
     }
   ],
   "metadata": {
-    "generated": "2026-04-22T03:02:27.306Z",
+    "generated": "2026-04-26T14:20:01.912Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
