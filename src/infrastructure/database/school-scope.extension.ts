@@ -51,6 +51,11 @@ const SCHOOL_SCOPED_MODELS = new Set<string>([
   'Subject',
   'TeacherSubjectAllocation',
   'Room',
+  'AttendancePolicy',
+  'AttendanceSession',
+  'AttendanceEntry',
+  'AttendanceExcuseRequest',
+  'AttendanceExcuseRequestSession',
 ]);
 
 // Models that use soft delete (have a deletedAt column). Read operations
@@ -76,6 +81,9 @@ const SOFT_DELETE_MODELS = new Set<string>([
   'Classroom',
   'Subject',
   'Room',
+  'AttendancePolicy',
+  'AttendanceSession',
+  'AttendanceExcuseRequest',
 ]);
 
 const READ_OPERATIONS = new Set<string>([

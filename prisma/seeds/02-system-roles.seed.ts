@@ -16,7 +16,9 @@ const SCHOOL_LEVEL = ALL;
 
 const TEACHER_PERMISSIONS = [
   'attendance.sessions.view',
+  'attendance.sessions.manage',
   'attendance.sessions.submit',
+  'attendance.entries.manage',
   'grades.assessments.view',
   'grades.assessments.manage',
   'grades.items.manage',

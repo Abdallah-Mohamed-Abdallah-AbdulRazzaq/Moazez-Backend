@@ -239,6 +239,64 @@ enum StudentNoteCategory {
   @@map("student_note_category")
 }
 
+enum AttendanceScopeType {
+  SCHOOL
+  STAGE
+  GRADE
+  SECTION
+  CLASSROOM
+
+  @@map("attendance_scope_type")
+}
+
+enum AttendanceMode {
+  DAILY
+  PERIOD
+
+  @@map("attendance_mode")
+}
+
+enum DailyComputationStrategy {
+  MANUAL
+  DERIVED_FROM_PERIODS
+
+  @@map("daily_computation_strategy")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+  EARLY_LEAVE
+  UNMARKED
+
+  @@map("attendance_status")
+}
+
+enum AttendanceSessionStatus {
+  DRAFT
+  SUBMITTED
+
+  @@map("attendance_session_status")
+}
+
+enum AttendanceExcuseType {
+  ABSENCE
+  LATE
+  EARLY_LEAVE
+
+  @@map("attendance_excuse_type")
+}
+
+enum AttendanceExcuseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("attendance_excuse_status")
+}
+
 // ============================================================
 // PLATFORM — organizations & schools (tenant roots)
 // ============================================================
@@ -314,6 +372,11 @@ model School {
   studentDocuments                  StudentDocument[]
   studentMedicalProfiles            StudentMedicalProfile[]
   studentNotes                      StudentNote[]
+  attendancePolicies                AttendancePolicy[]
+  attendanceSessions                AttendanceSession[]
+  attendanceEntries                 AttendanceEntry[]
+  attendanceExcuseRequests          AttendanceExcuseRequest[]
+  attendanceExcuseRequestSessions   AttendanceExcuseRequestSession[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -341,21 +404,25 @@ model User {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  memberships               Membership[]
-  sessions                  Session[]
-  auditLogsActing           AuditLog[]                 @relation("AuditLogActor")
-  filesUploaded             File[]                     @relation("FileUploader")
-  schoolProfilesUpdated     SchoolProfile[]            @relation("SchoolProfileUpdatedBy")
-  securitySettingsUpdated   SecuritySetting[]          @relation("SecuritySettingUpdatedBy")
-  backupJobsCreated         BackupJob[]                @relation("BackupJobCreatedBy")
-  attachmentsCreated        Attachment[]               @relation("AttachmentCreatedBy")
-  importJobsCreated         ImportJob[]                @relation("ImportJobCreatedBy")
-  ownedLeads                Lead[]                     @relation("LeadOwner")
-  admissionInterviews       Interview[]                @relation("AdmissionInterviewInterviewer")
-  admissionDecisionsCreated AdmissionDecision[]        @relation("AdmissionDecisionDecidedBy")
-  teacherSubjectAllocations TeacherSubjectAllocation[] @relation("TeacherSubjectAllocationTeacher")
-  guardianProfiles          Guardian[]                 @relation("GuardianUser")
-  studentNotesAuthored      StudentNote[]              @relation("StudentNoteAuthor")
+  memberships                     Membership[]
+  sessions                        Session[]
+  auditLogsActing                 AuditLog[]                 @relation("AuditLogActor")
+  filesUploaded                   File[]                     @relation("FileUploader")
+  schoolProfilesUpdated           SchoolProfile[]            @relation("SchoolProfileUpdatedBy")
+  securitySettingsUpdated         SecuritySetting[]          @relation("SecuritySettingUpdatedBy")
+  backupJobsCreated               BackupJob[]                @relation("BackupJobCreatedBy")
+  attachmentsCreated              Attachment[]               @relation("AttachmentCreatedBy")
+  importJobsCreated               ImportJob[]                @relation("ImportJobCreatedBy")
+  ownedLeads                      Lead[]                     @relation("LeadOwner")
+  admissionInterviews             Interview[]                @relation("AdmissionInterviewInterviewer")
+  admissionDecisionsCreated       AdmissionDecision[]        @relation("AdmissionDecisionDecidedBy")
+  teacherSubjectAllocations       TeacherSubjectAllocation[] @relation("TeacherSubjectAllocationTeacher")
+  guardianProfiles                Guardian[]                 @relation("GuardianUser")
+  studentNotesAuthored            StudentNote[]              @relation("StudentNoteAuthor")
+  attendanceSessionsSubmitted     AttendanceSession[]        @relation("AttendanceSessionSubmittedBy")
+  attendanceEntriesMarked         AttendanceEntry[]          @relation("AttendanceEntryMarkedBy")
+  attendanceExcuseRequestsCreated AttendanceExcuseRequest[]  @relation("AttendanceExcuseRequestCreatedBy")
+  attendanceExcuseRequestsDecided AttendanceExcuseRequest[]  @relation("AttendanceExcuseRequestDecidedBy")
 
   @@index([userType])
   @@index([status])
@@ -853,10 +920,13 @@ model AcademicYear {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                School        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  terms                 Term[]
-  requestedApplications Application[]
-  enrollments           Enrollment[]
+  school                   School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  terms                    Term[]
+  requestedApplications    Application[]
+  enrollments              Enrollment[]
+  attendancePolicies       AttendancePolicy[]
+  attendanceSessions       AttendanceSession[]
+  attendanceExcuseRequests AttendanceExcuseRequest[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -885,6 +955,9 @@ model Term {
   academicYear              AcademicYear               @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
   teacherSubjectAllocations TeacherSubjectAllocation[]
   enrollments               Enrollment[]
+  attendancePolicies        AttendancePolicy[]
+  attendanceSessions        AttendanceSession[]
+  attendanceExcuseRequests  AttendanceExcuseRequest[]
 
   @@unique([id, schoolId])
   @@unique([academicYearId, nameAr])
@@ -907,8 +980,10 @@ model Stage {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school School  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  grades Grade[]
+  school             School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  grades             Grade[]
+  attendancePolicies AttendancePolicy[]
+  attendanceSessions AttendanceSession[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -931,10 +1006,12 @@ model Grade {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                School        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  stage                 Stage         @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  school                School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  stage                 Stage               @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
   sections              Section[]
   requestedApplications Application[]
+  attendancePolicies    AttendancePolicy[]
+  attendanceSessions    AttendanceSession[]
 
   @@unique([id, schoolId])
   @@unique([stageId, nameAr])
@@ -958,9 +1035,11 @@ model Section {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school     School      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  grade      Grade       @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classrooms Classroom[]
+  school             School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  grade              Grade               @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classrooms         Classroom[]
+  attendancePolicies AttendancePolicy[]
+  attendanceSessions AttendanceSession[]
 
   @@unique([id, schoolId])
   @@unique([gradeId, nameAr])
@@ -990,6 +1069,8 @@ model Classroom {
   room                      Room?                      @relation(fields: [roomId, schoolId], references: [id, schoolId], onDelete: Restrict)
   teacherSubjectAllocations TeacherSubjectAllocation[]
   enrollments               Enrollment[]
+  attendancePolicies        AttendancePolicy[]
+  attendanceSessions        AttendanceSession[]
 
   @@unique([id, schoolId])
   @@unique([sectionId, nameAr])
@@ -1099,14 +1180,16 @@ model Student {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school         School                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  application    Application?           @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  guardians      StudentGuardian[]
-  enrollments    Enrollment[]
-  documents      StudentDocument[]
-  medicalProfile StudentMedicalProfile?
-  notes          StudentNote[]
+  school                   School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  application              Application?              @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  guardians                StudentGuardian[]
+  enrollments              Enrollment[]
+  documents                StudentDocument[]
+  medicalProfile           StudentMedicalProfile?
+  notes                    StudentNote[]
+  attendanceEntries        AttendanceEntry[]
+  attendanceExcuseRequests AttendanceExcuseRequest[]
 
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
@@ -1186,11 +1269,12 @@ model Enrollment {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  student      Student      @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  academicYear AcademicYear @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term         Term?        @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classroom    Classroom    @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  school            School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student           Student           @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  academicYear      AcademicYear      @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term              Term?             @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom         Classroom         @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  attendanceEntries AttendanceEntry[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -1270,6 +1354,221 @@ model StudentNote {
   @@index([authorUserId])
   @@index([schoolId, studentId, createdAt(sort: Desc)])
   @@map("student_notes")
+}
+
+// ============================================================
+// ATTENDANCE - policies, sessions, entries, excuses
+// ============================================================
+
+model AttendancePolicy {
+  id                        String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                  String                   @map("school_id") @db.Uuid
+  academicYearId            String                   @map("academic_year_id") @db.Uuid
+  termId                    String                   @map("term_id") @db.Uuid
+  scopeType                 AttendanceScopeType      @map("scope_type")
+  scopeKey                  String                   @map("scope_key")
+  stageId                   String?                  @map("stage_id") @db.Uuid
+  gradeId                   String?                  @map("grade_id") @db.Uuid
+  sectionId                 String?                  @map("section_id") @db.Uuid
+  classroomId               String?                  @map("classroom_id") @db.Uuid
+  nameAr                    String                   @map("name_ar")
+  nameEn                    String                   @map("name_en")
+  descriptionAr             String?                  @map("description_ar")
+  descriptionEn             String?                  @map("description_en")
+  notes                     String?
+  mode                      AttendanceMode
+  dailyComputationStrategy  DailyComputationStrategy @default(MANUAL) @map("daily_computation_strategy")
+  requireExcuseAttachment   Boolean                  @default(false) @map("require_excuse_attachment")
+  allowParentExcuseRequests Boolean                  @default(true) @map("allow_parent_excuse_requests")
+  notifyGuardiansOnAbsence  Boolean                  @default(true) @map("notify_guardians_on_absence")
+  effectiveFrom             DateTime?                @map("effective_from") @db.Date
+  effectiveTo               DateTime?                @map("effective_to") @db.Date
+  isActive                  Boolean                  @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school       School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear        @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term                @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  stage        Stage?              @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade        Grade?              @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  section      Section?            @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom    Classroom?          @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  sessions     AttendanceSession[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, academicYearId, termId, scopeType, scopeKey, nameAr], map: "attendance_policies_scope_name_ar_key")
+  @@unique([schoolId, academicYearId, termId, scopeType, scopeKey, nameEn], map: "attendance_policies_scope_name_en_key")
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([stageId])
+  @@index([gradeId])
+  @@index([sectionId])
+  @@index([classroomId])
+  @@index([schoolId, academicYearId, termId])
+  @@index([schoolId, termId, scopeType, scopeKey])
+  @@index([schoolId, isActive, deletedAt])
+  @@index([deletedAt])
+  @@map("attendance_policies")
+}
+
+model AttendanceSession {
+  id             String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                  @map("school_id") @db.Uuid
+  academicYearId String                  @map("academic_year_id") @db.Uuid
+  termId         String                  @map("term_id") @db.Uuid
+  date           DateTime                @db.Date
+  scopeType      AttendanceScopeType     @map("scope_type")
+  scopeKey       String                  @map("scope_key")
+  stageId        String?                 @map("stage_id") @db.Uuid
+  gradeId        String?                 @map("grade_id") @db.Uuid
+  sectionId      String?                 @map("section_id") @db.Uuid
+  classroomId    String?                 @map("classroom_id") @db.Uuid
+  mode           AttendanceMode
+  periodId       String?                 @map("period_id")
+  periodKey      String                  @map("period_key")
+  periodLabelAr  String?                 @map("period_label_ar")
+  periodLabelEn  String?                 @map("period_label_en")
+  policyId       String?                 @map("policy_id") @db.Uuid
+  status         AttendanceSessionStatus @default(DRAFT)
+  submittedAt    DateTime?               @map("submitted_at")
+  submittedById  String?                 @map("submitted_by_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school                      School                           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear                AcademicYear                     @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                        Term                             @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  stage                       Stage?                           @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade                       Grade?                           @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  section                     Section?                         @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom                   Classroom?                       @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  policy                      AttendancePolicy?                @relation(fields: [policyId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  submittedBy                 User?                            @relation("AttendanceSessionSubmittedBy", fields: [submittedById], references: [id], onDelete: SetNull)
+  entries                     AttendanceEntry[]
+  linkedExcuseRequestSessions AttendanceExcuseRequestSession[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, academicYearId, termId, date, scopeType, scopeKey, mode, periodKey])
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([date])
+  @@index([status])
+  @@index([stageId])
+  @@index([gradeId])
+  @@index([sectionId])
+  @@index([classroomId])
+  @@index([policyId])
+  @@index([submittedById])
+  @@index([schoolId, termId, date])
+  @@index([schoolId, termId, status])
+  @@index([schoolId, termId, scopeType, scopeKey])
+  @@index([deletedAt])
+  @@map("attendance_sessions")
+}
+
+model AttendanceEntry {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String           @map("school_id") @db.Uuid
+  sessionId         String           @map("session_id") @db.Uuid
+  studentId         String           @map("student_id") @db.Uuid
+  enrollmentId      String?          @map("enrollment_id") @db.Uuid
+  status            AttendanceStatus @default(UNMARKED)
+  lateMinutes       Int?             @map("late_minutes")
+  earlyLeaveMinutes Int?             @map("early_leave_minutes")
+  excuseReason      String?          @map("excuse_reason")
+  note              String?
+  markedById        String?          @map("marked_by_id") @db.Uuid
+  markedAt          DateTime?        @map("marked_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school     School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  session    AttendanceSession @relation(fields: [sessionId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  student    Student           @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment Enrollment?       @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  markedBy   User?             @relation("AttendanceEntryMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, sessionId, studentId])
+  @@index([schoolId])
+  @@index([sessionId])
+  @@index([studentId])
+  @@index([enrollmentId])
+  @@index([status])
+  @@index([markedById])
+  @@map("attendance_entries")
+}
+
+model AttendanceExcuseRequest {
+  id                 String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String                 @map("school_id") @db.Uuid
+  academicYearId     String                 @map("academic_year_id") @db.Uuid
+  termId             String                 @map("term_id") @db.Uuid
+  studentId          String                 @map("student_id") @db.Uuid
+  type               AttendanceExcuseType
+  status             AttendanceExcuseStatus @default(PENDING)
+  dateFrom           DateTime               @map("date_from") @db.Date
+  dateTo             DateTime               @map("date_to") @db.Date
+  selectedPeriodKeys String[]               @default([]) @map("selected_period_keys")
+  lateMinutes        Int?                   @map("late_minutes")
+  earlyLeaveMinutes  Int?                   @map("early_leave_minutes")
+  reasonAr           String?                @map("reason_ar")
+  reasonEn           String?                @map("reason_en")
+  decisionNote       String?                @map("decision_note")
+  createdById        String?                @map("created_by_id") @db.Uuid
+  decidedById        String?                @map("decided_by_id") @db.Uuid
+  decidedAt          DateTime?              @map("decided_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school         School                           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear   AcademicYear                     @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term           Term                             @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  student        Student                          @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy      User?                            @relation("AttendanceExcuseRequestCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  decidedBy      User?                            @relation("AttendanceExcuseRequestDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  linkedSessions AttendanceExcuseRequestSession[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([studentId])
+  @@index([status])
+  @@index([dateFrom, dateTo])
+  @@index([createdById])
+  @@index([decidedById])
+  @@index([deletedAt])
+  @@index([schoolId, termId, status])
+  @@index([schoolId, studentId, dateFrom, dateTo])
+  @@map("attendance_excuse_requests")
+}
+
+model AttendanceExcuseRequestSession {
+  schoolId                  String @map("school_id") @db.Uuid
+  attendanceExcuseRequestId String @map("attendance_excuse_request_id") @db.Uuid
+  attendanceSessionId       String @map("attendance_session_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  school                  School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  attendanceExcuseRequest AttendanceExcuseRequest @relation(fields: [attendanceExcuseRequestId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  attendanceSession       AttendanceSession       @relation(fields: [attendanceSessionId, schoolId], references: [id, schoolId], onDelete: Cascade)
+
+  @@id([attendanceExcuseRequestId, attendanceSessionId])
+  @@index([schoolId])
+  @@index([attendanceSessionId])
+  @@map("attendance_excuse_request_sessions")
 }
 
 // ============================================================

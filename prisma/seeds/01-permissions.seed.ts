@@ -41,8 +41,17 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'academics.subjects.manage', module: 'academics', resource: 'subjects', action: 'manage', description: 'Manage subjects' },
 
   // attendance
+  { code: 'attendance.policies.view', module: 'attendance', resource: 'policies', action: 'view', description: 'View attendance policies' },
+  { code: 'attendance.policies.manage', module: 'attendance', resource: 'policies', action: 'manage', description: 'Create and update attendance policies' },
   { code: 'attendance.sessions.view', module: 'attendance', resource: 'sessions', action: 'view', description: 'View attendance sessions' },
+  { code: 'attendance.sessions.manage', module: 'attendance', resource: 'sessions', action: 'manage', description: 'Create and update attendance sessions' },
   { code: 'attendance.sessions.submit', module: 'attendance', resource: 'sessions', action: 'submit', description: 'Submit or update attendance sessions' },
+  { code: 'attendance.entries.manage', module: 'attendance', resource: 'entries', action: 'manage', description: 'Create and update attendance entries' },
+  { code: 'attendance.absences.view', module: 'attendance', resource: 'absences', action: 'view', description: 'View derived attendance absences' },
+  { code: 'attendance.excuses.view', module: 'attendance', resource: 'excuses', action: 'view', description: 'View attendance excuse requests' },
+  { code: 'attendance.excuses.manage', module: 'attendance', resource: 'excuses', action: 'manage', description: 'Create and update attendance excuse requests' },
+  { code: 'attendance.excuses.review', module: 'attendance', resource: 'excuses', action: 'review', description: 'Approve or reject attendance excuse requests' },
+  { code: 'attendance.reports.view', module: 'attendance', resource: 'reports', action: 'view', description: 'View attendance reports' },
 
   // grades
   { code: 'grades.assessments.view', module: 'grades', resource: 'assessments', action: 'view', description: 'View assessments' },
