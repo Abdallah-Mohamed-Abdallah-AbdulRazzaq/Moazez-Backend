@@ -3632,6 +3632,11 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "bulk-upsert-grade-assessment-items.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "create-grade-assessment.use-case.ts",
                           "type": "file",
                           "icon": "📘"
@@ -3652,6 +3657,11 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "list-grade-assessment-items.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "list-grade-assessments.use-case.ts",
                           "type": "file",
                           "icon": "📘"
@@ -3668,6 +3678,11 @@
                         },
                         {
                           "name": "update-grade-assessment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "upsert-grade-assessment-item.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -3694,6 +3709,11 @@
                           "name": "grade-assessment-domain.ts",
                           "type": "file",
                           "icon": "📘"
+                        },
+                        {
+                          "name": "grade-item-entry-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
                         }
                       ]
                     },
@@ -3702,6 +3722,11 @@
                       "type": "folder",
                       "icon": "📁",
                       "children": [
+                        {
+                          "name": "grade-assessment-items.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
                         {
                           "name": "grade-assessment.dto.ts",
                           "type": "file",
@@ -3714,6 +3739,11 @@
                       "type": "folder",
                       "icon": "📁",
                       "children": [
+                        {
+                          "name": "grades-assessment-items.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
                         {
                           "name": "grades-assessments.repository.ts",
                           "type": "file",
@@ -3730,6 +3760,11 @@
                           "name": "grade-assessment.presenter.ts",
                           "type": "file",
                           "icon": "📘"
+                        },
+                        {
+                          "name": "grade-item.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
                         }
                       ]
                     },
@@ -3739,12 +3774,22 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "grade-assessment-items.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "grade-assessment.presenter.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         },
                         {
                           "name": "grade-assessments.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-item.presenter.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -6445,7 +6490,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-04-27T16:54:00.150Z",
+    "generated": "2026-04-27T17:34:44.472Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
