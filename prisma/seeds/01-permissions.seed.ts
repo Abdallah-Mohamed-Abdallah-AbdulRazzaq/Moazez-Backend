@@ -55,8 +55,17 @@ const PERMISSIONS: PermissionSeed[] = [
 
   // grades
   { code: 'grades.assessments.view', module: 'grades', resource: 'assessments', action: 'view', description: 'View assessments' },
-  { code: 'grades.assessments.manage', module: 'grades', resource: 'assessments', action: 'manage', description: 'Create, publish, and lock assessments' },
+  { code: 'grades.assessments.manage', module: 'grades', resource: 'assessments', action: 'manage', description: 'Create and update assessments' },
+  { code: 'grades.assessments.publish', module: 'grades', resource: 'assessments', action: 'publish', description: 'Publish assessments for grade entry' },
+  { code: 'grades.assessments.approve', module: 'grades', resource: 'assessments', action: 'approve', description: 'Approve published assessments' },
+  { code: 'grades.assessments.lock', module: 'grades', resource: 'assessments', action: 'lock', description: 'Lock approved assessments' },
+  { code: 'grades.items.view', module: 'grades', resource: 'items', action: 'view', description: 'View grade items' },
   { code: 'grades.items.manage', module: 'grades', resource: 'items', action: 'manage', description: 'Enter and update grade items' },
+  { code: 'grades.gradebook.view', module: 'grades', resource: 'gradebook', action: 'view', description: 'View gradebook data' },
+  { code: 'grades.rules.view', module: 'grades', resource: 'rules', action: 'view', description: 'View grading rules' },
+  { code: 'grades.rules.manage', module: 'grades', resource: 'rules', action: 'manage', description: 'Create and update grading rules' },
+  { code: 'grades.analytics.view', module: 'grades', resource: 'analytics', action: 'view', description: 'View grades analytics' },
+  { code: 'grades.snapshots.view', module: 'grades', resource: 'snapshots', action: 'view', description: 'View student grade snapshots' },
 
   // reinforcement
   { code: 'reinforcement.tasks.view', module: 'reinforcement', resource: 'tasks', action: 'view', description: 'View reinforcement tasks' },

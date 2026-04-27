@@ -297,6 +297,66 @@ enum AttendanceExcuseStatus {
   @@map("attendance_excuse_status")
 }
 
+enum GradeScopeType {
+  SCHOOL
+  STAGE
+  GRADE
+  SECTION
+  CLASSROOM
+
+  @@map("grade_scope_type")
+}
+
+enum GradeAssessmentType {
+  QUIZ
+  MONTH_EXAM
+  MIDTERM
+  TERM_EXAM
+  ASSIGNMENT
+  FINAL
+  PRACTICAL
+
+  @@map("grade_assessment_type")
+}
+
+enum GradeAssessmentDeliveryMode {
+  SCORE_ONLY
+  QUESTION_BASED
+
+  @@map("grade_assessment_delivery_mode")
+}
+
+enum GradeAssessmentApprovalStatus {
+  DRAFT
+  PUBLISHED
+  APPROVED
+
+  @@map("grade_assessment_approval_status")
+}
+
+enum GradeItemStatus {
+  ENTERED
+  MISSING
+  ABSENT
+
+  @@map("grade_item_status")
+}
+
+enum GradeRuleScale {
+  PERCENTAGE
+
+  @@map("grade_rule_scale")
+}
+
+enum GradeRoundingMode {
+  NONE
+  DECIMAL_0
+  DECIMAL_1
+  DECIMAL_2
+
+  @@map("grade_rounding_mode")
+}
+
 // ============================================================
 // PLATFORM — organizations & schools (tenant roots)
 // ============================================================
@@ -377,6 +437,9 @@ model School {
   attendanceEntries                 AttendanceEntry[]
   attendanceExcuseRequests          AttendanceExcuseRequest[]
   attendanceExcuseRequestSessions   AttendanceExcuseRequestSession[]
+  gradeAssessments                  GradeAssessment[]
+  gradeItems                        GradeItem[]
+  gradeRules                        GradeRule[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -423,6 +486,11 @@ model User {
   attendanceEntriesMarked         AttendanceEntry[]          @relation("AttendanceEntryMarkedBy")
   attendanceExcuseRequestsCreated AttendanceExcuseRequest[]  @relation("AttendanceExcuseRequestCreatedBy")
   attendanceExcuseRequestsDecided AttendanceExcuseRequest[]  @relation("AttendanceExcuseRequestDecidedBy")
+  gradeAssessmentsPublished       GradeAssessment[]          @relation("GradeAssessmentPublishedBy")
+  gradeAssessmentsApproved        GradeAssessment[]          @relation("GradeAssessmentApprovedBy")
+  gradeAssessmentsLocked          GradeAssessment[]          @relation("GradeAssessmentLockedBy")
+  gradeAssessmentsCreated         GradeAssessment[]          @relation("GradeAssessmentCreatedBy")
+  gradeItemsEntered               GradeItem[]                @relation("GradeItemEnteredBy")
 
   @@index([userType])
   @@index([status])
@@ -927,6 +995,8 @@ model AcademicYear {
   attendancePolicies       AttendancePolicy[]
   attendanceSessions       AttendanceSession[]
   attendanceExcuseRequests AttendanceExcuseRequest[]
+  gradeAssessments         GradeAssessment[]
+  gradeRules               GradeRule[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -958,6 +1028,9 @@ model Term {
   attendancePolicies        AttendancePolicy[]
   attendanceSessions        AttendanceSession[]
   attendanceExcuseRequests  AttendanceExcuseRequest[]
+  gradeAssessments          GradeAssessment[]
+  gradeItems                GradeItem[]
+  gradeRules                GradeRule[]
 
   @@unique([id, schoolId])
   @@unique([academicYearId, nameAr])
@@ -984,6 +1057,7 @@ model Stage {
   grades             Grade[]
   attendancePolicies AttendancePolicy[]
   attendanceSessions AttendanceSession[]
+  gradeAssessments   GradeAssessment[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -1012,6 +1086,8 @@ model Grade {
   requestedApplications Application[]
   attendancePolicies    AttendancePolicy[]
   attendanceSessions    AttendanceSession[]
+  gradeAssessments      GradeAssessment[]
+  gradeRules            GradeRule[]
 
   @@unique([id, schoolId])
   @@unique([stageId, nameAr])
@@ -1040,6 +1116,7 @@ model Section {
   classrooms         Classroom[]
   attendancePolicies AttendancePolicy[]
   attendanceSessions AttendanceSession[]
+  gradeAssessments   GradeAssessment[]
 
   @@unique([id, schoolId])
   @@unique([gradeId, nameAr])
@@ -1071,6 +1148,7 @@ model Classroom {
   enrollments               Enrollment[]
   attendancePolicies        AttendancePolicy[]
   attendanceSessions        AttendanceSession[]
+  gradeAssessments          GradeAssessment[]
 
   @@unique([id, schoolId])
   @@unique([sectionId, nameAr])
@@ -1098,6 +1176,7 @@ model Subject {
   school                    School                     @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   teacherSubjectAllocations TeacherSubjectAllocation[]
   placementTests            PlacementTest[]
+  gradeAssessments          GradeAssessment[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, code])
@@ -1190,6 +1269,7 @@ model Student {
   notes                    StudentNote[]
   attendanceEntries        AttendanceEntry[]
   attendanceExcuseRequests AttendanceExcuseRequest[]
+  gradeItems               GradeItem[]
 
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
@@ -1275,6 +1355,7 @@ model Enrollment {
   term              Term?             @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
   classroom         Classroom         @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
   attendanceEntries AttendanceEntry[]
+  gradeItems        GradeItem[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -1569,6 +1650,142 @@ model AttendanceExcuseRequestSession {
   @@index([schoolId])
   @@index([attendanceSessionId])
   @@map("attendance_excuse_request_sessions")
+}
+
+// ============================================================
+// GRADES - assessments, grade items, and rules
+// ============================================================
+
+model GradeAssessment {
+  id                  String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId            String                        @map("school_id") @db.Uuid
+  academicYearId      String                        @map("academic_year_id") @db.Uuid
+  termId              String                        @map("term_id") @db.Uuid
+  subjectId           String                        @map("subject_id") @db.Uuid
+  scopeType           GradeScopeType                @map("scope_type")
+  scopeKey            String                        @map("scope_key") @db.Uuid
+  stageId             String?                       @map("stage_id") @db.Uuid
+  gradeId             String?                       @map("grade_id") @db.Uuid
+  sectionId           String?                       @map("section_id") @db.Uuid
+  classroomId         String?                       @map("classroom_id") @db.Uuid
+  titleEn             String?                       @map("title_en")
+  titleAr             String?                       @map("title_ar")
+  type                GradeAssessmentType
+  deliveryMode        GradeAssessmentDeliveryMode   @default(SCORE_ONLY) @map("delivery_mode")
+  date                DateTime                      @db.Date
+  weight              Decimal                       @db.Decimal(5, 2)
+  maxScore            Decimal                       @map("max_score") @db.Decimal(7, 2)
+  expectedTimeMinutes Int?                          @map("expected_time_minutes")
+  approvalStatus      GradeAssessmentApprovalStatus @default(DRAFT) @map("approval_status")
+  publishedAt         DateTime?                     @map("published_at")
+  publishedById       String?                       @map("published_by_id") @db.Uuid
+  approvedAt          DateTime?                     @map("approved_at")
+  approvedById        String?                       @map("approved_by_id") @db.Uuid
+  lockedAt            DateTime?                     @map("locked_at")
+  lockedById          String?                       @map("locked_by_id") @db.Uuid
+  createdById         String?                       @map("created_by_id") @db.Uuid
+  createdAt           DateTime                      @default(now()) @map("created_at")
+  updatedAt           DateTime                      @updatedAt @map("updated_at")
+  deletedAt           DateTime?                     @map("deleted_at")
+
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term         @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject      Subject      @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  stage        Stage?       @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade        Grade?       @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  section      Section?     @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom    Classroom?   @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  publishedBy  User?        @relation("GradeAssessmentPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  approvedBy   User?        @relation("GradeAssessmentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  lockedBy     User?        @relation("GradeAssessmentLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
+  createdBy    User?        @relation("GradeAssessmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items        GradeItem[]
+
+  @@unique([id, schoolId], map: "grade_assessments_id_school_id_unique")
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([subjectId])
+  @@index([stageId])
+  @@index([gradeId])
+  @@index([sectionId])
+  @@index([classroomId])
+  @@index([publishedById])
+  @@index([approvedById])
+  @@index([lockedById])
+  @@index([createdById])
+  @@index([scopeType, scopeKey])
+  @@index([schoolId, academicYearId, termId])
+  @@index([schoolId, termId, subjectId])
+  @@index([schoolId, termId, scopeType, scopeKey])
+  @@index([schoolId, termId, approvalStatus])
+  @@index([schoolId, deletedAt])
+  @@map("grade_assessments")
+}
+
+model GradeItem {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId     String          @map("school_id") @db.Uuid
+  termId       String          @map("term_id") @db.Uuid
+  assessmentId String          @map("assessment_id") @db.Uuid
+  studentId    String          @map("student_id") @db.Uuid
+  enrollmentId String?         @map("enrollment_id") @db.Uuid
+  score        Decimal?        @db.Decimal(7, 2)
+  status       GradeItemStatus @default(MISSING)
+  comment      String?
+  enteredById  String?         @map("entered_by_id") @db.Uuid
+  enteredAt    DateTime?       @map("entered_at")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  school     School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  term       Term            @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  assessment GradeAssessment @relation(fields: [assessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  student    Student         @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment Enrollment?     @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enteredBy  User?           @relation("GradeItemEnteredBy", fields: [enteredById], references: [id], onDelete: SetNull)
+
+  @@unique([schoolId, assessmentId, studentId])
+  @@index([schoolId])
+  @@index([termId])
+  @@index([assessmentId])
+  @@index([studentId])
+  @@index([enrollmentId])
+  @@index([enteredById])
+  @@index([schoolId, termId, studentId])
+  @@index([schoolId, assessmentId, status])
+  @@map("grade_items")
+}
+
+model GradeRule {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String            @map("school_id") @db.Uuid
+  academicYearId String            @map("academic_year_id") @db.Uuid
+  termId         String            @map("term_id") @db.Uuid
+  scopeType      GradeScopeType    @map("scope_type")
+  scopeKey       String            @map("scope_key") @db.Uuid
+  gradeId        String?           @map("grade_id") @db.Uuid
+  gradingScale   GradeRuleScale    @default(PERCENTAGE) @map("grading_scale")
+  passMark       Decimal           @map("pass_mark") @db.Decimal(5, 2)
+  rounding       GradeRoundingMode @default(DECIMAL_2)
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term         @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade        Grade?       @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([schoolId, academicYearId, termId, scopeType, scopeKey])
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([scopeType, scopeKey])
+  @@index([schoolId, academicYearId, termId])
+  @@index([schoolId, termId, scopeType, scopeKey])
+  @@index([gradeId])
+  @@map("grade_rules")
 }
 
 // ============================================================

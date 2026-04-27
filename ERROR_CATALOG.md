@@ -119,8 +119,16 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | ---------------------------------- | ---- | ---------------------------------------------- |
 | `grades.assessment.locked`         | 409  | Assessment is locked                           |
 | `grades.assessment.not_published`  | 409  | Assessment must be published first             |
+| `grades.assessment.not_approved`   | 409  | Assessment must be approved first              |
+| `grades.assessment.already_published` | 409 | Assessment is already published              |
+| `grades.assessment.already_approved` | 409 | Assessment is already approved                |
+| `grades.assessment.already_locked` | 409  | Assessment is already locked                   |
+| `grades.assessment.invalid_scope`  | 422  | Assessment scope is invalid                    |
+| `grades.assessment.invalid_status_transition` | 409 | Assessment status transition is invalid |
 | `grades.term.closed`               | 409  | Term is closed for grade modifications         |
 | `grades.item.out_of_range`         | 422  | Score is out of the allowed range              |
+| `grades.rule.conflict`             | 409  | A grading rule already exists for this scope   |
+| `grades.gradebook.no_enrollment`   | 422  | Student has no enrollment for this gradebook context |
 | `grades.question.points_mismatch`  | 422  | Total question points do not match assessment total |
 
 ### Reinforcement
