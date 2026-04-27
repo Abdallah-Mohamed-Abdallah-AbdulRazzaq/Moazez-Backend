@@ -410,6 +410,18 @@
               ]
             },
             {
+              "name": "20260427123358_0008_grades_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -3588,6 +3600,151 @@
               ]
             },
             {
+              "name": "grades",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "analytics",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "analytics.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "assessments",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "assessments.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "gradebook",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "gradebook.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "rules",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "rules.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "shared",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grade-item-validation.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-scope.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-workflow.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grade-scope-query.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grades.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grade-item-validation.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-scope.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-workflow.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grades.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "grades-context.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "grades.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
               "name": "health",
               "type": "folder",
               "icon": "📁",
@@ -6025,7 +6182,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-04-27T11:58:27.230Z",
+    "generated": "2026-04-27T13:31:51.569Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
