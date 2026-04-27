@@ -374,6 +374,74 @@ Sprint 3B Attendance endpoints:
 - `POST /api/v1/attendance/excuse-requests/:id/reject`
 - `POST /api/v1/attendance/roll-call/sessions/:sessionId/entries/:studentId/correct`
 
+## Sprint 4A Grades Foundation Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Ensure SEED_DEMO_DATA=true
+
+npm run infra:up
+npm run verify:sprint4a
+```
+
+`npm run verify:sprint4a` runs the Sprint 2B preflight check, migrations, seed, build, unit tests, security tests, Sprint 2B/3A/3B E2E flows, and the Sprint 4A Grades Foundation closeout E2E.
+
+Sprint 4A grades verification covers:
+
+- grade rules and effective rule resolution
+- score-only assessment CRUD
+- publish, approve, and lock workflow
+- single and bulk grade item entry
+- virtual missing rows
+- gradebook read model
+- analytics summary and distribution
+- student grade snapshot
+- security and tenancy test suite
+
+Local verification commands:
+
+```bash
+npm run build
+npm run test -- --runInBand
+npm run test:security -- --runInBand
+npm run test:e2e:sprint4a
+npm run verify:sprint4a
+```
+
+Sprint 4A Grades endpoints:
+
+- `GET /api/v1/grades/rules`
+- `GET /api/v1/grades/rules/effective`
+- `POST /api/v1/grades/rules`
+- `PATCH /api/v1/grades/rules/:ruleId`
+- `GET /api/v1/grades/assessments`
+- `GET /api/v1/grades/assessments/:assessmentId`
+- `POST /api/v1/grades/assessments`
+- `PATCH /api/v1/grades/assessments/:assessmentId`
+- `DELETE /api/v1/grades/assessments/:assessmentId`
+- `POST /api/v1/grades/assessments/:assessmentId/publish`
+- `POST /api/v1/grades/assessments/:assessmentId/approve`
+- `POST /api/v1/grades/assessments/:assessmentId/lock`
+- `GET /api/v1/grades/assessments/:assessmentId/items`
+- `PUT /api/v1/grades/assessments/:assessmentId/items/:studentId`
+- `PUT /api/v1/grades/assessments/:assessmentId/items`
+- `GET /api/v1/grades/gradebook`
+- `GET /api/v1/grades/analytics/summary`
+- `GET /api/v1/grades/analytics/distribution`
+- `GET /api/v1/grades/students/:studentId/snapshot`
+
+Deferred beyond Sprint 4A:
+
+- question-based assessments
+- questions, submissions, answers, and corrections
+- app-facing student, parent, and teacher APIs
+- advanced analytics
+
+No `demo:sprint4a` script is added for this closeout. The focused E2E flow is the verification artifact.
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -382,33 +450,35 @@ Sprint 3B Attendance endpoints:
 
 ### Available scripts
 
-| Script                              | Purpose                                                                                          |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `npm run infra:up`                  | Start PostgreSQL, Redis, and MinIO and wait for readiness                                        |
-| `npm run infra:status`              | Show local infrastructure status                                                                 |
-| `npm run db:migrate`                | Apply Prisma migrations locally                                                                  |
-| `npm run start:dev`                 | Dev server with hot-reload                                                                       |
-| `npm run build`                     | Production build                                                                                 |
-| `npm run test`                      | Unit tests                                                                                       |
-| `npm run test:e2e`                  | Integration / e2e tests                                                                          |
-| `npm run test:e2e:sprint1c`         | Run the three Sprint 1C Files e2e flows                                                          |
-| `npm run test:e2e:sprint2a`         | Run the Sprint 2A Admissions closeout e2e flows                                                  |
-| `npm run test:e2e:sprint2b`         | Run the Sprint 2B Students closeout e2e flows                                                    |
-| `npm run test:e2e:sprint3a`         | Run the Sprint 3A Attendance closeout e2e flow                                                   |
-| `npm run test:e2e:sprint3b`         | Run the Sprint 3B Attendance Excuses & Corrections closeout e2e flow                             |
-| `npm run test:security`             | Tenancy isolation tests                                                                          |
-| `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                     |
-| `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                           |
-| `npm run verify:sprint1c:preflight` | Fail fast if `.env` or required local services are not ready                                     |
-| `npm run verify:sprint1c`           | Run preflight, migrations, seed, build, unit tests, security tests, and Sprint 1C Files e2e      |
-| `npm run verify:sprint2a:preflight` | Fail fast if `.env` or required local services are not ready                                     |
-| `npm run verify:sprint2a`           | Run preflight, migrations, seed, build, unit tests, security tests, and Sprint 2A Admissions e2e |
-| `npm run verify:sprint2b:preflight` | Fail fast if `.env` or required local services are not ready                                     |
-| `npm run verify:sprint2b`           | Run preflight, migrations, seed, build, unit tests, security tests, and Sprint 2B Students e2e   |
-| `npm run verify:sprint3a`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B e2e, and Sprint 3A e2e    |
-| `npm run verify:sprint3b`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A e2e, and Sprint 3B e2e |
-| `npm run seed`                      | Re-run idempotent seeds                                                                          |
-| `bash scripts/demo.sh`              | End-to-end smoke test                                                                            |
-| `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                       |
-| `npm run demo:sprint2a`             | Run the Sprint 2A Admissions demo flow against a running server                                  |
-| `npm run demo:sprint2b`             | Run the Sprint 2B Students demo flow against a running server                                    |
+| Script                              | Purpose                                                                                             |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `npm run infra:up`                  | Start PostgreSQL, Redis, and MinIO and wait for readiness                                           |
+| `npm run infra:status`              | Show local infrastructure status                                                                    |
+| `npm run db:migrate`                | Apply Prisma migrations locally                                                                     |
+| `npm run start:dev`                 | Dev server with hot-reload                                                                          |
+| `npm run build`                     | Production build                                                                                    |
+| `npm run test`                      | Unit tests                                                                                          |
+| `npm run test:e2e`                  | Integration / e2e tests                                                                             |
+| `npm run test:e2e:sprint1c`         | Run the three Sprint 1C Files e2e flows                                                             |
+| `npm run test:e2e:sprint2a`         | Run the Sprint 2A Admissions closeout e2e flows                                                     |
+| `npm run test:e2e:sprint2b`         | Run the Sprint 2B Students closeout e2e flows                                                       |
+| `npm run test:e2e:sprint3a`         | Run the Sprint 3A Attendance closeout e2e flow                                                      |
+| `npm run test:e2e:sprint3b`         | Run the Sprint 3B Attendance Excuses & Corrections closeout e2e flow                                |
+| `npm run test:e2e:sprint4a`         | Run the Sprint 4A Grades Foundation closeout e2e flow                                               |
+| `npm run test:security`             | Tenancy isolation tests                                                                             |
+| `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                        |
+| `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                              |
+| `npm run verify:sprint1c:preflight` | Fail fast if `.env` or required local services are not ready                                        |
+| `npm run verify:sprint1c`           | Run preflight, migrations, seed, build, unit tests, security tests, and Sprint 1C Files e2e         |
+| `npm run verify:sprint2a:preflight` | Fail fast if `.env` or required local services are not ready                                        |
+| `npm run verify:sprint2a`           | Run preflight, migrations, seed, build, unit tests, security tests, and Sprint 2A Admissions e2e    |
+| `npm run verify:sprint2b:preflight` | Fail fast if `.env` or required local services are not ready                                        |
+| `npm run verify:sprint2b`           | Run preflight, migrations, seed, build, unit tests, security tests, and Sprint 2B Students e2e      |
+| `npm run verify:sprint3a`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B e2e, and Sprint 3A e2e       |
+| `npm run verify:sprint3b`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A e2e, and Sprint 3B e2e    |
+| `npm run verify:sprint4a`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B e2e, and Sprint 4A e2e |
+| `npm run seed`                      | Re-run idempotent seeds                                                                             |
+| `bash scripts/demo.sh`              | End-to-end smoke test                                                                               |
+| `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                          |
+| `npm run demo:sprint2a`             | Run the Sprint 2A Admissions demo flow against a running server                                     |
+| `npm run demo:sprint2b`             | Run the Sprint 2B Students demo flow against a running server                                       |
