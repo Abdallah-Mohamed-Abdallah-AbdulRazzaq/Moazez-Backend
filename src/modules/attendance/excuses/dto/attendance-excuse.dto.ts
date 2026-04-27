@@ -166,6 +166,13 @@ export class LinkAttendanceExcuseAttachmentsDto {
   fileIds!: string[];
 }
 
+export class ReviewAttendanceExcuseRequestDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  decisionNote?: string | null;
+}
+
 export class AttendanceExcuseAttachmentResponseDto {
   id!: string;
   fileId!: string;

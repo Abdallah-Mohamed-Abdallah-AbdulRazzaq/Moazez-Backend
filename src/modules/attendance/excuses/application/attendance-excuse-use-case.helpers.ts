@@ -6,6 +6,7 @@ import {
 import { AttendanceScope } from '../../attendance-context';
 import {
   CreateAttendanceExcuseRequestDto,
+  ReviewAttendanceExcuseRequestDto,
   UpdateAttendanceExcuseRequestDto,
 } from '../dto/attendance-excuse.dto';
 import { AttendanceExcuseInvalidDateRangeException } from '../domain/excuse.exceptions';
@@ -19,10 +20,12 @@ import {
   AttendanceExcuseAttachmentRecord,
   AttendanceExcusesRepository,
   AttendanceExcuseRequestRecord,
+  AttendanceReviewEntryRecord,
   CreateAttendanceExcuseRequestData,
   TermReferenceRecord,
   UpdateAttendanceExcuseRequestData,
 } from '../infrastructure/attendance-excuses.repository';
+import { normalizeReviewDecisionNote } from '../domain/excuse-validation';
 
 export async function validateExcuseAcademicContext(
   repository: AttendanceExcusesRepository,
@@ -162,8 +165,40 @@ export function summarizeExcuseRequest(request: AttendanceExcuseRequestRecord) {
     earlyLeaveMinutes: request.earlyLeaveMinutes,
     reasonAr: request.reasonAr,
     reasonEn: request.reasonEn,
+    decisionNote: request.decisionNote,
+    decidedAt: request.decidedAt?.toISOString() ?? null,
+    decidedById: request.decidedById,
+    linkedSessionIds: request.linkedSessions.map(
+      (linkedSession) => linkedSession.attendanceSessionId,
+    ),
     deletedAt: request.deletedAt?.toISOString() ?? null,
   };
+}
+
+export function normalizeExcuseReviewCommand(
+  command: ReviewAttendanceExcuseRequestDto,
+): { decisionNote: string | null } {
+  return {
+    decisionNote: normalizeReviewDecisionNote(command.decisionNote),
+  };
+}
+
+export function buildExcuseApprovalReason(params: {
+  request: AttendanceExcuseRequestRecord;
+  decisionNote: string | null;
+}): string | null {
+  return (
+    params.request.reasonAr ??
+    params.request.reasonEn ??
+    params.decisionNote ??
+    null
+  );
+}
+
+export function uniqueAffectedSessionIds(
+  entries: AttendanceReviewEntryRecord[],
+): string[] {
+  return [...new Set(entries.map((entry) => entry.sessionId))];
 }
 
 export function normalizeAttachmentFileIds(fileIds: string[]): string[] {
@@ -264,6 +299,33 @@ export function buildExcuseAttachmentAuditEntry(params: {
   return params.before
     ? { ...entry, before: summarizeExcuseAttachment(params.before) }
     : entry;
+}
+
+export function buildExcuseReviewAuditEntry(params: {
+  scope: AttendanceScope;
+  action: string;
+  request: AttendanceExcuseRequestRecord;
+  before: AttendanceExcuseRequestRecord;
+  affectedSessionIds?: string[];
+  affectedEntryIds?: string[];
+}) {
+  return {
+    actorId: params.scope.actorId,
+    userType: params.scope.userType,
+    organizationId: params.scope.organizationId,
+    schoolId: params.scope.schoolId,
+    module: 'attendance',
+    action: params.action,
+    resourceType: 'attendance_excuse_request',
+    resourceId: params.request.id,
+    outcome: AuditOutcome.SUCCESS,
+    before: summarizeExcuseRequest(params.before),
+    after: {
+      ...summarizeExcuseRequest(params.request),
+      affectedSessionIds: params.affectedSessionIds ?? [],
+      affectedEntryIds: params.affectedEntryIds ?? [],
+    },
+  };
 }
 
 function hasSelectedPeriodPatch(command: UpdateAttendanceExcuseRequestDto) {

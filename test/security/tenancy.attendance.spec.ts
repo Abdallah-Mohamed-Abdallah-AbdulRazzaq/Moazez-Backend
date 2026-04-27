@@ -66,8 +66,15 @@ describe('Attendance policies tenancy isolation (security)', () => {
   let tenantBEntryId: string;
   let tenantBSubmittedSessionId: string;
   let tenantBSubmittedEntryId: string;
+  let tenantBOnlyReviewSessionId: string;
+  let tenantBOnlyReviewEntryId: string;
   let demoExcuseRequestId: string;
   let tenantBExcuseRequestId: string;
+  let demoNoMatchingExcuseRequestId: string;
+  let demoRequireAttachmentPolicyId: string;
+  let demoRequireAttachmentSessionId: string;
+  let demoRequireAttachmentEntryId: string;
+  let demoRequireAttachmentExcuseRequestId: string;
   let demoFileId: string;
   let tenantBFileId: string;
   let demoExcuseAttachmentId: string;
@@ -515,6 +522,40 @@ describe('Attendance policies tenancy isolation (security)', () => {
     });
     tenantBSubmittedEntryId = tenantBSubmittedEntry.id;
 
+    const tenantBOnlyReviewSession = await prisma.attendanceSession.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        academicYearId: tenantBYearId,
+        termId: tenantBTermId,
+        date: new Date('2026-09-18T00:00:00.000Z'),
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: `classroom:${tenantBClassroomId}`,
+        stageId: tenantBStageId,
+        gradeId: tenantBGradeId,
+        sectionId: tenantBSectionId,
+        classroomId: tenantBClassroomId,
+        mode: AttendanceMode.DAILY,
+        periodKey: `${testSuffix}-tenant-b-only`,
+        policyId: tenantBPolicyId,
+        status: AttendanceSessionStatus.SUBMITTED,
+        submittedAt: new Date('2026-09-18T07:20:00.000Z'),
+      },
+      select: { id: true },
+    });
+    tenantBOnlyReviewSessionId = tenantBOnlyReviewSession.id;
+
+    const tenantBOnlyReviewEntry = await prisma.attendanceEntry.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        sessionId: tenantBOnlyReviewSessionId,
+        studentId: tenantBStudentId,
+        enrollmentId: tenantBEnrollmentId,
+        status: AttendanceStatus.ABSENT,
+      },
+      select: { id: true },
+    });
+    tenantBOnlyReviewEntryId = tenantBOnlyReviewEntry.id;
+
     const demoExcuseRequest = await prisma.attendanceExcuseRequest.create({
       data: {
         schoolId: demoSchoolId,
@@ -530,6 +571,95 @@ describe('Attendance policies tenancy isolation (security)', () => {
       select: { id: true },
     });
     demoExcuseRequestId = demoExcuseRequest.id;
+
+    const demoNoMatchingExcuseRequest =
+      await prisma.attendanceExcuseRequest.create({
+        data: {
+          schoolId: demoSchoolId,
+          academicYearId: demoYearId,
+          termId: demoTermId,
+          studentId: demoStudentId,
+          type: AttendanceExcuseType.ABSENCE,
+          status: AttendanceExcuseStatus.PENDING,
+          dateFrom: new Date('2026-09-18T00:00:00.000Z'),
+          dateTo: new Date('2026-09-18T00:00:00.000Z'),
+          selectedPeriodKeys: [`${testSuffix}-tenant-b-only`],
+          reasonEn: `${testSuffix}-excuse-a-b-session-only`,
+        },
+        select: { id: true },
+      });
+    demoNoMatchingExcuseRequestId = demoNoMatchingExcuseRequest.id;
+
+    const demoRequireAttachmentPolicy = await prisma.attendancePolicy.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        scopeType: AttendanceScopeType.SCHOOL,
+        scopeKey: 'school',
+        nameAr: `${testSuffix}-policy-a-attachment-ar`,
+        nameEn: `${testSuffix}-policy-a-attachment`,
+        mode: AttendanceMode.DAILY,
+        dailyComputationStrategy: DailyComputationStrategy.MANUAL,
+        requireExcuseAttachment: true,
+      },
+      select: { id: true },
+    });
+    demoRequireAttachmentPolicyId = demoRequireAttachmentPolicy.id;
+
+    const demoRequireAttachmentSession =
+      await prisma.attendanceSession.create({
+        data: {
+          schoolId: demoSchoolId,
+          academicYearId: demoYearId,
+          termId: demoTermId,
+          date: new Date('2026-09-19T00:00:00.000Z'),
+          scopeType: AttendanceScopeType.CLASSROOM,
+          scopeKey: `classroom:${demoClassroomId}`,
+          stageId: demoStageId,
+          gradeId: demoGradeId,
+          sectionId: demoSectionId,
+          classroomId: demoClassroomId,
+          mode: AttendanceMode.DAILY,
+          periodKey: `${testSuffix}-requires-attachment`,
+          policyId: demoRequireAttachmentPolicyId,
+          status: AttendanceSessionStatus.SUBMITTED,
+          submittedAt: new Date('2026-09-19T07:20:00.000Z'),
+        },
+        select: { id: true },
+      });
+    demoRequireAttachmentSessionId = demoRequireAttachmentSession.id;
+
+    const demoRequireAttachmentEntry = await prisma.attendanceEntry.create({
+      data: {
+        schoolId: demoSchoolId,
+        sessionId: demoRequireAttachmentSessionId,
+        studentId: demoStudentId,
+        enrollmentId: demoEnrollmentId,
+        status: AttendanceStatus.ABSENT,
+      },
+      select: { id: true },
+    });
+    demoRequireAttachmentEntryId = demoRequireAttachmentEntry.id;
+
+    const demoRequireAttachmentExcuseRequest =
+      await prisma.attendanceExcuseRequest.create({
+        data: {
+          schoolId: demoSchoolId,
+          academicYearId: demoYearId,
+          termId: demoTermId,
+          studentId: demoStudentId,
+          type: AttendanceExcuseType.ABSENCE,
+          status: AttendanceExcuseStatus.PENDING,
+          dateFrom: new Date('2026-09-19T00:00:00.000Z'),
+          dateTo: new Date('2026-09-19T00:00:00.000Z'),
+          selectedPeriodKeys: [`${testSuffix}-requires-attachment`],
+          reasonEn: `${testSuffix}-excuse-a-requires-attachment`,
+        },
+        select: { id: true },
+      });
+    demoRequireAttachmentExcuseRequestId =
+      demoRequireAttachmentExcuseRequest.id;
 
     const tenantBExcuseRequest = await prisma.attendanceExcuseRequest.create({
       data: {
@@ -640,7 +770,12 @@ describe('Attendance policies tenancy isolation (security)', () => {
       await prisma.attendanceExcuseRequest.deleteMany({
         where: {
           id: {
-            in: [demoExcuseRequestId, tenantBExcuseRequestId].filter(Boolean),
+            in: [
+              demoExcuseRequestId,
+              tenantBExcuseRequestId,
+              demoNoMatchingExcuseRequestId,
+              demoRequireAttachmentExcuseRequestId,
+            ].filter(Boolean),
           },
         },
       });
@@ -650,8 +785,10 @@ describe('Attendance policies tenancy isolation (security)', () => {
             in: [
               demoDraftEntryId,
               demoSubmittedEntryId,
+              demoRequireAttachmentEntryId,
               tenantBEntryId,
               tenantBSubmittedEntryId,
+              tenantBOnlyReviewEntryId,
             ].filter(Boolean),
           },
         },
@@ -662,14 +799,24 @@ describe('Attendance policies tenancy isolation (security)', () => {
             in: [
               demoSessionId,
               demoSubmittedSessionId,
+              demoRequireAttachmentSessionId,
               tenantBSessionId,
               tenantBSubmittedSessionId,
+              tenantBOnlyReviewSessionId,
             ].filter(Boolean),
           },
         },
       });
       await prisma.attendancePolicy.deleteMany({
-        where: { id: { in: [demoPolicyId, tenantBPolicyId].filter(Boolean) } },
+        where: {
+          id: {
+            in: [
+              demoPolicyId,
+              tenantBPolicyId,
+              demoRequireAttachmentPolicyId,
+            ].filter(Boolean),
+          },
+        },
       });
       await prisma.enrollment.deleteMany({
         where: {
@@ -932,6 +1079,76 @@ describe('Attendance policies tenancy isolation (security)', () => {
       .expect(404);
 
     expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A approves a school B excuse request', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/attendance/excuse-requests/${tenantBExcuseRequestId}/approve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ decisionNote: `${testSuffix}-approve-cross-school` })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A rejects a school B excuse request', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/attendance/excuse-requests/${tenantBExcuseRequestId}/reject`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ decisionNote: `${testSuffix}-reject-cross-school` })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('does not allow school B submitted sessions to satisfy a school A approval', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/attendance/excuse-requests/${demoNoMatchingExcuseRequestId}/approve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ decisionNote: `${testSuffix}-school-b-session-only` })
+      .expect(400);
+
+    expect(response.body?.error?.code).toBe('validation.failed');
+
+    const tenantBEntry = await prisma.attendanceEntry.findUnique({
+      where: { id: tenantBOnlyReviewEntryId },
+      select: { status: true },
+    });
+    expect(tenantBEntry?.status).toBe(AttendanceStatus.ABSENT);
+  });
+
+  it('does not allow school B attachments to satisfy school A attachment policy requirements', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/attendance/excuse-requests/${demoRequireAttachmentExcuseRequestId}/approve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ decisionNote: `${testSuffix}-requires-school-a-attachment` })
+      .expect(422);
+
+    expect(response.body?.error?.code).toBe(
+      'attendance.entry.requires_excuse_attachment',
+    );
+
+    const demoEntry = await prisma.attendanceEntry.findUnique({
+      where: { id: demoRequireAttachmentEntryId },
+      select: { status: true },
+    });
+    expect(demoEntry?.status).toBe(AttendanceStatus.ABSENT);
   });
 
   it('returns 404 when school A creates an excuse for a school B student', async () => {

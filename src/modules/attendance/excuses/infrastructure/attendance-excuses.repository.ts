@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import {
   AttendanceExcuseStatus,
   AttendanceExcuseType,
+  AttendanceSessionStatus,
+  AttendanceStatus,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
@@ -98,12 +100,56 @@ const ATTENDANCE_EXCUSE_ATTACHMENT_ARGS =
     },
   });
 
+const ATTENDANCE_REVIEW_SESSION_ARGS =
+  Prisma.validator<Prisma.AttendanceSessionDefaultArgs>()({
+    select: {
+      id: true,
+      schoolId: true,
+      academicYearId: true,
+      termId: true,
+      date: true,
+      periodKey: true,
+      policyId: true,
+      policy: {
+        select: {
+          id: true,
+          requireExcuseAttachment: true,
+        },
+      },
+    },
+  });
+
+const ATTENDANCE_REVIEW_ENTRY_ARGS =
+  Prisma.validator<Prisma.AttendanceEntryDefaultArgs>()({
+    select: {
+      id: true,
+      schoolId: true,
+      sessionId: true,
+      studentId: true,
+      status: true,
+      lateMinutes: true,
+      earlyLeaveMinutes: true,
+      excuseReason: true,
+      note: true,
+      updatedAt: true,
+      session: {
+        select: ATTENDANCE_REVIEW_SESSION_ARGS.select,
+      },
+    },
+  });
+
 export type AttendanceExcuseRequestRecord =
   Prisma.AttendanceExcuseRequestGetPayload<
     typeof ATTENDANCE_EXCUSE_REQUEST_ARGS
   >;
 type AttendanceExcuseAttachmentRow = Prisma.AttachmentGetPayload<
   typeof ATTENDANCE_EXCUSE_ATTACHMENT_ARGS
+>;
+export type AttendanceReviewSessionRecord = Prisma.AttendanceSessionGetPayload<
+  typeof ATTENDANCE_REVIEW_SESSION_ARGS
+>;
+export type AttendanceReviewEntryRecord = Prisma.AttendanceEntryGetPayload<
+  typeof ATTENDANCE_REVIEW_ENTRY_ARGS
 >;
 export type AcademicYearReferenceRecord = Prisma.AcademicYearGetPayload<
   typeof ACADEMIC_YEAR_REFERENCE_ARGS
@@ -167,6 +213,13 @@ export interface UpdateAttendanceExcuseRequestData {
   earlyLeaveMinutes?: number | null;
   reasonAr?: string | null;
   reasonEn?: string | null;
+}
+
+export interface ReviewAttendanceExcuseRequestData {
+  status: Extract<AttendanceExcuseStatus, 'APPROVED' | 'REJECTED'>;
+  decidedById: string | null;
+  decidedAt: Date;
+  decisionNote: string | null;
 }
 
 @Injectable()
@@ -322,6 +375,17 @@ export class AttendanceExcusesRepository {
     );
   }
 
+  async countAttachmentsForExcuseRequest(
+    excuseRequestId: string,
+  ): Promise<number> {
+    return this.scopedPrisma.attachment.count({
+      where: {
+        resourceType: ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE,
+        resourceId: excuseRequestId,
+      },
+    });
+  }
+
   async linkFilesToExcuseRequest(params: {
     excuseRequestId: string;
     fileIds: string[];
@@ -383,6 +447,125 @@ export class AttendanceExcusesRepository {
     });
 
     return result.count > 0 ? { status: 'deleted' } : { status: 'not_found' };
+  }
+
+  findMatchingSubmittedSessions(params: {
+    request: AttendanceExcuseRequestRecord;
+  }): Promise<AttendanceReviewSessionRecord[]> {
+    const selectedPeriodKeys = params.request.selectedPeriodKeys;
+
+    return this.scopedPrisma.attendanceSession.findMany({
+      where: {
+        academicYearId: params.request.academicYearId,
+        termId: params.request.termId,
+        status: AttendanceSessionStatus.SUBMITTED,
+        date: {
+          gte: params.request.dateFrom,
+          lte: params.request.dateTo,
+        },
+        ...(selectedPeriodKeys.length > 0
+          ? { periodKey: { in: selectedPeriodKeys } }
+          : {}),
+      },
+      orderBy: [{ date: 'asc' }, { periodKey: 'asc' }, { id: 'asc' }],
+      ...ATTENDANCE_REVIEW_SESSION_ARGS,
+    });
+  }
+
+  findMatchingEntriesForExcuse(params: {
+    sessionIds: string[];
+    studentId: string;
+    expectedStatus: AttendanceStatus;
+  }): Promise<AttendanceReviewEntryRecord[]> {
+    if (params.sessionIds.length === 0) return Promise.resolve([]);
+
+    return this.scopedPrisma.attendanceEntry.findMany({
+      where: {
+        sessionId: { in: params.sessionIds },
+        studentId: params.studentId,
+        status: params.expectedStatus,
+      },
+      orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+      ...ATTENDANCE_REVIEW_ENTRY_ARGS,
+    });
+  }
+
+  async approveRequestAndApplyEntries(params: {
+    excuseRequestId: string;
+    schoolId: string;
+    review: ReviewAttendanceExcuseRequestData;
+    affectedSessionIds: string[];
+    affectedEntryIds: string[];
+    studentId: string;
+    expectedStatus: AttendanceStatus;
+    excuseReason: string | null;
+  }): Promise<AttendanceExcuseRequestRecord> {
+    const updated = await this.scopedPrisma.$transaction(async (tx) => {
+      await tx.attendanceExcuseRequest.update({
+        where: {
+          id_schoolId: {
+            id: params.excuseRequestId,
+            schoolId: params.schoolId,
+          },
+        },
+        data: {
+          status: params.review.status,
+          decidedById: params.review.decidedById,
+          decidedAt: params.review.decidedAt,
+          decisionNote: params.review.decisionNote,
+        },
+      });
+
+      await tx.attendanceExcuseRequestSession.createMany({
+        data: params.affectedSessionIds.map((sessionId) => ({
+          schoolId: params.schoolId,
+          attendanceExcuseRequestId: params.excuseRequestId,
+          attendanceSessionId: sessionId,
+        })),
+        skipDuplicates: true,
+      });
+
+      await tx.attendanceEntry.updateMany({
+        where: {
+          schoolId: params.schoolId,
+          id: { in: params.affectedEntryIds },
+          sessionId: { in: params.affectedSessionIds },
+          studentId: params.studentId,
+          status: params.expectedStatus,
+        },
+        data: {
+          status: AttendanceStatus.EXCUSED,
+          excuseReason: params.excuseReason,
+        },
+      });
+
+      return tx.attendanceExcuseRequest.findFirst({
+        where: { id: params.excuseRequestId, schoolId: params.schoolId },
+        ...ATTENDANCE_EXCUSE_REQUEST_ARGS,
+      });
+    });
+
+    if (!updated) {
+      throw new Error('Approved attendance excuse request was not found');
+    }
+
+    return updated;
+  }
+
+  async rejectRequest(params: {
+    excuseRequestId: string;
+    review: ReviewAttendanceExcuseRequestData;
+  }): Promise<AttendanceExcuseRequestRecord> {
+    return this.scopedPrisma.attendanceExcuseRequest.update({
+      where: { id: params.excuseRequestId },
+      data: {
+        status: params.review.status,
+        decidedById: params.review.decidedById,
+        decidedAt: params.review.decidedAt,
+        decisionNote: params.review.decisionNote,
+      },
+      ...ATTENDANCE_EXCUSE_REQUEST_ARGS,
+    });
   }
 
   private buildListWhere(

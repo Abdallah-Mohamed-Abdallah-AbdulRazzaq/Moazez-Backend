@@ -1,10 +1,16 @@
-import { AttendanceExcuseStatus, AttendanceExcuseType } from '@prisma/client';
+import {
+  AttendanceExcuseStatus,
+  AttendanceExcuseType,
+  AttendanceStatus,
+} from '@prisma/client';
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 import {
   AttendanceExcuseAlreadyReviewedException,
   AttendanceExcuseInvalidDateRangeException,
   AttendanceExcuseInvalidMinutesException,
+  AttendanceExcuseNoMatchingSubmittedEntryException,
   AttendanceExcuseInvalidPeriodSelectionException,
+  AttendanceEntryRequiresExcuseAttachmentException,
 } from './excuse.exceptions';
 
 export interface ExcuseTermRange {
@@ -62,6 +68,13 @@ export function assertPendingExcuseRequest(input: {
   }
 }
 
+export function assertPendingForReview(input: {
+  id: string;
+  status: AttendanceExcuseStatus;
+}): void {
+  assertPendingExcuseRequest(input);
+}
+
 export function assertExcuseTermWritable(term: ExcuseTermRange): void {
   if (!term.isActive) {
     throw new ValidationDomainException(
@@ -69,6 +82,48 @@ export function assertExcuseTermWritable(term: ExcuseTermRange): void {
       { termId: term.id },
     );
   }
+}
+
+export function attendanceStatusForExcuseType(
+  type: AttendanceExcuseType,
+): AttendanceStatus {
+  switch (type) {
+    case AttendanceExcuseType.ABSENCE:
+      return AttendanceStatus.ABSENT;
+    case AttendanceExcuseType.LATE:
+      return AttendanceStatus.LATE;
+    case AttendanceExcuseType.EARLY_LEAVE:
+      return AttendanceStatus.EARLY_LEAVE;
+  }
+}
+
+export function assertMatchingSubmittedEntriesExist(params: {
+  excuseRequestId: string;
+  matchingEntryCount: number;
+}): void {
+  if (params.matchingEntryCount === 0) {
+    throw new AttendanceExcuseNoMatchingSubmittedEntryException({
+      excuseRequestId: params.excuseRequestId,
+    });
+  }
+}
+
+export function assertExcuseAttachmentRequirement(params: {
+  excuseRequestId: string;
+  requiresAttachment: boolean;
+  attachmentCount: number;
+}): void {
+  if (params.requiresAttachment && params.attachmentCount === 0) {
+    throw new AttendanceEntryRequiresExcuseAttachmentException({
+      excuseRequestId: params.excuseRequestId,
+    });
+  }
+}
+
+export function normalizeReviewDecisionNote(
+  value: string | null | undefined,
+): string | null {
+  return normalizeOptionalString(value);
 }
 
 export function normalizeSelectedPeriodKeys(input: {

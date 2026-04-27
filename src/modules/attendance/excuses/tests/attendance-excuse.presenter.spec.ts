@@ -45,7 +45,14 @@ describe('Attendance excuse presenter', () => {
   }
 
   it('returns the frontend-friendly excuse response shape with attachment count', () => {
-    const result = presentAttendanceExcuseRequest(excuseRequestRecord(), {
+    const record = {
+      ...excuseRequestRecord(),
+      status: AttendanceExcuseStatus.APPROVED,
+      decisionNote: 'Approved after document review',
+      decidedById: 'user-2',
+      decidedAt: new Date('2026-09-15T10:00:00.000Z'),
+    };
+    const result = presentAttendanceExcuseRequest(record, {
       attachmentCount: 2,
     });
 
@@ -57,7 +64,7 @@ describe('Attendance excuse presenter', () => {
       studentId: 'student-1',
       studentName: 'Layla Hassan',
       type: AttendanceExcuseType.LATE,
-      status: AttendanceExcuseStatus.PENDING,
+      status: AttendanceExcuseStatus.APPROVED,
       dateFrom: '2026-09-15',
       dateTo: '2026-09-15',
       selectedPeriodKeys: ['daily'],
@@ -67,6 +74,9 @@ describe('Attendance excuse presenter', () => {
       earlyLeaveMinutes: null,
       minutesEarlyLeave: null,
       reasonEn: 'Traffic',
+      decisionNote: 'Approved after document review',
+      decidedById: 'user-2',
+      decidedAt: '2026-09-15T10:00:00.000Z',
       linkedSessionIds: ['session-1'],
       attachmentCount: 2,
       createdAt: '2026-09-15T08:00:00.000Z',

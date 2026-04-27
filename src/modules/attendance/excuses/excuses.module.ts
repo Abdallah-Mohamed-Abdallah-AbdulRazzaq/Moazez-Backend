@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../iam/auth/auth.module';
+import { ApproveAttendanceExcuseRequestUseCase } from './application/approve-attendance-excuse-request.use-case';
 import { CreateAttendanceExcuseRequestUseCase } from './application/create-attendance-excuse-request.use-case';
 import { DeleteAttendanceExcuseAttachmentUseCase } from './application/delete-attendance-excuse-attachment.use-case';
 import { DeleteAttendanceExcuseRequestUseCase } from './application/delete-attendance-excuse-request.use-case';
@@ -7,6 +8,7 @@ import { GetAttendanceExcuseRequestUseCase } from './application/get-attendance-
 import { LinkAttendanceExcuseAttachmentsUseCase } from './application/link-attendance-excuse-attachments.use-case';
 import { ListAttendanceExcuseAttachmentsUseCase } from './application/list-attendance-excuse-attachments.use-case';
 import { ListAttendanceExcuseRequestsUseCase } from './application/list-attendance-excuse-requests.use-case';
+import { RejectAttendanceExcuseRequestUseCase } from './application/reject-attendance-excuse-request.use-case';
 import { UpdateAttendanceExcuseRequestUseCase } from './application/update-attendance-excuse-request.use-case';
 import { AttendanceExcusesController } from './controller/attendance-excuses.controller';
 import { AttendanceExcusesRepository } from './infrastructure/attendance-excuses.repository';
@@ -24,6 +26,8 @@ import { AttendanceExcusesRepository } from './infrastructure/attendance-excuses
     ListAttendanceExcuseAttachmentsUseCase,
     LinkAttendanceExcuseAttachmentsUseCase,
     DeleteAttendanceExcuseAttachmentUseCase,
+    ApproveAttendanceExcuseRequestUseCase,
+    RejectAttendanceExcuseRequestUseCase,
   ],
 })
 export class ExcusesModule {}

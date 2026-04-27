@@ -44,3 +44,25 @@ export class AttendanceExcuseInvalidPeriodSelectionException extends DomainExcep
     });
   }
 }
+
+export class AttendanceExcuseNoMatchingSubmittedEntryException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'validation.failed',
+      message: 'No matching submitted attendance entry exists for this excuse',
+      httpStatus: HttpStatus.BAD_REQUEST,
+      details,
+    });
+  }
+}
+
+export class AttendanceEntryRequiresExcuseAttachmentException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'attendance.entry.requires_excuse_attachment',
+      message: 'This policy requires an attachment for excuses',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
