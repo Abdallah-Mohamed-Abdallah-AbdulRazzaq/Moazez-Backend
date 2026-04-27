@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { CorrectAttendanceEntryUseCase } from '../application/correct-attendance-entry.use-case';
 import { GetRollCallRosterUseCase } from '../application/get-roll-call-roster.use-case';
 import { GetRollCallSessionDetailUseCase } from '../application/get-roll-call-session-detail.use-case';
 import { ListRollCallSessionsUseCase } from '../application/list-roll-call-sessions.use-case';
@@ -20,6 +21,7 @@ import { UnsubmitRollCallSessionUseCase } from '../application/unsubmit-roll-cal
 import { UpsertRollCallEntryUseCase } from '../application/upsert-roll-call-entry.use-case';
 import {
   AttendanceRollCallEntryResponseDto,
+  CorrectAttendanceEntryDto,
   ListRollCallSessionsQueryDto,
   ResolveRollCallSessionDto,
   RollCallRosterQueryDto,
@@ -44,6 +46,7 @@ export class AttendanceRollCallController {
     private readonly upsertRollCallEntryUseCase: UpsertRollCallEntryUseCase,
     private readonly submitRollCallSessionUseCase: SubmitRollCallSessionUseCase,
     private readonly unsubmitRollCallSessionUseCase: UnsubmitRollCallSessionUseCase,
+    private readonly correctAttendanceEntryUseCase: CorrectAttendanceEntryUseCase,
   ) {}
 
   @Get('roster')
@@ -111,5 +114,15 @@ export class AttendanceRollCallController {
     @Body() dto: UpsertRollCallEntryDto,
   ): Promise<AttendanceRollCallEntryResponseDto> {
     return this.upsertRollCallEntryUseCase.execute(id, studentId, dto);
+  }
+
+  @Post('sessions/:sessionId/entries/:studentId/correct')
+  @RequiredPermissions('attendance.entries.manage')
+  correctEntry(
+    @Param('sessionId', new ParseUUIDPipe()) sessionId: string,
+    @Param('studentId', new ParseUUIDPipe()) studentId: string,
+    @Body() dto: CorrectAttendanceEntryDto,
+  ): Promise<AttendanceRollCallEntryResponseDto> {
+    return this.correctAttendanceEntryUseCase.execute(sessionId, studentId, dto);
   }
 }

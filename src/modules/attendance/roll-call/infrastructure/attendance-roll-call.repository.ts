@@ -336,6 +336,14 @@ export interface RollCallEntryUpsertInput {
   note: string | null;
 }
 
+export interface RollCallEntryCorrectionInput {
+  status: AttendanceStatus;
+  lateMinutes: number | null;
+  earlyLeaveMinutes: number | null;
+  excuseReason: string | null;
+  note: string | null;
+}
+
 @Injectable()
 export class AttendanceRollCallRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -495,6 +503,33 @@ export class AttendanceRollCallRepository {
     });
   }
 
+  async findSessionEntryForCorrection(params: {
+    sessionId: string;
+    studentId: string;
+  }): Promise<{
+    session: RollCallSessionSummaryRecord | null;
+    entry: RollCallAttendanceEntryRecord | null;
+  }> {
+    const session = await this.scopedPrisma.attendanceSession.findFirst({
+      where: { id: params.sessionId },
+      ...ATTENDANCE_SESSION_SUMMARY_ARGS,
+    });
+
+    if (!session) {
+      return { session: null, entry: null };
+    }
+
+    const entry = await this.scopedPrisma.attendanceEntry.findFirst({
+      where: {
+        sessionId: session.id,
+        studentId: params.studentId,
+      },
+      ...ATTENDANCE_ENTRY_ARGS,
+    });
+
+    return { session, entry };
+  }
+
   submitSession(params: {
     sessionId: string;
     schoolId: string;
@@ -581,6 +616,51 @@ export class AttendanceRollCallRepository {
         }),
       ),
     );
+  }
+
+  async correctSubmittedEntry(params: {
+    entryId: string;
+    sessionId: string;
+    studentId: string;
+    correction: RollCallEntryCorrectionInput;
+    markedById: string | null;
+    markedAt: Date;
+  }): Promise<RollCallAttendanceEntryRecord | null> {
+    return this.scopedPrisma.$transaction(async (tx) => {
+      const updateResult = await tx.attendanceEntry.updateMany({
+        where: {
+          id: params.entryId,
+          sessionId: params.sessionId,
+          studentId: params.studentId,
+          session: {
+            status: AttendanceSessionStatus.SUBMITTED,
+            deletedAt: null,
+          },
+        },
+        data: {
+          status: params.correction.status,
+          lateMinutes: params.correction.lateMinutes,
+          earlyLeaveMinutes: params.correction.earlyLeaveMinutes,
+          excuseReason: params.correction.excuseReason,
+          note: params.correction.note,
+          markedById: params.markedById,
+          markedAt: params.markedAt,
+        },
+      });
+
+      if (updateResult.count === 0) {
+        return null;
+      }
+
+      return tx.attendanceEntry.findFirst({
+        where: {
+          id: params.entryId,
+          sessionId: params.sessionId,
+          studentId: params.studentId,
+        },
+        ...ATTENDANCE_ENTRY_ARGS,
+      });
+    });
   }
 
   private buildRosterClassroomWhere(

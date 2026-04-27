@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../iam/auth/auth.module';
+import { CorrectAttendanceEntryUseCase } from './application/correct-attendance-entry.use-case';
 import { GetRollCallRosterUseCase } from './application/get-roll-call-roster.use-case';
 import { GetRollCallSessionDetailUseCase } from './application/get-roll-call-session-detail.use-case';
 import { ListRollCallSessionsUseCase } from './application/list-roll-call-sessions.use-case';
@@ -24,6 +25,7 @@ import { AttendanceRollCallRepository } from './infrastructure/attendance-roll-c
     UpsertRollCallEntryUseCase,
     SubmitRollCallSessionUseCase,
     UnsubmitRollCallSessionUseCase,
+    CorrectAttendanceEntryUseCase,
   ],
 })
 export class RollCallModule {}

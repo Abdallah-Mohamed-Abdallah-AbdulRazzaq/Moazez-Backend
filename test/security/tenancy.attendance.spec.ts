@@ -1007,6 +1007,98 @@ describe('Attendance policies tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('not_found');
   });
 
+  it('returns 404 when school A corrects a school B submitted session entry', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${tenantBSubmittedSessionId}/entries/${tenantBStudentId}/correct`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        status: AttendanceStatus.PRESENT,
+        correctionReason: `${testSuffix}-cross-school-correction`,
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A corrects using a school B student id in a school A session', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${demoSubmittedSessionId}/entries/${tenantBStudentId}/correct`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        status: AttendanceStatus.PRESENT,
+        correctionReason: `${testSuffix}-cross-school-student-correction`,
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A guesses school B entry ownership through correction ids', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${tenantBSubmittedSessionId}/entries/${demoStudentId}/correct`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        status: AttendanceStatus.PRESENT,
+        correctionReason: `${testSuffix}-cross-school-entry-correction`,
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('keeps regular bulk roll-call entry mutation locked for submitted sessions', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${demoSubmittedSessionId}/entries`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        entries: [
+          {
+            studentId: demoStudentId,
+            status: AttendanceStatus.PRESENT,
+          },
+        ],
+      })
+      .expect(409);
+
+    expect(response.body?.error?.code).toBe(
+      'attendance.session.already_submitted',
+    );
+  });
+
+  it('keeps regular targeted roll-call entry mutation locked for submitted sessions', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${demoSubmittedSessionId}/entries/${demoStudentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        status: AttendanceStatus.PRESENT,
+      })
+      .expect(409);
+
+    expect(response.body?.error?.code).toBe(
+      'attendance.session.already_submitted',
+    );
+  });
+
   it('does not leak school B students through school A roster', async () => {
     const { accessToken } = await login();
 

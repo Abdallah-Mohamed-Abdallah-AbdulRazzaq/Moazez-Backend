@@ -5,6 +5,7 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -249,6 +250,38 @@ export class UpsertRollCallEntryDto {
   @IsString()
   @MaxLength(1000)
   note?: string | null;
+}
+
+export class CorrectAttendanceEntryDto {
+  @IsEnum(AttendanceStatus)
+  status!: AttendanceStatus;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  lateMinutes?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  earlyLeaveMinutes?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  excuseReason?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string | null;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  correctionReason!: string;
 }
 
 export class AttendanceRollCallPlacementResponseDto {
