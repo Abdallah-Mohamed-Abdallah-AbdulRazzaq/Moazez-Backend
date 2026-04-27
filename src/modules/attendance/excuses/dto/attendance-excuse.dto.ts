@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  ArrayNotEmpty,
   IsDateString,
   IsEnum,
   IsInt,
@@ -158,6 +159,28 @@ export class UpdateAttendanceExcuseRequestDto {
   reasonEn?: string | null;
 }
 
+export class LinkAttendanceExcuseAttachmentsDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsUUID(undefined, { each: true })
+  fileIds!: string[];
+}
+
+export class AttendanceExcuseAttachmentResponseDto {
+  id!: string;
+  fileId!: string;
+  filename!: string;
+  originalName!: string;
+  mimeType!: string;
+  sizeBytes!: string;
+  createdAt!: string;
+  downloadUrl!: string;
+}
+
+export class AttendanceExcuseAttachmentsListResponseDto {
+  items!: AttendanceExcuseAttachmentResponseDto[];
+}
+
 export class AttendanceExcuseStudentResponseDto {
   id!: string;
   studentId!: string;
@@ -197,6 +220,8 @@ export class AttendanceExcuseRequestResponseDto {
   createdById!: string | null;
   decidedById!: string | null;
   linkedSessionIds!: string[];
+  attachmentCount!: number;
+  attachments?: AttendanceExcuseAttachmentResponseDto[];
   createdAt!: string;
   updatedAt!: string;
 }

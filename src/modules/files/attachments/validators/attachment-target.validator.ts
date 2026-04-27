@@ -2,6 +2,7 @@ import { ValidationDomainException } from '../../../../common/exceptions/domain-
 
 export const ATTACHMENT_PREVIEW_RESOURCE_TYPES = [
   'admissions.application',
+  'attendance.excuse_request',
 ] as const;
 
 type AttachmentPreviewResourceType =
@@ -35,7 +36,7 @@ export function validateAttachmentTarget(
     )
   ) {
     throw new ValidationDomainException(
-      'Attachments preview is limited to admissions.application',
+      'Attachments preview is limited to supported resource types',
       {
         field: 'resourceType',
         resourceType: normalizedResourceType,

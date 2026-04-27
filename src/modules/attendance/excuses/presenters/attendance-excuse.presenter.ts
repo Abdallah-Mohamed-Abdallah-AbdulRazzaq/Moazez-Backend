@@ -1,9 +1,16 @@
 import {
+  AttendanceExcuseAttachmentResponseDto,
+  AttendanceExcuseAttachmentsListResponseDto,
   AttendanceExcuseRequestResponseDto,
   AttendanceExcuseRequestsListResponseDto,
   AttendanceExcuseStudentResponseDto,
 } from '../dto/attendance-excuse.dto';
-import { AttendanceExcuseRequestRecord } from '../infrastructure/attendance-excuses.repository';
+import {
+  AttendanceExcuseAttachmentRecord,
+  AttendanceExcuseRequestRecord,
+} from '../infrastructure/attendance-excuses.repository';
+
+const FILE_DOWNLOAD_ROUTE_PREFIX = '/api/v1/files';
 
 type StudentShape = {
   id: string;
@@ -39,9 +46,16 @@ function presentStudent(
 
 export function presentAttendanceExcuseRequest(
   request: AttendanceExcuseRequestRecord,
+  options?: {
+    attachmentCount?: number;
+    attachments?: AttendanceExcuseAttachmentRecord[];
+  },
 ): AttendanceExcuseRequestResponseDto {
   const student = presentStudent(request.student);
   const selectedPeriodKeys = [...request.selectedPeriodKeys];
+  const presentedAttachments = options?.attachments?.map((attachment) =>
+    presentAttendanceExcuseAttachment(attachment),
+  );
 
   return {
     id: request.id,
@@ -73,6 +87,9 @@ export function presentAttendanceExcuseRequest(
     linkedSessionIds: request.linkedSessions.map(
       (linkedSession) => linkedSession.attendanceSessionId,
     ),
+    attachmentCount:
+      options?.attachmentCount ?? presentedAttachments?.length ?? 0,
+    ...(presentedAttachments ? { attachments: presentedAttachments } : {}),
     createdAt: request.createdAt.toISOString(),
     updatedAt: request.updatedAt.toISOString(),
   };
@@ -80,8 +97,40 @@ export function presentAttendanceExcuseRequest(
 
 export function presentAttendanceExcuseRequests(
   requests: AttendanceExcuseRequestRecord[],
+  attachmentCounts?: Map<string, number>,
 ): AttendanceExcuseRequestsListResponseDto {
   return {
-    items: requests.map((request) => presentAttendanceExcuseRequest(request)),
+    items: requests.map((request) =>
+      presentAttendanceExcuseRequest(request, {
+        attachmentCount: attachmentCounts?.get(request.id) ?? 0,
+      }),
+    ),
+  };
+}
+
+export function presentAttendanceExcuseAttachment(
+  attachment: AttendanceExcuseAttachmentRecord,
+): AttendanceExcuseAttachmentResponseDto {
+  const originalName = attachment.file.originalName;
+
+  return {
+    id: attachment.id,
+    fileId: attachment.fileId,
+    filename: originalName,
+    originalName,
+    mimeType: attachment.file.mimeType,
+    sizeBytes: attachment.file.sizeBytes.toString(),
+    createdAt: attachment.createdAt.toISOString(),
+    downloadUrl: `${FILE_DOWNLOAD_ROUTE_PREFIX}/${attachment.fileId}/download`,
+  };
+}
+
+export function presentAttendanceExcuseAttachments(
+  attachments: AttendanceExcuseAttachmentRecord[],
+): AttendanceExcuseAttachmentsListResponseDto {
+  return {
+    items: attachments.map((attachment) =>
+      presentAttendanceExcuseAttachment(attachment),
+    ),
   };
 }

@@ -1,15 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
+import { requireAttendanceScope } from '../../attendance-context';
 import { AttendanceExcusesRepository } from '../infrastructure/attendance-excuses.repository';
-import { presentAttendanceExcuseRequest } from '../presenters/attendance-excuse.presenter';
+import { presentAttendanceExcuseAttachments } from '../presenters/attendance-excuse.presenter';
 
 @Injectable()
-export class GetAttendanceExcuseRequestUseCase {
+export class ListAttendanceExcuseAttachmentsUseCase {
   constructor(
     private readonly attendanceExcusesRepository: AttendanceExcusesRepository,
   ) {}
 
   async execute(excuseRequestId: string) {
+    requireAttendanceScope();
+
     const request =
       await this.attendanceExcusesRepository.findById(excuseRequestId);
     if (!request) {
@@ -23,6 +26,6 @@ export class GetAttendanceExcuseRequestUseCase {
         request.id,
       );
 
-    return presentAttendanceExcuseRequest(request, { attachments });
+    return presentAttendanceExcuseAttachments(attachments);
   }
 }

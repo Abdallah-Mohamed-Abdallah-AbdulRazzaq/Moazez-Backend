@@ -12,15 +12,20 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { CreateAttendanceExcuseRequestUseCase } from '../application/create-attendance-excuse-request.use-case';
+import { DeleteAttendanceExcuseAttachmentUseCase } from '../application/delete-attendance-excuse-attachment.use-case';
 import { DeleteAttendanceExcuseRequestUseCase } from '../application/delete-attendance-excuse-request.use-case';
 import { GetAttendanceExcuseRequestUseCase } from '../application/get-attendance-excuse-request.use-case';
+import { LinkAttendanceExcuseAttachmentsUseCase } from '../application/link-attendance-excuse-attachments.use-case';
+import { ListAttendanceExcuseAttachmentsUseCase } from '../application/list-attendance-excuse-attachments.use-case';
 import { ListAttendanceExcuseRequestsUseCase } from '../application/list-attendance-excuse-requests.use-case';
 import { UpdateAttendanceExcuseRequestUseCase } from '../application/update-attendance-excuse-request.use-case';
 import {
+  AttendanceExcuseAttachmentsListResponseDto,
   AttendanceExcuseRequestResponseDto,
   AttendanceExcuseRequestsListResponseDto,
   CreateAttendanceExcuseRequestDto,
   DeleteAttendanceExcuseRequestResponseDto,
+  LinkAttendanceExcuseAttachmentsDto,
   ListAttendanceExcuseRequestsQueryDto,
   UpdateAttendanceExcuseRequestDto,
 } from '../dto/attendance-excuse.dto';
@@ -35,6 +40,9 @@ export class AttendanceExcusesController {
     private readonly createAttendanceExcuseRequestUseCase: CreateAttendanceExcuseRequestUseCase,
     private readonly updateAttendanceExcuseRequestUseCase: UpdateAttendanceExcuseRequestUseCase,
     private readonly deleteAttendanceExcuseRequestUseCase: DeleteAttendanceExcuseRequestUseCase,
+    private readonly listAttendanceExcuseAttachmentsUseCase: ListAttendanceExcuseAttachmentsUseCase,
+    private readonly linkAttendanceExcuseAttachmentsUseCase: LinkAttendanceExcuseAttachmentsUseCase,
+    private readonly deleteAttendanceExcuseAttachmentUseCase: DeleteAttendanceExcuseAttachmentUseCase,
   ) {}
 
   @Get()
@@ -53,6 +61,14 @@ export class AttendanceExcusesController {
     return this.getAttendanceExcuseRequestUseCase.execute(id);
   }
 
+  @Get(':id/attachments')
+  @RequiredPermissions('attendance.excuses.view')
+  listExcuseRequestAttachments(
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<AttendanceExcuseAttachmentsListResponseDto> {
+    return this.listAttendanceExcuseAttachmentsUseCase.execute(id);
+  }
+
   @Post()
   @RequiredPermissions('attendance.excuses.manage')
   createExcuseRequest(
@@ -68,6 +84,27 @@ export class AttendanceExcusesController {
     @Body() dto: UpdateAttendanceExcuseRequestDto,
   ): Promise<AttendanceExcuseRequestResponseDto> {
     return this.updateAttendanceExcuseRequestUseCase.execute(id, dto);
+  }
+
+  @Post(':id/attachments')
+  @RequiredPermissions('attendance.excuses.manage')
+  linkExcuseRequestAttachments(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: LinkAttendanceExcuseAttachmentsDto,
+  ): Promise<AttendanceExcuseAttachmentsListResponseDto> {
+    return this.linkAttendanceExcuseAttachmentsUseCase.execute(id, dto);
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @RequiredPermissions('attendance.excuses.manage')
+  deleteExcuseRequestAttachment(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+  ): Promise<DeleteAttendanceExcuseRequestResponseDto> {
+    return this.deleteAttendanceExcuseAttachmentUseCase.execute(
+      id,
+      attachmentId,
+    );
   }
 
   @Delete(':id')

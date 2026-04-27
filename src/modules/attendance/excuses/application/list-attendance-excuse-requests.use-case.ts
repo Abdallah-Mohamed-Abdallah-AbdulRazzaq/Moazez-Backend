@@ -25,7 +25,11 @@ export class ListAttendanceExcuseRequestsUseCase {
       search: query.search,
       ...dateFilters,
     });
+    const attachmentCounts =
+      await this.attendanceExcusesRepository.countAttachmentsForExcuseRequests(
+        requests.map((request) => request.id),
+      );
 
-    return presentAttendanceExcuseRequests(requests);
+    return presentAttendanceExcuseRequests(requests, attachmentCounts);
   }
 }

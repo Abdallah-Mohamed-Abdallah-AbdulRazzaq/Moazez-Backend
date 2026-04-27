@@ -8,6 +8,7 @@ import {
   AttendanceSessionStatus,
   AttendanceStatus,
   DailyComputationStrategy,
+  FileVisibility,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
@@ -26,6 +27,8 @@ const DEMO_ADMIN_PASSWORD = 'School123!';
 
 const TENANT_B_ORG_SLUG = 'attendance-tenancy-org-b';
 const TENANT_B_SCHOOL_SLUG = 'attendance-tenancy-school-b';
+const ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE =
+  'attendance.excuse_request';
 
 jest.setTimeout(30000);
 
@@ -65,6 +68,10 @@ describe('Attendance policies tenancy isolation (security)', () => {
   let tenantBSubmittedEntryId: string;
   let demoExcuseRequestId: string;
   let tenantBExcuseRequestId: string;
+  let demoFileId: string;
+  let tenantBFileId: string;
+  let demoExcuseAttachmentId: string;
+  let tenantBExcuseAttachmentId: string;
 
   const testSuffix = `attendance-security-${Date.now()}`;
 
@@ -540,6 +547,64 @@ describe('Attendance policies tenancy isolation (security)', () => {
     });
     tenantBExcuseRequestId = tenantBExcuseRequest.id;
 
+    const demoFile = await prisma.file.create({
+      data: {
+        organizationId: demoOrganizationId,
+        schoolId: demoSchoolId,
+        uploaderId: null,
+        bucket: 'attendance-security',
+        objectKey: `${testSuffix}/school-a-medical-note.pdf`,
+        originalName: 'school-a-medical-note.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: BigInt(4096),
+        checksumSha256: null,
+        visibility: FileVisibility.PRIVATE,
+      },
+      select: { id: true },
+    });
+    demoFileId = demoFile.id;
+
+    const tenantBFile = await prisma.file.create({
+      data: {
+        organizationId: tenantBOrganizationId,
+        schoolId: tenantBSchoolId,
+        uploaderId: null,
+        bucket: 'attendance-security',
+        objectKey: `${testSuffix}/school-b-medical-note.pdf`,
+        originalName: 'school-b-medical-note.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: BigInt(2048),
+        checksumSha256: null,
+        visibility: FileVisibility.PRIVATE,
+      },
+      select: { id: true },
+    });
+    tenantBFileId = tenantBFile.id;
+
+    const demoExcuseAttachment = await prisma.attachment.create({
+      data: {
+        fileId: demoFileId,
+        schoolId: demoSchoolId,
+        resourceType: ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE,
+        resourceId: demoExcuseRequestId,
+        createdById: null,
+      },
+      select: { id: true },
+    });
+    demoExcuseAttachmentId = demoExcuseAttachment.id;
+
+    const tenantBExcuseAttachment = await prisma.attachment.create({
+      data: {
+        fileId: tenantBFileId,
+        schoolId: tenantBSchoolId,
+        resourceType: ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE,
+        resourceId: tenantBExcuseRequestId,
+        createdById: null,
+      },
+      select: { id: true },
+    });
+    tenantBExcuseAttachmentId = tenantBExcuseAttachment.id;
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -559,6 +624,19 @@ describe('Attendance policies tenancy isolation (security)', () => {
   afterAll(async () => {
     if (app) await app.close();
     if (prisma) {
+      await prisma.attachment.deleteMany({
+        where: {
+          id: {
+            in: [
+              demoExcuseAttachmentId,
+              tenantBExcuseAttachmentId,
+            ].filter(Boolean),
+          },
+        },
+      });
+      await prisma.file.deleteMany({
+        where: { id: { in: [demoFileId, tenantBFileId].filter(Boolean) } },
+      });
       await prisma.attendanceExcuseRequest.deleteMany({
         where: {
           id: {
@@ -870,6 +948,59 @@ describe('Attendance policies tenancy isolation (security)', () => {
         dateFrom: '2026-09-17',
         dateTo: '2026-09-17',
       })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A links a school B file to a school A excuse request', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/attendance/excuse-requests/${demoExcuseRequestId}/attachments`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fileIds: [tenantBFileId] })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('files.not_found');
+  });
+
+  it('returns 404 when school A lists attachments for a school B excuse request', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/attendance/excuse-requests/${tenantBExcuseRequestId}/attachments`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A deletes an attachment from a school B excuse request', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/attendance/excuse-requests/${tenantBExcuseRequestId}/attachments/${tenantBExcuseAttachmentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A deletes a school B attachment through a school A excuse request', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/attendance/excuse-requests/${demoExcuseRequestId}/attachments/${tenantBExcuseAttachmentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
 
     expect(response.body?.error?.code).toBe('not_found');

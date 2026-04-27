@@ -6,6 +6,9 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 
+export const ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE =
+  'attendance.excuse_request';
+
 const STUDENT_SUMMARY_SELECT = {
   id: true,
   firstName: true,
@@ -74,10 +77,34 @@ const STUDENT_REFERENCE_ARGS = Prisma.validator<Prisma.StudentDefaultArgs>()({
   select: STUDENT_SUMMARY_SELECT,
 });
 
+const ATTENDANCE_EXCUSE_ATTACHMENT_ARGS =
+  Prisma.validator<Prisma.AttachmentDefaultArgs>()({
+    select: {
+      id: true,
+      fileId: true,
+      schoolId: true,
+      resourceType: true,
+      resourceId: true,
+      createdById: true,
+      createdAt: true,
+      file: {
+        select: {
+          id: true,
+          originalName: true,
+          mimeType: true,
+          sizeBytes: true,
+        },
+      },
+    },
+  });
+
 export type AttendanceExcuseRequestRecord =
   Prisma.AttendanceExcuseRequestGetPayload<
     typeof ATTENDANCE_EXCUSE_REQUEST_ARGS
   >;
+type AttendanceExcuseAttachmentRow = Prisma.AttachmentGetPayload<
+  typeof ATTENDANCE_EXCUSE_ATTACHMENT_ARGS
+>;
 export type AcademicYearReferenceRecord = Prisma.AcademicYearGetPayload<
   typeof ACADEMIC_YEAR_REFERENCE_ARGS
 >;
@@ -87,6 +114,21 @@ export type TermReferenceRecord = Prisma.TermGetPayload<
 export type StudentReferenceRecord = Prisma.StudentGetPayload<
   typeof STUDENT_REFERENCE_ARGS
 >;
+export interface AttendanceExcuseAttachmentRecord {
+  id: string;
+  fileId: string;
+  schoolId: string;
+  resourceType: string;
+  resourceId: string;
+  createdById: string | null;
+  createdAt: Date;
+  file: {
+    id: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: bigint;
+  };
+}
 
 export interface ListAttendanceExcuseRequestsFilters {
   academicYearId?: string;
@@ -233,6 +275,116 @@ export class AttendanceExcusesRepository {
     );
   }
 
+  async findScopedFileIds(fileIds: string[]): Promise<string[]> {
+    if (fileIds.length === 0) return [];
+
+    const files = await this.scopedPrisma.file.findMany({
+      where: { id: { in: fileIds } },
+      select: { id: true },
+    });
+
+    return files.map((file) => file.id);
+  }
+
+  async listAttachmentsForExcuseRequest(
+    excuseRequestId: string,
+  ): Promise<AttendanceExcuseAttachmentRecord[]> {
+    const attachments = await this.scopedPrisma.attachment.findMany({
+      where: {
+        resourceType: ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE,
+        resourceId: excuseRequestId,
+      },
+      orderBy: { createdAt: 'asc' },
+      ...ATTENDANCE_EXCUSE_ATTACHMENT_ARGS,
+    });
+
+    return attachments.map((attachment) =>
+      this.mapAttachmentRecord(attachment),
+    );
+  }
+
+  async countAttachmentsForExcuseRequests(
+    excuseRequestIds: string[],
+  ): Promise<Map<string, number>> {
+    if (excuseRequestIds.length === 0) return new Map();
+
+    const counts = await this.scopedPrisma.attachment.groupBy({
+      by: ['resourceId'],
+      where: {
+        resourceType: ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE,
+        resourceId: { in: excuseRequestIds },
+      },
+      _count: { _all: true },
+    });
+
+    return new Map(
+      counts.map((count) => [count.resourceId, count._count._all]),
+    );
+  }
+
+  async linkFilesToExcuseRequest(params: {
+    excuseRequestId: string;
+    fileIds: string[];
+    schoolId: string;
+    createdById: string | null;
+  }): Promise<AttendanceExcuseAttachmentRecord[]> {
+    await this.scopedPrisma.attachment.createMany({
+      data: params.fileIds.map((fileId) => ({
+        fileId,
+        schoolId: params.schoolId,
+        resourceType: ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE,
+        resourceId: params.excuseRequestId,
+        createdById: params.createdById,
+      })),
+      skipDuplicates: true,
+    });
+
+    const attachments = await this.scopedPrisma.attachment.findMany({
+      where: {
+        resourceType: ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE,
+        resourceId: params.excuseRequestId,
+        fileId: { in: params.fileIds },
+      },
+      orderBy: { createdAt: 'asc' },
+      ...ATTENDANCE_EXCUSE_ATTACHMENT_ARGS,
+    });
+
+    return attachments.map((attachment) =>
+      this.mapAttachmentRecord(attachment),
+    );
+  }
+
+  async findAttachmentForExcuseRequest(params: {
+    excuseRequestId: string;
+    attachmentId: string;
+  }): Promise<AttendanceExcuseAttachmentRecord | null> {
+    const attachment = await this.scopedPrisma.attachment.findFirst({
+      where: {
+        id: params.attachmentId,
+        resourceType: ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE,
+        resourceId: params.excuseRequestId,
+      },
+      ...ATTENDANCE_EXCUSE_ATTACHMENT_ARGS,
+    });
+
+    return attachment ? this.mapAttachmentRecord(attachment) : null;
+  }
+
+  async deleteAttachmentForExcuseRequest(params: {
+    excuseRequestId: string;
+    attachmentId: string;
+  }): Promise<{ status: 'deleted' | 'not_found' }> {
+    const result = await this.scopedPrisma.attachment.deleteMany({
+      where: {
+        id: params.attachmentId,
+        resourceType: ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE,
+        resourceId: params.excuseRequestId,
+      },
+    });
+
+    return result.count > 0 ? { status: 'deleted' } : { status: 'not_found' };
+  }
+
   private buildListWhere(
     filters: ListAttendanceExcuseRequestsFilters,
   ): Prisma.AttendanceExcuseRequestWhereInput {
@@ -267,6 +419,26 @@ export class AttendanceExcusesRepository {
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.type ? { type: filters.type } : {}),
       ...(and.length > 0 ? { AND: and } : {}),
+    };
+  }
+
+  private mapAttachmentRecord(
+    attachment: AttendanceExcuseAttachmentRow,
+  ): AttendanceExcuseAttachmentRecord {
+    return {
+      id: attachment.id,
+      fileId: attachment.fileId,
+      schoolId: attachment.schoolId,
+      resourceType: attachment.resourceType,
+      resourceId: attachment.resourceId,
+      createdById: attachment.createdById,
+      createdAt: attachment.createdAt,
+      file: {
+        id: attachment.file.id,
+        originalName: attachment.file.originalName,
+        mimeType: attachment.file.mimeType,
+        sizeBytes: attachment.file.sizeBytes,
+      },
     };
   }
 }

@@ -1,5 +1,8 @@
 import { AttendanceExcuseStatus, AuditOutcome } from '@prisma/client';
-import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
+import {
+  NotFoundDomainException,
+  ValidationDomainException,
+} from '../../../../common/exceptions/domain-exception';
 import { AttendanceScope } from '../../attendance-context';
 import {
   CreateAttendanceExcuseRequestDto,
@@ -13,6 +16,7 @@ import {
   validateAndNormalizeExcuseValues,
 } from '../domain/excuse-validation';
 import {
+  AttendanceExcuseAttachmentRecord,
   AttendanceExcusesRepository,
   AttendanceExcuseRequestRecord,
   CreateAttendanceExcuseRequestData,
@@ -162,6 +166,54 @@ export function summarizeExcuseRequest(request: AttendanceExcuseRequestRecord) {
   };
 }
 
+export function normalizeAttachmentFileIds(fileIds: string[]): string[] {
+  if (!Array.isArray(fileIds)) {
+    throw new ValidationDomainException('fileIds must be an array', {
+      field: 'fileIds',
+    });
+  }
+
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+
+  for (const fileId of fileIds) {
+    const trimmed = fileId.trim();
+    if (trimmed.length === 0) {
+      throw new ValidationDomainException('fileIds must contain UUIDs', {
+        field: 'fileIds',
+      });
+    }
+
+    if (!seen.has(trimmed)) {
+      normalized.push(trimmed);
+      seen.add(trimmed);
+    }
+  }
+
+  if (normalized.length === 0) {
+    throw new ValidationDomainException('At least one fileId is required', {
+      field: 'fileIds',
+    });
+  }
+
+  return normalized;
+}
+
+export function summarizeExcuseAttachment(
+  attachment: AttendanceExcuseAttachmentRecord,
+) {
+  return {
+    id: attachment.id,
+    fileId: attachment.fileId,
+    resourceType: attachment.resourceType,
+    resourceId: attachment.resourceId,
+    originalName: attachment.file.originalName,
+    mimeType: attachment.file.mimeType,
+    sizeBytes: attachment.file.sizeBytes.toString(),
+    createdAt: attachment.createdAt.toISOString(),
+  };
+}
+
 export function buildExcuseAuditEntry(params: {
   scope: AttendanceScope;
   action: string;
@@ -183,6 +235,34 @@ export function buildExcuseAuditEntry(params: {
 
   return params.before
     ? { ...entry, before: summarizeExcuseRequest(params.before) }
+    : entry;
+}
+
+export function buildExcuseAttachmentAuditEntry(params: {
+  scope: AttendanceScope;
+  action: string;
+  request: AttendanceExcuseRequestRecord;
+  attachments: AttendanceExcuseAttachmentRecord[];
+  before?: AttendanceExcuseAttachmentRecord | null;
+}) {
+  const entry = {
+    actorId: params.scope.actorId,
+    userType: params.scope.userType,
+    organizationId: params.scope.organizationId,
+    schoolId: params.scope.schoolId,
+    module: 'attendance',
+    action: params.action,
+    resourceType: 'attendance_excuse_request',
+    resourceId: params.request.id,
+    outcome: AuditOutcome.SUCCESS,
+    after: {
+      attachmentIds: params.attachments.map((attachment) => attachment.id),
+      fileIds: params.attachments.map((attachment) => attachment.fileId),
+    },
+  };
+
+  return params.before
+    ? { ...entry, before: summarizeExcuseAttachment(params.before) }
     : entry;
 }
 
