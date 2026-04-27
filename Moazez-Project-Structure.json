@@ -2536,6 +2536,172 @@
                   ]
                 },
                 {
+                  "name": "excuses",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "approve-attendance-excuse-request.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "attendance-excuse-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-attendance-excuse-request.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-attendance-excuse-attachment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-attendance-excuse-request.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-attendance-excuse-request.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "link-attendance-excuse-attachments.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-attendance-excuse-attachments.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-attendance-excuse-requests.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reject-attendance-excuse-request.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-attendance-excuse-request.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-excuses.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "excuse-validation.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "excuse.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-excuse.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-excuses.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-excuse.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "attendance-excuse-attachments.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "attendance-excuse-review.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "attendance-excuse.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "attendance-excuses.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "excuses.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
                   "name": "policies",
                   "type": "folder",
                   "icon": "📁",
@@ -2813,6 +2979,11 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "correct-attendance-entry.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "get-roll-call-roster.use-case.ts",
                           "type": "file",
                           "icon": "📘"
@@ -2877,6 +3048,11 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "entry-correction.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "roll-call.exceptions.ts",
                           "type": "file",
                           "icon": "📘"
@@ -2929,6 +3105,11 @@
                       "type": "folder",
                       "icon": "📁",
                       "children": [
+                        {
+                          "name": "attendance-entry-correction.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
                         {
                           "name": "attendance-roll-call.presenter.spec.ts",
                           "type": "file",
@@ -5558,6 +5739,11 @@
               "icon": "📘"
             },
             {
+              "name": "attendance-excuses-corrections.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "attendance-foundation.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -5839,7 +6025,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-04-27T00:02:01.596Z",
+    "generated": "2026-04-27T11:58:27.230Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
