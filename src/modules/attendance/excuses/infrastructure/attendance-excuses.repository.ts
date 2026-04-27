@@ -6,6 +6,7 @@ import {
   AttendanceStatus,
   Prisma,
 } from '@prisma/client';
+import { withSoftDeleted } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 
 export const ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE =
@@ -258,22 +259,28 @@ export class AttendanceExcusesRepository {
     });
   }
 
-  update(
+  async update(
     excuseRequestId: string,
     data: UpdateAttendanceExcuseRequestData,
   ): Promise<AttendanceExcuseRequestRecord> {
-    return this.scopedPrisma.attendanceExcuseRequest.update({
+    await this.scopedPrisma.attendanceExcuseRequest.updateMany({
       where: { id: excuseRequestId },
       data,
-      ...ATTENDANCE_EXCUSE_REQUEST_ARGS,
     });
+
+    return this.findMutationResult(excuseRequestId);
   }
 
-  softDelete(excuseRequestId: string): Promise<AttendanceExcuseRequestRecord> {
-    return this.scopedPrisma.attendanceExcuseRequest.update({
+  async softDelete(
+    excuseRequestId: string,
+  ): Promise<AttendanceExcuseRequestRecord> {
+    await this.scopedPrisma.attendanceExcuseRequest.updateMany({
       where: { id: excuseRequestId },
       data: { deletedAt: new Date() },
-      ...ATTENDANCE_EXCUSE_REQUEST_ARGS,
+    });
+
+    return this.findMutationResult(excuseRequestId, {
+      includeSoftDeleted: true,
     });
   }
 
@@ -501,12 +508,10 @@ export class AttendanceExcusesRepository {
     excuseReason: string | null;
   }): Promise<AttendanceExcuseRequestRecord> {
     const updated = await this.scopedPrisma.$transaction(async (tx) => {
-      await tx.attendanceExcuseRequest.update({
+      await tx.attendanceExcuseRequest.updateMany({
         where: {
-          id_schoolId: {
-            id: params.excuseRequestId,
-            schoolId: params.schoolId,
-          },
+          id: params.excuseRequestId,
+          schoolId: params.schoolId,
         },
         data: {
           status: params.review.status,
@@ -556,7 +561,7 @@ export class AttendanceExcusesRepository {
     excuseRequestId: string;
     review: ReviewAttendanceExcuseRequestData;
   }): Promise<AttendanceExcuseRequestRecord> {
-    return this.scopedPrisma.attendanceExcuseRequest.update({
+    await this.scopedPrisma.attendanceExcuseRequest.updateMany({
       where: { id: params.excuseRequestId },
       data: {
         status: params.review.status,
@@ -564,8 +569,9 @@ export class AttendanceExcusesRepository {
         decidedAt: params.review.decidedAt,
         decisionNote: params.review.decisionNote,
       },
-      ...ATTENDANCE_EXCUSE_REQUEST_ARGS,
     });
+
+    return this.findMutationResult(params.excuseRequestId);
   }
 
   private buildListWhere(
@@ -623,5 +629,26 @@ export class AttendanceExcusesRepository {
         sizeBytes: attachment.file.sizeBytes,
       },
     };
+  }
+
+  private async findMutationResult(
+    excuseRequestId: string,
+    options?: { includeSoftDeleted?: boolean },
+  ): Promise<AttendanceExcuseRequestRecord> {
+    const findRequest = () =>
+      this.scopedPrisma.attendanceExcuseRequest.findFirst({
+        where: { id: excuseRequestId },
+        ...ATTENDANCE_EXCUSE_REQUEST_ARGS,
+      });
+
+    const request = options?.includeSoftDeleted
+      ? await withSoftDeleted(findRequest)
+      : await findRequest();
+
+    if (!request) {
+      throw new Error('Updated attendance excuse request was not found');
+    }
+
+    return request;
   }
 }

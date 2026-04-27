@@ -325,6 +325,55 @@ Sprint 3A Attendance endpoints:
 
 Absences and reports are derived only from `SUBMITTED` attendance sessions. `DRAFT` sessions, including sessions reopened by unsubmit, remain editable but do not affect absence lists, absence summaries, or attendance reports until submitted again.
 
+## Sprint 3B Attendance Excuses & Corrections Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Ensure SEED_DEMO_DATA=true
+
+npm run infra:up
+npm run verify:sprint3b
+```
+
+`npm run verify:sprint3b` runs the Sprint 2B preflight check, migrations, seed, build, unit tests, security tests, Sprint 2B Students E2E, Sprint 3A Attendance E2E, and the Sprint 3B Attendance Excuses & Corrections closeout E2E.
+
+Sprint 3B attendance verification covers:
+
+- excuse request CRUD
+- attachment link/list/unlink
+- approve/reject workflow
+- approved excuses applying `EXCUSED` to matching submitted attendance entries
+- submitted-session correction endpoint
+- submitted-session lock remains intact for regular roll-call edits
+- absences and reports reflect excuse and correction entry changes
+
+Local verification commands:
+
+```bash
+npm run build
+npm run test -- --runInBand
+npm run test:security -- --runInBand
+npm run test:e2e:sprint3b
+npm run verify:sprint3b
+```
+
+Sprint 3B Attendance endpoints:
+
+- `GET /api/v1/attendance/excuse-requests`
+- `GET /api/v1/attendance/excuse-requests/:id`
+- `POST /api/v1/attendance/excuse-requests`
+- `PATCH /api/v1/attendance/excuse-requests/:id`
+- `DELETE /api/v1/attendance/excuse-requests/:id`
+- `GET /api/v1/attendance/excuse-requests/:id/attachments`
+- `POST /api/v1/attendance/excuse-requests/:id/attachments`
+- `DELETE /api/v1/attendance/excuse-requests/:id/attachments/:attachmentId`
+- `POST /api/v1/attendance/excuse-requests/:id/approve`
+- `POST /api/v1/attendance/excuse-requests/:id/reject`
+- `POST /api/v1/attendance/roll-call/sessions/:sessionId/entries/:studentId/correct`
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -346,6 +395,7 @@ Absences and reports are derived only from `SUBMITTED` attendance sessions. `DRA
 | `npm run test:e2e:sprint2a`         | Run the Sprint 2A Admissions closeout e2e flows                                                  |
 | `npm run test:e2e:sprint2b`         | Run the Sprint 2B Students closeout e2e flows                                                    |
 | `npm run test:e2e:sprint3a`         | Run the Sprint 3A Attendance closeout e2e flow                                                   |
+| `npm run test:e2e:sprint3b`         | Run the Sprint 3B Attendance Excuses & Corrections closeout e2e flow                             |
 | `npm run test:security`             | Tenancy isolation tests                                                                          |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                     |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                           |
@@ -356,6 +406,7 @@ Absences and reports are derived only from `SUBMITTED` attendance sessions. `DRA
 | `npm run verify:sprint2b:preflight` | Fail fast if `.env` or required local services are not ready                                     |
 | `npm run verify:sprint2b`           | Run preflight, migrations, seed, build, unit tests, security tests, and Sprint 2B Students e2e   |
 | `npm run verify:sprint3a`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B e2e, and Sprint 3A e2e    |
+| `npm run verify:sprint3b`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A e2e, and Sprint 3B e2e |
 | `npm run seed`                      | Re-run idempotent seeds                                                                          |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                            |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                       |

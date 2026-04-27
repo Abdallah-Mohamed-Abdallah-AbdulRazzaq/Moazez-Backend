@@ -25,6 +25,7 @@
     "test:e2e:sprint2a": "jest --config ./test/jest-e2e.json --runInBand test/e2e/admissions-flow.e2e-spec.ts",
     "test:e2e:sprint2b": "jest --config ./test/jest-e2e.json --runInBand test/e2e/students-guardians-flow.e2e-spec.ts test/e2e/students-phase4-operations.e2e-spec.ts test/e2e/students-phase5-lifecycle.e2e-spec.ts",
     "test:e2e:sprint3a": "jest --config ./test/jest-e2e.json --runInBand test/e2e/attendance-foundation.e2e-spec.ts",
+    "test:e2e:sprint3b": "jest --config ./test/jest-e2e.json --runInBand test/e2e/attendance-excuses-corrections.e2e-spec.ts",
     "test:security": "jest --config ./test/jest-e2e.json test/security",
     "seed": "prisma db seed",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",
@@ -36,6 +37,7 @@
     "verify:sprint2b:preflight": "node scripts/check-local-readiness.cjs",
     "verify:sprint2b": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b",
     "verify:sprint3a": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b && npm run test:e2e:sprint3a",
+    "verify:sprint3b": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b && npm run test:e2e:sprint3a && npm run test:e2e:sprint3b",
     "demo:sprint1c": "node scripts/demo-sprint1c.cjs",
     "demo:sprint2a": "node scripts/demo-sprint2a.cjs",
     "demo:sprint2b": "node scripts/demo-sprint2b.cjs"
