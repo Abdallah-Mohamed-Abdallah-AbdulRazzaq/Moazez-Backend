@@ -108,6 +108,10 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `attendance.policy.conflict`               | 409  | An active policy already exists for this scope  |
 | `attendance.entry.requires_excuse_attachment` | 422 | This policy requires an attachment for excuses |
 | `attendance.session.outside_term`          | 422  | Date is outside the active term                 |
+| `attendance.excuse.invalid_date_range`     | 422  | Invalid attendance excuse date range            |
+| `attendance.excuse.already_reviewed`       | 409  | Attendance excuse request is already reviewed   |
+| `attendance.excuse.invalid_minutes`        | 422  | Invalid attendance excuse minutes               |
+| `attendance.excuse.invalid_period_selection` | 422 | Invalid attendance excuse period selection     |
 
 ### Grades
 

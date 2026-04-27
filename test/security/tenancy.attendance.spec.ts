@@ -1,6 +1,8 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AttendanceExcuseStatus,
+  AttendanceExcuseType,
   AttendanceMode,
   AttendanceScopeType,
   AttendanceSessionStatus,
@@ -61,6 +63,8 @@ describe('Attendance policies tenancy isolation (security)', () => {
   let tenantBEntryId: string;
   let tenantBSubmittedSessionId: string;
   let tenantBSubmittedEntryId: string;
+  let demoExcuseRequestId: string;
+  let tenantBExcuseRequestId: string;
 
   const testSuffix = `attendance-security-${Date.now()}`;
 
@@ -159,7 +163,7 @@ describe('Attendance policies tenancy isolation (security)', () => {
         nameEn: `${testSuffix}-term-a`,
         startDate: new Date('2026-09-01T00:00:00.000Z'),
         endDate: new Date('2026-12-31T00:00:00.000Z'),
-        isActive: false,
+        isActive: true,
       },
       select: { id: true },
     });
@@ -504,6 +508,38 @@ describe('Attendance policies tenancy isolation (security)', () => {
     });
     tenantBSubmittedEntryId = tenantBSubmittedEntry.id;
 
+    const demoExcuseRequest = await prisma.attendanceExcuseRequest.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        studentId: demoStudentId,
+        type: AttendanceExcuseType.ABSENCE,
+        status: AttendanceExcuseStatus.PENDING,
+        dateFrom: new Date('2026-09-17T00:00:00.000Z'),
+        dateTo: new Date('2026-09-17T00:00:00.000Z'),
+        reasonEn: `${testSuffix}-excuse-a`,
+      },
+      select: { id: true },
+    });
+    demoExcuseRequestId = demoExcuseRequest.id;
+
+    const tenantBExcuseRequest = await prisma.attendanceExcuseRequest.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        academicYearId: tenantBYearId,
+        termId: tenantBTermId,
+        studentId: tenantBStudentId,
+        type: AttendanceExcuseType.ABSENCE,
+        status: AttendanceExcuseStatus.PENDING,
+        dateFrom: new Date('2026-09-17T00:00:00.000Z'),
+        dateTo: new Date('2026-09-17T00:00:00.000Z'),
+        reasonEn: `${testSuffix}-excuse-b`,
+      },
+      select: { id: true },
+    });
+    tenantBExcuseRequestId = tenantBExcuseRequest.id;
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -523,6 +559,13 @@ describe('Attendance policies tenancy isolation (security)', () => {
   afterAll(async () => {
     if (app) await app.close();
     if (prisma) {
+      await prisma.attendanceExcuseRequest.deleteMany({
+        where: {
+          id: {
+            in: [demoExcuseRequestId, tenantBExcuseRequestId].filter(Boolean),
+          },
+        },
+      });
       await prisma.attendanceEntry.deleteMany({
         where: {
           id: {
@@ -758,6 +801,78 @@ describe('Attendance policies tenancy isolation (security)', () => {
     );
     expect(studentIds).toContain(demoStudentId);
     expect(studentIds).not.toContain(tenantBStudentId);
+  });
+
+  it('lists only excuse requests from the active school scope', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/attendance/excuse-requests`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const ids = response.body.items.map((item: { id: string }) => item.id);
+    expect(ids).toContain(demoExcuseRequestId);
+    expect(ids).not.toContain(tenantBExcuseRequestId);
+  });
+
+  it('returns 404 when school A reads a school B excuse request', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/attendance/excuse-requests/${tenantBExcuseRequestId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A updates a school B excuse request', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/attendance/excuse-requests/${tenantBExcuseRequestId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reasonEn: `${testSuffix}-updated` })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A deletes a school B excuse request', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/attendance/excuse-requests/${tenantBExcuseRequestId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A creates an excuse for a school B student', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/attendance/excuse-requests`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: demoYearId,
+        termId: demoTermId,
+        studentId: tenantBStudentId,
+        type: AttendanceExcuseType.ABSENCE,
+        dateFrom: '2026-09-17',
+        dateTo: '2026-09-17',
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
   });
 
   it('lists school A absence incidents without leaking school B or draft incidents', async () => {
