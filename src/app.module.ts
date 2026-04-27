@@ -14,6 +14,7 @@ import { AcademicsModule } from './modules/academics/academics.module';
 import { AdmissionsModule } from './modules/admissions/admissions.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { FilesModule } from './modules/files/files.module';
+import { GradesModule } from './modules/grades/grades.module';
 import { HealthModule } from './modules/health/health.module';
 import { IamModule } from './modules/iam/iam.module';
 import { SettingsModule } from './modules/settings/settings.module';
@@ -35,6 +36,7 @@ import { StudentsModule } from './modules/students/students.module';
     AdmissionsModule,
     StudentsModule,
     AttendanceModule,
+    GradesModule,
   ],
   controllers: [AppController],
   providers: [
