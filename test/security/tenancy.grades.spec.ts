@@ -944,6 +944,7 @@ describe('Grades tenancy isolation (security)', () => {
     date?: Date;
     lockedAt?: Date | null;
     titleSuffix?: string;
+    weight?: number;
   }): Promise<string> {
     const approvalStatus =
       overrides?.approvalStatus ?? GradeAssessmentApprovalStatus.DRAFT;
@@ -975,6 +976,54 @@ describe('Grades tenancy isolation (security)', () => {
           (overrides?.termId === demoClosedTermId
             ? new Date('2027-01-15T00:00:00.000Z')
             : new Date('2026-09-25T00:00:00.000Z')),
+        weight: overrides?.weight ?? 1,
+        maxScore: 20,
+        expectedTimeMinutes: 30,
+        approvalStatus,
+        publishedAt,
+        publishedById: publishedAt ? viewOnlyUserId : null,
+        approvedAt,
+        approvedById: approvedAt ? viewOnlyUserId : null,
+        lockedAt: overrides?.lockedAt ?? null,
+        lockedById: overrides?.lockedAt ? viewOnlyUserId : null,
+      },
+      select: { id: true },
+    });
+
+    return assessment.id;
+  }
+
+  async function createTenantBWorkflowAssessment(overrides?: {
+    approvalStatus?: GradeAssessmentApprovalStatus;
+    lockedAt?: Date | null;
+    titleSuffix?: string;
+  }): Promise<string> {
+    const approvalStatus =
+      overrides?.approvalStatus ?? GradeAssessmentApprovalStatus.PUBLISHED;
+    const publishedAt =
+      approvalStatus === GradeAssessmentApprovalStatus.DRAFT
+        ? null
+        : new Date('2026-09-16T08:00:00.000Z');
+    const approvedAt =
+      approvalStatus === GradeAssessmentApprovalStatus.APPROVED
+        ? new Date('2026-09-17T08:00:00.000Z')
+        : null;
+
+    const assessment = await prisma.gradeAssessment.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        academicYearId: tenantBYearId,
+        termId: tenantBTermId,
+        subjectId: tenantBSubjectId,
+        scopeType: GradeScopeType.GRADE,
+        scopeKey: tenantBGradeId,
+        stageId: tenantBStageId,
+        gradeId: tenantBGradeId,
+        titleEn: `${testSuffix}-tenant-b-read-${overrides?.titleSuffix ?? Date.now()}`,
+        titleAr: `${testSuffix}-tenant-b-read-ar-${overrides?.titleSuffix ?? Date.now()}`,
+        type: GradeAssessmentType.QUIZ,
+        deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
+        date: new Date('2026-09-25T00:00:00.000Z'),
         weight: 1,
         maxScore: 20,
         expectedTimeMinutes: 30,
@@ -991,6 +1040,313 @@ describe('Grades tenancy isolation (security)', () => {
 
     return assessment.id;
   }
+
+  it('school A gradebook does not include school B students, assessments, or items', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const demoReadAssessmentId = await createDemoWorkflowAssessment({
+      approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+      titleSuffix: 'read-gradebook-a',
+      weight: 0.01,
+    });
+    const tenantBReadAssessmentId = await createTenantBWorkflowAssessment({
+      approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+      titleSuffix: 'read-gradebook-b',
+    });
+
+    await prisma.gradeItem.create({
+      data: {
+        schoolId: demoSchoolId,
+        termId: demoTermId,
+        assessmentId: demoReadAssessmentId,
+        studentId: demoStudentId,
+        score: 18,
+        status: GradeItemStatus.ENTERED,
+      },
+    });
+    const tenantBItem = await prisma.gradeItem.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        termId: tenantBTermId,
+        assessmentId: tenantBReadAssessmentId,
+        studentId: tenantBStudentId,
+        score: 19,
+        status: GradeItemStatus.ENTERED,
+      },
+      select: { id: true },
+    });
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/gradebook`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const studentIds = response.body.rows.map(
+      (row: { studentId: string }) => row.studentId,
+    );
+    const assessmentIds = response.body.columns.map(
+      (column: { assessmentId: string }) => column.assessmentId,
+    );
+    const itemIds = response.body.rows.flatMap(
+      (row: { cells: Array<{ itemId: string | null }> }) =>
+        row.cells.map((cell) => cell.itemId),
+    );
+
+    expect(studentIds).toEqual(
+      expect.arrayContaining([demoStudentId, demoStudentTwoId]),
+    );
+    expect(studentIds).not.toContain(tenantBStudentId);
+    expect(assessmentIds).toContain(demoReadAssessmentId);
+    expect(assessmentIds).not.toContain(tenantBReadAssessmentId);
+    expect(itemIds).not.toContain(tenantBItem.id);
+  });
+
+  it('school A gradebook for school B scope returns 404', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/gradebook`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: tenantBGradeId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A analytics does not include school B data', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    await createTenantBWorkflowAssessment({
+      approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+      titleSuffix: 'read-analytics-b',
+    });
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/analytics/summary`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body.studentCount).toBe(2);
+  });
+
+  it('school A analytics for school B scope returns 404', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/analytics/summary`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: tenantBGradeId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A cannot fetch school B student snapshot', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/students/${tenantBStudentId}/snapshot`)
+      .query({ yearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 403 when the same-school actor lacks grades.gradebook.view', async () => {
+    const { accessToken } = await login(
+      MANAGE_ONLY_EMAIL,
+      MANAGE_ONLY_PASSWORD,
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/gradebook`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks grades.analytics.view', async () => {
+    const { accessToken } = await login(
+      MANAGE_ONLY_EMAIL,
+      MANAGE_ONLY_PASSWORD,
+    );
+
+    const summaryResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/analytics/summary`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+    expect(summaryResponse.body?.error?.code).toBe('auth.scope.missing');
+
+    const distributionResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/analytics/distribution`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+    expect(distributionResponse.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks grades.snapshots.view', async () => {
+    const { accessToken } = await login(
+      MANAGE_ONLY_EMAIL,
+      MANAGE_ONLY_PASSWORD,
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/students/${demoStudentId}/snapshot`)
+      .query({ yearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('school admin can read gradebook, analytics, distribution, and snapshot', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const query = {
+      yearId: demoYearId,
+      termId: demoTermId,
+      scopeType: 'grade',
+      gradeId: demoGradeId,
+    };
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/gradebook`)
+      .query(query)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/analytics/summary`)
+      .query(query)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/analytics/distribution`)
+      .query(query)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/students/${demoStudentId}/snapshot`)
+      .query({ yearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+  });
+
+  it('gradebook and analytics do not include DRAFT assessments', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const gradebookResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/gradebook`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+        assessmentStatus: 'DRAFT',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(gradebookResponse.body.columns).toHaveLength(0);
+
+    const analyticsResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/analytics/summary`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+        assessmentStatus: 'DRAFT',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(analyticsResponse.body.assessmentCount).toBe(0);
+  });
+
+  it('gradebook and analytics include locked approved assessments as readable', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const lockedAssessmentId = await createDemoWorkflowAssessment({
+      approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      lockedAt: new Date('2026-09-20T08:00:00.000Z'),
+      titleSuffix: 'read-locked-approved',
+      weight: 0.01,
+    });
+
+    const gradebookResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/gradebook`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+        assessmentStatus: 'APPROVED',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(
+      gradebookResponse.body.columns.map(
+        (column: { assessmentId: string }) => column.assessmentId,
+      ),
+    ).toContain(lockedAssessmentId);
+
+    const analyticsResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/analytics/summary`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+        assessmentStatus: 'APPROVED',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(analyticsResponse.body.assessmentCount).toBeGreaterThan(0);
+  });
 
   it('school A list does not include school B grade rules', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);

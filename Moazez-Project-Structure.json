@@ -3610,6 +3610,71 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-grades-analytics-distribution.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-grades-analytics-summary.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grades-analytics.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grades-analytics-query.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grades-analytics.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grades-analytics.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
                       "name": "analytics.module.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3808,6 +3873,91 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-grades-gradebook.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-student-grade-snapshot.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grades-gradebook.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-gradebook-query.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-student-grade-snapshot-query.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "gradebook.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-grade-snapshot.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "gradebook.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "gradebook.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-grade-snapshot.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
                       "name": "gradebook.module.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3961,10 +4111,27 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grades-read-model.builder.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
                       "name": "domain",
                       "type": "folder",
                       "icon": "📁",
                       "children": [
+                        {
+                          "name": "grade-calculation.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
                         {
                           "name": "grade-item-validation.ts",
                           "type": "file",
@@ -3995,6 +4162,18 @@
                       ]
                     },
                     {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grades-read-model.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
                       "name": "presenters",
                       "type": "folder",
                       "icon": "📁",
@@ -4011,6 +4190,11 @@
                       "type": "folder",
                       "icon": "📁",
                       "children": [
+                        {
+                          "name": "grade-calculation.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
                         {
                           "name": "grade-item-validation.spec.ts",
                           "type": "file",
@@ -6490,7 +6674,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-04-27T17:34:44.472Z",
+    "generated": "2026-04-27T18:44:24.499Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
