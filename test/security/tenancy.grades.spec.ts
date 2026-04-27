@@ -100,6 +100,9 @@ describe('Grades tenancy isolation (security)', () => {
       rulesManagePermission,
       assessmentsViewPermission,
       assessmentsManagePermission,
+      assessmentsPublishPermission,
+      assessmentsApprovePermission,
+      assessmentsLockPermission,
     ] = await Promise.all([
       prisma.role.findFirst({
         where: { key: 'school_admin', schoolId: null, isSystem: true },
@@ -121,6 +124,18 @@ describe('Grades tenancy isolation (security)', () => {
         where: { code: 'grades.assessments.manage' },
         select: { id: true },
       }),
+      prisma.permission.findUnique({
+        where: { code: 'grades.assessments.publish' },
+        select: { id: true },
+      }),
+      prisma.permission.findUnique({
+        where: { code: 'grades.assessments.approve' },
+        select: { id: true },
+      }),
+      prisma.permission.findUnique({
+        where: { code: 'grades.assessments.lock' },
+        select: { id: true },
+      }),
     ]);
 
     if (
@@ -128,7 +143,10 @@ describe('Grades tenancy isolation (security)', () => {
       !rulesViewPermission ||
       !rulesManagePermission ||
       !assessmentsViewPermission ||
-      !assessmentsManagePermission
+      !assessmentsManagePermission ||
+      !assessmentsPublishPermission ||
+      !assessmentsApprovePermission ||
+      !assessmentsLockPermission
     ) {
       throw new Error(
         'Grades permissions missing - run `npm run seed` first.',
@@ -580,6 +598,9 @@ describe('Grades tenancy isolation (security)', () => {
                   'grades.assessment.create',
                   'grades.assessment.update',
                   'grades.assessment.delete',
+                  'grades.assessment.publish',
+                  'grades.assessment.approve',
+                  'grades.assessment.lock',
                 ],
               },
             },
@@ -783,6 +804,60 @@ describe('Grades tenancy isolation (security)', () => {
     };
   }
 
+  async function createDemoWorkflowAssessment(overrides?: {
+    approvalStatus?: GradeAssessmentApprovalStatus;
+    termId?: string;
+    date?: Date;
+    lockedAt?: Date | null;
+    titleSuffix?: string;
+  }): Promise<string> {
+    const approvalStatus =
+      overrides?.approvalStatus ?? GradeAssessmentApprovalStatus.DRAFT;
+    const publishedAt =
+      approvalStatus === GradeAssessmentApprovalStatus.DRAFT
+        ? null
+        : new Date('2026-09-16T08:00:00.000Z');
+    const approvedAt =
+      approvalStatus === GradeAssessmentApprovalStatus.APPROVED
+        ? new Date('2026-09-17T08:00:00.000Z')
+        : null;
+
+    const assessment = await prisma.gradeAssessment.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: overrides?.termId ?? demoTermId,
+        subjectId: demoSubjectId,
+        scopeType: GradeScopeType.GRADE,
+        scopeKey: demoGradeId,
+        stageId: demoStageId,
+        gradeId: demoGradeId,
+        titleEn: `${testSuffix}-workflow-${overrides?.titleSuffix ?? Date.now()}`,
+        titleAr: `${testSuffix}-workflow-ar-${overrides?.titleSuffix ?? Date.now()}`,
+        type: GradeAssessmentType.QUIZ,
+        deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
+        date:
+          overrides?.date ??
+          (overrides?.termId === demoClosedTermId
+            ? new Date('2027-01-15T00:00:00.000Z')
+            : new Date('2026-09-25T00:00:00.000Z')),
+        weight: 1,
+        maxScore: 20,
+        expectedTimeMinutes: 30,
+        approvalStatus,
+        publishedAt,
+        publishedById: publishedAt ? viewOnlyUserId : null,
+        approvedAt,
+        approvedById: approvedAt ? viewOnlyUserId : null,
+        lockedAt: overrides?.lockedAt ?? null,
+        lockedById: overrides?.lockedAt ? viewOnlyUserId : null,
+      },
+      select: { id: true },
+    });
+
+    return assessment.id;
+  }
+
   it('school A list does not include school B grade rules', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
@@ -905,6 +980,29 @@ describe('Grades tenancy isolation (security)', () => {
   });
 
   it.each([
+    ['publish', 'publish'],
+    ['approve', 'approve'],
+    ['lock', 'lock'],
+  ])(
+    'returns 404 when school A attempts to %s a school B assessment',
+    async (_label, workflowAction) => {
+      const { accessToken } = await login(
+        DEMO_ADMIN_EMAIL,
+        DEMO_ADMIN_PASSWORD,
+      );
+
+      const response = await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/grades/assessments/${tenantBAssessmentId}/${workflowAction}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+
+      expect(response.body?.error?.code).toBe('not_found');
+    },
+  );
+
+  it.each([
     ['grade', 'gradeId', () => tenantBGradeId],
     ['section', 'sectionId', () => tenantBSectionId],
     ['classroom', 'classroomId', () => tenantBClassroomId],
@@ -1025,6 +1123,29 @@ describe('Grades tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('auth.scope.missing');
   });
 
+  it.each([
+    ['grades.assessments.publish', 'publish'],
+    ['grades.assessments.approve', 'approve'],
+    ['grades.assessments.lock', 'lock'],
+  ])(
+    'returns 403 when the same-school actor lacks %s',
+    async (_permission, workflowAction) => {
+      const { accessToken } = await login(
+        MANAGE_ONLY_EMAIL,
+        MANAGE_ONLY_PASSWORD,
+      );
+
+      const response = await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/grades/assessments/${demoAssessmentId}/${workflowAction}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+
+      expect(response.body?.error?.code).toBe('auth.scope.missing');
+    },
+  );
+
   it('returns grades.term.closed when mutating an assessment in a closed term', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
@@ -1038,6 +1159,21 @@ describe('Grades tenancy isolation (security)', () => {
           titleEn: `${testSuffix}-closed-term-assessment`,
         }),
       )
+      .expect(409);
+
+    expect(response.body?.error?.code).toBe('grades.term.closed');
+  });
+
+  it('returns grades.term.closed when publishing an assessment in a closed term', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const assessmentId = await createDemoWorkflowAssessment({
+      termId: demoClosedTermId,
+      titleSuffix: 'closed-term-publish',
+    });
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}/publish`)
+      .set('Authorization', `Bearer ${accessToken}`)
       .expect(409);
 
     expect(response.body?.error?.code).toBe('grades.term.closed');
@@ -1118,6 +1254,119 @@ describe('Grades tenancy isolation (security)', () => {
       .expect(404);
 
     expect(detailAfterDelete.body?.error?.code).toBe('not_found');
+  });
+
+  it('school admin can publish, approve, and lock a score-only assessment', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const assessmentId = await createDemoWorkflowAssessment({
+      titleSuffix: 'admin-workflow',
+    });
+    const gradeItemsBefore = await prisma.gradeItem.count({
+      where: { assessmentId },
+    });
+
+    const publishResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}/publish`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(publishResponse.body).toMatchObject({
+      id: assessmentId,
+      approvalStatus: 'published',
+      publishedById: expect.any(String),
+      isLocked: false,
+    });
+    expect(publishResponse.body.publishedAt).toEqual(expect.any(String));
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ titleEn: `${testSuffix}-published-update-blocked` })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe(
+          'grades.assessment.invalid_status_transition',
+        );
+      });
+
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe(
+          'grades.assessment.invalid_status_transition',
+        );
+      });
+
+    const approveResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}/approve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(approveResponse.body).toMatchObject({
+      id: assessmentId,
+      approvalStatus: 'approved',
+      approvedById: expect.any(String),
+      isLocked: false,
+    });
+    expect(approveResponse.body.approvedAt).toEqual(expect.any(String));
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ titleEn: `${testSuffix}-approved-update-blocked` })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe(
+          'grades.assessment.invalid_status_transition',
+        );
+      });
+
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe(
+          'grades.assessment.invalid_status_transition',
+        );
+      });
+
+    const lockResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}/lock`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(lockResponse.body).toMatchObject({
+      id: assessmentId,
+      approvalStatus: 'approved',
+      lockedById: expect.any(String),
+      isLocked: true,
+    });
+    expect(lockResponse.body.lockedAt).toEqual(expect.any(String));
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ titleEn: `${testSuffix}-locked-update-blocked` })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.assessment.locked');
+      });
+
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.assessment.locked');
+      });
+
+    const gradeItemsAfter = await prisma.gradeItem.count({
+      where: { assessmentId },
+    });
+    expect(gradeItemsAfter).toBe(gradeItemsBefore);
   });
 
   it('school admin can list, upsert, update, and resolve allowed rules', async () => {

@@ -175,6 +175,18 @@ export type CreateGradeAssessmentData =
   Prisma.GradeAssessmentUncheckedCreateInput;
 export type UpdateGradeAssessmentData =
   Prisma.GradeAssessmentUncheckedUpdateInput;
+export type PublishGradeAssessmentData = Pick<
+  Prisma.GradeAssessmentUncheckedUpdateInput,
+  'approvalStatus' | 'publishedAt' | 'publishedById'
+>;
+export type ApproveGradeAssessmentData = Pick<
+  Prisma.GradeAssessmentUncheckedUpdateInput,
+  'approvalStatus' | 'approvedAt' | 'approvedById'
+>;
+export type LockGradeAssessmentData = Pick<
+  Prisma.GradeAssessmentUncheckedUpdateInput,
+  'lockedAt' | 'lockedById'
+>;
 
 @Injectable()
 export class GradesAssessmentsRepository {
@@ -218,6 +230,42 @@ export class GradesAssessmentsRepository {
   ): Promise<GradeAssessmentRecord> {
     await this.scopedPrisma.gradeAssessment.updateMany({
       where: { id: assessmentId },
+      data: data as Prisma.GradeAssessmentUncheckedUpdateManyInput,
+    });
+
+    return this.findMutationResult(assessmentId);
+  }
+
+  async publishAssessment(
+    assessmentId: string,
+    data: PublishGradeAssessmentData,
+  ): Promise<GradeAssessmentRecord> {
+    await this.scopedPrisma.gradeAssessment.updateMany({
+      where: { id: assessmentId, deletedAt: null },
+      data: data as Prisma.GradeAssessmentUncheckedUpdateManyInput,
+    });
+
+    return this.findMutationResult(assessmentId);
+  }
+
+  async approveAssessment(
+    assessmentId: string,
+    data: ApproveGradeAssessmentData,
+  ): Promise<GradeAssessmentRecord> {
+    await this.scopedPrisma.gradeAssessment.updateMany({
+      where: { id: assessmentId, deletedAt: null },
+      data: data as Prisma.GradeAssessmentUncheckedUpdateManyInput,
+    });
+
+    return this.findMutationResult(assessmentId);
+  }
+
+  async lockAssessment(
+    assessmentId: string,
+    data: LockGradeAssessmentData,
+  ): Promise<GradeAssessmentRecord> {
+    await this.scopedPrisma.gradeAssessment.updateMany({
+      where: { id: assessmentId, deletedAt: null },
       data: data as Prisma.GradeAssessmentUncheckedUpdateManyInput,
     });
 

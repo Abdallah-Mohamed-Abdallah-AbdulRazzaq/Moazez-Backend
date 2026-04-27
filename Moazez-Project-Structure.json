@@ -3627,6 +3627,11 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "approve-grade-assessment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "create-grade-assessment.use-case.ts",
                           "type": "file",
                           "icon": "📘"
@@ -3648,6 +3653,16 @@
                         },
                         {
                           "name": "list-grade-assessments.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "lock-grade-assessment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "publish-grade-assessment.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -6430,7 +6445,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-04-27T14:46:01.424Z",
+    "generated": "2026-04-27T16:54:00.150Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,

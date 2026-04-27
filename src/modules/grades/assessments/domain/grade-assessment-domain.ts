@@ -26,6 +26,7 @@ import {
 export interface AssessmentCrudLike {
   approvalStatus: GradeAssessmentApprovalStatus | string;
   deliveryMode: GradeAssessmentDeliveryMode | string;
+  maxScore?: unknown;
   lockedAt?: Date | string | null;
   isLocked?: boolean | null;
 }
@@ -49,6 +50,61 @@ export class GradeAssessmentLockedException extends DomainException {
     super({
       code: 'grades.assessment.locked',
       message: 'Assessment is locked',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class GradeAssessmentNotPublishedException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'grades.assessment.not_published',
+      message: 'Assessment must be published first',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class GradeAssessmentNotApprovedException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'grades.assessment.not_approved',
+      message: 'Assessment must be approved first',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class GradeAssessmentAlreadyPublishedException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'grades.assessment.already_published',
+      message: 'Assessment is already published',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class GradeAssessmentAlreadyApprovedException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'grades.assessment.already_approved',
+      message: 'Assessment is already approved',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class GradeAssessmentAlreadyLockedException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'grades.assessment.already_locked',
+      message: 'Assessment is already locked',
       httpStatus: HttpStatus.CONFLICT,
       details,
     });
@@ -159,10 +215,89 @@ export function assertAssessmentDeletableForCrud(
   assertAssessmentMutableForCrud(assessment);
 }
 
+export function assertPublishableAssessment(
+  assessment: AssessmentCrudLike,
+): void {
+  assertScoreOnlyAssessment(assessment);
+  validateWorkflowMaxScore(assessment);
+
+  if (isAssessmentLocked(assessment)) {
+    throw new GradeAssessmentLockedException();
+  }
+
+  const approvalStatus = normalizeAssessmentApprovalStatus(
+    assessment.approvalStatus,
+  );
+  if (approvalStatus === GradeAssessmentApprovalStatus.DRAFT) return;
+  if (approvalStatus === GradeAssessmentApprovalStatus.PUBLISHED) {
+    throw new GradeAssessmentAlreadyPublishedException({
+      approvalStatus,
+    });
+  }
+  if (approvalStatus === GradeAssessmentApprovalStatus.APPROVED) {
+    throw new GradeAssessmentAlreadyApprovedException({
+      approvalStatus,
+    });
+  }
+
+  throw new GradeAssessmentInvalidStatusTransitionException({
+    approvalStatus,
+  });
+}
+
+export function assertApprovableAssessment(
+  assessment: AssessmentCrudLike,
+): void {
+  assertScoreOnlyAssessment(assessment);
+  validateWorkflowMaxScore(assessment);
+
+  if (isAssessmentLocked(assessment)) {
+    throw new GradeAssessmentLockedException();
+  }
+
+  const approvalStatus = normalizeAssessmentApprovalStatus(
+    assessment.approvalStatus,
+  );
+  if (approvalStatus === GradeAssessmentApprovalStatus.PUBLISHED) return;
+  if (approvalStatus === GradeAssessmentApprovalStatus.DRAFT) {
+    throw new GradeAssessmentNotPublishedException({ approvalStatus });
+  }
+  if (approvalStatus === GradeAssessmentApprovalStatus.APPROVED) {
+    throw new GradeAssessmentAlreadyApprovedException({
+      approvalStatus,
+    });
+  }
+
+  throw new GradeAssessmentInvalidStatusTransitionException({
+    approvalStatus,
+  });
+}
+
+export function assertLockableAssessment(assessment: AssessmentCrudLike): void {
+  assertScoreOnlyAssessment(assessment);
+
+  if (isAssessmentLocked(assessment)) {
+    throw new GradeAssessmentAlreadyLockedException();
+  }
+
+  const approvalStatus = normalizeAssessmentApprovalStatus(
+    assessment.approvalStatus,
+  );
+  if (approvalStatus === GradeAssessmentApprovalStatus.APPROVED) return;
+
+  throw new GradeAssessmentNotApprovedException({ approvalStatus });
+}
+
 export function assertTermWritableForAssessment(
   term: AssessmentCrudTermLike,
 ): void {
   assertTermWritable(term);
+}
+
+export function assertWorkflowTermWritable(
+  term: AssessmentCrudTermLike,
+): void {
+  assertTermWritableForAssessment(term);
 }
 
 export function assertDateInsideTerm(
@@ -290,4 +425,9 @@ export function areScopesEqual(
     first.sectionId === second.sectionId &&
     first.classroomId === second.classroomId
   );
+}
+
+function validateWorkflowMaxScore(assessment: AssessmentCrudLike): void {
+  if (assessment.maxScore === undefined) return;
+  validateAssessmentMaxScore(assessment.maxScore);
 }

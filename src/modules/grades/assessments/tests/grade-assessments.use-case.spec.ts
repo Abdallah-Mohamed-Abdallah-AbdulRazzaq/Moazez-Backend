@@ -18,14 +18,22 @@ import {
   ValidationDomainException,
 } from '../../../../common/exceptions/domain-exception';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
+import { ApproveGradeAssessmentUseCase } from '../application/approve-grade-assessment.use-case';
 import { CreateGradeAssessmentUseCase } from '../application/create-grade-assessment.use-case';
 import { DeleteGradeAssessmentUseCase } from '../application/delete-grade-assessment.use-case';
 import { GetGradeAssessmentUseCase } from '../application/get-grade-assessment.use-case';
 import { ListGradeAssessmentsUseCase } from '../application/list-grade-assessments.use-case';
+import { LockGradeAssessmentUseCase } from '../application/lock-grade-assessment.use-case';
+import { PublishGradeAssessmentUseCase } from '../application/publish-grade-assessment.use-case';
 import { UpdateGradeAssessmentUseCase } from '../application/update-grade-assessment.use-case';
 import {
+  GradeAssessmentAlreadyApprovedException,
+  GradeAssessmentAlreadyLockedException,
+  GradeAssessmentAlreadyPublishedException,
   GradeAssessmentInvalidStatusTransitionException,
   GradeAssessmentLockedException,
+  GradeAssessmentNotApprovedException,
+  GradeAssessmentNotPublishedException,
 } from '../domain/grade-assessment-domain';
 import { GradeTermClosedException } from '../../shared/domain/grade-workflow';
 import { GradesAssessmentsRepository } from '../infrastructure/grades-assessments.repository';
@@ -51,6 +59,9 @@ describe('Grade assessment use cases', () => {
         permissions: [
           'grades.assessments.view',
           'grades.assessments.manage',
+          'grades.assessments.publish',
+          'grades.assessments.approve',
+          'grades.assessments.lock',
         ],
       });
 
@@ -85,7 +96,12 @@ describe('Grade assessment use cases', () => {
       type: GradeAssessmentType;
       deliveryMode: GradeAssessmentDeliveryMode;
       approvalStatus: GradeAssessmentApprovalStatus;
+      publishedAt: Date | null;
+      publishedById: string | null;
+      approvedAt: Date | null;
+      approvedById: string | null;
       lockedAt: Date | null;
+      lockedById: string | null;
       weight: number;
       maxScore: number;
       deletedAt: Date | null;
@@ -114,12 +130,12 @@ describe('Grade assessment use cases', () => {
       expectedTimeMinutes: 30,
       approvalStatus:
         overrides?.approvalStatus ?? GradeAssessmentApprovalStatus.DRAFT,
-      publishedAt: null,
-      publishedById: null,
-      approvedAt: null,
-      approvedById: null,
+      publishedAt: overrides?.publishedAt ?? null,
+      publishedById: overrides?.publishedById ?? null,
+      approvedAt: overrides?.approvedAt ?? null,
+      approvedById: overrides?.approvedById ?? null,
       lockedAt: overrides?.lockedAt ?? null,
-      lockedById: null,
+      lockedById: overrides?.lockedById ?? null,
       createdById: 'user-1',
       createdAt: new Date('2026-09-15T08:00:00.000Z'),
       updatedAt: new Date('2026-09-15T08:00:00.000Z'),
@@ -174,6 +190,39 @@ describe('Grade assessment use cases', () => {
               data.weight === undefined ? 10 : Number(data.weight),
             maxScore:
               data.maxScore === undefined ? 20 : Number(data.maxScore),
+          }),
+        ),
+      ),
+      publishAssessment: jest.fn().mockImplementation((_id, data) =>
+        Promise.resolve(
+          assessmentRecord({
+            approvalStatus: data.approvalStatus,
+            publishedAt: data.publishedAt,
+            publishedById: data.publishedById,
+          }),
+        ),
+      ),
+      approveAssessment: jest.fn().mockImplementation((_id, data) =>
+        Promise.resolve(
+          assessmentRecord({
+            approvalStatus: data.approvalStatus,
+            publishedAt: new Date('2026-09-16T08:00:00.000Z'),
+            publishedById: 'user-1',
+            approvedAt: data.approvedAt,
+            approvedById: data.approvedById,
+          }),
+        ),
+      ),
+      lockAssessment: jest.fn().mockImplementation((_id, data) =>
+        Promise.resolve(
+          assessmentRecord({
+            approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+            publishedAt: new Date('2026-09-16T08:00:00.000Z'),
+            publishedById: 'user-1',
+            approvedAt: new Date('2026-09-17T08:00:00.000Z'),
+            approvedById: 'user-1',
+            lockedAt: data.lockedAt,
+            lockedById: data.lockedById,
           }),
         ),
       ),
@@ -408,6 +457,392 @@ describe('Grade assessment use cases', () => {
     });
   });
 
+  it('publishes a DRAFT assessment and records audit metadata', async () => {
+    const repository = baseRepository();
+    const auth = authRepository();
+    const useCase = new PublishGradeAssessmentUseCase(repository, auth);
+
+    const result = await withGradesScope(() =>
+      useCase.execute('assessment-1'),
+    );
+
+    expect(repository.publishAssessment).toHaveBeenCalledWith(
+      'assessment-1',
+      expect.objectContaining({
+        approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+        publishedAt: expect.any(Date),
+        publishedById: 'user-1',
+      }),
+    );
+    expect(repository.countGradeItemsForAssessment).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      id: 'assessment-1',
+      approvalStatus: 'published',
+      publishedById: 'user-1',
+      isLocked: false,
+    });
+    expect(result.publishedAt).toEqual(expect.any(String));
+    expect(auth.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'grades.assessment.publish',
+        resourceType: 'grade_assessment',
+        outcome: AuditOutcome.SUCCESS,
+        before: expect.objectContaining({
+          approvalStatus: GradeAssessmentApprovalStatus.DRAFT,
+          publishedAt: null,
+          publishedById: null,
+        }),
+        after: expect.objectContaining({
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+          publishedById: 'user-1',
+        }),
+      }),
+    );
+  });
+
+  it('rejects publishing an already PUBLISHED assessment', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+        }),
+      ),
+      publishAssessment: jest.fn(),
+    });
+    const useCase = new PublishGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(GradeAssessmentAlreadyPublishedException);
+    expect(repository.publishAssessment).not.toHaveBeenCalled();
+  });
+
+  it('rejects publishing an APPROVED assessment', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+        }),
+      ),
+      publishAssessment: jest.fn(),
+    });
+    const useCase = new PublishGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(GradeAssessmentAlreadyApprovedException);
+    expect(repository.publishAssessment).not.toHaveBeenCalled();
+  });
+
+  it('rejects publishing a locked assessment', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          lockedAt: new Date('2026-09-20T08:00:00.000Z'),
+        }),
+      ),
+      publishAssessment: jest.fn(),
+    });
+    const useCase = new PublishGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(GradeAssessmentLockedException);
+    expect(repository.publishAssessment).not.toHaveBeenCalled();
+  });
+
+  it('rejects publishing in a closed or inactive term', async () => {
+    const repository = baseRepository({
+      findTerm: jest.fn().mockResolvedValue(activeTerm({ isActive: false })),
+      publishAssessment: jest.fn(),
+    });
+    const useCase = new PublishGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(GradeTermClosedException);
+    expect(repository.publishAssessment).not.toHaveBeenCalled();
+  });
+
+  it('approves a PUBLISHED assessment and records audit metadata', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+          publishedAt: new Date('2026-09-16T08:00:00.000Z'),
+          publishedById: 'user-1',
+        }),
+      ),
+    });
+    const auth = authRepository();
+    const useCase = new ApproveGradeAssessmentUseCase(repository, auth);
+
+    const result = await withGradesScope(() =>
+      useCase.execute('assessment-1'),
+    );
+
+    expect(repository.approveAssessment).toHaveBeenCalledWith(
+      'assessment-1',
+      expect.objectContaining({
+        approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+        approvedAt: expect.any(Date),
+        approvedById: 'user-1',
+      }),
+    );
+    expect(result).toMatchObject({
+      id: 'assessment-1',
+      approvalStatus: 'approved',
+      approvedById: 'user-1',
+      isLocked: false,
+    });
+    expect(result.approvedAt).toEqual(expect.any(String));
+    expect(auth.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'grades.assessment.approve',
+        before: expect.objectContaining({
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+          approvedAt: null,
+          approvedById: null,
+        }),
+        after: expect.objectContaining({
+          approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+          approvedById: 'user-1',
+        }),
+      }),
+    );
+  });
+
+  it('rejects approving a DRAFT assessment', async () => {
+    const repository = baseRepository({
+      approveAssessment: jest.fn(),
+    });
+    const useCase = new ApproveGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(GradeAssessmentNotPublishedException);
+    expect(repository.approveAssessment).not.toHaveBeenCalled();
+  });
+
+  it('rejects approving an already APPROVED assessment', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+        }),
+      ),
+      approveAssessment: jest.fn(),
+    });
+    const useCase = new ApproveGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(GradeAssessmentAlreadyApprovedException);
+    expect(repository.approveAssessment).not.toHaveBeenCalled();
+  });
+
+  it('rejects approving a locked assessment', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+          lockedAt: new Date('2026-09-20T08:00:00.000Z'),
+        }),
+      ),
+      approveAssessment: jest.fn(),
+    });
+    const useCase = new ApproveGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(GradeAssessmentLockedException);
+    expect(repository.approveAssessment).not.toHaveBeenCalled();
+  });
+
+  it('rejects approving in a closed or inactive term', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+        }),
+      ),
+      findTerm: jest.fn().mockResolvedValue(activeTerm({ isActive: false })),
+      approveAssessment: jest.fn(),
+    });
+    const useCase = new ApproveGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(GradeTermClosedException);
+    expect(repository.approveAssessment).not.toHaveBeenCalled();
+  });
+
+  it('locks an APPROVED assessment and records audit metadata', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+          publishedAt: new Date('2026-09-16T08:00:00.000Z'),
+          publishedById: 'user-1',
+          approvedAt: new Date('2026-09-17T08:00:00.000Z'),
+          approvedById: 'user-1',
+        }),
+      ),
+    });
+    const auth = authRepository();
+    const useCase = new LockGradeAssessmentUseCase(repository, auth);
+
+    const result = await withGradesScope(() =>
+      useCase.execute('assessment-1'),
+    );
+
+    expect(repository.lockAssessment).toHaveBeenCalledWith(
+      'assessment-1',
+      expect.objectContaining({
+        lockedAt: expect.any(Date),
+        lockedById: 'user-1',
+      }),
+    );
+    expect(result).toMatchObject({
+      id: 'assessment-1',
+      approvalStatus: 'approved',
+      lockedById: 'user-1',
+      isLocked: true,
+    });
+    expect(result.lockedAt).toEqual(expect.any(String));
+    expect(auth.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'grades.assessment.lock',
+        before: expect.objectContaining({
+          approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+          lockedAt: null,
+          lockedById: null,
+        }),
+        after: expect.objectContaining({
+          approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+          lockedById: 'user-1',
+        }),
+      }),
+    );
+  });
+
+  it('rejects locking a DRAFT assessment', async () => {
+    const repository = baseRepository({
+      lockAssessment: jest.fn(),
+    });
+    const useCase = new LockGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(GradeAssessmentNotApprovedException);
+    expect(repository.lockAssessment).not.toHaveBeenCalled();
+  });
+
+  it('rejects locking a PUBLISHED assessment', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+        }),
+      ),
+      lockAssessment: jest.fn(),
+    });
+    const useCase = new LockGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(GradeAssessmentNotApprovedException);
+    expect(repository.lockAssessment).not.toHaveBeenCalled();
+  });
+
+  it('rejects locking an already locked assessment', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+          lockedAt: new Date('2026-09-20T08:00:00.000Z'),
+        }),
+      ),
+      lockAssessment: jest.fn(),
+    });
+    const useCase = new LockGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(GradeAssessmentAlreadyLockedException);
+    expect(repository.lockAssessment).not.toHaveBeenCalled();
+  });
+
+  it('rejects locking in a closed or inactive term', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+        }),
+      ),
+      findTerm: jest.fn().mockResolvedValue(activeTerm({ isActive: false })),
+      lockAssessment: jest.fn(),
+    });
+    const useCase = new LockGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(GradeTermClosedException);
+    expect(repository.lockAssessment).not.toHaveBeenCalled();
+  });
+
+  it('returns not found when locking a missing or soft-deleted assessment', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(null),
+      lockAssessment: jest.fn(),
+    });
+    const useCase = new LockGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(NotFoundDomainException);
+    expect(repository.lockAssessment).not.toHaveBeenCalled();
+  });
+
   it('updates a draft assessment', async () => {
     const repository = baseRepository();
     const auth = authRepository();
@@ -442,6 +877,28 @@ describe('Grade assessment use cases', () => {
       findAssessmentById: jest.fn().mockResolvedValue(
         assessmentRecord({
           approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+        }),
+      ),
+      updateAssessment: jest.fn(),
+    });
+    const useCase = new UpdateGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() =>
+        useCase.execute('assessment-1', { titleEn: 'Updated' }),
+      ),
+    ).rejects.toBeInstanceOf(GradeAssessmentInvalidStatusTransitionException);
+    expect(repository.updateAssessment).not.toHaveBeenCalled();
+  });
+
+  it('rejects updating an APPROVED assessment', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
         }),
       ),
       updateAssessment: jest.fn(),
@@ -542,6 +999,26 @@ describe('Grade assessment use cases', () => {
       findAssessmentById: jest.fn().mockResolvedValue(
         assessmentRecord({
           approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+        }),
+      ),
+      softDeleteAssessment: jest.fn(),
+    });
+    const useCase = new DeleteGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(GradeAssessmentInvalidStatusTransitionException);
+    expect(repository.softDeleteAssessment).not.toHaveBeenCalled();
+  });
+
+  it('rejects deleting a PUBLISHED assessment', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
         }),
       ),
       softDeleteAssessment: jest.fn(),

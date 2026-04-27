@@ -11,10 +11,13 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { ApproveGradeAssessmentUseCase } from '../application/approve-grade-assessment.use-case';
 import { CreateGradeAssessmentUseCase } from '../application/create-grade-assessment.use-case';
 import { DeleteGradeAssessmentUseCase } from '../application/delete-grade-assessment.use-case';
 import { GetGradeAssessmentUseCase } from '../application/get-grade-assessment.use-case';
 import { ListGradeAssessmentsUseCase } from '../application/list-grade-assessments.use-case';
+import { LockGradeAssessmentUseCase } from '../application/lock-grade-assessment.use-case';
+import { PublishGradeAssessmentUseCase } from '../application/publish-grade-assessment.use-case';
 import { UpdateGradeAssessmentUseCase } from '../application/update-grade-assessment.use-case';
 import {
   CreateGradeAssessmentDto,
@@ -35,6 +38,9 @@ export class GradesAssessmentsController {
     private readonly createGradeAssessmentUseCase: CreateGradeAssessmentUseCase,
     private readonly updateGradeAssessmentUseCase: UpdateGradeAssessmentUseCase,
     private readonly deleteGradeAssessmentUseCase: DeleteGradeAssessmentUseCase,
+    private readonly publishGradeAssessmentUseCase: PublishGradeAssessmentUseCase,
+    private readonly approveGradeAssessmentUseCase: ApproveGradeAssessmentUseCase,
+    private readonly lockGradeAssessmentUseCase: LockGradeAssessmentUseCase,
   ) {}
 
   @Get()
@@ -59,6 +65,30 @@ export class GradesAssessmentsController {
     @Body() dto: CreateGradeAssessmentDto,
   ): Promise<GradeAssessmentResponseDto> {
     return this.createGradeAssessmentUseCase.execute(dto);
+  }
+
+  @Post(':assessmentId/publish')
+  @RequiredPermissions('grades.assessments.publish')
+  publishAssessment(
+    @Param('assessmentId', new ParseUUIDPipe()) assessmentId: string,
+  ): Promise<GradeAssessmentResponseDto> {
+    return this.publishGradeAssessmentUseCase.execute(assessmentId);
+  }
+
+  @Post(':assessmentId/approve')
+  @RequiredPermissions('grades.assessments.approve')
+  approveAssessment(
+    @Param('assessmentId', new ParseUUIDPipe()) assessmentId: string,
+  ): Promise<GradeAssessmentResponseDto> {
+    return this.approveGradeAssessmentUseCase.execute(assessmentId);
+  }
+
+  @Post(':assessmentId/lock')
+  @RequiredPermissions('grades.assessments.lock')
+  lockAssessment(
+    @Param('assessmentId', new ParseUUIDPipe()) assessmentId: string,
+  ): Promise<GradeAssessmentResponseDto> {
+    return this.lockGradeAssessmentUseCase.execute(assessmentId);
   }
 
   @Patch(':assessmentId')
