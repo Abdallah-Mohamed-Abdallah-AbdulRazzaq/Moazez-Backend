@@ -6408,6 +6408,11 @@
               "icon": "📘"
             },
             {
+              "name": "grades-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "students-guardians-flow.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -6674,7 +6679,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-04-27T18:44:24.499Z",
+    "generated": "2026-04-27T19:37:02.657Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
