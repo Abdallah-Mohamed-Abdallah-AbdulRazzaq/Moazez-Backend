@@ -497,11 +497,17 @@ export class AttendanceRollCallRepository {
 
   submitSession(params: {
     sessionId: string;
+    schoolId: string;
     submittedAt: Date;
     submittedById: string | null;
   }): Promise<RollCallSessionDetailRecord> {
-    return this.scopedPrisma.attendanceSession.update({
-      where: { id: params.sessionId },
+    return this.prisma.attendanceSession.update({
+      where: {
+        id_schoolId: {
+          id: params.sessionId,
+          schoolId: params.schoolId,
+        },
+      },
       data: {
         status: AttendanceSessionStatus.SUBMITTED,
         submittedAt: params.submittedAt,
@@ -511,9 +517,17 @@ export class AttendanceRollCallRepository {
     });
   }
 
-  unsubmitSession(sessionId: string): Promise<RollCallSessionDetailRecord> {
-    return this.scopedPrisma.attendanceSession.update({
-      where: { id: sessionId },
+  unsubmitSession(params: {
+    sessionId: string;
+    schoolId: string;
+  }): Promise<RollCallSessionDetailRecord> {
+    return this.prisma.attendanceSession.update({
+      where: {
+        id_schoolId: {
+          id: params.sessionId,
+          schoolId: params.schoolId,
+        },
+      },
       data: {
         status: AttendanceSessionStatus.DRAFT,
         submittedAt: null,

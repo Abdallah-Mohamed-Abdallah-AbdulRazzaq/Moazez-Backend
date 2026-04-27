@@ -37,6 +37,7 @@ export class SubmitRollCallSessionUseCase {
     const submittedAt = new Date();
     const submitted = await this.attendanceRollCallRepository.submitSession({
       sessionId: session.id,
+      schoolId: session.schoolId,
       submittedAt,
       submittedById: scope.actorId,
     });

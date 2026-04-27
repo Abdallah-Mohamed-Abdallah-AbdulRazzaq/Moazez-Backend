@@ -35,7 +35,10 @@ export class UnsubmitRollCallSessionUseCase {
     }
 
     const unsubmitted = await this.attendanceRollCallRepository.unsubmitSession(
-      session.id,
+      {
+        sessionId: session.id,
+        schoolId: session.schoolId,
+      },
     );
 
     await this.authRepository.createAuditLog({

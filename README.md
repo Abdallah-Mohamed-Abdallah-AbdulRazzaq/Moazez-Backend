@@ -282,6 +282,49 @@ Sprint 2B Students endpoints:
 - `GET`, `POST`, `PATCH`, `DELETE /api/v1/students-guardians/students/:studentId/documents`, `/medical-profile`, `/notes`, `/timeline`
 - `GET /api/v1/files/:id/download`
 
+## Sprint 3A Attendance Foundation Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Ensure SEED_DEMO_DATA=true
+
+npm run infra:up
+npm run verify:sprint3a
+```
+
+`npm run verify:sprint3a` runs the Sprint 2B preflight check, migrations, seed, build, unit tests, security tests, Sprint 2B Students E2E, and the Sprint 3A Attendance closeout E2E.
+
+Sprint 3A attendance verification covers:
+
+- login -> resolve school context -> create isolated academic/student prerequisites
+- create a classroom attendance policy -> resolve the effective policy
+- resolve a draft roll-call session -> fetch roster -> save present and absent entries
+- submit the session -> reject submitted-session entry mutation with `attendance.session.already_submitted`
+- verify absences, absence summary, reports summary, daily trend, and scope breakdown
+- unsubmit the session -> verify absences and reports no longer include it -> edit the reopened draft
+
+Local verification commands:
+
+```bash
+npm run build
+npm run test -- --runInBand
+npm run test:security -- --runInBand
+npm run test:e2e:sprint3a
+npm run verify:sprint3a
+```
+
+Sprint 3A Attendance endpoints:
+
+- Policies: `GET`, `POST`, `PATCH`, `DELETE /api/v1/attendance/policies`, `GET /api/v1/attendance/policies/effective`, `GET /api/v1/attendance/policies/validate-name`
+- Roll-call: `GET /api/v1/attendance/roll-call/roster`, `POST /api/v1/attendance/roll-call/session/resolve`, `GET /api/v1/attendance/roll-call/sessions`, `GET /api/v1/attendance/roll-call/sessions/:id`, `PUT /api/v1/attendance/roll-call/sessions/:id/entries`, `PUT /api/v1/attendance/roll-call/sessions/:id/entries/:studentId`, `POST /api/v1/attendance/roll-call/sessions/:id/submit`, `POST /api/v1/attendance/roll-call/sessions/:id/unsubmit`
+- Absences: `GET /api/v1/attendance/absences`, `GET /api/v1/attendance/absences/summary`
+- Reports: `GET /api/v1/attendance/reports/summary`, `GET /api/v1/attendance/reports/daily-trend`, `GET /api/v1/attendance/reports/scope-breakdown`
+
+Absences and reports are derived only from `SUBMITTED` attendance sessions. `DRAFT` sessions, including sessions reopened by unsubmit, remain editable but do not affect absence lists, absence summaries, or attendance reports until submitted again.
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -302,6 +345,7 @@ Sprint 2B Students endpoints:
 | `npm run test:e2e:sprint1c`         | Run the three Sprint 1C Files e2e flows                                                          |
 | `npm run test:e2e:sprint2a`         | Run the Sprint 2A Admissions closeout e2e flows                                                  |
 | `npm run test:e2e:sprint2b`         | Run the Sprint 2B Students closeout e2e flows                                                    |
+| `npm run test:e2e:sprint3a`         | Run the Sprint 3A Attendance closeout e2e flow                                                   |
 | `npm run test:security`             | Tenancy isolation tests                                                                          |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                     |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                           |
@@ -311,6 +355,7 @@ Sprint 2B Students endpoints:
 | `npm run verify:sprint2a`           | Run preflight, migrations, seed, build, unit tests, security tests, and Sprint 2A Admissions e2e |
 | `npm run verify:sprint2b:preflight` | Fail fast if `.env` or required local services are not ready                                     |
 | `npm run verify:sprint2b`           | Run preflight, migrations, seed, build, unit tests, security tests, and Sprint 2B Students e2e   |
+| `npm run verify:sprint3a`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B e2e, and Sprint 3A e2e    |
 | `npm run seed`                      | Re-run idempotent seeds                                                                          |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                            |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                       |

@@ -333,6 +333,7 @@ describe('Attendance roll-call use cases', () => {
 
     expect(repository.submitSession).toHaveBeenCalledWith({
       sessionId: 'session-1',
+      schoolId: 'school-1',
       submittedAt: expect.any(Date),
       submittedById: 'user-1',
     });
@@ -416,7 +417,10 @@ describe('Attendance roll-call use cases', () => {
       useCase.execute('session-1'),
     );
 
-    expect(repository.unsubmitSession).toHaveBeenCalledWith('session-1');
+    expect(repository.unsubmitSession).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      schoolId: 'school-1',
+    });
     expect(result.session.status).toBe(AttendanceSessionStatus.DRAFT);
     expect(result.session.submittedAt).toBeNull();
     expect(result.session.submittedById).toBeNull();
