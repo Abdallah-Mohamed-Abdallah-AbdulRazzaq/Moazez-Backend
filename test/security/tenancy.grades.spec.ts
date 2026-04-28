@@ -128,6 +128,7 @@ describe('Grades tenancy isolation (security)', () => {
       itemsManagePermission,
       submissionsViewPermission,
       submissionsSubmitPermission,
+      submissionsReviewPermission,
     ] = await Promise.all([
       prisma.role.findFirst({
         where: { key: 'school_admin', schoolId: null, isSystem: true },
@@ -185,6 +186,10 @@ describe('Grades tenancy isolation (security)', () => {
         where: { code: 'grades.submissions.submit' },
         select: { id: true },
       }),
+      prisma.permission.findUnique({
+        where: { code: 'grades.submissions.review' },
+        select: { id: true },
+      }),
     ]);
 
     if (
@@ -201,7 +206,8 @@ describe('Grades tenancy isolation (security)', () => {
       !itemsViewPermission ||
       !itemsManagePermission ||
       !submissionsViewPermission ||
-      !submissionsSubmitPermission
+      !submissionsSubmitPermission ||
+      !submissionsReviewPermission
     ) {
       throw new Error('Grades permissions missing - run `npm run seed` first.');
     }
@@ -963,7 +969,12 @@ describe('Grades tenancy isolation (security)', () => {
             },
             {
               resourceType: 'grade_submission_answer',
-              action: 'grades.submission.answer.save',
+              action: {
+                in: [
+                  'grades.submission.answer.save',
+                  'grades.submission.answer.review',
+                ],
+              },
             },
             {
               resourceType: 'grade_submission',
@@ -972,6 +983,8 @@ describe('Grades tenancy isolation (security)', () => {
                   'grades.submission.create',
                   'grades.submission.answers.bulk_save',
                   'grades.submission.submit',
+                  'grades.submission.answers.bulk_review',
+                  'grades.submission.review.finalize',
                 ],
               },
             },
@@ -1514,7 +1527,11 @@ describe('Grades tenancy isolation (security)', () => {
     mcqQuestionId: string;
     mcqOptionId: string;
     shortQuestionId: string;
-  }): Promise<void> {
+    correctionStatus?: GradeAnswerCorrectionStatus;
+    awardedPointsByQuestionId?: Record<string, number>;
+  }): Promise<{ mcqAnswerId: string; shortAnswerId: string }> {
+    const correctionStatus =
+      params.correctionStatus ?? GradeAnswerCorrectionStatus.PENDING;
     const mcqAnswer = await prisma.gradeSubmissionAnswer.create({
       data: {
         schoolId: demoSchoolId,
@@ -1522,7 +1539,9 @@ describe('Grades tenancy isolation (security)', () => {
         assessmentId: params.assessmentId,
         questionId: params.mcqQuestionId,
         studentId: demoStudentId,
-        correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+        correctionStatus,
+        awardedPoints:
+          params.awardedPointsByQuestionId?.[params.mcqQuestionId] ?? null,
         maxPoints: 5,
       },
       select: { id: true },
@@ -1534,7 +1553,7 @@ describe('Grades tenancy isolation (security)', () => {
         optionId: params.mcqOptionId,
       },
     });
-    await prisma.gradeSubmissionAnswer.create({
+    const shortAnswer = await prisma.gradeSubmissionAnswer.create({
       data: {
         schoolId: demoSchoolId,
         submissionId: params.submissionId,
@@ -1542,10 +1561,18 @@ describe('Grades tenancy isolation (security)', () => {
         questionId: params.shortQuestionId,
         studentId: demoStudentId,
         answerText: 'written answer',
-        correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+        correctionStatus,
+        awardedPoints:
+          params.awardedPointsByQuestionId?.[params.shortQuestionId] ?? null,
         maxPoints: 5,
       },
+      select: { id: true },
     });
+
+    return {
+      mcqAnswerId: mcqAnswer.id,
+      shortAnswerId: shortAnswer.id,
+    };
   }
 
   async function createTenantBQuestionSubmissionFixture(): Promise<{
@@ -1553,6 +1580,7 @@ describe('Grades tenancy isolation (security)', () => {
     questionId: string;
     optionId: string;
     submissionId: string;
+    answerId: string;
   }> {
     const assessment = await prisma.gradeAssessment.create({
       data: {
@@ -1609,10 +1637,30 @@ describe('Grades tenancy isolation (security)', () => {
         termId: tenantBTermId,
         studentId: tenantBStudentId,
         enrollmentId: tenantBEnrollmentId,
-        status: GradeSubmissionStatus.IN_PROGRESS,
+        status: GradeSubmissionStatus.SUBMITTED,
+        submittedAt: new Date('2026-09-20T09:00:00.000Z'),
         maxScore: 5,
       },
       select: { id: true },
+    });
+    const answer = await prisma.gradeSubmissionAnswer.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        submissionId: submission.id,
+        assessmentId: assessment.id,
+        questionId: question.id,
+        studentId: tenantBStudentId,
+        correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+        maxPoints: 5,
+      },
+      select: { id: true },
+    });
+    await prisma.gradeSubmissionAnswerOption.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        answerId: answer.id,
+        optionId: option.id,
+      },
     });
 
     return {
@@ -1620,6 +1668,7 @@ describe('Grades tenancy isolation (security)', () => {
       questionId: question.id,
       optionId: option.id,
       submissionId: submission.id,
+      answerId: answer.id,
     };
   }
 
@@ -2030,6 +2079,427 @@ describe('Grades tenancy isolation (security)', () => {
       where: { submissionId },
     });
     expect(after).toBe(before);
+  });
+
+  it('school A cannot review answer for school B submission', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const tenantBFixture = await createTenantBQuestionSubmissionFixture();
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/grades/submissions/${tenantBFixture.submissionId}/answers/${tenantBFixture.answerId}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ awardedPoints: 4 })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('not_found');
+      });
+  });
+
+  it('school A cannot bulk review answers for school B submission', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const tenantBFixture = await createTenantBQuestionSubmissionFixture();
+
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/grades/submissions/${tenantBFixture.submissionId}/answers/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        reviews: [{ answerId: tenantBFixture.answerId, awardedPoints: 4 }],
+      })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('not_found');
+      });
+  });
+
+  it('school A cannot finalize school B submission', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const tenantBFixture = await createTenantBQuestionSubmissionFixture();
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${tenantBFixture.submissionId}/review/finalize`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('not_found');
+      });
+  });
+
+  it('school A cannot review answer from another school', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'review-cross-school-answer',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.SUBMITTED,
+    });
+    const tenantBFixture = await createTenantBQuestionSubmissionFixture();
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${tenantBFixture.answerId}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ awardedPoints: 4 })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('not_found');
+      });
+  });
+
+  it('school A cannot review answer that belongs to another submission', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'review-other-submission-answer',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.SUBMITTED,
+    });
+    const studentTwoEnrollment = await prisma.enrollment.findFirst({
+      where: { studentId: demoStudentTwoId },
+      select: { id: true },
+    });
+    if (!studentTwoEnrollment) {
+      throw new Error('Second demo enrollment not found');
+    }
+    const otherSubmissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.SUBMITTED,
+      studentId: demoStudentTwoId,
+      enrollmentId: studentTwoEnrollment.id,
+    });
+    const otherAnswer = await prisma.gradeSubmissionAnswer.create({
+      data: {
+        schoolId: demoSchoolId,
+        submissionId: otherSubmissionId,
+        assessmentId: fixture.assessmentId,
+        questionId: fixture.mcqQuestionId,
+        studentId: demoStudentTwoId,
+        correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+        maxPoints: 5,
+      },
+      select: { id: true },
+    });
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${otherAnswer.id}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ awardedPoints: 4 })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('not_found');
+      });
+  });
+
+  it('same-school actor without grades.submissions.review gets 403 for review routes', async () => {
+    const { accessToken } = await login(VIEW_ONLY_EMAIL, VIEW_ONLY_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'no-review-permission',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.SUBMITTED,
+    });
+    const answers = await seedCompleteSubmissionAnswers({
+      ...fixture,
+      submissionId,
+    });
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${answers.mcqAnswerId}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ awardedPoints: 4 })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/review`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        reviews: [{ answerId: answers.mcqAnswerId, awardedPoints: 4 }],
+      })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/review/finalize`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+  });
+
+  it('admin school role can review and finalize without creating GradeItems', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'review-admin-happy',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.SUBMITTED,
+    });
+    const answers = await seedCompleteSubmissionAnswers({
+      ...fixture,
+      submissionId,
+    });
+
+    const singleReviewResponse = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${answers.mcqAnswerId}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ awardedPoints: 4, reviewerComment: 'Clear work' })
+      .expect(200);
+
+    expect(singleReviewResponse.body).toMatchObject({
+      id: answers.mcqAnswerId,
+      awardedPoints: 4,
+      correctionStatus: 'corrected',
+      reviewerComment: 'Clear work',
+      reviewedAt: expect.any(String),
+      reviewedById: expect.any(String),
+    });
+
+    const bulkReviewResponse = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/review`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        reviews: [{ answerId: answers.shortAnswerId, awardedPoints: 5 }],
+      })
+      .expect(200);
+
+    expect(bulkReviewResponse.body).toMatchObject({
+      submissionId,
+      reviewedCount: 1,
+      answers: [
+        {
+          id: answers.shortAnswerId,
+          awardedPoints: 5,
+          correctionStatus: 'corrected',
+        },
+      ],
+    });
+
+    const finalizeResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/review/finalize`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(finalizeResponse.body).toMatchObject({
+      id: submissionId,
+      status: 'corrected',
+      correctedAt: expect.any(String),
+      reviewedById: expect.any(String),
+      totalScore: 9,
+      maxScore: 10,
+    });
+
+    const gradeItems = await prisma.gradeItem.count({
+      where: { assessmentId: fixture.assessmentId },
+    });
+    expect(gradeItems).toBe(0);
+  });
+
+  it('IN_PROGRESS submission rejects review and finalize', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'review-in-progress-reject',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.IN_PROGRESS,
+    });
+    const answers = await seedCompleteSubmissionAnswers({
+      ...fixture,
+      submissionId,
+    });
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${answers.mcqAnswerId}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ awardedPoints: 4 })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.submission.not_submitted');
+      });
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/review/finalize`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.submission.not_submitted');
+      });
+  });
+
+  it('locked assessment rejects review and finalize', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      lockedAt: new Date('2026-09-18T08:00:00.000Z'),
+      titleSuffix: 'review-locked-reject',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.SUBMITTED,
+    });
+    const answers = await seedCompleteSubmissionAnswers({
+      ...fixture,
+      submissionId,
+    });
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${answers.mcqAnswerId}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ awardedPoints: 4 })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.assessment.locked');
+      });
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/review/finalize`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.assessment.locked');
+      });
+  });
+
+  it('closed/inactive term rejects review and finalize', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      termId: demoClosedTermId,
+      titleSuffix: 'review-closed-term-reject',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.SUBMITTED,
+      termId: demoClosedTermId,
+    });
+    const answers = await seedCompleteSubmissionAnswers({
+      ...fixture,
+      submissionId,
+    });
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${answers.mcqAnswerId}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ awardedPoints: 4 })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.term.closed');
+      });
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/review/finalize`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.term.closed');
+      });
+  });
+
+  it('already CORRECTED submission rejects additional review and finalize', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'review-corrected-reject',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.CORRECTED,
+    });
+    const answers = await seedCompleteSubmissionAnswers({
+      ...fixture,
+      submissionId,
+      correctionStatus: GradeAnswerCorrectionStatus.CORRECTED,
+      awardedPointsByQuestionId: {
+        [fixture.mcqQuestionId]: 4,
+        [fixture.shortQuestionId]: 5,
+      },
+    });
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${answers.mcqAnswerId}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ awardedPoints: 4 })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.review.already_finalized');
+      });
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/review/finalize`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.review.already_finalized');
+      });
+  });
+
+  it('bulk review does not partially write when one answer is cross-school', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'review-bulk-cross-school-rollback',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.SUBMITTED,
+    });
+    const answers = await seedCompleteSubmissionAnswers({
+      ...fixture,
+      submissionId,
+    });
+    const tenantBFixture = await createTenantBQuestionSubmissionFixture();
+
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/review`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        reviews: [
+          { answerId: answers.mcqAnswerId, awardedPoints: 4 },
+          { answerId: tenantBFixture.answerId, awardedPoints: 5 },
+        ],
+      })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('not_found');
+      });
+
+    const unchangedAnswer = await prisma.gradeSubmissionAnswer.findUnique({
+      where: { id: answers.mcqAnswerId },
+      select: { awardedPoints: true, correctionStatus: true },
+    });
+    expect(unchangedAnswer).toMatchObject({
+      awardedPoints: null,
+      correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+    });
   });
 
   it('school A gradebook does not include school B students, assessments, or items', async () => {

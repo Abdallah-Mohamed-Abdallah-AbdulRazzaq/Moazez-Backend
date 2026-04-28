@@ -138,6 +138,8 @@ export class GradeSubmissionAnswerResponseDto {
   correctionStatus!: string;
   awardedPoints!: number | null;
   maxPoints!: number | null;
+  reviewerComment!: string | null;
+  reviewerCommentAr!: string | null;
   selectedOptions!: GradeSubmissionSelectedOptionResponseDto[];
   reviewedAt!: string | null;
   reviewedById!: string | null;
@@ -166,6 +168,7 @@ export class GradeSubmissionResponseDto {
   startedAt!: string;
   submittedAt!: string | null;
   correctedAt!: string | null;
+  reviewedById!: string | null;
   totalScore!: number | null;
   maxScore!: number | null;
   student!: GradeSubmissionStudentSummaryResponseDto | null;

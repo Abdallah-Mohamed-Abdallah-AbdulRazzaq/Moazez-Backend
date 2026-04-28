@@ -114,13 +114,13 @@ describe('grade submission presenter', () => {
       studentId: 'student-1',
       answerText: null,
       answerJson: null,
-      correctionStatus: GradeAnswerCorrectionStatus.PENDING,
-      awardedPoints: null,
+      correctionStatus: GradeAnswerCorrectionStatus.CORRECTED,
+      awardedPoints: new Prisma.Decimal(4),
       maxPoints: new Prisma.Decimal(5),
-      reviewerComment: null,
-      reviewerCommentAr: null,
-      reviewedById: null,
-      reviewedAt: null,
+      reviewerComment: 'Good work',
+      reviewerCommentAr: 'Good work AR',
+      reviewedById: 'reviewer-1',
+      reviewedAt: now,
       createdAt: now,
       updatedAt: now,
       question: {
@@ -155,12 +155,12 @@ describe('grade submission presenter', () => {
       termId: 'term-1',
       studentId: 'student-1',
       enrollmentId: 'enrollment-1',
-      status: GradeSubmissionStatus.IN_PROGRESS,
+      status: GradeSubmissionStatus.CORRECTED,
       startedAt: now,
       submittedAt: null,
-      correctedAt: null,
-      reviewedById: null,
-      totalScore: null,
+      correctedAt: now,
+      reviewedById: 'reviewer-1',
+      totalScore: new Prisma.Decimal(4),
       maxScore: new Prisma.Decimal(10),
       metadata: null,
       createdAt: now,
@@ -184,7 +184,13 @@ describe('grade submission presenter', () => {
       id: 'answer-1',
       questionId: 'question-1',
       type: 'mcq_single',
-      correctionStatus: 'pending',
+      correctionStatus: 'corrected',
+      awardedPoints: 4,
+      maxPoints: 5,
+      reviewerComment: 'Good work',
+      reviewerCommentAr: 'Good work AR',
+      reviewedAt: now.toISOString(),
+      reviewedById: 'reviewer-1',
       selectedOptions: [
         {
           optionId: 'option-1',
@@ -206,7 +212,10 @@ describe('grade submission presenter', () => {
 
     expect(result).toMatchObject({
       id: 'submission-1',
-      status: 'in_progress',
+      status: 'corrected',
+      correctedAt: now.toISOString(),
+      reviewedById: 'reviewer-1',
+      totalScore: 4,
       assessment: {
         deliveryMode: 'question_based',
         approvalStatus: 'published',
@@ -218,7 +227,7 @@ describe('grade submission presenter', () => {
       progress: {
         totalQuestions: 2,
         answeredCount: 1,
-        pendingCorrectionCount: 1,
+        pendingCorrectionCount: 0,
       },
     });
     expect(result.questions[1].answer).toBeNull();
@@ -232,7 +241,7 @@ describe('grade submission presenter', () => {
 
     expect(result.items[0]).toMatchObject({
       id: 'submission-1',
-      status: 'in_progress',
+      status: 'corrected',
       progress: {
         totalQuestions: 1,
         answeredCount: 1,

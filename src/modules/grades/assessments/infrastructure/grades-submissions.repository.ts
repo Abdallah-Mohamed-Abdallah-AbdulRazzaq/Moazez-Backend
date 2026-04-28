@@ -162,8 +162,10 @@ const ANSWER_WITH_OPTIONS_ARGS =
       question: {
         select: {
           id: true,
+          assessmentId: true,
           type: true,
           points: true,
+          deletedAt: true,
         },
       },
       selectedOptions: {
@@ -310,6 +312,26 @@ export interface AnswerSaveInput {
   payload: NormalizedAnswerPayload;
 }
 
+export interface AnswerReviewUpdateInput {
+  answerId: string;
+  submissionId: string;
+  awardedPoints: Prisma.Decimal;
+  correctionStatus: GradeAnswerCorrectionStatus;
+  reviewerComment: string | null;
+  reviewerCommentAr: string | null;
+  reviewedById: string | null;
+  reviewedAt: Date;
+}
+
+export interface FinalizeSubmissionInput {
+  submissionId: string;
+  status: GradeSubmissionStatus;
+  correctedAt: Date;
+  reviewedById: string | null;
+  totalScore: Prisma.Decimal;
+  maxScore: Prisma.Decimal;
+}
+
 @Injectable()
 export class GradesSubmissionsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -408,12 +430,39 @@ export class GradesSubmissionsRepository {
     });
   }
 
+  findSubmissionForReview(
+    submissionId: string,
+  ): Promise<GradeSubmissionDetailRecord | null> {
+    return this.findSubmissionDetail(submissionId);
+  }
+
   findQuestionForAnswer(
     questionId: string,
   ): Promise<GradeSubmissionQuestionRecord | null> {
     return this.scopedPrisma.gradeAssessmentQuestion.findFirst({
       where: { id: questionId },
       ...QUESTION_FOR_SUBMISSION_ARGS,
+    });
+  }
+
+  findAnswerForReview(
+    answerId: string,
+  ): Promise<GradeSubmissionAnswerRecord | null> {
+    return this.scopedPrisma.gradeSubmissionAnswer.findFirst({
+      where: { id: answerId },
+      ...ANSWER_WITH_OPTIONS_ARGS,
+    });
+  }
+
+  findAnswersForBulkReview(
+    answerIds: string[],
+  ): Promise<GradeSubmissionAnswerRecord[]> {
+    if (answerIds.length === 0) return Promise.resolve([]);
+
+    return this.scopedPrisma.gradeSubmissionAnswer.findMany({
+      where: { id: { in: answerIds } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      ...ANSWER_WITH_OPTIONS_ARGS,
     });
   }
 
@@ -424,6 +473,22 @@ export class GradesSubmissionsRepository {
       where: { assessmentId },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       ...QUESTION_FOR_SUBMISSION_ARGS,
+    });
+  }
+
+  listActiveQuestionsForSubmission(
+    assessmentId: string,
+  ): Promise<GradeSubmissionQuestionRecord[]> {
+    return this.findQuestionsForSubmission(assessmentId);
+  }
+
+  listAnswersForSubmission(
+    submissionId: string,
+  ): Promise<GradeSubmissionAnswerRecord[]> {
+    return this.scopedPrisma.gradeSubmissionAnswer.findMany({
+      where: { submissionId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      ...ANSWER_WITH_OPTIONS_ARGS,
     });
   }
 
@@ -528,6 +593,63 @@ export class GradesSubmissionsRepository {
     });
   }
 
+  async updateAnswerReview(
+    input: AnswerReviewUpdateInput,
+  ): Promise<GradeSubmissionAnswerRecord> {
+    await this.scopedPrisma.gradeSubmissionAnswer.updateMany({
+      where: {
+        id: input.answerId,
+        submissionId: input.submissionId,
+      },
+      data: {
+        awardedPoints: input.awardedPoints,
+        correctionStatus: input.correctionStatus,
+        reviewerComment: input.reviewerComment,
+        reviewerCommentAr: input.reviewerCommentAr,
+        reviewedById: input.reviewedById,
+        reviewedAt: input.reviewedAt,
+      },
+    });
+
+    return this.findAnswerResult(input.answerId);
+  }
+
+  async bulkUpdateAnswerReviews(
+    inputs: AnswerReviewUpdateInput[],
+  ): Promise<GradeSubmissionAnswerRecord[]> {
+    if (inputs.length === 0) return [];
+
+    const answerIds = await this.scopedPrisma.$transaction(async (tx) => {
+      const updatedAnswerIds: string[] = [];
+
+      for (const input of inputs) {
+        await tx.gradeSubmissionAnswer.updateMany({
+          where: {
+            id: input.answerId,
+            submissionId: input.submissionId,
+          },
+          data: {
+            awardedPoints: input.awardedPoints,
+            correctionStatus: input.correctionStatus,
+            reviewerComment: input.reviewerComment,
+            reviewerCommentAr: input.reviewerCommentAr,
+            reviewedById: input.reviewedById,
+            reviewedAt: input.reviewedAt,
+          },
+        });
+        updatedAnswerIds.push(input.answerId);
+      }
+
+      return updatedAnswerIds;
+    });
+
+    return this.scopedPrisma.gradeSubmissionAnswer.findMany({
+      where: { id: { in: answerIds } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      ...ANSWER_WITH_OPTIONS_ARGS,
+    });
+  }
+
   async submitSubmission(
     submissionId: string,
   ): Promise<GradeSubmissionDetailRecord> {
@@ -540,6 +662,26 @@ export class GradesSubmissionsRepository {
     });
 
     return this.findSubmissionDetailResult(submissionId);
+  }
+
+  async finalizeSubmission(
+    input: FinalizeSubmissionInput,
+  ): Promise<GradeSubmissionDetailRecord> {
+    await this.scopedPrisma.gradeSubmission.updateMany({
+      where: {
+        id: input.submissionId,
+        status: GradeSubmissionStatus.SUBMITTED,
+      },
+      data: {
+        status: input.status,
+        correctedAt: input.correctedAt,
+        reviewedById: input.reviewedById,
+        totalScore: input.totalScore,
+        maxScore: input.maxScore,
+      },
+    });
+
+    return this.findSubmissionDetailResult(input.submissionId);
   }
 
   countGradeItemsForAssessment(assessmentId: string): Promise<number> {

@@ -13,6 +13,9 @@ import {
   SubmissionAnswerProgress,
 } from '../domain/grade-submission-domain';
 import {
+  BulkReviewGradeSubmissionAnswersResponseDto,
+} from '../dto/grade-submission-review.dto';
+import {
   BulkSaveGradeSubmissionAnswersResponseDto,
   GradeSubmissionAnswerResponseDto,
   GradeSubmissionAssessmentSummaryResponseDto,
@@ -66,6 +69,7 @@ export function presentGradeSubmissionDetail(params: {
     startedAt: params.submission.startedAt.toISOString(),
     submittedAt: presentNullableDate(params.submission.submittedAt),
     correctedAt: presentNullableDate(params.submission.correctedAt),
+    reviewedById: params.submission.reviewedById,
     totalScore: presentDecimal(params.submission.totalScore),
     maxScore: presentDecimal(params.submission.maxScore),
     student: presentStudentSummary(params.submission.student),
@@ -97,6 +101,8 @@ export function presentGradeSubmissionAnswer(
     correctionStatus: presentAnswerCorrectionStatus(answer.correctionStatus),
     awardedPoints: presentDecimal(answer.awardedPoints),
     maxPoints: presentDecimal(answer.maxPoints),
+    reviewerComment: answer.reviewerComment,
+    reviewerCommentAr: answer.reviewerCommentAr,
     selectedOptions: answer.selectedOptions.map((selected) =>
       presentSelectedOption(selected),
     ),
@@ -114,6 +120,19 @@ export function presentBulkSaveGradeSubmissionAnswers(params: {
   return {
     submissionId: params.submissionId,
     savedCount: params.answers.length,
+    answers: params.answers.map((answer) =>
+      presentGradeSubmissionAnswer(answer),
+    ),
+  };
+}
+
+export function presentBulkReviewGradeSubmissionAnswers(params: {
+  submissionId: string;
+  answers: GradeSubmissionAnswerRecord[];
+}): BulkReviewGradeSubmissionAnswersResponseDto {
+  return {
+    submissionId: params.submissionId,
+    reviewedCount: params.answers.length,
     answers: params.answers.map((answer) =>
       presentGradeSubmissionAnswer(answer),
     ),
