@@ -144,6 +144,13 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 
 | Code                                 | HTTP | Message                                    |
 | ------------------------------------ | ---- | ------------------------------------------ |
+| `reinforcement.task.invalid_scope`   | 422  | Reinforcement task target scope is invalid |
+| `reinforcement.task.duplicate_target`| 409  | Reinforcement task target is duplicated    |
+| `reinforcement.task.cancelled`       | 409  | Reinforcement task is cancelled            |
+| `reinforcement.submission.already_submitted` | 409 | Submission is already submitted       |
+| `reinforcement.review.not_submitted` | 409  | Submission must be submitted before review |
+| `reinforcement.policy.conflict`      | 409  | An active XP policy already exists for this scope |
+| `reinforcement.xp.duplicate_source`  | 409  | XP has already been granted for this source |
 | `reinforcement.xp.daily_cap_reached` | 429  | Daily XP cap reached for this teacher      |
 | `reinforcement.xp.cooldown`          | 429  | XP cooldown in effect for this student     |
 | `reinforcement.review.already_reviewed` | 409 | Submission is already reviewed           |

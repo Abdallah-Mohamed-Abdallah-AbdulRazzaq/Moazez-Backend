@@ -64,6 +64,16 @@ const SCHOOL_SCOPED_MODELS = new Set<string>([
   'GradeSubmissionAnswerOption',
   'GradeItem',
   'GradeRule',
+  'ReinforcementTask',
+  'ReinforcementTaskTarget',
+  'ReinforcementAssignment',
+  'ReinforcementTaskStage',
+  'ReinforcementSubmission',
+  'ReinforcementReview',
+  'ReinforcementTaskTemplate',
+  'ReinforcementTaskTemplateStage',
+  'XpPolicy',
+  'XpLedger',
 ]);
 
 // Models that use soft delete (have a deletedAt column). Read operations
@@ -95,6 +105,11 @@ const SOFT_DELETE_MODELS = new Set<string>([
   'GradeAssessment',
   'GradeAssessmentQuestion',
   'GradeAssessmentQuestionOption',
+  'ReinforcementTask',
+  'ReinforcementTaskStage',
+  'ReinforcementTaskTemplate',
+  'ReinforcementTaskTemplateStage',
+  'XpPolicy',
 ]);
 
 const READ_OPERATIONS = new Set<string>([

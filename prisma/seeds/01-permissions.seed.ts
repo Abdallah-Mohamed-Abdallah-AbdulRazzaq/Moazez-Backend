@@ -73,9 +73,15 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'grades.snapshots.view', module: 'grades', resource: 'snapshots', action: 'view', description: 'View student grade snapshots' },
 
   // reinforcement
+  { code: 'reinforcement.overview.view', module: 'reinforcement', resource: 'overview', action: 'view', description: 'View reinforcement overview metrics' },
   { code: 'reinforcement.tasks.view', module: 'reinforcement', resource: 'tasks', action: 'view', description: 'View reinforcement tasks' },
   { code: 'reinforcement.tasks.manage', module: 'reinforcement', resource: 'tasks', action: 'manage', description: 'Create and update reinforcement tasks' },
+  { code: 'reinforcement.templates.view', module: 'reinforcement', resource: 'templates', action: 'view', description: 'View reinforcement task templates' },
+  { code: 'reinforcement.templates.manage', module: 'reinforcement', resource: 'templates', action: 'manage', description: 'Create and update reinforcement task templates' },
+  { code: 'reinforcement.reviews.view', module: 'reinforcement', resource: 'reviews', action: 'view', description: 'View reinforcement review queue and history' },
   { code: 'reinforcement.reviews.manage', module: 'reinforcement', resource: 'reviews', action: 'manage', description: 'Approve or reject reinforcement submissions' },
+  { code: 'reinforcement.xp.view', module: 'reinforcement', resource: 'xp', action: 'view', description: 'View reinforcement XP policy and ledger data' },
+  { code: 'reinforcement.xp.manage', module: 'reinforcement', resource: 'xp', action: 'manage', description: 'Manage reinforcement XP policies and grants' },
 
   // communication
   { code: 'communication.messages.view', module: 'communication', resource: 'messages', action: 'view', description: 'View chat messages' },
