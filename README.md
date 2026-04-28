@@ -442,6 +442,87 @@ Deferred beyond Sprint 4A:
 
 No `demo:sprint4a` script is added for this closeout. The focused E2E flow is the verification artifact.
 
+## Sprint 4B Question-Based Grades Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Ensure SEED_DEMO_DATA=true
+
+npm run infra:up
+npm run verify:sprint4b
+```
+
+Prerequisites:
+
+- `.env` is ready with valid local secrets.
+- PostgreSQL, Redis, and MinIO are reachable.
+- `npm run infra:up` can start local services, and `npm run verify:sprint2b:preflight` is the fail-fast readiness check used by the verifier chain.
+
+`npm run verify:sprint4b` runs the Sprint 2B preflight check, migrations, seed, build, unit tests, security tests, Sprint 2B/3A/3B/4A E2E flows, and the Sprint 4B Question-Based Grades closeout E2E.
+
+Sprint 4B question-based grades verification covers:
+
+- question-based assessment creation
+- question CRUD
+- question points and reorder operations
+- publish validation
+- submission resolve
+- answer save
+- submission submit
+- answer review
+- finalize review
+- GradeItem sync
+- gradebook, analytics, and snapshot projection through GradeItem
+- security and tenancy regression
+
+Local verification commands:
+
+```bash
+npm run build
+npm run test -- --runInBand
+npm run test:security -- --runInBand
+npm run test:e2e:sprint4b
+npm run verify:sprint4b
+```
+
+Sprint 4B Grades endpoints:
+
+- `POST /api/v1/grades/assessments/question-based`
+- `GET /api/v1/grades/assessments/:assessmentId/questions`
+- `POST /api/v1/grades/assessments/:assessmentId/questions`
+- `PATCH /api/v1/grades/questions/:questionId`
+- `DELETE /api/v1/grades/questions/:questionId`
+- `POST /api/v1/grades/assessments/:assessmentId/questions/reorder`
+- `POST /api/v1/grades/assessments/:assessmentId/questions/points/bulk`
+- `GET /api/v1/grades/assessments/:assessmentId/submissions`
+- `POST /api/v1/grades/assessments/:assessmentId/submissions/resolve`
+- `GET /api/v1/grades/submissions/:submissionId`
+- `PUT /api/v1/grades/submissions/:submissionId/answers/:questionId`
+- `PUT /api/v1/grades/submissions/:submissionId/answers`
+- `POST /api/v1/grades/submissions/:submissionId/submit`
+- `PATCH /api/v1/grades/submissions/:submissionId/answers/:answerId/review`
+- `PUT /api/v1/grades/submissions/:submissionId/answers/review`
+- `POST /api/v1/grades/submissions/:submissionId/review/finalize`
+- `POST /api/v1/grades/submissions/:submissionId/sync-grade-item`
+- `GET /api/v1/grades/gradebook`
+- `GET /api/v1/grades/analytics/summary`
+- `GET /api/v1/grades/analytics/distribution`
+- `GET /api/v1/grades/students/:studentId/snapshot`
+
+Deferred beyond Sprint 4B:
+
+- true student-app submission endpoints until `Student.userId` and student identity ownership are resolved
+- parent/student app-facing composition endpoints
+- bulk GradeItem sync
+- re-review/reopen workflow
+- advanced analytics
+- media/file attachment integration for question answers
+
+No `demo:sprint4b` script is added for this closeout. The focused E2E flow is the verification artifact.
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -465,6 +546,7 @@ No `demo:sprint4a` script is added for this closeout. The focused E2E flow is th
 | `npm run test:e2e:sprint3a`         | Run the Sprint 3A Attendance closeout e2e flow                                                      |
 | `npm run test:e2e:sprint3b`         | Run the Sprint 3B Attendance Excuses & Corrections closeout e2e flow                                |
 | `npm run test:e2e:sprint4a`         | Run the Sprint 4A Grades Foundation closeout e2e flow                                               |
+| `npm run test:e2e:sprint4b`         | Run the Sprint 4B Question-Based Grades closeout e2e flow                                           |
 | `npm run test:security`             | Tenancy isolation tests                                                                             |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                        |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                              |
@@ -477,6 +559,7 @@ No `demo:sprint4a` script is added for this closeout. The focused E2E flow is th
 | `npm run verify:sprint3a`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B e2e, and Sprint 3A e2e       |
 | `npm run verify:sprint3b`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A e2e, and Sprint 3B e2e    |
 | `npm run verify:sprint4a`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B e2e, and Sprint 4A e2e |
+| `npm run verify:sprint4b`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B/4A e2e, and Sprint 4B e2e |
 | `npm run seed`                      | Re-run idempotent seeds                                                                             |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                               |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                          |

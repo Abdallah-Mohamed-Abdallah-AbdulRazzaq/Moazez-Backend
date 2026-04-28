@@ -248,7 +248,6 @@ export function assertPublishableAssessment(
 export function assertApprovableAssessment(
   assessment: AssessmentCrudLike,
 ): void {
-  assertScoreOnlyAssessment(assessment);
   validateWorkflowMaxScore(assessment);
 
   if (isAssessmentLocked(assessment)) {
@@ -294,9 +293,7 @@ export function assertTermWritableForAssessment(
   assertTermWritable(term);
 }
 
-export function assertWorkflowTermWritable(
-  term: AssessmentCrudTermLike,
-): void {
+export function assertWorkflowTermWritable(term: AssessmentCrudTermLike): void {
   assertTermWritableForAssessment(term);
 }
 
@@ -384,10 +381,7 @@ export function formatDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-export function hasOwn<T extends object>(
-  object: T,
-  key: keyof T,
-): boolean {
+export function hasOwn<T extends object>(object: T, key: keyof T): boolean {
   return (
     Object.prototype.hasOwnProperty.call(object, key) &&
     object[key] !== undefined
@@ -401,20 +395,28 @@ export function normalizeNullableText(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-export function normalizeOptionalTextForPatch(
-  value: unknown,
-): string | null {
+export function normalizeOptionalTextForPatch(value: unknown): string | null {
   return normalizeNullableText(value);
 }
 
 export function areScopesEqual(
   first: Pick<
     NormalizedGradeScope,
-    'scopeType' | 'scopeKey' | 'stageId' | 'gradeId' | 'sectionId' | 'classroomId'
+    | 'scopeType'
+    | 'scopeKey'
+    | 'stageId'
+    | 'gradeId'
+    | 'sectionId'
+    | 'classroomId'
   >,
   second: Pick<
     NormalizedGradeScope,
-    'scopeType' | 'scopeKey' | 'stageId' | 'gradeId' | 'sectionId' | 'classroomId'
+    | 'scopeType'
+    | 'scopeKey'
+    | 'stageId'
+    | 'gradeId'
+    | 'sectionId'
+    | 'classroomId'
   >,
 ): boolean {
   return (

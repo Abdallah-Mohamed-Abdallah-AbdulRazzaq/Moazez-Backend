@@ -985,6 +985,49 @@ describe('Grade assessment use cases', () => {
     );
   });
 
+  it('approves a PUBLISHED question-based assessment', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+          publishedAt: new Date('2026-09-16T08:00:00.000Z'),
+          publishedById: 'user-1',
+        }),
+      ),
+      approveAssessment: jest.fn().mockImplementation((_id, data) =>
+        Promise.resolve(
+          assessmentRecord({
+            deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+            approvalStatus: data.approvalStatus,
+            publishedAt: new Date('2026-09-16T08:00:00.000Z'),
+            publishedById: 'user-1',
+            approvedAt: data.approvedAt,
+            approvedById: data.approvedById,
+          }),
+        ),
+      ),
+    });
+    const useCase = new ApproveGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    const result = await withGradesScope(() => useCase.execute('assessment-1'));
+
+    expect(repository.approveAssessment).toHaveBeenCalledWith(
+      'assessment-1',
+      expect.objectContaining({
+        approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      }),
+    );
+    expect(result).toMatchObject({
+      id: 'assessment-1',
+      deliveryMode: 'question_based',
+      approvalStatus: 'approved',
+    });
+  });
+
   it('rejects approving a DRAFT assessment', async () => {
     const repository = baseRepository({
       approveAssessment: jest.fn(),
