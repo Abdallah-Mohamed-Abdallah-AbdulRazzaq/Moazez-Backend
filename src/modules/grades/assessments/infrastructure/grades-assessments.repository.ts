@@ -57,6 +57,29 @@ const GRADE_ASSESSMENT_ARGS =
     },
   });
 
+const QUESTION_OPTION_FOR_PUBLISH_SELECT = {
+  id: true,
+  isCorrect: true,
+  deletedAt: true,
+} satisfies Prisma.GradeAssessmentQuestionOptionSelect;
+
+const QUESTION_FOR_PUBLISH_ARGS =
+  Prisma.validator<Prisma.GradeAssessmentQuestionDefaultArgs>()({
+    select: {
+      id: true,
+      type: true,
+      points: true,
+      answerKey: true,
+      metadata: true,
+      deletedAt: true,
+      options: {
+        where: { deletedAt: null },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+        select: QUESTION_OPTION_FOR_PUBLISH_SELECT,
+      },
+    },
+  });
+
 const ACADEMIC_YEAR_REFERENCE_ARGS =
   Prisma.validator<Prisma.AcademicYearDefaultArgs>()({
     select: {
@@ -123,6 +146,8 @@ const CLASSROOM_REFERENCE_ARGS =
 export type GradeAssessmentRecord = Prisma.GradeAssessmentGetPayload<
   typeof GRADE_ASSESSMENT_ARGS
 >;
+export type GradeAssessmentQuestionPublishRecord =
+  Prisma.GradeAssessmentQuestionGetPayload<typeof QUESTION_FOR_PUBLISH_ARGS>;
 export type AcademicYearReferenceRecord = Prisma.AcademicYearGetPayload<
   typeof ACADEMIC_YEAR_REFERENCE_ARGS
 >;
@@ -286,6 +311,16 @@ export class GradesAssessmentsRepository {
   countGradeItemsForAssessment(assessmentId: string): Promise<number> {
     return this.scopedPrisma.gradeItem.count({
       where: { assessmentId },
+    });
+  }
+
+  listActiveQuestionsForPublish(
+    assessmentId: string,
+  ): Promise<GradeAssessmentQuestionPublishRecord[]> {
+    return this.scopedPrisma.gradeAssessmentQuestion.findMany({
+      where: { assessmentId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      ...QUESTION_FOR_PUBLISH_ARGS,
     });
   }
 

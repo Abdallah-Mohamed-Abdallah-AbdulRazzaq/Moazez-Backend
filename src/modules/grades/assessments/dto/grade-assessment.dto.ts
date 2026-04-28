@@ -172,6 +172,85 @@ export class CreateGradeAssessmentDto {
   expectedTimeMinutes?: number | null;
 }
 
+export class CreateQuestionBasedGradeAssessmentDto {
+  @IsOptional()
+  @IsUUID()
+  academicYearId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  yearId?: string;
+
+  @IsUUID()
+  termId!: string;
+
+  @IsUUID()
+  subjectId!: string;
+
+  @IsString()
+  @MaxLength(32)
+  scopeType!: string;
+
+  @IsOptional()
+  @IsUUID()
+  scopeId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  stageId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  gradeId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  sectionId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  classroomId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  title?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  titleEn?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  titleAr?: string | null;
+
+  @Transform(({ value }) => toUpperEnumValue(value))
+  @IsEnum(GradeAssessmentType)
+  type!: GradeAssessmentType;
+
+  @IsDateString()
+  date!: string;
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(100)
+  weight!: number;
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  maxScore!: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  expectedTimeMinutes?: number | null;
+}
+
 export class UpdateGradeAssessmentDto {
   @IsOptional()
   @IsUUID()

@@ -15,6 +15,7 @@ import { RequiredPermissions } from '../../../../common/decorators/required-perm
 import { ApproveGradeAssessmentUseCase } from '../application/approve-grade-assessment.use-case';
 import { BulkUpsertGradeAssessmentItemsUseCase } from '../application/bulk-upsert-grade-assessment-items.use-case';
 import { CreateGradeAssessmentUseCase } from '../application/create-grade-assessment.use-case';
+import { CreateQuestionBasedGradeAssessmentUseCase } from '../application/create-question-based-grade-assessment.use-case';
 import { DeleteGradeAssessmentUseCase } from '../application/delete-grade-assessment.use-case';
 import { GetGradeAssessmentUseCase } from '../application/get-grade-assessment.use-case';
 import { ListGradeAssessmentItemsUseCase } from '../application/list-grade-assessment-items.use-case';
@@ -33,6 +34,7 @@ import {
 } from '../dto/grade-assessment-items.dto';
 import {
   CreateGradeAssessmentDto,
+  CreateQuestionBasedGradeAssessmentDto,
   DeleteGradeAssessmentResponseDto,
   GradeAssessmentResponseDto,
   GradeAssessmentsListResponseDto,
@@ -48,6 +50,7 @@ export class GradesAssessmentsController {
     private readonly listGradeAssessmentsUseCase: ListGradeAssessmentsUseCase,
     private readonly getGradeAssessmentUseCase: GetGradeAssessmentUseCase,
     private readonly createGradeAssessmentUseCase: CreateGradeAssessmentUseCase,
+    private readonly createQuestionBasedGradeAssessmentUseCase: CreateQuestionBasedGradeAssessmentUseCase,
     private readonly updateGradeAssessmentUseCase: UpdateGradeAssessmentUseCase,
     private readonly deleteGradeAssessmentUseCase: DeleteGradeAssessmentUseCase,
     private readonly publishGradeAssessmentUseCase: PublishGradeAssessmentUseCase,
@@ -89,6 +92,14 @@ export class GradesAssessmentsController {
     @Body() dto: CreateGradeAssessmentDto,
   ): Promise<GradeAssessmentResponseDto> {
     return this.createGradeAssessmentUseCase.execute(dto);
+  }
+
+  @Post('question-based')
+  @RequiredPermissions('grades.assessments.manage')
+  createQuestionBasedAssessment(
+    @Body() dto: CreateQuestionBasedGradeAssessmentDto,
+  ): Promise<GradeAssessmentResponseDto> {
+    return this.createQuestionBasedGradeAssessmentUseCase.execute(dto);
   }
 
   @Post(':assessmentId/publish')

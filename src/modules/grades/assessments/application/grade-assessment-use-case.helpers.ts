@@ -1,6 +1,7 @@
 import {
   AuditOutcome,
   GradeAssessmentApprovalStatus,
+  GradeAssessmentDeliveryMode,
   GradeScopeType,
   Prisma,
 } from '@prisma/client';
@@ -15,6 +16,7 @@ import {
 } from '../../shared/domain/grade-scope';
 import {
   CreateGradeAssessmentDto,
+  CreateQuestionBasedGradeAssessmentDto,
   ListGradeAssessmentsQueryDto,
   UpdateGradeAssessmentDto,
 } from '../dto/grade-assessment.dto';
@@ -176,8 +178,7 @@ export async function resolveAssessmentScopeForWrite(
 
     case GradeScopeType.CLASSROOM: {
       const classroomId = requireMatchingScopeId('classroomId', input);
-      const classroom =
-        await repository.findClassroomWithGrade(classroomId);
+      const classroom = await repository.findClassroomWithGrade(classroomId);
       if (!classroom) {
         throw new NotFoundDomainException('Classroom not found', {
           classroomId,
@@ -214,7 +215,7 @@ export function normalizeAssessmentListFilters(
     : undefined;
 
   return {
-    ...(query.academicYearId ?? query.yearId
+    ...((query.academicYearId ?? query.yearId)
       ? { academicYearId: query.academicYearId ?? query.yearId }
       : {}),
     ...(query.termId ? { termId: query.termId } : {}),
@@ -272,6 +273,54 @@ export function buildCreateAssessmentData(params: {
       titleAr,
       type: normalizeAssessmentType(params.command.type),
       deliveryMode: normalizeScoreOnlyDeliveryMode(params.command.deliveryMode),
+      date,
+      weight: new Prisma.Decimal(weight),
+      maxScore: new Prisma.Decimal(maxScore),
+      expectedTimeMinutes: params.command.expectedTimeMinutes ?? null,
+      approvalStatus: GradeAssessmentApprovalStatus.DRAFT,
+      createdById: params.scope.actorId,
+    },
+  };
+}
+
+export function buildCreateQuestionBasedAssessmentData(params: {
+  scope: GradesScope;
+  academicYearId: string;
+  command: CreateQuestionBasedGradeAssessmentDto;
+  assessmentScope: AssessmentScopePayload;
+}): {
+  data: CreateGradeAssessmentData;
+  normalized: {
+    date: Date;
+    weight: number;
+    maxScore: number;
+  };
+} {
+  const weight = validateAssessmentWeight(params.command.weight);
+  const maxScore = validateAssessmentMaxScore(params.command.maxScore);
+  const date = parseAssessmentDate(params.command.date, 'date');
+  const titleEn = normalizeNullableText(
+    params.command.titleEn ?? params.command.title,
+  );
+  const titleAr = normalizeNullableText(params.command.titleAr);
+
+  return {
+    normalized: { date, weight, maxScore },
+    data: {
+      schoolId: params.scope.schoolId,
+      academicYearId: params.academicYearId,
+      termId: params.command.termId,
+      subjectId: params.command.subjectId,
+      scopeType: params.assessmentScope.scopeType,
+      scopeKey: params.assessmentScope.scopeKey,
+      stageId: params.assessmentScope.stageId,
+      gradeId: params.assessmentScope.gradeId,
+      sectionId: params.assessmentScope.sectionId,
+      classroomId: params.assessmentScope.classroomId,
+      titleEn,
+      titleAr,
+      type: normalizeAssessmentType(params.command.type),
+      deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
       date,
       weight: new Prisma.Decimal(weight),
       maxScore: new Prisma.Decimal(maxScore),
@@ -466,7 +515,10 @@ export function shouldValidateWeightBudget(params: {
 
   return (
     params.existing.subjectId !== params.nextSubjectId ||
-    !areScopesEqual(existingAssessmentScope(params.existing), params.nextScope) ||
+    !areScopesEqual(
+      existingAssessmentScope(params.existing),
+      params.nextScope,
+    ) ||
     decimalToNumber(params.existing.weight) !== params.nextWeight
   );
 }
@@ -493,9 +545,7 @@ export function decimalToNumber(value: unknown): number {
   return Number.isFinite(numberValue) ? numberValue : 0;
 }
 
-export function summarizeAssessmentForAudit(
-  assessment: GradeAssessmentRecord,
-) {
+export function summarizeAssessmentForAudit(assessment: GradeAssessmentRecord) {
   return {
     academicYearId: assessment.academicYearId,
     termId: assessment.termId,
@@ -531,6 +581,7 @@ export function buildAssessmentAuditEntry(params: {
   action: string;
   assessment: GradeAssessmentRecord;
   before?: GradeAssessmentRecord | null;
+  afterMetadata?: Record<string, unknown>;
 }) {
   const entry = {
     actorId: params.scope.actorId,
@@ -542,7 +593,10 @@ export function buildAssessmentAuditEntry(params: {
     resourceType: 'grade_assessment',
     resourceId: params.assessment.id,
     outcome: AuditOutcome.SUCCESS,
-    after: summarizeAssessmentForAudit(params.assessment),
+    after: {
+      ...summarizeAssessmentForAudit(params.assessment),
+      ...(params.afterMetadata ?? {}),
+    },
   };
 
   return params.before

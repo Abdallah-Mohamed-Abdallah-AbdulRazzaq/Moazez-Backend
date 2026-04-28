@@ -5,6 +5,7 @@ import { BulkUpdateGradeAssessmentQuestionPointsUseCase } from './application/bu
 import { BulkUpsertGradeAssessmentItemsUseCase } from './application/bulk-upsert-grade-assessment-items.use-case';
 import { CreateGradeAssessmentQuestionUseCase } from './application/create-grade-assessment-question.use-case';
 import { CreateGradeAssessmentUseCase } from './application/create-grade-assessment.use-case';
+import { CreateQuestionBasedGradeAssessmentUseCase } from './application/create-question-based-grade-assessment.use-case';
 import { DeleteGradeAssessmentQuestionUseCase } from './application/delete-grade-assessment-question.use-case';
 import { DeleteGradeAssessmentUseCase } from './application/delete-grade-assessment.use-case';
 import { GetGradeAssessmentUseCase } from './application/get-grade-assessment.use-case';
@@ -36,6 +37,7 @@ import { GradesAssessmentsRepository } from './infrastructure/grades-assessments
     ListGradeAssessmentsUseCase,
     GetGradeAssessmentUseCase,
     CreateGradeAssessmentUseCase,
+    CreateQuestionBasedGradeAssessmentUseCase,
     UpdateGradeAssessmentUseCase,
     DeleteGradeAssessmentUseCase,
     PublishGradeAssessmentUseCase,

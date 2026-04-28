@@ -21,6 +21,9 @@ describe('grades presenter helpers', () => {
     expect(presentDeliveryMode(GradeAssessmentDeliveryMode.SCORE_ONLY)).toBe(
       'SCORE_ONLY',
     );
+    expect(
+      presentDeliveryMode(GradeAssessmentDeliveryMode.QUESTION_BASED),
+    ).toBe('question_based');
     expect(presentGradeItemStatus(GradeItemStatus.ENTERED)).toBe('entered');
   });
 

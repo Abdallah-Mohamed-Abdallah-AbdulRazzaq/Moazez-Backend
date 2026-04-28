@@ -1137,6 +1137,24 @@ describe('Grades tenancy isolation (security)', () => {
     };
   }
 
+  function questionBasedAssessmentPayload(overrides?: Record<string, unknown>) {
+    return {
+      yearId: demoYearId,
+      termId: demoTermId,
+      subjectId: demoSubjectId,
+      scopeType: 'grade',
+      gradeId: demoGradeId,
+      titleEn: `${testSuffix}-created-question-based-assessment`,
+      titleAr: `${testSuffix}-created-question-based-assessment-ar`,
+      type: 'QUIZ',
+      date: '2026-09-21',
+      weight: 0.01,
+      maxScore: 10,
+      expectedTimeMinutes: 30,
+      ...overrides,
+    };
+  }
+
   async function createDemoWorkflowAssessment(overrides?: {
     approvalStatus?: GradeAssessmentApprovalStatus;
     termId?: string;
@@ -1731,6 +1749,107 @@ describe('Grades tenancy isolation (security)', () => {
     },
   );
 
+  it('school A can create a question-based assessment shell in its own scope', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/assessments/question-based`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        questionBasedAssessmentPayload({
+          titleEn: `${testSuffix}-question-based-create-own`,
+        }),
+      )
+      .expect(201);
+
+    expect(response.body).toMatchObject({
+      subjectId: demoSubjectId,
+      scopeType: 'grade',
+      scopeKey: demoGradeId,
+      deliveryMode: 'question_based',
+      approvalStatus: 'draft',
+      isLocked: false,
+    });
+
+    const [questionsCount, gradeItemsCount] = await Promise.all([
+      prisma.gradeAssessmentQuestion.count({
+        where: { assessmentId: response.body.id },
+      }),
+      prisma.gradeItem.count({ where: { assessmentId: response.body.id } }),
+    ]);
+    expect(questionsCount).toBe(0);
+    expect(gradeItemsCount).toBe(0);
+  });
+
+  it.each([
+    ['academic year', () => ({ yearId: tenantBYearId })],
+    ['term', () => ({ termId: tenantBTermId })],
+    ['subject', () => ({ subjectId: tenantBSubjectId })],
+    ['grade scope', () => ({ gradeId: tenantBGradeId })],
+  ])(
+    'returns 404 when school A creates a question-based assessment using school B %s',
+    async (_label, resolveOverrides) => {
+      const { accessToken } = await login(
+        DEMO_ADMIN_EMAIL,
+        DEMO_ADMIN_PASSWORD,
+      );
+
+      const response = await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/grades/assessments/question-based`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(
+          questionBasedAssessmentPayload({
+            titleEn: `${testSuffix}-question-based-cross-school-${_label}`,
+            ...resolveOverrides(),
+          }),
+        )
+        .expect(404);
+
+      expect(response.body?.error?.code).toBe('not_found');
+    },
+  );
+
+  it('returns 403 when the same-school actor lacks grades.assessments.manage for question-based creation', async () => {
+    const { accessToken } = await login(VIEW_ONLY_EMAIL, VIEW_ONLY_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/assessments/question-based`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        questionBasedAssessmentPayload({
+          titleEn: `${testSuffix}-question-based-create-forbidden`,
+        }),
+      )
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('question-based creation weight budget ignores school B assessments and creates no questions', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/assessments/question-based`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        questionBasedAssessmentPayload({
+          titleEn: `${testSuffix}-question-based-budget-school-a`,
+          weight: 0.02,
+        }),
+      )
+      .expect(201);
+
+    expect(response.body).toMatchObject({
+      deliveryMode: 'question_based',
+      weight: 0.02,
+    });
+
+    const questionsCount = await prisma.gradeAssessmentQuestion.count({
+      where: { assessmentId: response.body.id },
+    });
+    expect(questionsCount).toBe(0);
+  });
+
   it('returns 404 when school A updates a school B assessment', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
@@ -2307,6 +2426,173 @@ describe('Grades tenancy isolation (security)', () => {
       .expect(409);
 
     expect(response.body?.error?.code).toBe('grades.question.structure_locked');
+  });
+
+  it('school A cannot publish school B question-based assessment', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${tenantBQuestionAssessmentId}/publish`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 403 when the same-school actor lacks grades.assessments.publish for question-based publish', async () => {
+    const { accessToken } = await login(
+      MANAGE_ONLY_EMAIL,
+      MANAGE_ONLY_PASSWORD,
+    );
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${demoQuestionAssessmentId}/publish`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('invalid question structure blocks question-based publish', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const assessmentId = await createDemoQuestionAssessment({
+      titleSuffix: 'invalid-structure-publish',
+    });
+    const question = await prisma.gradeAssessmentQuestion.create({
+      data: {
+        schoolId: demoSchoolId,
+        assessmentId,
+        type: GradeQuestionType.MCQ_SINGLE,
+        prompt: `${testSuffix}-invalid-publish-question`,
+        points: 10,
+        sortOrder: 1,
+        required: true,
+      },
+      select: { id: true },
+    });
+    await prisma.gradeAssessmentQuestionOption.createMany({
+      data: [
+        {
+          schoolId: demoSchoolId,
+          assessmentId,
+          questionId: question.id,
+          label: 'A',
+          value: 'a',
+          isCorrect: true,
+          sortOrder: 1,
+        },
+        {
+          schoolId: demoSchoolId,
+          assessmentId,
+          questionId: question.id,
+          label: 'B',
+          value: 'b',
+          isCorrect: true,
+          sortOrder: 2,
+        },
+      ],
+    });
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}/publish`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(422);
+
+    expect(response.body?.error?.code).toBe('grades.answer.invalid_option');
+  });
+
+  it('points mismatch blocks question-based publish', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const assessmentId = await createDemoQuestionAssessment({
+      titleSuffix: 'points-mismatch-publish',
+    });
+    await createQuestionForAssessment({
+      assessmentId,
+      sortOrder: 1,
+      points: 5,
+    });
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}/publish`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(422);
+
+    expect(response.body?.error?.code).toBe('grades.question.points_mismatch');
+  });
+
+  it('valid question-based assessment publishes without grade items, submissions, or answers', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const assessmentId = await createDemoQuestionAssessment({
+      titleSuffix: 'valid-publish',
+    });
+    await createQuestionForAssessment({
+      assessmentId,
+      sortOrder: 1,
+      points: 4,
+    });
+    await createQuestionForAssessment({
+      assessmentId,
+      sortOrder: 2,
+      points: 6,
+    });
+
+    const [itemsBefore, submissionsBefore, answersBefore] = await Promise.all([
+      prisma.gradeItem.count({ where: { assessmentId } }),
+      prisma.gradeSubmission.count({ where: { assessmentId } }),
+      prisma.gradeSubmissionAnswer.count({ where: { assessmentId } }),
+    ]);
+
+    const publishResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}/publish`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(publishResponse.body).toMatchObject({
+      id: assessmentId,
+      deliveryMode: 'question_based',
+      approvalStatus: 'published',
+      publishedById: expect.any(String),
+      isLocked: false,
+    });
+
+    const [itemsAfter, submissionsAfter, answersAfter] = await Promise.all([
+      prisma.gradeItem.count({ where: { assessmentId } }),
+      prisma.gradeSubmission.count({ where: { assessmentId } }),
+      prisma.gradeSubmissionAnswer.count({ where: { assessmentId } }),
+    ]);
+    expect(itemsAfter).toBe(itemsBefore);
+    expect(submissionsAfter).toBe(submissionsBefore);
+    expect(answersAfter).toBe(answersBefore);
+
+    const auditLog = await prisma.auditLog.findFirst({
+      where: {
+        resourceId: assessmentId,
+        action: 'grades.assessment.publish',
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { after: true },
+    });
+    expect(auditLog?.after).toMatchObject({
+      questionSummary: {
+        totalQuestions: 2,
+        totalPoints: 10,
+        maxScore: 10,
+        pointsMatchMaxScore: true,
+      },
+    });
+
+    const mutationResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}/questions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(questionPayload({ prompt: `${testSuffix}-after-publish-blocked` }))
+      .expect(409);
+    expect(mutationResponse.body?.error?.code).toBe(
+      'grades.assessment.invalid_status_transition',
+    );
   });
 
   it('school A cannot list items for a school B assessment', async () => {

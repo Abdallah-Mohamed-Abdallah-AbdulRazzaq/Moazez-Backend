@@ -36,7 +36,10 @@ export function presentAssessmentApprovalStatus(
 export function presentDeliveryMode(
   mode: GradeAssessmentDeliveryMode | string,
 ): string {
-  return normalizeDeliveryMode(mode);
+  const deliveryMode = normalizeDeliveryMode(mode);
+  return deliveryMode === GradeAssessmentDeliveryMode.QUESTION_BASED
+    ? 'question_based'
+    : deliveryMode;
 }
 
 export function presentGradeItemStatus(

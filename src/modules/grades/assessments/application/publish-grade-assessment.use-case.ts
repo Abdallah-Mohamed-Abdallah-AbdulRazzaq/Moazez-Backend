@@ -1,12 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { GradeAssessmentApprovalStatus } from '@prisma/client';
+import {
+  GradeAssessmentApprovalStatus,
+  GradeAssessmentDeliveryMode,
+} from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireGradesScope } from '../../grades-context';
+import { normalizeDeliveryMode } from '../../shared/domain/grade-workflow';
 import {
   assertPublishableAssessment,
   assertWorkflowTermWritable,
 } from '../domain/grade-assessment-domain';
+import {
+  QuestionPublishSummary,
+  assertQuestionBasedAssessmentPublishable,
+  assertQuestionBasedPublishReady,
+} from '../domain/grade-assessment-question-publish-domain';
 import { GradesAssessmentsRepository } from '../infrastructure/grades-assessments.repository';
 import { presentGradeAssessment } from '../presenters/grade-assessment.presenter';
 import {
@@ -32,7 +41,14 @@ export class PublishGradeAssessmentUseCase {
       });
     }
 
-    assertPublishableAssessment(existing);
+    const deliveryMode = normalizeDeliveryMode(existing.deliveryMode);
+    let questionSummary: QuestionPublishSummary | undefined;
+
+    if (deliveryMode === GradeAssessmentDeliveryMode.SCORE_ONLY) {
+      assertPublishableAssessment(existing);
+    } else {
+      assertQuestionBasedAssessmentPublishable(existing);
+    }
 
     const { term } = await validateAssessmentAcademicContext(
       this.gradesAssessmentsRepository,
@@ -40,6 +56,17 @@ export class PublishGradeAssessmentUseCase {
       existing.termId,
     );
     assertWorkflowTermWritable(term);
+
+    if (deliveryMode === GradeAssessmentDeliveryMode.QUESTION_BASED) {
+      const questions =
+        await this.gradesAssessmentsRepository.listActiveQuestionsForPublish(
+          existing.id,
+        );
+      questionSummary = assertQuestionBasedPublishReady({
+        assessment: existing,
+        questions,
+      });
+    }
 
     const updated = await this.gradesAssessmentsRepository.publishAssessment(
       existing.id,
@@ -56,6 +83,7 @@ export class PublishGradeAssessmentUseCase {
         action: 'grades.assessment.publish',
         assessment: updated,
         before: existing,
+        afterMetadata: questionSummary ? { questionSummary } : undefined,
       }),
     );
 
