@@ -372,7 +372,12 @@ export class GradesReadModelRepository {
       where: {
         academicYearId: params.academicYearId,
         termId: params.termId,
-        deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
+        deliveryMode: {
+          in: [
+            GradeAssessmentDeliveryMode.SCORE_ONLY,
+            GradeAssessmentDeliveryMode.QUESTION_BASED,
+          ],
+        },
         approvalStatus: {
           in: params.approvalStatuses ?? [
             GradeAssessmentApprovalStatus.PUBLISHED,

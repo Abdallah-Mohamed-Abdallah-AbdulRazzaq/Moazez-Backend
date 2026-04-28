@@ -24,6 +24,7 @@ import { ResolveGradeSubmissionUseCase } from './application/resolve-grade-submi
 import { ReviewGradeSubmissionAnswerUseCase } from './application/review-grade-submission-answer.use-case';
 import { SaveGradeSubmissionAnswerUseCase } from './application/save-grade-submission-answer.use-case';
 import { SubmitGradeSubmissionUseCase } from './application/submit-grade-submission.use-case';
+import { SyncGradeSubmissionToGradeItemUseCase } from './application/sync-grade-submission-to-grade-item.use-case';
 import { UpdateGradeAssessmentQuestionUseCase } from './application/update-grade-assessment-question.use-case';
 import { UpdateGradeAssessmentUseCase } from './application/update-grade-assessment.use-case';
 import { UpsertGradeAssessmentItemUseCase } from './application/upsert-grade-assessment-item.use-case';
@@ -34,6 +35,7 @@ import { GradesSubmissionsController } from './controller/grades-submissions.con
 import { GradesAssessmentItemsRepository } from './infrastructure/grades-assessment-items.repository';
 import { GradesAssessmentQuestionsRepository } from './infrastructure/grades-assessment-questions.repository';
 import { GradesAssessmentsRepository } from './infrastructure/grades-assessments.repository';
+import { GradesSubmissionGradeItemSyncRepository } from './infrastructure/grades-submission-grade-item-sync.repository';
 import { GradesSubmissionsRepository } from './infrastructure/grades-submissions.repository';
 
 @Module({
@@ -49,6 +51,7 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
     GradesAssessmentItemsRepository,
     GradesAssessmentQuestionsRepository,
     GradesSubmissionsRepository,
+    GradesSubmissionGradeItemSyncRepository,
     ListGradeAssessmentsUseCase,
     GetGradeAssessmentUseCase,
     CreateGradeAssessmentUseCase,
@@ -76,6 +79,7 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
     ReviewGradeSubmissionAnswerUseCase,
     BulkReviewGradeSubmissionAnswersUseCase,
     FinalizeGradeSubmissionReviewUseCase,
+    SyncGradeSubmissionToGradeItemUseCase,
   ],
 })
 export class AssessmentsModule {}

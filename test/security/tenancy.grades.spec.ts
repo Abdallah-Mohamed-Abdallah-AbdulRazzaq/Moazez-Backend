@@ -985,6 +985,7 @@ describe('Grades tenancy isolation (security)', () => {
                   'grades.submission.submit',
                   'grades.submission.answers.bulk_review',
                   'grades.submission.review.finalize',
+                  'grades.submission.grade_item.sync',
                 ],
               },
             },
@@ -1499,8 +1500,17 @@ describe('Grades tenancy isolation (security)', () => {
     enrollmentId?: string;
     schoolId?: string;
     termId?: string;
+    totalScore?: number | null;
+    maxScore?: number | null;
   }): Promise<string> {
     const status = params.status ?? GradeSubmissionStatus.IN_PROGRESS;
+    const maxScore = params.maxScore === undefined ? 10 : params.maxScore;
+    const totalScore =
+      params.totalScore === undefined
+        ? status === GradeSubmissionStatus.CORRECTED
+          ? 9
+          : null
+        : params.totalScore;
     const submission = await prisma.gradeSubmission.create({
       data: {
         schoolId: params.schoolId ?? demoSchoolId,
@@ -1510,10 +1520,18 @@ describe('Grades tenancy isolation (security)', () => {
         enrollmentId: params.enrollmentId ?? demoEnrollmentId,
         status,
         submittedAt:
-          status === GradeSubmissionStatus.SUBMITTED
+          status === GradeSubmissionStatus.SUBMITTED ||
+          status === GradeSubmissionStatus.CORRECTED
             ? new Date('2026-09-20T09:00:00.000Z')
             : null,
-        maxScore: 10,
+        correctedAt:
+          status === GradeSubmissionStatus.CORRECTED
+            ? new Date('2026-09-20T10:00:00.000Z')
+            : null,
+        reviewedById:
+          status === GradeSubmissionStatus.CORRECTED ? viewOnlyUserId : null,
+        totalScore,
+        maxScore,
       },
       select: { id: true },
     });
@@ -2130,6 +2148,21 @@ describe('Grades tenancy isolation (security)', () => {
       });
   });
 
+  it('school A cannot sync school B submission to GradeItem', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const tenantBFixture = await createTenantBQuestionSubmissionFixture();
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${tenantBFixture.submissionId}/sync-grade-item`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('not_found');
+      });
+  });
+
   it('school A cannot review answer from another school', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
     const fixture = await createDemoPublishedQuestionAssessment({
@@ -2309,6 +2342,293 @@ describe('Grades tenancy isolation (security)', () => {
       where: { assessmentId: fixture.assessmentId },
     });
     expect(gradeItems).toBe(0);
+  });
+
+  it('same-school actor without grades.submissions.review gets 403 for GradeItem sync', async () => {
+    const { accessToken } = await login(VIEW_ONLY_EMAIL, VIEW_ONLY_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'sync-no-review-permission',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.CORRECTED,
+      totalScore: 9,
+      maxScore: 10,
+    });
+    await seedCompleteSubmissionAnswers({
+      ...fixture,
+      submissionId,
+      correctionStatus: GradeAnswerCorrectionStatus.CORRECTED,
+      awardedPointsByQuestionId: {
+        [fixture.mcqQuestionId]: 4,
+        [fixture.shortQuestionId]: 5,
+      },
+    });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('auth.scope.missing');
+      });
+  });
+
+  it('admin school role can sync a corrected submission to GradeItem idempotently', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'sync-admin-happy',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.CORRECTED,
+      totalScore: 9,
+      maxScore: 10,
+    });
+    await seedCompleteSubmissionAnswers({
+      ...fixture,
+      submissionId,
+      correctionStatus: GradeAnswerCorrectionStatus.CORRECTED,
+      awardedPointsByQuestionId: {
+        [fixture.mcqQuestionId]: 4,
+        [fixture.shortQuestionId]: 5,
+      },
+    });
+
+    const [submissionsBefore, answersBefore, questionsBefore] =
+      await Promise.all([
+        prisma.gradeSubmission.count({
+          where: { assessmentId: fixture.assessmentId },
+        }),
+        prisma.gradeSubmissionAnswer.count({
+          where: { submissionId },
+        }),
+        prisma.gradeAssessmentQuestion.count({
+          where: { assessmentId: fixture.assessmentId },
+        }),
+      ]);
+    const analyticsBefore = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/analytics/summary`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        subjectId: demoSubjectId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const syncResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(syncResponse.body).toMatchObject({
+      synced: true,
+      idempotent: false,
+      submission: {
+        id: submissionId,
+        assessmentId: fixture.assessmentId,
+        studentId: demoStudentId,
+        enrollmentId: demoEnrollmentId,
+        status: 'corrected',
+        totalScore: 9,
+        maxScore: 10,
+      },
+      gradeItem: {
+        assessmentId: fixture.assessmentId,
+        studentId: demoStudentId,
+        enrollmentId: demoEnrollmentId,
+        status: 'entered',
+        score: 9,
+        enteredAt: expect.any(String),
+        enteredById: expect.any(String),
+      },
+    });
+
+    const gradeItemId = syncResponse.body.gradeItem.id as string;
+    const secondSyncResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(secondSyncResponse.body).toMatchObject({
+      synced: true,
+      idempotent: true,
+      gradeItem: {
+        id: gradeItemId,
+        score: 9,
+        status: 'entered',
+      },
+    });
+
+    const [gradeItemCount, submissionsAfter, answersAfter, questionsAfter] =
+      await Promise.all([
+        prisma.gradeItem.count({
+          where: { assessmentId: fixture.assessmentId, studentId: demoStudentId },
+        }),
+        prisma.gradeSubmission.count({
+          where: { assessmentId: fixture.assessmentId },
+        }),
+        prisma.gradeSubmissionAnswer.count({
+          where: { submissionId },
+        }),
+        prisma.gradeAssessmentQuestion.count({
+          where: { assessmentId: fixture.assessmentId },
+        }),
+      ]);
+    expect(gradeItemCount).toBe(1);
+    expect(submissionsAfter).toBe(submissionsBefore);
+    expect(answersAfter).toBe(answersBefore);
+    expect(questionsAfter).toBe(questionsBefore);
+
+    const persistedSubmission = await prisma.gradeSubmission.findUnique({
+      where: { id: submissionId },
+      select: { status: true },
+    });
+    expect(persistedSubmission?.status).toBe(GradeSubmissionStatus.CORRECTED);
+
+    const gradebookResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/gradebook`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        subjectId: demoSubjectId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const syncedRow = gradebookResponse.body.rows.find(
+      (row: { studentId: string }) => row.studentId === demoStudentId,
+    );
+    const syncedCell = syncedRow.cells.find(
+      (cell: { assessmentId: string }) =>
+        cell.assessmentId === fixture.assessmentId,
+    );
+    expect(syncedCell).toMatchObject({
+      itemId: gradeItemId,
+      score: 9,
+      status: 'entered',
+      isVirtualMissing: false,
+    });
+
+    const analyticsAfter = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/analytics/summary`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        subjectId: demoSubjectId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(analyticsAfter.body.enteredItemCount).toBeGreaterThanOrEqual(
+      analyticsBefore.body.enteredItemCount + 1,
+    );
+
+    const snapshotResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/students/${demoStudentId}/snapshot`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        subjectId: demoSubjectId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(snapshotResponse.body.assessments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          assessmentId: fixture.assessmentId,
+          score: 9,
+          status: 'entered',
+          isVirtualMissing: false,
+        }),
+      ]),
+    );
+
+    const auditLog = await prisma.auditLog.findFirst({
+      where: {
+        action: 'grades.submission.grade_item.sync',
+        resourceId: submissionId,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { after: true },
+    });
+    expect(auditLog?.after).toMatchObject({
+      submission: expect.objectContaining({
+        id: submissionId,
+        totalScore: 9,
+        maxScore: 10,
+      }),
+      gradeItem: expect.objectContaining({
+        id: gradeItemId,
+        score: 9,
+        status: GradeItemStatus.ENTERED,
+      }),
+    });
+  });
+
+  it('IN_PROGRESS submission rejects GradeItem sync', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'sync-in-progress-reject',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.IN_PROGRESS,
+    });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.submission.not_submitted');
+      });
+  });
+
+  it('SUBMITTED submission rejects GradeItem sync', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'sync-submitted-reject',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.SUBMITTED,
+    });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.submission.not_submitted');
+      });
+  });
+
+  it('locked assessment rejects GradeItem sync', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      lockedAt: new Date('2026-09-18T08:00:00.000Z'),
+      titleSuffix: 'sync-locked-reject',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.CORRECTED,
+      totalScore: 9,
+      maxScore: 10,
+    });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/sync-grade-item`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.assessment.locked');
+      });
   });
 
   it('IN_PROGRESS submission rejects review and finalize', async () => {
@@ -2535,6 +2855,19 @@ describe('Grades tenancy isolation (security)', () => {
       },
       select: { id: true },
     });
+    const tenantBQuestionFixture = await createTenantBQuestionSubmissionFixture();
+    const tenantBQuestionItem = await prisma.gradeItem.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        termId: tenantBTermId,
+        assessmentId: tenantBQuestionFixture.assessmentId,
+        studentId: tenantBStudentId,
+        enrollmentId: tenantBEnrollmentId,
+        score: 5,
+        status: GradeItemStatus.ENTERED,
+      },
+      select: { id: true },
+    });
 
     const response = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/grades/gradebook`)
@@ -2564,7 +2897,9 @@ describe('Grades tenancy isolation (security)', () => {
     expect(studentIds).not.toContain(tenantBStudentId);
     expect(assessmentIds).toContain(demoReadAssessmentId);
     expect(assessmentIds).not.toContain(tenantBReadAssessmentId);
+    expect(assessmentIds).not.toContain(tenantBQuestionFixture.assessmentId);
     expect(itemIds).not.toContain(tenantBItem.id);
+    expect(itemIds).not.toContain(tenantBQuestionItem.id);
   });
 
   it('school A gradebook for school B scope returns 404', async () => {

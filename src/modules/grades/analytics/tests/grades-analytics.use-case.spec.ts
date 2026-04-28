@@ -90,7 +90,14 @@ describe('grades analytics use cases', () => {
     };
   }
 
-  function assessment(id: string) {
+  function assessment(
+    id: string,
+    overrides?: Partial<{
+      deliveryMode: GradeAssessmentDeliveryMode;
+      maxScore: number;
+      weight: number;
+    }>,
+  ) {
     return {
       id,
       schoolId: SCHOOL_ID,
@@ -106,10 +113,11 @@ describe('grades analytics use cases', () => {
       titleEn: `${id} EN`,
       titleAr: `${id} AR`,
       type: GradeAssessmentType.QUIZ,
-      deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
+      deliveryMode:
+        overrides?.deliveryMode ?? GradeAssessmentDeliveryMode.SCORE_ONLY,
       date: new Date('2026-09-15T00:00:00.000Z'),
-      weight: new Prisma.Decimal(50),
-      maxScore: new Prisma.Decimal(20),
+      weight: new Prisma.Decimal(overrides?.weight ?? 50),
+      maxScore: new Prisma.Decimal(overrides?.maxScore ?? 20),
       approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
       lockedAt: null,
       subject: {
@@ -239,6 +247,50 @@ describe('grades analytics use cases', () => {
       from: 40,
       to: 49,
       count: 1,
+    });
+  });
+
+  it('includes synced question-based GradeItems in analytics calculations', async () => {
+    const repo = repository();
+    jest.spyOn(repo, 'listAssessmentsForScope').mockResolvedValue([
+      assessment('question-assessment-1', {
+        deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        maxScore: 10,
+        weight: 10,
+      }),
+    ]);
+    jest.spyOn(repo, 'listGradeItems').mockResolvedValue([
+      {
+        id: 'question-item-1',
+        schoolId: SCHOOL_ID,
+        termId: TERM_ID,
+        assessmentId: 'question-assessment-1',
+        studentId: STUDENT_ONE_ID,
+        enrollmentId: 'enrollment-1',
+        score: new Prisma.Decimal(8),
+        status: GradeItemStatus.ENTERED,
+        comment: null,
+        enteredAt: new Date('2026-09-15T08:00:00.000Z'),
+        createdAt: new Date('2026-09-15T08:00:00.000Z'),
+        updatedAt: new Date('2026-09-15T08:00:00.000Z'),
+      },
+    ]);
+
+    const result = await withGradesScope(() =>
+      new GetGradesAnalyticsSummaryUseCase(repo).execute({
+        yearId: YEAR_ID,
+        termId: TERM_ID,
+        scopeType: 'grade',
+        gradeId: GRADE_ID,
+      }),
+    );
+
+    expect(result).toMatchObject({
+      assessmentCount: 1,
+      enteredItemCount: 1,
+      averagePercent: 8,
+      highestPercent: 8,
+      lowestPercent: 8,
     });
   });
 });

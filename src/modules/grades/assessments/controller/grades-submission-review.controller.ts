@@ -12,11 +12,13 @@ import { RequiredPermissions } from '../../../../common/decorators/required-perm
 import { BulkReviewGradeSubmissionAnswersUseCase } from '../application/bulk-review-grade-submission-answers.use-case';
 import { FinalizeGradeSubmissionReviewUseCase } from '../application/finalize-grade-submission-review.use-case';
 import { ReviewGradeSubmissionAnswerUseCase } from '../application/review-grade-submission-answer.use-case';
+import { SyncGradeSubmissionToGradeItemUseCase } from '../application/sync-grade-submission-to-grade-item.use-case';
 import {
   BulkReviewGradeSubmissionAnswersDto,
   BulkReviewGradeSubmissionAnswersResponseDto,
   ReviewGradeSubmissionAnswerDto,
 } from '../dto/grade-submission-review.dto';
+import { GradeSubmissionGradeItemSyncResponseDto } from '../dto/grade-submission-grade-item-sync.dto';
 import {
   GradeSubmissionAnswerResponseDto,
   GradeSubmissionResponseDto,
@@ -30,6 +32,7 @@ export class GradesSubmissionReviewController {
     private readonly reviewAnswerUseCase: ReviewGradeSubmissionAnswerUseCase,
     private readonly bulkReviewAnswersUseCase: BulkReviewGradeSubmissionAnswersUseCase,
     private readonly finalizeReviewUseCase: FinalizeGradeSubmissionReviewUseCase,
+    private readonly syncGradeItemUseCase: SyncGradeSubmissionToGradeItemUseCase,
   ) {}
 
   @Patch('submissions/:submissionId/answers/:answerId/review')
@@ -57,5 +60,13 @@ export class GradesSubmissionReviewController {
     @Param('submissionId', new ParseUUIDPipe()) submissionId: string,
   ): Promise<GradeSubmissionResponseDto> {
     return this.finalizeReviewUseCase.execute(submissionId);
+  }
+
+  @Post('submissions/:submissionId/sync-grade-item')
+  @RequiredPermissions('grades.submissions.review')
+  syncGradeItem(
+    @Param('submissionId', new ParseUUIDPipe()) submissionId: string,
+  ): Promise<GradeSubmissionGradeItemSyncResponseDto> {
+    return this.syncGradeItemUseCase.execute(submissionId);
   }
 }

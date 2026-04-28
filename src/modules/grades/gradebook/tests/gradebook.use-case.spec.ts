@@ -93,6 +93,7 @@ describe('GetGradesGradebookUseCase', () => {
     id: string,
     overrides?: Partial<{
       approvalStatus: GradeAssessmentApprovalStatus;
+      deliveryMode: GradeAssessmentDeliveryMode;
       maxScore: number;
       weight: number;
       lockedAt: Date | null;
@@ -113,7 +114,8 @@ describe('GetGradesGradebookUseCase', () => {
       titleEn: `${id} EN`,
       titleAr: `${id} AR`,
       type: GradeAssessmentType.QUIZ,
-      deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
+      deliveryMode:
+        overrides?.deliveryMode ?? GradeAssessmentDeliveryMode.SCORE_ONLY,
       date: new Date('2026-09-15T00:00:00.000Z'),
       weight: new Prisma.Decimal(overrides?.weight ?? 50),
       maxScore: new Prisma.Decimal(overrides?.maxScore ?? 20),
@@ -313,6 +315,47 @@ describe('GetGradesGradebookUseCase', () => {
       finalPercent: 6.7,
       completedWeight: 10,
       status: 'failing',
+    });
+  });
+
+  it('includes synced question-based GradeItems in the gradebook model', async () => {
+    const repo = repository({
+      listAssessmentsForScope: jest.fn().mockResolvedValue([
+        assessment('question-assessment-1', {
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+          maxScore: 10,
+          weight: 10,
+        }),
+      ]),
+      listGradeItems: jest.fn().mockResolvedValue([
+        gradeItem({
+          assessmentId: 'question-assessment-1',
+          studentId: STUDENT_ONE_ID,
+          score: 8,
+        }),
+      ]),
+    });
+    const useCase = new GetGradesGradebookUseCase(repo);
+
+    const result = await withGradesScope(() =>
+      useCase.execute({
+        yearId: YEAR_ID,
+        termId: TERM_ID,
+        scopeType: 'grade',
+        gradeId: GRADE_ID,
+      }),
+    );
+
+    expect(result.columns.map((column) => column.assessmentId)).toEqual([
+      'question-assessment-1',
+    ]);
+    expect(result.rows[0].cells[0]).toMatchObject({
+      assessmentId: 'question-assessment-1',
+      score: 8,
+      status: 'entered',
+      percent: 80,
+      weightedContribution: 8,
+      isVirtualMissing: false,
     });
   });
 
