@@ -422,6 +422,18 @@
               ]
             },
             {
+              "name": "20260428120000_0009_grade_question_based_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -3697,7 +3709,27 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "bulk-review-grade-submission-answers.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "bulk-save-grade-submission-answers.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "bulk-update-grade-assessment-question-points.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "bulk-upsert-grade-assessment-items.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-grade-assessment-question.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -3707,7 +3739,22 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "create-question-based-grade-assessment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-grade-assessment-question.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "delete-grade-assessment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "finalize-grade-submission-review.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -3717,7 +3764,27 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "get-grade-submission.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-assessment-question-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "grade-assessment-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submission-review-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submission-use-case.helpers.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -3727,7 +3794,17 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "list-grade-assessment-questions.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "list-grade-assessments.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-grade-submissions.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -3738,6 +3815,41 @@
                         },
                         {
                           "name": "publish-grade-assessment.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reorder-grade-assessment-questions.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "resolve-grade-submission.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "review-grade-submission-answer.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "save-grade-submission-answer.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "submit-grade-submission.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "sync-grade-submission-to-grade-item.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-grade-assessment-question.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -3759,7 +3871,22 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "grades-assessment-questions.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "grades-assessments.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grades-submission-review.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grades-submissions.controller.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -3776,7 +3903,32 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "grade-assessment-question-publish-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "grade-item-entry-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-question-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submission-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submission-grade-item-sync-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submission-review-domain.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -3793,7 +3945,27 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "grade-assessment-question.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "grade-assessment.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submission-grade-item-sync.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submission-review.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submission.dto.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -3810,7 +3982,22 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "grades-assessment-questions.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "grades-assessments.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grades-submission-grade-item-sync.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grades-submissions.repository.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -3822,12 +4009,27 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "grade-assessment-question.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "grade-assessment.presenter.ts",
                           "type": "file",
                           "icon": "📘"
                         },
                         {
                           "name": "grade-item.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submission-grade-item-sync.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submission.presenter.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -3844,6 +4046,16 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "grade-assessment-question.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-assessment-questions.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "grade-assessment.presenter.spec.ts",
                           "type": "file",
                           "icon": "📘"
@@ -3855,6 +4067,26 @@
                         },
                         {
                           "name": "grade-item.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submission-grade-item-sync.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submission-review.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submission.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grade-submissions.use-case.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -6413,6 +6645,11 @@
               "icon": "📘"
             },
             {
+              "name": "grades-question-based.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "students-guardians-flow.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -6679,7 +6916,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-04-27T19:37:02.657Z",
+    "generated": "2026-04-28T16:24:21.826Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
