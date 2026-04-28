@@ -4,6 +4,7 @@ import {
   GradeAssessmentApprovalStatus,
   GradeAssessmentDeliveryMode,
   GradeAssessmentType,
+  GradeAnswerCorrectionStatus,
   GradeQuestionType,
   GradeItemStatus,
   GradeRoundingMode,
@@ -66,6 +67,8 @@ describe('Grades tenancy isolation (security)', () => {
   let demoAssessmentId: string;
   let demoQuestionAssessmentId: string;
   let demoQuestionOneId: string;
+  let demoQuestionOneOptionOneId: string;
+  let demoQuestionOneOptionTwoId: string;
   let demoQuestionTwoId: string;
   let demoStudentId: string;
   let demoStudentTwoId: string;
@@ -83,7 +86,9 @@ describe('Grades tenancy isolation (security)', () => {
   let tenantBAssessmentId: string;
   let tenantBQuestionAssessmentId: string;
   let tenantBQuestionId: string;
+  let tenantBQuestionOptionId: string;
   let tenantBStudentId: string;
+  let tenantBEnrollmentId: string;
   let tenantBSchoolRuleId: string;
   let tenantBGradeRuleId: string;
 
@@ -121,6 +126,8 @@ describe('Grades tenancy isolation (security)', () => {
       questionsManagePermission,
       itemsViewPermission,
       itemsManagePermission,
+      submissionsViewPermission,
+      submissionsSubmitPermission,
     ] = await Promise.all([
       prisma.role.findFirst({
         where: { key: 'school_admin', schoolId: null, isSystem: true },
@@ -170,6 +177,14 @@ describe('Grades tenancy isolation (security)', () => {
         where: { code: 'grades.items.manage' },
         select: { id: true },
       }),
+      prisma.permission.findUnique({
+        where: { code: 'grades.submissions.view' },
+        select: { id: true },
+      }),
+      prisma.permission.findUnique({
+        where: { code: 'grades.submissions.submit' },
+        select: { id: true },
+      }),
     ]);
 
     if (
@@ -184,7 +199,9 @@ describe('Grades tenancy isolation (security)', () => {
       !questionsViewPermission ||
       !questionsManagePermission ||
       !itemsViewPermission ||
-      !itemsManagePermission
+      !itemsManagePermission ||
+      !submissionsViewPermission ||
+      !submissionsSubmitPermission
     ) {
       throw new Error('Grades permissions missing - run `npm run seed` first.');
     }
@@ -574,9 +591,9 @@ describe('Grades tenancy isolation (security)', () => {
       select: { id: true },
     });
     demoQuestionOneId = demoQuestionOne.id;
-    await prisma.gradeAssessmentQuestionOption.createMany({
-      data: [
-        {
+    const demoQuestionOneOptionOne =
+      await prisma.gradeAssessmentQuestionOption.create({
+        data: {
           schoolId: demoSchoolId,
           assessmentId: demoQuestionAssessmentId,
           questionId: demoQuestionOneId,
@@ -585,7 +602,12 @@ describe('Grades tenancy isolation (security)', () => {
           isCorrect: true,
           sortOrder: 1,
         },
-        {
+        select: { id: true },
+      });
+    demoQuestionOneOptionOneId = demoQuestionOneOptionOne.id;
+    const demoQuestionOneOptionTwo =
+      await prisma.gradeAssessmentQuestionOption.create({
+        data: {
           schoolId: demoSchoolId,
           assessmentId: demoQuestionAssessmentId,
           questionId: demoQuestionOneId,
@@ -594,8 +616,9 @@ describe('Grades tenancy isolation (security)', () => {
           isCorrect: false,
           sortOrder: 2,
         },
-      ],
-    });
+        select: { id: true },
+      });
+    demoQuestionOneOptionTwoId = demoQuestionOneOptionTwo.id;
 
     const demoQuestionTwo = await prisma.gradeAssessmentQuestion.create({
       data: {
@@ -639,7 +662,7 @@ describe('Grades tenancy isolation (security)', () => {
       data: {
         schoolId: tenantBSchoolId,
         assessmentId: tenantBQuestionAssessmentId,
-        type: GradeQuestionType.SHORT_ANSWER,
+        type: GradeQuestionType.MCQ_SINGLE,
         prompt: `${testSuffix}-question-b-1`,
         points: 5,
         sortOrder: 1,
@@ -648,6 +671,20 @@ describe('Grades tenancy isolation (security)', () => {
       select: { id: true },
     });
     tenantBQuestionId = tenantBQuestion.id;
+    const tenantBQuestionOption =
+      await prisma.gradeAssessmentQuestionOption.create({
+        data: {
+          schoolId: tenantBSchoolId,
+          assessmentId: tenantBQuestionAssessmentId,
+          questionId: tenantBQuestionId,
+          label: 'A',
+          value: 'a',
+          isCorrect: true,
+          sortOrder: 1,
+        },
+        select: { id: true },
+      });
+    tenantBQuestionOptionId = tenantBQuestionOption.id;
 
     const demoStudent = await prisma.student.create({
       data: {
@@ -711,7 +748,7 @@ describe('Grades tenancy isolation (security)', () => {
     });
     tenantBStudentId = tenantBStudent.id;
 
-    await prisma.enrollment.create({
+    const tenantBEnrollment = await prisma.enrollment.create({
       data: {
         schoolId: tenantBSchoolId,
         studentId: tenantBStudentId,
@@ -721,7 +758,9 @@ describe('Grades tenancy isolation (security)', () => {
         status: StudentEnrollmentStatus.ACTIVE,
         enrolledAt: new Date('2026-09-01T00:00:00.000Z'),
       },
+      select: { id: true },
     });
+    tenantBEnrollmentId = tenantBEnrollment.id;
 
     viewOnlyRoleId = await createPermissionRole({
       key: 'grades_rules_view_only',
@@ -731,6 +770,7 @@ describe('Grades tenancy isolation (security)', () => {
         assessmentsViewPermission.id,
         questionsViewPermission.id,
         itemsViewPermission.id,
+        submissionsViewPermission.id,
       ],
     });
     manageOnlyRoleId = await createPermissionRole({
@@ -741,6 +781,7 @@ describe('Grades tenancy isolation (security)', () => {
         assessmentsManagePermission.id,
         questionsManagePermission.id,
         itemsManagePermission.id,
+        submissionsSubmitPermission.id,
       ],
     });
 
@@ -882,8 +923,11 @@ describe('Grades tenancy isolation (security)', () => {
                   demoQuestionAssessmentId,
                   tenantBQuestionAssessmentId,
                   demoQuestionOneId,
+                  demoQuestionOneOptionOneId,
+                  demoQuestionOneOptionTwoId,
                   demoQuestionTwoId,
                   tenantBQuestionId,
+                  tenantBQuestionOptionId,
                 ].filter(Boolean),
               },
             },
@@ -916,6 +960,20 @@ describe('Grades tenancy isolation (security)', () => {
             {
               resourceType: 'grade_item',
               action: 'grades.item.update',
+            },
+            {
+              resourceType: 'grade_submission_answer',
+              action: 'grades.submission.answer.save',
+            },
+            {
+              resourceType: 'grade_submission',
+              action: {
+                in: [
+                  'grades.submission.create',
+                  'grades.submission.answers.bulk_save',
+                  'grades.submission.submit',
+                ],
+              },
             },
           ],
         },
@@ -1343,6 +1401,636 @@ describe('Grades tenancy isolation (security)', () => {
 
     return question.id;
   }
+
+  async function createDemoPublishedQuestionAssessment(overrides?: {
+    approvalStatus?: GradeAssessmentApprovalStatus;
+    lockedAt?: Date | null;
+    termId?: string;
+    titleSuffix?: string;
+  }): Promise<{
+    assessmentId: string;
+    mcqQuestionId: string;
+    mcqOptionId: string;
+    mcqOptionTwoId: string;
+    shortQuestionId: string;
+  }> {
+    const assessmentId = await createDemoQuestionAssessment({
+      approvalStatus:
+        overrides?.approvalStatus ?? GradeAssessmentApprovalStatus.PUBLISHED,
+      lockedAt: overrides?.lockedAt,
+      termId: overrides?.termId,
+      titleSuffix: overrides?.titleSuffix ?? 'submission-assessment',
+    });
+    const mcqQuestion = await prisma.gradeAssessmentQuestion.create({
+      data: {
+        schoolId: demoSchoolId,
+        assessmentId,
+        type: GradeQuestionType.MCQ_SINGLE,
+        prompt: `${testSuffix}-submission-mcq`,
+        points: 5,
+        sortOrder: 1,
+        required: true,
+      },
+      select: { id: true },
+    });
+    const mcqOption = await prisma.gradeAssessmentQuestionOption.create({
+      data: {
+        schoolId: demoSchoolId,
+        assessmentId,
+        questionId: mcqQuestion.id,
+        label: 'A',
+        value: 'a',
+        isCorrect: true,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    const mcqOptionTwo = await prisma.gradeAssessmentQuestionOption.create({
+      data: {
+        schoolId: demoSchoolId,
+        assessmentId,
+        questionId: mcqQuestion.id,
+        label: 'B',
+        value: 'b',
+        isCorrect: false,
+        sortOrder: 2,
+      },
+      select: { id: true },
+    });
+    const shortQuestion = await prisma.gradeAssessmentQuestion.create({
+      data: {
+        schoolId: demoSchoolId,
+        assessmentId,
+        type: GradeQuestionType.SHORT_ANSWER,
+        prompt: `${testSuffix}-submission-short`,
+        points: 5,
+        sortOrder: 2,
+        required: true,
+      },
+      select: { id: true },
+    });
+
+    return {
+      assessmentId,
+      mcqQuestionId: mcqQuestion.id,
+      mcqOptionId: mcqOption.id,
+      mcqOptionTwoId: mcqOptionTwo.id,
+      shortQuestionId: shortQuestion.id,
+    };
+  }
+
+  async function createSubmissionForQuestionAssessment(params: {
+    assessmentId: string;
+    status?: GradeSubmissionStatus;
+    studentId?: string;
+    enrollmentId?: string;
+    schoolId?: string;
+    termId?: string;
+  }): Promise<string> {
+    const status = params.status ?? GradeSubmissionStatus.IN_PROGRESS;
+    const submission = await prisma.gradeSubmission.create({
+      data: {
+        schoolId: params.schoolId ?? demoSchoolId,
+        assessmentId: params.assessmentId,
+        termId: params.termId ?? demoTermId,
+        studentId: params.studentId ?? demoStudentId,
+        enrollmentId: params.enrollmentId ?? demoEnrollmentId,
+        status,
+        submittedAt:
+          status === GradeSubmissionStatus.SUBMITTED
+            ? new Date('2026-09-20T09:00:00.000Z')
+            : null,
+        maxScore: 10,
+      },
+      select: { id: true },
+    });
+
+    return submission.id;
+  }
+
+  async function seedCompleteSubmissionAnswers(params: {
+    submissionId: string;
+    assessmentId: string;
+    mcqQuestionId: string;
+    mcqOptionId: string;
+    shortQuestionId: string;
+  }): Promise<void> {
+    const mcqAnswer = await prisma.gradeSubmissionAnswer.create({
+      data: {
+        schoolId: demoSchoolId,
+        submissionId: params.submissionId,
+        assessmentId: params.assessmentId,
+        questionId: params.mcqQuestionId,
+        studentId: demoStudentId,
+        correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+        maxPoints: 5,
+      },
+      select: { id: true },
+    });
+    await prisma.gradeSubmissionAnswerOption.create({
+      data: {
+        schoolId: demoSchoolId,
+        answerId: mcqAnswer.id,
+        optionId: params.mcqOptionId,
+      },
+    });
+    await prisma.gradeSubmissionAnswer.create({
+      data: {
+        schoolId: demoSchoolId,
+        submissionId: params.submissionId,
+        assessmentId: params.assessmentId,
+        questionId: params.shortQuestionId,
+        studentId: demoStudentId,
+        answerText: 'written answer',
+        correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+        maxPoints: 5,
+      },
+    });
+  }
+
+  async function createTenantBQuestionSubmissionFixture(): Promise<{
+    assessmentId: string;
+    questionId: string;
+    optionId: string;
+    submissionId: string;
+  }> {
+    const assessment = await prisma.gradeAssessment.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        academicYearId: tenantBYearId,
+        termId: tenantBTermId,
+        subjectId: tenantBSubjectId,
+        scopeType: GradeScopeType.GRADE,
+        scopeKey: tenantBGradeId,
+        stageId: tenantBStageId,
+        gradeId: tenantBGradeId,
+        titleEn: `${testSuffix}-tenant-b-submission-${Date.now()}`,
+        titleAr: `${testSuffix}-tenant-b-submission-ar-${Date.now()}`,
+        type: GradeAssessmentType.QUIZ,
+        deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        date: new Date('2026-09-22T00:00:00.000Z'),
+        weight: 0.01,
+        maxScore: 5,
+        expectedTimeMinutes: 30,
+        approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+        publishedAt: new Date('2026-09-16T08:00:00.000Z'),
+        publishedById: viewOnlyUserId,
+      },
+      select: { id: true },
+    });
+    const question = await prisma.gradeAssessmentQuestion.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        assessmentId: assessment.id,
+        type: GradeQuestionType.MCQ_SINGLE,
+        prompt: `${testSuffix}-tenant-b-submission-question`,
+        points: 5,
+        sortOrder: 1,
+        required: true,
+      },
+      select: { id: true },
+    });
+    const option = await prisma.gradeAssessmentQuestionOption.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        assessmentId: assessment.id,
+        questionId: question.id,
+        label: 'A',
+        value: 'a',
+        isCorrect: true,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    const submission = await prisma.gradeSubmission.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        assessmentId: assessment.id,
+        termId: tenantBTermId,
+        studentId: tenantBStudentId,
+        enrollmentId: tenantBEnrollmentId,
+        status: GradeSubmissionStatus.IN_PROGRESS,
+        maxScore: 5,
+      },
+      select: { id: true },
+    });
+
+    return {
+      assessmentId: assessment.id,
+      questionId: question.id,
+      optionId: option.id,
+      submissionId: submission.id,
+    };
+  }
+
+  it('school A cannot list submissions for school B assessment', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const tenantBFixture = await createTenantBQuestionSubmissionFixture();
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/grades/assessments/${tenantBFixture.assessmentId}/submissions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A cannot resolve submission for school B assessment', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const tenantBFixture = await createTenantBQuestionSubmissionFixture();
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${tenantBFixture.assessmentId}/submissions/resolve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ studentId: demoStudentId })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A cannot resolve submission using school B student', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'cross-student',
+    });
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${fixture.assessmentId}/submissions/resolve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ studentId: tenantBStudentId })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A cannot resolve submission using school B enrollment', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'cross-enrollment',
+    });
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${fixture.assessmentId}/submissions/resolve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ studentId: demoStudentId, enrollmentId: tenantBEnrollmentId })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A cannot get, save, or submit school B submission detail', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const tenantBFixture = await createTenantBQuestionSubmissionFixture();
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/submissions/${tenantBFixture.submissionId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('not_found');
+      });
+
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/grades/submissions/${tenantBFixture.submissionId}/answers/${tenantBFixture.questionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ selectedOptionIds: [tenantBFixture.optionId] })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('not_found');
+      });
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/submissions/${tenantBFixture.submissionId}/submit`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('not_found');
+      });
+  });
+
+  it('school A cannot save answer using school B question or option', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'cross-answer-resource',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+    });
+
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${tenantBQuestionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ selectedOptionIds: [fixture.mcqOptionId] })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('not_found');
+      });
+
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${fixture.mcqQuestionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ selectedOptionIds: [tenantBQuestionOptionId] })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('not_found');
+      });
+  });
+
+  it('same-school actor without grades.submissions.view gets 403 for list/detail', async () => {
+    const { accessToken } = await login(
+      MANAGE_ONLY_EMAIL,
+      MANAGE_ONLY_PASSWORD,
+    );
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'no-view',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+    });
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/grades/assessments/${fixture.assessmentId}/submissions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('auth.scope.missing');
+      });
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('auth.scope.missing');
+      });
+  });
+
+  it('same-school actor without grades.submissions.submit gets 403 for resolve/save/bulk/submit', async () => {
+    const { accessToken } = await login(VIEW_ONLY_EMAIL, VIEW_ONLY_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'no-submit',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+    });
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${fixture.assessmentId}/submissions/resolve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ studentId: demoStudentId })
+      .expect(403)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('auth.scope.missing');
+      });
+
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${fixture.mcqQuestionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ selectedOptionIds: [fixture.mcqOptionId] })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        answers: [
+          {
+            questionId: fixture.mcqQuestionId,
+            selectedOptionIds: [fixture.mcqOptionId],
+          },
+        ],
+      })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/submit`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+  });
+
+  it('admin school role can resolve, save, and submit without creating GradeItems', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'admin-happy',
+    });
+
+    const resolveResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${fixture.assessmentId}/submissions/resolve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ studentId: demoStudentId })
+      .expect(201);
+
+    expect(resolveResponse.body).toMatchObject({
+      assessmentId: fixture.assessmentId,
+      studentId: demoStudentId,
+      status: 'in_progress',
+      progress: {
+        totalQuestions: 2,
+        answeredCount: 0,
+      },
+    });
+
+    const submissionId = resolveResponse.body.id as string;
+    const mcqResponse = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${fixture.mcqQuestionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ selectedOptionIds: [fixture.mcqOptionId] })
+      .expect(200);
+
+    expect(mcqResponse.body).toMatchObject({
+      questionId: fixture.mcqQuestionId,
+      correctionStatus: 'pending',
+      awardedPoints: null,
+    });
+
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${fixture.shortQuestionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ answerText: 'written answer' })
+      .expect(200);
+
+    const submitResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/submit`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(submitResponse.body).toMatchObject({
+      id: submissionId,
+      status: 'submitted',
+      submittedAt: expect.any(String),
+      totalScore: null,
+    });
+
+    const gradeItems = await prisma.gradeItem.count({
+      where: { assessmentId: fixture.assessmentId },
+    });
+    expect(gradeItems).toBe(0);
+  });
+
+  it('DRAFT assessment rejects resolve and save', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      approvalStatus: GradeAssessmentApprovalStatus.DRAFT,
+      titleSuffix: 'draft-reject',
+    });
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${fixture.assessmentId}/submissions/resolve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ studentId: demoStudentId })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.assessment.not_published');
+      });
+
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+    });
+
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${fixture.mcqQuestionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ selectedOptionIds: [fixture.mcqOptionId] })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.assessment.not_published');
+      });
+  });
+
+  it('locked assessment rejects resolve, save, and submit', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      lockedAt: new Date('2026-09-18T08:00:00.000Z'),
+      titleSuffix: 'locked-reject',
+    });
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${fixture.assessmentId}/submissions/resolve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ studentId: demoStudentId })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.assessment.locked');
+      });
+
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+    });
+    await seedCompleteSubmissionAnswers({ ...fixture, submissionId });
+
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${fixture.mcqQuestionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ selectedOptionIds: [fixture.mcqOptionId] })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.assessment.locked');
+      });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/submit`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.assessment.locked');
+      });
+  });
+
+  it('SUBMITTED submission rejects further answer saving', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'submitted-save-reject',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+      status: GradeSubmissionStatus.SUBMITTED,
+    });
+
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers/${fixture.mcqQuestionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ selectedOptionIds: [fixture.mcqOptionId] })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.submission.already_submitted');
+      });
+  });
+
+  it('bulk answer save does not partially write when one answer references cross-school resource', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const fixture = await createDemoPublishedQuestionAssessment({
+      titleSuffix: 'bulk-cross-school-rollback',
+    });
+    const submissionId = await createSubmissionForQuestionAssessment({
+      assessmentId: fixture.assessmentId,
+    });
+    const before = await prisma.gradeSubmissionAnswer.count({
+      where: { submissionId },
+    });
+
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/grades/submissions/${submissionId}/answers`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        answers: [
+          {
+            questionId: fixture.shortQuestionId,
+            answerText: 'valid written answer',
+          },
+          {
+            questionId: fixture.mcqQuestionId,
+            selectedOptionIds: [tenantBQuestionOptionId],
+          },
+        ],
+      })
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('not_found');
+      });
+
+    const after = await prisma.gradeSubmissionAnswer.count({
+      where: { submissionId },
+    });
+    expect(after).toBe(before);
+  });
 
   it('school A gradebook does not include school B students, assessments, or items', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
