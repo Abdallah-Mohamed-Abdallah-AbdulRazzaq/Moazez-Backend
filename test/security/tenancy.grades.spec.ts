@@ -4,10 +4,12 @@ import {
   GradeAssessmentApprovalStatus,
   GradeAssessmentDeliveryMode,
   GradeAssessmentType,
+  GradeQuestionType,
   GradeItemStatus,
   GradeRoundingMode,
   GradeRuleScale,
   GradeScopeType,
+  GradeSubmissionStatus,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
@@ -62,8 +64,12 @@ describe('Grades tenancy isolation (security)', () => {
   let demoClassroomId: string;
   let demoSubjectId: string;
   let demoAssessmentId: string;
+  let demoQuestionAssessmentId: string;
+  let demoQuestionOneId: string;
+  let demoQuestionTwoId: string;
   let demoStudentId: string;
   let demoStudentTwoId: string;
+  let demoEnrollmentId: string;
   let demoSchoolRuleId: string;
   let demoGradeRuleId: string;
 
@@ -75,6 +81,8 @@ describe('Grades tenancy isolation (security)', () => {
   let tenantBClassroomId: string;
   let tenantBSubjectId: string;
   let tenantBAssessmentId: string;
+  let tenantBQuestionAssessmentId: string;
+  let tenantBQuestionId: string;
   let tenantBStudentId: string;
   let tenantBSchoolRuleId: string;
   let tenantBGradeRuleId: string;
@@ -109,6 +117,8 @@ describe('Grades tenancy isolation (security)', () => {
       assessmentsPublishPermission,
       assessmentsApprovePermission,
       assessmentsLockPermission,
+      questionsViewPermission,
+      questionsManagePermission,
       itemsViewPermission,
       itemsManagePermission,
     ] = await Promise.all([
@@ -145,6 +155,14 @@ describe('Grades tenancy isolation (security)', () => {
         select: { id: true },
       }),
       prisma.permission.findUnique({
+        where: { code: 'grades.questions.view' },
+        select: { id: true },
+      }),
+      prisma.permission.findUnique({
+        where: { code: 'grades.questions.manage' },
+        select: { id: true },
+      }),
+      prisma.permission.findUnique({
         where: { code: 'grades.items.view' },
         select: { id: true },
       }),
@@ -163,6 +181,8 @@ describe('Grades tenancy isolation (security)', () => {
       !assessmentsPublishPermission ||
       !assessmentsApprovePermission ||
       !assessmentsLockPermission ||
+      !questionsViewPermission ||
+      !questionsManagePermission ||
       !itemsViewPermission ||
       !itemsManagePermission
     ) {
@@ -517,6 +537,118 @@ describe('Grades tenancy isolation (security)', () => {
     });
     tenantBAssessmentId = tenantBAssessment.id;
 
+    const demoQuestionAssessment = await prisma.gradeAssessment.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        subjectId: demoSubjectId,
+        scopeType: GradeScopeType.GRADE,
+        scopeKey: demoGradeId,
+        stageId: demoStageId,
+        gradeId: demoGradeId,
+        titleEn: `${testSuffix}-question-assessment-a`,
+        titleAr: `${testSuffix}-question-assessment-a-ar`,
+        type: GradeAssessmentType.QUIZ,
+        deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        date: new Date('2026-09-16T00:00:00.000Z'),
+        weight: 0.01,
+        maxScore: 10,
+        expectedTimeMinutes: 30,
+        approvalStatus: GradeAssessmentApprovalStatus.DRAFT,
+      },
+      select: { id: true },
+    });
+    demoQuestionAssessmentId = demoQuestionAssessment.id;
+
+    const demoQuestionOne = await prisma.gradeAssessmentQuestion.create({
+      data: {
+        schoolId: demoSchoolId,
+        assessmentId: demoQuestionAssessmentId,
+        type: GradeQuestionType.MCQ_SINGLE,
+        prompt: `${testSuffix}-question-a-1`,
+        points: 5,
+        sortOrder: 1,
+        required: true,
+      },
+      select: { id: true },
+    });
+    demoQuestionOneId = demoQuestionOne.id;
+    await prisma.gradeAssessmentQuestionOption.createMany({
+      data: [
+        {
+          schoolId: demoSchoolId,
+          assessmentId: demoQuestionAssessmentId,
+          questionId: demoQuestionOneId,
+          label: 'A',
+          value: 'a',
+          isCorrect: true,
+          sortOrder: 1,
+        },
+        {
+          schoolId: demoSchoolId,
+          assessmentId: demoQuestionAssessmentId,
+          questionId: demoQuestionOneId,
+          label: 'B',
+          value: 'b',
+          isCorrect: false,
+          sortOrder: 2,
+        },
+      ],
+    });
+
+    const demoQuestionTwo = await prisma.gradeAssessmentQuestion.create({
+      data: {
+        schoolId: demoSchoolId,
+        assessmentId: demoQuestionAssessmentId,
+        type: GradeQuestionType.SHORT_ANSWER,
+        prompt: `${testSuffix}-question-a-2`,
+        points: 5,
+        sortOrder: 2,
+        required: true,
+      },
+      select: { id: true },
+    });
+    demoQuestionTwoId = demoQuestionTwo.id;
+
+    const tenantBQuestionAssessment = await prisma.gradeAssessment.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        academicYearId: tenantBYearId,
+        termId: tenantBTermId,
+        subjectId: tenantBSubjectId,
+        scopeType: GradeScopeType.GRADE,
+        scopeKey: tenantBGradeId,
+        stageId: tenantBStageId,
+        gradeId: tenantBGradeId,
+        titleEn: `${testSuffix}-question-assessment-b`,
+        titleAr: `${testSuffix}-question-assessment-b-ar`,
+        type: GradeAssessmentType.QUIZ,
+        deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        date: new Date('2026-09-16T00:00:00.000Z'),
+        weight: 0.01,
+        maxScore: 5,
+        expectedTimeMinutes: 30,
+        approvalStatus: GradeAssessmentApprovalStatus.DRAFT,
+      },
+      select: { id: true },
+    });
+    tenantBQuestionAssessmentId = tenantBQuestionAssessment.id;
+
+    const tenantBQuestion = await prisma.gradeAssessmentQuestion.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        assessmentId: tenantBQuestionAssessmentId,
+        type: GradeQuestionType.SHORT_ANSWER,
+        prompt: `${testSuffix}-question-b-1`,
+        points: 5,
+        sortOrder: 1,
+        required: true,
+      },
+      select: { id: true },
+    });
+    tenantBQuestionId = tenantBQuestion.id;
+
     const demoStudent = await prisma.student.create({
       data: {
         schoolId: demoSchoolId,
@@ -529,7 +661,7 @@ describe('Grades tenancy isolation (security)', () => {
     });
     demoStudentId = demoStudent.id;
 
-    await prisma.enrollment.create({
+    const demoEnrollment = await prisma.enrollment.create({
       data: {
         schoolId: demoSchoolId,
         studentId: demoStudentId,
@@ -539,7 +671,9 @@ describe('Grades tenancy isolation (security)', () => {
         status: StudentEnrollmentStatus.ACTIVE,
         enrolledAt: new Date('2026-09-01T00:00:00.000Z'),
       },
+      select: { id: true },
     });
+    demoEnrollmentId = demoEnrollment.id;
 
     const demoStudentTwo = await prisma.student.create({
       data: {
@@ -595,6 +729,7 @@ describe('Grades tenancy isolation (security)', () => {
       permissionIds: [
         rulesViewPermission.id,
         assessmentsViewPermission.id,
+        questionsViewPermission.id,
         itemsViewPermission.id,
       ],
     });
@@ -604,6 +739,7 @@ describe('Grades tenancy isolation (security)', () => {
       permissionIds: [
         rulesManagePermission.id,
         assessmentsManagePermission.id,
+        questionsManagePermission.id,
         itemsManagePermission.id,
       ],
     });
@@ -638,12 +774,58 @@ describe('Grades tenancy isolation (security)', () => {
   afterAll(async () => {
     if (app) await app.close();
     if (prisma) {
+      const assessmentIdsForCleanup = [
+        demoAssessmentId,
+        tenantBAssessmentId,
+        demoQuestionAssessmentId,
+        tenantBQuestionAssessmentId,
+      ].filter(Boolean);
+
+      await prisma.gradeSubmissionAnswerOption.deleteMany({
+        where: {
+          answer: {
+            assessment: {
+              titleEn: { startsWith: testSuffix },
+            },
+          },
+        },
+      });
+      await prisma.gradeSubmissionAnswer.deleteMany({
+        where: {
+          assessment: {
+            titleEn: { startsWith: testSuffix },
+          },
+        },
+      });
+      await prisma.gradeSubmission.deleteMany({
+        where: {
+          assessment: {
+            titleEn: { startsWith: testSuffix },
+          },
+        },
+      });
+      await prisma.gradeAssessmentQuestionOption.deleteMany({
+        where: {
+          OR: [
+            { assessmentId: { in: assessmentIdsForCleanup } },
+            { assessment: { titleEn: { startsWith: testSuffix } } },
+          ],
+        },
+      });
+      await prisma.gradeAssessmentQuestion.deleteMany({
+        where: {
+          OR: [
+            { assessmentId: { in: assessmentIdsForCleanup } },
+            { assessment: { titleEn: { startsWith: testSuffix } } },
+          ],
+        },
+      });
       await prisma.gradeItem.deleteMany({
         where: {
           OR: [
             {
               assessmentId: {
-                in: [demoAssessmentId, tenantBAssessmentId].filter(Boolean),
+                in: assessmentIdsForCleanup,
               },
             },
             {
@@ -666,7 +848,7 @@ describe('Grades tenancy isolation (security)', () => {
           OR: [
             {
               id: {
-                in: [demoAssessmentId, tenantBAssessmentId].filter(Boolean),
+                in: assessmentIdsForCleanup,
               },
             },
             { titleEn: { startsWith: testSuffix } },
@@ -697,6 +879,11 @@ describe('Grades tenancy isolation (security)', () => {
                   tenantBGradeRuleId,
                   demoAssessmentId,
                   tenantBAssessmentId,
+                  demoQuestionAssessmentId,
+                  tenantBQuestionAssessmentId,
+                  demoQuestionOneId,
+                  demoQuestionTwoId,
+                  tenantBQuestionId,
                 ].filter(Boolean),
               },
             },
@@ -711,6 +898,18 @@ describe('Grades tenancy isolation (security)', () => {
                   'grades.assessment.approve',
                   'grades.assessment.lock',
                   'grades.items.bulk_update',
+                  'grades.question.reorder',
+                  'grades.question.points.bulk_update',
+                ],
+              },
+            },
+            {
+              resourceType: 'grade_assessment_question',
+              action: {
+                in: [
+                  'grades.question.create',
+                  'grades.question.update',
+                  'grades.question.delete',
                 ],
               },
             },
@@ -1024,7 +1223,7 @@ describe('Grades tenancy isolation (security)', () => {
         type: GradeAssessmentType.QUIZ,
         deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
         date: new Date('2026-09-25T00:00:00.000Z'),
-        weight: 1,
+        weight: 0.01,
         maxScore: 20,
         expectedTimeMinutes: 30,
         approvalStatus,
@@ -1039,6 +1238,92 @@ describe('Grades tenancy isolation (security)', () => {
     });
 
     return assessment.id;
+  }
+
+  function questionPayload(overrides?: Record<string, unknown>) {
+    return {
+      type: 'MCQ_SINGLE',
+      prompt: `${testSuffix}-question-created`,
+      points: 5,
+      options: [
+        { label: 'A', value: 'a', isCorrect: true },
+        { label: 'B', value: 'b', isCorrect: false },
+      ],
+      ...overrides,
+    };
+  }
+
+  async function createDemoQuestionAssessment(overrides?: {
+    approvalStatus?: GradeAssessmentApprovalStatus;
+    lockedAt?: Date | null;
+    termId?: string;
+    titleSuffix?: string;
+  }): Promise<string> {
+    const approvalStatus =
+      overrides?.approvalStatus ?? GradeAssessmentApprovalStatus.DRAFT;
+    const publishedAt =
+      approvalStatus === GradeAssessmentApprovalStatus.DRAFT
+        ? null
+        : new Date('2026-09-16T08:00:00.000Z');
+    const approvedAt =
+      approvalStatus === GradeAssessmentApprovalStatus.APPROVED
+        ? new Date('2026-09-17T08:00:00.000Z')
+        : null;
+
+    const assessment = await prisma.gradeAssessment.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: overrides?.termId ?? demoTermId,
+        subjectId: demoSubjectId,
+        scopeType: GradeScopeType.GRADE,
+        scopeKey: demoGradeId,
+        stageId: demoStageId,
+        gradeId: demoGradeId,
+        titleEn: `${testSuffix}-question-workflow-${overrides?.titleSuffix ?? Date.now()}`,
+        titleAr: `${testSuffix}-question-workflow-ar-${overrides?.titleSuffix ?? Date.now()}`,
+        type: GradeAssessmentType.QUIZ,
+        deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        date:
+          overrides?.termId === demoClosedTermId
+            ? new Date('2027-01-15T00:00:00.000Z')
+            : new Date('2026-09-26T00:00:00.000Z'),
+        weight: 0.01,
+        maxScore: 10,
+        expectedTimeMinutes: 30,
+        approvalStatus,
+        publishedAt,
+        publishedById: publishedAt ? viewOnlyUserId : null,
+        approvedAt,
+        approvedById: approvedAt ? viewOnlyUserId : null,
+        lockedAt: overrides?.lockedAt ?? null,
+        lockedById: overrides?.lockedAt ? viewOnlyUserId : null,
+      },
+      select: { id: true },
+    });
+
+    return assessment.id;
+  }
+
+  async function createQuestionForAssessment(params: {
+    assessmentId: string;
+    sortOrder: number;
+    points?: number;
+  }): Promise<string> {
+    const question = await prisma.gradeAssessmentQuestion.create({
+      data: {
+        schoolId: demoSchoolId,
+        assessmentId: params.assessmentId,
+        type: GradeQuestionType.SHORT_ANSWER,
+        prompt: `${testSuffix}-helper-question-${params.sortOrder}`,
+        points: params.points ?? 5,
+        sortOrder: params.sortOrder,
+        required: true,
+      },
+      select: { id: true },
+    });
+
+    return question.id;
   }
 
   it('school A gradebook does not include school B students, assessments, or items', async () => {
@@ -1635,6 +1920,394 @@ describe('Grades tenancy isolation (security)', () => {
       expect(response.body?.error?.code).toBe('auth.scope.missing');
     },
   );
+
+  it('school A cannot list questions for a school B assessment', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/grades/assessments/${tenantBQuestionAssessmentId}/questions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A cannot create a question for a school B assessment', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${tenantBQuestionAssessmentId}/questions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(questionPayload())
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A cannot update or delete a school B question', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const updateResponse = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/grades/questions/${tenantBQuestionId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ prompt: `${testSuffix}-forbidden-question-update` })
+      .expect(404);
+    expect(updateResponse.body?.error?.code).toBe('not_found');
+
+    const deleteResponse = await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/grades/questions/${tenantBQuestionId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(deleteResponse.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A cannot reorder questions using a school B question id', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${demoQuestionAssessmentId}/questions/reorder`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ questionIds: [demoQuestionOneId, tenantBQuestionId] })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A cannot bulk update points using a school B question id', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${demoQuestionAssessmentId}/questions/points/bulk`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        items: [
+          { questionId: demoQuestionOneId, points: 4 },
+          { questionId: tenantBQuestionId, points: 6 },
+        ],
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 403 when the same-school actor lacks grades.questions.view', async () => {
+    const { accessToken } = await login(
+      MANAGE_ONLY_EMAIL,
+      MANAGE_ONLY_PASSWORD,
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/grades/assessments/${demoQuestionAssessmentId}/questions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks grades.questions.manage', async () => {
+    const { accessToken } = await login(VIEW_ONLY_EMAIL, VIEW_ONLY_PASSWORD);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${demoQuestionAssessmentId}/questions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        questionPayload({ prompt: `${testSuffix}-forbidden-create-question` }),
+      )
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/grades/questions/${demoQuestionOneId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ prompt: `${testSuffix}-forbidden-update-question` })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/grades/questions/${demoQuestionOneId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${demoQuestionAssessmentId}/questions/reorder`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ questionIds: [demoQuestionTwoId, demoQuestionOneId] })
+      .expect(403);
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${demoQuestionAssessmentId}/questions/points/bulk`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        items: [
+          { questionId: demoQuestionOneId, points: 5 },
+          { questionId: demoQuestionTwoId, points: 5 },
+        ],
+      })
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('lists active questions sorted and excludes soft-deleted questions and options', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const deletedQuestion = await prisma.gradeAssessmentQuestion.create({
+      data: {
+        schoolId: demoSchoolId,
+        assessmentId: demoQuestionAssessmentId,
+        type: GradeQuestionType.SHORT_ANSWER,
+        prompt: `${testSuffix}-deleted-question`,
+        points: 1,
+        sortOrder: 90,
+        required: true,
+        deletedAt: new Date('2026-09-17T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+
+    await prisma.gradeAssessmentQuestionOption.create({
+      data: {
+        schoolId: demoSchoolId,
+        assessmentId: demoQuestionAssessmentId,
+        questionId: demoQuestionOneId,
+        label: `${testSuffix}-deleted-option`,
+        value: 'deleted',
+        isCorrect: false,
+        sortOrder: 90,
+        deletedAt: new Date('2026-09-17T08:05:00.000Z'),
+      },
+    });
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/grades/assessments/${demoQuestionAssessmentId}/questions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const questionIds = response.body.questions.map(
+      (q: { id: string }) => q.id,
+    );
+    expect(questionIds).toEqual([demoQuestionOneId, demoQuestionTwoId]);
+    expect(questionIds).not.toContain(deletedQuestion.id);
+
+    const firstQuestion = response.body.questions.find(
+      (q: { id: string }) => q.id === demoQuestionOneId,
+    );
+    expect(firstQuestion.options).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({ label: `${testSuffix}-deleted-option` }),
+      ]),
+    );
+  });
+
+  it('school admin can manage question CRUD, reorder, and bulk points', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const createResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${demoQuestionAssessmentId}/questions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        questionPayload({
+          prompt: `${testSuffix}-admin-created-question`,
+          points: 2,
+        }),
+      )
+      .expect(201);
+
+    const createdQuestionId = createResponse.body.id;
+    expect(createResponse.body).toMatchObject({
+      assessmentId: demoQuestionAssessmentId,
+      type: 'mcq_single',
+      points: 2,
+      options: expect.arrayContaining([
+        expect.objectContaining({ isCorrect: true }),
+      ]),
+    });
+
+    const listResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/grades/assessments/${demoQuestionAssessmentId}/questions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(
+      listResponse.body.questions.map((q: { id: string }) => q.id),
+    ).toEqual(
+      expect.arrayContaining([
+        demoQuestionOneId,
+        demoQuestionTwoId,
+        createdQuestionId,
+      ]),
+    );
+
+    const updateResponse = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/grades/questions/${createdQuestionId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        prompt: `${testSuffix}-admin-updated-question`,
+        options: [
+          { label: 'Updated A', value: 'a', isCorrect: false },
+          { label: 'Updated B', value: 'b', isCorrect: true },
+        ],
+      })
+      .expect(200);
+
+    expect(updateResponse.body).toMatchObject({
+      id: createdQuestionId,
+      prompt: `${testSuffix}-admin-updated-question`,
+      options: [
+        expect.objectContaining({ label: 'Updated A', isCorrect: false }),
+        expect.objectContaining({ label: 'Updated B', isCorrect: true }),
+      ],
+    });
+
+    const activeQuestionIds = listResponse.body.questions.map(
+      (q: { id: string }) => q.id,
+    );
+    const reorderResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${demoQuestionAssessmentId}/questions/reorder`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ questionIds: [...activeQuestionIds].reverse() })
+      .expect(201);
+
+    expect(reorderResponse.body.questions[0].id).toBe(createdQuestionId);
+
+    const bulkResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${demoQuestionAssessmentId}/questions/points/bulk`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        items: activeQuestionIds.map((questionId: string, index: number) => ({
+          questionId,
+          points: index + 1,
+        })),
+      })
+      .expect(201);
+
+    expect(bulkResponse.body.totalPoints).toBe(6);
+    expect(bulkResponse.body.pointsMatchMaxScore).toBe(false);
+
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/grades/questions/${createdQuestionId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({ ok: true });
+      });
+  });
+
+  it('rejects SCORE_ONLY assessment question management', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/assessments/${demoAssessmentId}/questions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(questionPayload())
+      .expect(400);
+
+    expect(response.body?.error?.code).toBe('validation.failed');
+  });
+
+  it('rejects question mutations on published, approved, and locked assessments', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const publishedAssessmentId = await createDemoQuestionAssessment({
+      approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+      titleSuffix: 'published-question-mutation',
+    });
+    const approvedAssessmentId = await createDemoQuestionAssessment({
+      approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      titleSuffix: 'approved-question-mutation',
+    });
+    const lockedAssessmentId = await createDemoQuestionAssessment({
+      approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      lockedAt: new Date('2026-09-18T08:00:00.000Z'),
+      titleSuffix: 'locked-question-mutation',
+    });
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${publishedAssessmentId}/questions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(questionPayload())
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe(
+          'grades.assessment.invalid_status_transition',
+        );
+      });
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${approvedAssessmentId}/questions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(questionPayload())
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe(
+          'grades.assessment.invalid_status_transition',
+        );
+      });
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/grades/assessments/${lockedAssessmentId}/questions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(questionPayload())
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body?.error?.code).toBe('grades.assessment.locked');
+      });
+  });
+
+  it('rejects question mutations when submissions already exist', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const assessmentId = await createDemoQuestionAssessment({
+      titleSuffix: 'submission-question-mutation',
+    });
+    await createQuestionForAssessment({ assessmentId, sortOrder: 1 });
+    await prisma.gradeSubmission.create({
+      data: {
+        schoolId: demoSchoolId,
+        assessmentId,
+        termId: demoTermId,
+        studentId: demoStudentId,
+        enrollmentId: demoEnrollmentId,
+        status: GradeSubmissionStatus.IN_PROGRESS,
+      },
+    });
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}/questions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(questionPayload({ prompt: `${testSuffix}-blocked-by-submission` }))
+      .expect(409);
+
+    expect(response.body?.error?.code).toBe('grades.question.structure_locked');
+  });
 
   it('school A cannot list items for a school B assessment', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
