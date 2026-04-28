@@ -334,6 +334,34 @@ enum GradeAssessmentApprovalStatus {
   @@map("grade_assessment_approval_status")
 }
 
+enum GradeQuestionType {
+  MCQ_SINGLE
+  MCQ_MULTI
+  TRUE_FALSE
+  SHORT_ANSWER
+  ESSAY
+  FILL_IN_BLANK
+  MATCHING
+  MEDIA
+
+  @@map("grade_question_type")
+}
+
+enum GradeSubmissionStatus {
+  IN_PROGRESS
+  SUBMITTED
+  CORRECTED
+
+  @@map("grade_submission_status")
+}
+
+enum GradeAnswerCorrectionStatus {
+  PENDING
+  CORRECTED
+
+  @@map("grade_answer_correction_status")
+}
+
 enum GradeItemStatus {
   ENTERED
   MISSING
@@ -438,6 +466,11 @@ model School {
   attendanceExcuseRequests          AttendanceExcuseRequest[]
   attendanceExcuseRequestSessions   AttendanceExcuseRequestSession[]
   gradeAssessments                  GradeAssessment[]
+  gradeAssessmentQuestions          GradeAssessmentQuestion[]
+  gradeAssessmentQuestionOptions    GradeAssessmentQuestionOption[]
+  gradeSubmissions                  GradeSubmission[]
+  gradeSubmissionAnswers            GradeSubmissionAnswer[]
+  gradeSubmissionAnswerOptions      GradeSubmissionAnswerOption[]
   gradeItems                        GradeItem[]
   gradeRules                        GradeRule[]
 
@@ -491,6 +524,8 @@ model User {
   gradeAssessmentsLocked          GradeAssessment[]          @relation("GradeAssessmentLockedBy")
   gradeAssessmentsCreated         GradeAssessment[]          @relation("GradeAssessmentCreatedBy")
   gradeItemsEntered               GradeItem[]                @relation("GradeItemEnteredBy")
+  gradeSubmissionsReviewed        GradeSubmission[]          @relation("GradeSubmissionReviewedBy")
+  gradeSubmissionAnswersReviewed  GradeSubmissionAnswer[]    @relation("GradeSubmissionAnswerReviewedBy")
 
   @@index([userType])
   @@index([status])
@@ -1029,6 +1064,7 @@ model Term {
   attendanceSessions        AttendanceSession[]
   attendanceExcuseRequests  AttendanceExcuseRequest[]
   gradeAssessments          GradeAssessment[]
+  gradeSubmissions          GradeSubmission[]
   gradeItems                GradeItem[]
   gradeRules                GradeRule[]
 
@@ -1270,6 +1306,8 @@ model Student {
   attendanceEntries        AttendanceEntry[]
   attendanceExcuseRequests AttendanceExcuseRequest[]
   gradeItems               GradeItem[]
+  gradeSubmissions         GradeSubmission[]
+  gradeSubmissionAnswers   GradeSubmissionAnswer[]
 
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
@@ -1356,6 +1394,7 @@ model Enrollment {
   classroom         Classroom         @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
   attendanceEntries AttendanceEntry[]
   gradeItems        GradeItem[]
+  gradeSubmissions  GradeSubmission[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -1688,19 +1727,23 @@ model GradeAssessment {
   updatedAt           DateTime                      @updatedAt @map("updated_at")
   deletedAt           DateTime?                     @map("deleted_at")
 
-  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicYear AcademicYear @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term         Term         @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  subject      Subject      @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  stage        Stage?       @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  grade        Grade?       @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  section      Section?     @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classroom    Classroom?   @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  publishedBy  User?        @relation("GradeAssessmentPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
-  approvedBy   User?        @relation("GradeAssessmentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  lockedBy     User?        @relation("GradeAssessmentLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
-  createdBy    User?        @relation("GradeAssessmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  items        GradeItem[]
+  school            School                          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear      AcademicYear                    @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term              Term                            @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject           Subject                         @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  stage             Stage?                          @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade             Grade?                          @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  section           Section?                        @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom         Classroom?                      @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  publishedBy       User?                           @relation("GradeAssessmentPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  approvedBy        User?                           @relation("GradeAssessmentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  lockedBy          User?                           @relation("GradeAssessmentLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
+  createdBy         User?                           @relation("GradeAssessmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  questions         GradeAssessmentQuestion[]
+  questionOptions   GradeAssessmentQuestionOption[]
+  submissions       GradeSubmission[]
+  submissionAnswers GradeSubmissionAnswer[]
+  items             GradeItem[]
 
   @@unique([id, schoolId], map: "grade_assessments_id_school_id_unique")
   @@index([schoolId])
@@ -1756,6 +1799,165 @@ model GradeItem {
   @@index([schoolId, termId, studentId])
   @@index([schoolId, assessmentId, status])
   @@map("grade_items")
+}
+
+model GradeAssessmentQuestion {
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String            @map("school_id") @db.Uuid
+  assessmentId  String            @map("assessment_id") @db.Uuid
+  type          GradeQuestionType
+  prompt        String
+  promptAr      String?           @map("prompt_ar")
+  explanation   String?
+  explanationAr String?           @map("explanation_ar")
+  points        Decimal           @db.Decimal(8, 2)
+  sortOrder     Int               @map("sort_order")
+  required      Boolean           @default(true)
+  answerKey     Json?             @map("answer_key")
+  metadata      Json?
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  deletedAt     DateTime?         @map("deleted_at")
+
+  school     School                          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  assessment GradeAssessment                 @relation(fields: [assessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  options    GradeAssessmentQuestionOption[]
+  answers    GradeSubmissionAnswer[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, assessmentId, sortOrder])
+  @@index([schoolId])
+  @@index([assessmentId])
+  @@index([schoolId, assessmentId, deletedAt])
+  @@index([schoolId, type])
+  @@index([deletedAt])
+  @@map("grade_assessment_questions")
+}
+
+model GradeAssessmentQuestionOption {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId     String    @map("school_id") @db.Uuid
+  assessmentId String    @map("assessment_id") @db.Uuid
+  questionId   String    @map("question_id") @db.Uuid
+  label        String
+  labelAr      String?   @map("label_ar")
+  value        String?
+  isCorrect    Boolean   @default(false) @map("is_correct")
+  sortOrder    Int       @map("sort_order")
+  metadata     Json?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  school            School                        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  assessment        GradeAssessment               @relation(fields: [assessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  question          GradeAssessmentQuestion       @relation(fields: [questionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  selectedByAnswers GradeSubmissionAnswerOption[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, questionId, sortOrder])
+  @@index([schoolId])
+  @@index([assessmentId])
+  @@index([questionId])
+  @@index([schoolId, questionId, deletedAt])
+  @@index([deletedAt])
+  @@map("grade_assessment_question_options")
+}
+
+model GradeSubmission {
+  id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId     String                @map("school_id") @db.Uuid
+  assessmentId String                @map("assessment_id") @db.Uuid
+  termId       String                @map("term_id") @db.Uuid
+  studentId    String                @map("student_id") @db.Uuid
+  enrollmentId String                @map("enrollment_id") @db.Uuid
+  status       GradeSubmissionStatus @default(IN_PROGRESS)
+  startedAt    DateTime              @default(now()) @map("started_at")
+  submittedAt  DateTime?             @map("submitted_at")
+  correctedAt  DateTime?             @map("corrected_at")
+  reviewedById String?               @map("reviewed_by_id") @db.Uuid
+  totalScore   Decimal?              @map("total_score") @db.Decimal(8, 2)
+  maxScore     Decimal?              @map("max_score") @db.Decimal(8, 2)
+  metadata     Json?
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+
+  school     School                  @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  assessment GradeAssessment         @relation(fields: [assessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term       Term                    @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  student    Student                 @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment Enrollment              @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  reviewedBy User?                   @relation("GradeSubmissionReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  answers    GradeSubmissionAnswer[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, assessmentId, studentId])
+  @@index([schoolId])
+  @@index([assessmentId])
+  @@index([termId])
+  @@index([studentId])
+  @@index([enrollmentId])
+  @@index([reviewedById])
+  @@index([schoolId, assessmentId, status])
+  @@index([schoolId, termId, studentId])
+  @@map("grade_submissions")
+}
+
+model GradeSubmissionAnswer {
+  id                String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String                      @map("school_id") @db.Uuid
+  submissionId      String                      @map("submission_id") @db.Uuid
+  assessmentId      String                      @map("assessment_id") @db.Uuid
+  questionId        String                      @map("question_id") @db.Uuid
+  studentId         String                      @map("student_id") @db.Uuid
+  answerText        String?                     @map("answer_text")
+  answerJson        Json?                       @map("answer_json")
+  correctionStatus  GradeAnswerCorrectionStatus @default(PENDING) @map("correction_status")
+  awardedPoints     Decimal?                    @map("awarded_points") @db.Decimal(8, 2)
+  maxPoints         Decimal?                    @map("max_points") @db.Decimal(8, 2)
+  reviewerComment   String?                     @map("reviewer_comment")
+  reviewerCommentAr String?                     @map("reviewer_comment_ar")
+  reviewedById      String?                     @map("reviewed_by_id") @db.Uuid
+  reviewedAt        DateTime?                   @map("reviewed_at")
+  createdAt         DateTime                    @default(now()) @map("created_at")
+  updatedAt         DateTime                    @updatedAt @map("updated_at")
+
+  school          School                        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  submission      GradeSubmission               @relation(fields: [submissionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  assessment      GradeAssessment               @relation(fields: [assessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  question        GradeAssessmentQuestion       @relation(fields: [questionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  student         Student                       @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  reviewedBy      User?                         @relation("GradeSubmissionAnswerReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  selectedOptions GradeSubmissionAnswerOption[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, submissionId, questionId])
+  @@index([schoolId])
+  @@index([submissionId])
+  @@index([assessmentId])
+  @@index([questionId])
+  @@index([studentId])
+  @@index([reviewedById])
+  @@index([schoolId, assessmentId, studentId])
+  @@index([schoolId, correctionStatus])
+  @@map("grade_submission_answers")
+}
+
+model GradeSubmissionAnswerOption {
+  schoolId  String   @map("school_id") @db.Uuid
+  answerId  String   @map("answer_id") @db.Uuid
+  optionId  String   @map("option_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  school School                        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  answer GradeSubmissionAnswer         @relation(fields: [answerId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  option GradeAssessmentQuestionOption @relation(fields: [optionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@id([answerId, optionId])
+  @@index([schoolId])
+  @@index([answerId])
+  @@index([optionId])
+  @@map("grade_submission_answer_options")
 }
 
 model GradeRule {

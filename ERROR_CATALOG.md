@@ -130,6 +130,15 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `grades.rule.conflict`             | 409  | A grading rule already exists for this scope   |
 | `grades.gradebook.no_enrollment`   | 422  | Student has no enrollment for this gradebook context |
 | `grades.question.points_mismatch`  | 422  | Total question points do not match assessment total |
+| `grades.question.structure_locked` | 409  | Question structure cannot be changed           |
+| `grades.question.last_question`    | 409  | Assessment must keep at least one question     |
+| `grades.answer.invalid_question`   | 422  | Answer references an invalid question          |
+| `grades.answer.invalid_option`     | 422  | Answer references an invalid option            |
+| `grades.submission.already_submitted` | 409 | Submission is already submitted              |
+| `grades.submission.not_submitted`  | 409  | Submission must be submitted first             |
+| `grades.submission.locked`         | 409  | Submission cannot be changed                   |
+| `grades.review.already_finalized`  | 409  | Review is already finalized                    |
+| `grades.review.pending_answers`    | 409  | Review still has pending answers               |
 
 ### Reinforcement
 

@@ -57,6 +57,11 @@ const SCHOOL_SCOPED_MODELS = new Set<string>([
   'AttendanceExcuseRequest',
   'AttendanceExcuseRequestSession',
   'GradeAssessment',
+  'GradeAssessmentQuestion',
+  'GradeAssessmentQuestionOption',
+  'GradeSubmission',
+  'GradeSubmissionAnswer',
+  'GradeSubmissionAnswerOption',
   'GradeItem',
   'GradeRule',
 ]);
@@ -88,6 +93,8 @@ const SOFT_DELETE_MODELS = new Set<string>([
   'AttendanceSession',
   'AttendanceExcuseRequest',
   'GradeAssessment',
+  'GradeAssessmentQuestion',
+  'GradeAssessmentQuestionOption',
 ]);
 
 const READ_OPERATIONS = new Set<string>([
