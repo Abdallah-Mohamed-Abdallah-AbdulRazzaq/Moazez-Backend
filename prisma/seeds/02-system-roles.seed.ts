@@ -36,6 +36,8 @@ const TEACHER_PERMISSIONS = [
   'reinforcement.reviews.view',
   'reinforcement.reviews.manage',
   'reinforcement.xp.view',
+  'reinforcement.hero.view',
+  'reinforcement.hero.progress.view',
   'communication.messages.view',
   'communication.messages.send',
   'communication.announcements.view',

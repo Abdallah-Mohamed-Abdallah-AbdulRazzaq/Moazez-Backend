@@ -74,6 +74,13 @@ const SCHOOL_SCOPED_MODELS = new Set<string>([
   'ReinforcementTaskTemplateStage',
   'XpPolicy',
   'XpLedger',
+  'HeroBadge',
+  'HeroMission',
+  'HeroMissionObjective',
+  'HeroMissionProgress',
+  'HeroMissionObjectiveProgress',
+  'HeroStudentBadge',
+  'HeroJourneyEvent',
 ]);
 
 // Models that use soft delete (have a deletedAt column). Read operations
@@ -110,6 +117,9 @@ const SOFT_DELETE_MODELS = new Set<string>([
   'ReinforcementTaskTemplate',
   'ReinforcementTaskTemplateStage',
   'XpPolicy',
+  'HeroBadge',
+  'HeroMission',
+  'HeroMissionObjective',
 ]);
 
 const READ_OPERATIONS = new Set<string>([

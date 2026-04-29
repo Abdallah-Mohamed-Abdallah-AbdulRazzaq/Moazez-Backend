@@ -450,6 +450,7 @@ enum ReinforcementReviewOutcome {
 
 enum XpSourceType {
   REINFORCEMENT_TASK
+  HERO_MISSION
   MANUAL_BONUS
   BEHAVIOR
   GRADE
@@ -457,6 +458,44 @@ enum XpSourceType {
   SYSTEM
 
   @@map("xp_source_type")
+}
+
+enum HeroMissionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+
+  @@map("hero_mission_status")
+}
+
+enum HeroMissionObjectiveType {
+  MANUAL
+  LESSON
+  QUIZ
+  ASSESSMENT
+  TASK
+  CUSTOM
+
+  @@map("hero_mission_objective_type")
+}
+
+enum HeroMissionProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+
+  @@map("hero_mission_progress_status")
+}
+
+enum HeroJourneyEventType {
+  MISSION_STARTED
+  OBJECTIVE_COMPLETED
+  MISSION_COMPLETED
+  BADGE_AWARDED
+  XP_GRANTED
+
+  @@map("hero_journey_event_type")
 }
 
 // ============================================================
@@ -557,6 +596,13 @@ model School {
   reinforcementTaskTemplateStages   ReinforcementTaskTemplateStage[]
   xpPolicies                        XpPolicy[]
   xpLedgers                         XpLedger[]
+  heroBadges                        HeroBadge[]
+  heroMissions                      HeroMission[]
+  heroMissionObjectives             HeroMissionObjective[]
+  heroMissionProgress               HeroMissionProgress[]
+  heroMissionObjectiveProgress      HeroMissionObjectiveProgress[]
+  heroStudentBadges                 HeroStudentBadge[]
+  heroJourneyEvents                 HeroJourneyEvent[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -586,37 +632,42 @@ model User {
 
   memberships                     Membership[]
   sessions                        Session[]
-  auditLogsActing                 AuditLog[]                  @relation("AuditLogActor")
-  filesUploaded                   File[]                      @relation("FileUploader")
-  schoolProfilesUpdated           SchoolProfile[]             @relation("SchoolProfileUpdatedBy")
-  securitySettingsUpdated         SecuritySetting[]           @relation("SecuritySettingUpdatedBy")
-  backupJobsCreated               BackupJob[]                 @relation("BackupJobCreatedBy")
-  attachmentsCreated              Attachment[]                @relation("AttachmentCreatedBy")
-  importJobsCreated               ImportJob[]                 @relation("ImportJobCreatedBy")
-  ownedLeads                      Lead[]                      @relation("LeadOwner")
-  admissionInterviews             Interview[]                 @relation("AdmissionInterviewInterviewer")
-  admissionDecisionsCreated       AdmissionDecision[]         @relation("AdmissionDecisionDecidedBy")
-  teacherSubjectAllocations       TeacherSubjectAllocation[]  @relation("TeacherSubjectAllocationTeacher")
-  guardianProfiles                Guardian[]                  @relation("GuardianUser")
-  studentNotesAuthored            StudentNote[]               @relation("StudentNoteAuthor")
-  attendanceSessionsSubmitted     AttendanceSession[]         @relation("AttendanceSessionSubmittedBy")
-  attendanceEntriesMarked         AttendanceEntry[]           @relation("AttendanceEntryMarkedBy")
-  attendanceExcuseRequestsCreated AttendanceExcuseRequest[]   @relation("AttendanceExcuseRequestCreatedBy")
-  attendanceExcuseRequestsDecided AttendanceExcuseRequest[]   @relation("AttendanceExcuseRequestDecidedBy")
-  gradeAssessmentsPublished       GradeAssessment[]           @relation("GradeAssessmentPublishedBy")
-  gradeAssessmentsApproved        GradeAssessment[]           @relation("GradeAssessmentApprovedBy")
-  gradeAssessmentsLocked          GradeAssessment[]           @relation("GradeAssessmentLockedBy")
-  gradeAssessmentsCreated         GradeAssessment[]           @relation("GradeAssessmentCreatedBy")
-  gradeItemsEntered               GradeItem[]                 @relation("GradeItemEnteredBy")
-  gradeSubmissionsReviewed        GradeSubmission[]           @relation("GradeSubmissionReviewedBy")
-  gradeSubmissionAnswersReviewed  GradeSubmissionAnswer[]     @relation("GradeSubmissionAnswerReviewedBy")
-  reinforcementTasksAssigned      ReinforcementTask[]         @relation("ReinforcementTaskAssignedBy")
-  reinforcementTasksCreated       ReinforcementTask[]         @relation("ReinforcementTaskCreatedBy")
-  reinforcementTasksCancelled     ReinforcementTask[]         @relation("ReinforcementTaskCancelledBy")
-  reinforcementTemplatesCreated   ReinforcementTaskTemplate[] @relation("ReinforcementTemplateCreatedBy")
-  reinforcementSubmissions        ReinforcementSubmission[]   @relation("ReinforcementSubmissionSubmittedBy")
-  reinforcementReviews            ReinforcementReview[]       @relation("ReinforcementReviewReviewedBy")
-  xpLedgersActed                  XpLedger[]                  @relation("XpLedgerActor")
+  auditLogsActing                 AuditLog[]                     @relation("AuditLogActor")
+  filesUploaded                   File[]                         @relation("FileUploader")
+  schoolProfilesUpdated           SchoolProfile[]                @relation("SchoolProfileUpdatedBy")
+  securitySettingsUpdated         SecuritySetting[]              @relation("SecuritySettingUpdatedBy")
+  backupJobsCreated               BackupJob[]                    @relation("BackupJobCreatedBy")
+  attachmentsCreated              Attachment[]                   @relation("AttachmentCreatedBy")
+  importJobsCreated               ImportJob[]                    @relation("ImportJobCreatedBy")
+  ownedLeads                      Lead[]                         @relation("LeadOwner")
+  admissionInterviews             Interview[]                    @relation("AdmissionInterviewInterviewer")
+  admissionDecisionsCreated       AdmissionDecision[]            @relation("AdmissionDecisionDecidedBy")
+  teacherSubjectAllocations       TeacherSubjectAllocation[]     @relation("TeacherSubjectAllocationTeacher")
+  guardianProfiles                Guardian[]                     @relation("GuardianUser")
+  studentNotesAuthored            StudentNote[]                  @relation("StudentNoteAuthor")
+  attendanceSessionsSubmitted     AttendanceSession[]            @relation("AttendanceSessionSubmittedBy")
+  attendanceEntriesMarked         AttendanceEntry[]              @relation("AttendanceEntryMarkedBy")
+  attendanceExcuseRequestsCreated AttendanceExcuseRequest[]      @relation("AttendanceExcuseRequestCreatedBy")
+  attendanceExcuseRequestsDecided AttendanceExcuseRequest[]      @relation("AttendanceExcuseRequestDecidedBy")
+  gradeAssessmentsPublished       GradeAssessment[]              @relation("GradeAssessmentPublishedBy")
+  gradeAssessmentsApproved        GradeAssessment[]              @relation("GradeAssessmentApprovedBy")
+  gradeAssessmentsLocked          GradeAssessment[]              @relation("GradeAssessmentLockedBy")
+  gradeAssessmentsCreated         GradeAssessment[]              @relation("GradeAssessmentCreatedBy")
+  gradeItemsEntered               GradeItem[]                    @relation("GradeItemEnteredBy")
+  gradeSubmissionsReviewed        GradeSubmission[]              @relation("GradeSubmissionReviewedBy")
+  gradeSubmissionAnswersReviewed  GradeSubmissionAnswer[]        @relation("GradeSubmissionAnswerReviewedBy")
+  reinforcementTasksAssigned      ReinforcementTask[]            @relation("ReinforcementTaskAssignedBy")
+  reinforcementTasksCreated       ReinforcementTask[]            @relation("ReinforcementTaskCreatedBy")
+  reinforcementTasksCancelled     ReinforcementTask[]            @relation("ReinforcementTaskCancelledBy")
+  reinforcementTemplatesCreated   ReinforcementTaskTemplate[]    @relation("ReinforcementTemplateCreatedBy")
+  reinforcementSubmissions        ReinforcementSubmission[]      @relation("ReinforcementSubmissionSubmittedBy")
+  reinforcementReviews            ReinforcementReview[]          @relation("ReinforcementReviewReviewedBy")
+  xpLedgersActed                  XpLedger[]                     @relation("XpLedgerActor")
+  heroMissionsPublished           HeroMission[]                  @relation("HeroMissionPublishedBy")
+  heroMissionsArchived            HeroMission[]                  @relation("HeroMissionArchivedBy")
+  heroMissionsCreated             HeroMission[]                  @relation("HeroMissionCreatedBy")
+  heroObjectiveProgressCompleted  HeroMissionObjectiveProgress[] @relation("HeroObjectiveProgressCompletedBy")
+  heroJourneyEventsActed          HeroJourneyEvent[]             @relation("HeroJourneyEventActor")
 
   @@index([userType])
   @@index([status])
@@ -1128,6 +1179,8 @@ model AcademicYear {
   reinforcementTaskTemplates ReinforcementTaskTemplate[]
   xpPolicies                 XpPolicy[]
   xpLedgers                  XpLedger[]
+  heroMissions               HeroMission[]
+  heroMissionProgress        HeroMissionProgress[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -1168,6 +1221,8 @@ model Term {
   reinforcementTaskTemplates ReinforcementTaskTemplate[]
   xpPolicies                 XpPolicy[]
   xpLedgers                  XpLedger[]
+  heroMissions               HeroMission[]
+  heroMissionProgress        HeroMissionProgress[]
 
   @@unique([id, schoolId])
   @@unique([academicYearId, nameAr])
@@ -1196,6 +1251,7 @@ model Stage {
   attendanceSessions       AttendanceSession[]
   gradeAssessments         GradeAssessment[]
   reinforcementTaskTargets ReinforcementTaskTarget[]
+  heroMissions             HeroMission[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -1319,6 +1375,7 @@ model Subject {
   placementTests            PlacementTest[]
   gradeAssessments          GradeAssessment[]
   reinforcementTasks        ReinforcementTask[]
+  heroMissions              HeroMission[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, code])
@@ -1419,6 +1476,9 @@ model Student {
   reinforcementSubmissions ReinforcementSubmission[]
   reinforcementReviews     ReinforcementReview[]
   xpLedgers                XpLedger[]
+  heroMissionProgress      HeroMissionProgress[]
+  heroStudentBadges        HeroStudentBadge[]
+  heroJourneyEvents        HeroJourneyEvent[]
 
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
@@ -1509,6 +1569,8 @@ model Enrollment {
   reinforcementAssignments ReinforcementAssignment[]
   reinforcementSubmissions ReinforcementSubmission[]
   xpLedgers                XpLedger[]
+  heroMissionProgress      HeroMissionProgress[]
+  heroJourneyEvents        HeroJourneyEvent[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -1858,6 +1920,8 @@ model GradeAssessment {
   submissions       GradeSubmission[]
   submissionAnswers GradeSubmissionAnswer[]
   items             GradeItem[]
+  heroMissions      HeroMission[]
+  heroObjectives    HeroMissionObjective[]
 
   @@unique([id, schoolId], map: "grade_assessments_id_school_id_unique")
   @@index([schoolId])
@@ -2469,14 +2533,16 @@ model XpLedger {
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
-  school       School                   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicYear AcademicYear             @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term         Term                     @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  student      Student                  @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  enrollment   Enrollment?              @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  assignment   ReinforcementAssignment? @relation(fields: [assignmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  policy       XpPolicy?                @relation(fields: [policyId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  actorUser    User?                    @relation("XpLedgerActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  school              School                   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear        AcademicYear             @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                Term                     @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  student             Student                  @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment          Enrollment?              @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  assignment          ReinforcementAssignment? @relation(fields: [assignmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  policy              XpPolicy?                @relation(fields: [policyId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  actorUser           User?                    @relation("XpLedgerActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  heroMissionProgress HeroMissionProgress[]    @relation("HeroMissionProgressXpLedger")
+  heroJourneyEvents   HeroJourneyEvent[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, sourceType, sourceId, studentId])
@@ -2491,6 +2557,276 @@ model XpLedger {
   @@index([schoolId, studentId, occurredAt])
   @@index([schoolId, sourceType, sourceId])
   @@map("xp_ledger")
+}
+
+model HeroBadge {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String    @map("school_id") @db.Uuid
+  slug          String
+  nameEn        String?   @map("name_en")
+  nameAr        String?   @map("name_ar")
+  descriptionEn String?   @map("description_en")
+  descriptionAr String?   @map("description_ar")
+  assetPath     String?   @map("asset_path")
+  fileId        String?   @map("file_id") @db.Uuid
+  sortOrder     Int       @default(0) @map("sort_order")
+  isActive      Boolean   @default(true) @map("is_active")
+  metadata      Json?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  school        School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  file          File?              @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  missions      HeroMission[]      @relation("HeroMissionBadgeReward")
+  studentBadges HeroStudentBadge[]
+  events        HeroJourneyEvent[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, slug])
+  @@index([schoolId])
+  @@index([fileId])
+  @@index([schoolId, isActive])
+  @@index([schoolId, sortOrder])
+  @@index([deletedAt])
+  @@map("hero_badges")
+}
+
+model HeroMission {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String            @map("school_id") @db.Uuid
+  academicYearId     String            @map("academic_year_id") @db.Uuid
+  termId             String            @map("term_id") @db.Uuid
+  stageId            String            @map("stage_id") @db.Uuid
+  subjectId          String?           @map("subject_id") @db.Uuid
+  linkedAssessmentId String?           @map("linked_assessment_id") @db.Uuid
+  linkedLessonRef    String?           @map("linked_lesson_ref")
+  titleEn            String?           @map("title_en")
+  titleAr            String?           @map("title_ar")
+  briefEn            String?           @map("brief_en")
+  briefAr            String?           @map("brief_ar")
+  requiredLevel      Int               @default(1) @map("required_level")
+  rewardXp           Int               @default(0) @map("reward_xp")
+  badgeRewardId      String?           @map("badge_reward_id") @db.Uuid
+  status             HeroMissionStatus @default(DRAFT)
+  positionX          Int?              @map("position_x")
+  positionY          Int?              @map("position_y")
+  sortOrder          Int               @default(0) @map("sort_order")
+  publishedAt        DateTime?         @map("published_at")
+  publishedById      String?           @map("published_by_id") @db.Uuid
+  archivedAt         DateTime?         @map("archived_at")
+  archivedById       String?           @map("archived_by_id") @db.Uuid
+  createdById        String?           @map("created_by_id") @db.Uuid
+  metadata           Json?
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  deletedAt          DateTime?         @map("deleted_at")
+
+  school           School                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear     AcademicYear           @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term             Term                   @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  stage            Stage                  @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject          Subject?               @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  linkedAssessment GradeAssessment?       @relation(fields: [linkedAssessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  badgeReward      HeroBadge?             @relation("HeroMissionBadgeReward", fields: [badgeRewardId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  publishedBy      User?                  @relation("HeroMissionPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  archivedBy       User?                  @relation("HeroMissionArchivedBy", fields: [archivedById], references: [id], onDelete: SetNull)
+  createdBy        User?                  @relation("HeroMissionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  objectives       HeroMissionObjective[]
+  progress         HeroMissionProgress[]
+  studentBadges    HeroStudentBadge[]
+  events           HeroJourneyEvent[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([stageId])
+  @@index([subjectId])
+  @@index([linkedAssessmentId])
+  @@index([badgeRewardId])
+  @@index([publishedById])
+  @@index([archivedById])
+  @@index([createdById])
+  @@index([schoolId, academicYearId, termId, stageId, status])
+  @@index([schoolId, stageId, sortOrder])
+  @@index([schoolId, status])
+  @@index([deletedAt])
+  @@map("hero_missions")
+}
+
+model HeroMissionObjective {
+  id                 String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String                   @map("school_id") @db.Uuid
+  missionId          String                   @map("mission_id") @db.Uuid
+  type               HeroMissionObjectiveType @default(MANUAL)
+  titleEn            String?                  @map("title_en")
+  titleAr            String?                  @map("title_ar")
+  subtitleEn         String?                  @map("subtitle_en")
+  subtitleAr         String?                  @map("subtitle_ar")
+  linkedAssessmentId String?                  @map("linked_assessment_id") @db.Uuid
+  linkedLessonRef    String?                  @map("linked_lesson_ref")
+  sortOrder          Int                      @default(0) @map("sort_order")
+  isRequired         Boolean                  @default(true) @map("is_required")
+  metadata           Json?
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+  deletedAt          DateTime?                @map("deleted_at")
+
+  school           School                         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  mission          HeroMission                    @relation(fields: [missionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  linkedAssessment GradeAssessment?               @relation(fields: [linkedAssessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  progress         HeroMissionObjectiveProgress[]
+  events           HeroJourneyEvent[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, missionId, sortOrder])
+  @@index([schoolId])
+  @@index([missionId])
+  @@index([linkedAssessmentId])
+  @@index([schoolId, missionId, deletedAt])
+  @@index([deletedAt])
+  @@map("hero_mission_objectives")
+}
+
+model HeroMissionProgress {
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                    @map("school_id") @db.Uuid
+  missionId       String                    @map("mission_id") @db.Uuid
+  studentId       String                    @map("student_id") @db.Uuid
+  enrollmentId    String                    @map("enrollment_id") @db.Uuid
+  academicYearId  String                    @map("academic_year_id") @db.Uuid
+  termId          String                    @map("term_id") @db.Uuid
+  status          HeroMissionProgressStatus @default(NOT_STARTED)
+  progressPercent Int                       @default(0) @map("progress_percent")
+  startedAt       DateTime?                 @map("started_at")
+  completedAt     DateTime?                 @map("completed_at")
+  lastActivityAt  DateTime?                 @map("last_activity_at")
+  xpLedgerId      String?                   @map("xp_ledger_id") @db.Uuid
+  metadata        Json?
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+
+  school            School                         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  mission           HeroMission                    @relation(fields: [missionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  student           Student                        @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment        Enrollment                     @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  academicYear      AcademicYear                   @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term              Term                           @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  xpLedger          XpLedger?                      @relation("HeroMissionProgressXpLedger", fields: [xpLedgerId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  objectiveProgress HeroMissionObjectiveProgress[]
+  studentBadges     HeroStudentBadge[]
+  events            HeroJourneyEvent[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, missionId, studentId])
+  @@index([schoolId])
+  @@index([missionId])
+  @@index([studentId])
+  @@index([enrollmentId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([xpLedgerId])
+  @@index([schoolId, studentId, status])
+  @@index([schoolId, academicYearId, termId, status])
+  @@map("hero_mission_progress")
+}
+
+model HeroMissionObjectiveProgress {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String    @map("school_id") @db.Uuid
+  missionProgressId String    @map("mission_progress_id") @db.Uuid
+  objectiveId       String    @map("objective_id") @db.Uuid
+  completedAt       DateTime? @map("completed_at")
+  completedById     String?   @map("completed_by_id") @db.Uuid
+  metadata          Json?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  school          School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  missionProgress HeroMissionProgress  @relation(fields: [missionProgressId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  objective       HeroMissionObjective @relation(fields: [objectiveId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  completedBy     User?                @relation("HeroObjectiveProgressCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, missionProgressId, objectiveId])
+  @@index([schoolId])
+  @@index([missionProgressId])
+  @@index([objectiveId])
+  @@index([completedById])
+  @@map("hero_mission_objective_progress")
+}
+
+model HeroStudentBadge {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String   @map("school_id") @db.Uuid
+  studentId         String   @map("student_id") @db.Uuid
+  badgeId           String   @map("badge_id") @db.Uuid
+  missionId         String?  @map("mission_id") @db.Uuid
+  missionProgressId String?  @map("mission_progress_id") @db.Uuid
+  earnedAt          DateTime @default(now()) @map("earned_at")
+  metadata          Json?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  school          School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student         Student              @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  badge           HeroBadge            @relation(fields: [badgeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  mission         HeroMission?         @relation(fields: [missionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  missionProgress HeroMissionProgress? @relation(fields: [missionProgressId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, studentId, badgeId])
+  @@index([schoolId])
+  @@index([studentId])
+  @@index([badgeId])
+  @@index([missionId])
+  @@index([missionProgressId])
+  @@index([schoolId, studentId, earnedAt])
+  @@map("hero_student_badges")
+}
+
+model HeroJourneyEvent {
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String               @map("school_id") @db.Uuid
+  missionId         String?              @map("mission_id") @db.Uuid
+  missionProgressId String?              @map("mission_progress_id") @db.Uuid
+  objectiveId       String?              @map("objective_id") @db.Uuid
+  studentId         String?              @map("student_id") @db.Uuid
+  enrollmentId      String?              @map("enrollment_id") @db.Uuid
+  xpLedgerId        String?              @map("xp_ledger_id") @db.Uuid
+  badgeId           String?              @map("badge_id") @db.Uuid
+  type              HeroJourneyEventType
+  sourceId          String?              @map("source_id")
+  actorUserId       String?              @map("actor_user_id") @db.Uuid
+  occurredAt        DateTime             @default(now()) @map("occurred_at")
+  metadata          Json?
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  school          School                @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  mission         HeroMission?          @relation(fields: [missionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  missionProgress HeroMissionProgress?  @relation(fields: [missionProgressId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  objective       HeroMissionObjective? @relation(fields: [objectiveId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  student         Student?              @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment      Enrollment?           @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  xpLedger        XpLedger?             @relation(fields: [xpLedgerId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  badge           HeroBadge?            @relation(fields: [badgeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  actorUser       User?                 @relation("HeroJourneyEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([missionId])
+  @@index([missionProgressId])
+  @@index([objectiveId])
+  @@index([studentId])
+  @@index([enrollmentId])
+  @@index([xpLedgerId])
+  @@index([badgeId])
+  @@index([actorUserId])
+  @@index([schoolId, type, occurredAt])
+  @@index([schoolId, studentId, occurredAt])
+  @@map("hero_journey_events")
 }
 
 // ============================================================
@@ -2556,6 +2892,7 @@ model File {
   applicationDocuments          ApplicationDocument[]
   studentDocuments              StudentDocument[]
   importJobsUploaded            ImportJob[]               @relation("ImportJobUploadedFile")
+  heroBadges                    HeroBadge[]
 
   @@unique([bucket, objectKey])
   @@index([organizationId])

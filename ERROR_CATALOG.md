@@ -154,6 +154,15 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `reinforcement.xp.daily_cap_reached` | 429  | Daily XP cap reached for this teacher      |
 | `reinforcement.xp.cooldown`          | 429  | XP cooldown in effect for this student     |
 | `reinforcement.review.already_reviewed` | 409 | Submission is already reviewed           |
+| `reinforcement.hero.mission.invalid_status_transition` | 409 | Hero mission status transition is invalid |
+| `reinforcement.hero.mission.not_published` | 409 | Hero mission must be published first |
+| `reinforcement.hero.mission.archived` | 409 | Hero mission is archived |
+| `reinforcement.hero.mission.points_invalid` | 422 | Hero mission XP points are invalid |
+| `reinforcement.hero.objective.invalid_order` | 422 | Hero mission objective order is invalid |
+| `reinforcement.hero.progress.already_completed` | 409 | Hero mission progress is already completed |
+| `reinforcement.hero.progress.objective_not_completed` | 409 | Required Hero mission objective is not completed |
+| `reinforcement.hero.badge.duplicate_slug` | 409 | A Hero badge with this slug already exists |
+| `reinforcement.hero.xp.duplicate_grant` | 409 | Hero mission XP has already been granted |
 
 ### Files
 

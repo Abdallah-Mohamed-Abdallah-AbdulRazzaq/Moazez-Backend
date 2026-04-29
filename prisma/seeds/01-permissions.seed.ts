@@ -82,6 +82,12 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'reinforcement.reviews.manage', module: 'reinforcement', resource: 'reviews', action: 'manage', description: 'Approve or reject reinforcement submissions' },
   { code: 'reinforcement.xp.view', module: 'reinforcement', resource: 'xp', action: 'view', description: 'View reinforcement XP policy and ledger data' },
   { code: 'reinforcement.xp.manage', module: 'reinforcement', resource: 'xp', action: 'manage', description: 'Manage reinforcement XP policies and grants' },
+  { code: 'reinforcement.hero.view', module: 'reinforcement', resource: 'hero', action: 'view', description: 'View Hero Journey mission and overview data' },
+  { code: 'reinforcement.hero.manage', module: 'reinforcement', resource: 'hero', action: 'manage', description: 'Manage Hero Journey mission authoring data' },
+  { code: 'reinforcement.hero.progress.view', module: 'reinforcement', resource: 'hero_progress', action: 'view', description: 'View Hero Journey student progress data' },
+  { code: 'reinforcement.hero.progress.manage', module: 'reinforcement', resource: 'hero_progress', action: 'manage', description: 'Manage Hero Journey student progress state' },
+  { code: 'reinforcement.hero.badges.view', module: 'reinforcement', resource: 'hero_badges', action: 'view', description: 'View Hero Journey badge catalog data' },
+  { code: 'reinforcement.hero.badges.manage', module: 'reinforcement', resource: 'hero_badges', action: 'manage', description: 'Manage Hero Journey badge catalog data' },
 
   // communication
   { code: 'communication.messages.view', module: 'communication', resource: 'messages', action: 'view', description: 'View chat messages' },
