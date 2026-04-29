@@ -446,6 +446,18 @@
               ]
             },
             {
+              "name": "20260429173000_0011_hero_journey_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -4632,6 +4644,257 @@
               "icon": "📁",
               "children": [
                 {
+                  "name": "hero-journey",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "badge-catalog.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-dashboard.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-progress.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-rewards.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-mission.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "hero-journey-dashboard.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-progress.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-rewards.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "hero-journey-dashboard-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-progress-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-rewards-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "hero-journey-dashboard.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-progress.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-rewards.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "hero-journey-dashboard.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-progress.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-rewards.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "hero-journey-dashboard.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-progress.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-rewards.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "hero-journey-dashboard-domain.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-dashboard.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-dashboard.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-domain.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-progress-domain.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-progress.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-progress.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-rewards-domain.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-rewards.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey-rewards.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "hero-journey.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "hero-journey.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
                   "name": "overview",
                   "type": "folder",
                   "icon": "📁",
@@ -7319,6 +7582,11 @@
               "icon": "📘"
             },
             {
+              "name": "hero-journey-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "reinforcement-foundation.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -7384,6 +7652,11 @@
             },
             {
               "name": "tenancy.grades.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.hero-journey.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -7595,7 +7868,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-04-29T16:06:46.321Z",
+    "generated": "2026-04-29T23:04:50.544Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
