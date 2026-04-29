@@ -137,6 +137,7 @@ describe('Reinforcement tenancy isolation (security)', () => {
       templatesManagePermission,
       reviewsViewPermission,
       reviewsManagePermission,
+      overviewViewPermission,
       xpViewPermission,
       xpManagePermission,
     ] = await Promise.all([
@@ -181,6 +182,10 @@ describe('Reinforcement tenancy isolation (security)', () => {
         select: { id: true },
       }),
       prisma.permission.findUnique({
+        where: { code: 'reinforcement.overview.view' },
+        select: { id: true },
+      }),
+      prisma.permission.findUnique({
         where: { code: 'reinforcement.xp.view' },
         select: { id: true },
       }),
@@ -201,6 +206,7 @@ describe('Reinforcement tenancy isolation (security)', () => {
       !templatesManagePermission ||
       !reviewsViewPermission ||
       !reviewsManagePermission ||
+      !overviewViewPermission ||
       !xpViewPermission ||
       !xpManagePermission
     ) {
@@ -650,6 +656,168 @@ describe('Reinforcement tenancy isolation (security)', () => {
 
     return { accessToken: response.body.accessToken };
   }
+
+  it('school A overview does not include school B tasks, assignments, reviews, or XP', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/overview?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const serialized = JSON.stringify(response.body);
+    expect(response.body.xp.totalXp).toBe(5);
+    expect(response.body.topStudents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ studentId: demoStudentId }),
+      ]),
+    );
+    expect(serialized).toContain(demoStudentId);
+    expect(serialized).not.toContain(tenantBTaskId);
+    expect(serialized).not.toContain(tenantBAssignmentId);
+    expect(serialized).not.toContain(tenantBSubmittedSubmissionId);
+    expect(serialized).not.toContain(tenantBXpLedgerId);
+    expect(serialized).not.toContain(tenantBStudentId);
+  });
+
+  it('school A cannot get progress for a school B student', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/students/${tenantBStudentId}/progress?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A cannot get summary for a school B classroom', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/classrooms/${tenantBClassroomId}/summary?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 403 when overview permission is missing', async () => {
+    const { accessToken } = await login(noAccessEmail);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/overview?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/students/${demoStudentId}/progress?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/classrooms/${demoClassroomId}/summary?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+  });
+
+  it('school admin can read overview, student progress, and classroom summaries', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const overview = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/overview?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(overview.body.scope).toMatchObject({
+      academicYearId: demoYearId,
+      termId: demoTermId,
+    });
+
+    const progress = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/students/${demoStudentId}/progress?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(progress.body.student.id).toBe(demoStudentId);
+    expect(progress.body.enrollment.classroomId).toBe(demoClassroomId);
+
+    const classroom = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/classrooms/${demoClassroomId}/summary?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(classroom.body.classroom.classroomId).toBe(demoClassroomId);
+    expect(classroom.body.studentsCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it('teacher, parent, and student actors cannot read dashboard overview APIs without overview permission', async () => {
+    for (const email of [teacherEmail, parentEmail, studentEmail]) {
+      const { accessToken } = await login(email);
+
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/reinforcement/overview?yearId=${demoYearId}&termId=${demoTermId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/reinforcement/students/${demoStudentId}/progress?yearId=${demoYearId}&termId=${demoTermId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/reinforcement/classrooms/${demoClassroomId}/summary?yearId=${demoYearId}&termId=${demoTermId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+    }
+  });
+
+  it('overview read endpoints do not mutate reinforcement tables', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const before = await reinforcementMutationCounts();
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/overview?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/students/${demoStudentId}/progress?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/classrooms/${demoClassroomId}/summary?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await expect(reinforcementMutationCounts()).resolves.toEqual(before);
+  });
 
   it('school A cannot read school B task detail', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL);
@@ -1653,6 +1821,25 @@ describe('Reinforcement tenancy isolation (security)', () => {
     expect(schoolACount).toBe(1);
     expect(schoolBCount).toBe(0);
   });
+
+  async function reinforcementMutationCounts() {
+    const [tasks, assignments, submissions, reviews, xpLedger] =
+      await Promise.all([
+        prisma.reinforcementTask.count(),
+        prisma.reinforcementAssignment.count(),
+        prisma.reinforcementSubmission.count(),
+        prisma.reinforcementReview.count(),
+        prisma.xpLedger.count(),
+      ]);
+
+    return {
+      tasks,
+      assignments,
+      submissions,
+      reviews,
+      xpLedger,
+    };
+  }
 
   async function createCustomRole(
     keySuffix: string,
