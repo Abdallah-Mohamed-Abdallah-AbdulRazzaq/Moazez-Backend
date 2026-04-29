@@ -16,14 +16,24 @@ import {
   PublishHeroMissionUseCase,
   UpdateHeroMissionUseCase,
 } from './application/hero-mission.use-cases';
+import {
+  CompleteHeroMissionUseCase,
+  CompleteHeroObjectiveUseCase,
+  GetHeroProgressDetailUseCase,
+  GetStudentHeroProgressUseCase,
+  StartHeroMissionUseCase,
+} from './application/hero-journey-progress.use-cases';
 import { HeroJourneyController } from './controller/hero-journey.controller';
+import { HeroJourneyProgressController } from './controller/hero-journey-progress.controller';
 import { HeroJourneyRepository } from './infrastructure/hero-journey.repository';
+import { HeroJourneyProgressRepository } from './infrastructure/hero-journey-progress.repository';
 
 @Module({
   imports: [AuthModule],
-  controllers: [HeroJourneyController],
+  controllers: [HeroJourneyController, HeroJourneyProgressController],
   providers: [
     HeroJourneyRepository,
+    HeroJourneyProgressRepository,
     ListHeroBadgesUseCase,
     GetHeroBadgeUseCase,
     CreateHeroBadgeUseCase,
@@ -36,6 +46,11 @@ import { HeroJourneyRepository } from './infrastructure/hero-journey.repository'
     PublishHeroMissionUseCase,
     ArchiveHeroMissionUseCase,
     DeleteHeroMissionUseCase,
+    GetStudentHeroProgressUseCase,
+    GetHeroProgressDetailUseCase,
+    StartHeroMissionUseCase,
+    CompleteHeroObjectiveUseCase,
+    CompleteHeroMissionUseCase,
   ],
 })
 export class HeroJourneyModule {}
