@@ -523,6 +523,96 @@ Deferred beyond Sprint 4B:
 
 No `demo:sprint4b` script is added for this closeout. The focused E2E flow is the verification artifact.
 
+## Sprint 5A Reinforcement Foundation Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Ensure SEED_DEMO_DATA=true
+
+npm run infra:up
+npm run verify:sprint5a
+```
+
+Prerequisites:
+
+- `.env` is ready with valid local secrets.
+- PostgreSQL, Redis, and MinIO are reachable.
+- `npm run infra:up` can start local services, and `npm run verify:sprint2b:preflight` is the fail-fast readiness check used by the verifier chain.
+
+`npm run verify:sprint5a` runs the Sprint 2B preflight check, migrations, seed, build, unit tests, security tests, Sprint 2B/3A/3B/4A/4B E2E flows, and the Sprint 5A Reinforcement Foundation closeout E2E.
+
+Sprint 5A reinforcement verification covers:
+
+- template creation/list
+- filter options
+- task creation/list/detail
+- target expansion and assignment materialization
+- task duplication
+- task cancellation
+- stage submission
+- review queue list/detail
+- approve/reject
+- assignment progress/status recalculation
+- XP policy create/effective lookup
+- XP grant from approved submission
+- manual XP bonus
+- XP ledger/summary
+- overview/student/classroom summaries
+- audit and tenancy/security regression
+
+Local verification commands:
+
+```bash
+npm run build
+npm run test -- --runInBand
+npm run test:security -- --runInBand
+npm run test:e2e:sprint5a
+npm run verify:sprint5a
+```
+
+Sprint 5A Reinforcement endpoints:
+
+- `GET /api/v1/reinforcement/filter-options`
+- `GET /api/v1/reinforcement/tasks`
+- `POST /api/v1/reinforcement/tasks`
+- `GET /api/v1/reinforcement/tasks/:taskId`
+- `POST /api/v1/reinforcement/tasks/:taskId/duplicate`
+- `POST /api/v1/reinforcement/tasks/:taskId/cancel`
+- `GET /api/v1/reinforcement/templates`
+- `POST /api/v1/reinforcement/templates`
+- `POST /api/v1/reinforcement/assignments/:assignmentId/stages/:stageId/submit`
+- `GET /api/v1/reinforcement/review-queue`
+- `GET /api/v1/reinforcement/review-queue/:submissionId`
+- `POST /api/v1/reinforcement/review-queue/:submissionId/approve`
+- `POST /api/v1/reinforcement/review-queue/:submissionId/reject`
+- `GET /api/v1/reinforcement/xp/policies`
+- `GET /api/v1/reinforcement/xp/policies/effective`
+- `POST /api/v1/reinforcement/xp/policies`
+- `PATCH /api/v1/reinforcement/xp/policies/:policyId`
+- `GET /api/v1/reinforcement/xp/ledger`
+- `GET /api/v1/reinforcement/xp/summary`
+- `POST /api/v1/reinforcement/xp/grants/reinforcement-review/:submissionId`
+- `POST /api/v1/reinforcement/xp/grants/manual`
+- `GET /api/v1/reinforcement/overview`
+- `GET /api/v1/reinforcement/students/:studentId/progress`
+- `GET /api/v1/reinforcement/classrooms/:classroomId/summary`
+
+Deferred beyond Sprint 5A:
+
+- app-facing teacher/student/parent APIs
+- Hero Journey
+- Behavior domain
+- reward catalog/redemption/stock
+- notifications
+- advanced gamified economy
+- task-level progress endpoint
+- richer media proof workflow
+
+No `demo:sprint5a` script is added for this closeout. The focused E2E flow is the verification artifact.
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -547,6 +637,7 @@ No `demo:sprint4b` script is added for this closeout. The focused E2E flow is th
 | `npm run test:e2e:sprint3b`         | Run the Sprint 3B Attendance Excuses & Corrections closeout e2e flow                                |
 | `npm run test:e2e:sprint4a`         | Run the Sprint 4A Grades Foundation closeout e2e flow                                               |
 | `npm run test:e2e:sprint4b`         | Run the Sprint 4B Question-Based Grades closeout e2e flow                                           |
+| `npm run test:e2e:sprint5a`         | Run the Sprint 5A Reinforcement Foundation closeout e2e flow                                        |
 | `npm run test:security`             | Tenancy isolation tests                                                                             |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                        |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                              |
@@ -560,6 +651,7 @@ No `demo:sprint4b` script is added for this closeout. The focused E2E flow is th
 | `npm run verify:sprint3b`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A e2e, and Sprint 3B e2e    |
 | `npm run verify:sprint4a`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B e2e, and Sprint 4A e2e |
 | `npm run verify:sprint4b`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B/4A e2e, and Sprint 4B e2e |
+| `npm run verify:sprint5a`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B/4A/4B e2e, and Sprint 5A e2e |
 | `npm run seed`                      | Re-run idempotent seeds                                                                             |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                               |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                          |

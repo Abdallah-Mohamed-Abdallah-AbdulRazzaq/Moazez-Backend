@@ -739,15 +739,20 @@ export class ReinforcementTasksRepository {
 
     const search = filters.search?.trim();
     if (search) {
+      const searchOr: Prisma.ReinforcementTaskWhereInput[] = [
+        { titleEn: { contains: search, mode: 'insensitive' } },
+        { titleAr: { contains: search, mode: 'insensitive' } },
+        { assignedByName: { contains: search, mode: 'insensitive' } },
+        { subject: { nameEn: { contains: search, mode: 'insensitive' } } },
+        { subject: { nameAr: { contains: search, mode: 'insensitive' } } },
+      ];
+
+      if (isUuid(search)) {
+        searchOr.unshift({ id: { equals: search } });
+      }
+
       and.push({
-        OR: [
-          { id: { equals: search } },
-          { titleEn: { contains: search, mode: 'insensitive' } },
-          { titleAr: { contains: search, mode: 'insensitive' } },
-          { assignedByName: { contains: search, mode: 'insensitive' } },
-          { subject: { nameEn: { contains: search, mode: 'insensitive' } } },
-          { subject: { nameAr: { contains: search, mode: 'insensitive' } } },
-        ],
+        OR: searchOr,
       });
     }
 
@@ -855,4 +860,10 @@ export class ReinforcementTasksRepository {
   private toJsonInput(value: unknown): Prisma.InputJsonValue | undefined {
     return value === undefined ? undefined : (value as Prisma.InputJsonValue);
   }
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
 }
