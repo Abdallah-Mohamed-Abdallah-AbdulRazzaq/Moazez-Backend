@@ -12,11 +12,13 @@ import {
   OrganizationStatus,
   Prisma,
   PrismaClient,
+  ReinforcementTargetScope,
   SchoolStatus,
   StudentEnrollmentStatus,
   StudentStatus,
   UserStatus,
   UserType,
+  XpSourceType,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
 import request from 'supertest';
@@ -66,6 +68,7 @@ describe('Hero Journey tenancy isolation (security)', () => {
   let demoEnrollmentId: string;
   let demoProgressId: string;
   let demoProgressObjectiveId: string;
+  let demoRewardProgressId: string;
 
   let tenantBYearId: string;
   let tenantBTermId: string;
@@ -83,6 +86,8 @@ describe('Hero Journey tenancy isolation (security)', () => {
   let tenantBProgressId: string;
   let tenantBProgressObjectiveId: string;
   let tenantBEventId: string;
+  let tenantBRewardProgressId: string;
+  let tenantBRewardEventId: string;
 
   let noAccessEmail: string;
   let badgeViewerEmail: string;
@@ -107,6 +112,8 @@ describe('Hero Journey tenancy isolation (security)', () => {
   const createdEnrollmentIds: string[] = [];
   const createdBadgeIds: string[] = [];
   const createdMissionIds: string[] = [];
+  const createdXpPolicyIds: string[] = [];
+  const createdXpLedgerIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -434,6 +441,37 @@ describe('Hero Journey tenancy isolation (security)', () => {
     tenantBProgressId = tenantBProgress.progressId;
     tenantBEventId = tenantBProgress.eventId;
 
+    demoRewardProgressId = (
+      await createCompletedRewardProgressFixture({
+        suffix: 'reward-a',
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        stageId: demoStageId,
+        subjectId: demoSubjectId,
+        assessmentId: demoAssessmentId,
+        badgeId: demoBadgeId,
+        studentId: demoStudentId,
+        enrollmentId: demoEnrollmentId,
+      })
+    ).progressId;
+
+    const tenantBRewardProgress = await createCompletedRewardProgressFixture({
+      suffix: 'reward-b',
+      schoolId: tenantBSchoolId,
+      academicYearId: tenantBYearId,
+      termId: tenantBTermId,
+      stageId: tenantBStageId,
+      subjectId: tenantBSubjectId,
+      assessmentId: tenantBAssessmentId,
+      badgeId: tenantBBadgeId,
+      studentId: tenantBStudentId,
+      enrollmentId: tenantBEnrollmentId,
+      eventType: HeroJourneyEventType.BADGE_AWARDED,
+    });
+    tenantBRewardProgressId = tenantBRewardProgress.progressId;
+    tenantBRewardEventId = tenantBRewardProgress.eventId;
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -464,6 +502,9 @@ describe('Hero Journey tenancy isolation (security)', () => {
       });
       await prisma.heroMissionProgress.deleteMany({
         where: { missionId: { in: createdMissionIds } },
+      });
+      await prisma.xpLedger.deleteMany({
+        where: { id: { in: createdXpLedgerIds } },
       });
       await prisma.heroMissionObjective.deleteMany({
         where: { missionId: { in: createdMissionIds } },
@@ -497,6 +538,9 @@ describe('Hero Journey tenancy isolation (security)', () => {
       });
       await prisma.stage.deleteMany({
         where: { id: { in: createdStageIds } },
+      });
+      await prisma.xpPolicy.deleteMany({
+        where: { id: { in: createdXpPolicyIds } },
       });
       await prisma.term.deleteMany({ where: { id: { in: createdTermIds } } });
       await prisma.academicYear.deleteMany({
@@ -905,6 +949,10 @@ describe('Hero Journey tenancy isolation (security)', () => {
       .get(`${GLOBAL_PREFIX}/reinforcement/hero/progress/${demoProgressId}`)
       .set('Authorization', `Bearer ${noAccess.accessToken}`)
       .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/hero/students/${demoStudentId}/rewards`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
 
     const heroViewer = await login(heroViewerEmail);
     await request(app.getHttpServer())
@@ -928,6 +976,20 @@ describe('Hero Journey tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${heroViewer.accessToken}`)
       .send({})
       .expect(403);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${demoRewardProgressId}/grant-xp`,
+      )
+      .set('Authorization', `Bearer ${heroViewer.accessToken}`)
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${demoRewardProgressId}/award-badge`,
+      )
+      .set('Authorization', `Bearer ${heroViewer.accessToken}`)
+      .send({})
+      .expect(403);
   });
 
   it('teacher can view seeded progress but cannot manage it, and parent/student cannot access core progress endpoints', async () => {
@@ -942,6 +1004,25 @@ describe('Hero Journey tenancy isolation (security)', () => {
     await request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/reinforcement/hero/students/${demoStudentId}/missions/${demoPublishedMissionId}/start`,
+      )
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/hero/students/${demoStudentId}/rewards`)
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${demoRewardProgressId}/grant-xp`,
+      )
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${demoRewardProgressId}/award-badge`,
       )
       .set('Authorization', `Bearer ${teacher.accessToken}`)
       .send({})
@@ -963,7 +1044,367 @@ describe('Hero Journey tenancy isolation (security)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .send({})
         .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/reinforcement/hero/students/${demoStudentId}/rewards`,
+        )
+        .query({ academicYearId: demoYearId, termId: demoTermId })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/reinforcement/hero/progress/${demoRewardProgressId}/grant-xp`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/reinforcement/hero/progress/${demoRewardProgressId}/award-badge`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(403);
     }
+  });
+
+  it('school A cannot grant or read school B Hero Journey rewards', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${tenantBRewardProgressId}/grant-xp`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${tenantBRewardProgressId}/award-badge`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/hero/students/${tenantBStudentId}/rewards`,
+      )
+      .query({ academicYearId: tenantBYearId, termId: tenantBTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${demoRewardProgressId}/award-badge`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ badgeId: tenantBBadgeId })
+      .expect(400);
+  });
+
+  it('school admin can grant Hero XP, award the configured badge, and read rewards', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const before = await heroSideEffectCounts(demoSchoolId);
+
+    const xp = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${demoRewardProgressId}/grant-xp`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reason: 'completed hero mission' })
+      .expect(201);
+    createdXpLedgerIds.push(xp.body.id);
+    expect(xp.body).toMatchObject({
+      progressId: demoRewardProgressId,
+      sourceType: 'hero_mission',
+      sourceId: demoRewardProgressId,
+      amount: 10,
+      idempotent: false,
+    });
+
+    const award = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${demoRewardProgressId}/award-badge`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ metadata: { source: 'security-test' } })
+      .expect(201);
+    expect(award.body).toMatchObject({
+      progressId: demoRewardProgressId,
+      badgeId: demoBadgeId,
+      idempotent: false,
+    });
+
+    const rewards = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/hero/students/${demoStudentId}/rewards`)
+      .query({
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        includeEvents: true,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(rewards.body.summary.totalHeroXp).toBeGreaterThanOrEqual(10);
+    expect(
+      rewards.body.xpLedger.map((entry: { sourceType: string }) => entry.sourceType),
+    ).toContain('hero_mission');
+    expect(
+      rewards.body.missions.map((mission: { progressId: string }) => mission.progressId),
+    ).toContain(demoRewardProgressId);
+    expect(
+      rewards.body.events.map((event: { id: string }) => event.id),
+    ).not.toContain(tenantBRewardEventId);
+
+    const after = await heroSideEffectCounts(demoSchoolId);
+    expect(after.xpLedger).toBe(before.xpLedger + 1);
+    expect(after.studentBadges).toBe(before.studentBadges + 1);
+    expect(after.events).toBe(before.events + 2);
+  });
+
+  it('duplicate Hero XP grants and badge awards are idempotent', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const badgeId = await createBadgeFixture(demoSchoolId, 'duplicate');
+    const rewardProgress = await createCompletedRewardProgressFixture({
+      suffix: 'duplicate',
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      stageId: demoStageId,
+      subjectId: demoSubjectId,
+      assessmentId: demoAssessmentId,
+      badgeId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+    });
+
+    const firstXp = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${rewardProgress.progressId}/grant-xp`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+    createdXpLedgerIds.push(firstXp.body.id);
+    const secondXp = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${rewardProgress.progressId}/grant-xp`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+    expect(secondXp.body.id).toBe(firstXp.body.id);
+    expect(secondXp.body.idempotent).toBe(true);
+
+    await expect(
+      prisma.xpLedger.count({
+        where: {
+          schoolId: demoSchoolId,
+          sourceType: XpSourceType.HERO_MISSION,
+          sourceId: rewardProgress.progressId,
+          studentId: demoStudentId,
+        },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.xpLedger.count({
+        where: {
+          schoolId: demoSchoolId,
+          sourceType: { not: XpSourceType.HERO_MISSION },
+          sourceId: rewardProgress.progressId,
+        },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.heroJourneyEvent.count({
+        where: {
+          schoolId: demoSchoolId,
+          missionProgressId: rewardProgress.progressId,
+          type: HeroJourneyEventType.XP_GRANTED,
+        },
+      }),
+    ).resolves.toBe(1);
+
+    const firstBadge = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${rewardProgress.progressId}/award-badge`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+    const secondBadge = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${rewardProgress.progressId}/award-badge`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+    expect(secondBadge.body.studentBadgeId).toBe(firstBadge.body.studentBadgeId);
+    expect(secondBadge.body.idempotent).toBe(true);
+    await expect(
+      prisma.heroStudentBadge.count({
+        where: {
+          schoolId: demoSchoolId,
+          studentId: demoStudentId,
+          badgeId,
+        },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.heroJourneyEvent.count({
+        where: {
+          schoolId: demoSchoolId,
+          missionProgressId: rewardProgress.progressId,
+          type: HeroJourneyEventType.BADGE_AWARDED,
+        },
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it('Hero XP policy cap and cooldown enforcement stays tenant-isolated', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    await createXpLedgerFixture({
+      schoolId: tenantBSchoolId,
+      academicYearId: tenantBYearId,
+      termId: tenantBTermId,
+      studentId: tenantBStudentId,
+      enrollmentId: tenantBEnrollmentId,
+      sourceType: XpSourceType.HERO_MISSION,
+      sourceId: `${testSuffix}-tenant-b-heavy-xp`,
+      amount: 999,
+    });
+
+    const currentDaily = await sumHeroXpForStudentToday(demoStudentId);
+    await createXpPolicyFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      scopeType: ReinforcementTargetScope.STUDENT,
+      scopeKey: demoStudentId,
+      dailyCap: currentDaily + 5,
+      weeklyCap: currentDaily + 100,
+    });
+    const acceptedProgress = await createCompletedRewardProgressFixture({
+      suffix: 'tenant-isolated-cap-accept',
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      stageId: demoStageId,
+      subjectId: demoSubjectId,
+      assessmentId: demoAssessmentId,
+      badgeId: demoBadgeId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      rewardXp: 5,
+    });
+    const accepted = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${acceptedProgress.progressId}/grant-xp`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+    createdXpLedgerIds.push(accepted.body.id);
+
+    const afterAcceptedDaily = await sumHeroXpForStudentToday(demoStudentId);
+    await createXpPolicyFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      scopeType: ReinforcementTargetScope.STUDENT,
+      scopeKey: demoStudentId,
+      dailyCap: afterAcceptedDaily + 1,
+      weeklyCap: afterAcceptedDaily + 100,
+    });
+    const dailyRejectedProgress = await createCompletedRewardProgressFixture({
+      suffix: 'daily-cap-reject',
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      stageId: demoStageId,
+      subjectId: demoSubjectId,
+      assessmentId: demoAssessmentId,
+      badgeId: demoBadgeId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      rewardXp: 5,
+    });
+    const dailyRejected = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${dailyRejectedProgress.progressId}/grant-xp`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(429);
+    expect(dailyRejected.body?.error?.code).toBe(
+      'reinforcement.xp.daily_cap_reached',
+    );
+
+    await createXpPolicyFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      scopeType: ReinforcementTargetScope.STUDENT,
+      scopeKey: demoStudentId,
+      dailyCap: afterAcceptedDaily + 100,
+      weeklyCap: afterAcceptedDaily + 1,
+    });
+    const weeklyRejectedProgress = await createCompletedRewardProgressFixture({
+      suffix: 'weekly-cap-reject',
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      stageId: demoStageId,
+      subjectId: demoSubjectId,
+      assessmentId: demoAssessmentId,
+      badgeId: demoBadgeId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      rewardXp: 5,
+    });
+    const weeklyRejected = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${weeklyRejectedProgress.progressId}/grant-xp`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(400);
+    expect(weeklyRejected.body?.error?.code).toBe('validation.failed');
+
+    await createXpPolicyFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      scopeType: ReinforcementTargetScope.STUDENT,
+      scopeKey: demoStudentId,
+      dailyCap: afterAcceptedDaily + 100,
+      weeklyCap: afterAcceptedDaily + 100,
+      cooldownMinutes: 60,
+    });
+    const cooldownProgress = await createCompletedRewardProgressFixture({
+      suffix: 'cooldown-reject',
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      stageId: demoStageId,
+      subjectId: demoSubjectId,
+      assessmentId: demoAssessmentId,
+      badgeId: demoBadgeId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      rewardXp: 5,
+    });
+    const cooldownRejected = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/hero/progress/${cooldownProgress.progressId}/grant-xp`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(429);
+    expect(cooldownRejected.body?.error?.code).toBe(
+      'reinforcement.xp.cooldown',
+    );
   });
 
   it('school admin can start progress, complete an objective, and complete the mission without XP or badge side effects', async () => {
@@ -1328,6 +1769,7 @@ describe('Hero Journey tenancy isolation (security)', () => {
     badgeId: string;
     titleSuffix: string;
     status: HeroMissionStatus;
+    rewardXp?: number;
     deletedAt?: Date | null;
   }): Promise<string> {
     const mission = await prisma.heroMission.create({
@@ -1340,7 +1782,7 @@ describe('Hero Journey tenancy isolation (security)', () => {
         linkedAssessmentId: params.assessmentId,
         titleEn: `${testSuffix}-${params.titleSuffix}`,
         requiredLevel: 1,
-        rewardXp: 10,
+        rewardXp: params.rewardXp ?? 10,
         badgeRewardId: params.badgeId,
         status: params.status,
         deletedAt: params.deletedAt ?? null,
@@ -1384,7 +1826,14 @@ describe('Hero Journey tenancy isolation (security)', () => {
     academicYearId: string;
     termId: string;
     objectiveId: string;
+    status?: HeroMissionProgressStatus;
+    progressPercent?: number;
+    completedAt?: Date | null;
+    eventType?: HeroJourneyEventType;
+    badgeId?: string | null;
   }): Promise<{ progressId: string; eventId: string }> {
+    const startedAt = new Date('2026-09-15T08:00:00.000Z');
+    const completedAt = params.completedAt ?? null;
     const progress = await prisma.heroMissionProgress.create({
       data: {
         schoolId: params.schoolId,
@@ -1393,10 +1842,11 @@ describe('Hero Journey tenancy isolation (security)', () => {
         enrollmentId: params.enrollmentId,
         academicYearId: params.academicYearId,
         termId: params.termId,
-        status: HeroMissionProgressStatus.IN_PROGRESS,
-        progressPercent: 0,
-        startedAt: new Date('2026-09-15T08:00:00.000Z'),
-        lastActivityAt: new Date('2026-09-15T08:00:00.000Z'),
+        status: params.status ?? HeroMissionProgressStatus.IN_PROGRESS,
+        progressPercent: params.progressPercent ?? 0,
+        startedAt,
+        completedAt,
+        lastActivityAt: completedAt ?? startedAt,
       },
       select: { id: true },
     });
@@ -1409,13 +1859,153 @@ describe('Hero Journey tenancy isolation (security)', () => {
         objectiveId: params.objectiveId,
         studentId: params.studentId,
         enrollmentId: params.enrollmentId,
-        type: HeroJourneyEventType.OBJECTIVE_COMPLETED,
-        occurredAt: new Date('2026-09-15T08:00:00.000Z'),
+        badgeId: params.badgeId ?? null,
+        type: params.eventType ?? HeroJourneyEventType.OBJECTIVE_COMPLETED,
+        occurredAt: completedAt ?? startedAt,
       },
       select: { id: true },
     });
 
     return { progressId: progress.id, eventId: event.id };
+  }
+
+  async function createCompletedRewardProgressFixture(params: {
+    suffix: string;
+    schoolId: string;
+    academicYearId: string;
+    termId: string;
+    stageId: string;
+    subjectId: string;
+    assessmentId: string;
+    badgeId: string;
+    studentId: string;
+    enrollmentId: string;
+    rewardXp?: number;
+    eventType?: HeroJourneyEventType;
+  }): Promise<{ progressId: string; eventId: string; missionId: string }> {
+    const missionId = await createMissionFixture({
+      schoolId: params.schoolId,
+      academicYearId: params.academicYearId,
+      termId: params.termId,
+      stageId: params.stageId,
+      subjectId: params.subjectId,
+      assessmentId: params.assessmentId,
+      badgeId: params.badgeId,
+      titleSuffix: `mission-${params.suffix}`,
+      status: HeroMissionStatus.PUBLISHED,
+      rewardXp: params.rewardXp,
+    });
+    const objectiveId = await findMissionObjectiveId(missionId);
+    const progress = await createProgressFixture({
+      schoolId: params.schoolId,
+      missionId,
+      studentId: params.studentId,
+      enrollmentId: params.enrollmentId,
+      academicYearId: params.academicYearId,
+      termId: params.termId,
+      objectiveId,
+      status: HeroMissionProgressStatus.COMPLETED,
+      progressPercent: 100,
+      completedAt: new Date('2026-09-15T09:00:00.000Z'),
+      eventType: params.eventType ?? HeroJourneyEventType.MISSION_COMPLETED,
+      badgeId:
+        params.eventType === HeroJourneyEventType.BADGE_AWARDED
+          ? params.badgeId
+          : null,
+    });
+
+    return { ...progress, missionId };
+  }
+
+  async function createXpPolicyFixture(params: {
+    schoolId: string;
+    academicYearId: string;
+    termId: string;
+    scopeType: ReinforcementTargetScope;
+    scopeKey: string;
+    dailyCap?: number;
+    weeklyCap?: number;
+    cooldownMinutes?: number;
+  }): Promise<string> {
+    await prisma.xpPolicy.updateMany({
+      where: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        scopeType: params.scopeType,
+        scopeKey: params.scopeKey,
+        isActive: true,
+        deletedAt: null,
+      },
+      data: { isActive: false },
+    });
+
+    const policy = await prisma.xpPolicy.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        scopeType: params.scopeType,
+        scopeKey: params.scopeKey,
+        dailyCap: params.dailyCap ?? null,
+        weeklyCap: params.weeklyCap ?? null,
+        cooldownMinutes: params.cooldownMinutes ?? null,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    createdXpPolicyIds.push(policy.id);
+    return policy.id;
+  }
+
+  async function createXpLedgerFixture(params: {
+    schoolId: string;
+    academicYearId: string;
+    termId: string;
+    studentId: string;
+    enrollmentId: string;
+    sourceType: XpSourceType;
+    sourceId: string;
+    amount: number;
+  }): Promise<string> {
+    const ledger = await prisma.xpLedger.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        studentId: params.studentId,
+        enrollmentId: params.enrollmentId,
+        sourceType: params.sourceType,
+        sourceId: params.sourceId,
+        amount: params.amount,
+        reason: 'security fixture',
+        occurredAt: new Date(),
+      },
+      select: { id: true },
+    });
+    createdXpLedgerIds.push(ledger.id);
+    return ledger.id;
+  }
+
+  async function sumHeroXpForStudentToday(studentId: string): Promise<number> {
+    const from = new Date();
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(from);
+    to.setDate(to.getDate() + 1);
+
+    const result = await prisma.xpLedger.aggregate({
+      where: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        studentId,
+        sourceType: XpSourceType.HERO_MISSION,
+        occurredAt: { gte: from, lt: to },
+      },
+      _sum: { amount: true },
+    });
+
+    return result._sum.amount ?? 0;
   }
 
   function missionPayload(
@@ -1480,6 +2070,7 @@ describe('Hero Journey tenancy isolation (security)', () => {
       where: { schoolId },
     });
     await prisma.heroMissionProgress.deleteMany({ where: { schoolId } });
+    await prisma.xpLedger.deleteMany({ where: { schoolId } });
     await prisma.heroMissionObjective.deleteMany({ where: { schoolId } });
     await prisma.heroMission.deleteMany({ where: { schoolId } });
     await prisma.heroBadge.deleteMany({ where: { schoolId } });
@@ -1491,6 +2082,7 @@ describe('Hero Journey tenancy isolation (security)', () => {
     await prisma.section.deleteMany({ where: { schoolId } });
     await prisma.grade.deleteMany({ where: { schoolId } });
     await prisma.stage.deleteMany({ where: { schoolId } });
+    await prisma.xpPolicy.deleteMany({ where: { schoolId } });
     await prisma.term.deleteMany({ where: { schoolId } });
     await prisma.academicYear.deleteMany({ where: { schoolId } });
   }
