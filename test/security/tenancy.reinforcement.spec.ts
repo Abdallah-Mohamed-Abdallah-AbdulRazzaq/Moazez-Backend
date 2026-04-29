@@ -4,6 +4,7 @@ import {
   FileVisibility,
   MembershipStatus,
   OrganizationStatus,
+  Prisma,
   PrismaClient,
   ReinforcementProofType,
   ReinforcementRewardType,
@@ -17,6 +18,7 @@ import {
   StudentStatus,
   UserStatus,
   UserType,
+  XpSourceType,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
 import request from 'supertest';
@@ -66,6 +68,9 @@ describe('Reinforcement tenancy isolation (security)', () => {
   let demoCancelledTaskId: string;
   let demoTemplateId: string;
   let demoSubmittedSubmissionId: string;
+  let demoApprovedSubmissionId: string;
+  let demoXpPolicyId: string;
+  let demoXpLedgerId: string;
 
   let tenantBYearId: string;
   let tenantBTermId: string;
@@ -81,6 +86,9 @@ describe('Reinforcement tenancy isolation (security)', () => {
   let tenantBTaskStageId: string;
   let tenantBTemplateId: string;
   let tenantBSubmittedSubmissionId: string;
+  let tenantBApprovedSubmissionId: string;
+  let tenantBXpPolicyId: string;
+  let tenantBXpLedgerId: string;
   let tenantBProofFileId: string;
 
   let noAccessEmail: string;
@@ -88,6 +96,7 @@ describe('Reinforcement tenancy isolation (security)', () => {
   let reviewViewerEmail: string;
   let templateNoViewEmail: string;
   let templateViewerEmail: string;
+  let xpViewerEmail: string;
   let teacherEmail: string;
   let parentEmail: string;
   let studentEmail: string;
@@ -96,6 +105,8 @@ describe('Reinforcement tenancy isolation (security)', () => {
   const testSuffix = `reinforcement-security-${Date.now()}`;
   const createdTaskIds: string[] = [];
   const createdTemplateIds: string[] = [];
+  const createdXpPolicyIds: string[] = [];
+  const createdXpLedgerIds: string[] = [];
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
   const createdAcademicYearIds: string[] = [];
@@ -126,6 +137,8 @@ describe('Reinforcement tenancy isolation (security)', () => {
       templatesManagePermission,
       reviewsViewPermission,
       reviewsManagePermission,
+      xpViewPermission,
+      xpManagePermission,
     ] = await Promise.all([
       prisma.role.findFirst({
         where: { key: 'school_admin', schoolId: null, isSystem: true },
@@ -167,6 +180,14 @@ describe('Reinforcement tenancy isolation (security)', () => {
         where: { code: 'reinforcement.reviews.manage' },
         select: { id: true },
       }),
+      prisma.permission.findUnique({
+        where: { code: 'reinforcement.xp.view' },
+        select: { id: true },
+      }),
+      prisma.permission.findUnique({
+        where: { code: 'reinforcement.xp.manage' },
+        select: { id: true },
+      }),
     ]);
 
     if (
@@ -179,7 +200,9 @@ describe('Reinforcement tenancy isolation (security)', () => {
       !templatesViewPermission ||
       !templatesManagePermission ||
       !reviewsViewPermission ||
-      !reviewsManagePermission
+      !reviewsManagePermission ||
+      !xpViewPermission ||
+      !xpManagePermission
     ) {
       throw new Error('Reinforcement roles or permissions missing - run seed.');
     }
@@ -220,12 +243,16 @@ describe('Reinforcement tenancy isolation (security)', () => {
     const templateViewerRoleId = await createCustomRole('template_viewer', [
       templatesViewPermission.id,
     ]);
+    const xpViewerRoleId = await createCustomRole('xp_viewer', [
+      xpViewPermission.id,
+    ]);
 
     noAccessEmail = `${testSuffix}-no-access@security.moazez.local`;
     taskViewerEmail = `${testSuffix}-task-viewer@security.moazez.local`;
     reviewViewerEmail = `${testSuffix}-review-viewer@security.moazez.local`;
     templateNoViewEmail = `${testSuffix}-template-no-view@security.moazez.local`;
     templateViewerEmail = `${testSuffix}-template-viewer@security.moazez.local`;
+    xpViewerEmail = `${testSuffix}-xp-viewer@security.moazez.local`;
     teacherEmail = `${testSuffix}-teacher@security.moazez.local`;
     parentEmail = `${testSuffix}-parent@security.moazez.local`;
     studentEmail = `${testSuffix}-student-user@security.moazez.local`;
@@ -254,6 +281,11 @@ describe('Reinforcement tenancy isolation (security)', () => {
       templateViewerEmail,
       UserType.SCHOOL_USER,
       templateViewerRoleId,
+    );
+    await createUserWithMembership(
+      xpViewerEmail,
+      UserType.SCHOOL_USER,
+      xpViewerRoleId,
     );
     await createUserWithMembership(teacherEmail, UserType.TEACHER, teacherRole.id);
     await createUserWithMembership(parentEmail, UserType.PARENT, parentRole.id);
@@ -423,6 +455,80 @@ describe('Reinforcement tenancy isolation (security)', () => {
       enrollmentId: tenantBEnrollmentId,
     });
 
+    const demoApprovedTask = await createDemoTaskFixture('approved-xp-grant');
+    demoApprovedSubmissionId = await createSubmissionFixture({
+      schoolId: demoSchoolId,
+      taskId: demoApprovedTask.taskId,
+      assignmentId: demoApprovedTask.assignmentId,
+      stageId: demoApprovedTask.stageId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      status: ReinforcementSubmissionStatus.APPROVED,
+    });
+
+    const tenantBApprovedTask = await createTaskFixture({
+      schoolId: tenantBSchoolId,
+      academicYearId: tenantBYearId,
+      termId: tenantBTermId,
+      subjectId: tenantBSubjectId,
+      titleEn: `${testSuffix}-approved-xp-grant-b`,
+      target: {
+        scopeType: ReinforcementTargetScope.STUDENT,
+        scopeKey: tenantBStudentId,
+        studentId: tenantBStudentId,
+      },
+      assignment: {
+        studentId: tenantBStudentId,
+        enrollmentId: tenantBEnrollmentId,
+      },
+    });
+    tenantBApprovedSubmissionId = await createSubmissionFixture({
+      schoolId: tenantBSchoolId,
+      taskId: tenantBApprovedTask.taskId,
+      assignmentId: tenantBApprovedTask.assignmentId,
+      stageId: tenantBApprovedTask.stageId,
+      studentId: tenantBStudentId,
+      enrollmentId: tenantBEnrollmentId,
+      status: ReinforcementSubmissionStatus.APPROVED,
+    });
+
+    demoXpPolicyId = await createXpPolicyFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      scopeType: ReinforcementTargetScope.GRADE,
+      scopeKey: demoGradeId,
+      dailyCap: 500,
+    });
+    tenantBXpPolicyId = await createXpPolicyFixture({
+      schoolId: tenantBSchoolId,
+      academicYearId: tenantBYearId,
+      termId: tenantBTermId,
+      scopeType: ReinforcementTargetScope.GRADE,
+      scopeKey: tenantBGradeId,
+      dailyCap: 500,
+    });
+    demoXpLedgerId = await createXpLedgerFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      sourceType: XpSourceType.MANUAL_BONUS,
+      sourceId: `${testSuffix}-ledger-a`,
+      amount: 5,
+    });
+    tenantBXpLedgerId = await createXpLedgerFixture({
+      schoolId: tenantBSchoolId,
+      academicYearId: tenantBYearId,
+      termId: tenantBTermId,
+      studentId: tenantBStudentId,
+      enrollmentId: tenantBEnrollmentId,
+      sourceType: XpSourceType.MANUAL_BONUS,
+      sourceId: `${testSuffix}-ledger-b`,
+      amount: 99,
+    });
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -442,6 +548,9 @@ describe('Reinforcement tenancy isolation (security)', () => {
   afterAll(async () => {
     if (app) await app.close();
     if (prisma) {
+      await prisma.xpLedger.deleteMany({
+        where: { id: { in: createdXpLedgerIds } },
+      });
       await prisma.reinforcementSubmission.updateMany({
         where: { taskId: { in: createdTaskIds } },
         data: { currentReviewId: null },
@@ -469,6 +578,9 @@ describe('Reinforcement tenancy isolation (security)', () => {
       });
       await prisma.reinforcementTaskTemplate.deleteMany({
         where: { id: { in: createdTemplateIds } },
+      });
+      await prisma.xpPolicy.deleteMany({
+        where: { id: { in: createdXpPolicyIds } },
       });
       await prisma.enrollment.deleteMany({
         where: {
@@ -1176,6 +1288,372 @@ describe('Reinforcement tenancy isolation (security)', () => {
     expect(afterXpCount).toBe(beforeXpCount);
   });
 
+  it('school A cannot list or update school B XP policies', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/xp/policies`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const ids = listResponse.body.items.map((item: { id: string }) => item.id);
+    expect(ids).toContain(demoXpPolicyId);
+    expect(ids).not.toContain(tenantBXpPolicyId);
+
+    const updateResponse = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/reinforcement/xp/policies/${tenantBXpPolicyId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ dailyCap: 300 })
+      .expect(404);
+    expect(updateResponse.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A cannot use school B scope resources when creating XP policies', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/xp/policies`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        scopeId: tenantBGradeId,
+        dailyCap: 100,
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A cannot see school B XP ledger entries', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/xp/ledger`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const ids = response.body.items.map((item: { id: string }) => item.id);
+    expect(ids).toContain(demoXpLedgerId);
+    expect(ids).not.toContain(tenantBXpLedgerId);
+  });
+
+  it('school A cannot grant XP for school B submissions or students', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/xp/grants/reinforcement-review/${tenantBApprovedSubmissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ amount: 10, reason: 'cross-school' })
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/xp/grants/manual`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: demoYearId,
+        termId: demoTermId,
+        studentId: tenantBStudentId,
+        amount: 10,
+        reason: 'cross-school student',
+        dedupeKey: `${testSuffix}-cross-school-student`,
+      })
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/xp/grants/manual`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: demoYearId,
+        termId: demoTermId,
+        studentId: demoStudentId,
+        enrollmentId: tenantBEnrollmentId,
+        amount: 10,
+        reason: 'cross-school enrollment',
+        dedupeKey: `${testSuffix}-cross-school-enrollment`,
+      })
+      .expect(404);
+  });
+
+  it('returns 403 when XP view permission is missing', async () => {
+    const { accessToken } = await login(noAccessEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/xp/policies`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/xp/policies/effective?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/xp/ledger`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/xp/summary?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+  });
+
+  it('returns 403 when XP manage permission is missing', async () => {
+    const { accessToken } = await login(xpViewerEmail);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/xp/policies`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'student',
+        scopeId: demoStudentId,
+        dailyCap: 50,
+      })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/reinforcement/xp/policies/${demoXpPolicyId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ dailyCap: 50 })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/xp/grants/reinforcement-review/${demoApprovedSubmissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ amount: 10, reason: 'view only' })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/xp/grants/manual`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: demoYearId,
+        termId: demoTermId,
+        studentId: demoStudentId,
+        amount: 10,
+        reason: 'view only',
+        dedupeKey: `${testSuffix}-view-only-manual`,
+      })
+      .expect(403);
+  });
+
+  it('teacher can view XP but cannot manage XP', async () => {
+    const { accessToken } = await login(teacherEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/xp/policies`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/xp/ledger`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/xp/summary?yearId=${demoYearId}&termId=${demoTermId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/xp/policies`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'student',
+        scopeId: demoStudentId,
+        dailyCap: 50,
+      })
+      .expect(403);
+  });
+
+  it('school admin can create, update, and resolve XP policies', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/xp/policies`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'section',
+        scopeId: demoSectionId,
+        dailyCap: 120,
+        weeklyCap: 600,
+      })
+      .expect(201);
+    createdXpPolicyIds.push(createResponse.body.id);
+    expect(createResponse.body.scopeType).toBe('section');
+
+    const updateResponse = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/reinforcement/xp/policies/${createResponse.body.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ weeklyCap: 650 })
+      .expect(200);
+    expect(updateResponse.body.weeklyCap).toBe(650);
+
+    const effectiveResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/xp/policies/effective?yearId=${demoYearId}&termId=${demoTermId}&sectionId=${demoSectionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(effectiveResponse.body.scopeType).toBe('section');
+  });
+
+  it('school admin can grant XP for approved reviews and duplicates are idempotent', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const fixture = await createDemoTaskFixture('duplicate-xp-grant');
+    const submissionId = await createSubmissionFixture({
+      schoolId: demoSchoolId,
+      taskId: fixture.taskId,
+      assignmentId: fixture.assignmentId,
+      stageId: fixture.stageId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      status: ReinforcementSubmissionStatus.APPROVED,
+    });
+
+    const first = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/xp/grants/reinforcement-review/${submissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ amount: 8, reason: 'approved reinforcement' })
+      .expect(201);
+    createdXpLedgerIds.push(first.body.id);
+
+    const second = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/xp/grants/reinforcement-review/${submissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ amount: 8, reason: 'approved reinforcement' })
+      .expect(201);
+
+    expect(second.body.id).toBe(first.body.id);
+    await expect(
+      prisma.xpLedger.count({
+        where: {
+          sourceType: XpSourceType.REINFORCEMENT_TASK,
+          sourceId: submissionId,
+          studentId: demoStudentId,
+        },
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it('parent and student actors cannot manage XP', async () => {
+    for (const email of [parentEmail, studentEmail]) {
+      const { accessToken } = await login(email);
+
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/reinforcement/xp/grants/manual`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          yearId: demoYearId,
+          termId: demoTermId,
+          studentId: demoStudentId,
+          amount: 10,
+          reason: `${email} forbidden`,
+          dedupeKey: `${testSuffix}-${email}-xp-forbidden`,
+        })
+        .expect(403);
+    }
+  });
+
+  it('cap enforcement is tenant-isolated for manual bonuses', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const policyId = await createXpPolicyFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      scopeType: ReinforcementTargetScope.STUDENT,
+      scopeKey: demoStudentTwoId,
+      dailyCap: 10,
+      weeklyCap: 100,
+    });
+    expect(policyId).toBeTruthy();
+
+    const first = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/xp/grants/manual`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: demoYearId,
+        termId: demoTermId,
+        studentId: demoStudentTwoId,
+        enrollmentId: demoEnrollmentTwoId,
+        amount: 8,
+        reason: 'first capped bonus',
+        dedupeKey: `${testSuffix}-cap-first`,
+      })
+      .expect(201);
+    createdXpLedgerIds.push(first.body.id);
+
+    const rejected = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/xp/grants/manual`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: demoYearId,
+        termId: demoTermId,
+        studentId: demoStudentTwoId,
+        enrollmentId: demoEnrollmentTwoId,
+        amount: 5,
+        reason: 'second capped bonus',
+        dedupeKey: `${testSuffix}-cap-second`,
+      })
+      .expect(429);
+    expect(rejected.body?.error?.code).toBe(
+      'reinforcement.xp.daily_cap_reached',
+    );
+  });
+
+  it('manual bonus XP does not leak across schools', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const sourceId = `${testSuffix}-manual-leak-check`;
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/xp/grants/manual`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: demoYearId,
+        termId: demoTermId,
+        studentId: demoStudentId,
+        enrollmentId: demoEnrollmentId,
+        amount: 7,
+        reason: 'manual leak check',
+        dedupeKey: sourceId,
+      })
+      .expect(201);
+    createdXpLedgerIds.push(response.body.id);
+
+    const [schoolACount, schoolBCount] = await Promise.all([
+      prisma.xpLedger.count({
+        where: { schoolId: demoSchoolId, sourceId },
+      }),
+      prisma.xpLedger.count({
+        where: { schoolId: tenantBSchoolId, sourceId },
+      }),
+    ]);
+    expect(schoolACount).toBe(1);
+    expect(schoolBCount).toBe(0);
+  });
+
   async function createCustomRole(
     keySuffix: string,
     permissionIds: string[],
@@ -1390,6 +1868,7 @@ describe('Reinforcement tenancy isolation (security)', () => {
   }
 
   async function cleanupReinforcementTenantSchool(schoolId: string): Promise<void> {
+    await prisma.xpLedger.deleteMany({ where: { schoolId } });
     await prisma.reinforcementSubmission.updateMany({
       where: { schoolId },
       data: { currentReviewId: null },
@@ -1402,6 +1881,7 @@ describe('Reinforcement tenancy isolation (security)', () => {
     await prisma.reinforcementTask.deleteMany({ where: { schoolId } });
     await prisma.reinforcementTaskTemplateStage.deleteMany({ where: { schoolId } });
     await prisma.reinforcementTaskTemplate.deleteMany({ where: { schoolId } });
+    await prisma.xpPolicy.deleteMany({ where: { schoolId } });
     await prisma.file.deleteMany({ where: { schoolId } });
     await prisma.enrollment.deleteMany({ where: { schoolId } });
     await prisma.student.deleteMany({ where: { schoolId } });
@@ -1449,6 +1929,64 @@ describe('Reinforcement tenancy isolation (security)', () => {
     ).resolves.toBe(expected);
   }
 
+  async function createXpPolicyFixture(params: {
+    schoolId: string;
+    academicYearId: string;
+    termId: string;
+    scopeType: ReinforcementTargetScope;
+    scopeKey: string;
+    dailyCap?: number | null;
+    weeklyCap?: number | null;
+    cooldownMinutes?: number | null;
+  }): Promise<string> {
+    const policy = await prisma.xpPolicy.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        scopeType: params.scopeType,
+        scopeKey: params.scopeKey,
+        dailyCap: params.dailyCap ?? null,
+        weeklyCap: params.weeklyCap ?? null,
+        cooldownMinutes: params.cooldownMinutes ?? null,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    createdXpPolicyIds.push(policy.id);
+
+    return policy.id;
+  }
+
+  async function createXpLedgerFixture(params: {
+    schoolId: string;
+    academicYearId: string;
+    termId: string;
+    studentId: string;
+    enrollmentId: string;
+    sourceType: XpSourceType;
+    sourceId: string;
+    amount: number;
+  }): Promise<string> {
+    const ledger = await prisma.xpLedger.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        studentId: params.studentId,
+        enrollmentId: params.enrollmentId,
+        sourceType: params.sourceType,
+        sourceId: params.sourceId,
+        amount: params.amount,
+        reason: `${testSuffix}-fixture-xp`,
+      },
+      select: { id: true },
+    });
+    createdXpLedgerIds.push(ledger.id);
+
+    return ledger.id;
+  }
+
   async function createTaskFixture(params: {
     schoolId: string;
     academicYearId: string;
@@ -1476,6 +2014,8 @@ describe('Reinforcement tenancy isolation (security)', () => {
         titleEn: params.titleEn,
         source: ReinforcementSource.TEACHER,
         status: params.status ?? ReinforcementTaskStatus.NOT_COMPLETED,
+        rewardType: ReinforcementRewardType.XP,
+        rewardValue: new Prisma.Decimal(25),
       },
       select: { id: true },
     });
