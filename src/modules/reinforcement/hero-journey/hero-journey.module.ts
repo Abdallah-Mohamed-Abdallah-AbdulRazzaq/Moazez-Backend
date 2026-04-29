@@ -24,14 +24,23 @@ import {
   StartHeroMissionUseCase,
 } from './application/hero-journey-progress.use-cases';
 import {
+  GetHeroBadgesSummaryUseCase,
+  GetHeroClassroomSummaryUseCase,
+  GetHeroMapUseCase,
+  GetHeroOverviewUseCase,
+  GetHeroStageSummaryUseCase,
+} from './application/hero-journey-dashboard.use-cases';
+import {
   AwardHeroMissionBadgeUseCase,
   GetStudentHeroRewardsUseCase,
   GrantHeroMissionXpUseCase,
 } from './application/hero-journey-rewards.use-cases';
 import { HeroJourneyController } from './controller/hero-journey.controller';
+import { HeroJourneyDashboardController } from './controller/hero-journey-dashboard.controller';
 import { HeroJourneyProgressController } from './controller/hero-journey-progress.controller';
 import { HeroJourneyRewardsController } from './controller/hero-journey-rewards.controller';
 import { HeroJourneyRepository } from './infrastructure/hero-journey.repository';
+import { HeroJourneyDashboardRepository } from './infrastructure/hero-journey-dashboard.repository';
 import { HeroJourneyProgressRepository } from './infrastructure/hero-journey-progress.repository';
 import { HeroJourneyRewardsRepository } from './infrastructure/hero-journey-rewards.repository';
 
@@ -39,11 +48,13 @@ import { HeroJourneyRewardsRepository } from './infrastructure/hero-journey-rewa
   imports: [AuthModule],
   controllers: [
     HeroJourneyController,
+    HeroJourneyDashboardController,
     HeroJourneyProgressController,
     HeroJourneyRewardsController,
   ],
   providers: [
     HeroJourneyRepository,
+    HeroJourneyDashboardRepository,
     HeroJourneyProgressRepository,
     HeroJourneyRewardsRepository,
     ListHeroBadgesUseCase,
@@ -66,6 +77,11 @@ import { HeroJourneyRewardsRepository } from './infrastructure/hero-journey-rewa
     GrantHeroMissionXpUseCase,
     AwardHeroMissionBadgeUseCase,
     GetStudentHeroRewardsUseCase,
+    GetHeroOverviewUseCase,
+    GetHeroMapUseCase,
+    GetHeroStageSummaryUseCase,
+    GetHeroClassroomSummaryUseCase,
+    GetHeroBadgesSummaryUseCase,
   ],
 })
 export class HeroJourneyModule {}

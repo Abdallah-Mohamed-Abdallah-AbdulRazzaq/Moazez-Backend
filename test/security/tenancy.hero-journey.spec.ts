@@ -1407,6 +1407,213 @@ describe('Hero Journey tenancy isolation (security)', () => {
     );
   });
 
+  it('school A Hero dashboard read models exclude school B data', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const overview = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/hero/overview`)
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(JSON.stringify(overview.body)).toContain(demoRewardProgressId);
+    expect(JSON.stringify(overview.body)).not.toContain(tenantBPublishedMissionId);
+    expect(JSON.stringify(overview.body)).not.toContain(tenantBRewardEventId);
+
+    const badgeSummary = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/hero/badge-summary`)
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(JSON.stringify(badgeSummary.body)).toContain(demoBadgeId);
+    expect(JSON.stringify(badgeSummary.body)).not.toContain(tenantBBadgeId);
+  });
+
+  it('school A cannot read school B Hero dashboard resource summaries', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/hero/map`)
+      .query({
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        studentId: tenantBStudentId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/hero/stages/${tenantBStageId}/summary`,
+      )
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/hero/classrooms/${tenantBClassroomId}/summary`,
+      )
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
+
+  it('enforces Hero dashboard and badge summary read permissions', async () => {
+    const noAccess = await login(noAccessEmail);
+    for (const path of [
+      `${GLOBAL_PREFIX}/reinforcement/hero/overview`,
+      `${GLOBAL_PREFIX}/reinforcement/hero/map`,
+      `${GLOBAL_PREFIX}/reinforcement/hero/stages/${demoStageId}/summary`,
+      `${GLOBAL_PREFIX}/reinforcement/hero/classrooms/${demoClassroomId}/summary`,
+    ]) {
+      await request(app.getHttpServer())
+        .get(path)
+        .query({ academicYearId: demoYearId, termId: demoTermId })
+        .set('Authorization', `Bearer ${noAccess.accessToken}`)
+        .expect(403);
+    }
+
+    const heroViewer = await login(heroViewerEmail);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/hero/badge-summary`)
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${heroViewer.accessToken}`)
+      .expect(403);
+  });
+
+  it('school admin can read all Hero dashboard summaries and teacher can read hero-view summaries', async () => {
+    const admin = await login(DEMO_ADMIN_EMAIL);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/hero/badge-summary`)
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+
+    for (const email of [DEMO_ADMIN_EMAIL, teacherEmail]) {
+      const { accessToken } = await login(email);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/reinforcement/hero/overview`)
+        .query({ academicYearId: demoYearId, termId: demoTermId })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/reinforcement/hero/map`)
+        .query({
+          academicYearId: demoYearId,
+          termId: demoTermId,
+          studentId: demoStudentId,
+        })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/reinforcement/hero/stages/${demoStageId}/summary`)
+        .query({ academicYearId: demoYearId, termId: demoTermId })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/reinforcement/hero/classrooms/${demoClassroomId}/summary`,
+        )
+        .query({ academicYearId: demoYearId, termId: demoTermId })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+    }
+  });
+
+  it('parent and student cannot access core Hero dashboard read models', async () => {
+    for (const email of [parentEmail, studentEmail]) {
+      const { accessToken } = await login(email);
+      for (const path of [
+        `${GLOBAL_PREFIX}/reinforcement/hero/overview`,
+        `${GLOBAL_PREFIX}/reinforcement/hero/map`,
+        `${GLOBAL_PREFIX}/reinforcement/hero/stages/${demoStageId}/summary`,
+        `${GLOBAL_PREFIX}/reinforcement/hero/classrooms/${demoClassroomId}/summary`,
+        `${GLOBAL_PREFIX}/reinforcement/hero/badge-summary`,
+      ]) {
+        await request(app.getHttpServer())
+          .get(path)
+          .query({ academicYearId: demoYearId, termId: demoTermId })
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(403);
+      }
+    }
+  });
+
+  it('Hero dashboard read endpoints do not create side effects', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const before = await heroReadModelSideEffectCounts(demoSchoolId);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/hero/overview`)
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/hero/map`)
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/hero/stages/${demoStageId}/summary`)
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/hero/classrooms/${demoClassroomId}/summary`,
+      )
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/hero/badge-summary`)
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await expect(heroReadModelSideEffectCounts(demoSchoolId)).resolves.toEqual(
+      before,
+    );
+  });
+
+  it('Hero overview XP aggregation excludes non-HERO_MISSION ledger rows', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    await createXpLedgerFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      sourceType: XpSourceType.REINFORCEMENT_TASK,
+      sourceId: `${testSuffix}-dashboard-task-xp`,
+      amount: 777,
+    });
+    await createXpLedgerFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      sourceType: XpSourceType.MANUAL_BONUS,
+      sourceId: `${testSuffix}-dashboard-manual-xp`,
+      amount: 888,
+    });
+    const expectedHeroXp = await sumHeroXpForStudent(demoStudentId);
+
+    const overview = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/hero/overview`)
+      .query({
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        studentId: demoStudentId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(overview.body.rewards.totalHeroXp).toBe(expectedHeroXp);
+  });
+
   it('school admin can start progress, complete an objective, and complete the mission without XP or badge side effects', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL);
     const before = await heroSideEffectCounts(demoSchoolId);
@@ -2050,6 +2257,30 @@ describe('Hero Journey tenancy isolation (security)', () => {
     return { progress, events, studentBadges, xpLedger };
   }
 
+  async function heroReadModelSideEffectCounts(schoolId: string) {
+    const [
+      xpLedger,
+      studentBadges,
+      events,
+      progress,
+      objectiveProgress,
+    ] = await Promise.all([
+      prisma.xpLedger.count({ where: { schoolId } }),
+      prisma.heroStudentBadge.count({ where: { schoolId } }),
+      prisma.heroJourneyEvent.count({ where: { schoolId } }),
+      prisma.heroMissionProgress.count({ where: { schoolId } }),
+      prisma.heroMissionObjectiveProgress.count({ where: { schoolId } }),
+    ]);
+
+    return {
+      xpLedger,
+      studentBadges,
+      events,
+      progress,
+      objectiveProgress,
+    };
+  }
+
   async function restrictedHeroEventCounts(schoolId: string) {
     const [xpGranted, badgeAwarded] = await Promise.all([
       prisma.heroJourneyEvent.count({
@@ -2061,6 +2292,21 @@ describe('Hero Journey tenancy isolation (security)', () => {
     ]);
 
     return { xpGranted, badgeAwarded };
+  }
+
+  async function sumHeroXpForStudent(studentId: string): Promise<number> {
+    const result = await prisma.xpLedger.aggregate({
+      where: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        studentId,
+        sourceType: XpSourceType.HERO_MISSION,
+      },
+      _sum: { amount: true },
+    });
+
+    return result._sum.amount ?? 0;
   }
 
   async function cleanupTenantSchool(schoolId: string): Promise<void> {
