@@ -434,6 +434,18 @@
               ]
             },
             {
+              "name": "20260428165644_0010_reinforcement_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -4615,6 +4627,663 @@
               ]
             },
             {
+              "name": "reinforcement",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "overview",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-classroom-reinforcement-summary.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-reinforcement-overview.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-student-reinforcement-progress.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reinforcement-overview-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-overview.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-overview-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-overview.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-overview.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-overview.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-overview-domain.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reinforcement-overview.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reinforcement-overview.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "overview.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "reviews",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "approve-reinforcement-submission.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-reinforcement-review-item.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-reinforcement-review-queue.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reinforcement-review-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reject-reinforcement-submission.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "submit-reinforcement-stage.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-reviews.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-review-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-review.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-reviews.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-review.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-review-domain.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reinforcement-review.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reinforcement-reviews.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "reviews.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "tasks",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "cancel-reinforcement-task.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-reinforcement-task.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "duplicate-reinforcement-task.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-reinforcement-filter-options.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-reinforcement-task.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-reinforcement-tasks.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reinforcement-task-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-tasks.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-task-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-task.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-tasks.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-task.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-task-domain.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reinforcement-task.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reinforcement-tasks.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tasks.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "templates",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-reinforcement-task-template.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-reinforcement-templates.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-templates.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-template-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-template.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-templates.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-template.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-template.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reinforcement-templates.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "templates.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "xp",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-xp-policy.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-effective-xp-policy.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-xp-summary.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grant-manual-xp.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grant-xp-for-reinforcement-review.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-xp-ledger.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-xp-policies.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reinforcement-xp-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-xp-policy.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-xp.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-xp-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-xp.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-xp.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-xp.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "reinforcement-xp-domain.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reinforcement-xp.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reinforcement-xp.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "xp.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "reinforcement-context.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "reinforcement.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
               "name": "settings",
               "type": "folder",
               "icon": "📁",
@@ -6650,6 +7319,11 @@
               "icon": "📘"
             },
             {
+              "name": "reinforcement-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "students-guardians-flow.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -6710,6 +7384,11 @@
             },
             {
               "name": "tenancy.grades.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.reinforcement.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -6916,7 +7595,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-04-28T16:24:21.826Z",
+    "generated": "2026-04-29T16:06:46.321Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
