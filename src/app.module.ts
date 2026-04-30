@@ -13,6 +13,7 @@ import { PrismaModule } from './infrastructure/database/prisma.module';
 import { AcademicsModule } from './modules/academics/academics.module';
 import { AdmissionsModule } from './modules/admissions/admissions.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
+import { BehaviorModule } from './modules/behavior/behavior.module';
 import { FilesModule } from './modules/files/files.module';
 import { GradesModule } from './modules/grades/grades.module';
 import { HealthModule } from './modules/health/health.module';
@@ -39,6 +40,7 @@ import { StudentsModule } from './modules/students/students.module';
     AttendanceModule,
     GradesModule,
     ReinforcementModule,
+    BehaviorModule,
   ],
   controllers: [AppController],
   providers: [
