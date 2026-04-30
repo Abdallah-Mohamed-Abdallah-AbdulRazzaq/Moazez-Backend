@@ -95,6 +95,16 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'reinforcement.rewards.redemptions.review', module: 'reinforcement', resource: 'reward_redemptions', action: 'review', description: 'Approve or reject reinforcement reward redemption requests' },
   { code: 'reinforcement.rewards.fulfill', module: 'reinforcement', resource: 'rewards', action: 'fulfill', description: 'Fulfill approved reinforcement reward redemptions' },
 
+  // behavior
+  { code: 'behavior.overview.view', module: 'behavior', resource: 'overview', action: 'view', description: 'View behavior overview metrics' },
+  { code: 'behavior.categories.view', module: 'behavior', resource: 'categories', action: 'view', description: 'View behavior categories' },
+  { code: 'behavior.categories.manage', module: 'behavior', resource: 'categories', action: 'manage', description: 'Create and update behavior categories' },
+  { code: 'behavior.records.view', module: 'behavior', resource: 'records', action: 'view', description: 'View behavior records' },
+  { code: 'behavior.records.create', module: 'behavior', resource: 'records', action: 'create', description: 'Create behavior records' },
+  { code: 'behavior.records.manage', module: 'behavior', resource: 'records', action: 'manage', description: 'Manage behavior records' },
+  { code: 'behavior.records.review', module: 'behavior', resource: 'records', action: 'review', description: 'Approve or reject submitted behavior records' },
+  { code: 'behavior.points.view', module: 'behavior', resource: 'points', action: 'view', description: 'View behavior point ledger data' },
+
   // communication
   { code: 'communication.messages.view', module: 'communication', resource: 'messages', action: 'view', description: 'View chat messages' },
   { code: 'communication.messages.send', module: 'communication', resource: 'messages', action: 'send', description: 'Send chat messages' },

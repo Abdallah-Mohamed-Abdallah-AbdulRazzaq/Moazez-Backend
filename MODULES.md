@@ -83,6 +83,13 @@
 - review-queue
 - xp
 
+## Behavior
+- categories
+- records
+- review-queue
+- points
+- overview
+
 ## Communication
 - conversations
 - messages
@@ -151,6 +158,7 @@ Core business truth belongs to:
 - attendance
 - grades
 - reinforcement
+- behavior
 - communication
 - settings
 

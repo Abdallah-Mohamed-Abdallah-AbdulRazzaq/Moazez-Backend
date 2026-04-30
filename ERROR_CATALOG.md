@@ -174,6 +174,24 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `reinforcement.redemption.terminal` | 409 | Reward redemption is already in a terminal state |
 | `reinforcement.redemption.invalid_source` | 422 | Reward redemption request source is invalid |
 
+### Behavior
+
+| Code                                             | HTTP | Message                                                |
+| ------------------------------------------------ | ---- | ------------------------------------------------------ |
+| `behavior.category.in_use`                       | 409  | Behavior category is in use                            |
+| `behavior.category.inactive`                     | 409  | Behavior category is inactive                          |
+| `behavior.record.invalid_status_transition`      | 409  | Behavior record status transition is invalid           |
+| `behavior.record.already_submitted`              | 409  | Behavior record is already submitted                   |
+| `behavior.record.not_submitted`                  | 409  | Behavior record must be submitted first                |
+| `behavior.record.already_reviewed`               | 409  | Behavior record is already reviewed                    |
+| `behavior.record.not_approved`                   | 409  | Behavior record must be approved first                 |
+| `behavior.record.cancelled`                      | 409  | Behavior record is cancelled                           |
+| `behavior.record.points_invalid`                 | 422  | Behavior record points are invalid                     |
+| `behavior.record.type_mismatch`                  | 422  | Behavior record type does not match its category       |
+| `behavior.record.outside_term`                   | 422  | Behavior record date is outside the selected term      |
+| `behavior.points.duplicate_source`               | 409  | Behavior points have already been recorded for source  |
+| `behavior.scope.invalid`                         | 422  | Behavior scope is invalid                              |
+
 ### Files
 
 | Code                          | HTTP | Message                              |

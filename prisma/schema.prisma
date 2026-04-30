@@ -536,6 +536,40 @@ enum HeroJourneyEventType {
   @@map("hero_journey_event_type")
 }
 
+enum BehaviorRecordType {
+  POSITIVE
+  NEGATIVE
+
+  @@map("behavior_record_type")
+}
+
+enum BehaviorSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+
+  @@map("behavior_severity")
+}
+
+enum BehaviorRecordStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CANCELLED
+
+  @@map("behavior_record_status")
+}
+
+enum BehaviorPointLedgerEntryType {
+  AWARD
+  PENALTY
+  REVERSAL
+
+  @@map("behavior_point_ledger_entry_type")
+}
+
 // ============================================================
 // PLATFORM — organizations & schools (tenant roots)
 // ============================================================
@@ -643,6 +677,9 @@ model School {
   heroJourneyEvents                 HeroJourneyEvent[]
   rewardCatalogItems                RewardCatalogItem[]
   rewardRedemptions                 RewardRedemption[]
+  behaviorCategories                BehaviorCategory[]
+  behaviorRecords                   BehaviorRecord[]
+  behaviorPointLedgerEntries        BehaviorPointLedger[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -715,6 +752,12 @@ model User {
   rewardRedemptionsReviewed       RewardRedemption[]             @relation("RewardRedemptionsReviewedByUser")
   rewardRedemptionsFulfilled      RewardRedemption[]             @relation("RewardRedemptionsFulfilledByUser")
   rewardRedemptionsCancelled      RewardRedemption[]             @relation("RewardRedemptionsCancelledByUser")
+  behaviorCategoriesCreated       BehaviorCategory[]             @relation("BehaviorCategoriesCreatedByUser")
+  behaviorRecordsCreated          BehaviorRecord[]               @relation("BehaviorRecordsCreatedByUser")
+  behaviorRecordsSubmitted        BehaviorRecord[]               @relation("BehaviorRecordsSubmittedByUser")
+  behaviorRecordsReviewed         BehaviorRecord[]               @relation("BehaviorRecordsReviewedByUser")
+  behaviorRecordsCancelled        BehaviorRecord[]               @relation("BehaviorRecordsCancelledByUser")
+  behaviorPointLedgerActed        BehaviorPointLedger[]          @relation("BehaviorPointLedgerActorUser")
 
   @@index([userType])
   @@index([status])
@@ -1230,6 +1273,8 @@ model AcademicYear {
   heroMissionProgress        HeroMissionProgress[]
   rewardCatalogItems         RewardCatalogItem[]
   rewardRedemptions          RewardRedemption[]
+  behaviorRecords            BehaviorRecord[]
+  behaviorPointLedgerEntries BehaviorPointLedger[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -1274,6 +1319,8 @@ model Term {
   heroMissionProgress        HeroMissionProgress[]
   rewardCatalogItems         RewardCatalogItem[]
   rewardRedemptions          RewardRedemption[]
+  behaviorRecords            BehaviorRecord[]
+  behaviorPointLedgerEntries BehaviorPointLedger[]
 
   @@unique([id, schoolId])
   @@unique([academicYearId, nameAr])
@@ -1509,28 +1556,30 @@ model Student {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                   School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  application              Application?              @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  guardians                StudentGuardian[]
-  enrollments              Enrollment[]
-  documents                StudentDocument[]
-  medicalProfile           StudentMedicalProfile?
-  notes                    StudentNote[]
-  attendanceEntries        AttendanceEntry[]
-  attendanceExcuseRequests AttendanceExcuseRequest[]
-  gradeItems               GradeItem[]
-  gradeSubmissions         GradeSubmission[]
-  gradeSubmissionAnswers   GradeSubmissionAnswer[]
-  reinforcementTaskTargets ReinforcementTaskTarget[]
-  reinforcementAssignments ReinforcementAssignment[]
-  reinforcementSubmissions ReinforcementSubmission[]
-  reinforcementReviews     ReinforcementReview[]
-  xpLedgers                XpLedger[]
-  heroMissionProgress      HeroMissionProgress[]
-  heroStudentBadges        HeroStudentBadge[]
-  heroJourneyEvents        HeroJourneyEvent[]
-  rewardRedemptions        RewardRedemption[]
+  school                     School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization               Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  application                Application?              @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  guardians                  StudentGuardian[]
+  enrollments                Enrollment[]
+  documents                  StudentDocument[]
+  medicalProfile             StudentMedicalProfile?
+  notes                      StudentNote[]
+  attendanceEntries          AttendanceEntry[]
+  attendanceExcuseRequests   AttendanceExcuseRequest[]
+  gradeItems                 GradeItem[]
+  gradeSubmissions           GradeSubmission[]
+  gradeSubmissionAnswers     GradeSubmissionAnswer[]
+  reinforcementTaskTargets   ReinforcementTaskTarget[]
+  reinforcementAssignments   ReinforcementAssignment[]
+  reinforcementSubmissions   ReinforcementSubmission[]
+  reinforcementReviews       ReinforcementReview[]
+  xpLedgers                  XpLedger[]
+  heroMissionProgress        HeroMissionProgress[]
+  heroStudentBadges          HeroStudentBadge[]
+  heroJourneyEvents          HeroJourneyEvent[]
+  rewardRedemptions          RewardRedemption[]
+  behaviorRecords            BehaviorRecord[]
+  behaviorPointLedgerEntries BehaviorPointLedger[]
 
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
@@ -1610,20 +1659,22 @@ model Enrollment {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                   School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  student                  Student                   @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  academicYear             AcademicYear              @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term                     Term?                     @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classroom                Classroom                 @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  attendanceEntries        AttendanceEntry[]
-  gradeItems               GradeItem[]
-  gradeSubmissions         GradeSubmission[]
-  reinforcementAssignments ReinforcementAssignment[]
-  reinforcementSubmissions ReinforcementSubmission[]
-  xpLedgers                XpLedger[]
-  heroMissionProgress      HeroMissionProgress[]
-  heroJourneyEvents        HeroJourneyEvent[]
-  rewardRedemptions        RewardRedemption[]
+  school                     School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student                    Student                   @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  academicYear               AcademicYear              @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                       Term?                     @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom                  Classroom                 @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  attendanceEntries          AttendanceEntry[]
+  gradeItems                 GradeItem[]
+  gradeSubmissions           GradeSubmission[]
+  reinforcementAssignments   ReinforcementAssignment[]
+  reinforcementSubmissions   ReinforcementSubmission[]
+  xpLedgers                  XpLedger[]
+  heroMissionProgress        HeroMissionProgress[]
+  heroJourneyEvents          HeroJourneyEvent[]
+  rewardRedemptions          RewardRedemption[]
+  behaviorRecords            BehaviorRecord[]
+  behaviorPointLedgerEntries BehaviorPointLedger[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -2993,6 +3044,153 @@ model HeroJourneyEvent {
   @@index([schoolId, type, occurredAt])
   @@index([schoolId, studentId, occurredAt])
   @@map("hero_journey_events")
+}
+
+// ============================================================
+// BEHAVIOR - categories, records, review queue, points
+// ============================================================
+
+model BehaviorCategory {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String             @map("school_id") @db.Uuid
+  code            String
+  nameEn          String?            @map("name_en")
+  nameAr          String?            @map("name_ar")
+  descriptionEn   String?            @map("description_en")
+  descriptionAr   String?            @map("description_ar")
+  type            BehaviorRecordType
+  defaultSeverity BehaviorSeverity   @default(LOW) @map("default_severity")
+  defaultPoints   Int                @default(0) @map("default_points")
+  isActive        Boolean            @default(true) @map("is_active")
+  sortOrder       Int                @default(0) @map("sort_order")
+  createdById     String?            @map("created_by_id") @db.Uuid
+  metadata        Json?
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  deletedAt       DateTime?          @map("deleted_at")
+
+  school             School                @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  createdBy          User?                 @relation("BehaviorCategoriesCreatedByUser", fields: [createdById], references: [id], onDelete: SetNull)
+  records            BehaviorRecord[]
+  pointLedgerEntries BehaviorPointLedger[]
+
+  @@unique([schoolId, code])
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, type])
+  @@index([schoolId, isActive])
+  @@index([schoolId, sortOrder])
+  @@index([createdById])
+  @@index([deletedAt])
+  @@map("behavior_categories")
+}
+
+model BehaviorRecord {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String               @map("school_id") @db.Uuid
+  academicYearId       String               @map("academic_year_id") @db.Uuid
+  termId               String?              @map("term_id") @db.Uuid
+  studentId            String               @map("student_id") @db.Uuid
+  enrollmentId         String?              @map("enrollment_id") @db.Uuid
+  categoryId           String?              @map("category_id") @db.Uuid
+  type                 BehaviorRecordType
+  severity             BehaviorSeverity     @default(LOW)
+  status               BehaviorRecordStatus @default(DRAFT)
+  titleEn              String?              @map("title_en")
+  titleAr              String?              @map("title_ar")
+  noteEn               String?              @map("note_en")
+  noteAr               String?              @map("note_ar")
+  points               Int                  @default(0)
+  occurredAt           DateTime             @map("occurred_at")
+  createdById          String?              @map("created_by_id") @db.Uuid
+  submittedById        String?              @map("submitted_by_id") @db.Uuid
+  submittedAt          DateTime?            @map("submitted_at")
+  reviewedById         String?              @map("reviewed_by_id") @db.Uuid
+  reviewedAt           DateTime?            @map("reviewed_at")
+  cancelledById        String?              @map("cancelled_by_id") @db.Uuid
+  cancelledAt          DateTime?            @map("cancelled_at")
+  reviewNoteEn         String?              @map("review_note_en")
+  reviewNoteAr         String?              @map("review_note_ar")
+  cancellationReasonEn String?              @map("cancellation_reason_en")
+  cancellationReasonAr String?              @map("cancellation_reason_ar")
+  metadata             Json?
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+  deletedAt            DateTime?            @map("deleted_at")
+
+  school             School                @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear       AcademicYear          @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term               Term?                 @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  student            Student               @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment         Enrollment?           @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  category           BehaviorCategory?     @relation(fields: [categoryId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy          User?                 @relation("BehaviorRecordsCreatedByUser", fields: [createdById], references: [id], onDelete: SetNull)
+  submittedBy        User?                 @relation("BehaviorRecordsSubmittedByUser", fields: [submittedById], references: [id], onDelete: SetNull)
+  reviewedBy         User?                 @relation("BehaviorRecordsReviewedByUser", fields: [reviewedById], references: [id], onDelete: SetNull)
+  cancelledBy        User?                 @relation("BehaviorRecordsCancelledByUser", fields: [cancelledById], references: [id], onDelete: SetNull)
+  pointLedgerEntries BehaviorPointLedger[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([studentId])
+  @@index([enrollmentId])
+  @@index([categoryId])
+  @@index([createdById])
+  @@index([submittedById])
+  @@index([reviewedById])
+  @@index([cancelledById])
+  @@index([schoolId, academicYearId, termId])
+  @@index([schoolId, studentId, status])
+  @@index([schoolId, type, status])
+  @@index([schoolId, occurredAt])
+  @@index([schoolId, status, occurredAt])
+  @@index([deletedAt])
+  @@map("behavior_records")
+}
+
+model BehaviorPointLedger {
+  id             String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                       @map("school_id") @db.Uuid
+  academicYearId String                       @map("academic_year_id") @db.Uuid
+  termId         String?                      @map("term_id") @db.Uuid
+  studentId      String                       @map("student_id") @db.Uuid
+  enrollmentId   String?                      @map("enrollment_id") @db.Uuid
+  recordId       String                       @map("record_id") @db.Uuid
+  categoryId     String?                      @map("category_id") @db.Uuid
+  entryType      BehaviorPointLedgerEntryType @map("entry_type")
+  amount         Int
+  reasonEn       String?                      @map("reason_en")
+  reasonAr       String?                      @map("reason_ar")
+  actorId        String?                      @map("actor_id") @db.Uuid
+  occurredAt     DateTime                     @default(now()) @map("occurred_at")
+  metadata       Json?
+  createdAt      DateTime                     @default(now()) @map("created_at")
+  updatedAt      DateTime                     @updatedAt @map("updated_at")
+
+  school       School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear      @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term?             @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  student      Student           @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment   Enrollment?       @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  record       BehaviorRecord    @relation(fields: [recordId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  category     BehaviorCategory? @relation(fields: [categoryId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  actor        User?             @relation("BehaviorPointLedgerActorUser", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([studentId])
+  @@index([enrollmentId])
+  @@index([recordId])
+  @@index([categoryId])
+  @@index([actorId])
+  @@index([schoolId, studentId, occurredAt])
+  @@index([schoolId, academicYearId, termId, studentId])
+  @@index([schoolId, entryType])
+  @@map("behavior_point_ledger")
 }
 
 // ============================================================

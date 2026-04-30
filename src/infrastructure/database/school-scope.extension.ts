@@ -83,6 +83,9 @@ const SCHOOL_SCOPED_MODELS = new Set<string>([
   'HeroMissionObjectiveProgress',
   'HeroStudentBadge',
   'HeroJourneyEvent',
+  'BehaviorCategory',
+  'BehaviorRecord',
+  'BehaviorPointLedger',
 ]);
 
 // Models that use soft delete (have a deletedAt column). Read operations
@@ -123,6 +126,8 @@ const SOFT_DELETE_MODELS = new Set<string>([
   'HeroBadge',
   'HeroMission',
   'HeroMissionObjective',
+  'BehaviorCategory',
+  'BehaviorRecord',
 ]);
 
 const READ_OPERATIONS = new Set<string>([
