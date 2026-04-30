@@ -52,18 +52,27 @@ describe('Behavior category tenancy isolation (security)', () => {
   let demoTermId: string;
   let demoStudentId: string;
   let demoEnrollmentId: string;
+  let demoClassroomId: string;
+  let demoOtherStudentId: string;
+  let demoOtherEnrollmentId: string;
+  let demoOtherClassroomId: string;
   let tenantBAcademicYearId: string;
   let tenantBTermId: string;
   let tenantBStudentId: string;
   let tenantBEnrollmentId: string;
+  let tenantBClassroomId: string;
   let demoRecordId: string;
   let demoSubmittedRecordId: string;
   let demoCancelledRecordId: string;
   let demoApprovedRecordId: string;
   let demoRejectedRecordId: string;
   let demoSoftDeletedRecordId: string;
+  let demoApprovedLedgerId: string;
+  let demoOtherRecordId: string;
+  let demoOtherLedgerId: string;
   let tenantBRecordId: string;
   let tenantBSubmittedRecordId: string;
+  let tenantBLedgerId: string;
 
   let noAccessEmail: string;
   let viewOnlyEmail: string;
@@ -106,8 +115,10 @@ describe('Behavior category tenancy isolation (security)', () => {
       teacherRole,
       parentRole,
       studentRole,
+      behaviorOverviewPermission,
       categoriesViewPermission,
       categoriesManagePermission,
+      recordsViewPermission,
     ] = await Promise.all([
       prisma.role.findFirst({
         where: { key: 'school_admin', schoolId: null, isSystem: true },
@@ -126,11 +137,19 @@ describe('Behavior category tenancy isolation (security)', () => {
         select: { id: true },
       }),
       prisma.permission.findUnique({
+        where: { code: 'behavior.overview.view' },
+        select: { id: true },
+      }),
+      prisma.permission.findUnique({
         where: { code: 'behavior.categories.view' },
         select: { id: true },
       }),
       prisma.permission.findUnique({
         where: { code: 'behavior.categories.manage' },
+        select: { id: true },
+      }),
+      prisma.permission.findUnique({
+        where: { code: 'behavior.records.view' },
         select: { id: true },
       }),
     ]);
@@ -140,8 +159,10 @@ describe('Behavior category tenancy isolation (security)', () => {
       !teacherRole ||
       !parentRole ||
       !studentRole ||
+      !behaviorOverviewPermission ||
       !categoriesViewPermission ||
-      !categoriesManagePermission
+      !categoriesManagePermission ||
+      !recordsViewPermission
     ) {
       throw new Error('Behavior roles or permissions missing - run seed.');
     }
@@ -277,6 +298,18 @@ describe('Behavior category tenancy isolation (security)', () => {
     demoTermId = demoAcademicFixture.termId;
     demoStudentId = demoAcademicFixture.studentId;
     demoEnrollmentId = demoAcademicFixture.enrollmentId;
+    demoClassroomId = demoAcademicFixture.classroomId;
+
+    const demoOtherFixture = await createClassroomStudentFixture({
+      schoolId: demoSchoolId,
+      organizationId: demoOrganizationId,
+      academicYearId: demoAcademicYearId,
+      termId: demoTermId,
+      suffix: 'demo-other-classroom',
+    });
+    demoOtherStudentId = demoOtherFixture.studentId;
+    demoOtherEnrollmentId = demoOtherFixture.enrollmentId;
+    demoOtherClassroomId = demoOtherFixture.classroomId;
 
     const tenantBAcademicFixture = await createAcademicFixture({
       schoolId: tenantBSchoolId,
@@ -287,6 +320,7 @@ describe('Behavior category tenancy isolation (security)', () => {
     tenantBTermId = tenantBAcademicFixture.termId;
     tenantBStudentId = tenantBAcademicFixture.studentId;
     tenantBEnrollmentId = tenantBAcademicFixture.enrollmentId;
+    tenantBClassroomId = tenantBAcademicFixture.classroomId;
 
     demoRecordId = await createRecordFixture({
       schoolId: demoSchoolId,
@@ -361,6 +395,19 @@ describe('Behavior category tenancy isolation (security)', () => {
       points: 2,
       deletedAt: new Date(),
     });
+    demoOtherRecordId = await createRecordFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoAcademicYearId,
+      termId: demoTermId,
+      studentId: demoOtherStudentId,
+      enrollmentId: demoOtherEnrollmentId,
+      categoryId: demoCategoryId,
+      status: BehaviorRecordStatus.APPROVED,
+      titleEn: `${testSuffix}-other-classroom-approved-record-a`,
+      points: 4,
+      submittedAt: new Date(),
+      reviewedAt: new Date(),
+    });
     tenantBRecordId = await createRecordFixture({
       schoolId: tenantBSchoolId,
       academicYearId: tenantBAcademicYearId,
@@ -387,6 +434,39 @@ describe('Behavior category tenancy isolation (security)', () => {
       severity: BehaviorSeverity.MEDIUM,
       points: -2,
       submittedAt: new Date(),
+    });
+    demoApprovedLedgerId = await createLedgerFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoAcademicYearId,
+      termId: demoTermId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      recordId: demoApprovedRecordId,
+      categoryId: demoCategoryId,
+      entryType: BehaviorPointLedgerEntryType.AWARD,
+      amount: 2,
+    });
+    demoOtherLedgerId = await createLedgerFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoAcademicYearId,
+      termId: demoTermId,
+      studentId: demoOtherStudentId,
+      enrollmentId: demoOtherEnrollmentId,
+      recordId: demoOtherRecordId,
+      categoryId: demoCategoryId,
+      entryType: BehaviorPointLedgerEntryType.AWARD,
+      amount: 4,
+    });
+    tenantBLedgerId = await createLedgerFixture({
+      schoolId: tenantBSchoolId,
+      academicYearId: tenantBAcademicYearId,
+      termId: tenantBTermId,
+      studentId: tenantBStudentId,
+      enrollmentId: tenantBEnrollmentId,
+      recordId: tenantBRecordId,
+      categoryId: tenantBCategoryId,
+      entryType: BehaviorPointLedgerEntryType.PENALTY,
+      amount: -2,
     });
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -962,9 +1042,7 @@ describe('Behavior category tenancy isolation (security)', () => {
       .post(`${GLOBAL_PREFIX}/behavior/records/${demoCancelledRecordId}/submit`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(409);
-    expect(submitResponse.body?.error?.code).toBe(
-      'behavior.record.cancelled',
-    );
+    expect(submitResponse.body?.error?.code).toBe('behavior.record.cancelled');
   });
 
   it('record mutations do not create BehaviorPointLedger or XpLedger rows', async () => {
@@ -1104,13 +1182,17 @@ describe('Behavior category tenancy isolation (security)', () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL);
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/behavior/records/${tenantBSubmittedRecordId}/approve`)
+      .post(
+        `${GLOBAL_PREFIX}/behavior/records/${tenantBSubmittedRecordId}/approve`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ reviewNoteEn: 'No leak' })
       .expect(404);
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/behavior/records/${tenantBSubmittedRecordId}/reject`)
+      .post(
+        `${GLOBAL_PREFIX}/behavior/records/${tenantBSubmittedRecordId}/reject`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ reviewNoteEn: 'No leak' })
       .expect(404);
@@ -1134,7 +1216,9 @@ describe('Behavior category tenancy isolation (security)', () => {
     const { accessToken } = await login(teacherEmail);
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/behavior/records/${demoSubmittedRecordId}/approve`)
+      .post(
+        `${GLOBAL_PREFIX}/behavior/records/${demoSubmittedRecordId}/approve`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ reviewNoteEn: 'Teacher forbidden approve' })
       .expect(403);
@@ -1161,17 +1245,224 @@ describe('Behavior category tenancy isolation (security)', () => {
         .expect(403);
 
       await request(app.getHttpServer())
-        .post(`${GLOBAL_PREFIX}/behavior/records/${demoSubmittedRecordId}/approve`)
+        .post(
+          `${GLOBAL_PREFIX}/behavior/records/${demoSubmittedRecordId}/approve`,
+        )
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ reviewNoteEn: 'Forbidden approve' })
         .expect(403);
 
       await request(app.getHttpServer())
-        .post(`${GLOBAL_PREFIX}/behavior/records/${demoSubmittedRecordId}/reject`)
+        .post(
+          `${GLOBAL_PREFIX}/behavior/records/${demoSubmittedRecordId}/reject`,
+        )
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ reviewNoteEn: 'Forbidden reject' })
         .expect(403);
     }
+  });
+
+  it('school A overview does not include school B behavior records, point ledger rows, or categories', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/overview`)
+      .query({
+        occurredFrom: '2026-04-15T00:00:00.000Z',
+        occurredTo: '2026-04-15T23:59:59.999Z',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const bodyJson = JSON.stringify(response.body);
+    expect(bodyJson).toContain(demoApprovedRecordId);
+    expect(bodyJson).not.toContain(tenantBRecordId);
+    expect(bodyJson).not.toContain(tenantBSubmittedRecordId);
+    expect(bodyJson).not.toContain(tenantBCategoryId);
+    expect(response.body.points.totalPoints).toBe(6);
+    expect(response.body.points.positivePoints).toBe(6);
+  });
+
+  it('school A cannot read school B student or classroom behavior summaries', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/students/${tenantBStudentId}/summary`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/classrooms/${tenantBClassroomId}/summary`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
+
+  it('school A classroom summary excludes students, records, and categories outside the classroom or school', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/classrooms/${demoClassroomId}/summary`)
+      .query({
+        academicYearId: demoAcademicYearId,
+        termId: demoTermId,
+        includeStudents: true,
+        includeCategoryBreakdown: true,
+        includeRecentActivity: true,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const studentIds = response.body.studentSummaries.map(
+      (row: { student: { id: string } }) => row.student.id,
+    );
+    const bodyJson = JSON.stringify(response.body);
+
+    expect(studentIds).toContain(demoStudentId);
+    expect(studentIds).not.toContain(demoOtherStudentId);
+    expect(studentIds).not.toContain(tenantBStudentId);
+    expect(bodyJson).not.toContain(demoOtherRecordId);
+    expect(bodyJson).not.toContain(tenantBRecordId);
+    expect(bodyJson).not.toContain(tenantBCategoryId);
+  });
+
+  it('same-school actors without behavior overview or records permissions get 403 for dashboard read models', async () => {
+    const { accessToken } = await login(noAccessEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/overview`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/classrooms/${demoClassroomId}/summary`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/students/${demoStudentId}/summary`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+  });
+
+  it('admin and teacher roles can read overview, student summary, and classroom summary', async () => {
+    for (const email of [DEMO_ADMIN_EMAIL, teacherEmail]) {
+      const { accessToken } = await login(email);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/behavior/overview`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/behavior/students/${demoStudentId}/summary`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/behavior/classrooms/${demoClassroomId}/summary`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+    }
+  });
+
+  it('parent and student actors cannot access core dashboard behavior read-model endpoints', async () => {
+    for (const email of [parentEmail, studentEmail]) {
+      const { accessToken } = await login(email);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/behavior/overview`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/behavior/students/${demoStudentId}/summary`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/behavior/classrooms/${demoClassroomId}/summary`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+    }
+  });
+
+  it('student summary category breakdown and recent activity exclude cross-school rows', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/students/${demoStudentId}/summary`)
+      .query({
+        includeCategoryBreakdown: true,
+        includeTimeline: true,
+        includeLedger: true,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const bodyJson = JSON.stringify(response.body);
+    expect(bodyJson).toContain(demoCategoryId);
+    expect(bodyJson).not.toContain(tenantBCategoryId);
+    expect(bodyJson).not.toContain(tenantBRecordId);
+    expect(bodyJson).not.toContain(tenantBLedgerId);
+  });
+
+  it('read endpoints do not mutate behavior, XP, rewards, or audit rows and do not expose XP aggregation', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const before = await mutationSideEffectCounts();
+    const [recordBefore, ledgerBefore] = await Promise.all([
+      prisma.behaviorRecord.findUnique({
+        where: { id: demoSubmittedRecordId },
+        select: { status: true, updatedAt: true },
+      }),
+      prisma.behaviorPointLedger.findUnique({
+        where: { id: demoApprovedLedgerId },
+        select: { amount: true, updatedAt: true },
+      }),
+    ]);
+
+    const overview = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/overview`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/students/${demoStudentId}/summary`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/classrooms/${demoClassroomId}/summary`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const after = await mutationSideEffectCounts();
+    expect(after.behaviorCategories).toBe(before.behaviorCategories);
+    expect(after.behaviorRecords).toBe(before.behaviorRecords);
+    expect(after.behaviorPointLedger).toBe(before.behaviorPointLedger);
+    expect(after.xpLedger).toBe(before.xpLedger);
+    expect(after.rewardCatalogItems).toBe(before.rewardCatalogItems);
+    expect(after.rewardRedemptions).toBe(before.rewardRedemptions);
+    expect(after.auditRows).toBe(before.auditRows);
+
+    await expect(
+      prisma.behaviorRecord.findUnique({
+        where: { id: demoSubmittedRecordId },
+        select: { status: true, updatedAt: true },
+      }),
+    ).resolves.toEqual(recordBefore);
+    await expect(
+      prisma.behaviorPointLedger.findUnique({
+        where: { id: demoApprovedLedgerId },
+        select: { amount: true, updatedAt: true },
+      }),
+    ).resolves.toEqual(ledgerBefore);
+
+    const overviewJson = JSON.stringify(overview.body);
+    expect(overviewJson).not.toContain('xpLedger');
+    expect(overviewJson).not.toContain('XpLedger');
+    expect(overviewJson).not.toContain('totalXp');
+    expect(overviewJson).not.toContain('RewardCatalogItem');
+    expect(overviewJson).not.toContain('RewardRedemption');
   });
 
   it('admin/school role can approve submitted records and writes BehaviorPointLedger only', async () => {
@@ -1217,7 +1508,12 @@ describe('Behavior category tenancy isolation (security)', () => {
     const [approvedRecord, ledgerRows] = await Promise.all([
       prisma.behaviorRecord.findUnique({
         where: { id: recordId },
-        select: { status: true, points: true, reviewedById: true, reviewedAt: true },
+        select: {
+          status: true,
+          points: true,
+          reviewedById: true,
+          reviewedAt: true,
+        },
       }),
       prisma.behaviorPointLedger.findMany({
         where: { recordId },
@@ -1305,7 +1601,9 @@ describe('Behavior category tenancy isolation (security)', () => {
     expect(draft.body?.error?.code).toBe('behavior.record.not_submitted');
 
     const cancelled = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/behavior/records/${demoCancelledRecordId}/approve`)
+      .post(
+        `${GLOBAL_PREFIX}/behavior/records/${demoCancelledRecordId}/approve`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ reviewNoteEn: 'Cancelled approve rejected' })
       .expect(409);
@@ -1382,8 +1680,9 @@ describe('Behavior category tenancy isolation (security)', () => {
       'behavior.record.already_reviewed',
     );
 
-    await expect(prisma.behaviorPointLedger.count({ where: { recordId } }))
-      .resolves.toBe(1);
+    await expect(
+      prisma.behaviorPointLedger.count({ where: { recordId } }),
+    ).resolves.toBe(1);
   });
 
   it('cross-school resource existence is not leaked for review endpoints', async () => {
@@ -1395,13 +1694,17 @@ describe('Behavior category tenancy isolation (security)', () => {
       .expect(404);
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/behavior/records/${tenantBSubmittedRecordId}/approve`)
+      .post(
+        `${GLOBAL_PREFIX}/behavior/records/${tenantBSubmittedRecordId}/approve`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ reviewNoteEn: 'No leak' })
       .expect(404);
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/behavior/records/${tenantBSubmittedRecordId}/reject`)
+      .post(
+        `${GLOBAL_PREFIX}/behavior/records/${tenantBSubmittedRecordId}/reject`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ reviewNoteEn: 'No leak' })
       .expect(404);
@@ -1511,6 +1814,7 @@ describe('Behavior category tenancy isolation (security)', () => {
     termId: string;
     studentId: string;
     enrollmentId: string;
+    classroomId: string;
   }> {
     const year = await prisma.academicYear.create({
       data: {
@@ -1613,6 +1917,94 @@ describe('Behavior category tenancy isolation (security)', () => {
       termId: term.id,
       studentId: student.id,
       enrollmentId: enrollment.id,
+      classroomId: classroom.id,
+    };
+  }
+
+  async function createClassroomStudentFixture(params: {
+    schoolId: string;
+    organizationId: string;
+    academicYearId: string;
+    termId: string;
+    suffix: string;
+  }): Promise<{
+    classroomId: string;
+    studentId: string;
+    enrollmentId: string;
+  }> {
+    const stage = await prisma.stage.create({
+      data: {
+        schoolId: params.schoolId,
+        nameEn: `${testSuffix}-${params.suffix}-stage`,
+        nameAr: `${testSuffix}-${params.suffix}-stage-ar`,
+      },
+      select: { id: true },
+    });
+    createdStageIds.push(stage.id);
+
+    const grade = await prisma.grade.create({
+      data: {
+        schoolId: params.schoolId,
+        stageId: stage.id,
+        nameEn: `${testSuffix}-${params.suffix}-grade`,
+        nameAr: `${testSuffix}-${params.suffix}-grade-ar`,
+      },
+      select: { id: true },
+    });
+    createdGradeIds.push(grade.id);
+
+    const section = await prisma.section.create({
+      data: {
+        schoolId: params.schoolId,
+        gradeId: grade.id,
+        nameEn: `${testSuffix}-${params.suffix}-section`,
+        nameAr: `${testSuffix}-${params.suffix}-section-ar`,
+      },
+      select: { id: true },
+    });
+    createdSectionIds.push(section.id);
+
+    const classroom = await prisma.classroom.create({
+      data: {
+        schoolId: params.schoolId,
+        sectionId: section.id,
+        nameEn: `${testSuffix}-${params.suffix}-classroom`,
+        nameAr: `${testSuffix}-${params.suffix}-classroom-ar`,
+      },
+      select: { id: true },
+    });
+    createdClassroomIds.push(classroom.id);
+
+    const student = await prisma.student.create({
+      data: {
+        schoolId: params.schoolId,
+        organizationId: params.organizationId,
+        firstName: 'Behavior',
+        lastName: params.suffix,
+        status: StudentStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    createdStudentIds.push(student.id);
+
+    const enrollment = await prisma.enrollment.create({
+      data: {
+        schoolId: params.schoolId,
+        studentId: student.id,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        classroomId: classroom.id,
+        status: StudentEnrollmentStatus.ACTIVE,
+        enrolledAt: new Date('2026-04-01T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdEnrollmentIds.push(enrollment.id);
+
+    return {
+      classroomId: classroom.id,
+      studentId: student.id,
+      enrollmentId: enrollment.id,
     };
   }
 
@@ -1656,6 +2048,36 @@ describe('Behavior category tenancy isolation (security)', () => {
     });
     createdRecordIds.push(record.id);
     return record.id;
+  }
+
+  async function createLedgerFixture(params: {
+    schoolId: string;
+    academicYearId: string;
+    termId: string;
+    studentId: string;
+    enrollmentId: string;
+    recordId: string;
+    categoryId: string;
+    entryType: BehaviorPointLedgerEntryType;
+    amount: number;
+  }): Promise<string> {
+    const ledger = await prisma.behaviorPointLedger.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        studentId: params.studentId,
+        enrollmentId: params.enrollmentId,
+        recordId: params.recordId,
+        categoryId: params.categoryId,
+        entryType: params.entryType,
+        amount: params.amount,
+        occurredAt: new Date('2026-04-15T09:30:00.000Z'),
+      },
+      select: { id: true },
+    });
+
+    return ledger.id;
   }
 
   function categoryPayload(
@@ -1704,25 +2126,31 @@ describe('Behavior category tenancy isolation (security)', () => {
 
   async function mutationSideEffectCounts() {
     const [
+      behaviorCategories,
       behaviorRecords,
       behaviorPointLedger,
       xpLedger,
       rewardCatalogItems,
       rewardRedemptions,
+      auditRows,
     ] = await Promise.all([
+      prisma.behaviorCategory.count(),
       prisma.behaviorRecord.count(),
       prisma.behaviorPointLedger.count(),
       prisma.xpLedger.count(),
       prisma.rewardCatalogItem.count(),
       prisma.rewardRedemption.count(),
+      prisma.auditLog.count(),
     ]);
 
     return {
+      behaviorCategories,
       behaviorRecords,
       behaviorPointLedger,
       xpLedger,
       rewardCatalogItems,
       rewardRedemptions,
+      auditRows,
     };
   }
 
