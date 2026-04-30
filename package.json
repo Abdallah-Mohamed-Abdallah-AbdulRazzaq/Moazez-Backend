@@ -30,6 +30,7 @@
     "test:e2e:sprint4b": "jest --config ./test/jest-e2e.json --runInBand test/e2e/grades-question-based.e2e-spec.ts",
     "test:e2e:sprint5a": "jest --config ./test/jest-e2e.json --runInBand test/e2e/reinforcement-foundation.e2e-spec.ts",
     "test:e2e:sprint5b": "jest --config ./test/jest-e2e.json --runInBand test/e2e/hero-journey-foundation.e2e-spec.ts",
+    "test:e2e:sprint5c": "jest --config ./test/jest-e2e.json --runInBand test/e2e/rewards-foundation.e2e-spec.ts",
     "test:security": "jest --config ./test/jest-e2e.json test/security",
     "seed": "prisma db seed",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",
@@ -46,6 +47,7 @@
     "verify:sprint4b": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b && npm run test:e2e:sprint3a && npm run test:e2e:sprint3b && npm run test:e2e:sprint4a && npm run test:e2e:sprint4b",
     "verify:sprint5a": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b && npm run test:e2e:sprint3a && npm run test:e2e:sprint3b && npm run test:e2e:sprint4a && npm run test:e2e:sprint4b && npm run test:e2e:sprint5a",
     "verify:sprint5b": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b && npm run test:e2e:sprint3a && npm run test:e2e:sprint3b && npm run test:e2e:sprint4a && npm run test:e2e:sprint4b && npm run test:e2e:sprint5a && npm run test:e2e:sprint5b",
+    "verify:sprint5c": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b && npm run test:e2e:sprint3a && npm run test:e2e:sprint3b && npm run test:e2e:sprint4a && npm run test:e2e:sprint4b && npm run test:e2e:sprint5a && npm run test:e2e:sprint5b && npm run test:e2e:sprint5c",
     "demo:sprint1c": "node scripts/demo-sprint1c.cjs",
     "demo:sprint2a": "node scripts/demo-sprint2a.cjs",
     "demo:sprint2b": "node scripts/demo-sprint2b.cjs"
