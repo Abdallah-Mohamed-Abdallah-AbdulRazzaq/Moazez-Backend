@@ -88,6 +88,12 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'reinforcement.hero.progress.manage', module: 'reinforcement', resource: 'hero_progress', action: 'manage', description: 'Manage Hero Journey student progress state' },
   { code: 'reinforcement.hero.badges.view', module: 'reinforcement', resource: 'hero_badges', action: 'view', description: 'View Hero Journey badge catalog data' },
   { code: 'reinforcement.hero.badges.manage', module: 'reinforcement', resource: 'hero_badges', action: 'manage', description: 'Manage Hero Journey badge catalog data' },
+  { code: 'reinforcement.rewards.view', module: 'reinforcement', resource: 'rewards', action: 'view', description: 'View reinforcement reward catalog data' },
+  { code: 'reinforcement.rewards.manage', module: 'reinforcement', resource: 'rewards', action: 'manage', description: 'Manage reinforcement reward catalog data' },
+  { code: 'reinforcement.rewards.redemptions.view', module: 'reinforcement', resource: 'reward_redemptions', action: 'view', description: 'View reinforcement reward redemption requests' },
+  { code: 'reinforcement.rewards.redemptions.request', module: 'reinforcement', resource: 'reward_redemptions', action: 'request', description: 'Create reinforcement reward redemption requests' },
+  { code: 'reinforcement.rewards.redemptions.review', module: 'reinforcement', resource: 'reward_redemptions', action: 'review', description: 'Approve or reject reinforcement reward redemption requests' },
+  { code: 'reinforcement.rewards.fulfill', module: 'reinforcement', resource: 'rewards', action: 'fulfill', description: 'Fulfill approved reinforcement reward redemptions' },
 
   // communication
   { code: 'communication.messages.view', module: 'communication', resource: 'messages', action: 'view', description: 'View chat messages' },

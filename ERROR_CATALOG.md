@@ -163,6 +163,16 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `reinforcement.hero.progress.objective_not_completed` | 409 | Required Hero mission objective is not completed |
 | `reinforcement.hero.badge.duplicate_slug` | 409 | A Hero badge with this slug already exists |
 | `reinforcement.hero.xp.duplicate_grant` | 409 | Hero mission XP has already been granted |
+| `reinforcement.reward.invalid_status_transition` | 409 | Reward status transition is invalid |
+| `reinforcement.reward.not_published` | 409 | Reward catalog item must be published first |
+| `reinforcement.reward.archived` | 409 | Reward catalog item is archived |
+| `reinforcement.reward.out_of_stock` | 409 | Reward catalog item is out of stock |
+| `reinforcement.reward.insufficient_xp` | 422 | Student does not meet the XP eligibility requirement |
+| `reinforcement.reward.duplicate_redemption` | 409 | Student already has an open redemption for this reward |
+| `reinforcement.redemption.not_requested` | 409 | Reward redemption must be requested first |
+| `reinforcement.redemption.not_approved` | 409 | Reward redemption must be approved first |
+| `reinforcement.redemption.terminal` | 409 | Reward redemption is already in a terminal state |
+| `reinforcement.redemption.invalid_source` | 422 | Reward redemption request source is invalid |
 
 ### Files
 

@@ -448,6 +448,44 @@ enum ReinforcementReviewOutcome {
   @@map("reinforcement_review_outcome")
 }
 
+enum RewardCatalogItemStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+
+  @@map("reward_catalog_item_status")
+}
+
+enum RewardCatalogItemType {
+  PHYSICAL
+  DIGITAL
+  PRIVILEGE
+  CERTIFICATE
+  OTHER
+
+  @@map("reward_catalog_item_type")
+}
+
+enum RewardRedemptionStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  FULFILLED
+  CANCELLED
+
+  @@map("reward_redemption_status")
+}
+
+enum RewardRedemptionRequestSource {
+  DASHBOARD
+  TEACHER
+  STUDENT_APP
+  PARENT_APP
+  SYSTEM
+
+  @@map("reward_redemption_request_source")
+}
+
 enum XpSourceType {
   REINFORCEMENT_TASK
   HERO_MISSION
@@ -603,6 +641,8 @@ model School {
   heroMissionObjectiveProgress      HeroMissionObjectiveProgress[]
   heroStudentBadges                 HeroStudentBadge[]
   heroJourneyEvents                 HeroJourneyEvent[]
+  rewardCatalogItems                RewardCatalogItem[]
+  rewardRedemptions                 RewardRedemption[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -668,6 +708,13 @@ model User {
   heroMissionsCreated             HeroMission[]                  @relation("HeroMissionCreatedBy")
   heroObjectiveProgressCompleted  HeroMissionObjectiveProgress[] @relation("HeroObjectiveProgressCompletedBy")
   heroJourneyEventsActed          HeroJourneyEvent[]             @relation("HeroJourneyEventActor")
+  rewardCatalogItemsCreated       RewardCatalogItem[]            @relation("RewardCatalogItemsCreatedByUser")
+  rewardCatalogItemsPublished     RewardCatalogItem[]            @relation("RewardCatalogItemsPublishedByUser")
+  rewardCatalogItemsArchived      RewardCatalogItem[]            @relation("RewardCatalogItemsArchivedByUser")
+  rewardRedemptionsRequested      RewardRedemption[]             @relation("RewardRedemptionsRequestedByUser")
+  rewardRedemptionsReviewed       RewardRedemption[]             @relation("RewardRedemptionsReviewedByUser")
+  rewardRedemptionsFulfilled      RewardRedemption[]             @relation("RewardRedemptionsFulfilledByUser")
+  rewardRedemptionsCancelled      RewardRedemption[]             @relation("RewardRedemptionsCancelledByUser")
 
   @@index([userType])
   @@index([status])
@@ -1181,6 +1228,8 @@ model AcademicYear {
   xpLedgers                  XpLedger[]
   heroMissions               HeroMission[]
   heroMissionProgress        HeroMissionProgress[]
+  rewardCatalogItems         RewardCatalogItem[]
+  rewardRedemptions          RewardRedemption[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -1223,6 +1272,8 @@ model Term {
   xpLedgers                  XpLedger[]
   heroMissions               HeroMission[]
   heroMissionProgress        HeroMissionProgress[]
+  rewardCatalogItems         RewardCatalogItem[]
+  rewardRedemptions          RewardRedemption[]
 
   @@unique([id, schoolId])
   @@unique([academicYearId, nameAr])
@@ -1479,6 +1530,7 @@ model Student {
   heroMissionProgress      HeroMissionProgress[]
   heroStudentBadges        HeroStudentBadge[]
   heroJourneyEvents        HeroJourneyEvent[]
+  rewardRedemptions        RewardRedemption[]
 
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
@@ -1571,6 +1623,7 @@ model Enrollment {
   xpLedgers                XpLedger[]
   heroMissionProgress      HeroMissionProgress[]
   heroJourneyEvents        HeroJourneyEvent[]
+  rewardRedemptions        RewardRedemption[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -2559,6 +2612,119 @@ model XpLedger {
   @@map("xp_ledger")
 }
 
+model RewardCatalogItem {
+  id             String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                  @map("school_id") @db.Uuid
+  academicYearId String?                 @map("academic_year_id") @db.Uuid
+  termId         String?                 @map("term_id") @db.Uuid
+  titleEn        String?                 @map("title_en")
+  titleAr        String?                 @map("title_ar")
+  descriptionEn  String?                 @map("description_en")
+  descriptionAr  String?                 @map("description_ar")
+  type           RewardCatalogItemType   @default(OTHER)
+  status         RewardCatalogItemStatus @default(DRAFT)
+  minTotalXp     Int?                    @map("min_total_xp")
+  stockQuantity  Int?                    @map("stock_quantity")
+  stockRemaining Int?                    @map("stock_remaining")
+  isUnlimited    Boolean                 @default(true) @map("is_unlimited")
+  imageFileId    String?                 @map("image_file_id") @db.Uuid
+  sortOrder      Int                     @default(0) @map("sort_order")
+  publishedAt    DateTime?               @map("published_at")
+  publishedById  String?                 @map("published_by_id") @db.Uuid
+  archivedAt     DateTime?               @map("archived_at")
+  archivedById   String?                 @map("archived_by_id") @db.Uuid
+  createdById    String?                 @map("created_by_id") @db.Uuid
+  metadata       Json?
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+  deletedAt      DateTime?               @map("deleted_at")
+
+  school       School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear?      @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term?              @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  imageFile    File?              @relation("RewardCatalogItemImageFile", fields: [imageFileId], references: [id], onDelete: SetNull)
+  publishedBy  User?              @relation("RewardCatalogItemsPublishedByUser", fields: [publishedById], references: [id], onDelete: SetNull)
+  archivedBy   User?              @relation("RewardCatalogItemsArchivedByUser", fields: [archivedById], references: [id], onDelete: SetNull)
+  createdBy    User?              @relation("RewardCatalogItemsCreatedByUser", fields: [createdById], references: [id], onDelete: SetNull)
+  redemptions  RewardRedemption[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([imageFileId])
+  @@index([publishedById])
+  @@index([archivedById])
+  @@index([createdById])
+  @@index([schoolId, status])
+  @@index([schoolId, type])
+  @@index([schoolId, academicYearId, termId, status])
+  @@index([schoolId, sortOrder])
+  @@index([deletedAt])
+  @@map("reward_catalog_items")
+}
+
+model RewardRedemption {
+  id                   String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String                        @map("school_id") @db.Uuid
+  catalogItemId        String                        @map("catalog_item_id") @db.Uuid
+  studentId            String                        @map("student_id") @db.Uuid
+  enrollmentId         String?                       @map("enrollment_id") @db.Uuid
+  academicYearId       String?                       @map("academic_year_id") @db.Uuid
+  termId               String?                       @map("term_id") @db.Uuid
+  status               RewardRedemptionStatus        @default(REQUESTED)
+  requestSource        RewardRedemptionRequestSource @default(DASHBOARD) @map("request_source")
+  requestedById        String?                       @map("requested_by_id") @db.Uuid
+  reviewedById         String?                       @map("reviewed_by_id") @db.Uuid
+  fulfilledById        String?                       @map("fulfilled_by_id") @db.Uuid
+  cancelledById        String?                       @map("cancelled_by_id") @db.Uuid
+  requestedAt          DateTime                      @default(now()) @map("requested_at")
+  reviewedAt           DateTime?                     @map("reviewed_at")
+  fulfilledAt          DateTime?                     @map("fulfilled_at")
+  cancelledAt          DateTime?                     @map("cancelled_at")
+  requestNoteEn        String?                       @map("request_note_en")
+  requestNoteAr        String?                       @map("request_note_ar")
+  reviewNoteEn         String?                       @map("review_note_en")
+  reviewNoteAr         String?                       @map("review_note_ar")
+  fulfillmentNoteEn    String?                       @map("fulfillment_note_en")
+  fulfillmentNoteAr    String?                       @map("fulfillment_note_ar")
+  cancellationReasonEn String?                       @map("cancellation_reason_en")
+  cancellationReasonAr String?                       @map("cancellation_reason_ar")
+  eligibilitySnapshot  Json?                         @map("eligibility_snapshot")
+  metadata             Json?
+  createdAt            DateTime                      @default(now()) @map("created_at")
+  updatedAt            DateTime                      @updatedAt @map("updated_at")
+
+  school       School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  catalogItem  RewardCatalogItem @relation(fields: [catalogItemId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  student      Student           @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment   Enrollment?       @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  academicYear AcademicYear?     @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term?             @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  requestedBy  User?             @relation("RewardRedemptionsRequestedByUser", fields: [requestedById], references: [id], onDelete: SetNull)
+  reviewedBy   User?             @relation("RewardRedemptionsReviewedByUser", fields: [reviewedById], references: [id], onDelete: SetNull)
+  fulfilledBy  User?             @relation("RewardRedemptionsFulfilledByUser", fields: [fulfilledById], references: [id], onDelete: SetNull)
+  cancelledBy  User?             @relation("RewardRedemptionsCancelledByUser", fields: [cancelledById], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([catalogItemId])
+  @@index([studentId])
+  @@index([enrollmentId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([requestedById])
+  @@index([reviewedById])
+  @@index([fulfilledById])
+  @@index([cancelledById])
+  @@index([schoolId, status])
+  @@index([schoolId, catalogItemId, status])
+  @@index([schoolId, studentId, status])
+  @@index([schoolId, academicYearId, termId, status])
+  @@index([schoolId, requestedAt])
+  @@map("reward_redemptions")
+}
+
 model HeroBadge {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   schoolId      String    @map("school_id") @db.Uuid
@@ -2893,6 +3059,7 @@ model File {
   studentDocuments              StudentDocument[]
   importJobsUploaded            ImportJob[]               @relation("ImportJobUploadedFile")
   heroBadges                    HeroBadge[]
+  rewardCatalogItemImages       RewardCatalogItem[]       @relation("RewardCatalogItemImageFile")
 
   @@unique([bucket, objectKey])
   @@index([organizationId])
