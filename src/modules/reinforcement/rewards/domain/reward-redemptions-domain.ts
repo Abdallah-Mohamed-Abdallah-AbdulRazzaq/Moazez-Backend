@@ -28,6 +28,12 @@ export interface RewardEligibilitySnapshot extends Record<string, unknown> {
   catalogItemStatus: string;
 }
 
+export interface RewardApprovalEligibilitySnapshot extends RewardEligibilitySnapshot {
+  stockRemainingBeforeApproval: number | null;
+  stockRemainingAfterApproval: number | null;
+  approvedAt: string;
+}
+
 export class RewardNotPublishedException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({
@@ -77,6 +83,39 @@ export class RewardDuplicateRedemptionException extends DomainException {
     super({
       code: 'reinforcement.reward.duplicate_redemption',
       message: 'Student already has an open redemption for this reward',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class RewardInvalidStatusTransitionException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'reinforcement.reward.invalid_status_transition',
+      message: 'Reward status transition is invalid',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class RewardRedemptionNotRequestedException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'reinforcement.redemption.not_requested',
+      message: 'Reward redemption must be requested first',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class RewardRedemptionNotApprovedException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'reinforcement.redemption.not_approved',
+      message: 'Reward redemption must be approved first',
       httpStatus: HttpStatus.CONFLICT,
       details,
     });
@@ -185,6 +224,15 @@ export function assertRewardStockAvailableForRequest(
   }
 }
 
+export function assertApprovalStockAvailable(
+  item: Pick<
+    RewardRequestableCatalogItem,
+    'id' | 'isUnlimited' | 'stockRemaining'
+  >,
+): void {
+  assertRewardStockAvailableForRequest(item);
+}
+
 export function assertRewardEligibility(input: {
   catalogItemId?: string;
   studentId?: string;
@@ -215,6 +263,82 @@ export function assertRedemptionCancellable(input: {
       status,
     });
   }
+
+  if (status !== RewardRedemptionStatus.REQUESTED) {
+    throw new RewardRedemptionNotRequestedException({
+      redemptionId: input.id,
+      status,
+    });
+  }
+}
+
+export function assertRedemptionApprovable(input: {
+  id?: string;
+  status: RewardRedemptionStatus | string;
+}): void {
+  const status = normalizeRewardRedemptionStatus(input.status);
+  if (isRedemptionTerminal(status)) {
+    throw new RewardRedemptionTerminalException({
+      redemptionId: input.id,
+      status,
+    });
+  }
+
+  if (status !== RewardRedemptionStatus.REQUESTED) {
+    throw new RewardInvalidStatusTransitionException({
+      redemptionId: input.id,
+      status,
+      expectedStatus: RewardRedemptionStatus.REQUESTED,
+    });
+  }
+}
+
+export function assertRedemptionRejectable(input: {
+  id?: string;
+  status: RewardRedemptionStatus | string;
+}): void {
+  const status = normalizeRewardRedemptionStatus(input.status);
+  if (isRedemptionTerminal(status)) {
+    throw new RewardRedemptionTerminalException({
+      redemptionId: input.id,
+      status,
+    });
+  }
+
+  if (status !== RewardRedemptionStatus.REQUESTED) {
+    throw new RewardInvalidStatusTransitionException({
+      redemptionId: input.id,
+      status,
+      expectedStatus: RewardRedemptionStatus.REQUESTED,
+    });
+  }
+}
+
+export function assertRedemptionFulfillable(input: {
+  id?: string;
+  status: RewardRedemptionStatus | string;
+}): void {
+  const status = normalizeRewardRedemptionStatus(input.status);
+  if (isRedemptionTerminal(status)) {
+    throw new RewardRedemptionTerminalException({
+      redemptionId: input.id,
+      status,
+    });
+  }
+
+  if (status !== RewardRedemptionStatus.APPROVED) {
+    throw new RewardRedemptionNotApprovedException({
+      redemptionId: input.id,
+      status,
+    });
+  }
+}
+
+export function assertRewardStillRequestableForApproval(
+  item: RewardRequestableCatalogItem,
+): void {
+  assertRewardRequestable(item);
+  assertApprovalStockAvailable(item);
 }
 
 export function isRedemptionOpen(
@@ -261,6 +385,46 @@ export function buildEligibilitySnapshot(input: {
     catalogItemStatus: normalizeCatalogStatus(
       input.catalogItemStatus,
     ).toLowerCase(),
+  };
+}
+
+export function deriveStockAfterApproval(input: {
+  isUnlimited: boolean;
+  stockRemaining?: number | null;
+}): number | null {
+  if (input.isUnlimited) return input.stockRemaining ?? null;
+  return Math.max(0, (input.stockRemaining ?? 0) - 1);
+}
+
+export function buildApprovalEligibilitySnapshot(input: {
+  previousSnapshot?: Record<string, unknown> | null;
+  catalogItemStatus: RewardCatalogItemStatus | string;
+  minTotalXp?: number | null;
+  totalEarnedXp: number;
+  isUnlimited: boolean;
+  stockRemainingBeforeApproval?: number | null;
+  stockRemainingAfterApproval?: number | null;
+  approvedAt: Date;
+}): RewardApprovalEligibilitySnapshot {
+  const minTotalXp = input.minTotalXp ?? null;
+  const stockRemainingBeforeApproval =
+    input.stockRemainingBeforeApproval ?? null;
+  const stockRemainingAfterApproval = input.stockRemainingAfterApproval ?? null;
+
+  return {
+    ...(input.previousSnapshot ?? {}),
+    minTotalXp,
+    totalEarnedXp: Math.max(0, input.totalEarnedXp),
+    eligible: true,
+    stockAvailable: true,
+    isUnlimited: input.isUnlimited,
+    stockRemaining: stockRemainingAfterApproval,
+    stockRemainingBeforeApproval,
+    stockRemainingAfterApproval,
+    catalogItemStatus: normalizeCatalogStatus(
+      input.catalogItemStatus,
+    ).toLowerCase(),
+    approvedAt: input.approvedAt.toISOString(),
   };
 }
 

@@ -2,12 +2,22 @@ import { Injectable } from '@nestjs/common';
 import {
   AuditOutcome,
   Prisma,
+  RewardCatalogItemStatus,
   RewardRedemptionRequestSource,
   RewardRedemptionStatus,
   StudentEnrollmentStatus,
   UserType,
 } from '@prisma/client';
+import { withSoftDeleted } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import {
+  RewardInvalidStatusTransitionException,
+  RewardOutOfStockException,
+  RewardRedemptionNotApprovedException,
+  RewardRedemptionNotRequestedException,
+  assertRewardStillRequestableForApproval,
+  buildApprovalEligibilitySnapshot,
+} from '../domain/reward-redemptions-domain';
 
 const ACADEMIC_YEAR_SUMMARY_SELECT = {
   id: true,
@@ -209,6 +219,42 @@ export interface CancelRewardRedemptionInput {
   audit: RewardAuditLogInput;
 }
 
+export interface ApproveRewardRedemptionInput {
+  schoolId: string;
+  redemptionId: string;
+  catalogItemId: string;
+  reviewedById: string;
+  reviewedAt: Date;
+  reviewNoteEn?: string | null;
+  reviewNoteAr?: string | null;
+  metadata?: Record<string, unknown> | null;
+  previousEligibilitySnapshot?: Record<string, unknown> | null;
+  totalEarnedXp: number;
+  audit: RewardAuditLogInput;
+}
+
+export interface RejectRewardRedemptionInput {
+  schoolId: string;
+  redemptionId: string;
+  reviewedById: string;
+  reviewedAt: Date;
+  reviewNoteEn?: string | null;
+  reviewNoteAr?: string | null;
+  metadata?: Record<string, unknown> | null;
+  audit: RewardAuditLogInput;
+}
+
+export interface FulfillRewardRedemptionInput {
+  schoolId: string;
+  redemptionId: string;
+  fulfilledById: string;
+  fulfilledAt: Date;
+  fulfillmentNoteEn?: string | null;
+  fulfillmentNoteAr?: string | null;
+  metadata?: Record<string, unknown> | null;
+  audit: RewardAuditLogInput;
+}
+
 @Injectable()
 export class RewardRedemptionsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -268,6 +314,18 @@ export class RewardRedemptionsRepository {
       where: { id: catalogItemId },
       select: REDEMPTION_CATALOG_ITEM_SELECT,
     });
+  }
+
+  findCatalogItemForReview(
+    catalogItemId: string,
+  ): Promise<RewardRedemptionCatalogItemRecord | null> {
+    const query = () =>
+      this.scopedPrisma.rewardCatalogItem.findFirst({
+        where: { id: catalogItemId },
+        select: REDEMPTION_CATALOG_ITEM_SELECT,
+      });
+
+    return withSoftDeleted(query);
   }
 
   findStudent(
@@ -405,6 +463,7 @@ export class RewardRedemptionsRepository {
         where: {
           id: input.redemptionId,
           schoolId: input.schoolId,
+          status: RewardRedemptionStatus.REQUESTED,
         },
         data: {
           status: RewardRedemptionStatus.CANCELLED,
@@ -419,7 +478,199 @@ export class RewardRedemptionsRepository {
       });
 
       if (result.count === 0) {
-        throw new Error('Reward redemption cancellation failed');
+        throw new RewardRedemptionNotRequestedException({
+          redemptionId: input.redemptionId,
+        });
+      }
+
+      await this.createAuditLogInTransaction(tx, input.audit);
+
+      return this.findRedemptionInTransaction(
+        tx,
+        input.schoolId,
+        input.redemptionId,
+      );
+    });
+  }
+
+  async approveRedemptionWithStockDecrement(
+    input: ApproveRewardRedemptionInput,
+  ): Promise<RewardRedemptionRecord> {
+    return this.prisma.$transaction(async (tx) => {
+      const catalogItem = await tx.rewardCatalogItem.findFirst({
+        where: {
+          id: input.catalogItemId,
+          schoolId: input.schoolId,
+        },
+        select: REDEMPTION_CATALOG_ITEM_SELECT,
+      });
+      if (!catalogItem) {
+        throw new RewardInvalidStatusTransitionException({
+          redemptionId: input.redemptionId,
+          catalogItemId: input.catalogItemId,
+        });
+      }
+
+      assertRewardStillRequestableForApproval(catalogItem);
+
+      let stockRemainingBeforeApproval = catalogItem.stockRemaining ?? null;
+      let stockRemainingAfterApproval = catalogItem.stockRemaining ?? null;
+
+      if (!catalogItem.isUnlimited) {
+        const stockResult = await tx.rewardCatalogItem.updateMany({
+          where: {
+            id: catalogItem.id,
+            schoolId: input.schoolId,
+            status: RewardCatalogItemStatus.PUBLISHED,
+            deletedAt: null,
+            isUnlimited: false,
+            stockRemaining: { gt: 0 },
+          },
+          data: {
+            stockRemaining: { decrement: 1 },
+          },
+        });
+
+        if (stockResult.count === 0) {
+          throw new RewardOutOfStockException({
+            catalogItemId: catalogItem.id,
+            stockRemaining: stockRemainingBeforeApproval,
+          });
+        }
+
+        const updatedCatalogItem = await tx.rewardCatalogItem.findFirst({
+          where: {
+            id: catalogItem.id,
+            schoolId: input.schoolId,
+          },
+          select: { stockRemaining: true },
+        });
+        stockRemainingAfterApproval =
+          updatedCatalogItem?.stockRemaining ?? null;
+      }
+
+      const eligibilitySnapshot = buildApprovalEligibilitySnapshot({
+        previousSnapshot: input.previousEligibilitySnapshot,
+        catalogItemStatus: catalogItem.status,
+        minTotalXp: catalogItem.minTotalXp,
+        totalEarnedXp: input.totalEarnedXp,
+        isUnlimited: catalogItem.isUnlimited,
+        stockRemainingBeforeApproval,
+        stockRemainingAfterApproval,
+        approvedAt: input.reviewedAt,
+      });
+
+      const result = await tx.rewardRedemption.updateMany({
+        where: {
+          id: input.redemptionId,
+          schoolId: input.schoolId,
+          status: RewardRedemptionStatus.REQUESTED,
+        },
+        data: {
+          status: RewardRedemptionStatus.APPROVED,
+          reviewedAt: input.reviewedAt,
+          reviewedById: input.reviewedById,
+          reviewNoteEn: input.reviewNoteEn ?? null,
+          reviewNoteAr: input.reviewNoteAr ?? null,
+          eligibilitySnapshot: eligibilitySnapshot as Prisma.InputJsonValue,
+          ...(input.metadata !== undefined
+            ? { metadata: toNullableJson(input.metadata) }
+            : {}),
+        },
+      });
+
+      if (result.count === 0) {
+        throw new RewardInvalidStatusTransitionException({
+          redemptionId: input.redemptionId,
+          expectedStatus: RewardRedemptionStatus.REQUESTED,
+        });
+      }
+
+      await this.createAuditLogInTransaction(tx, {
+        ...input.audit,
+        after: {
+          ...(input.audit.after ?? {}),
+          minTotalXp: eligibilitySnapshot.minTotalXp,
+          totalEarnedXp: eligibilitySnapshot.totalEarnedXp,
+          stockRemainingBeforeApproval,
+          stockRemainingAfterApproval,
+          isUnlimited: catalogItem.isUnlimited,
+        },
+      });
+
+      return this.findRedemptionInTransaction(
+        tx,
+        input.schoolId,
+        input.redemptionId,
+      );
+    });
+  }
+
+  async rejectRedemption(
+    input: RejectRewardRedemptionInput,
+  ): Promise<RewardRedemptionRecord> {
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.rewardRedemption.updateMany({
+        where: {
+          id: input.redemptionId,
+          schoolId: input.schoolId,
+          status: RewardRedemptionStatus.REQUESTED,
+        },
+        data: {
+          status: RewardRedemptionStatus.REJECTED,
+          reviewedAt: input.reviewedAt,
+          reviewedById: input.reviewedById,
+          reviewNoteEn: input.reviewNoteEn ?? null,
+          reviewNoteAr: input.reviewNoteAr ?? null,
+          ...(input.metadata !== undefined
+            ? { metadata: toNullableJson(input.metadata) }
+            : {}),
+        },
+      });
+
+      if (result.count === 0) {
+        throw new RewardInvalidStatusTransitionException({
+          redemptionId: input.redemptionId,
+          expectedStatus: RewardRedemptionStatus.REQUESTED,
+        });
+      }
+
+      await this.createAuditLogInTransaction(tx, input.audit);
+
+      return this.findRedemptionInTransaction(
+        tx,
+        input.schoolId,
+        input.redemptionId,
+      );
+    });
+  }
+
+  async fulfillRedemption(
+    input: FulfillRewardRedemptionInput,
+  ): Promise<RewardRedemptionRecord> {
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.rewardRedemption.updateMany({
+        where: {
+          id: input.redemptionId,
+          schoolId: input.schoolId,
+          status: RewardRedemptionStatus.APPROVED,
+        },
+        data: {
+          status: RewardRedemptionStatus.FULFILLED,
+          fulfilledAt: input.fulfilledAt,
+          fulfilledById: input.fulfilledById,
+          fulfillmentNoteEn: input.fulfillmentNoteEn ?? null,
+          fulfillmentNoteAr: input.fulfillmentNoteAr ?? null,
+          ...(input.metadata !== undefined
+            ? { metadata: toNullableJson(input.metadata) }
+            : {}),
+        },
+      });
+
+      if (result.count === 0) {
+        throw new RewardRedemptionNotApprovedException({
+          redemptionId: input.redemptionId,
+        });
       }
 
       await this.createAuditLogInTransaction(tx, input.audit);

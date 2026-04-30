@@ -18,15 +18,21 @@ import {
   RewardArchivedForRequestException,
   RewardDuplicateRedemptionException,
   RewardInsufficientXpException,
+  RewardInvalidStatusTransitionException,
   RewardNotPublishedException,
   RewardOutOfStockException,
+  RewardRedemptionNotApprovedException,
+  RewardRedemptionNotRequestedException,
   RewardRedemptionTerminalException,
 } from '../domain/reward-redemptions-domain';
 import {
+  ApproveRewardRedemptionUseCase,
   CancelRewardRedemptionUseCase,
   CreateRewardRedemptionUseCase,
+  FulfillRewardRedemptionUseCase,
   GetRewardRedemptionUseCase,
   ListRewardRedemptionsUseCase,
+  RejectRewardRedemptionUseCase,
 } from '../application/reward-redemptions.use-cases';
 import { RewardRedemptionsRepository } from '../infrastructure/reward-redemptions.repository';
 
@@ -53,6 +59,8 @@ describe('Reward redemption use cases', () => {
         permissions: [
           'reinforcement.rewards.redemptions.view',
           'reinforcement.rewards.redemptions.request',
+          'reinforcement.rewards.redemptions.review',
+          'reinforcement.rewards.fulfill',
         ],
       });
 
@@ -311,7 +319,7 @@ describe('Reward redemption use cases', () => {
     );
   });
 
-  it('cancel allows APPROVED redemptions', async () => {
+  it('cancel rejects APPROVED redemptions after review lifecycle is introduced', async () => {
     const repository = baseRepository({
       findRedemptionById: jest
         .fn()
@@ -320,12 +328,10 @@ describe('Reward redemption use cases', () => {
         ),
     });
 
-    const result = await withScope(() =>
-      cancelUseCase(repository).execute(REDEMPTION_ID, {}),
-    );
-
-    expect(result.status).toBe('cancelled');
-    expect(repository.cancelRedemption).toHaveBeenCalled();
+    await expect(
+      withScope(() => cancelUseCase(repository).execute(REDEMPTION_ID, {})),
+    ).rejects.toBeInstanceOf(RewardRedemptionNotRequestedException);
+    expect(repository.cancelRedemption).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -358,12 +364,336 @@ describe('Reward redemption use cases', () => {
     expect(repository.createXpLedger).not.toHaveBeenCalled();
   });
 
+  it('approve requires REQUESTED and rejects terminal redemptions', async () => {
+    const approvedRepository = baseRepository({
+      findRedemptionById: jest
+        .fn()
+        .mockResolvedValue(
+          redemptionRecord({ status: RewardRedemptionStatus.APPROVED }),
+        ),
+    });
+    await expect(
+      withScope(() =>
+        approveUseCase(approvedRepository).execute(REDEMPTION_ID, {}),
+      ),
+    ).rejects.toBeInstanceOf(RewardInvalidStatusTransitionException);
+    expect(
+      approvedRepository.approveRedemptionWithStockDecrement,
+    ).not.toHaveBeenCalled();
+
+    for (const status of [
+      RewardRedemptionStatus.REJECTED,
+      RewardRedemptionStatus.FULFILLED,
+      RewardRedemptionStatus.CANCELLED,
+    ]) {
+      const repository = baseRepository({
+        findRedemptionById: jest
+          .fn()
+          .mockResolvedValue(redemptionRecord({ status })),
+      });
+
+      await expect(
+        withScope(() => approveUseCase(repository).execute(REDEMPTION_ID, {})),
+      ).rejects.toBeInstanceOf(RewardRedemptionTerminalException);
+      expect(
+        repository.approveRedemptionWithStockDecrement,
+      ).not.toHaveBeenCalled();
+    }
+  });
+
+  it('approve rejects archived and non-published catalog items', async () => {
+    const archivedRepository = baseRepository({
+      findCatalogItemForReview: jest
+        .fn()
+        .mockResolvedValue(
+          rewardRecord({ status: RewardCatalogItemStatus.ARCHIVED }),
+        ),
+    });
+    await expect(
+      withScope(() =>
+        approveUseCase(archivedRepository).execute(REDEMPTION_ID, {}),
+      ),
+    ).rejects.toBeInstanceOf(RewardArchivedForRequestException);
+
+    const draftRepository = baseRepository({
+      findCatalogItemForReview: jest
+        .fn()
+        .mockResolvedValue(
+          rewardRecord({ status: RewardCatalogItemStatus.DRAFT }),
+        ),
+    });
+    await expect(
+      withScope(() =>
+        approveUseCase(draftRepository).execute(REDEMPTION_ID, {}),
+      ),
+    ).rejects.toBeInstanceOf(RewardNotPublishedException);
+  });
+
+  it('approve rejects insufficient XP and out-of-stock limited rewards', async () => {
+    const insufficientXpRepository = baseRepository({
+      calculateStudentTotalEarnedXp: jest.fn().mockResolvedValue(9),
+    });
+    await expect(
+      withScope(() =>
+        approveUseCase(insufficientXpRepository).execute(REDEMPTION_ID, {}),
+      ),
+    ).rejects.toBeInstanceOf(RewardInsufficientXpException);
+    expect(
+      insufficientXpRepository.approveRedemptionWithStockDecrement,
+    ).not.toHaveBeenCalled();
+
+    const outOfStockRepository = baseRepository({
+      findCatalogItemForReview: jest.fn().mockResolvedValue(
+        rewardRecord({
+          isUnlimited: false,
+          stockQuantity: 1,
+          stockRemaining: 0,
+        }),
+      ),
+    });
+    await expect(
+      withScope(() =>
+        approveUseCase(outOfStockRepository).execute(REDEMPTION_ID, {}),
+      ),
+    ).rejects.toBeInstanceOf(RewardOutOfStockException);
+    expect(
+      outOfStockRepository.approveRedemptionWithStockDecrement,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('approve allows unlimited rewards and does not decrement unlimited stock', async () => {
+    const repository = baseRepository({
+      findCatalogItemForReview: jest.fn().mockResolvedValue(
+        rewardRecord({
+          isUnlimited: true,
+          stockQuantity: null,
+          stockRemaining: null,
+        }),
+      ),
+      approveRedemptionWithStockDecrement: jest
+        .fn()
+        .mockImplementation((input) =>
+          Promise.resolve(
+            redemptionRecord({
+              status: RewardRedemptionStatus.APPROVED,
+              reviewedAt: input.reviewedAt,
+              reviewedById: input.reviewedById,
+              eligibilitySnapshot: {
+                minTotalXp: 10,
+                totalEarnedXp: input.totalEarnedXp,
+                eligible: true,
+                stockAvailable: true,
+                isUnlimited: true,
+                stockRemaining: null,
+                stockRemainingBeforeApproval: null,
+                stockRemainingAfterApproval: null,
+                catalogItemStatus: 'published',
+                approvedAt: input.reviewedAt.toISOString(),
+              },
+              catalogItem: rewardRecord({
+                isUnlimited: true,
+                stockQuantity: null,
+                stockRemaining: null,
+              }),
+            }),
+          ),
+        ),
+    });
+
+    const result = await withScope(() =>
+      approveUseCase(repository).execute(REDEMPTION_ID, {}),
+    );
+
+    expect(result).toMatchObject({
+      status: 'approved',
+      eligibilitySnapshot: {
+        isUnlimited: true,
+        stockRemainingAfterApproval: null,
+      },
+    });
+    expect(repository.decrementRewardStock).not.toHaveBeenCalled();
+    expect(repository.createXpLedger).not.toHaveBeenCalled();
+  });
+
+  it('approve decrements limited stock through the repository and updates the eligibility snapshot', async () => {
+    const repository = baseRepository();
+
+    const result = await withScope(() =>
+      approveUseCase(repository).execute(REDEMPTION_ID, {
+        reviewNoteEn: 'Eligible',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'approved',
+      reviewedById: ACTOR_ID,
+      reviewNoteEn: 'Eligible',
+      eligibilitySnapshot: {
+        totalEarnedXp: 100,
+        eligible: true,
+        stockRemainingBeforeApproval: 3,
+        stockRemainingAfterApproval: 2,
+      },
+    });
+    expect(repository.approveRedemptionWithStockDecrement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        redemptionId: REDEMPTION_ID,
+        reviewedById: ACTOR_ID,
+        totalEarnedXp: 100,
+        audit: expect.objectContaining({
+          action: 'reinforcement.reward.redemption.approve',
+          after: expect.objectContaining({
+            afterStatus: RewardRedemptionStatus.APPROVED,
+            totalEarnedXp: 100,
+            stockRemainingBeforeApproval: 3,
+            stockRemainingAfterApproval: 2,
+            reviewNotePresent: true,
+          }),
+        }),
+      }),
+    );
+    expect(repository.createXpLedger).not.toHaveBeenCalled();
+  });
+
+  it('reject requires REQUESTED and rejects terminal or APPROVED redemptions', async () => {
+    const approvedRepository = baseRepository({
+      findRedemptionById: jest
+        .fn()
+        .mockResolvedValue(
+          redemptionRecord({ status: RewardRedemptionStatus.APPROVED }),
+        ),
+    });
+    await expect(
+      withScope(() =>
+        rejectUseCase(approvedRepository).execute(REDEMPTION_ID, {}),
+      ),
+    ).rejects.toBeInstanceOf(RewardInvalidStatusTransitionException);
+
+    for (const status of [
+      RewardRedemptionStatus.REJECTED,
+      RewardRedemptionStatus.FULFILLED,
+      RewardRedemptionStatus.CANCELLED,
+    ]) {
+      const repository = baseRepository({
+        findRedemptionById: jest
+          .fn()
+          .mockResolvedValue(redemptionRecord({ status })),
+      });
+      await expect(
+        withScope(() => rejectUseCase(repository).execute(REDEMPTION_ID, {})),
+      ).rejects.toBeInstanceOf(RewardRedemptionTerminalException);
+      expect(repository.rejectRedemption).not.toHaveBeenCalled();
+    }
+  });
+
+  it('reject audits without stock or XP ledger side effects', async () => {
+    const repository = baseRepository();
+
+    const result = await withScope(() =>
+      rejectUseCase(repository).execute(REDEMPTION_ID, {
+        reviewNoteEn: 'Not available',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'rejected',
+      reviewNoteEn: 'Not available',
+    });
+    expect(repository.rejectRedemption).toHaveBeenCalledWith(
+      expect.objectContaining({
+        audit: expect.objectContaining({
+          action: 'reinforcement.reward.redemption.reject',
+          after: expect.objectContaining({
+            afterStatus: RewardRedemptionStatus.REJECTED,
+            reviewNotePresent: true,
+          }),
+        }),
+      }),
+    );
+    expect(repository.restockReward).not.toHaveBeenCalled();
+    expect(repository.decrementRewardStock).not.toHaveBeenCalled();
+    expect(repository.createXpLedger).not.toHaveBeenCalled();
+  });
+
+  it('fulfill requires APPROVED and rejects requested or terminal redemptions', async () => {
+    await expect(
+      withScope(() =>
+        fulfillUseCase(baseRepository()).execute(REDEMPTION_ID, {}),
+      ),
+    ).rejects.toBeInstanceOf(RewardRedemptionNotApprovedException);
+
+    for (const status of [
+      RewardRedemptionStatus.REJECTED,
+      RewardRedemptionStatus.FULFILLED,
+      RewardRedemptionStatus.CANCELLED,
+    ]) {
+      const repository = baseRepository({
+        findRedemptionById: jest
+          .fn()
+          .mockResolvedValue(redemptionRecord({ status })),
+      });
+      await expect(
+        withScope(() => fulfillUseCase(repository).execute(REDEMPTION_ID, {})),
+      ).rejects.toBeInstanceOf(RewardRedemptionTerminalException);
+      expect(repository.fulfillRedemption).not.toHaveBeenCalled();
+    }
+  });
+
+  it('fulfill audits without stock or XP ledger side effects', async () => {
+    const repository = baseRepository({
+      findRedemptionById: jest
+        .fn()
+        .mockResolvedValue(
+          redemptionRecord({ status: RewardRedemptionStatus.APPROVED }),
+        ),
+    });
+
+    const result = await withScope(() =>
+      fulfillUseCase(repository).execute(REDEMPTION_ID, {
+        fulfillmentNoteEn: 'Collected at front desk',
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'fulfilled',
+      fulfilledById: ACTOR_ID,
+      fulfillmentNoteEn: 'Collected at front desk',
+    });
+    expect(repository.fulfillRedemption).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fulfilledById: ACTOR_ID,
+        audit: expect.objectContaining({
+          action: 'reinforcement.reward.redemption.fulfill',
+          after: expect.objectContaining({
+            afterStatus: RewardRedemptionStatus.FULFILLED,
+            fulfillmentNotePresent: true,
+          }),
+        }),
+      }),
+    );
+    expect(repository.decrementRewardStock).not.toHaveBeenCalled();
+    expect(repository.restockReward).not.toHaveBeenCalled();
+    expect(repository.createXpLedger).not.toHaveBeenCalled();
+  });
+
   function createUseCase(repository = baseRepository()) {
     return new CreateRewardRedemptionUseCase(repository);
   }
 
   function cancelUseCase(repository = baseRepository()) {
     return new CancelRewardRedemptionUseCase(repository);
+  }
+
+  function approveUseCase(repository = baseRepository()) {
+    return new ApproveRewardRedemptionUseCase(repository);
+  }
+
+  function rejectUseCase(repository = baseRepository()) {
+    return new RejectRewardRedemptionUseCase(repository);
+  }
+
+  function fulfillUseCase(repository = baseRepository()) {
+    return new FulfillRewardRedemptionUseCase(repository);
   }
 
   function createCommand(
@@ -388,6 +718,7 @@ describe('Reward redemption use cases', () => {
       }),
       findRedemptionById: jest.fn().mockResolvedValue(redemptionRecord()),
       findCatalogItemForRedemption: jest.fn().mockResolvedValue(rewardRecord()),
+      findCatalogItemForReview: jest.fn().mockResolvedValue(rewardRecord()),
       findStudent: jest.fn().mockResolvedValue(studentRecord()),
       findEnrollmentForStudent: jest.fn().mockResolvedValue(enrollmentRecord()),
       resolveActiveEnrollmentForStudent: jest
@@ -434,6 +765,54 @@ describe('Reward redemption use cases', () => {
             cancelledById: input.cancelledById,
             cancellationReasonEn: input.cancellationReasonEn,
             cancellationReasonAr: input.cancellationReasonAr,
+          }),
+        ),
+      ),
+      approveRedemptionWithStockDecrement: jest
+        .fn()
+        .mockImplementation((input) =>
+          Promise.resolve(
+            redemptionRecord({
+              status: RewardRedemptionStatus.APPROVED,
+              reviewedAt: input.reviewedAt,
+              reviewedById: input.reviewedById,
+              reviewNoteEn: input.reviewNoteEn,
+              reviewNoteAr: input.reviewNoteAr,
+              eligibilitySnapshot: {
+                ...(input.previousEligibilitySnapshot ?? {}),
+                minTotalXp: 10,
+                totalEarnedXp: input.totalEarnedXp,
+                eligible: true,
+                stockAvailable: true,
+                isUnlimited: false,
+                stockRemaining: 2,
+                stockRemainingBeforeApproval: 3,
+                stockRemainingAfterApproval: 2,
+                catalogItemStatus: 'published',
+                approvedAt: input.reviewedAt.toISOString(),
+              },
+            }),
+          ),
+        ),
+      rejectRedemption: jest.fn().mockImplementation((input) =>
+        Promise.resolve(
+          redemptionRecord({
+            status: RewardRedemptionStatus.REJECTED,
+            reviewedAt: input.reviewedAt,
+            reviewedById: input.reviewedById,
+            reviewNoteEn: input.reviewNoteEn,
+            reviewNoteAr: input.reviewNoteAr,
+          }),
+        ),
+      ),
+      fulfillRedemption: jest.fn().mockImplementation((input) =>
+        Promise.resolve(
+          redemptionRecord({
+            status: RewardRedemptionStatus.FULFILLED,
+            fulfilledAt: input.fulfilledAt,
+            fulfilledById: input.fulfilledById,
+            fulfillmentNoteEn: input.fulfillmentNoteEn,
+            fulfillmentNoteAr: input.fulfillmentNoteAr,
           }),
         ),
       ),

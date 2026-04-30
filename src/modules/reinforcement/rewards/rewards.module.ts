@@ -9,10 +9,13 @@ import {
   UpdateRewardCatalogItemUseCase,
 } from './application/reward-catalog.use-cases';
 import {
+  ApproveRewardRedemptionUseCase,
   CancelRewardRedemptionUseCase,
   CreateRewardRedemptionUseCase,
+  FulfillRewardRedemptionUseCase,
   GetRewardRedemptionUseCase,
   ListRewardRedemptionsUseCase,
+  RejectRewardRedemptionUseCase,
 } from './application/reward-redemptions.use-cases';
 import { RewardCatalogController } from './controller/reward-catalog.controller';
 import { RewardRedemptionsController } from './controller/reward-redemptions.controller';
@@ -35,6 +38,9 @@ import { RewardRedemptionsRepository } from './infrastructure/reward-redemptions
     GetRewardRedemptionUseCase,
     CreateRewardRedemptionUseCase,
     CancelRewardRedemptionUseCase,
+    ApproveRewardRedemptionUseCase,
+    RejectRewardRedemptionUseCase,
+    FulfillRewardRedemptionUseCase,
   ],
 })
 export class RewardsModule {}

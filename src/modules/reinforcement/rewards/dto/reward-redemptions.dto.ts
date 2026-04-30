@@ -148,3 +148,51 @@ export class CancelRewardRedemptionDto {
   @IsObject()
   metadata?: Record<string, unknown> | null;
 }
+
+export class ApproveRewardRedemptionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reviewNoteEn?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reviewNoteAr?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown> | null;
+}
+
+export class RejectRewardRedemptionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reviewNoteEn?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reviewNoteAr?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown> | null;
+}
+
+export class FulfillRewardRedemptionDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  fulfillmentNoteEn?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  fulfillmentNoteAr?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown> | null;
+}

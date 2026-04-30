@@ -7,15 +7,25 @@ import {
   RewardArchivedForRequestException,
   RewardDuplicateRedemptionException,
   RewardInsufficientXpException,
+  RewardInvalidStatusTransitionException,
   RewardNotPublishedException,
   RewardOutOfStockException,
   RewardRedemptionInvalidSourceException,
+  RewardRedemptionNotApprovedException,
+  RewardRedemptionNotRequestedException,
   RewardRedemptionTerminalException,
+  assertApprovalStockAvailable,
+  assertRedemptionApprovable,
   assertRedemptionCancellable,
+  assertRedemptionFulfillable,
+  assertRedemptionRejectable,
   assertRewardEligibility,
   assertRewardRequestable,
   assertRewardStockAvailableForRequest,
+  assertRewardStillRequestableForApproval,
+  buildApprovalEligibilitySnapshot,
   buildEligibilitySnapshot,
+  deriveStockAfterApproval,
   isRedemptionOpen,
   isRedemptionTerminal,
   normalizeRewardRedemptionRequestSource,
@@ -149,7 +159,7 @@ describe('Reward redemption domain helpers', () => {
     }
   });
 
-  it('allows cancellation of requested and approved redemptions', () => {
+  it('allows cancellation of requested redemptions only', () => {
     expect(() =>
       assertRedemptionCancellable({
         status: RewardRedemptionStatus.REQUESTED,
@@ -159,7 +169,125 @@ describe('Reward redemption domain helpers', () => {
       assertRedemptionCancellable({
         status: RewardRedemptionStatus.APPROVED,
       }),
+    ).toThrow(RewardRedemptionNotRequestedException);
+  });
+
+  it('approves only requested redemptions and rejects terminal statuses', () => {
+    expect(() =>
+      assertRedemptionApprovable({
+        status: RewardRedemptionStatus.REQUESTED,
+      }),
     ).not.toThrow();
+    expect(() =>
+      assertRedemptionApprovable({
+        status: RewardRedemptionStatus.APPROVED,
+      }),
+    ).toThrow(RewardInvalidStatusTransitionException);
+
+    for (const status of [
+      RewardRedemptionStatus.REJECTED,
+      RewardRedemptionStatus.FULFILLED,
+      RewardRedemptionStatus.CANCELLED,
+    ]) {
+      expect(() => assertRedemptionApprovable({ status })).toThrow(
+        RewardRedemptionTerminalException,
+      );
+    }
+  });
+
+  it('rejects only requested redemptions', () => {
+    expect(() =>
+      assertRedemptionRejectable({
+        status: RewardRedemptionStatus.REQUESTED,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertRedemptionRejectable({
+        status: RewardRedemptionStatus.APPROVED,
+      }),
+    ).toThrow(RewardInvalidStatusTransitionException);
+  });
+
+  it('fulfills only approved redemptions', () => {
+    expect(() =>
+      assertRedemptionFulfillable({
+        status: RewardRedemptionStatus.APPROVED,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertRedemptionFulfillable({
+        status: RewardRedemptionStatus.REQUESTED,
+      }),
+    ).toThrow(RewardRedemptionNotApprovedException);
+
+    for (const status of [
+      RewardRedemptionStatus.REJECTED,
+      RewardRedemptionStatus.FULFILLED,
+      RewardRedemptionStatus.CANCELLED,
+    ]) {
+      expect(() => assertRedemptionFulfillable({ status })).toThrow(
+        RewardRedemptionTerminalException,
+      );
+    }
+  });
+
+  it('rechecks catalog availability for approval', () => {
+    expect(() =>
+      assertRewardStillRequestableForApproval({
+        id: 'reward-1',
+        status: RewardCatalogItemStatus.PUBLISHED,
+        isUnlimited: false,
+        stockRemaining: 1,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertApprovalStockAvailable({
+        id: 'reward-1',
+        isUnlimited: false,
+        stockRemaining: 0,
+      }),
+    ).toThrow(RewardOutOfStockException);
+  });
+
+  it('derives and records the approval eligibility snapshot', () => {
+    const approvedAt = new Date('2026-04-30T12:30:00.000Z');
+
+    expect(
+      deriveStockAfterApproval({
+        isUnlimited: false,
+        stockRemaining: 2,
+      }),
+    ).toBe(1);
+    expect(
+      deriveStockAfterApproval({
+        isUnlimited: true,
+        stockRemaining: null,
+      }),
+    ).toBeNull();
+    expect(
+      buildApprovalEligibilitySnapshot({
+        previousSnapshot: { requestedAt: 'before' },
+        catalogItemStatus: RewardCatalogItemStatus.PUBLISHED,
+        minTotalXp: 50,
+        totalEarnedXp: 75,
+        isUnlimited: false,
+        stockRemainingBeforeApproval: 2,
+        stockRemainingAfterApproval: 1,
+        approvedAt,
+      }),
+    ).toEqual({
+      requestedAt: 'before',
+      minTotalXp: 50,
+      totalEarnedXp: 75,
+      eligible: true,
+      stockAvailable: true,
+      isUnlimited: false,
+      stockRemaining: 1,
+      stockRemainingBeforeApproval: 2,
+      stockRemainingAfterApproval: 1,
+      catalogItemStatus: 'published',
+      approvedAt: approvedAt.toISOString(),
+    });
   });
 
   it('summarizes status counts', () => {

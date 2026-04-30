@@ -78,7 +78,49 @@ describe('Reward redemptions presenter', () => {
     expect(result.items[0]).not.toHaveProperty('schoolId');
   });
 
-  function redemptionRecord() {
+  it('presents review and fulfillment fields without exposing schoolId', () => {
+    const result = presentRewardRedemptionDetail(
+      redemptionRecord({
+        status: RewardRedemptionStatus.FULFILLED,
+        reviewedById: 'reviewer-1',
+        reviewedAt: NOW,
+        reviewNoteEn: 'Approved at desk',
+        fulfilledById: 'fulfiller-1',
+        fulfilledAt: NOW,
+        fulfillmentNoteEn: 'Collected',
+        eligibilitySnapshot: {
+          minTotalXp: 50,
+          totalEarnedXp: 75,
+          eligible: true,
+          stockAvailable: true,
+          isUnlimited: false,
+          stockRemaining: 1,
+          stockRemainingBeforeApproval: 2,
+          stockRemainingAfterApproval: 1,
+          catalogItemStatus: 'published',
+          approvedAt: NOW.toISOString(),
+        },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'fulfilled',
+      reviewedById: 'reviewer-1',
+      reviewedAt: NOW.toISOString(),
+      reviewNoteEn: 'Approved at desk',
+      fulfilledById: 'fulfiller-1',
+      fulfilledAt: NOW.toISOString(),
+      fulfillmentNoteEn: 'Collected',
+      eligibilitySnapshot: {
+        stockRemainingBeforeApproval: 2,
+        stockRemainingAfterApproval: 1,
+      },
+    });
+    expect(result).not.toHaveProperty('schoolId');
+    expect(result.catalogItem).not.toHaveProperty('schoolId');
+  });
+
+  function redemptionRecord(overrides?: any) {
     return {
       id: 'redemption-1',
       schoolId: 'school-1',
@@ -87,25 +129,25 @@ describe('Reward redemptions presenter', () => {
       enrollmentId: 'enrollment-1',
       academicYearId: 'year-1',
       termId: 'term-1',
-      status: RewardRedemptionStatus.REQUESTED,
+      status: overrides?.status ?? RewardRedemptionStatus.REQUESTED,
       requestSource: RewardRedemptionRequestSource.DASHBOARD,
       requestedById: 'actor-1',
-      reviewedById: null,
-      fulfilledById: null,
+      reviewedById: overrides?.reviewedById ?? null,
+      fulfilledById: overrides?.fulfilledById ?? null,
       cancelledById: null,
       requestedAt: NOW,
-      reviewedAt: null,
-      fulfilledAt: null,
+      reviewedAt: overrides?.reviewedAt ?? null,
+      fulfilledAt: overrides?.fulfilledAt ?? null,
       cancelledAt: null,
       requestNoteEn: 'Please approve',
       requestNoteAr: null,
-      reviewNoteEn: null,
+      reviewNoteEn: overrides?.reviewNoteEn ?? null,
       reviewNoteAr: null,
-      fulfillmentNoteEn: null,
+      fulfillmentNoteEn: overrides?.fulfillmentNoteEn ?? null,
       fulfillmentNoteAr: null,
       cancellationReasonEn: null,
       cancellationReasonAr: null,
-      eligibilitySnapshot: {
+      eligibilitySnapshot: overrides?.eligibilitySnapshot ?? {
         minTotalXp: 50,
         totalEarnedXp: 75,
         eligible: true,

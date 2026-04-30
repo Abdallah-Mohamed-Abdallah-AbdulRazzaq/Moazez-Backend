@@ -14,21 +14,29 @@ import {
 } from '../../reinforcement-context';
 import {
   RewardDuplicateRedemptionException,
+  assertRedemptionApprovable,
   assertRedemptionCancellable,
+  assertRedemptionFulfillable,
+  assertRedemptionRejectable,
   assertRedemptionRequestedDateRange,
   assertRewardEligibility,
   assertRewardRequestable,
+  assertRewardStillRequestableForApproval,
   assertRewardStockAvailableForRequest,
   buildEligibilitySnapshot,
+  deriveStockAfterApproval,
   isUniqueConstraintError,
   normalizeNullableText,
   normalizeRewardRedemptionRequestSource,
   normalizeRewardRedemptionStatus,
 } from '../domain/reward-redemptions-domain';
 import {
+  ApproveRewardRedemptionDto,
   CancelRewardRedemptionDto,
   CreateRewardRedemptionDto,
+  FulfillRewardRedemptionDto,
   ListRewardRedemptionsQueryDto,
+  RejectRewardRedemptionDto,
 } from '../dto/reward-redemptions.dto';
 import {
   ListRewardRedemptionsFilters,
@@ -291,6 +299,183 @@ export class CreateRewardRedemptionUseCase {
 }
 
 @Injectable()
+export class ApproveRewardRedemptionUseCase {
+  constructor(
+    private readonly rewardRedemptionsRepository: RewardRedemptionsRepository,
+  ) {}
+
+  async execute(redemptionId: string, command: ApproveRewardRedemptionDto) {
+    const scope = requireReinforcementScope();
+    const existing =
+      await this.rewardRedemptionsRepository.findRedemptionById(redemptionId);
+    if (!existing) {
+      throw new NotFoundDomainException('Reward redemption not found', {
+        redemptionId,
+      });
+    }
+
+    assertRedemptionApprovable({
+      id: existing.id,
+      status: existing.status,
+    });
+
+    const catalogItem =
+      await this.rewardRedemptionsRepository.findCatalogItemForReview(
+        existing.catalogItemId,
+      );
+    if (!catalogItem) {
+      throw new NotFoundDomainException('Reward catalog item not found', {
+        catalogItemId: existing.catalogItemId,
+      });
+    }
+
+    assertRewardStillRequestableForApproval(catalogItem);
+
+    const totalEarnedXp =
+      await this.rewardRedemptionsRepository.calculateStudentTotalEarnedXp(
+        existing.studentId,
+      );
+    assertRewardEligibility({
+      catalogItemId: catalogItem.id,
+      studentId: existing.studentId,
+      minTotalXp: catalogItem.minTotalXp,
+      totalEarnedXp,
+    });
+
+    const reviewedAt = new Date();
+    const reviewNoteEn = normalizeNullableText(command.reviewNoteEn);
+    const reviewNoteAr = normalizeNullableText(command.reviewNoteAr);
+    const stockRemainingAfterApproval = deriveStockAfterApproval({
+      isUnlimited: catalogItem.isUnlimited,
+      stockRemaining: catalogItem.stockRemaining,
+    });
+
+    const redemption =
+      await this.rewardRedemptionsRepository.approveRedemptionWithStockDecrement(
+        {
+          schoolId: scope.schoolId,
+          redemptionId: existing.id,
+          catalogItemId: catalogItem.id,
+          reviewedById: scope.actorId,
+          reviewedAt,
+          reviewNoteEn,
+          reviewNoteAr,
+          metadata: command.metadata,
+          previousEligibilitySnapshot: readSnapshotRecord(existing),
+          totalEarnedXp,
+          audit: buildRewardRedemptionApproveAuditEntry({
+            scope,
+            existing,
+            catalogItem,
+            totalEarnedXp,
+            reviewedById: scope.actorId,
+            reviewedAt,
+            reviewNoteEn,
+            reviewNoteAr,
+            stockRemainingAfterApproval,
+          }),
+        },
+      );
+
+    return presentRewardRedemptionDetail(redemption);
+  }
+}
+
+@Injectable()
+export class RejectRewardRedemptionUseCase {
+  constructor(
+    private readonly rewardRedemptionsRepository: RewardRedemptionsRepository,
+  ) {}
+
+  async execute(redemptionId: string, command: RejectRewardRedemptionDto) {
+    const scope = requireReinforcementScope();
+    const existing =
+      await this.rewardRedemptionsRepository.findRedemptionById(redemptionId);
+    if (!existing) {
+      throw new NotFoundDomainException('Reward redemption not found', {
+        redemptionId,
+      });
+    }
+
+    assertRedemptionRejectable({
+      id: existing.id,
+      status: existing.status,
+    });
+
+    const reviewedAt = new Date();
+    const reviewNoteEn = normalizeNullableText(command.reviewNoteEn);
+    const reviewNoteAr = normalizeNullableText(command.reviewNoteAr);
+    const redemption = await this.rewardRedemptionsRepository.rejectRedemption({
+      schoolId: scope.schoolId,
+      redemptionId: existing.id,
+      reviewedById: scope.actorId,
+      reviewedAt,
+      reviewNoteEn,
+      reviewNoteAr,
+      metadata: command.metadata,
+      audit: buildRewardRedemptionRejectAuditEntry({
+        scope,
+        existing,
+        reviewedById: scope.actorId,
+        reviewedAt,
+        reviewNoteEn,
+        reviewNoteAr,
+      }),
+    });
+
+    return presentRewardRedemptionDetail(redemption);
+  }
+}
+
+@Injectable()
+export class FulfillRewardRedemptionUseCase {
+  constructor(
+    private readonly rewardRedemptionsRepository: RewardRedemptionsRepository,
+  ) {}
+
+  async execute(redemptionId: string, command: FulfillRewardRedemptionDto) {
+    const scope = requireReinforcementScope();
+    const existing =
+      await this.rewardRedemptionsRepository.findRedemptionById(redemptionId);
+    if (!existing) {
+      throw new NotFoundDomainException('Reward redemption not found', {
+        redemptionId,
+      });
+    }
+
+    assertRedemptionFulfillable({
+      id: existing.id,
+      status: existing.status,
+    });
+
+    const fulfilledAt = new Date();
+    const fulfillmentNoteEn = normalizeNullableText(command.fulfillmentNoteEn);
+    const fulfillmentNoteAr = normalizeNullableText(command.fulfillmentNoteAr);
+    const redemption = await this.rewardRedemptionsRepository.fulfillRedemption(
+      {
+        schoolId: scope.schoolId,
+        redemptionId: existing.id,
+        fulfilledById: scope.actorId,
+        fulfilledAt,
+        fulfillmentNoteEn,
+        fulfillmentNoteAr,
+        metadata: command.metadata,
+        audit: buildRewardRedemptionFulfillAuditEntry({
+          scope,
+          existing,
+          fulfilledById: scope.actorId,
+          fulfilledAt,
+          fulfillmentNoteEn,
+          fulfillmentNoteAr,
+        }),
+      },
+    );
+
+    return presentRewardRedemptionDetail(redemption);
+  }
+}
+
+@Injectable()
 export class CancelRewardRedemptionUseCase {
   constructor(
     private readonly rewardRedemptionsRepository: RewardRedemptionsRepository,
@@ -513,6 +698,139 @@ function buildRewardRedemptionCancelAuditEntry(params: {
       stockRemaining: readSnapshotNumberOrNull(
         params.existing,
         'stockRemaining',
+      ),
+    },
+  };
+}
+
+function buildRewardRedemptionApproveAuditEntry(params: {
+  scope: ReinforcementScope;
+  existing: RewardRedemptionRecord;
+  catalogItem: RewardRedemptionCatalogItemRecord;
+  totalEarnedXp: number;
+  reviewedById: string;
+  reviewedAt: Date;
+  reviewNoteEn: string | null;
+  reviewNoteAr: string | null;
+  stockRemainingAfterApproval: number | null;
+}): RewardAuditLogInput {
+  return {
+    actorId: params.scope.actorId,
+    userType: params.scope.userType,
+    organizationId: params.scope.organizationId,
+    schoolId: params.scope.schoolId,
+    module: 'reinforcement.rewards',
+    action: 'reinforcement.reward.redemption.approve',
+    resourceType: 'reward_redemption',
+    resourceId: params.existing.id,
+    outcome: AuditOutcome.SUCCESS,
+    before: {
+      status: params.existing.status,
+      reviewedAt: params.existing.reviewedAt?.toISOString() ?? null,
+      reviewedById: params.existing.reviewedById,
+    },
+    after: {
+      catalogItemId: params.existing.catalogItemId,
+      studentId: params.existing.studentId,
+      enrollmentId: params.existing.enrollmentId,
+      beforeStatus: params.existing.status,
+      afterStatus: RewardRedemptionStatus.APPROVED,
+      reviewedById: params.reviewedById,
+      reviewedAt: params.reviewedAt.toISOString(),
+      catalogItemStatus: params.catalogItem.status,
+      minTotalXp: params.catalogItem.minTotalXp ?? null,
+      totalEarnedXp: params.totalEarnedXp,
+      eligible: true,
+      stockRemainingBeforeApproval: params.catalogItem.stockRemaining ?? null,
+      stockRemainingAfterApproval: params.stockRemainingAfterApproval,
+      isUnlimited: params.catalogItem.isUnlimited,
+      reviewNotePresent: Boolean(params.reviewNoteEn || params.reviewNoteAr),
+    },
+  };
+}
+
+function buildRewardRedemptionRejectAuditEntry(params: {
+  scope: ReinforcementScope;
+  existing: RewardRedemptionRecord;
+  reviewedById: string;
+  reviewedAt: Date;
+  reviewNoteEn: string | null;
+  reviewNoteAr: string | null;
+}): RewardAuditLogInput {
+  return {
+    actorId: params.scope.actorId,
+    userType: params.scope.userType,
+    organizationId: params.scope.organizationId,
+    schoolId: params.scope.schoolId,
+    module: 'reinforcement.rewards',
+    action: 'reinforcement.reward.redemption.reject',
+    resourceType: 'reward_redemption',
+    resourceId: params.existing.id,
+    outcome: AuditOutcome.SUCCESS,
+    before: {
+      status: params.existing.status,
+      reviewedAt: params.existing.reviewedAt?.toISOString() ?? null,
+      reviewedById: params.existing.reviewedById,
+    },
+    after: {
+      catalogItemId: params.existing.catalogItemId,
+      studentId: params.existing.studentId,
+      enrollmentId: params.existing.enrollmentId,
+      beforeStatus: params.existing.status,
+      afterStatus: RewardRedemptionStatus.REJECTED,
+      reviewedById: params.reviewedById,
+      reviewedAt: params.reviewedAt.toISOString(),
+      requestSource: params.existing.requestSource,
+      reviewNotePresent: Boolean(params.reviewNoteEn || params.reviewNoteAr),
+    },
+  };
+}
+
+function buildRewardRedemptionFulfillAuditEntry(params: {
+  scope: ReinforcementScope;
+  existing: RewardRedemptionRecord;
+  fulfilledById: string;
+  fulfilledAt: Date;
+  fulfillmentNoteEn: string | null;
+  fulfillmentNoteAr: string | null;
+}): RewardAuditLogInput {
+  return {
+    actorId: params.scope.actorId,
+    userType: params.scope.userType,
+    organizationId: params.scope.organizationId,
+    schoolId: params.scope.schoolId,
+    module: 'reinforcement.rewards',
+    action: 'reinforcement.reward.redemption.fulfill',
+    resourceType: 'reward_redemption',
+    resourceId: params.existing.id,
+    outcome: AuditOutcome.SUCCESS,
+    before: {
+      status: params.existing.status,
+      fulfilledAt: params.existing.fulfilledAt?.toISOString() ?? null,
+      fulfilledById: params.existing.fulfilledById,
+    },
+    after: {
+      catalogItemId: params.existing.catalogItemId,
+      studentId: params.existing.studentId,
+      enrollmentId: params.existing.enrollmentId,
+      beforeStatus: params.existing.status,
+      afterStatus: RewardRedemptionStatus.FULFILLED,
+      fulfilledById: params.fulfilledById,
+      fulfilledAt: params.fulfilledAt.toISOString(),
+      requestSource: params.existing.requestSource,
+      minTotalXp: readSnapshotNumber(params.existing, 'minTotalXp'),
+      totalEarnedXp: readSnapshotNumber(params.existing, 'totalEarnedXp'),
+      stockRemainingBeforeApproval: readSnapshotNumberOrNull(
+        params.existing,
+        'stockRemainingBeforeApproval',
+      ),
+      stockRemainingAfterApproval: readSnapshotNumberOrNull(
+        params.existing,
+        'stockRemainingAfterApproval',
+      ),
+      isUnlimited: readSnapshotBoolean(params.existing, 'isUnlimited'),
+      fulfillmentNotePresent: Boolean(
+        params.fulfillmentNoteEn || params.fulfillmentNoteAr,
       ),
     },
   };

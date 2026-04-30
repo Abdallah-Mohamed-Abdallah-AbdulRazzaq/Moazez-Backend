@@ -114,6 +114,8 @@ describe('Rewards catalog tenancy isolation (security)', () => {
       rewardsManagePermission,
       rewardsRedemptionsViewPermission,
       rewardsRedemptionsRequestPermission,
+      rewardsRedemptionsReviewPermission,
+      rewardsFulfillPermission,
     ] = await Promise.all([
       prisma.role.findFirst({
         where: { key: 'school_admin', schoolId: null, isSystem: true },
@@ -147,6 +149,14 @@ describe('Rewards catalog tenancy isolation (security)', () => {
         where: { code: 'reinforcement.rewards.redemptions.request' },
         select: { id: true },
       }),
+      prisma.permission.findUnique({
+        where: { code: 'reinforcement.rewards.redemptions.review' },
+        select: { id: true },
+      }),
+      prisma.permission.findUnique({
+        where: { code: 'reinforcement.rewards.fulfill' },
+        select: { id: true },
+      }),
     ]);
 
     if (
@@ -157,7 +167,9 @@ describe('Rewards catalog tenancy isolation (security)', () => {
       !rewardsViewPermission ||
       !rewardsManagePermission ||
       !rewardsRedemptionsViewPermission ||
-      !rewardsRedemptionsRequestPermission
+      !rewardsRedemptionsRequestPermission ||
+      !rewardsRedemptionsReviewPermission ||
+      !rewardsFulfillPermission
     ) {
       throw new Error('Rewards roles or permissions missing - run seed.');
     }
@@ -1003,6 +1015,374 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     const afterCancel = await redemptionSideEffectCounts(rewardId);
     expect(afterCancel.xpLedger).toBe(before.xpLedger);
     expect(afterCancel.stockRemaining).toBe(before.stockRemaining);
+  });
+
+  it('school A cannot approve, reject, or fulfill school B redemptions', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    for (const action of ['approve', 'reject', 'fulfill']) {
+      const response = await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${tenantBRedemptionId}/${action}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(404);
+
+      expect(response.body?.error?.code).toBe('not_found');
+    }
+  });
+
+  it('same-school actors without review or fulfill permissions get 403 for review endpoints', async () => {
+    const { accessToken } = await login(viewOnlyEmail);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${demoRedemptionId}/approve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${demoRedemptionId}/reject`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${demoRedemptionId}/fulfill`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(403);
+  });
+
+  it('teacher cannot approve, reject, or fulfill redemptions', async () => {
+    const { accessToken } = await login(teacherEmail);
+
+    for (const action of ['approve', 'reject', 'fulfill']) {
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${demoRedemptionId}/${action}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(403);
+    }
+  });
+
+  it('parent and student actors cannot access core dashboard review endpoints', async () => {
+    for (const email of [parentEmail, studentEmail]) {
+      const { accessToken } = await login(email);
+
+      for (const action of ['approve', 'reject', 'fulfill']) {
+        await request(app.getHttpServer())
+          .post(
+            `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${demoRedemptionId}/${action}`,
+          )
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({})
+          .expect(403);
+      }
+    }
+  });
+
+  it('approve rechecks insufficient XP and limited stock', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const lowXpRewardId = await createRewardFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      imageFileId: demoFileId,
+      suffix: 'approve-low-xp',
+      status: RewardCatalogItemStatus.PUBLISHED,
+      minTotalXp: 10,
+    });
+    const lowXpRedemptionId = await createRedemptionFixture({
+      schoolId: demoSchoolId,
+      catalogItemId: lowXpRewardId,
+      studentId: demoLowXpStudentId,
+      enrollmentId: demoLowXpEnrollmentId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      status: RewardRedemptionStatus.REQUESTED,
+    });
+
+    const insufficient = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${lowXpRedemptionId}/approve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(422);
+    expect(insufficient.body?.error?.code).toBe(
+      'reinforcement.reward.insufficient_xp',
+    );
+
+    const noStockRedemptionId = await createRedemptionFixture({
+      schoolId: demoSchoolId,
+      catalogItemId: demoNoStockRewardId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      status: RewardRedemptionStatus.REQUESTED,
+    });
+
+    const noStock = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${noStockRedemptionId}/approve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(409);
+    expect(noStock.body?.error?.code).toBe('reinforcement.reward.out_of_stock');
+  });
+
+  it('approve decrements limited stock exactly once and does not write XP ledger rows', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const rewardId = await createRewardFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      imageFileId: demoFileId,
+      suffix: 'approve-stock-once',
+      status: RewardCatalogItemStatus.PUBLISHED,
+      isUnlimited: false,
+      stockQuantity: 2,
+      stockRemaining: 2,
+    });
+    const redemptionId = await createRedemptionFixture({
+      schoolId: demoSchoolId,
+      catalogItemId: rewardId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      status: RewardRedemptionStatus.REQUESTED,
+    });
+    const before = await redemptionSideEffectCounts(rewardId);
+
+    const approved = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${redemptionId}/approve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'Approved by security test' })
+      .expect(201);
+
+    expect(approved.body).toMatchObject({
+      id: redemptionId,
+      status: 'approved',
+      reviewedById: expect.any(String),
+      reviewNoteEn: 'Approved by security test',
+      eligibilitySnapshot: {
+        totalEarnedXp: 100,
+        eligible: true,
+        stockRemainingBeforeApproval: 2,
+        stockRemainingAfterApproval: 1,
+      },
+    });
+
+    const afterApprove = await redemptionSideEffectCounts(rewardId);
+    expect(afterApprove.xpLedger).toBe(before.xpLedger);
+    expect(afterApprove.stockRemaining).toBe(1);
+
+    const duplicateApprove = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${redemptionId}/approve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(409);
+    expect(duplicateApprove.body?.error?.code).toBe(
+      'reinforcement.reward.invalid_status_transition',
+    );
+
+    const cancelApproved = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${redemptionId}/cancel`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ cancellationReasonEn: 'Approved redemptions are fulfilled' })
+      .expect(409);
+    expect(cancelApproved.body?.error?.code).toBe(
+      'reinforcement.redemption.not_requested',
+    );
+
+    const afterRejectedTransitions = await redemptionSideEffectCounts(rewardId);
+    expect(afterRejectedTransitions.xpLedger).toBe(before.xpLedger);
+    expect(afterRejectedTransitions.stockRemaining).toBe(1);
+  });
+
+  it('approve does not decrement stock for unlimited rewards', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const rewardId = await createRewardFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      imageFileId: demoFileId,
+      suffix: 'approve-unlimited',
+      status: RewardCatalogItemStatus.PUBLISHED,
+      isUnlimited: true,
+      stockQuantity: null,
+      stockRemaining: null,
+    });
+    const redemptionId = await createRedemptionFixture({
+      schoolId: demoSchoolId,
+      catalogItemId: rewardId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      status: RewardRedemptionStatus.REQUESTED,
+    });
+    const before = await redemptionSideEffectCounts(rewardId);
+
+    const approved = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${redemptionId}/approve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+
+    expect(approved.body).toMatchObject({
+      status: 'approved',
+      eligibilitySnapshot: {
+        isUnlimited: true,
+        stockRemainingBeforeApproval: null,
+        stockRemainingAfterApproval: null,
+      },
+    });
+    const after = await redemptionSideEffectCounts(rewardId);
+    expect(after.xpLedger).toBe(before.xpLedger);
+    expect(after.stockRemaining).toBeNull();
+  });
+
+  it('reject does not change stock or write XP ledger rows', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const rewardId = await createRewardFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      imageFileId: demoFileId,
+      suffix: 'reject-side-effect',
+      status: RewardCatalogItemStatus.PUBLISHED,
+      isUnlimited: false,
+      stockQuantity: 4,
+      stockRemaining: 4,
+    });
+    const redemptionId = await createRedemptionFixture({
+      schoolId: demoSchoolId,
+      catalogItemId: rewardId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      status: RewardRedemptionStatus.REQUESTED,
+    });
+    const before = await redemptionSideEffectCounts(rewardId);
+
+    const rejected = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${redemptionId}/reject`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'Not eligible today' })
+      .expect(201);
+
+    expect(rejected.body).toMatchObject({
+      id: redemptionId,
+      status: 'rejected',
+      reviewedById: expect.any(String),
+      reviewNoteEn: 'Not eligible today',
+    });
+    const after = await redemptionSideEffectCounts(rewardId);
+    expect(after.xpLedger).toBe(before.xpLedger);
+    expect(after.stockRemaining).toBe(before.stockRemaining);
+  });
+
+  it('fulfill requires approved status, completes approved redemptions, and writes no XP ledger rows', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const rewardId = await createRewardFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      imageFileId: demoFileId,
+      suffix: 'fulfill-flow',
+      status: RewardCatalogItemStatus.PUBLISHED,
+      isUnlimited: false,
+      stockQuantity: 3,
+      stockRemaining: 3,
+    });
+    const redemptionId = await createRedemptionFixture({
+      schoolId: demoSchoolId,
+      catalogItemId: rewardId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      status: RewardRedemptionStatus.REQUESTED,
+    });
+    const before = await redemptionSideEffectCounts(rewardId);
+
+    const notApproved = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${redemptionId}/fulfill`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(409);
+    expect(notApproved.body?.error?.code).toBe(
+      'reinforcement.redemption.not_approved',
+    );
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${redemptionId}/approve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+
+    const afterApprove = await redemptionSideEffectCounts(rewardId);
+    expect(afterApprove.xpLedger).toBe(before.xpLedger);
+    expect(afterApprove.stockRemaining).toBe(2);
+
+    const fulfilled = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${redemptionId}/fulfill`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fulfillmentNoteEn: 'Handed to student' })
+      .expect(201);
+
+    expect(fulfilled.body).toMatchObject({
+      id: redemptionId,
+      status: 'fulfilled',
+      fulfilledById: expect.any(String),
+      fulfillmentNoteEn: 'Handed to student',
+    });
+
+    const afterFulfill = await redemptionSideEffectCounts(rewardId);
+    expect(afterFulfill.xpLedger).toBe(before.xpLedger);
+    expect(afterFulfill.stockRemaining).toBe(2);
+
+    const terminal = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${redemptionId}/fulfill`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(409);
+    expect(terminal.body?.error?.code).toBe(
+      'reinforcement.redemption.terminal',
+    );
   });
 
   async function login(email: string): Promise<{ accessToken: string }> {
