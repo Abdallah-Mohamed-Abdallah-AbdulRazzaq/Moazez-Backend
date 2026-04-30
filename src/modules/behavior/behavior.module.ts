@@ -15,17 +15,30 @@ import {
   SubmitBehaviorRecordUseCase,
   UpdateBehaviorRecordUseCase,
 } from './application/behavior-records.use-cases';
+import {
+  ApproveBehaviorRecordUseCase,
+  GetBehaviorReviewQueueItemUseCase,
+  ListBehaviorReviewQueueUseCase,
+  RejectBehaviorRecordUseCase,
+} from './application/behavior-review.use-cases';
 import { BehaviorCategoriesController } from './controller/behavior-categories.controller';
 import { BehaviorRecordsController } from './controller/behavior-records.controller';
+import { BehaviorReviewController } from './controller/behavior-review.controller';
 import { BehaviorCategoriesRepository } from './infrastructure/behavior-categories.repository';
 import { BehaviorRecordsRepository } from './infrastructure/behavior-records.repository';
+import { BehaviorReviewRepository } from './infrastructure/behavior-review.repository';
 
 @Module({
   imports: [AuthModule],
-  controllers: [BehaviorCategoriesController, BehaviorRecordsController],
+  controllers: [
+    BehaviorCategoriesController,
+    BehaviorRecordsController,
+    BehaviorReviewController,
+  ],
   providers: [
     BehaviorCategoriesRepository,
     BehaviorRecordsRepository,
+    BehaviorReviewRepository,
     ListBehaviorCategoriesUseCase,
     GetBehaviorCategoryUseCase,
     CreateBehaviorCategoryUseCase,
@@ -37,6 +50,10 @@ import { BehaviorRecordsRepository } from './infrastructure/behavior-records.rep
     UpdateBehaviorRecordUseCase,
     SubmitBehaviorRecordUseCase,
     CancelBehaviorRecordUseCase,
+    ListBehaviorReviewQueueUseCase,
+    GetBehaviorReviewQueueItemUseCase,
+    ApproveBehaviorRecordUseCase,
+    RejectBehaviorRecordUseCase,
   ],
 })
 export class BehaviorModule {}

@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  BehaviorPointLedgerEntryType,
   BehaviorRecordStatus,
   BehaviorRecordType,
   BehaviorSeverity,
@@ -58,8 +59,11 @@ describe('Behavior category tenancy isolation (security)', () => {
   let demoRecordId: string;
   let demoSubmittedRecordId: string;
   let demoCancelledRecordId: string;
+  let demoApprovedRecordId: string;
+  let demoRejectedRecordId: string;
   let demoSoftDeletedRecordId: string;
   let tenantBRecordId: string;
+  let tenantBSubmittedRecordId: string;
 
   let noAccessEmail: string;
   let viewOnlyEmail: string;
@@ -319,6 +323,32 @@ describe('Behavior category tenancy isolation (security)', () => {
       points: 2,
       cancelledAt: new Date(),
     });
+    demoApprovedRecordId = await createRecordFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoAcademicYearId,
+      termId: demoTermId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      categoryId: demoCategoryId,
+      status: BehaviorRecordStatus.APPROVED,
+      titleEn: `${testSuffix}-approved-record-a`,
+      points: 2,
+      submittedAt: new Date(),
+      reviewedAt: new Date(),
+    });
+    demoRejectedRecordId = await createRecordFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoAcademicYearId,
+      termId: demoTermId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      categoryId: demoCategoryId,
+      status: BehaviorRecordStatus.REJECTED,
+      titleEn: `${testSuffix}-rejected-record-a`,
+      points: 2,
+      submittedAt: new Date(),
+      reviewedAt: new Date(),
+    });
     demoSoftDeletedRecordId = await createRecordFixture({
       schoolId: demoSchoolId,
       academicYearId: demoAcademicYearId,
@@ -343,6 +373,20 @@ describe('Behavior category tenancy isolation (security)', () => {
       type: BehaviorRecordType.NEGATIVE,
       severity: BehaviorSeverity.MEDIUM,
       points: -2,
+    });
+    tenantBSubmittedRecordId = await createRecordFixture({
+      schoolId: tenantBSchoolId,
+      academicYearId: tenantBAcademicYearId,
+      termId: tenantBTermId,
+      studentId: tenantBStudentId,
+      enrollmentId: tenantBEnrollmentId,
+      categoryId: tenantBCategoryId,
+      status: BehaviorRecordStatus.SUBMITTED,
+      titleEn: `${testSuffix}-submitted-record-b`,
+      type: BehaviorRecordType.NEGATIVE,
+      severity: BehaviorSeverity.MEDIUM,
+      points: -2,
+      submittedAt: new Date(),
     });
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -1010,6 +1054,359 @@ describe('Behavior category tenancy isolation (security)', () => {
       .expect(404);
   });
 
+  it('school A cannot see school B records in the behavior review queue', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/review-queue`)
+      .query({ search: testSuffix })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const ids = response.body.items.map((item: { id: string }) => item.id);
+    expect(ids).toContain(demoSubmittedRecordId);
+    expect(ids).not.toContain(tenantBSubmittedRecordId);
+    expect(response.body.summary).toMatchObject({
+      submitted: expect.any(Number),
+      approved: 0,
+      rejected: 0,
+    });
+  });
+
+  it('review queue can include reviewed records when includeReviewed=true', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/review-queue`)
+      .query({ search: testSuffix, includeReviewed: true })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const ids = response.body.items.map((item: { id: string }) => item.id);
+    expect(ids).toContain(demoSubmittedRecordId);
+    expect(ids).toContain(demoApprovedRecordId);
+    expect(ids).toContain(demoRejectedRecordId);
+    expect(ids).not.toContain(tenantBSubmittedRecordId);
+  });
+
+  it('school A cannot read school B review queue detail', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/review-queue/${tenantBSubmittedRecordId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A cannot approve or reject school B records', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${tenantBSubmittedRecordId}/approve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'No leak' })
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${tenantBSubmittedRecordId}/reject`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'No leak' })
+      .expect(404);
+  });
+
+  it('same-school actors without behavior.records.view get 403 for review queue and detail', async () => {
+    const { accessToken } = await login(noAccessEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/review-queue`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/review-queue/${demoSubmittedRecordId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+  });
+
+  it('teacher cannot approve or reject without behavior.records.review', async () => {
+    const { accessToken } = await login(teacherEmail);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${demoSubmittedRecordId}/approve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'Teacher forbidden approve' })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${demoSubmittedRecordId}/reject`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'Teacher forbidden reject' })
+      .expect(403);
+  });
+
+  it('parent and student actors cannot access core dashboard review and approval endpoints', async () => {
+    for (const email of [parentEmail, studentEmail]) {
+      const { accessToken } = await login(email);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/behavior/review-queue`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/behavior/review-queue/${demoSubmittedRecordId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/behavior/records/${demoSubmittedRecordId}/approve`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ reviewNoteEn: 'Forbidden approve' })
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/behavior/records/${demoSubmittedRecordId}/reject`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ reviewNoteEn: 'Forbidden reject' })
+        .expect(403);
+    }
+  });
+
+  it('admin/school role can approve submitted records and writes BehaviorPointLedger only', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const recordId = await createRecordFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoAcademicYearId,
+      termId: demoTermId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      categoryId: demoCategoryId,
+      status: BehaviorRecordStatus.SUBMITTED,
+      titleEn: `${testSuffix}-approve-record`,
+      points: 2,
+      submittedAt: new Date(),
+    });
+    const before = await mutationSideEffectCounts();
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${recordId}/approve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'Approved for review', pointsOverride: 3 })
+      .expect(201);
+
+    expect(response.body).toMatchObject({
+      record: {
+        id: recordId,
+        status: 'approved',
+        reviewedById: expect.any(String),
+        reviewedAt: expect.any(String),
+        reviewNoteEn: 'Approved for review',
+        points: 3,
+      },
+      behaviorPointLedger: {
+        entryType: 'award',
+        amount: 3,
+        actorId: expect.any(String),
+        occurredAt: expect.any(String),
+      },
+    });
+    expect(JSON.stringify(response.body)).not.toContain('schoolId');
+
+    const [approvedRecord, ledgerRows] = await Promise.all([
+      prisma.behaviorRecord.findUnique({
+        where: { id: recordId },
+        select: { status: true, points: true, reviewedById: true, reviewedAt: true },
+      }),
+      prisma.behaviorPointLedger.findMany({
+        where: { recordId },
+        select: { entryType: true, amount: true },
+      }),
+    ]);
+    expect(approvedRecord).toMatchObject({
+      status: BehaviorRecordStatus.APPROVED,
+      points: 3,
+      reviewedById: expect.any(String),
+      reviewedAt: expect.any(Date),
+    });
+    expect(ledgerRows).toEqual([
+      {
+        entryType: BehaviorPointLedgerEntryType.AWARD,
+        amount: 3,
+      },
+    ]);
+
+    const after = await mutationSideEffectCounts();
+    expect(after.behaviorPointLedger).toBe(before.behaviorPointLedger + 1);
+    expect(after.xpLedger).toBe(before.xpLedger);
+    expect(after.rewardCatalogItems).toBe(before.rewardCatalogItems);
+    expect(after.rewardRedemptions).toBe(before.rewardRedemptions);
+  });
+
+  it('admin/school role can reject submitted records without ledger or XP writes', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const recordId = await createRecordFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoAcademicYearId,
+      termId: demoTermId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      categoryId: demoCategoryId,
+      status: BehaviorRecordStatus.SUBMITTED,
+      titleEn: `${testSuffix}-reject-record`,
+      points: 2,
+      submittedAt: new Date(),
+    });
+    const before = await mutationSideEffectCounts();
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${recordId}/reject`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'Rejected for missing context' })
+      .expect(201);
+
+    expect(response.body).toMatchObject({
+      id: recordId,
+      status: 'rejected',
+      reviewedById: expect.any(String),
+      reviewedAt: expect.any(String),
+      reviewNoteEn: 'Rejected for missing context',
+    });
+    expect(JSON.stringify(response.body)).not.toContain('schoolId');
+
+    const [rejectedRecord, ledgerRows] = await Promise.all([
+      prisma.behaviorRecord.findUnique({
+        where: { id: recordId },
+        select: { status: true, reviewedById: true, reviewedAt: true },
+      }),
+      prisma.behaviorPointLedger.count({ where: { recordId } }),
+    ]);
+    expect(rejectedRecord).toMatchObject({
+      status: BehaviorRecordStatus.REJECTED,
+      reviewedById: expect.any(String),
+      reviewedAt: expect.any(Date),
+    });
+    expect(ledgerRows).toBe(0);
+
+    const after = await mutationSideEffectCounts();
+    expect(after.behaviorPointLedger).toBe(before.behaviorPointLedger);
+    expect(after.xpLedger).toBe(before.xpLedger);
+  });
+
+  it('draft, cancelled, approved, and rejected records cannot be approved', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const draft = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${demoRecordId}/approve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'Draft approve rejected' })
+      .expect(409);
+    expect(draft.body?.error?.code).toBe('behavior.record.not_submitted');
+
+    const cancelled = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${demoCancelledRecordId}/approve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'Cancelled approve rejected' })
+      .expect(409);
+    expect(cancelled.body?.error?.code).toBe('behavior.record.cancelled');
+
+    for (const recordId of [demoApprovedRecordId, demoRejectedRecordId]) {
+      const response = await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/behavior/records/${recordId}/approve`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ reviewNoteEn: 'Already reviewed approve rejected' })
+        .expect(409);
+      expect(response.body?.error?.code).toBe(
+        'behavior.record.already_reviewed',
+      );
+    }
+  });
+
+  it('draft, cancelled, approved, and rejected records cannot be rejected', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const draft = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${demoRecordId}/reject`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'Draft reject rejected' })
+      .expect(409);
+    expect(draft.body?.error?.code).toBe('behavior.record.not_submitted');
+
+    const cancelled = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${demoCancelledRecordId}/reject`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'Cancelled reject rejected' })
+      .expect(409);
+    expect(cancelled.body?.error?.code).toBe('behavior.record.cancelled');
+
+    for (const recordId of [demoApprovedRecordId, demoRejectedRecordId]) {
+      const response = await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/behavior/records/${recordId}/reject`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ reviewNoteEn: 'Already reviewed reject rejected' })
+        .expect(409);
+      expect(response.body?.error?.code).toBe(
+        'behavior.record.already_reviewed',
+      );
+    }
+  });
+
+  it('duplicate approve cannot create duplicate BehaviorPointLedger rows', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const recordId = await createRecordFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoAcademicYearId,
+      termId: demoTermId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      categoryId: demoCategoryId,
+      status: BehaviorRecordStatus.SUBMITTED,
+      titleEn: `${testSuffix}-duplicate-approve-record`,
+      points: 2,
+      submittedAt: new Date(),
+    });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${recordId}/approve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'First approval' })
+      .expect(201);
+
+    const duplicate = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${recordId}/approve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'Second approval' })
+      .expect(409);
+    expect(duplicate.body?.error?.code).toBe(
+      'behavior.record.already_reviewed',
+    );
+
+    await expect(prisma.behaviorPointLedger.count({ where: { recordId } }))
+      .resolves.toBe(1);
+  });
+
+  it('cross-school resource existence is not leaked for review endpoints', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/behavior/review-queue/${tenantBSubmittedRecordId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${tenantBSubmittedRecordId}/approve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'No leak' })
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/behavior/records/${tenantBSubmittedRecordId}/reject`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNoteEn: 'No leak' })
+      .expect(404);
+  });
+
   async function login(email: string): Promise<{ accessToken: string }> {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/auth/login`)
@@ -1232,6 +1629,7 @@ describe('Behavior category tenancy isolation (security)', () => {
     severity?: BehaviorSeverity;
     points: number;
     submittedAt?: Date | null;
+    reviewedAt?: Date | null;
     cancelledAt?: Date | null;
     deletedAt?: Date | null;
   }): Promise<string> {
@@ -1250,6 +1648,7 @@ describe('Behavior category tenancy isolation (security)', () => {
         points: params.points,
         occurredAt: new Date('2026-04-15T09:00:00.000Z'),
         submittedAt: params.submittedAt ?? null,
+        reviewedAt: params.reviewedAt ?? null,
         cancelledAt: params.cancelledAt ?? null,
         deletedAt: params.deletedAt ?? null,
       },
@@ -1304,13 +1703,27 @@ describe('Behavior category tenancy isolation (security)', () => {
   }
 
   async function mutationSideEffectCounts() {
-    const [behaviorRecords, behaviorPointLedger, xpLedger] = await Promise.all([
+    const [
+      behaviorRecords,
+      behaviorPointLedger,
+      xpLedger,
+      rewardCatalogItems,
+      rewardRedemptions,
+    ] = await Promise.all([
       prisma.behaviorRecord.count(),
       prisma.behaviorPointLedger.count(),
       prisma.xpLedger.count(),
+      prisma.rewardCatalogItem.count(),
+      prisma.rewardRedemption.count(),
     ]);
 
-    return { behaviorRecords, behaviorPointLedger, xpLedger };
+    return {
+      behaviorRecords,
+      behaviorPointLedger,
+      xpLedger,
+      rewardCatalogItems,
+      rewardRedemptions,
+    };
   }
 
   async function cleanupBehaviorTenantSchool(schoolId: string): Promise<void> {
