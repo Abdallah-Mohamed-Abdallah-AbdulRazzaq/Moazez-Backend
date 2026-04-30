@@ -778,6 +778,82 @@ Deferred beyond Sprint 5C:
 
 No `demo:sprint5c` script is added for this closeout. The focused Rewards E2E flow is the verification artifact.
 
+## Sprint 6A Behavior Foundation Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Ensure SEED_DEMO_DATA=true
+
+npm run infra:up
+npm run verify:sprint6a
+```
+
+Prerequisites:
+
+- `.env` is ready with valid local secrets.
+- PostgreSQL, Redis, and MinIO are reachable.
+- `npm run infra:up` can start local services, and `npm run verify:sprint2b:preflight` is the fail-fast readiness check used by the verifier chain.
+
+`npm run verify:sprint6a` runs the Sprint 2B preflight check, migrations, seed, build, unit tests, security tests, Sprint 2B/3A/3B/4A/4B/5A/5B/5C E2E flows, and the Sprint 6A Behavior Foundation closeout E2E.
+
+Sprint 6A behavior verification covers:
+
+- behavior category create/list/detail/update/delete
+- positive and negative categories
+- behavior record create/list/detail/update/submit/cancel
+- review queue list/detail
+- approve/reject lifecycle
+- BehaviorPointLedger write on approve only
+- no BehaviorPointLedger write on reject/cancel/submit
+- no XpLedger writes
+- no XP grants
+- no Rewards integration
+- overview read model
+- student behavior summary
+- classroom behavior summary
+- audit and tenancy/security regression
+
+Sprint 6A Behavior endpoints:
+
+- `GET /api/v1/behavior/categories`
+- `GET /api/v1/behavior/categories/:categoryId`
+- `POST /api/v1/behavior/categories`
+- `PATCH /api/v1/behavior/categories/:categoryId`
+- `DELETE /api/v1/behavior/categories/:categoryId`
+- `GET /api/v1/behavior/records`
+- `GET /api/v1/behavior/records/:recordId`
+- `POST /api/v1/behavior/records`
+- `PATCH /api/v1/behavior/records/:recordId`
+- `POST /api/v1/behavior/records/:recordId/submit`
+- `POST /api/v1/behavior/records/:recordId/cancel`
+- `GET /api/v1/behavior/review-queue`
+- `GET /api/v1/behavior/review-queue/:recordId`
+- `POST /api/v1/behavior/records/:recordId/approve`
+- `POST /api/v1/behavior/records/:recordId/reject`
+- `GET /api/v1/behavior/overview`
+- `GET /api/v1/behavior/students/:studentId/summary`
+- `GET /api/v1/behavior/classrooms/:classroomId/summary`
+
+Deferred beyond Sprint 6A:
+
+- app-facing teacher/student/parent behavior APIs
+- parent acknowledgements
+- notifications
+- intervention plans
+- attendance/grades automation
+- XP bridge from Behavior
+- Rewards eligibility/blocking from Behavior
+- leaderboard
+- wallet
+- marketplace
+- advanced economy
+- Behavior exports/reporting beyond current read models
+
+No `demo:sprint6a` script is added for this closeout. The focused Behavior E2E flow is the verification artifact.
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -805,6 +881,7 @@ No `demo:sprint5c` script is added for this closeout. The focused Rewards E2E fl
 | `npm run test:e2e:sprint5a`         | Run the Sprint 5A Reinforcement Foundation closeout e2e flow                                                    |
 | `npm run test:e2e:sprint5b`         | Run the Sprint 5B Hero Journey Foundation closeout e2e flow                                                     |
 | `npm run test:e2e:sprint5c`         | Run the Sprint 5C Rewards Foundation closeout e2e flow                                                          |
+| `npm run test:e2e:sprint6a`         | Run the Sprint 6A Behavior Foundation closeout e2e flow                                                         |
 | `npm run test:security`             | Tenancy isolation tests                                                                                         |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                                    |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                                          |
@@ -821,6 +898,7 @@ No `demo:sprint5c` script is added for this closeout. The focused Rewards E2E fl
 | `npm run verify:sprint5a`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B/4A/4B e2e, and Sprint 5A e2e       |
 | `npm run verify:sprint5b`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B/4A/4B/5A e2e, and Sprint 5B e2e    |
 | `npm run verify:sprint5c`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B/4A/4B/5A/5B e2e, and Sprint 5C e2e |
+| `npm run verify:sprint6a`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B/4A/4B/5A/5B/5C e2e, and Sprint 6A e2e |
 | `npm run seed`                      | Re-run idempotent seeds                                                                                         |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                                           |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                                      |
