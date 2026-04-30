@@ -51,6 +51,7 @@ describe('Rewards catalog tenancy isolation (security)', () => {
   let demoRewardId: string;
   let demoPublishedRewardId: string;
   let demoNoStockRewardId: string;
+  let demoLowStockRewardId: string;
   let demoTeacherRequestRewardId: string;
   let demoStudentId: string;
   let demoEnrollmentId: string;
@@ -321,6 +322,15 @@ describe('Rewards catalog tenancy isolation (security)', () => {
       enrollmentId: demoEnrollmentId,
       amount: 100,
     });
+    await createXpLedgerFixture({
+      suffix: 'eligible-b',
+      schoolId: tenantBSchoolId,
+      academicYearId: tenantBYearId,
+      termId: tenantBTermId,
+      studentId: tenantBStudentId,
+      enrollmentId: tenantBEnrollmentId,
+      amount: 999,
+    });
 
     demoRewardId = await createRewardFixture({
       schoolId: demoSchoolId,
@@ -348,6 +358,17 @@ describe('Rewards catalog tenancy isolation (security)', () => {
       isUnlimited: false,
       stockQuantity: 1,
       stockRemaining: 0,
+    });
+    demoLowStockRewardId = await createRewardFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      imageFileId: demoFileId,
+      suffix: 'low-stock-a',
+      status: RewardCatalogItemStatus.PUBLISHED,
+      isUnlimited: false,
+      stockQuantity: 10,
+      stockRemaining: 2,
     });
     demoTeacherRequestRewardId = await createRewardFixture({
       schoolId: demoSchoolId,
@@ -720,6 +741,202 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     const ids = response.body.items.map((item: { id: string }) => item.id);
     expect(ids).not.toContain(tenantBArchivedRewardId);
     expect(ids).not.toContain(tenantBDeletedRewardId);
+  });
+
+  it('school A overview does not include school B catalog, redemptions, XP, or recent rows', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/rewards/overview`)
+      .query({
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        dateFrom: '2026-10-01',
+        dateTo: '2026-10-02',
+        includeArchived: true,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body.xp).toMatchObject({
+      totalEarnedXp: 100,
+      studentsWithXp: 1,
+      averageEarnedXp: 100,
+    });
+    expect(response.body.catalog.total).toBeGreaterThanOrEqual(1);
+    expect(response.body.redemptions.total).toBeGreaterThanOrEqual(1);
+    expect(
+      response.body.recentRedemptions.map((row: { id: string }) => row.id),
+    ).not.toContain(tenantBRedemptionId);
+    expect(JSON.stringify(response.body)).not.toContain(tenantBRewardId);
+    expect(JSON.stringify(response.body)).not.toContain(tenantBRedemptionId);
+  });
+
+  it('school A cannot read school B student reward summary', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/students/${tenantBStudentId}/summary`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A catalog summary does not include school B catalog items or redemption counters', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/rewards/catalog-summary`)
+      .query({
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        includeArchived: true,
+        includeDeleted: true,
+        dateFrom: '2026-10-01',
+        dateTo: '2026-10-02',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const itemIds = response.body.items.map((item: { id: string }) => item.id);
+    expect(itemIds).toContain(demoPublishedRewardId);
+    expect(itemIds).not.toContain(tenantBRewardId);
+    expect(itemIds).not.toContain(tenantBArchivedRewardId);
+    expect(itemIds).not.toContain(tenantBDeletedRewardId);
+    expect(JSON.stringify(response.body)).not.toContain(tenantBRedemptionId);
+  });
+
+  it('same-school actors without reinforcement.rewards.view get 403 for overview and catalog summary', async () => {
+    const { accessToken } = await login(noAccessEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/rewards/overview`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/rewards/catalog-summary`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+  });
+
+  it('same-school actors without reinforcement.rewards.redemptions.view get 403 for student summary', async () => {
+    const { accessToken } = await login(noAccessEmail);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/students/${demoStudentId}/summary`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+  });
+
+  it('admin and teacher can read overview, student summary, and catalog summary', async () => {
+    for (const email of [DEMO_ADMIN_EMAIL, teacherEmail]) {
+      const { accessToken } = await login(email);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/reinforcement/rewards/overview`)
+        .query({ academicYearId: demoYearId, termId: demoTermId })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/reinforcement/rewards/students/${demoStudentId}/summary`,
+        )
+        .query({ academicYearId: demoYearId, termId: demoTermId })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/reinforcement/rewards/catalog-summary`)
+        .query({ academicYearId: demoYearId, termId: demoTermId })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+    }
+  });
+
+  it('parent and student actors cannot access core dashboard reward read-model endpoints', async () => {
+    for (const email of [parentEmail, studentEmail]) {
+      const { accessToken } = await login(email);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/reinforcement/rewards/overview`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/reinforcement/rewards/students/${demoStudentId}/summary`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/reinforcement/rewards/catalog-summary`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+    }
+  });
+
+  it('read endpoints do not create rewards, redemptions, XP ledger rows, audit rows, or update stock', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const before = await readModelSideEffectCounts(demoLowStockRewardId);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/rewards/overview`)
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/students/${demoStudentId}/summary`,
+      )
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/rewards/catalog-summary`)
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const after = await readModelSideEffectCounts(demoLowStockRewardId);
+    expect(after).toEqual(before);
+  });
+
+  it('student eligibility and recent redemptions do not leak cross-school rows', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const summary = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/students/${demoStudentId}/summary`,
+      )
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const openRedemptionIds = summary.body.eligibility.map(
+      (row: { openRedemptionId: string | null }) => row.openRedemptionId,
+    );
+    expect(openRedemptionIds).toContain(demoRedemptionId);
+    expect(openRedemptionIds).not.toContain(tenantBRedemptionId);
+    expect(JSON.stringify(summary.body)).not.toContain(tenantBRedemptionId);
+
+    const overview = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/rewards/overview`)
+      .query({ academicYearId: demoYearId, termId: demoTermId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(
+      overview.body.recentRedemptions.map((row: { id: string }) => row.id),
+    ).not.toContain(tenantBRedemptionId);
   });
 
   it('school A cannot read school B redemptions', async () => {
@@ -1777,6 +1994,28 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     ]);
 
     return { xpLedger, stockRemaining: reward?.stockRemaining ?? null };
+  }
+
+  async function readModelSideEffectCounts(rewardId: string) {
+    const [rewardCatalogItems, rewardRedemptions, xpLedger, auditLogs, reward] =
+      await Promise.all([
+        prisma.rewardCatalogItem.count(),
+        prisma.rewardRedemption.count(),
+        prisma.xpLedger.count(),
+        prisma.auditLog.count(),
+        prisma.rewardCatalogItem.findUnique({
+          where: { id: rewardId },
+          select: { stockRemaining: true },
+        }),
+      ]);
+
+    return {
+      rewardCatalogItems,
+      rewardRedemptions,
+      xpLedger,
+      auditLogs,
+      stockRemaining: reward?.stockRemaining ?? null,
+    };
   }
 
   async function cleanupTenantSchool(schoolId: string): Promise<void> {
