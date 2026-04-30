@@ -8,20 +8,33 @@ import {
   PublishRewardCatalogItemUseCase,
   UpdateRewardCatalogItemUseCase,
 } from './application/reward-catalog.use-cases';
+import {
+  CancelRewardRedemptionUseCase,
+  CreateRewardRedemptionUseCase,
+  GetRewardRedemptionUseCase,
+  ListRewardRedemptionsUseCase,
+} from './application/reward-redemptions.use-cases';
 import { RewardCatalogController } from './controller/reward-catalog.controller';
+import { RewardRedemptionsController } from './controller/reward-redemptions.controller';
 import { RewardCatalogRepository } from './infrastructure/reward-catalog.repository';
+import { RewardRedemptionsRepository } from './infrastructure/reward-redemptions.repository';
 
 @Module({
   imports: [AuthModule],
-  controllers: [RewardCatalogController],
+  controllers: [RewardCatalogController, RewardRedemptionsController],
   providers: [
     RewardCatalogRepository,
+    RewardRedemptionsRepository,
     ListRewardCatalogUseCase,
     GetRewardCatalogItemUseCase,
     CreateRewardCatalogItemUseCase,
     UpdateRewardCatalogItemUseCase,
     PublishRewardCatalogItemUseCase,
     ArchiveRewardCatalogItemUseCase,
+    ListRewardRedemptionsUseCase,
+    GetRewardRedemptionUseCase,
+    CreateRewardRedemptionUseCase,
+    CancelRewardRedemptionUseCase,
   ],
 })
 export class RewardsModule {}

@@ -7,9 +7,14 @@ import {
   PrismaClient,
   RewardCatalogItemStatus,
   RewardCatalogItemType,
+  RewardRedemptionRequestSource,
+  RewardRedemptionStatus,
   SchoolStatus,
+  StudentEnrollmentStatus,
+  StudentStatus,
   UserStatus,
   UserType,
+  XpSourceType,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
 import request from 'supertest';
@@ -45,6 +50,13 @@ describe('Rewards catalog tenancy isolation (security)', () => {
   let demoFileId: string;
   let demoRewardId: string;
   let demoPublishedRewardId: string;
+  let demoNoStockRewardId: string;
+  let demoTeacherRequestRewardId: string;
+  let demoStudentId: string;
+  let demoEnrollmentId: string;
+  let demoLowXpStudentId: string;
+  let demoLowXpEnrollmentId: string;
+  let demoRedemptionId: string;
 
   let tenantBYearId: string;
   let tenantBTermId: string;
@@ -52,6 +64,9 @@ describe('Rewards catalog tenancy isolation (security)', () => {
   let tenantBRewardId: string;
   let tenantBArchivedRewardId: string;
   let tenantBDeletedRewardId: string;
+  let tenantBStudentId: string;
+  let tenantBEnrollmentId: string;
+  let tenantBRedemptionId: string;
 
   let noAccessEmail: string;
   let viewOnlyEmail: string;
@@ -65,8 +80,16 @@ describe('Rewards catalog tenancy isolation (security)', () => {
   const createdRoleIds: string[] = [];
   const createdAcademicYearIds: string[] = [];
   const createdTermIds: string[] = [];
+  const createdStageIds: string[] = [];
+  const createdGradeIds: string[] = [];
+  const createdSectionIds: string[] = [];
+  const createdClassroomIds: string[] = [];
+  const createdStudentIds: string[] = [];
+  const createdEnrollmentIds: string[] = [];
   const createdFileIds: string[] = [];
   const createdRewardIds: string[] = [];
+  const createdRedemptionIds: string[] = [];
+  const createdXpLedgerIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -89,6 +112,8 @@ describe('Rewards catalog tenancy isolation (security)', () => {
       studentRole,
       rewardsViewPermission,
       rewardsManagePermission,
+      rewardsRedemptionsViewPermission,
+      rewardsRedemptionsRequestPermission,
     ] = await Promise.all([
       prisma.role.findFirst({
         where: { key: 'school_admin', schoolId: null, isSystem: true },
@@ -114,6 +139,14 @@ describe('Rewards catalog tenancy isolation (security)', () => {
         where: { code: 'reinforcement.rewards.manage' },
         select: { id: true },
       }),
+      prisma.permission.findUnique({
+        where: { code: 'reinforcement.rewards.redemptions.view' },
+        select: { id: true },
+      }),
+      prisma.permission.findUnique({
+        where: { code: 'reinforcement.rewards.redemptions.request' },
+        select: { id: true },
+      }),
     ]);
 
     if (
@@ -122,7 +155,9 @@ describe('Rewards catalog tenancy isolation (security)', () => {
       !parentRole ||
       !studentRole ||
       !rewardsViewPermission ||
-      !rewardsManagePermission
+      !rewardsManagePermission ||
+      !rewardsRedemptionsViewPermission ||
+      !rewardsRedemptionsRequestPermission
     ) {
       throw new Error('Rewards roles or permissions missing - run seed.');
     }
@@ -151,6 +186,7 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     const noAccessRoleId = await createCustomRole('no-access', []);
     const viewOnlyRoleId = await createCustomRole('view-only', [
       rewardsViewPermission.id,
+      rewardsRedemptionsViewPermission.id,
     ]);
 
     noAccessEmail = `${testSuffix}-no-access@security.moazez.local`;
@@ -169,9 +205,17 @@ describe('Rewards catalog tenancy isolation (security)', () => {
       UserType.SCHOOL_USER,
       viewOnlyRoleId,
     );
-    await createUserWithMembership(teacherEmail, UserType.TEACHER, teacherRole.id);
+    await createUserWithMembership(
+      teacherEmail,
+      UserType.TEACHER,
+      teacherRole.id,
+    );
     await createUserWithMembership(parentEmail, UserType.PARENT, parentRole.id);
-    await createUserWithMembership(studentEmail, UserType.STUDENT, studentRole.id);
+    await createUserWithMembership(
+      studentEmail,
+      UserType.STUDENT,
+      studentRole.id,
+    );
 
     const orgB = await prisma.organization.upsert({
       where: { slug: TENANT_B_ORG_SLUG },
@@ -220,6 +264,52 @@ describe('Rewards catalog tenancy isolation (security)', () => {
       'reward-b.png',
     );
 
+    const demoStructure = await createClassroomFixture('a', demoSchoolId);
+    const tenantBStructure = await createClassroomFixture('b', tenantBSchoolId);
+
+    const demoStudent = await createStudentEnrollmentFixture({
+      suffix: 'student-a',
+      schoolId: demoSchoolId,
+      organizationId: demoOrganizationId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      classroomId: demoStructure.classroomId,
+    });
+    demoStudentId = demoStudent.studentId;
+    demoEnrollmentId = demoStudent.enrollmentId;
+
+    const demoLowXpStudent = await createStudentEnrollmentFixture({
+      suffix: 'low-xp-student-a',
+      schoolId: demoSchoolId,
+      organizationId: demoOrganizationId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      classroomId: demoStructure.classroomId,
+    });
+    demoLowXpStudentId = demoLowXpStudent.studentId;
+    demoLowXpEnrollmentId = demoLowXpStudent.enrollmentId;
+
+    const tenantBStudent = await createStudentEnrollmentFixture({
+      suffix: 'student-b',
+      schoolId: tenantBSchoolId,
+      organizationId: tenantBOrganizationId,
+      academicYearId: tenantBYearId,
+      termId: tenantBTermId,
+      classroomId: tenantBStructure.classroomId,
+    });
+    tenantBStudentId = tenantBStudent.studentId;
+    tenantBEnrollmentId = tenantBStudent.enrollmentId;
+
+    await createXpLedgerFixture({
+      suffix: 'eligible-a',
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      amount: 100,
+    });
+
     demoRewardId = await createRewardFixture({
       schoolId: demoSchoolId,
       academicYearId: demoYearId,
@@ -234,6 +324,25 @@ describe('Rewards catalog tenancy isolation (security)', () => {
       termId: demoTermId,
       imageFileId: demoFileId,
       suffix: 'published-a',
+      status: RewardCatalogItemStatus.PUBLISHED,
+    });
+    demoNoStockRewardId = await createRewardFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      imageFileId: demoFileId,
+      suffix: 'no-stock-a',
+      status: RewardCatalogItemStatus.PUBLISHED,
+      isUnlimited: false,
+      stockQuantity: 1,
+      stockRemaining: 0,
+    });
+    demoTeacherRequestRewardId = await createRewardFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      imageFileId: demoFileId,
+      suffix: 'teacher-request-a',
       status: RewardCatalogItemStatus.PUBLISHED,
     });
     tenantBRewardId = await createRewardFixture({
@@ -262,6 +371,25 @@ describe('Rewards catalog tenancy isolation (security)', () => {
       deletedAt: new Date(),
     });
 
+    demoRedemptionId = await createRedemptionFixture({
+      schoolId: demoSchoolId,
+      catalogItemId: demoPublishedRewardId,
+      studentId: demoStudentId,
+      enrollmentId: demoEnrollmentId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      status: RewardRedemptionStatus.REQUESTED,
+    });
+    tenantBRedemptionId = await createRedemptionFixture({
+      schoolId: tenantBSchoolId,
+      catalogItemId: tenantBRewardId,
+      studentId: tenantBStudentId,
+      enrollmentId: tenantBEnrollmentId,
+      academicYearId: tenantBYearId,
+      termId: tenantBTermId,
+      status: RewardRedemptionStatus.REQUESTED,
+    });
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -284,10 +412,30 @@ describe('Rewards catalog tenancy isolation (security)', () => {
       await prisma.rewardRedemption.deleteMany({
         where: { catalogItemId: { in: createdRewardIds } },
       });
+      await prisma.rewardRedemption.deleteMany({
+        where: { id: { in: createdRedemptionIds } },
+      });
       await prisma.rewardCatalogItem.deleteMany({
         where: { id: { in: createdRewardIds } },
       });
+      await prisma.xpLedger.deleteMany({
+        where: { id: { in: createdXpLedgerIds } },
+      });
+      await prisma.enrollment.deleteMany({
+        where: { id: { in: createdEnrollmentIds } },
+      });
+      await prisma.student.deleteMany({
+        where: { id: { in: createdStudentIds } },
+      });
       await prisma.file.deleteMany({ where: { id: { in: createdFileIds } } });
+      await prisma.classroom.deleteMany({
+        where: { id: { in: createdClassroomIds } },
+      });
+      await prisma.section.deleteMany({
+        where: { id: { in: createdSectionIds } },
+      });
+      await prisma.grade.deleteMany({ where: { id: { in: createdGradeIds } } });
+      await prisma.stage.deleteMany({ where: { id: { in: createdStageIds } } });
       await prisma.term.deleteMany({ where: { id: { in: createdTermIds } } });
       await prisma.academicYear.deleteMany({
         where: { id: { in: createdAcademicYearIds } },
@@ -365,7 +513,9 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL);
 
     await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/reinforcement/rewards/catalog/${tenantBRewardId}`)
+      .patch(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/catalog/${tenantBRewardId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ titleEn: 'Leaked reward' })
       .expect(404);
@@ -460,7 +610,9 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     });
 
     const updated = await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/reinforcement/rewards/catalog/${created.body.id}`)
+      .patch(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/catalog/${created.body.id}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ stockRemaining: 2, sortOrder: 7 })
       .expect(200);
@@ -542,7 +694,9 @@ describe('Rewards catalog tenancy isolation (security)', () => {
       .expect(404);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/reinforcement/rewards/catalog/${tenantBDeletedRewardId}`)
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/catalog/${tenantBDeletedRewardId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
 
@@ -554,6 +708,301 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     const ids = response.body.items.map((item: { id: string }) => item.id);
     expect(ids).not.toContain(tenantBArchivedRewardId);
     expect(ids).not.toContain(tenantBDeletedRewardId);
+  });
+
+  it('school A cannot read school B redemptions', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${tenantBRedemptionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A redemption list does not include school B redemptions', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .query({ search: testSuffix, includeTerminal: true })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const ids = response.body.items.map((item: { id: string }) => item.id);
+    expect(ids).toContain(demoRedemptionId);
+    expect(ids).not.toContain(tenantBRedemptionId);
+  });
+
+  it('school A cannot create redemptions with school B resources', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(redemptionPayload({ catalogItemId: tenantBRewardId }))
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(redemptionPayload({ studentId: tenantBStudentId }))
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(redemptionPayload({ enrollmentId: tenantBEnrollmentId }))
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        redemptionPayload({
+          academicYearId: tenantBYearId,
+          termId: null,
+          catalogItemId: demoTeacherRequestRewardId,
+        }),
+      )
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        redemptionPayload({
+          termId: tenantBTermId,
+          catalogItemId: demoTeacherRequestRewardId,
+        }),
+      )
+      .expect(404);
+  });
+
+  it('school A cannot cancel school B redemptions', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${tenantBRedemptionId}/cancel`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ cancellationReasonEn: 'No leak' })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('same-school actors without redemption view permission get 403 for list and detail', async () => {
+    const { accessToken } = await login(noAccessEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${demoRedemptionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+  });
+
+  it('same-school actors without redemption request permission get 403 for create and cancel', async () => {
+    const { accessToken } = await login(viewOnlyEmail);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(redemptionPayload({ catalogItemId: demoTeacherRequestRewardId }))
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${demoRedemptionId}/cancel`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ cancellationReasonEn: 'Forbidden' })
+      .expect(403);
+  });
+
+  it('admin can create and cancel redemption requests', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const rewardId = await createRewardFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      imageFileId: demoFileId,
+      suffix: 'admin-redemption-api',
+      status: RewardCatalogItemStatus.PUBLISHED,
+      isUnlimited: false,
+      stockQuantity: 2,
+      stockRemaining: 2,
+    });
+
+    const created = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(redemptionPayload({ catalogItemId: rewardId }))
+      .expect(201);
+    createdRedemptionIds.push(created.body.id);
+
+    expect(created.body).toMatchObject({
+      catalogItemId: rewardId,
+      studentId: demoStudentId,
+      status: 'requested',
+      requestSource: 'dashboard',
+      eligibilitySnapshot: {
+        minTotalXp: 10,
+        totalEarnedXp: 100,
+        eligible: true,
+      },
+    });
+
+    const cancelled = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${created.body.id}/cancel`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ cancellationReasonEn: 'Security closeout' })
+      .expect(201);
+
+    expect(cancelled.body).toMatchObject({
+      id: created.body.id,
+      status: 'cancelled',
+      cancelledById: expect.any(String),
+      cancellationReasonEn: 'Security closeout',
+    });
+  });
+
+  it('teacher can view and request redemptions but still cannot manage catalog', async () => {
+    const { accessToken } = await login(teacherEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${demoRedemptionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const created = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(redemptionPayload({ catalogItemId: demoTeacherRequestRewardId }))
+      .expect(201);
+    createdRedemptionIds.push(created.body.id);
+    expect(created.body.status).toBe('requested');
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/rewards/catalog`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(catalogPayload({ titleEn: `${testSuffix}-teacher-forbidden-2` }))
+      .expect(403);
+  });
+
+  it('parent and student actors cannot access core dashboard redemption endpoints', async () => {
+    for (const email of [parentEmail, studentEmail]) {
+      const { accessToken } = await login(email);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(redemptionPayload({ catalogItemId: demoTeacherRequestRewardId }))
+        .expect(403);
+    }
+  });
+
+  it('duplicate open redemption requests are rejected', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(redemptionPayload({ catalogItemId: demoPublishedRewardId }))
+      .expect(409);
+
+    expect(response.body?.error?.code).toBe(
+      'reinforcement.reward.duplicate_redemption',
+    );
+  });
+
+  it('insufficient XP and no-stock limited rewards are rejected', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+
+    const insufficient = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        redemptionPayload({
+          catalogItemId: demoTeacherRequestRewardId,
+          studentId: demoLowXpStudentId,
+          enrollmentId: demoLowXpEnrollmentId,
+        }),
+      )
+      .expect(422);
+    expect(insufficient.body?.error?.code).toBe(
+      'reinforcement.reward.insufficient_xp',
+    );
+
+    const noStock = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(redemptionPayload({ catalogItemId: demoNoStockRewardId }))
+      .expect(409);
+    expect(noStock.body?.error?.code).toBe('reinforcement.reward.out_of_stock');
+  });
+
+  it('redemption request and cancel do not write XP ledger rows or change reward stock', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL);
+    const rewardId = await createRewardFixture({
+      schoolId: demoSchoolId,
+      academicYearId: demoYearId,
+      termId: demoTermId,
+      imageFileId: demoFileId,
+      suffix: 'side-effect-api',
+      status: RewardCatalogItemStatus.PUBLISHED,
+      isUnlimited: false,
+      stockQuantity: 5,
+      stockRemaining: 5,
+    });
+    const before = await redemptionSideEffectCounts(rewardId);
+
+    const created = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(redemptionPayload({ catalogItemId: rewardId }))
+      .expect(201);
+    createdRedemptionIds.push(created.body.id);
+
+    const afterRequest = await redemptionSideEffectCounts(rewardId);
+    expect(afterRequest.xpLedger).toBe(before.xpLedger);
+    expect(afterRequest.stockRemaining).toBe(before.stockRemaining);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${created.body.id}/cancel`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ cancellationReasonEn: 'No stock restore expected' })
+      .expect(201);
+
+    const afterCancel = await redemptionSideEffectCounts(rewardId);
+    expect(afterCancel.xpLedger).toBe(before.xpLedger);
+    expect(afterCancel.stockRemaining).toBe(before.stockRemaining);
   });
 
   async function login(email: string): Promise<{ accessToken: string }> {
@@ -678,6 +1127,123 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     return file.id;
   }
 
+  async function createClassroomFixture(suffix: string, schoolId: string) {
+    const stage = await prisma.stage.create({
+      data: {
+        schoolId,
+        nameAr: `${testSuffix}-stage-${suffix}-ar`,
+        nameEn: `${testSuffix}-stage-${suffix}`,
+      },
+      select: { id: true },
+    });
+    createdStageIds.push(stage.id);
+
+    const grade = await prisma.grade.create({
+      data: {
+        schoolId,
+        stageId: stage.id,
+        nameAr: `${testSuffix}-grade-${suffix}-ar`,
+        nameEn: `${testSuffix}-grade-${suffix}`,
+      },
+      select: { id: true },
+    });
+    createdGradeIds.push(grade.id);
+
+    const section = await prisma.section.create({
+      data: {
+        schoolId,
+        gradeId: grade.id,
+        nameAr: `${testSuffix}-section-${suffix}-ar`,
+        nameEn: `${testSuffix}-section-${suffix}`,
+      },
+      select: { id: true },
+    });
+    createdSectionIds.push(section.id);
+
+    const classroom = await prisma.classroom.create({
+      data: {
+        schoolId,
+        sectionId: section.id,
+        nameAr: `${testSuffix}-classroom-${suffix}-ar`,
+        nameEn: `${testSuffix}-classroom-${suffix}`,
+      },
+      select: { id: true },
+    });
+    createdClassroomIds.push(classroom.id);
+
+    return {
+      stageId: stage.id,
+      gradeId: grade.id,
+      sectionId: section.id,
+      classroomId: classroom.id,
+    };
+  }
+
+  async function createStudentEnrollmentFixture(params: {
+    suffix: string;
+    schoolId: string;
+    organizationId: string;
+    academicYearId: string;
+    termId: string;
+    classroomId: string;
+  }) {
+    const student = await prisma.student.create({
+      data: {
+        schoolId: params.schoolId,
+        organizationId: params.organizationId,
+        firstName: `Rewards ${params.suffix}`,
+        lastName: 'Security',
+        status: StudentStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    createdStudentIds.push(student.id);
+
+    const enrollment = await prisma.enrollment.create({
+      data: {
+        schoolId: params.schoolId,
+        studentId: student.id,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        classroomId: params.classroomId,
+        status: StudentEnrollmentStatus.ACTIVE,
+        enrolledAt: new Date('2026-09-01T00:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdEnrollmentIds.push(enrollment.id);
+
+    return { studentId: student.id, enrollmentId: enrollment.id };
+  }
+
+  async function createXpLedgerFixture(params: {
+    suffix: string;
+    schoolId: string;
+    academicYearId: string;
+    termId: string;
+    studentId: string;
+    enrollmentId: string;
+    amount: number;
+  }): Promise<string> {
+    const ledger = await prisma.xpLedger.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        studentId: params.studentId,
+        enrollmentId: params.enrollmentId,
+        sourceType: XpSourceType.MANUAL_BONUS,
+        sourceId: `${testSuffix}-${params.suffix}`,
+        amount: params.amount,
+        reason: 'Rewards security fixture',
+        occurredAt: new Date('2026-10-01T00:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdXpLedgerIds.push(ledger.id);
+    return ledger.id;
+  }
+
   async function createRewardFixture(params: {
     schoolId: string;
     academicYearId: string;
@@ -686,6 +1252,10 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     suffix: string;
     status: RewardCatalogItemStatus;
     deletedAt?: Date | null;
+    minTotalXp?: number | null;
+    isUnlimited?: boolean;
+    stockQuantity?: number | null;
+    stockRemaining?: number | null;
   }): Promise<string> {
     const item = await prisma.rewardCatalogItem.create({
       data: {
@@ -696,8 +1266,10 @@ describe('Rewards catalog tenancy isolation (security)', () => {
         titleEn: `${testSuffix}-${params.suffix}`,
         type: RewardCatalogItemType.PHYSICAL,
         status: params.status,
-        minTotalXp: 10,
-        isUnlimited: true,
+        minTotalXp: params.minTotalXp === undefined ? 10 : params.minTotalXp,
+        isUnlimited: params.isUnlimited ?? true,
+        stockQuantity: params.stockQuantity ?? null,
+        stockRemaining: params.stockRemaining ?? null,
         deletedAt: params.deletedAt ?? null,
         ...(params.status === RewardCatalogItemStatus.PUBLISHED
           ? { publishedAt: new Date() }
@@ -710,6 +1282,42 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     });
     createdRewardIds.push(item.id);
     return item.id;
+  }
+
+  async function createRedemptionFixture(params: {
+    schoolId: string;
+    catalogItemId: string;
+    studentId: string;
+    enrollmentId: string;
+    academicYearId: string;
+    termId: string;
+    status: RewardRedemptionStatus;
+  }): Promise<string> {
+    const redemption = await prisma.rewardRedemption.create({
+      data: {
+        schoolId: params.schoolId,
+        catalogItemId: params.catalogItemId,
+        studentId: params.studentId,
+        enrollmentId: params.enrollmentId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        status: params.status,
+        requestSource: RewardRedemptionRequestSource.DASHBOARD,
+        requestedAt: new Date('2026-10-02T00:00:00.000Z'),
+        eligibilitySnapshot: {
+          minTotalXp: 10,
+          totalEarnedXp: 100,
+          eligible: true,
+          stockAvailable: true,
+          isUnlimited: true,
+          stockRemaining: null,
+          catalogItemStatus: 'published',
+        },
+      },
+      select: { id: true },
+    });
+    createdRedemptionIds.push(redemption.id);
+    return redemption.id;
   }
 
   function catalogPayload(
@@ -743,6 +1351,33 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     };
   }
 
+  function redemptionPayload(
+    overrides?: Partial<{
+      catalogItemId: string;
+      studentId: string;
+      enrollmentId: string | null;
+      academicYearId: string | null;
+      termId: string | null;
+      requestSource: string;
+    }>,
+  ) {
+    return {
+      catalogItemId: overrides?.catalogItemId ?? demoPublishedRewardId,
+      studentId: overrides?.studentId ?? demoStudentId,
+      enrollmentId:
+        overrides && 'enrollmentId' in overrides
+          ? overrides.enrollmentId
+          : demoEnrollmentId,
+      academicYearId:
+        overrides && 'academicYearId' in overrides
+          ? overrides.academicYearId
+          : demoYearId,
+      termId:
+        overrides && 'termId' in overrides ? overrides.termId : demoTermId,
+      requestSource: overrides?.requestSource ?? 'dashboard',
+    };
+  }
+
   async function catalogSideEffectCounts() {
     const [rewardRedemptions, xpLedger] = await Promise.all([
       prisma.rewardRedemption.count(),
@@ -752,11 +1387,29 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     return { rewardRedemptions, xpLedger };
   }
 
+  async function redemptionSideEffectCounts(rewardId: string) {
+    const [xpLedger, reward] = await Promise.all([
+      prisma.xpLedger.count(),
+      prisma.rewardCatalogItem.findUnique({
+        where: { id: rewardId },
+        select: { stockRemaining: true },
+      }),
+    ]);
+
+    return { xpLedger, stockRemaining: reward?.stockRemaining ?? null };
+  }
+
   async function cleanupTenantSchool(schoolId: string): Promise<void> {
     await prisma.rewardRedemption.deleteMany({ where: { schoolId } });
     await prisma.rewardCatalogItem.deleteMany({ where: { schoolId } });
     await prisma.xpLedger.deleteMany({ where: { schoolId } });
+    await prisma.enrollment.deleteMany({ where: { schoolId } });
+    await prisma.student.deleteMany({ where: { schoolId } });
     await prisma.file.deleteMany({ where: { schoolId } });
+    await prisma.classroom.deleteMany({ where: { schoolId } });
+    await prisma.section.deleteMany({ where: { schoolId } });
+    await prisma.grade.deleteMany({ where: { schoolId } });
+    await prisma.stage.deleteMany({ where: { schoolId } });
     await prisma.term.deleteMany({ where: { schoolId } });
     await prisma.academicYear.deleteMany({ where: { schoolId } });
   }
