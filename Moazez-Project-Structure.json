@@ -300,6 +300,11 @@
           "name": "ADR-0001-multi-tenancy-enforcement.md",
           "type": "file",
           "icon": "📝"
+        },
+        {
+          "name": "ADR-0002-behavior-core-module-boundary.md",
+          "type": "file",
+          "icon": "📝"
         }
       ]
     },
@@ -459,6 +464,18 @@
             },
             {
               "name": "20260430120000_0012_rewards_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260430180000_0013_behavior_foundation",
               "type": "folder",
               "icon": "📁",
               "children": [
@@ -3201,6 +3218,257 @@
                 },
                 {
                   "name": "attendance.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "behavior",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "application",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "behavior-categories.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-category-use-case.helpers.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-dashboard.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-records.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-review.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "controller",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "behavior-categories.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-dashboard.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-records.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-review.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "domain",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "behavior-category-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-dashboard-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-records-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-review-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "dto",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "behavior-category.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-dashboard.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-records.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-review.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "infrastructure",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "behavior-categories.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-dashboard.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-records.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-review.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "presenters",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "behavior-category.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-dashboard.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-records.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-review.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "tests",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "behavior-categories.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-category-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-category.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-dashboard-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-dashboard.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-dashboard.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-records-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-records.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-records.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-review-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-review.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "behavior-review.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "behavior-context.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "behavior.module.ts",
                   "type": "file",
                   "icon": "📘"
                 }
@@ -7770,6 +8038,11 @@
               "icon": "📘"
             },
             {
+              "name": "behavior-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "files-attachments-preview.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -7860,6 +8133,11 @@
             },
             {
               "name": "tenancy.attendance.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.behavior.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -8091,7 +8369,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-04-30T12:15:25.299Z",
+    "generated": "2026-04-30T22:57:16.463Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
