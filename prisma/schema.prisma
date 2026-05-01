@@ -574,6 +574,144 @@ enum BehaviorPointLedgerEntryType {
 // PLATFORM — organizations & schools (tenant roots)
 // ============================================================
 
+// Communication
+enum CommunicationConversationType {
+  DIRECT
+  GROUP
+  CLASSROOM
+  GRADE
+  SECTION
+  STAGE
+  SCHOOL_WIDE
+  SUPPORT
+  SYSTEM
+
+  @@map("communication_conversation_type")
+}
+
+enum CommunicationConversationStatus {
+  ACTIVE
+  ARCHIVED
+  CLOSED
+
+  @@map("communication_conversation_status")
+}
+
+enum CommunicationParticipantRole {
+  OWNER
+  ADMIN
+  MODERATOR
+  MEMBER
+  READ_ONLY
+  SYSTEM
+
+  @@map("communication_participant_role")
+}
+
+enum CommunicationParticipantStatus {
+  ACTIVE
+  INVITED
+  LEFT
+  REMOVED
+  MUTED
+  BLOCKED
+
+  @@map("communication_participant_status")
+}
+
+enum CommunicationInviteStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+
+  @@map("communication_invite_status")
+}
+
+enum CommunicationJoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+
+  @@map("communication_join_request_status")
+}
+
+enum CommunicationMessageKind {
+  TEXT
+  IMAGE
+  FILE
+  AUDIO
+  VIDEO
+  SYSTEM
+
+  @@map("communication_message_kind")
+}
+
+enum CommunicationMessageStatus {
+  SENT
+  HIDDEN
+  DELETED
+
+  @@map("communication_message_status")
+}
+
+enum CommunicationDeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+
+  @@map("communication_delivery_status")
+}
+
+enum CommunicationReportStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  DISMISSED
+
+  @@map("communication_report_status")
+}
+
+enum CommunicationModerationActionType {
+  MESSAGE_HIDDEN
+  MESSAGE_UNHIDDEN
+  MESSAGE_DELETED
+  USER_MUTED
+  USER_UNMUTED
+  USER_RESTRICTED
+  USER_UNRESTRICTED
+  USER_BLOCKED
+  USER_UNBLOCKED
+  CONVERSATION_LOCKED
+  CONVERSATION_UNLOCKED
+  PARTICIPANT_REMOVED
+  REPORT_RESOLVED
+
+  @@map("communication_moderation_action_type")
+}
+
+enum CommunicationStudentDirectMode {
+  DISABLED
+  SAME_CLASSROOM
+  SAME_GRADE
+  SAME_SCHOOL
+  ANY_SCHOOL_USER
+  APPROVAL_REQUIRED
+
+  @@map("communication_student_direct_mode")
+}
+
+enum CommunicationRestrictionType {
+  MUTE
+  SEND_DISABLED
+  GROUP_CREATE_DISABLED
+  DIRECT_MESSAGE_DISABLED
+
+  @@map("communication_restriction_type")
+}
+
 model Organization {
   id     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name   String
@@ -611,75 +749,89 @@ model School {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
-  memberships                       Membership[]
-  roles                             Role[]
-  schoolProfile                     SchoolProfile?
-  securitySetting                   SecuritySetting?
-  notificationTemplates             NotificationTemplate[]
-  notificationTemplateChannelStates NotificationTemplateChannelState[]
-  integrationConnections            IntegrationConnection[]
-  backupJobs                        BackupJob[]
-  academicYears                     AcademicYear[]
-  terms                             Term[]
-  stages                            Stage[]
-  grades                            Grade[]
-  sections                          Section[]
-  classrooms                        Classroom[]
-  subjects                          Subject[]
-  teacherSubjectAllocations         TeacherSubjectAllocation[]
-  rooms                             Room[]
-  attachments                       Attachment[]
-  importJobs                        ImportJob[]
-  auditLogs                         AuditLog[]
-  files                             File[]
-  leads                             Lead[]
-  applications                      Application[]
-  applicationDocuments              ApplicationDocument[]
-  placementTests                    PlacementTest[]
-  interviews                        Interview[]
-  admissionDecisions                AdmissionDecision[]
-  students                          Student[]
-  guardians                         Guardian[]
-  studentGuardians                  StudentGuardian[]
-  enrollments                       Enrollment[]
-  studentDocuments                  StudentDocument[]
-  studentMedicalProfiles            StudentMedicalProfile[]
-  studentNotes                      StudentNote[]
-  attendancePolicies                AttendancePolicy[]
-  attendanceSessions                AttendanceSession[]
-  attendanceEntries                 AttendanceEntry[]
-  attendanceExcuseRequests          AttendanceExcuseRequest[]
-  attendanceExcuseRequestSessions   AttendanceExcuseRequestSession[]
-  gradeAssessments                  GradeAssessment[]
-  gradeAssessmentQuestions          GradeAssessmentQuestion[]
-  gradeAssessmentQuestionOptions    GradeAssessmentQuestionOption[]
-  gradeSubmissions                  GradeSubmission[]
-  gradeSubmissionAnswers            GradeSubmissionAnswer[]
-  gradeSubmissionAnswerOptions      GradeSubmissionAnswerOption[]
-  gradeItems                        GradeItem[]
-  gradeRules                        GradeRule[]
-  reinforcementTasks                ReinforcementTask[]
-  reinforcementTaskTargets          ReinforcementTaskTarget[]
-  reinforcementTaskStages           ReinforcementTaskStage[]
-  reinforcementAssignments          ReinforcementAssignment[]
-  reinforcementSubmissions          ReinforcementSubmission[]
-  reinforcementReviews              ReinforcementReview[]
-  reinforcementTaskTemplates        ReinforcementTaskTemplate[]
-  reinforcementTaskTemplateStages   ReinforcementTaskTemplateStage[]
-  xpPolicies                        XpPolicy[]
-  xpLedgers                         XpLedger[]
-  heroBadges                        HeroBadge[]
-  heroMissions                      HeroMission[]
-  heroMissionObjectives             HeroMissionObjective[]
-  heroMissionProgress               HeroMissionProgress[]
-  heroMissionObjectiveProgress      HeroMissionObjectiveProgress[]
-  heroStudentBadges                 HeroStudentBadge[]
-  heroJourneyEvents                 HeroJourneyEvent[]
-  rewardCatalogItems                RewardCatalogItem[]
-  rewardRedemptions                 RewardRedemption[]
-  behaviorCategories                BehaviorCategory[]
-  behaviorRecords                   BehaviorRecord[]
-  behaviorPointLedgerEntries        BehaviorPointLedger[]
+  memberships                           Membership[]
+  roles                                 Role[]
+  schoolProfile                         SchoolProfile?
+  securitySetting                       SecuritySetting?
+  notificationTemplates                 NotificationTemplate[]
+  notificationTemplateChannelStates     NotificationTemplateChannelState[]
+  integrationConnections                IntegrationConnection[]
+  backupJobs                            BackupJob[]
+  academicYears                         AcademicYear[]
+  terms                                 Term[]
+  stages                                Stage[]
+  grades                                Grade[]
+  sections                              Section[]
+  classrooms                            Classroom[]
+  subjects                              Subject[]
+  teacherSubjectAllocations             TeacherSubjectAllocation[]
+  rooms                                 Room[]
+  attachments                           Attachment[]
+  importJobs                            ImportJob[]
+  auditLogs                             AuditLog[]
+  files                                 File[]
+  leads                                 Lead[]
+  applications                          Application[]
+  applicationDocuments                  ApplicationDocument[]
+  placementTests                        PlacementTest[]
+  interviews                            Interview[]
+  admissionDecisions                    AdmissionDecision[]
+  students                              Student[]
+  guardians                             Guardian[]
+  studentGuardians                      StudentGuardian[]
+  enrollments                           Enrollment[]
+  studentDocuments                      StudentDocument[]
+  studentMedicalProfiles                StudentMedicalProfile[]
+  studentNotes                          StudentNote[]
+  attendancePolicies                    AttendancePolicy[]
+  attendanceSessions                    AttendanceSession[]
+  attendanceEntries                     AttendanceEntry[]
+  attendanceExcuseRequests              AttendanceExcuseRequest[]
+  attendanceExcuseRequestSessions       AttendanceExcuseRequestSession[]
+  gradeAssessments                      GradeAssessment[]
+  gradeAssessmentQuestions              GradeAssessmentQuestion[]
+  gradeAssessmentQuestionOptions        GradeAssessmentQuestionOption[]
+  gradeSubmissions                      GradeSubmission[]
+  gradeSubmissionAnswers                GradeSubmissionAnswer[]
+  gradeSubmissionAnswerOptions          GradeSubmissionAnswerOption[]
+  gradeItems                            GradeItem[]
+  gradeRules                            GradeRule[]
+  reinforcementTasks                    ReinforcementTask[]
+  reinforcementTaskTargets              ReinforcementTaskTarget[]
+  reinforcementTaskStages               ReinforcementTaskStage[]
+  reinforcementAssignments              ReinforcementAssignment[]
+  reinforcementSubmissions              ReinforcementSubmission[]
+  reinforcementReviews                  ReinforcementReview[]
+  reinforcementTaskTemplates            ReinforcementTaskTemplate[]
+  reinforcementTaskTemplateStages       ReinforcementTaskTemplateStage[]
+  xpPolicies                            XpPolicy[]
+  xpLedgers                             XpLedger[]
+  heroBadges                            HeroBadge[]
+  heroMissions                          HeroMission[]
+  heroMissionObjectives                 HeroMissionObjective[]
+  heroMissionProgress                   HeroMissionProgress[]
+  heroMissionObjectiveProgress          HeroMissionObjectiveProgress[]
+  heroStudentBadges                     HeroStudentBadge[]
+  heroJourneyEvents                     HeroJourneyEvent[]
+  rewardCatalogItems                    RewardCatalogItem[]
+  rewardRedemptions                     RewardRedemption[]
+  behaviorCategories                    BehaviorCategory[]
+  behaviorRecords                       BehaviorRecord[]
+  behaviorPointLedgerEntries            BehaviorPointLedger[]
+  communicationPolicy                   CommunicationPolicy?
+  communicationConversations            CommunicationConversation[]
+  communicationConversationParticipants CommunicationConversationParticipant[]
+  communicationConversationInvites      CommunicationConversationInvite[]
+  communicationConversationJoinRequests CommunicationConversationJoinRequest[]
+  communicationMessages                 CommunicationMessage[]
+  communicationMessageReads             CommunicationMessageRead[]
+  communicationMessageDeliveries        CommunicationMessageDelivery[]
+  communicationMessageReactions         CommunicationMessageReaction[]
+  communicationMessageAttachments       CommunicationMessageAttachment[]
+  communicationMessageReports           CommunicationMessageReport[]
+  communicationModerationActions        CommunicationModerationAction[]
+  communicationUserBlocks               CommunicationUserBlock[]
+  communicationUserRestrictions         CommunicationUserRestriction[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -707,57 +859,85 @@ model User {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  memberships                     Membership[]
-  sessions                        Session[]
-  auditLogsActing                 AuditLog[]                     @relation("AuditLogActor")
-  filesUploaded                   File[]                         @relation("FileUploader")
-  schoolProfilesUpdated           SchoolProfile[]                @relation("SchoolProfileUpdatedBy")
-  securitySettingsUpdated         SecuritySetting[]              @relation("SecuritySettingUpdatedBy")
-  backupJobsCreated               BackupJob[]                    @relation("BackupJobCreatedBy")
-  attachmentsCreated              Attachment[]                   @relation("AttachmentCreatedBy")
-  importJobsCreated               ImportJob[]                    @relation("ImportJobCreatedBy")
-  ownedLeads                      Lead[]                         @relation("LeadOwner")
-  admissionInterviews             Interview[]                    @relation("AdmissionInterviewInterviewer")
-  admissionDecisionsCreated       AdmissionDecision[]            @relation("AdmissionDecisionDecidedBy")
-  teacherSubjectAllocations       TeacherSubjectAllocation[]     @relation("TeacherSubjectAllocationTeacher")
-  guardianProfiles                Guardian[]                     @relation("GuardianUser")
-  studentNotesAuthored            StudentNote[]                  @relation("StudentNoteAuthor")
-  attendanceSessionsSubmitted     AttendanceSession[]            @relation("AttendanceSessionSubmittedBy")
-  attendanceEntriesMarked         AttendanceEntry[]              @relation("AttendanceEntryMarkedBy")
-  attendanceExcuseRequestsCreated AttendanceExcuseRequest[]      @relation("AttendanceExcuseRequestCreatedBy")
-  attendanceExcuseRequestsDecided AttendanceExcuseRequest[]      @relation("AttendanceExcuseRequestDecidedBy")
-  gradeAssessmentsPublished       GradeAssessment[]              @relation("GradeAssessmentPublishedBy")
-  gradeAssessmentsApproved        GradeAssessment[]              @relation("GradeAssessmentApprovedBy")
-  gradeAssessmentsLocked          GradeAssessment[]              @relation("GradeAssessmentLockedBy")
-  gradeAssessmentsCreated         GradeAssessment[]              @relation("GradeAssessmentCreatedBy")
-  gradeItemsEntered               GradeItem[]                    @relation("GradeItemEnteredBy")
-  gradeSubmissionsReviewed        GradeSubmission[]              @relation("GradeSubmissionReviewedBy")
-  gradeSubmissionAnswersReviewed  GradeSubmissionAnswer[]        @relation("GradeSubmissionAnswerReviewedBy")
-  reinforcementTasksAssigned      ReinforcementTask[]            @relation("ReinforcementTaskAssignedBy")
-  reinforcementTasksCreated       ReinforcementTask[]            @relation("ReinforcementTaskCreatedBy")
-  reinforcementTasksCancelled     ReinforcementTask[]            @relation("ReinforcementTaskCancelledBy")
-  reinforcementTemplatesCreated   ReinforcementTaskTemplate[]    @relation("ReinforcementTemplateCreatedBy")
-  reinforcementSubmissions        ReinforcementSubmission[]      @relation("ReinforcementSubmissionSubmittedBy")
-  reinforcementReviews            ReinforcementReview[]          @relation("ReinforcementReviewReviewedBy")
-  xpLedgersActed                  XpLedger[]                     @relation("XpLedgerActor")
-  heroMissionsPublished           HeroMission[]                  @relation("HeroMissionPublishedBy")
-  heroMissionsArchived            HeroMission[]                  @relation("HeroMissionArchivedBy")
-  heroMissionsCreated             HeroMission[]                  @relation("HeroMissionCreatedBy")
-  heroObjectiveProgressCompleted  HeroMissionObjectiveProgress[] @relation("HeroObjectiveProgressCompletedBy")
-  heroJourneyEventsActed          HeroJourneyEvent[]             @relation("HeroJourneyEventActor")
-  rewardCatalogItemsCreated       RewardCatalogItem[]            @relation("RewardCatalogItemsCreatedByUser")
-  rewardCatalogItemsPublished     RewardCatalogItem[]            @relation("RewardCatalogItemsPublishedByUser")
-  rewardCatalogItemsArchived      RewardCatalogItem[]            @relation("RewardCatalogItemsArchivedByUser")
-  rewardRedemptionsRequested      RewardRedemption[]             @relation("RewardRedemptionsRequestedByUser")
-  rewardRedemptionsReviewed       RewardRedemption[]             @relation("RewardRedemptionsReviewedByUser")
-  rewardRedemptionsFulfilled      RewardRedemption[]             @relation("RewardRedemptionsFulfilledByUser")
-  rewardRedemptionsCancelled      RewardRedemption[]             @relation("RewardRedemptionsCancelledByUser")
-  behaviorCategoriesCreated       BehaviorCategory[]             @relation("BehaviorCategoriesCreatedByUser")
-  behaviorRecordsCreated          BehaviorRecord[]               @relation("BehaviorRecordsCreatedByUser")
-  behaviorRecordsSubmitted        BehaviorRecord[]               @relation("BehaviorRecordsSubmittedByUser")
-  behaviorRecordsReviewed         BehaviorRecord[]               @relation("BehaviorRecordsReviewedByUser")
-  behaviorRecordsCancelled        BehaviorRecord[]               @relation("BehaviorRecordsCancelledByUser")
-  behaviorPointLedgerActed        BehaviorPointLedger[]          @relation("BehaviorPointLedgerActorUser")
+  memberships                                    Membership[]
+  sessions                                       Session[]
+  auditLogsActing                                AuditLog[]                             @relation("AuditLogActor")
+  filesUploaded                                  File[]                                 @relation("FileUploader")
+  schoolProfilesUpdated                          SchoolProfile[]                        @relation("SchoolProfileUpdatedBy")
+  securitySettingsUpdated                        SecuritySetting[]                      @relation("SecuritySettingUpdatedBy")
+  backupJobsCreated                              BackupJob[]                            @relation("BackupJobCreatedBy")
+  attachmentsCreated                             Attachment[]                           @relation("AttachmentCreatedBy")
+  importJobsCreated                              ImportJob[]                            @relation("ImportJobCreatedBy")
+  ownedLeads                                     Lead[]                                 @relation("LeadOwner")
+  admissionInterviews                            Interview[]                            @relation("AdmissionInterviewInterviewer")
+  admissionDecisionsCreated                      AdmissionDecision[]                    @relation("AdmissionDecisionDecidedBy")
+  teacherSubjectAllocations                      TeacherSubjectAllocation[]             @relation("TeacherSubjectAllocationTeacher")
+  guardianProfiles                               Guardian[]                             @relation("GuardianUser")
+  studentNotesAuthored                           StudentNote[]                          @relation("StudentNoteAuthor")
+  attendanceSessionsSubmitted                    AttendanceSession[]                    @relation("AttendanceSessionSubmittedBy")
+  attendanceEntriesMarked                        AttendanceEntry[]                      @relation("AttendanceEntryMarkedBy")
+  attendanceExcuseRequestsCreated                AttendanceExcuseRequest[]              @relation("AttendanceExcuseRequestCreatedBy")
+  attendanceExcuseRequestsDecided                AttendanceExcuseRequest[]              @relation("AttendanceExcuseRequestDecidedBy")
+  gradeAssessmentsPublished                      GradeAssessment[]                      @relation("GradeAssessmentPublishedBy")
+  gradeAssessmentsApproved                       GradeAssessment[]                      @relation("GradeAssessmentApprovedBy")
+  gradeAssessmentsLocked                         GradeAssessment[]                      @relation("GradeAssessmentLockedBy")
+  gradeAssessmentsCreated                        GradeAssessment[]                      @relation("GradeAssessmentCreatedBy")
+  gradeItemsEntered                              GradeItem[]                            @relation("GradeItemEnteredBy")
+  gradeSubmissionsReviewed                       GradeSubmission[]                      @relation("GradeSubmissionReviewedBy")
+  gradeSubmissionAnswersReviewed                 GradeSubmissionAnswer[]                @relation("GradeSubmissionAnswerReviewedBy")
+  reinforcementTasksAssigned                     ReinforcementTask[]                    @relation("ReinforcementTaskAssignedBy")
+  reinforcementTasksCreated                      ReinforcementTask[]                    @relation("ReinforcementTaskCreatedBy")
+  reinforcementTasksCancelled                    ReinforcementTask[]                    @relation("ReinforcementTaskCancelledBy")
+  reinforcementTemplatesCreated                  ReinforcementTaskTemplate[]            @relation("ReinforcementTemplateCreatedBy")
+  reinforcementSubmissions                       ReinforcementSubmission[]              @relation("ReinforcementSubmissionSubmittedBy")
+  reinforcementReviews                           ReinforcementReview[]                  @relation("ReinforcementReviewReviewedBy")
+  xpLedgersActed                                 XpLedger[]                             @relation("XpLedgerActor")
+  heroMissionsPublished                          HeroMission[]                          @relation("HeroMissionPublishedBy")
+  heroMissionsArchived                           HeroMission[]                          @relation("HeroMissionArchivedBy")
+  heroMissionsCreated                            HeroMission[]                          @relation("HeroMissionCreatedBy")
+  heroObjectiveProgressCompleted                 HeroMissionObjectiveProgress[]         @relation("HeroObjectiveProgressCompletedBy")
+  heroJourneyEventsActed                         HeroJourneyEvent[]                     @relation("HeroJourneyEventActor")
+  rewardCatalogItemsCreated                      RewardCatalogItem[]                    @relation("RewardCatalogItemsCreatedByUser")
+  rewardCatalogItemsPublished                    RewardCatalogItem[]                    @relation("RewardCatalogItemsPublishedByUser")
+  rewardCatalogItemsArchived                     RewardCatalogItem[]                    @relation("RewardCatalogItemsArchivedByUser")
+  rewardRedemptionsRequested                     RewardRedemption[]                     @relation("RewardRedemptionsRequestedByUser")
+  rewardRedemptionsReviewed                      RewardRedemption[]                     @relation("RewardRedemptionsReviewedByUser")
+  rewardRedemptionsFulfilled                     RewardRedemption[]                     @relation("RewardRedemptionsFulfilledByUser")
+  rewardRedemptionsCancelled                     RewardRedemption[]                     @relation("RewardRedemptionsCancelledByUser")
+  behaviorCategoriesCreated                      BehaviorCategory[]                     @relation("BehaviorCategoriesCreatedByUser")
+  behaviorRecordsCreated                         BehaviorRecord[]                       @relation("BehaviorRecordsCreatedByUser")
+  behaviorRecordsSubmitted                       BehaviorRecord[]                       @relation("BehaviorRecordsSubmittedByUser")
+  behaviorRecordsReviewed                        BehaviorRecord[]                       @relation("BehaviorRecordsReviewedByUser")
+  behaviorRecordsCancelled                       BehaviorRecord[]                       @relation("BehaviorRecordsCancelledByUser")
+  behaviorPointLedgerActed                       BehaviorPointLedger[]                  @relation("BehaviorPointLedgerActorUser")
+  communicationPoliciesCreated                   CommunicationPolicy[]                  @relation("CommunicationPoliciesCreatedByUser")
+  communicationPoliciesUpdated                   CommunicationPolicy[]                  @relation("CommunicationPoliciesUpdatedByUser")
+  communicationConversationsCreated              CommunicationConversation[]            @relation("CommunicationConversationsCreatedByUser")
+  communicationConversationsArchived             CommunicationConversation[]            @relation("CommunicationConversationsArchivedByUser")
+  communicationConversationsClosed               CommunicationConversation[]            @relation("CommunicationConversationsClosedByUser")
+  communicationConversationParticipants          CommunicationConversationParticipant[] @relation("CommunicationConversationParticipantsUser")
+  communicationConversationParticipantsInvited   CommunicationConversationParticipant[] @relation("CommunicationConversationParticipantsInvitedByUser")
+  communicationConversationParticipantsRemoved   CommunicationConversationParticipant[] @relation("CommunicationConversationParticipantsRemovedByUser")
+  communicationConversationInvitesReceived       CommunicationConversationInvite[]      @relation("CommunicationConversationInvitesInvitedUser")
+  communicationConversationInvitesSent           CommunicationConversationInvite[]      @relation("CommunicationConversationInvitesInvitedByUser")
+  communicationConversationJoinRequestsRequested CommunicationConversationJoinRequest[] @relation("CommunicationConversationJoinRequestsRequestedByUser")
+  communicationConversationJoinRequestsReviewed  CommunicationConversationJoinRequest[] @relation("CommunicationConversationJoinRequestsReviewedByUser")
+  communicationMessagesSent                      CommunicationMessage[]                 @relation("CommunicationMessagesSentByUser")
+  communicationMessagesHidden                    CommunicationMessage[]                 @relation("CommunicationMessagesHiddenByUser")
+  communicationMessagesDeleted                   CommunicationMessage[]                 @relation("CommunicationMessagesDeletedByUser")
+  communicationMessageReads                      CommunicationMessageRead[]             @relation("CommunicationMessageReadsUser")
+  communicationMessageDeliveries                 CommunicationMessageDelivery[]         @relation("CommunicationMessageDeliveriesRecipientUser")
+  communicationMessageReactions                  CommunicationMessageReaction[]         @relation("CommunicationMessageReactionsUser")
+  communicationMessageAttachmentsUploaded        CommunicationMessageAttachment[]       @relation("CommunicationMessageAttachmentsUploadedByUser")
+  communicationMessageReportsFiled               CommunicationMessageReport[]           @relation("CommunicationMessageReportsReporterUser")
+  communicationMessageReportsReviewed            CommunicationMessageReport[]           @relation("CommunicationMessageReportsReviewedByUser")
+  communicationModerationActionsActed            CommunicationModerationAction[]        @relation("CommunicationModerationActionsActorUser")
+  communicationModerationActionsTargeted         CommunicationModerationAction[]        @relation("CommunicationModerationActionsTargetUser")
+  communicationUserBlocksCreated                 CommunicationUserBlock[]               @relation("CommunicationUserBlocksBlockerUser")
+  communicationUserBlocksReceived                CommunicationUserBlock[]               @relation("CommunicationUserBlocksBlockedUser")
+  communicationUserRestrictionsTargeted          CommunicationUserRestriction[]         @relation("CommunicationUserRestrictionsTargetUser")
+  communicationUserRestrictionsApplied           CommunicationUserRestriction[]         @relation("CommunicationUserRestrictionsRestrictedByUser")
+  communicationUserRestrictionsLifted            CommunicationUserRestriction[]         @relation("CommunicationUserRestrictionsLiftedByUser")
 
   @@index([userType])
   @@index([status])
@@ -1275,6 +1455,7 @@ model AcademicYear {
   rewardRedemptions          RewardRedemption[]
   behaviorRecords            BehaviorRecord[]
   behaviorPointLedgerEntries BehaviorPointLedger[]
+  communicationConversations CommunicationConversation[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -1321,6 +1502,7 @@ model Term {
   rewardRedemptions          RewardRedemption[]
   behaviorRecords            BehaviorRecord[]
   behaviorPointLedgerEntries BehaviorPointLedger[]
+  communicationConversations CommunicationConversation[]
 
   @@unique([id, schoolId])
   @@unique([academicYearId, nameAr])
@@ -1343,13 +1525,14 @@ model Stage {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                   School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  grades                   Grade[]
-  attendancePolicies       AttendancePolicy[]
-  attendanceSessions       AttendanceSession[]
-  gradeAssessments         GradeAssessment[]
-  reinforcementTaskTargets ReinforcementTaskTarget[]
-  heroMissions             HeroMission[]
+  school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  grades                     Grade[]
+  attendancePolicies         AttendancePolicy[]
+  attendanceSessions         AttendanceSession[]
+  gradeAssessments           GradeAssessment[]
+  reinforcementTaskTargets   ReinforcementTaskTarget[]
+  heroMissions               HeroMission[]
+  communicationConversations CommunicationConversation[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -1372,15 +1555,16 @@ model Grade {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                   School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  stage                    Stage                     @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  sections                 Section[]
-  requestedApplications    Application[]
-  attendancePolicies       AttendancePolicy[]
-  attendanceSessions       AttendanceSession[]
-  gradeAssessments         GradeAssessment[]
-  gradeRules               GradeRule[]
-  reinforcementTaskTargets ReinforcementTaskTarget[]
+  school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  stage                      Stage                       @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  sections                   Section[]
+  requestedApplications      Application[]
+  attendancePolicies         AttendancePolicy[]
+  attendanceSessions         AttendanceSession[]
+  gradeAssessments           GradeAssessment[]
+  gradeRules                 GradeRule[]
+  reinforcementTaskTargets   ReinforcementTaskTarget[]
+  communicationConversations CommunicationConversation[]
 
   @@unique([id, schoolId])
   @@unique([stageId, nameAr])
@@ -1404,13 +1588,14 @@ model Section {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                   School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  grade                    Grade                     @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classrooms               Classroom[]
-  attendancePolicies       AttendancePolicy[]
-  attendanceSessions       AttendanceSession[]
-  gradeAssessments         GradeAssessment[]
-  reinforcementTaskTargets ReinforcementTaskTarget[]
+  school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  grade                      Grade                       @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classrooms                 Classroom[]
+  attendancePolicies         AttendancePolicy[]
+  attendanceSessions         AttendanceSession[]
+  gradeAssessments           GradeAssessment[]
+  reinforcementTaskTargets   ReinforcementTaskTarget[]
+  communicationConversations CommunicationConversation[]
 
   @@unique([id, schoolId])
   @@unique([gradeId, nameAr])
@@ -1435,15 +1620,16 @@ model Classroom {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                    School                     @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  section                   Section                    @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  room                      Room?                      @relation(fields: [roomId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  teacherSubjectAllocations TeacherSubjectAllocation[]
-  enrollments               Enrollment[]
-  attendancePolicies        AttendancePolicy[]
-  attendanceSessions        AttendanceSession[]
-  gradeAssessments          GradeAssessment[]
-  reinforcementTaskTargets  ReinforcementTaskTarget[]
+  school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  section                    Section                     @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  room                       Room?                       @relation(fields: [roomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  teacherSubjectAllocations  TeacherSubjectAllocation[]
+  enrollments                Enrollment[]
+  attendancePolicies         AttendancePolicy[]
+  attendanceSessions         AttendanceSession[]
+  gradeAssessments           GradeAssessment[]
+  reinforcementTaskTargets   ReinforcementTaskTarget[]
+  communicationConversations CommunicationConversation[]
 
   @@unique([id, schoolId])
   @@unique([sectionId, nameAr])
@@ -1468,12 +1654,13 @@ model Subject {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                    School                     @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  teacherSubjectAllocations TeacherSubjectAllocation[]
-  placementTests            PlacementTest[]
-  gradeAssessments          GradeAssessment[]
-  reinforcementTasks        ReinforcementTask[]
-  heroMissions              HeroMission[]
+  school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  teacherSubjectAllocations  TeacherSubjectAllocation[]
+  placementTests             PlacementTest[]
+  gradeAssessments           GradeAssessment[]
+  reinforcementTasks         ReinforcementTask[]
+  heroMissions               HeroMission[]
+  communicationConversations CommunicationConversation[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, code])
@@ -3194,6 +3381,508 @@ model BehaviorPointLedger {
 }
 
 // ============================================================
+// COMMUNICATION - core chat conversations and messages
+// ============================================================
+
+model CommunicationPolicy {
+  id                              String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                        String                         @map("school_id") @db.Uuid
+  isEnabled                       Boolean                        @default(true) @map("is_enabled")
+  allowDirectStaffToStaff         Boolean                        @default(true) @map("allow_direct_staff_to_staff")
+  allowAdminToAnyone              Boolean                        @default(true) @map("allow_admin_to_anyone")
+  allowTeacherToParent            Boolean                        @default(true) @map("allow_teacher_to_parent")
+  allowTeacherToStudent           Boolean                        @default(true) @map("allow_teacher_to_student")
+  allowStudentToTeacher           Boolean                        @default(true) @map("allow_student_to_teacher")
+  allowStudentToStudent           Boolean                        @default(false) @map("allow_student_to_student")
+  studentDirectMode               CommunicationStudentDirectMode @default(DISABLED) @map("student_direct_mode")
+  allowTeacherCreatedGroups       Boolean                        @default(true) @map("allow_teacher_created_groups")
+  allowStudentCreatedGroups       Boolean                        @default(false) @map("allow_student_created_groups")
+  requireApprovalForStudentGroups Boolean                        @default(true) @map("require_approval_for_student_groups")
+  allowParentToParent             Boolean                        @default(false) @map("allow_parent_to_parent")
+  allowAttachments                Boolean                        @default(true) @map("allow_attachments")
+  allowVoiceMessages              Boolean                        @default(false) @map("allow_voice_messages")
+  allowVideoMessages              Boolean                        @default(false) @map("allow_video_messages")
+  allowMessageEdit                Boolean                        @default(false) @map("allow_message_edit")
+  allowMessageDelete              Boolean                        @default(true) @map("allow_message_delete")
+  allowReactions                  Boolean                        @default(true) @map("allow_reactions")
+  allowReadReceipts               Boolean                        @default(true) @map("allow_read_receipts")
+  allowDeliveryReceipts           Boolean                        @default(true) @map("allow_delivery_receipts")
+  allowOnlinePresence             Boolean                        @default(true) @map("allow_online_presence")
+  maxGroupMembers                 Int                            @default(256) @map("max_group_members")
+  maxMessageLength                Int                            @default(4000) @map("max_message_length")
+  maxAttachmentSizeMb             Int                            @default(25) @map("max_attachment_size_mb")
+  retentionDays                   Int?                           @map("retention_days")
+  moderationMode                  String?                        @default("standard") @map("moderation_mode")
+  createdById                     String?                        @map("created_by_id") @db.Uuid
+  updatedById                     String?                        @map("updated_by_id") @db.Uuid
+  metadata                        Json?
+  createdAt                       DateTime                       @default(now()) @map("created_at")
+  updatedAt                       DateTime                       @updatedAt @map("updated_at")
+
+  school    School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  createdBy User?  @relation("CommunicationPoliciesCreatedByUser", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?  @relation("CommunicationPoliciesUpdatedByUser", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([schoolId])
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([createdById])
+  @@index([updatedById])
+  @@map("communication_policies")
+}
+
+model CommunicationConversation {
+  id             String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                          @map("school_id") @db.Uuid
+  type           CommunicationConversationType
+  status         CommunicationConversationStatus @default(ACTIVE)
+  titleEn        String?                         @map("title_en")
+  titleAr        String?                         @map("title_ar")
+  descriptionEn  String?                         @map("description_en")
+  descriptionAr  String?                         @map("description_ar")
+  avatarFileId   String?                         @map("avatar_file_id") @db.Uuid
+  academicYearId String?                         @map("academic_year_id") @db.Uuid
+  termId         String?                         @map("term_id") @db.Uuid
+  stageId        String?                         @map("stage_id") @db.Uuid
+  gradeId        String?                         @map("grade_id") @db.Uuid
+  sectionId      String?                         @map("section_id") @db.Uuid
+  classroomId    String?                         @map("classroom_id") @db.Uuid
+  subjectId      String?                         @map("subject_id") @db.Uuid
+  createdById    String?                         @map("created_by_id") @db.Uuid
+  archivedById   String?                         @map("archived_by_id") @db.Uuid
+  archivedAt     DateTime?                       @map("archived_at")
+  closedById     String?                         @map("closed_by_id") @db.Uuid
+  closedAt       DateTime?                       @map("closed_at")
+  lastMessageAt  DateTime?                       @map("last_message_at")
+  metadata       Json?
+  createdAt      DateTime                        @default(now()) @map("created_at")
+  updatedAt      DateTime                        @updatedAt @map("updated_at")
+  deletedAt      DateTime?                       @map("deleted_at")
+
+  school                          School                                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  avatarFile                      File?                                  @relation("CommunicationConversationAvatarFile", fields: [avatarFileId], references: [id], onDelete: SetNull)
+  academicYear                    AcademicYear?                          @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                            Term?                                  @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  stage                           Stage?                                 @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade                           Grade?                                 @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  section                         Section?                               @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom                       Classroom?                             @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject                         Subject?                               @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy                       User?                                  @relation("CommunicationConversationsCreatedByUser", fields: [createdById], references: [id], onDelete: SetNull)
+  archivedBy                      User?                                  @relation("CommunicationConversationsArchivedByUser", fields: [archivedById], references: [id], onDelete: SetNull)
+  closedBy                        User?                                  @relation("CommunicationConversationsClosedByUser", fields: [closedById], references: [id], onDelete: SetNull)
+  participants                    CommunicationConversationParticipant[]
+  invites                         CommunicationConversationInvite[]
+  joinRequests                    CommunicationConversationJoinRequest[]
+  messages                        CommunicationMessage[]
+  reports                         CommunicationMessageReport[]
+  moderationActions               CommunicationModerationAction[]
+  communicationMessageReads       CommunicationMessageRead[]
+  communicationMessageDeliveries  CommunicationMessageDelivery[]
+  communicationMessageReactions   CommunicationMessageReaction[]
+  communicationMessageAttachments CommunicationMessageAttachment[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, type])
+  @@index([schoolId, status])
+  @@index([schoolId, type, status])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([stageId])
+  @@index([gradeId])
+  @@index([sectionId])
+  @@index([classroomId])
+  @@index([subjectId])
+  @@index([avatarFileId])
+  @@index([createdById])
+  @@index([archivedById])
+  @@index([closedById])
+  @@index([lastMessageAt])
+  @@index([deletedAt])
+  @@map("communication_conversations")
+}
+
+model CommunicationConversationParticipant {
+  id                String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String                         @map("school_id") @db.Uuid
+  conversationId    String                         @map("conversation_id") @db.Uuid
+  userId            String                         @map("user_id") @db.Uuid
+  role              CommunicationParticipantRole   @default(MEMBER)
+  status            CommunicationParticipantStatus @default(ACTIVE)
+  joinedAt          DateTime                       @default(now()) @map("joined_at")
+  invitedById       String?                        @map("invited_by_id") @db.Uuid
+  leftAt            DateTime?                      @map("left_at")
+  removedById       String?                        @map("removed_by_id") @db.Uuid
+  removedAt         DateTime?                      @map("removed_at")
+  mutedUntil        DateTime?                      @map("muted_until")
+  lastReadMessageId String?                        @map("last_read_message_id") @db.Uuid
+  lastReadAt        DateTime?                      @map("last_read_at")
+  metadata          Json?
+  createdAt         DateTime                       @default(now()) @map("created_at")
+  updatedAt         DateTime                       @updatedAt @map("updated_at")
+
+  school          School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  conversation    CommunicationConversation @relation(fields: [conversationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  user            User                      @relation("CommunicationConversationParticipantsUser", fields: [userId], references: [id], onDelete: Restrict)
+  invitedBy       User?                     @relation("CommunicationConversationParticipantsInvitedByUser", fields: [invitedById], references: [id], onDelete: SetNull)
+  removedBy       User?                     @relation("CommunicationConversationParticipantsRemovedByUser", fields: [removedById], references: [id], onDelete: SetNull)
+  lastReadMessage CommunicationMessage?     @relation("CommunicationParticipantLastReadMessage", fields: [lastReadMessageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([conversationId, userId])
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([conversationId])
+  @@index([userId])
+  @@index([schoolId, userId])
+  @@index([schoolId, conversationId, status])
+  @@index([role])
+  @@index([invitedById])
+  @@index([removedById])
+  @@index([lastReadMessageId])
+  @@map("communication_conversation_participants")
+}
+
+model CommunicationConversationInvite {
+  id             String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                    @map("school_id") @db.Uuid
+  conversationId String                    @map("conversation_id") @db.Uuid
+  invitedUserId  String                    @map("invited_user_id") @db.Uuid
+  invitedById    String?                   @map("invited_by_id") @db.Uuid
+  status         CommunicationInviteStatus @default(PENDING)
+  message        String?
+  expiresAt      DateTime?                 @map("expires_at")
+  respondedAt    DateTime?                 @map("responded_at")
+  metadata       Json?
+  createdAt      DateTime                  @default(now()) @map("created_at")
+  updatedAt      DateTime                  @updatedAt @map("updated_at")
+
+  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  conversation CommunicationConversation @relation(fields: [conversationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  invitedUser  User                      @relation("CommunicationConversationInvitesInvitedUser", fields: [invitedUserId], references: [id], onDelete: Restrict)
+  invitedBy    User?                     @relation("CommunicationConversationInvitesInvitedByUser", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([conversationId])
+  @@index([invitedUserId])
+  @@index([invitedById])
+  @@index([schoolId, invitedUserId, status])
+  @@map("communication_conversation_invites")
+}
+
+model CommunicationConversationJoinRequest {
+  id             String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                         @map("school_id") @db.Uuid
+  conversationId String                         @map("conversation_id") @db.Uuid
+  requestedById  String                         @map("requested_by_id") @db.Uuid
+  reviewedById   String?                        @map("reviewed_by_id") @db.Uuid
+  status         CommunicationJoinRequestStatus @default(PENDING)
+  note           String?
+  reviewNote     String?                        @map("review_note")
+  reviewedAt     DateTime?                      @map("reviewed_at")
+  metadata       Json?
+  createdAt      DateTime                       @default(now()) @map("created_at")
+  updatedAt      DateTime                       @updatedAt @map("updated_at")
+
+  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  conversation CommunicationConversation @relation(fields: [conversationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  requestedBy  User                      @relation("CommunicationConversationJoinRequestsRequestedByUser", fields: [requestedById], references: [id], onDelete: Restrict)
+  reviewedBy   User?                     @relation("CommunicationConversationJoinRequestsReviewedByUser", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([conversationId])
+  @@index([requestedById])
+  @@index([reviewedById])
+  @@index([schoolId, requestedById, status])
+  @@map("communication_conversation_join_requests")
+}
+
+model CommunicationMessage {
+  id                     String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId               String                     @map("school_id") @db.Uuid
+  conversationId         String                     @map("conversation_id") @db.Uuid
+  senderUserId           String?                    @map("sender_user_id") @db.Uuid
+  kind                   CommunicationMessageKind   @default(TEXT)
+  status                 CommunicationMessageStatus @default(SENT)
+  body                   String?
+  clientMessageId        String?                    @map("client_message_id")
+  replyToMessageId       String?                    @map("reply_to_message_id") @db.Uuid
+  forwardedFromMessageId String?                    @map("forwarded_from_message_id") @db.Uuid
+  editedAt               DateTime?                  @map("edited_at")
+  hiddenById             String?                    @map("hidden_by_id") @db.Uuid
+  hiddenAt               DateTime?                  @map("hidden_at")
+  hiddenReason           String?                    @map("hidden_reason")
+  deletedById            String?                    @map("deleted_by_id") @db.Uuid
+  deletedAt              DateTime?                  @map("deleted_at")
+  sentAt                 DateTime                   @default(now()) @map("sent_at")
+  metadata               Json?
+  createdAt              DateTime                   @default(now()) @map("created_at")
+  updatedAt              DateTime                   @updatedAt @map("updated_at")
+
+  school                 School                                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  conversation           CommunicationConversation              @relation(fields: [conversationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  senderUser             User?                                  @relation("CommunicationMessagesSentByUser", fields: [senderUserId], references: [id], onDelete: SetNull)
+  replyToMessage         CommunicationMessage?                  @relation("CommunicationMessageReplies", fields: [replyToMessageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  replies                CommunicationMessage[]                 @relation("CommunicationMessageReplies")
+  forwardedFromMessage   CommunicationMessage?                  @relation("CommunicationMessageForwards", fields: [forwardedFromMessageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  forwardedMessages      CommunicationMessage[]                 @relation("CommunicationMessageForwards")
+  hiddenBy               User?                                  @relation("CommunicationMessagesHiddenByUser", fields: [hiddenById], references: [id], onDelete: SetNull)
+  deletedBy              User?                                  @relation("CommunicationMessagesDeletedByUser", fields: [deletedById], references: [id], onDelete: SetNull)
+  lastReadByParticipants CommunicationConversationParticipant[] @relation("CommunicationParticipantLastReadMessage")
+  reads                  CommunicationMessageRead[]
+  deliveries             CommunicationMessageDelivery[]
+  reactions              CommunicationMessageReaction[]
+  attachments            CommunicationMessageAttachment[]
+  reports                CommunicationMessageReport[]
+  moderationActions      CommunicationModerationAction[]
+
+  @@unique([id, schoolId])
+  @@unique([conversationId, senderUserId, clientMessageId])
+  @@index([schoolId])
+  @@index([conversationId])
+  @@index([senderUserId])
+  @@index([schoolId, conversationId, sentAt])
+  @@index([schoolId, conversationId, status])
+  @@index([kind])
+  @@index([replyToMessageId])
+  @@index([forwardedFromMessageId])
+  @@index([hiddenById])
+  @@index([deletedById])
+  @@index([sentAt])
+  @@map("communication_messages")
+}
+
+model CommunicationMessageRead {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String   @map("school_id") @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  messageId      String   @map("message_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  readAt         DateTime @default(now()) @map("read_at")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  conversation CommunicationConversation @relation(fields: [conversationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  message      CommunicationMessage      @relation(fields: [messageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  user         User                      @relation("CommunicationMessageReadsUser", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([messageId, userId])
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([conversationId])
+  @@index([messageId])
+  @@index([userId])
+  @@index([schoolId, userId, readAt])
+  @@map("communication_message_reads")
+}
+
+model CommunicationMessageDelivery {
+  id              String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                      @map("school_id") @db.Uuid
+  conversationId  String                      @map("conversation_id") @db.Uuid
+  messageId       String                      @map("message_id") @db.Uuid
+  recipientUserId String                      @map("recipient_user_id") @db.Uuid
+  status          CommunicationDeliveryStatus @default(PENDING)
+  deliveredAt     DateTime?                   @map("delivered_at")
+  failedAt        DateTime?                   @map("failed_at")
+  failureReason   String?                     @map("failure_reason")
+  metadata        Json?
+  createdAt       DateTime                    @default(now()) @map("created_at")
+  updatedAt       DateTime                    @updatedAt @map("updated_at")
+
+  school        School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  conversation  CommunicationConversation @relation(fields: [conversationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  message       CommunicationMessage      @relation(fields: [messageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  recipientUser User                      @relation("CommunicationMessageDeliveriesRecipientUser", fields: [recipientUserId], references: [id], onDelete: Restrict)
+
+  @@unique([messageId, recipientUserId])
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([conversationId])
+  @@index([messageId])
+  @@index([recipientUserId])
+  @@index([schoolId, recipientUserId, status])
+  @@index([status])
+  @@map("communication_message_deliveries")
+}
+
+model CommunicationMessageReaction {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String   @map("school_id") @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  messageId      String   @map("message_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  reactionKey    String   @map("reaction_key")
+  emoji          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  conversation CommunicationConversation @relation(fields: [conversationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  message      CommunicationMessage      @relation(fields: [messageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  user         User                      @relation("CommunicationMessageReactionsUser", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([messageId, userId, reactionKey])
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([conversationId])
+  @@index([messageId])
+  @@index([userId])
+  @@index([reactionKey])
+  @@map("communication_message_reactions")
+}
+
+model CommunicationMessageAttachment {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String    @map("school_id") @db.Uuid
+  conversationId String    @map("conversation_id") @db.Uuid
+  messageId      String    @map("message_id") @db.Uuid
+  fileId         String    @map("file_id") @db.Uuid
+  uploadedById   String?   @map("uploaded_by_id") @db.Uuid
+  caption        String?
+  sortOrder      Int       @default(0) @map("sort_order")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  conversation CommunicationConversation @relation(fields: [conversationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  message      CommunicationMessage      @relation(fields: [messageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  file         File                      @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  uploadedBy   User?                     @relation("CommunicationMessageAttachmentsUploadedByUser", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@unique([messageId, fileId])
+  @@index([schoolId])
+  @@index([conversationId])
+  @@index([messageId])
+  @@index([fileId])
+  @@index([uploadedById])
+  @@index([deletedAt])
+  @@map("communication_message_attachments")
+}
+
+model CommunicationMessageReport {
+  id             String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                    @map("school_id") @db.Uuid
+  conversationId String                    @map("conversation_id") @db.Uuid
+  messageId      String                    @map("message_id") @db.Uuid
+  reporterUserId String                    @map("reporter_user_id") @db.Uuid
+  status         CommunicationReportStatus @default(OPEN)
+  reasonCode     String?                   @map("reason_code")
+  reasonText     String?                   @map("reason_text")
+  reviewedById   String?                   @map("reviewed_by_id") @db.Uuid
+  reviewedAt     DateTime?                 @map("reviewed_at")
+  resolutionNote String?                   @map("resolution_note")
+  metadata       Json?
+  createdAt      DateTime                  @default(now()) @map("created_at")
+  updatedAt      DateTime                  @updatedAt @map("updated_at")
+
+  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  conversation CommunicationConversation @relation(fields: [conversationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  message      CommunicationMessage      @relation(fields: [messageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  reporterUser User                      @relation("CommunicationMessageReportsReporterUser", fields: [reporterUserId], references: [id], onDelete: Restrict)
+  reviewedBy   User?                     @relation("CommunicationMessageReportsReviewedByUser", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([messageId, reporterUserId])
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([conversationId])
+  @@index([messageId])
+  @@index([reporterUserId])
+  @@index([reviewedById])
+  @@index([schoolId, status])
+  @@map("communication_message_reports")
+}
+
+model CommunicationModerationAction {
+  id             String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                            @map("school_id") @db.Uuid
+  conversationId String?                           @map("conversation_id") @db.Uuid
+  messageId      String?                           @map("message_id") @db.Uuid
+  targetUserId   String?                           @map("target_user_id") @db.Uuid
+  actorUserId    String?                           @map("actor_user_id") @db.Uuid
+  actionType     CommunicationModerationActionType @map("action_type")
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime                          @default(now()) @map("created_at")
+  updatedAt      DateTime                          @updatedAt @map("updated_at")
+
+  school       School                     @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  conversation CommunicationConversation? @relation(fields: [conversationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  message      CommunicationMessage?      @relation(fields: [messageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  targetUser   User?                      @relation("CommunicationModerationActionsTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  actorUser    User?                      @relation("CommunicationModerationActionsActorUser", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([conversationId])
+  @@index([messageId])
+  @@index([targetUserId])
+  @@index([actorUserId])
+  @@index([actionType])
+  @@index([createdAt])
+  @@map("communication_moderation_actions")
+}
+
+model CommunicationUserBlock {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String    @map("school_id") @db.Uuid
+  blockerUserId String    @map("blocker_user_id") @db.Uuid
+  blockedUserId String    @map("blocked_user_id") @db.Uuid
+  reason        String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  unblockedAt   DateTime? @map("unblocked_at")
+  metadata      Json?
+
+  school      School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  blockerUser User   @relation("CommunicationUserBlocksBlockerUser", fields: [blockerUserId], references: [id], onDelete: Restrict)
+  blockedUser User   @relation("CommunicationUserBlocksBlockedUser", fields: [blockedUserId], references: [id], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([blockerUserId])
+  @@index([blockedUserId])
+  @@index([schoolId, blockerUserId, blockedUserId])
+  @@map("communication_user_blocks")
+}
+
+model CommunicationUserRestriction {
+  id              String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                       @map("school_id") @db.Uuid
+  targetUserId    String                       @map("target_user_id") @db.Uuid
+  restrictedById  String?                      @map("restricted_by_id") @db.Uuid
+  restrictionType CommunicationRestrictionType @map("restriction_type")
+  reason          String?
+  startsAt        DateTime                     @default(now()) @map("starts_at")
+  expiresAt       DateTime?                    @map("expires_at")
+  liftedById      String?                      @map("lifted_by_id") @db.Uuid
+  liftedAt        DateTime?                    @map("lifted_at")
+  metadata        Json?
+  createdAt       DateTime                     @default(now()) @map("created_at")
+  updatedAt       DateTime                     @updatedAt @map("updated_at")
+
+  school       School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  targetUser   User   @relation("CommunicationUserRestrictionsTargetUser", fields: [targetUserId], references: [id], onDelete: Restrict)
+  restrictedBy User?  @relation("CommunicationUserRestrictionsRestrictedByUser", fields: [restrictedById], references: [id], onDelete: SetNull)
+  liftedBy     User?  @relation("CommunicationUserRestrictionsLiftedByUser", fields: [liftedById], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([targetUserId])
+  @@index([restrictedById])
+  @@index([liftedById])
+  @@index([restrictionType])
+  @@index([schoolId, targetUserId, restrictionType])
+  @@map("communication_user_restrictions")
+}
+
+// ============================================================
 // AUDIT - append-only activity trail
 // ============================================================
 
@@ -3248,16 +3937,18 @@ model File {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  organization                  Organization?             @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  school                        School?                   @relation(fields: [schoolId], references: [id], onDelete: SetNull)
-  uploader                      User?                     @relation("FileUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
-  attachments                   Attachment[]
-  reinforcementProofSubmissions ReinforcementSubmission[] @relation("ReinforcementSubmissionProofFile")
-  applicationDocuments          ApplicationDocument[]
-  studentDocuments              StudentDocument[]
-  importJobsUploaded            ImportJob[]               @relation("ImportJobUploadedFile")
-  heroBadges                    HeroBadge[]
-  rewardCatalogItemImages       RewardCatalogItem[]       @relation("RewardCatalogItemImageFile")
+  organization                     Organization?                    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  school                           School?                          @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  uploader                         User?                            @relation("FileUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
+  attachments                      Attachment[]
+  reinforcementProofSubmissions    ReinforcementSubmission[]        @relation("ReinforcementSubmissionProofFile")
+  applicationDocuments             ApplicationDocument[]
+  studentDocuments                 StudentDocument[]
+  importJobsUploaded               ImportJob[]                      @relation("ImportJobUploadedFile")
+  heroBadges                       HeroBadge[]
+  rewardCatalogItemImages          RewardCatalogItem[]              @relation("RewardCatalogItemImageFile")
+  communicationConversationAvatars CommunicationConversation[]      @relation("CommunicationConversationAvatarFile")
+  communicationMessageAttachments  CommunicationMessageAttachment[]
 
   @@unique([bucket, objectKey])
   @@index([organizationId])

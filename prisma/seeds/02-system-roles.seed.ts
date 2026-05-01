@@ -10,9 +10,16 @@ type SystemRoleSeed = {
 
 const ALL = PERMISSION_CODES;
 
-const NON_PLATFORM = ALL;
+const COMMUNICATION_PLATFORM_PERMISSIONS = [
+  'communication.platform.view',
+  'communication.platform.manage',
+];
 
-const SCHOOL_LEVEL = ALL;
+const NON_PLATFORM = ALL.filter(
+  (code) => !COMMUNICATION_PLATFORM_PERMISSIONS.includes(code),
+);
+
+const SCHOOL_LEVEL = NON_PLATFORM;
 
 const TEACHER_PERMISSIONS = [
   'attendance.sessions.view',
@@ -46,9 +53,15 @@ const TEACHER_PERMISSIONS = [
   'behavior.records.view',
   'behavior.records.create',
   'behavior.points.view',
+  'communication.conversations.view',
+  'communication.conversations.create',
+  'communication.conversations.manage',
+  'communication.participants.manage',
   'communication.messages.view',
   'communication.messages.send',
-  'communication.announcements.view',
+  'communication.messages.edit',
+  'communication.messages.delete',
+  'communication.messages.report',
   'students.records.view',
   'files.uploads.manage',
   'dashboard.summary.view',
@@ -58,9 +71,6 @@ const PARENT_PERMISSIONS = [
   'attendance.sessions.view',
   'grades.assessments.view',
   'reinforcement.tasks.view',
-  'communication.messages.view',
-  'communication.messages.send',
-  'communication.announcements.view',
   'students.records.view',
 ];
 
@@ -68,8 +78,6 @@ const STUDENT_PERMISSIONS = [
   'attendance.sessions.view',
   'grades.assessments.view',
   'reinforcement.tasks.view',
-  'communication.messages.view',
-  'communication.announcements.view',
   'students.records.view',
 ];
 

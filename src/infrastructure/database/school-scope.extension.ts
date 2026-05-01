@@ -86,6 +86,20 @@ const SCHOOL_SCOPED_MODELS = new Set<string>([
   'BehaviorCategory',
   'BehaviorRecord',
   'BehaviorPointLedger',
+  'CommunicationPolicy',
+  'CommunicationConversation',
+  'CommunicationConversationParticipant',
+  'CommunicationConversationInvite',
+  'CommunicationConversationJoinRequest',
+  'CommunicationMessage',
+  'CommunicationMessageRead',
+  'CommunicationMessageDelivery',
+  'CommunicationMessageReaction',
+  'CommunicationMessageAttachment',
+  'CommunicationMessageReport',
+  'CommunicationModerationAction',
+  'CommunicationUserBlock',
+  'CommunicationUserRestriction',
 ]);
 
 // Models that use soft delete (have a deletedAt column). Read operations
@@ -128,6 +142,8 @@ const SOFT_DELETE_MODELS = new Set<string>([
   'HeroMissionObjective',
   'BehaviorCategory',
   'BehaviorRecord',
+  'CommunicationConversation',
+  'CommunicationMessageAttachment',
 ]);
 
 const READ_OPERATIONS = new Set<string>([

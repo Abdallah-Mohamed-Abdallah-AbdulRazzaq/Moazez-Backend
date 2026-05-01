@@ -202,10 +202,46 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 
 ### Communication
 
-| Code                                      | HTTP | Message                           |
-| ----------------------------------------- | ---- | --------------------------------- |
-| `communication.conversation.not_member`   | 403  | Not a member of this conversation |
-| `communication.message.too_long`          | 422  | Message exceeds maximum length    |
+| Code                                                 | HTTP | Message                                           |
+| ---------------------------------------------------- | ---- | ------------------------------------------------- |
+| `communication.policy.disabled`                      | 403  | Communication policy is disabled                  |
+| `communication.policy.not_configured`                | 404  | Communication policy is not configured            |
+| `communication.policy.invalid`                       | 422  | Communication policy is invalid                   |
+| `communication.conversation.not_member`              | 403  | Not a member of this conversation                 |
+| `communication.conversation.archived`                | 409  | Conversation is archived                          |
+| `communication.conversation.closed`                  | 409  | Conversation is closed                            |
+| `communication.conversation.invalid_type`            | 422  | Conversation type is invalid                      |
+| `communication.conversation.direct_duplicate`        | 409  | Direct conversation already exists                |
+| `communication.conversation.group_limit_exceeded`    | 409  | Conversation group member limit is exceeded       |
+| `communication.participant.already_exists`           | 409  | Participant already exists in this conversation   |
+| `communication.participant.not_found`                | 404  | Participant was not found                         |
+| `communication.participant.limit_exceeded`           | 409  | Participant limit is exceeded                     |
+| `communication.participant.role_forbidden`           | 403  | Participant role is not allowed                   |
+| `communication.participant.cannot_remove_owner`      | 409  | Conversation owner cannot be removed              |
+| `communication.participant.not_active`               | 409  | Participant is not active                         |
+| `communication.invite.invalid_status`                | 409  | Invite status transition is invalid               |
+| `communication.invite.duplicate_pending`             | 409  | A pending invite already exists                   |
+| `communication.join_request.invalid_status`          | 409  | Join request status transition is invalid         |
+| `communication.join_request.duplicate_pending`       | 409  | A pending join request already exists             |
+| `communication.message.empty`                        | 422  | Message cannot be empty                           |
+| `communication.message.too_long`                     | 422  | Message exceeds maximum length                    |
+| `communication.message.hidden`                       | 409  | Message is hidden                                 |
+| `communication.message.deleted`                      | 409  | Message is deleted                                |
+| `communication.message.not_editable`                 | 409  | Message cannot be edited                          |
+| `communication.message.not_sender`                   | 403  | Only the sender can perform this message action   |
+| `communication.message.send_forbidden`               | 403  | Sending messages is not allowed                   |
+| `communication.message.kind_invalid`                 | 422  | Message kind is invalid                           |
+| `communication.receipt.invalid_recipient`            | 422  | Receipt recipient is invalid                      |
+| `communication.reaction.duplicate`                   | 409  | Reaction already exists                           |
+| `communication.attachment.not_allowed`               | 403  | Attachments are not allowed                       |
+| `communication.attachment.invalid_file`              | 422  | Attachment file is invalid                        |
+| `communication.report.duplicate`                     | 409  | Message report already exists                     |
+| `communication.report.invalid_status`                | 409  | Report status transition is invalid               |
+| `communication.moderation.forbidden`                 | 403  | Moderation action is not allowed                  |
+| `communication.user.blocked`                         | 403  | User is blocked                                   |
+| `communication.user.restricted`                      | 403  | User is restricted                                |
+| `communication.user.restriction_conflict`            | 409  | User restriction conflicts with an active state   |
+| `communication.scope.invalid`                        | 422  | Communication scope is invalid                    |
 
 ### Cross-cutting
 
