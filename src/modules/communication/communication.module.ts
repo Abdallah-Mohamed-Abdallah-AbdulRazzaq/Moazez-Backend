@@ -27,14 +27,26 @@ import {
   UpdateCommunicationParticipantUseCase,
 } from './application/communication-participant.use-cases';
 import {
+  CreateCommunicationMessageUseCase,
+  DeleteCommunicationMessageUseCase,
+  GetCommunicationMessageUseCase,
+  GetCommunicationReadSummaryUseCase,
+  ListCommunicationMessagesUseCase,
+  MarkCommunicationConversationReadUseCase,
+  MarkCommunicationMessageReadUseCase,
+  UpdateCommunicationMessageUseCase,
+} from './application/communication-message.use-cases';
+import {
   GetCommunicationAdminOverviewUseCase,
   GetCommunicationPolicyUseCase,
   UpdateCommunicationPolicyUseCase,
 } from './application/communication-policy.use-cases';
 import { CommunicationConversationController } from './controller/communication-conversation.controller';
+import { CommunicationMessageController } from './controller/communication-message.controller';
 import { CommunicationParticipantController } from './controller/communication-participant.controller';
 import { CommunicationPolicyController } from './controller/communication-policy.controller';
 import { CommunicationConversationRepository } from './infrastructure/communication-conversation.repository';
+import { CommunicationMessageRepository } from './infrastructure/communication-message.repository';
 import { CommunicationParticipantRepository } from './infrastructure/communication-participant.repository';
 import { CommunicationPolicyRepository } from './infrastructure/communication-policy.repository';
 
@@ -44,11 +56,13 @@ import { CommunicationPolicyRepository } from './infrastructure/communication-po
     CommunicationPolicyController,
     CommunicationConversationController,
     CommunicationParticipantController,
+    CommunicationMessageController,
   ],
   providers: [
     CommunicationPolicyRepository,
     CommunicationConversationRepository,
     CommunicationParticipantRepository,
+    CommunicationMessageRepository,
     GetCommunicationPolicyUseCase,
     UpdateCommunicationPolicyUseCase,
     GetCommunicationAdminOverviewUseCase,
@@ -74,6 +88,14 @@ import { CommunicationPolicyRepository } from './infrastructure/communication-po
     CreateCommunicationJoinRequestUseCase,
     ApproveCommunicationJoinRequestUseCase,
     RejectCommunicationJoinRequestUseCase,
+    ListCommunicationMessagesUseCase,
+    CreateCommunicationMessageUseCase,
+    GetCommunicationMessageUseCase,
+    UpdateCommunicationMessageUseCase,
+    DeleteCommunicationMessageUseCase,
+    MarkCommunicationMessageReadUseCase,
+    MarkCommunicationConversationReadUseCase,
+    GetCommunicationReadSummaryUseCase,
   ],
 })
 export class CommunicationModule {}

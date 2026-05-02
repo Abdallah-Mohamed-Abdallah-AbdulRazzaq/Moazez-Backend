@@ -51,6 +51,8 @@ describe('Communication policy tenancy isolation (security)', () => {
   let inviteBId: string;
   let joinRequestAId: string;
   let joinRequestBId: string;
+  let messageAId: string;
+  let messageBId: string;
   let adminAId: string;
   let noAccessUserId: string;
   let viewOnlyUserId: string;
@@ -60,6 +62,7 @@ describe('Communication policy tenancy isolation (security)', () => {
   let schoolBUserId: string;
   let joinRequesterUserId: string;
   let viewOnlyRoleIdForFixtures: string;
+  let messageSendRoleIdForFixtures: string;
   let adminAEmail: string;
   let noAccessEmail: string;
   let viewOnlyEmail: string;
@@ -90,6 +93,10 @@ describe('Communication policy tenancy isolation (security)', () => {
       conversationsCreatePermission,
       conversationsManagePermission,
       participantsManagePermission,
+      messagesViewPermission,
+      messagesSendPermission,
+      messagesEditPermission,
+      messagesDeletePermission,
       adminViewPermission,
     ] = await Promise.all([
       findSystemRole('school_admin'),
@@ -102,6 +109,10 @@ describe('Communication policy tenancy isolation (security)', () => {
       findPermission('communication.conversations.create'),
       findPermission('communication.conversations.manage'),
       findPermission('communication.participants.manage'),
+      findPermission('communication.messages.view'),
+      findPermission('communication.messages.send'),
+      findPermission('communication.messages.edit'),
+      findPermission('communication.messages.delete'),
       findPermission('communication.admin.view'),
     ]);
 
@@ -151,13 +162,21 @@ describe('Communication policy tenancy isolation (security)', () => {
     const viewOnlyRoleId = await createCustomRole('view-only', [
       policiesViewPermission.id,
       conversationsViewPermission.id,
+      messagesViewPermission.id,
     ]);
     viewOnlyRoleIdForFixtures = viewOnlyRoleId;
+    messageSendRoleIdForFixtures = await createCustomRole('message-send-only', [
+      conversationsViewPermission.id,
+      messagesViewPermission.id,
+      messagesSendPermission.id,
+    ]);
     const manageOnlyRoleId = await createCustomRole('manage-only', [
       policiesManagePermission.id,
       conversationsCreatePermission.id,
       conversationsManagePermission.id,
       participantsManagePermission.id,
+      messagesEditPermission.id,
+      messagesDeletePermission.id,
     ]);
     expect(manageOnlyRoleId).toBeTruthy();
 
@@ -264,19 +283,35 @@ describe('Communication policy tenancy isolation (security)', () => {
     conversationBId = conversationB.id;
     createdConversationIds.push(conversationB.id);
 
-    const message = await prisma.communicationMessage.create({
-      data: {
-        schoolId: schoolAId,
-        conversationId: conversation.id,
-        senderUserId: adminAId,
-        kind: CommunicationMessageKind.TEXT,
-        status: CommunicationMessageStatus.SENT,
-        body: 'private communication body',
-        sentAt: new Date('2026-05-01T10:00:00.000Z'),
-      },
-      select: { id: true },
-    });
-    createdMessageIds.push(message.id);
+    const [message, tenantBMessage] = await Promise.all([
+      prisma.communicationMessage.create({
+        data: {
+          schoolId: schoolAId,
+          conversationId: conversation.id,
+          senderUserId: adminAId,
+          kind: CommunicationMessageKind.TEXT,
+          status: CommunicationMessageStatus.SENT,
+          body: 'private communication body',
+          sentAt: new Date('2026-05-01T10:00:00.000Z'),
+        },
+        select: { id: true },
+      }),
+      prisma.communicationMessage.create({
+        data: {
+          schoolId: schoolBId,
+          conversationId: conversationB.id,
+          senderUserId: schoolBUserId,
+          kind: CommunicationMessageKind.TEXT,
+          status: CommunicationMessageStatus.SENT,
+          body: 'school B private communication body',
+          sentAt: new Date('2026-05-01T10:05:00.000Z'),
+        },
+        select: { id: true },
+      }),
+    ]);
+    messageAId = message.id;
+    messageBId = tenantBMessage.id;
+    createdMessageIds.push(message.id, tenantBMessage.id);
 
     const [ownerParticipant, memberParticipant, tenantBParticipant] =
       await Promise.all([
@@ -768,6 +803,384 @@ describe('Communication policy tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ title: `${title} updated` })
       .expect(200);
+  });
+
+  it('school admin can create list get edit delete and read same-school messages', async () => {
+    await setCommunicationPolicyEnabled(true);
+    const { accessToken } = await login(adminAEmail);
+    const beforeAudit = await communicationMessageAuditCount();
+
+    const created = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/messages`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        body: 'Security test message',
+        clientMessageId: `${testSuffix}-client-message`,
+        metadata: { source: 'security-test', body: 'must not leak' },
+      })
+      .expect(201);
+    const messageId = created.body.id as string;
+    createdMessageIds.push(messageId);
+
+    expect(created.body).toMatchObject({
+      conversationId: conversationAId,
+      senderUserId: adminAId,
+      type: 'text',
+      status: 'sent',
+      body: 'Security test message',
+      content: 'Security test message',
+      clientMessageId: `${testSuffix}-client-message`,
+      metadata: { source: 'security-test' },
+    });
+    expect(JSON.stringify(created.body)).not.toContain('schoolId');
+    expect(JSON.stringify(created.body)).not.toContain('must not leak');
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/messages`)
+      .query({ type: 'text', status: 'sent', limit: 20 })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const listJson = JSON.stringify(list.body);
+    expect(list.body.items.map((item: { id: string }) => item.id)).toContain(
+      messageId,
+    );
+    expect(list.body.items.map((item: { id: string }) => item.id)).toContain(
+      messageAId,
+    );
+    expect(listJson).not.toContain(messageBId);
+    expect(listJson).not.toContain('schoolId');
+    expect(listJson).not.toContain('school B private communication body');
+
+    const detail = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(detail.body).toMatchObject({
+      id: messageId,
+      body: 'Security test message',
+    });
+    expect(JSON.stringify(detail.body)).not.toContain('schoolId');
+
+    const edited = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/communication/messages/${messageId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ body: 'Edited security test message' })
+      .expect(200);
+    expect(edited.body).toMatchObject({
+      id: messageId,
+      body: 'Edited security test message',
+      editedAt: expect.any(String),
+    });
+
+    const read = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${messageId}/read`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+    expect(read.body).toMatchObject({
+      conversationId: conversationAId,
+      messageId,
+      userId: adminAId,
+      readAt: expect.any(String),
+    });
+    expect(JSON.stringify(read.body)).not.toContain('schoolId');
+
+    const conversationRead = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/read`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+    expect(conversationRead.body).toMatchObject({
+      conversationId: conversationAId,
+      readAt: expect.any(String),
+      markedCount: expect.any(Number),
+    });
+
+    const readSummary = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/read-summary`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(readSummary.body).toMatchObject({
+      conversationId: conversationAId,
+      total: expect.any(Number),
+      items: expect.any(Array),
+    });
+    expect(JSON.stringify(readSummary.body)).not.toContain('schoolId');
+    expect(JSON.stringify(readSummary.body)).not.toContain('firstName');
+
+    const deleted = await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/communication/messages/${messageId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(deleted.body).toMatchObject({
+      id: messageId,
+      status: 'deleted',
+      body: null,
+      content: null,
+      deletedAt: expect.any(String),
+      deletedById: adminAId,
+    });
+    expect(JSON.stringify(deleted.body)).not.toContain(
+      'Edited security test message',
+    );
+    expect(JSON.stringify(deleted.body)).not.toContain('schoolId');
+
+    await expect(communicationMessageAuditCount()).resolves.toBe(
+      beforeAudit + 3,
+    );
+  });
+
+  it('school A cannot access school B messages by guessed ids and lists exclude school B', async () => {
+    const { accessToken } = await login(adminAEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageBId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/communication/messages/${messageBId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ body: 'Should not cross school' })
+      .expect(404);
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/communication/messages/${messageBId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${messageBId}/read`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationBId}/messages`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/messages`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const json = JSON.stringify(list.body);
+    expect(json).toContain(messageAId);
+    expect(json).not.toContain(messageBId);
+    expect(json).not.toContain('school B private communication body');
+  });
+
+  it('message permissions return 403 when view send edit or delete are missing', async () => {
+    const noAccess = await login(noAccessEmail);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/messages`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/read`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/read`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/read-summary`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+
+    const viewOnly = await login(viewOnlyEmail);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/messages`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .send({ body: 'No send permission' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/communication/messages/${messageAId}`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .send({ body: 'No edit permission' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/communication/messages/${messageAId}`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .expect(403);
+  });
+
+  it('parent and student cannot access dashboard message routes', async () => {
+    for (const email of [parentEmail, studentEmail]) {
+      const { accessToken } = await login(email);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/messages`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/messages`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ body: 'Forbidden' })
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/read`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+    }
+  });
+
+  it('teacher access follows seeded message permissions for participant messages', async () => {
+    await setCommunicationPolicyEnabled(true);
+    const teacher = await login(teacherEmail);
+    const teacherConversation = await prisma.communicationConversation.create({
+      data: {
+        schoolId: schoolAId,
+        type: CommunicationConversationType.GROUP,
+        status: CommunicationConversationStatus.ACTIVE,
+        titleEn: `${testSuffix} teacher message conversation`,
+      },
+      select: { id: true },
+    });
+    createdConversationIds.push(teacherConversation.id);
+    await prisma.communicationConversationParticipant.create({
+      data: {
+        schoolId: schoolAId,
+        conversationId: teacherConversation.id,
+        userId: teacherUserId,
+        role: CommunicationParticipantRole.MEMBER,
+        status: CommunicationParticipantStatus.ACTIVE,
+      },
+    });
+
+    const created = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${teacherConversation.id}/messages`)
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .send({ body: 'Teacher seeded message' })
+      .expect(201);
+    createdMessageIds.push(created.body.id);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${teacherConversation.id}/messages`)
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/communication/messages/${created.body.id}`)
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .send({ body: 'Teacher edited message' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/communication/messages/${created.body.id}`)
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .expect(200);
+  });
+
+  it('message send rejects disabled policy archived closed non-participant and muted participants', async () => {
+    const admin = await login(adminAEmail);
+
+    await setCommunicationPolicyEnabled(false);
+    const disabledPolicy = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/messages`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ body: 'Disabled policy should reject' })
+      .expect(403);
+    expect(disabledPolicy.body.error.code).toBe(
+      'communication.policy.disabled',
+    );
+    await setCommunicationPolicyEnabled(true);
+
+    const archivedConversation = await createConversationWithParticipant({
+      status: CommunicationConversationStatus.ARCHIVED,
+      userId: adminAId,
+    });
+    const archived = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${archivedConversation}/messages`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ body: 'Archived should reject' })
+      .expect(409);
+    expect(archived.body.error.code).toBe(
+      'communication.conversation.archived',
+    );
+
+    const closedConversation = await createConversationWithParticipant({
+      status: CommunicationConversationStatus.CLOSED,
+      userId: adminAId,
+    });
+    const closed = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${closedConversation}/messages`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ body: 'Closed should reject' })
+      .expect(409);
+    expect(closed.body.error.code).toBe('communication.conversation.closed');
+
+    const nonParticipantConversation =
+      await createConversationWithParticipant({
+        status: CommunicationConversationStatus.ACTIVE,
+        userId: adminAId,
+      });
+    const messageActorEmail = `${testSuffix}-message-send-only@security.moazez.local`;
+    await createUserWithMembership({
+      email: messageActorEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: messageSendRoleIdForFixtures,
+    });
+    const messageActor = await login(messageActorEmail);
+    const nonParticipantSend = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${nonParticipantConversation}/messages`)
+      .set('Authorization', `Bearer ${messageActor.accessToken}`)
+      .send({ body: 'Non participant should reject' })
+      .expect(403);
+    expect(nonParticipantSend.body.error.code).toBe(
+      'communication.conversation.not_member',
+    );
+    const nonParticipantRead = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/read`)
+      .set('Authorization', `Bearer ${messageActor.accessToken}`)
+      .expect(403);
+    expect(nonParticipantRead.body.error.code).toBe(
+      'communication.conversation.not_member',
+    );
+
+    const mutedConversation = await createConversationWithParticipant({
+      status: CommunicationConversationStatus.ACTIVE,
+      userId: teacherUserId,
+      participantStatus: CommunicationParticipantStatus.MUTED,
+      mutedUntil: new Date('2026-05-03T09:00:00.000Z'),
+    });
+    const teacher = await login(teacherEmail);
+    const muted = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${mutedConversation}/messages`)
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .send({ body: 'Muted should reject' })
+      .expect(403);
+    expect(muted.body.error.code).toBe('communication.message.send_forbidden');
+  });
+
+  it('message flows do not create delivery reaction attachment report moderation block restriction or notification side effects', async () => {
+    await setCommunicationPolicyEnabled(true);
+    const admin = await login(adminAEmail);
+    const before = await communicationMessageOutOfScopeCounts(schoolAId);
+
+    const created = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/messages`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ body: 'Side effect guard message' })
+      .expect(201);
+    createdMessageIds.push(created.body.id);
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/communication/messages/${created.body.id}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ body: 'Side effect guard message edited' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${created.body.id}/read`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(201);
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/communication/messages/${created.body.id}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+
+    const after = await communicationMessageOutOfScopeCounts(schoolAId);
+    expect(after).toEqual(before);
   });
 
   it('school admin can list add update remove promote and demote same-school participants', async () => {
@@ -1432,6 +1845,27 @@ describe('Communication policy tenancy isolation (security)', () => {
       .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/join-requests`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/messages`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/read`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/read`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/read-summary`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
 
     await expect(communicationAuditCount()).resolves.toBe(before);
     await expect(communicationConversationAuditCount()).resolves.toBe(
@@ -1446,6 +1880,7 @@ describe('Communication policy tenancy isolation (security)', () => {
     const { accessToken } = await login(adminAEmail);
     const before = await communicationAuditCount();
     const beforeRuntime = await communicationRuntimeAuditCount();
+    const beforeMessageAudit = await communicationMessageAuditCount();
     const auditTargetEmail = `${testSuffix}-audit-target@security.moazez.local`;
     const auditTargetId = await createUserWithMembership({
       email: auditTargetEmail,
@@ -1469,6 +1904,26 @@ describe('Communication policy tenancy isolation (security)', () => {
 
     await expect(communicationRuntimeAuditCount()).resolves.toBe(
       beforeRuntime + 1,
+    );
+
+    const createdMessage = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/messages`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ body: 'Audited message mutation' })
+      .expect(201);
+    createdMessageIds.push(createdMessage.body.id);
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/communication/messages/${createdMessage.body.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ body: 'Audited message mutation edited' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/communication/messages/${createdMessage.body.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await expect(communicationMessageAuditCount()).resolves.toBe(
+      beforeMessageAudit + 3,
     );
   });
 
@@ -1593,6 +2048,16 @@ describe('Communication policy tenancy isolation (security)', () => {
     });
   }
 
+  async function communicationMessageAuditCount(): Promise<number> {
+    return prisma.auditLog.count({
+      where: {
+        schoolId: schoolAId,
+        module: 'communication',
+        resourceType: 'communication_message',
+      },
+    });
+  }
+
   async function communicationRuntimeAuditCount(): Promise<number> {
     return prisma.auditLog.count({
       where: {
@@ -1614,6 +2079,37 @@ describe('Communication policy tenancy isolation (security)', () => {
       where: { id: policyAId },
       data: { isEnabled },
     });
+  }
+
+  async function createConversationWithParticipant(params: {
+    status: CommunicationConversationStatus;
+    userId: string;
+    participantStatus?: CommunicationParticipantStatus;
+    mutedUntil?: Date | null;
+  }): Promise<string> {
+    const conversation = await prisma.communicationConversation.create({
+      data: {
+        schoolId: schoolAId,
+        type: CommunicationConversationType.GROUP,
+        status: params.status,
+        titleEn: `${testSuffix} message state guard ${params.status.toLowerCase()}`,
+      },
+      select: { id: true },
+    });
+    createdConversationIds.push(conversation.id);
+
+    await prisma.communicationConversationParticipant.create({
+      data: {
+        schoolId: schoolAId,
+        conversationId: conversation.id,
+        userId: params.userId,
+        role: CommunicationParticipantRole.MEMBER,
+        status: params.participantStatus ?? CommunicationParticipantStatus.ACTIVE,
+        mutedUntil: params.mutedUntil ?? null,
+      },
+    });
+
+    return conversation.id;
   }
 
   async function communicationSideEffectCounts(schoolId: string) {
@@ -1684,6 +2180,36 @@ describe('Communication policy tenancy isolation (security)', () => {
     return {
       messages,
       reads,
+      deliveries,
+      reactions,
+      attachments,
+      reports,
+      moderationActions,
+      userBlocks,
+      userRestrictions,
+    };
+  }
+
+  async function communicationMessageOutOfScopeCounts(schoolId: string) {
+    const [
+      deliveries,
+      reactions,
+      attachments,
+      reports,
+      moderationActions,
+      userBlocks,
+      userRestrictions,
+    ] = await Promise.all([
+      prisma.communicationMessageDelivery.count({ where: { schoolId } }),
+      prisma.communicationMessageReaction.count({ where: { schoolId } }),
+      prisma.communicationMessageAttachment.count({ where: { schoolId } }),
+      prisma.communicationMessageReport.count({ where: { schoolId } }),
+      prisma.communicationModerationAction.count({ where: { schoolId } }),
+      prisma.communicationUserBlock.count({ where: { schoolId } }),
+      prisma.communicationUserRestriction.count({ where: { schoolId } }),
+    ]);
+
+    return {
       deliveries,
       reactions,
       attachments,
