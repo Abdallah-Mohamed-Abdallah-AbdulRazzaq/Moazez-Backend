@@ -24,8 +24,10 @@ import type { Env } from '../../config/env.validation';
 import { RealtimeAuthService } from './realtime-auth.service';
 import { RealtimeCommunicationAccessService } from './realtime-communication-access.service';
 import { REALTIME_CLIENT_COMMANDS } from './realtime-event-names';
+import { RealtimePresenceService } from './realtime-presence.service';
 import { conversationRoom, schoolRoom, userRoom } from './realtime-room-names';
 import { RealtimePublisherService } from './realtime-publisher.service';
+import { RealtimeTypingService } from './realtime-typing.service';
 import type {
   RealtimeAuthenticatedContext,
   RealtimeSocket,
@@ -60,6 +62,8 @@ export class RealtimeGateway
     private readonly communicationAccessService: RealtimeCommunicationAccessService,
     private readonly publisher: RealtimePublisherService,
     private readonly configService: ConfigService<Env, true>,
+    private readonly presenceService: RealtimePresenceService,
+    private readonly typingService: RealtimeTypingService,
   ) {}
 
   async afterInit(server: Server): Promise<void> {
@@ -80,6 +84,14 @@ export class RealtimeGateway
           schoolRoom(authenticated.schoolId),
           userRoom(authenticated.schoolId, authenticated.actorId),
         ]);
+
+        if (await this.communicationAccessService.isOnlinePresenceEnabled()) {
+          await this.presenceService.registerSocket({
+            schoolId: authenticated.schoolId,
+            userId: authenticated.actorId,
+            socketId: client.id,
+          });
+        }
       });
     } catch (error) {
       this.logger.warn(
@@ -89,12 +101,23 @@ export class RealtimeGateway
     }
   }
 
-  handleDisconnect(client: RealtimeSocket): void {
-    if (!client.data.actorId) return;
+  async handleDisconnect(client: RealtimeSocket): Promise<void> {
+    const presenceInput = this.extractPresenceInput(client);
+    if (!presenceInput) return;
 
     this.logger.debug(
-      `Realtime socket disconnected for actor ${client.data.actorId}`,
+      `Realtime socket disconnected for actor ${presenceInput.userId}`,
     );
+
+    try {
+      await this.presenceService.unregisterSocket(presenceInput);
+    } catch (error) {
+      this.logger.warn(
+        `Realtime presence disconnect cleanup failed: ${this.getErrorCode(
+          error,
+        )}`,
+      );
+    }
   }
 
   @SubscribeMessage(
@@ -135,6 +158,44 @@ export class RealtimeGateway
       const conversationId = this.extractConversationId(payload);
 
       await client.leave(conversationRoom(context.schoolId, conversationId));
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(REALTIME_CLIENT_COMMANDS.COMMUNICATION_TYPING_START)
+  async handleTypingStart(
+    @ConnectedSocket() client: RealtimeSocket,
+    @MessageBody() payload: unknown,
+  ): Promise<{ ok: true }> {
+    return this.runWithSocketContext(client, async (context) => {
+      const conversationId = this.extractConversationId(payload);
+
+      await this.typingService.startTyping({
+        schoolId: context.schoolId,
+        conversationId,
+        userId: context.actorId,
+        permissions: context.permissions,
+      });
+
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(REALTIME_CLIENT_COMMANDS.COMMUNICATION_TYPING_STOP)
+  async handleTypingStop(
+    @ConnectedSocket() client: RealtimeSocket,
+    @MessageBody() payload: unknown,
+  ): Promise<{ ok: true }> {
+    return this.runWithSocketContext(client, async (context) => {
+      const conversationId = this.extractConversationId(payload);
+
+      await this.typingService.stopTyping({
+        schoolId: context.schoolId,
+        conversationId,
+        userId: context.actorId,
+        permissions: context.permissions,
+      });
+
       return { ok: true };
     });
   }
@@ -310,6 +371,25 @@ export class RealtimeGateway
     }
 
     return normalized;
+  }
+
+  private extractPresenceInput(
+    client: RealtimeSocket,
+  ): { schoolId: string; userId: string; socketId: string } | null {
+    const schoolId = this.normalizeOptionalId(client.data.schoolId);
+    const userId = this.normalizeOptionalId(client.data.actorId);
+    const socketId = this.normalizeOptionalId(client.id);
+
+    if (!schoolId || !userId || !socketId) return null;
+
+    return { schoolId, userId, socketId };
+  }
+
+  private normalizeOptionalId(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : null;
   }
 
   private getErrorCode(error: unknown): string {

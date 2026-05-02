@@ -82,6 +82,43 @@ describe('RealtimeCommunicationAccessService', () => {
       }),
     ).resolves.toBe(false);
   });
+
+  it('uses communication policy to decide whether online presence is enabled', async () => {
+    const enabledScoped = scopedPrismaMock({
+      conversation: null,
+      participant: null,
+      policy: { isEnabled: true, allowOnlinePresence: true },
+    });
+    const enabledService = new RealtimeCommunicationAccessService(
+      prismaMock(enabledScoped),
+    );
+
+    await expect(enabledService.isOnlinePresenceEnabled()).resolves.toBe(true);
+
+    const disabledScoped = scopedPrismaMock({
+      conversation: null,
+      participant: null,
+      policy: { isEnabled: true, allowOnlinePresence: false },
+    });
+    const disabledService = new RealtimeCommunicationAccessService(
+      prismaMock(disabledScoped),
+    );
+
+    await expect(disabledService.isOnlinePresenceEnabled()).resolves.toBe(
+      false,
+    );
+  });
+
+  it('defaults online presence to enabled when no policy exists', async () => {
+    const scoped = scopedPrismaMock({
+      conversation: null,
+      participant: null,
+      policy: null,
+    });
+    const service = new RealtimeCommunicationAccessService(prismaMock(scoped));
+
+    await expect(service.isOnlinePresenceEnabled()).resolves.toBe(true);
+  });
 });
 
 function prismaMock(scoped: unknown): PrismaService {
@@ -93,6 +130,7 @@ function prismaMock(scoped: unknown): PrismaService {
 function scopedPrismaMock(input: {
   conversation: { id: string } | null;
   participant: { status: CommunicationParticipantStatus } | null;
+  policy?: { isEnabled: boolean; allowOnlinePresence: boolean } | null;
 }) {
   return {
     communicationConversation: {
@@ -100,6 +138,9 @@ function scopedPrismaMock(input: {
     },
     communicationConversationParticipant: {
       findFirst: jest.fn().mockResolvedValue(input.participant),
+    },
+    communicationPolicy: {
+      findFirst: jest.fn().mockResolvedValue(input.policy ?? null),
     },
   };
 }

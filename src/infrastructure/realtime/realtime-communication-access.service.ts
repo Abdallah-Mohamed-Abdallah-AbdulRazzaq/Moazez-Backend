@@ -53,4 +53,18 @@ export class RealtimeCommunicationAccessService {
       CONVERSATION_ROOM_VIEW_PERMISSIONS.has(permission),
     );
   }
+
+  async isOnlinePresenceEnabled(): Promise<boolean> {
+    const policy = await this.scopedPrisma.communicationPolicy.findFirst({
+      where: {},
+      select: {
+        isEnabled: true,
+        allowOnlinePresence: true,
+      },
+    });
+
+    if (!policy) return true;
+
+    return policy.isEnabled && policy.allowOnlinePresence;
+  }
 }
