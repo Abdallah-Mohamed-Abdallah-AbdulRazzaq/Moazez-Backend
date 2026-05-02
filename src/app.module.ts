@@ -14,6 +14,7 @@ import { AcademicsModule } from './modules/academics/academics.module';
 import { AdmissionsModule } from './modules/admissions/admissions.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { BehaviorModule } from './modules/behavior/behavior.module';
+import { CommunicationModule } from './modules/communication/communication.module';
 import { FilesModule } from './modules/files/files.module';
 import { GradesModule } from './modules/grades/grades.module';
 import { HealthModule } from './modules/health/health.module';
@@ -41,6 +42,7 @@ import { StudentsModule } from './modules/students/students.module';
     GradesModule,
     ReinforcementModule,
     BehaviorModule,
+    CommunicationModule,
   ],
   controllers: [AppController],
   providers: [
