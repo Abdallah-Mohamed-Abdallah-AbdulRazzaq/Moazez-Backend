@@ -84,6 +84,7 @@ describe('RealtimeAuthService', () => {
         expect(authenticated).toEqual({
           actorId: 'user-1',
           userType: UserType.SCHOOL_USER,
+          membershipId: 'membership-1',
           schoolId: 'school-1',
           organizationId: 'organization-1',
           roleId: 'role-1',

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AuditOutcome } from '@prisma/client';
 import { getRequestContext } from '../../../common/context/request-context';
 import { NotFoundDomainException } from '../../../common/exceptions/domain-exception';
@@ -36,6 +36,7 @@ import {
   presentCommunicationMessageAttachmentList,
   summarizeCommunicationMessageAttachmentForAudit,
 } from '../presenters/communication-message-attachment.presenter';
+import { CommunicationRealtimeEventsService } from './communication-realtime-events.service';
 
 @Injectable()
 export class ListCommunicationMessageAttachmentsUseCase {
@@ -71,6 +72,8 @@ export class LinkCommunicationMessageAttachmentUseCase {
   constructor(
     private readonly communicationMessageAttachmentRepository: CommunicationMessageAttachmentRepository,
     private readonly communicationPolicyRepository: CommunicationPolicyRepository,
+    @Optional()
+    private readonly realtimeEvents?: CommunicationRealtimeEventsService,
   ) {}
 
   async execute(
@@ -132,6 +135,8 @@ export class LinkCommunicationMessageAttachmentUseCase {
         },
       );
 
+    this.realtimeEvents?.publishAttachmentLinked(scope.schoolId, attachment);
+
     return presentCommunicationMessageAttachment(attachment);
   }
 }
@@ -141,6 +146,8 @@ export class DeleteCommunicationMessageAttachmentUseCase {
   constructor(
     private readonly communicationMessageAttachmentRepository: CommunicationMessageAttachmentRepository,
     private readonly communicationPolicyRepository: CommunicationPolicyRepository,
+    @Optional()
+    private readonly realtimeEvents?: CommunicationRealtimeEventsService,
   ) {}
 
   async execute(messageId: string, attachmentId: string) {
@@ -195,19 +202,24 @@ export class DeleteCommunicationMessageAttachmentUseCase {
       canManageAttachment: canManageMessageAttachments(),
     });
 
-    return this.communicationMessageAttachmentRepository.deleteCurrentSchoolMessageAttachment(
-      {
-        attachmentId: attachment.id,
-        buildAuditEntry: (deleted) =>
-          buildCommunicationAttachmentAuditEntry({
-            scope,
-            action: 'communication.message_attachment.delete',
-            attachment: deleted,
-            before: deleted,
-            changedFields: ['deletedAt'],
-          }),
-      },
-    );
+    const result =
+      await this.communicationMessageAttachmentRepository.deleteCurrentSchoolMessageAttachment(
+        {
+          attachmentId: attachment.id,
+          buildAuditEntry: (deleted) =>
+            buildCommunicationAttachmentAuditEntry({
+              scope,
+              action: 'communication.message_attachment.delete',
+              attachment: deleted,
+              before: deleted,
+              changedFields: ['deletedAt'],
+            }),
+        },
+      );
+
+    this.realtimeEvents?.publishAttachmentDeleted(scope.schoolId, attachment);
+
+    return result;
   }
 }
 
@@ -371,8 +383,9 @@ function buildCommunicationAttachmentAuditEntry(params: {
     before: params.before
       ? {
           targetSchoolId: params.scope.schoolId,
-          attachment:
-            summarizeCommunicationMessageAttachmentForAudit(params.before),
+          attachment: summarizeCommunicationMessageAttachmentForAudit(
+            params.before,
+          ),
         }
       : undefined,
     after: {
@@ -383,8 +396,9 @@ function buildCommunicationAttachmentAuditEntry(params: {
       messageId: params.attachment.messageId,
       attachmentId: params.attachment.id,
       fileId: params.attachment.fileId,
-      attachment:
-        summarizeCommunicationMessageAttachmentForAudit(params.attachment),
+      attachment: summarizeCommunicationMessageAttachmentForAudit(
+        params.attachment,
+      ),
     },
   };
 }

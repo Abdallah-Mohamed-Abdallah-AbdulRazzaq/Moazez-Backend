@@ -68,6 +68,7 @@ export class RealtimeAuthService {
     return {
       actorId: user.id,
       userType: user.userType,
+      membershipId: membership.id,
       schoolId: membership.schoolId,
       organizationId: membership.organizationId,
       roleId: membership.roleId,

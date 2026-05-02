@@ -35,6 +35,9 @@ import {
   CommunicationReactionRepository,
 } from '../infrastructure/communication-reaction.repository';
 import { CommunicationPolicyRepository } from '../infrastructure/communication-policy.repository';
+import { CommunicationRealtimeEventsService } from '../application/communication-realtime-events.service';
+import { REALTIME_SERVER_EVENTS } from '../../../infrastructure/realtime/realtime-event-names';
+import { RealtimePublisherService } from '../../../infrastructure/realtime/realtime-publisher.service';
 
 const SCHOOL_ID = 'school-1';
 const ORGANIZATION_ID = 'org-1';
@@ -84,7 +87,9 @@ describe('communication reaction use cases', () => {
         ).execute(MESSAGE_ID, { type: 'like' }),
       ),
     ).rejects.toBeInstanceOf(CommunicationPolicyDisabledException);
-    expect(repository.upsertCurrentSchoolMessageReaction).not.toHaveBeenCalled();
+    expect(
+      repository.upsertCurrentSchoolMessageReaction,
+    ).not.toHaveBeenCalled();
   });
 
   it('reaction mutation rejects archived and closed conversations', async () => {
@@ -175,11 +180,13 @@ describe('communication reaction use cases', () => {
   it('upserts one actor reaction, audits, and avoids out-of-scope side effects', async () => {
     let audit: CommunicationReactionAuditInput | undefined;
     const repository = repositoryMock({
-      upsertCurrentSchoolMessageReaction: jest.fn().mockImplementation((input) => {
-        const next = reactionRecord({ reactionKey: 'love' });
-        audit = input.buildAuditEntry(next, null);
-        return Promise.resolve(next);
-      }),
+      upsertCurrentSchoolMessageReaction: jest
+        .fn()
+        .mockImplementation((input) => {
+          const next = reactionRecord({ reactionKey: 'love' });
+          audit = input.buildAuditEntry(next, null);
+          return Promise.resolve(next);
+        }),
     });
 
     const result = await withScope(() =>
@@ -225,13 +232,48 @@ describe('communication reaction use cases', () => {
     expect(repository.emitRealtime).not.toHaveBeenCalled();
   });
 
+  it('upsert publishes reaction.upserted after persistence succeeds', async () => {
+    const repository = repositoryMock({
+      upsertCurrentSchoolMessageReaction: jest
+        .fn()
+        .mockResolvedValue(reactionRecord({ reactionKey: 'love' })),
+    });
+    const publisher = realtimePublisherMock();
+
+    await withScope(() =>
+      new UpsertCommunicationMessageReactionUseCase(
+        repository,
+        policyRepositoryMock(),
+        new CommunicationRealtimeEventsService(publisher),
+      ).execute(MESSAGE_ID, { type: 'love' }),
+    );
+
+    expect(publisher.publishToConversation).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      CONVERSATION_ID,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_REACTION_UPSERTED,
+      expect.objectContaining({
+        conversationId: CONVERSATION_ID,
+        messageId: MESSAGE_ID,
+        reaction: expect.objectContaining({
+          id: REACTION_ID,
+          userId: ACTOR_ID,
+          type: 'love',
+        }),
+        eventAt: expect.any(String),
+      }),
+    );
+  });
+
   it('deletes actor reaction and audits mutation', async () => {
     let audit: CommunicationReactionAuditInput | undefined;
     const repository = repositoryMock({
-      deleteCurrentSchoolMessageReaction: jest.fn().mockImplementation((input) => {
-        audit = input.buildAuditEntry(reactionRecord());
-        return Promise.resolve({ ok: true });
-      }),
+      deleteCurrentSchoolMessageReaction: jest
+        .fn()
+        .mockImplementation((input) => {
+          audit = input.buildAuditEntry(reactionRecord());
+          return Promise.resolve({ ok: true });
+        }),
     });
 
     const result = await withScope(() =>
@@ -249,6 +291,40 @@ describe('communication reaction use cases', () => {
         reactionId: REACTION_ID,
       }),
     });
+  });
+
+  it('delete publishes reaction.deleted after persistence succeeds', async () => {
+    const repository = repositoryMock({
+      findCurrentSchoolReactionForActor: jest
+        .fn()
+        .mockResolvedValue(reactionRecord()),
+      deleteCurrentSchoolMessageReaction: jest
+        .fn()
+        .mockResolvedValue({ ok: true }),
+    });
+    const publisher = realtimePublisherMock();
+
+    await withScope(() =>
+      new DeleteCommunicationMessageReactionUseCase(
+        repository,
+        policyRepositoryMock(),
+        new CommunicationRealtimeEventsService(publisher),
+      ).execute(MESSAGE_ID),
+    );
+
+    expect(publisher.publishToConversation).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      CONVERSATION_ID,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_REACTION_DELETED,
+      expect.objectContaining({
+        conversationId: CONVERSATION_ID,
+        messageId: MESSAGE_ID,
+        reactionId: REACTION_ID,
+        userId: ACTOR_ID,
+        actorId: ACTOR_ID,
+        eventAt: expect.any(String),
+      }),
+    );
   });
 });
 
@@ -297,6 +373,15 @@ function policyRepositoryMock(
       .mockResolvedValue(buildDefaultCommunicationPolicy()),
     ...(overrides ?? {}),
   } as unknown as CommunicationPolicyRepository;
+}
+
+function realtimePublisherMock(): jest.Mocked<RealtimePublisherService> {
+  return {
+    bindServer: jest.fn(),
+    publishToSchool: jest.fn().mockReturnValue(true),
+    publishToUser: jest.fn().mockReturnValue(true),
+    publishToConversation: jest.fn().mockReturnValue(true),
+  } as unknown as jest.Mocked<RealtimePublisherService>;
 }
 
 function messageAccessRecord(

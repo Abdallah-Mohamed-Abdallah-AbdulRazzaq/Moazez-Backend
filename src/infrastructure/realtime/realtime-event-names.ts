@@ -19,6 +19,9 @@ export const REALTIME_SERVER_EVENTS = Object.freeze({
 export const REALTIME_CLIENT_COMMANDS = Object.freeze({
   COMMUNICATION_CHAT_MESSAGE_SEND: 'communication.chat.message.send',
   COMMUNICATION_CHAT_CONVERSATION_READ: 'communication.chat.conversation.read',
+  COMMUNICATION_CHAT_CONVERSATION_JOIN: 'communication.chat.conversation.join',
+  COMMUNICATION_CHAT_CONVERSATION_LEAVE:
+    'communication.chat.conversation.leave',
   COMMUNICATION_TYPING_START: 'communication.typing.start',
   COMMUNICATION_TYPING_STOP: 'communication.typing.stop',
 } as const);

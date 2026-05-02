@@ -1,8 +1,19 @@
 import type { Server } from 'socket.io';
+import { Logger } from '@nestjs/common';
 import { REALTIME_SERVER_EVENTS } from '../realtime-event-names';
 import { RealtimePublisherService } from '../realtime-publisher.service';
 
 describe('RealtimePublisherService', () => {
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
   it('returns false when the Socket.io server is not bound yet', () => {
     const service = new RealtimePublisherService();
 
@@ -72,6 +83,26 @@ describe('RealtimePublisherService', () => {
 
     expect(() => service.publishToSchool('school-1', ' ', {})).toThrow(
       'eventName is required',
+    );
+  });
+
+  it('returns false when Socket.io delivery fails', () => {
+    const service = new RealtimePublisherService();
+    const to = jest.fn(() => {
+      throw new Error('socket adapter unavailable');
+    });
+    service.bindServer({ to } as unknown as Server);
+
+    expect(
+      service.publishToConversation(
+        'school-1',
+        'conversation-1',
+        REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_MESSAGE_CREATED,
+        { messageId: 'message-1' },
+      ),
+    ).toBe(false);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('communication.chat.message.created'),
     );
   });
 });

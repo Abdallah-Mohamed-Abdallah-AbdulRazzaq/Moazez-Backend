@@ -27,6 +27,8 @@ describe('realtime event names', () => {
     expect(Object.values(REALTIME_CLIENT_COMMANDS)).toEqual([
       'communication.chat.message.send',
       'communication.chat.conversation.read',
+      'communication.chat.conversation.join',
+      'communication.chat.conversation.leave',
       'communication.typing.start',
       'communication.typing.stop',
     ]);

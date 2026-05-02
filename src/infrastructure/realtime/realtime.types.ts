@@ -4,6 +4,7 @@ import type { Socket } from 'socket.io';
 export interface RealtimeAuthenticatedContext {
   actorId: string;
   userType: UserType;
+  membershipId: string;
   schoolId: string;
   organizationId: string;
   roleId: string;

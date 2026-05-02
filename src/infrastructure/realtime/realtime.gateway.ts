@@ -1,11 +1,15 @@
 import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  ConnectedSocket,
+  MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
+  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
+  WsException,
 } from '@nestjs/websockets';
 import { createAdapter } from '@socket.io/redis-adapter';
 import IORedis from 'ioredis';
@@ -13,12 +17,19 @@ import type { Server } from 'socket.io';
 import {
   createRequestContext,
   runWithRequestContext,
+  setActiveMembership,
+  setActor,
 } from '../../common/context/request-context';
 import type { Env } from '../../config/env.validation';
 import { RealtimeAuthService } from './realtime-auth.service';
-import { schoolRoom, userRoom } from './realtime-room-names';
+import { RealtimeCommunicationAccessService } from './realtime-communication-access.service';
+import { REALTIME_CLIENT_COMMANDS } from './realtime-event-names';
+import { conversationRoom, schoolRoom, userRoom } from './realtime-room-names';
 import { RealtimePublisherService } from './realtime-publisher.service';
-import type { RealtimeSocket } from './realtime.types';
+import type {
+  RealtimeAuthenticatedContext,
+  RealtimeSocket,
+} from './realtime.types';
 
 const REALTIME_NAMESPACE = '/api/v1/realtime';
 const REDIS_ADAPTER_CONNECT_TIMEOUT_MS = 1000;
@@ -46,6 +57,7 @@ export class RealtimeGateway
 
   constructor(
     private readonly authService: RealtimeAuthService,
+    private readonly communicationAccessService: RealtimeCommunicationAccessService,
     private readonly publisher: RealtimePublisherService,
     private readonly configService: ConfigService<Env, true>,
   ) {}
@@ -83,6 +95,48 @@ export class RealtimeGateway
     this.logger.debug(
       `Realtime socket disconnected for actor ${client.data.actorId}`,
     );
+  }
+
+  @SubscribeMessage(
+    REALTIME_CLIENT_COMMANDS.COMMUNICATION_CHAT_CONVERSATION_JOIN,
+  )
+  async handleConversationJoin(
+    @ConnectedSocket() client: RealtimeSocket,
+    @MessageBody() payload: unknown,
+  ): Promise<{ ok: true }> {
+    return this.runWithSocketContext(client, async (context) => {
+      const conversationId = this.extractConversationId(payload);
+      const hasAccess =
+        await this.communicationAccessService.canJoinConversationRoom({
+          conversationId,
+          actorId: context.actorId,
+          permissions: context.permissions,
+        });
+
+      if (!hasAccess) {
+        throw new WsException({
+          code: 'communication.conversation.not_member',
+        });
+      }
+
+      await client.join(conversationRoom(context.schoolId, conversationId));
+      return { ok: true };
+    });
+  }
+
+  @SubscribeMessage(
+    REALTIME_CLIENT_COMMANDS.COMMUNICATION_CHAT_CONVERSATION_LEAVE,
+  )
+  async handleConversationLeave(
+    @ConnectedSocket() client: RealtimeSocket,
+    @MessageBody() payload: unknown,
+  ): Promise<{ ok: true }> {
+    return this.runWithSocketContext(client, async (context) => {
+      const conversationId = this.extractConversationId(payload);
+
+      await client.leave(conversationRoom(context.schoolId, conversationId));
+      return { ok: true };
+    });
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -185,6 +239,77 @@ export class RealtimeGateway
     const value = Array.isArray(requestId) ? requestId[0] : requestId;
 
     return value && value.trim().length > 0 ? value : undefined;
+  }
+
+  private runWithSocketContext<T>(
+    client: RealtimeSocket,
+    fn: (context: RealtimeAuthenticatedContext) => Promise<T>,
+  ): Promise<T> {
+    const context = this.requireAuthenticatedSocket(client);
+    const requestContext = createRequestContext(this.extractRequestId(client));
+
+    return runWithRequestContext(requestContext, async () => {
+      setActor({
+        id: context.actorId,
+        userType: context.userType,
+      });
+      setActiveMembership({
+        membershipId: context.membershipId,
+        schoolId: context.schoolId,
+        organizationId: context.organizationId,
+        roleId: context.roleId,
+        permissions: context.permissions,
+      });
+
+      return fn(context);
+    });
+  }
+
+  private requireAuthenticatedSocket(
+    client: RealtimeSocket,
+  ): RealtimeAuthenticatedContext {
+    const data = client.data;
+    if (
+      !data.actorId ||
+      !data.userType ||
+      !data.membershipId ||
+      !data.schoolId ||
+      !data.organizationId ||
+      !data.roleId ||
+      !data.sessionId ||
+      !Array.isArray(data.permissions)
+    ) {
+      throw new WsException({ code: 'realtime.auth.required' });
+    }
+
+    return {
+      actorId: data.actorId,
+      userType: data.userType,
+      membershipId: data.membershipId,
+      schoolId: data.schoolId,
+      organizationId: data.organizationId,
+      roleId: data.roleId,
+      permissions: data.permissions,
+      sessionId: data.sessionId,
+    };
+  }
+
+  private extractConversationId(payload: unknown): string {
+    const conversationId =
+      payload && typeof payload === 'object'
+        ? (payload as { conversationId?: unknown }).conversationId
+        : null;
+
+    if (typeof conversationId !== 'string') {
+      throw new WsException({ code: 'validation.failed' });
+    }
+
+    const normalized = conversationId.trim();
+    if (!normalized) {
+      throw new WsException({ code: 'validation.failed' });
+    }
+
+    return normalized;
   }
 
   private getErrorCode(error: unknown): string {

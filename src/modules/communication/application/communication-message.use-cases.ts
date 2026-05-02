@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import {
   AuditOutcome,
   CommunicationMessageKind,
@@ -56,6 +56,7 @@ import {
   presentCommunicationMessageReadReceipt,
   presentCommunicationReadSummary,
 } from '../presenters/communication-message-read.presenter';
+import { CommunicationRealtimeEventsService } from './communication-realtime-events.service';
 
 @Injectable()
 export class ListCommunicationMessagesUseCase {
@@ -112,6 +113,8 @@ export class CreateCommunicationMessageUseCase {
   constructor(
     private readonly communicationMessageRepository: CommunicationMessageRepository,
     private readonly communicationPolicyRepository: CommunicationPolicyRepository,
+    @Optional()
+    private readonly realtimeEvents?: CommunicationRealtimeEventsService,
   ) {}
 
   async execute(
@@ -193,6 +196,8 @@ export class CreateCommunicationMessageUseCase {
           }),
       });
 
+    this.realtimeEvents?.publishMessageCreated(scope.schoolId, message);
+
     return presentCommunicationMessage(message);
   }
 }
@@ -224,6 +229,8 @@ export class UpdateCommunicationMessageUseCase {
   constructor(
     private readonly communicationMessageRepository: CommunicationMessageRepository,
     private readonly communicationPolicyRepository: CommunicationPolicyRepository,
+    @Optional()
+    private readonly realtimeEvents?: CommunicationRealtimeEventsService,
   ) {}
 
   async execute(messageId: string, command: UpdateCommunicationMessageDto) {
@@ -269,6 +276,8 @@ export class UpdateCommunicationMessageUseCase {
           }),
       });
 
+    this.realtimeEvents?.publishMessageUpdated(scope.schoolId, updated);
+
     return presentCommunicationMessage(updated);
   }
 }
@@ -277,6 +286,8 @@ export class UpdateCommunicationMessageUseCase {
 export class DeleteCommunicationMessageUseCase {
   constructor(
     private readonly communicationMessageRepository: CommunicationMessageRepository,
+    @Optional()
+    private readonly realtimeEvents?: CommunicationRealtimeEventsService,
   ) {}
 
   async execute(messageId: string) {
@@ -306,18 +317,22 @@ export class DeleteCommunicationMessageUseCase {
     });
 
     const deleted =
-      await this.communicationMessageRepository.deleteOrHideCurrentSchoolMessage({
-        messageId: message.id,
-        actorId: scope.actorId,
-        buildAuditEntry: (next) =>
-          buildCommunicationMessageAuditEntry({
-            scope,
-            action: 'communication.message.delete',
-            message: next,
-            before: message,
-            changedFields: ['status', 'deletedAt', 'deletedById'],
-          }),
-      });
+      await this.communicationMessageRepository.deleteOrHideCurrentSchoolMessage(
+        {
+          messageId: message.id,
+          actorId: scope.actorId,
+          buildAuditEntry: (next) =>
+            buildCommunicationMessageAuditEntry({
+              scope,
+              action: 'communication.message.delete',
+              message: next,
+              before: message,
+              changedFields: ['status', 'deletedAt', 'deletedById'],
+            }),
+        },
+      );
+
+    this.realtimeEvents?.publishMessageDeleted(scope.schoolId, deleted);
 
     return presentCommunicationMessage(deleted);
   }
@@ -327,6 +342,8 @@ export class DeleteCommunicationMessageUseCase {
 export class MarkCommunicationMessageReadUseCase {
   constructor(
     private readonly communicationMessageRepository: CommunicationMessageRepository,
+    @Optional()
+    private readonly realtimeEvents?: CommunicationRealtimeEventsService,
   ) {}
 
   async execute(messageId: string) {
@@ -354,6 +371,8 @@ export class MarkCommunicationMessageReadUseCase {
         readAt: new Date(),
       });
 
+    this.realtimeEvents?.publishMessageRead(scope.schoolId, read);
+
     return presentCommunicationMessageReadReceipt(read);
   }
 }
@@ -362,6 +381,8 @@ export class MarkCommunicationMessageReadUseCase {
 export class MarkCommunicationConversationReadUseCase {
   constructor(
     private readonly communicationMessageRepository: CommunicationMessageRepository,
+    @Optional()
+    private readonly realtimeEvents?: CommunicationRealtimeEventsService,
   ) {}
 
   async execute(conversationId: string, command?: MarkConversationReadDto) {
@@ -388,6 +409,12 @@ export class MarkCommunicationConversationReadUseCase {
           readAt: command?.readAt ? new Date(command.readAt) : new Date(),
         },
       );
+
+    this.realtimeEvents?.publishConversationRead({
+      schoolId: scope.schoolId,
+      readerId: scope.actorId,
+      result,
+    });
 
     return presentCommunicationConversationReadResult(result);
   }
@@ -428,9 +455,8 @@ async function requireConversationForAccess(
   repository: CommunicationMessageRepository,
   conversationId: string,
 ): Promise<CommunicationMessageConversationAccessRecord> {
-  const conversation = await repository.findConversationForMessageAccess(
-    conversationId,
-  );
+  const conversation =
+    await repository.findConversationForMessageAccess(conversationId);
   if (!conversation) {
     throw new NotFoundDomainException('Conversation not found', {
       conversationId,
@@ -622,7 +648,9 @@ function buildCommunicationMessageAuditEntry(params: {
   };
 }
 
-function normalizeOptionalText(value: string | null | undefined): string | null {
+function normalizeOptionalText(
+  value: string | null | undefined,
+): string | null {
   if (value === undefined || value === null) return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;

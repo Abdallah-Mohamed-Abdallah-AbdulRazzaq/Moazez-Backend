@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { RealtimeModule } from '../../infrastructure/realtime/realtime.module';
 import { AuthModule } from '../iam/auth/auth.module';
 import {
   ArchiveCommunicationConversationUseCase,
@@ -66,6 +67,7 @@ import {
   ListCommunicationMessageReactionsUseCase,
   UpsertCommunicationMessageReactionUseCase,
 } from './application/communication-reaction.use-cases';
+import { CommunicationRealtimeEventsService } from './application/communication-realtime-events.service';
 import {
   CreateCommunicationUserRestrictionUseCase,
   ListCommunicationUserRestrictionsUseCase,
@@ -90,7 +92,7 @@ import { CommunicationReportRepository } from './infrastructure/communication-re
 import { CommunicationRestrictionRepository } from './infrastructure/communication-restriction.repository';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, RealtimeModule],
   controllers: [
     CommunicationPolicyController,
     CommunicationConversationController,
@@ -162,6 +164,7 @@ import { CommunicationRestrictionRepository } from './infrastructure/communicati
     CreateCommunicationUserRestrictionUseCase,
     UpdateCommunicationUserRestrictionUseCase,
     RevokeCommunicationUserRestrictionUseCase,
+    CommunicationRealtimeEventsService,
   ],
 })
 export class CommunicationModule {}

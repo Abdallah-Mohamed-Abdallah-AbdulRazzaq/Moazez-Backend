@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { Server } from 'socket.io';
 import { conversationRoom, schoolRoom, userRoom } from './realtime-room-names';
 
 @Injectable()
 export class RealtimePublisherService {
+  private readonly logger = new Logger(RealtimePublisherService.name);
   private server?: Server;
 
   bindServer(server: Server): void {
@@ -52,7 +53,21 @@ export class RealtimePublisherService {
 
     if (!this.server) return false;
 
-    this.server.to(roomName).emit(normalizedEventName, payload);
-    return true;
+    try {
+      this.server.to(roomName).emit(normalizedEventName, payload);
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `Realtime publish failed for event ${normalizedEventName} in room ${roomName}: ${this.getErrorMessage(
+          error,
+        )}`,
+      );
+      return false;
+    }
+  }
+
+  private getErrorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    return 'unknown_error';
   }
 }

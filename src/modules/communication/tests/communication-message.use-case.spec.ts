@@ -44,6 +44,9 @@ import {
   CommunicationMessageRepository,
 } from '../infrastructure/communication-message.repository';
 import { CommunicationPolicyRepository } from '../infrastructure/communication-policy.repository';
+import { CommunicationRealtimeEventsService } from '../application/communication-realtime-events.service';
+import { REALTIME_SERVER_EVENTS } from '../../../infrastructure/realtime/realtime-event-names';
+import { RealtimePublisherService } from '../../../infrastructure/realtime/realtime-publisher.service';
 
 const SCHOOL_ID = 'school-1';
 const ORGANIZATION_ID = 'org-1';
@@ -241,6 +244,62 @@ describe('communication message use cases', () => {
     expect(repository.emitRealtime).not.toHaveBeenCalled();
   });
 
+  it('send publishes message.created after persistence succeeds', async () => {
+    const repository = repositoryMock({
+      createCurrentSchoolMessage: jest.fn().mockResolvedValue(
+        messageRecord({
+          body: 'Created message',
+          metadata: { source: 'unit', body: 'blocked metadata' },
+        }),
+      ),
+    });
+    const publisher = realtimePublisherMock();
+
+    await withScope(() =>
+      new CreateCommunicationMessageUseCase(
+        repository,
+        policyRepositoryMock(),
+        new CommunicationRealtimeEventsService(publisher),
+      ).execute(CONVERSATION_ID, { body: 'Created message' }),
+    );
+
+    expect(publisher.publishToConversation).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      CONVERSATION_ID,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_MESSAGE_CREATED,
+      expect.objectContaining({
+        conversationId: CONVERSATION_ID,
+        eventAt: expect.any(String),
+        message: expect.objectContaining({
+          id: MESSAGE_ID,
+          body: 'Created message',
+          metadata: { source: 'unit' },
+        }),
+      }),
+    );
+  });
+
+  it('does not publish message.created when persistence fails', async () => {
+    const repository = repositoryMock({
+      createCurrentSchoolMessage: jest
+        .fn()
+        .mockRejectedValue(new Error('database unavailable')),
+    });
+    const publisher = realtimePublisherMock();
+
+    await expect(
+      withScope(() =>
+        new CreateCommunicationMessageUseCase(
+          repository,
+          policyRepositoryMock(),
+          new CommunicationRealtimeEventsService(publisher),
+        ).execute(CONVERSATION_ID, { body: 'Created message' }),
+      ),
+    ).rejects.toThrow('database unavailable');
+
+    expect(publisher.publishToConversation).not.toHaveBeenCalled();
+  });
+
   it('edit audits mutation and rejects deleted or hidden messages', async () => {
     let audit: CommunicationMessageAuditInput | undefined;
     const repository = repositoryMock({
@@ -306,18 +365,54 @@ describe('communication message use cases', () => {
     ).rejects.toBeInstanceOf(CommunicationMessageHiddenException);
   });
 
+  it('edit publishes message.updated after persistence succeeds', async () => {
+    const repository = repositoryMock({
+      updateCurrentSchoolMessage: jest.fn().mockResolvedValue(
+        messageRecord({
+          body: 'Updated',
+          editedAt: new Date('2026-05-02T09:00:00.000Z'),
+        }),
+      ),
+    });
+    const publisher = realtimePublisherMock();
+
+    await withScope(() =>
+      new UpdateCommunicationMessageUseCase(
+        repository,
+        policyRepositoryMock(),
+        new CommunicationRealtimeEventsService(publisher),
+      ).execute(MESSAGE_ID, { body: 'Updated' }),
+    );
+
+    expect(publisher.publishToConversation).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      CONVERSATION_ID,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_MESSAGE_UPDATED,
+      expect.objectContaining({
+        conversationId: CONVERSATION_ID,
+        message: expect.objectContaining({
+          id: MESSAGE_ID,
+          body: 'Updated',
+        }),
+        eventAt: expect.any(String),
+      }),
+    );
+  });
+
   it('delete hides body in response and audits mutation', async () => {
     let audit: CommunicationMessageAuditInput | undefined;
     const repository = repositoryMock({
-      deleteOrHideCurrentSchoolMessage: jest.fn().mockImplementation((input) => {
-        const deleted = messageRecord({
-          status: CommunicationMessageStatus.DELETED,
-          deletedAt: new Date('2026-05-02T09:30:00.000Z'),
-          deletedById: ACTOR_ID,
-        });
-        audit = input.buildAuditEntry(deleted);
-        return Promise.resolve(deleted);
-      }),
+      deleteOrHideCurrentSchoolMessage: jest
+        .fn()
+        .mockImplementation((input) => {
+          const deleted = messageRecord({
+            status: CommunicationMessageStatus.DELETED,
+            deletedAt: new Date('2026-05-02T09:30:00.000Z'),
+            deletedById: ACTOR_ID,
+          });
+          audit = input.buildAuditEntry(deleted);
+          return Promise.resolve(deleted);
+        }),
     });
 
     const result = await withScope(() =>
@@ -336,6 +431,44 @@ describe('communication message use cases', () => {
         changedFields: ['status', 'deletedAt', 'deletedById'],
       }),
     });
+  });
+
+  it('delete publishes message.deleted without message body', async () => {
+    const repository = repositoryMock({
+      deleteOrHideCurrentSchoolMessage: jest.fn().mockResolvedValue(
+        messageRecord({
+          status: CommunicationMessageStatus.DELETED,
+          body: 'Hidden from realtime',
+          deletedAt: new Date('2026-05-02T09:30:00.000Z'),
+          deletedById: ACTOR_ID,
+        }),
+      ),
+    });
+    const publisher = realtimePublisherMock();
+
+    await withScope(() =>
+      new DeleteCommunicationMessageUseCase(
+        repository,
+        new CommunicationRealtimeEventsService(publisher),
+      ).execute(MESSAGE_ID),
+    );
+
+    expect(publisher.publishToConversation).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      CONVERSATION_ID,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_MESSAGE_DELETED,
+      {
+        messageId: MESSAGE_ID,
+        conversationId: CONVERSATION_ID,
+        status: 'deleted',
+        deletedAt: '2026-05-02T09:30:00.000Z',
+        hiddenAt: null,
+        eventAt: expect.any(String),
+      },
+    );
+    expect(
+      JSON.stringify(publisher.publishToConversation.mock.calls),
+    ).not.toContain('Hidden from realtime');
   });
 
   it('mark message read upserts a read row and does not audit by default', async () => {
@@ -364,6 +497,34 @@ describe('communication message use cases', () => {
     expect(repository.createAuditLog).not.toHaveBeenCalled();
   });
 
+  it('mark message read publishes message.read and still does not audit', async () => {
+    const repository = repositoryMock({
+      markCurrentSchoolMessageRead: jest.fn().mockResolvedValue(readRecord()),
+    });
+    const publisher = realtimePublisherMock();
+
+    await withScope(() =>
+      new MarkCommunicationMessageReadUseCase(
+        repository,
+        new CommunicationRealtimeEventsService(publisher),
+      ).execute(MESSAGE_ID),
+    );
+
+    expect(publisher.publishToConversation).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      CONVERSATION_ID,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_MESSAGE_READ,
+      expect.objectContaining({
+        conversationId: CONVERSATION_ID,
+        messageId: MESSAGE_ID,
+        readerId: ACTOR_ID,
+        readAt: '2026-05-02T09:00:00.000Z',
+        eventAt: expect.any(String),
+      }),
+    );
+    expect(repository.createAuditLog).not.toHaveBeenCalled();
+  });
+
   it('mark conversation read returns compact markedCount', async () => {
     const repository = repositoryMock({
       markCurrentSchoolConversationRead: jest.fn().mockResolvedValue({
@@ -386,6 +547,37 @@ describe('communication message use cases', () => {
       markedCount: 2,
     });
     expect(repository.createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('mark conversation read publishes markedCount', async () => {
+    const repository = repositoryMock({
+      markCurrentSchoolConversationRead: jest.fn().mockResolvedValue({
+        conversationId: CONVERSATION_ID,
+        readAt: new Date('2026-05-02T09:00:00.000Z'),
+        markedCount: 2,
+      }),
+    });
+    const publisher = realtimePublisherMock();
+
+    await withScope(() =>
+      new MarkCommunicationConversationReadUseCase(
+        repository,
+        new CommunicationRealtimeEventsService(publisher),
+      ).execute(CONVERSATION_ID),
+    );
+
+    expect(publisher.publishToConversation).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      CONVERSATION_ID,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_MESSAGE_READ,
+      expect.objectContaining({
+        conversationId: CONVERSATION_ID,
+        readerId: ACTOR_ID,
+        readAt: '2026-05-02T09:00:00.000Z',
+        markedCount: 2,
+        eventAt: expect.any(String),
+      }),
+    );
   });
 
   it('read summary returns aggregate counts without user details', async () => {
@@ -430,7 +622,9 @@ function repositoryMock(
     findConversationForMessageAccess: jest
       .fn()
       .mockResolvedValue(conversationRecord()),
-    findConversationForMessage: jest.fn().mockResolvedValue(conversationRecord()),
+    findConversationForMessage: jest
+      .fn()
+      .mockResolvedValue(conversationRecord()),
     findActiveParticipantForActor: jest
       .fn()
       .mockResolvedValue(participantRecord()),
@@ -476,6 +670,15 @@ function policyRepositoryMock(
       .mockResolvedValue(buildDefaultCommunicationPolicy()),
     ...(overrides ?? {}),
   } as unknown as CommunicationPolicyRepository;
+}
+
+function realtimePublisherMock(): jest.Mocked<RealtimePublisherService> {
+  return {
+    bindServer: jest.fn(),
+    publishToSchool: jest.fn().mockReturnValue(true),
+    publishToUser: jest.fn().mockReturnValue(true),
+    publishToConversation: jest.fn().mockReturnValue(true),
+  } as unknown as jest.Mocked<RealtimePublisherService>;
 }
 
 function conversationRecord(

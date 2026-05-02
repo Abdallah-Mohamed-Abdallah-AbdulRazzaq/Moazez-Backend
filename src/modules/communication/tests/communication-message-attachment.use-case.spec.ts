@@ -38,6 +38,9 @@ import {
   CommunicationMessageAttachmentRepository,
 } from '../infrastructure/communication-message-attachment.repository';
 import { CommunicationPolicyRepository } from '../infrastructure/communication-policy.repository';
+import { CommunicationRealtimeEventsService } from '../application/communication-realtime-events.service';
+import { REALTIME_SERVER_EVENTS } from '../../../infrastructure/realtime/realtime-event-names';
+import { RealtimePublisherService } from '../../../infrastructure/realtime/realtime-publisher.service';
 
 const SCHOOL_ID = 'school-1';
 const ORGANIZATION_ID = 'org-1';
@@ -88,7 +91,9 @@ describe('communication message attachment use cases', () => {
         ).execute(MESSAGE_ID, { fileId: FILE_ID }),
       ),
     ).rejects.toBeInstanceOf(CommunicationPolicyDisabledException);
-    expect(repository.linkCurrentSchoolMessageAttachment).not.toHaveBeenCalled();
+    expect(
+      repository.linkCurrentSchoolMessageAttachment,
+    ).not.toHaveBeenCalled();
   });
 
   it('attachment link rejects when attachments are disabled or file is too large', async () => {
@@ -112,7 +117,9 @@ describe('communication message attachment use cases', () => {
           repositoryMock({
             findCurrentSchoolFileOrAttachmentReference: jest
               .fn()
-              .mockResolvedValue(fileRecord({ sizeBytes: 50n * 1024n * 1024n })),
+              .mockResolvedValue(
+                fileRecord({ sizeBytes: 50n * 1024n * 1024n }),
+              ),
           }),
           policyRepositoryMock({
             findCurrentSchoolPolicy: jest.fn().mockResolvedValue({
@@ -193,11 +200,13 @@ describe('communication message attachment use cases', () => {
   it('links attachment, audits, and avoids out-of-scope side effects', async () => {
     let audit: CommunicationAttachmentAuditInput | undefined;
     const repository = repositoryMock({
-      linkCurrentSchoolMessageAttachment: jest.fn().mockImplementation((input) => {
-        const next = attachmentRecord({ caption: 'worksheet' });
-        audit = input.buildAuditEntry(next, null);
-        return Promise.resolve(next);
-      }),
+      linkCurrentSchoolMessageAttachment: jest
+        .fn()
+        .mockImplementation((input) => {
+          const next = attachmentRecord({ caption: 'worksheet' });
+          audit = input.buildAuditEntry(next, null);
+          return Promise.resolve(next);
+        }),
     });
 
     const result = await withScope(() =>
@@ -243,13 +252,48 @@ describe('communication message attachment use cases', () => {
     expect(repository.emitRealtime).not.toHaveBeenCalled();
   });
 
+  it('link publishes attachment.linked after persistence succeeds', async () => {
+    const repository = repositoryMock({
+      linkCurrentSchoolMessageAttachment: jest
+        .fn()
+        .mockResolvedValue(attachmentRecord({ caption: 'worksheet' })),
+    });
+    const publisher = realtimePublisherMock();
+
+    await withScope(() =>
+      new LinkCommunicationMessageAttachmentUseCase(
+        repository,
+        policyRepositoryMock(),
+        new CommunicationRealtimeEventsService(publisher),
+      ).execute(MESSAGE_ID, { fileId: FILE_ID, caption: 'worksheet' }),
+    );
+
+    expect(publisher.publishToConversation).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      CONVERSATION_ID,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_ATTACHMENT_LINKED,
+      expect.objectContaining({
+        conversationId: CONVERSATION_ID,
+        messageId: MESSAGE_ID,
+        attachment: expect.objectContaining({
+          id: ATTACHMENT_ID,
+          fileId: FILE_ID,
+          caption: 'worksheet',
+        }),
+        eventAt: expect.any(String),
+      }),
+    );
+  });
+
   it('deletes attachment link and audits mutation', async () => {
     let audit: CommunicationAttachmentAuditInput | undefined;
     const repository = repositoryMock({
-      deleteCurrentSchoolMessageAttachment: jest.fn().mockImplementation((input) => {
-        audit = input.buildAuditEntry(attachmentRecord());
-        return Promise.resolve({ ok: true });
-      }),
+      deleteCurrentSchoolMessageAttachment: jest
+        .fn()
+        .mockImplementation((input) => {
+          audit = input.buildAuditEntry(attachmentRecord());
+          return Promise.resolve({ ok: true });
+        }),
     });
 
     const result = await withScope(() =>
@@ -268,6 +312,39 @@ describe('communication message attachment use cases', () => {
         fileId: FILE_ID,
       }),
     });
+  });
+
+  it('delete publishes attachment.deleted after persistence succeeds', async () => {
+    const repository = repositoryMock({
+      findCurrentSchoolMessageAttachment: jest
+        .fn()
+        .mockResolvedValue(attachmentRecord()),
+      deleteCurrentSchoolMessageAttachment: jest
+        .fn()
+        .mockResolvedValue({ ok: true }),
+    });
+    const publisher = realtimePublisherMock();
+
+    await withScope(() =>
+      new DeleteCommunicationMessageAttachmentUseCase(
+        repository,
+        policyRepositoryMock(),
+        new CommunicationRealtimeEventsService(publisher),
+      ).execute(MESSAGE_ID, ATTACHMENT_ID),
+    );
+
+    expect(publisher.publishToConversation).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      CONVERSATION_ID,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_ATTACHMENT_DELETED,
+      expect.objectContaining({
+        attachmentId: ATTACHMENT_ID,
+        fileId: FILE_ID,
+        messageId: MESSAGE_ID,
+        conversationId: CONVERSATION_ID,
+        eventAt: expect.any(String),
+      }),
+    );
   });
 });
 
@@ -320,6 +397,15 @@ function policyRepositoryMock(
       .mockResolvedValue(buildDefaultCommunicationPolicy()),
     ...(overrides ?? {}),
   } as unknown as CommunicationPolicyRepository;
+}
+
+function realtimePublisherMock(): jest.Mocked<RealtimePublisherService> {
+  return {
+    bindServer: jest.fn(),
+    publishToSchool: jest.fn().mockReturnValue(true),
+    publishToUser: jest.fn().mockReturnValue(true),
+    publishToConversation: jest.fn().mockReturnValue(true),
+  } as unknown as jest.Mocked<RealtimePublisherService>;
 }
 
 function messageAccessRecord(

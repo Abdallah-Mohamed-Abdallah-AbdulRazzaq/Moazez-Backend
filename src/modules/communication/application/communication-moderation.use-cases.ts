@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import {
   AuditOutcome,
   CommunicationMessageStatus,
@@ -28,6 +28,7 @@ import {
   presentCommunicationModerationMutation,
   summarizeCommunicationModerationActionForAudit,
 } from '../presenters/communication-moderation.presenter';
+import { CommunicationRealtimeEventsService } from './communication-realtime-events.service';
 
 @Injectable()
 export class ListCommunicationModerationActionsUseCase {
@@ -57,6 +58,8 @@ export class ListCommunicationModerationActionsUseCase {
 export class CreateCommunicationModerationActionUseCase {
   constructor(
     private readonly communicationModerationRepository: CommunicationModerationRepository,
+    @Optional()
+    private readonly realtimeEvents?: CommunicationRealtimeEventsService,
   ) {}
 
   async execute(
@@ -105,6 +108,12 @@ export class CreateCommunicationModerationActionUseCase {
             }),
         },
       );
+
+    this.realtimeEvents?.publishModerationMessageStateChange({
+      schoolId: scope.schoolId,
+      actionType,
+      message: result.message,
+    });
 
     return presentCommunicationModerationMutation(result);
   }
@@ -206,13 +215,16 @@ function buildModerationAuditEntry(params: {
       messageId: params.result.action.messageId,
       moderationActionId: params.result.action.id,
       targetUserId: params.result.action.targetUserId,
-      moderationAction:
-        summarizeCommunicationModerationActionForAudit(params.result),
+      moderationAction: summarizeCommunicationModerationActionForAudit(
+        params.result,
+      ),
     },
   };
 }
 
-function normalizeOptionalText(value: string | null | undefined): string | null {
+function normalizeOptionalText(
+  value: string | null | undefined,
+): string | null {
   if (value === undefined || value === null) return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;

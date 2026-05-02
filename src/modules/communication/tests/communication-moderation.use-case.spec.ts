@@ -19,6 +19,9 @@ import {
   CommunicationModerationAuditInput,
   CommunicationModerationRepository,
 } from '../infrastructure/communication-moderation.repository';
+import { CommunicationRealtimeEventsService } from '../application/communication-realtime-events.service';
+import { REALTIME_SERVER_EVENTS } from '../../../infrastructure/realtime/realtime-event-names';
+import { RealtimePublisherService } from '../../../infrastructure/realtime/realtime-publisher.service';
 
 const SCHOOL_ID = 'school-1';
 const ORGANIZATION_ID = 'org-1';
@@ -138,6 +141,47 @@ describe('communication moderation use cases', () => {
     expect(repository.hardDeleteMessage).not.toHaveBeenCalled();
   });
 
+  it('message hide moderation publishes message.deleted without moderation details', async () => {
+    const repository = repositoryMock({
+      createCurrentSchoolMessageModerationAction: jest.fn().mockResolvedValue({
+        action: actionRecord(),
+        message: messageRecord({
+          status: CommunicationMessageStatus.HIDDEN,
+          hiddenById: ACTOR_ID,
+          hiddenAt: new Date('2026-05-02T09:00:00.000Z'),
+        }),
+      }),
+    });
+    const publisher = realtimePublisherMock();
+
+    await withScope(() =>
+      new CreateCommunicationModerationActionUseCase(
+        repository,
+        new CommunicationRealtimeEventsService(publisher),
+      ).execute(MESSAGE_ID, { action: 'hide', reason: 'Unsafe' }),
+    );
+
+    expect(publisher.publishToConversation).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      CONVERSATION_ID,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_MESSAGE_DELETED,
+      {
+        messageId: MESSAGE_ID,
+        conversationId: CONVERSATION_ID,
+        status: 'hidden',
+        deletedAt: null,
+        hiddenAt: '2026-05-02T09:00:00.000Z',
+        eventAt: expect.any(String),
+      },
+    );
+
+    const payloadJson = JSON.stringify(
+      publisher.publishToConversation.mock.calls,
+    );
+    expect(payloadJson).not.toContain('Unsafe');
+    expect(payloadJson).not.toContain('reason');
+  });
+
   it('rejects unsafe hidden target for hide action', async () => {
     await expect(
       withScope(() =>
@@ -163,12 +207,14 @@ function repositoryMock(overrides?: Record<string, unknown>) {
       messageId: MESSAGE_ID,
       items: [actionRecord()],
     }),
-    createCurrentSchoolMessageModerationAction: jest.fn().mockImplementation((input) =>
-      Promise.resolve({
-        action: actionRecord({ actionType: input.actionType }),
-        message: messageRecord(),
-      }),
-    ),
+    createCurrentSchoolMessageModerationAction: jest
+      .fn()
+      .mockImplementation((input) =>
+        Promise.resolve({
+          action: actionRecord({ actionType: input.actionType }),
+          message: messageRecord(),
+        }),
+      ),
     createAuditLog: jest.fn(),
     hardDeleteMessage: jest.fn(),
     createAnnouncement: jest.fn(),
@@ -177,6 +223,15 @@ function repositoryMock(overrides?: Record<string, unknown>) {
     emitRealtime: jest.fn(),
     ...(overrides ?? {}),
   } as unknown as CommunicationModerationRepository & Record<string, jest.Mock>;
+}
+
+function realtimePublisherMock(): jest.Mocked<RealtimePublisherService> {
+  return {
+    bindServer: jest.fn(),
+    publishToSchool: jest.fn().mockReturnValue(true),
+    publishToUser: jest.fn().mockReturnValue(true),
+    publishToConversation: jest.fn().mockReturnValue(true),
+  } as unknown as jest.Mocked<RealtimePublisherService>;
 }
 
 function messageRecord(overrides?: Record<string, unknown>) {

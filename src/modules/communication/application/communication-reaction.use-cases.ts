@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AuditOutcome } from '@prisma/client';
 import { getRequestContext } from '../../../common/context/request-context';
 import { NotFoundDomainException } from '../../../common/exceptions/domain-exception';
@@ -33,6 +33,7 @@ import {
   presentCommunicationReactionList,
   summarizeCommunicationReactionForAudit,
 } from '../presenters/communication-reaction.presenter';
+import { CommunicationRealtimeEventsService } from './communication-realtime-events.service';
 
 @Injectable()
 export class ListCommunicationMessageReactionsUseCase {
@@ -68,6 +69,8 @@ export class UpsertCommunicationMessageReactionUseCase {
   constructor(
     private readonly communicationReactionRepository: CommunicationReactionRepository,
     private readonly communicationPolicyRepository: CommunicationPolicyRepository,
+    @Optional()
+    private readonly realtimeEvents?: CommunicationRealtimeEventsService,
   ) {}
 
   async execute(messageId: string, command: UpsertCommunicationReactionDto) {
@@ -113,6 +116,8 @@ export class UpsertCommunicationMessageReactionUseCase {
         },
       );
 
+    this.realtimeEvents?.publishReactionUpserted(scope.schoolId, reaction);
+
     return presentCommunicationReaction(reaction);
   }
 }
@@ -122,6 +127,8 @@ export class DeleteCommunicationMessageReactionUseCase {
   constructor(
     private readonly communicationReactionRepository: CommunicationReactionRepository,
     private readonly communicationPolicyRepository: CommunicationPolicyRepository,
+    @Optional()
+    private readonly realtimeEvents?: CommunicationRealtimeEventsService,
   ) {}
 
   async execute(messageId: string) {
@@ -163,19 +170,24 @@ export class DeleteCommunicationMessageReactionUseCase {
       canManageReaction: canManageMessageReactions(),
     });
 
-    return this.communicationReactionRepository.deleteCurrentSchoolMessageReaction(
-      {
-        reactionId: reaction.id,
-        buildAuditEntry: (deleted) =>
-          buildCommunicationReactionAuditEntry({
-            scope,
-            action: 'communication.message_reaction.delete',
-            reaction: deleted,
-            before: deleted,
-            changedFields: ['deleted'],
-          }),
-      },
-    );
+    const result =
+      await this.communicationReactionRepository.deleteCurrentSchoolMessageReaction(
+        {
+          reactionId: reaction.id,
+          buildAuditEntry: (deleted) =>
+            buildCommunicationReactionAuditEntry({
+              scope,
+              action: 'communication.message_reaction.delete',
+              reaction: deleted,
+              before: deleted,
+              changedFields: ['deleted'],
+            }),
+        },
+      );
+
+    this.realtimeEvents?.publishReactionDeleted(scope.schoolId, reaction);
+
+    return result;
   }
 }
 
