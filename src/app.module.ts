@@ -10,6 +10,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
 import { ScopeResolverGuard } from './common/guards/scope-resolver.guard';
 import { validateEnv } from './config/env.validation';
 import { PrismaModule } from './infrastructure/database/prisma.module';
+import { RealtimeModule } from './infrastructure/realtime/realtime.module';
 import { AcademicsModule } from './modules/academics/academics.module';
 import { AdmissionsModule } from './modules/admissions/admissions.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
@@ -31,6 +32,7 @@ import { StudentsModule } from './modules/students/students.module';
       validate: validateEnv,
     }),
     PrismaModule,
+    RealtimeModule,
     HealthModule,
     IamModule,
     SettingsModule,
