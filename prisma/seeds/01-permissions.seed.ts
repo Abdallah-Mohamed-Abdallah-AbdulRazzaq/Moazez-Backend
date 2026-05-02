@@ -118,6 +118,8 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'communication.messages.send', module: 'communication', resource: 'messages', action: 'send', description: 'Send chat messages' },
   { code: 'communication.messages.edit', module: 'communication', resource: 'messages', action: 'edit', description: 'Edit chat messages when policy permits' },
   { code: 'communication.messages.delete', module: 'communication', resource: 'messages', action: 'delete', description: 'Delete chat messages when policy permits' },
+  { code: 'communication.messages.react', module: 'communication', resource: 'messages', action: 'react', description: 'React to chat messages' },
+  { code: 'communication.messages.attachments.manage', module: 'communication', resource: 'messages.attachments', action: 'manage', description: 'Manage chat message attachments' },
   { code: 'communication.messages.moderate', module: 'communication', resource: 'messages', action: 'moderate', description: 'Moderate chat messages' },
   { code: 'communication.messages.report', module: 'communication', resource: 'messages', action: 'report', description: 'Report chat messages' },
   { code: 'communication.admin.view', module: 'communication', resource: 'admin', action: 'view', description: 'View communication administration data' },

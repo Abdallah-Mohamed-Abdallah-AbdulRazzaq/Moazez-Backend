@@ -10,6 +10,7 @@ import {
   CommunicationParticipantRole,
   CommunicationParticipantStatus,
   CommunicationStudentDirectMode,
+  FileVisibility,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
@@ -53,7 +54,15 @@ describe('Communication policy tenancy isolation (security)', () => {
   let joinRequestBId: string;
   let messageAId: string;
   let messageBId: string;
+  let reactionAId: string;
+  let reactionBId: string;
+  let attachmentAId: string;
+  let attachmentBId: string;
+  let fileAId: string;
+  let fileBId: string;
+  let interactionFileId: string;
   let adminAId: string;
+  let interactionUserId: string;
   let noAccessUserId: string;
   let viewOnlyUserId: string;
   let teacherUserId: string;
@@ -64,6 +73,7 @@ describe('Communication policy tenancy isolation (security)', () => {
   let viewOnlyRoleIdForFixtures: string;
   let messageSendRoleIdForFixtures: string;
   let adminAEmail: string;
+  let interactionEmail: string;
   let noAccessEmail: string;
   let viewOnlyEmail: string;
   let teacherEmail: string;
@@ -77,6 +87,7 @@ describe('Communication policy tenancy isolation (security)', () => {
   const createdRoleIds: string[] = [];
   const createdConversationIds: string[] = [];
   const createdMessageIds: string[] = [];
+  const createdFileIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -97,6 +108,8 @@ describe('Communication policy tenancy isolation (security)', () => {
       messagesSendPermission,
       messagesEditPermission,
       messagesDeletePermission,
+      messagesReactPermission,
+      messageAttachmentsManagePermission,
       adminViewPermission,
     ] = await Promise.all([
       findSystemRole('school_admin'),
@@ -113,6 +126,8 @@ describe('Communication policy tenancy isolation (security)', () => {
       findPermission('communication.messages.send'),
       findPermission('communication.messages.edit'),
       findPermission('communication.messages.delete'),
+      findPermission('communication.messages.react'),
+      findPermission('communication.messages.attachments.manage'),
       findPermission('communication.admin.view'),
     ]);
 
@@ -179,8 +194,15 @@ describe('Communication policy tenancy isolation (security)', () => {
       messagesDeletePermission.id,
     ]);
     expect(manageOnlyRoleId).toBeTruthy();
+    const interactionRoleId = await createCustomRole('interactions', [
+      conversationsViewPermission.id,
+      messagesViewPermission.id,
+      messagesReactPermission.id,
+      messageAttachmentsManagePermission.id,
+    ]);
 
     adminAEmail = `${testSuffix}-admin-a@security.moazez.local`;
+    interactionEmail = `${testSuffix}-interactions@security.moazez.local`;
     noAccessEmail = `${testSuffix}-no-access@security.moazez.local`;
     viewOnlyEmail = `${testSuffix}-view-only@security.moazez.local`;
     teacherEmail = `${testSuffix}-teacher@security.moazez.local`;
@@ -193,6 +215,11 @@ describe('Communication policy tenancy isolation (security)', () => {
       email: adminAEmail,
       userType: UserType.SCHOOL_USER,
       roleId: schoolAdminRole.id,
+    });
+    interactionUserId = await createUserWithMembership({
+      email: interactionEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: interactionRoleId,
     });
     noAccessUserId = await createUserWithMembership({
       email: noAccessEmail,
@@ -313,7 +340,12 @@ describe('Communication policy tenancy isolation (security)', () => {
     messageBId = tenantBMessage.id;
     createdMessageIds.push(message.id, tenantBMessage.id);
 
-    const [ownerParticipant, memberParticipant, tenantBParticipant] =
+    const [
+      ownerParticipant,
+      interactionParticipant,
+      memberParticipant,
+      tenantBParticipant,
+    ] =
       await Promise.all([
         prisma.communicationConversationParticipant.create({
           data: {
@@ -322,6 +354,17 @@ describe('Communication policy tenancy isolation (security)', () => {
             userId: adminAId,
             role: CommunicationParticipantRole.OWNER,
             status: CommunicationParticipantStatus.ACTIVE,
+          },
+          select: { id: true },
+        }),
+        prisma.communicationConversationParticipant.create({
+          data: {
+            schoolId: schoolAId,
+            conversationId: conversationAId,
+            userId: interactionUserId,
+            role: CommunicationParticipantRole.MEMBER,
+            status: CommunicationParticipantStatus.ACTIVE,
+            invitedById: adminAId,
           },
           select: { id: true },
         }),
@@ -348,8 +391,84 @@ describe('Communication policy tenancy isolation (security)', () => {
         }),
       ]);
     expect(ownerParticipant.id).toBeTruthy();
+    expect(interactionParticipant.id).toBeTruthy();
     participantAId = memberParticipant.id;
     participantBId = tenantBParticipant.id;
+
+    const [fileA, fileB, interactionFile] = await Promise.all([
+      createFileRecord({
+        schoolId: schoolAId,
+        uploaderId: adminAId,
+        objectKey: `${testSuffix}/school-a-message-file.pdf`,
+        originalName: 'school-a-message-file.pdf',
+        sizeBytes: 1024n,
+      }),
+      createFileRecord({
+        schoolId: schoolBId,
+        uploaderId: schoolBUserId,
+        objectKey: `${testSuffix}/school-b-message-file.pdf`,
+        originalName: 'school-b-message-file.pdf',
+        sizeBytes: 1024n,
+      }),
+      createFileRecord({
+        schoolId: schoolAId,
+        uploaderId: interactionUserId,
+        objectKey: `${testSuffix}/school-a-interaction-file.pdf`,
+        originalName: 'school-a-interaction-file.pdf',
+        sizeBytes: 2048n,
+      }),
+    ]);
+    fileAId = fileA.id;
+    fileBId = fileB.id;
+    interactionFileId = interactionFile.id;
+
+    const [reactionA, reactionB, attachmentA, attachmentB] =
+      await Promise.all([
+        prisma.communicationMessageReaction.create({
+          data: {
+            schoolId: schoolAId,
+            conversationId: conversationAId,
+            messageId: messageAId,
+            userId: viewOnlyUserId,
+            reactionKey: 'like',
+          },
+          select: { id: true },
+        }),
+        prisma.communicationMessageReaction.create({
+          data: {
+            schoolId: schoolBId,
+            conversationId: conversationBId,
+            messageId: messageBId,
+            userId: schoolBUserId,
+            reactionKey: 'angry',
+          },
+          select: { id: true },
+        }),
+        prisma.communicationMessageAttachment.create({
+          data: {
+            schoolId: schoolAId,
+            conversationId: conversationAId,
+            messageId: messageAId,
+            fileId: fileAId,
+            uploadedById: adminAId,
+          },
+          select: { id: true },
+        }),
+        prisma.communicationMessageAttachment.create({
+          data: {
+            schoolId: schoolBId,
+            conversationId: conversationBId,
+            messageId: messageBId,
+            fileId: fileBId,
+            uploadedById: schoolBUserId,
+          },
+          select: { id: true },
+        }),
+      ]);
+    reactionAId = reactionA.id;
+    reactionBId = reactionB.id;
+    attachmentAId = attachmentA.id;
+    attachmentBId = attachmentB.id;
 
     const [inviteA, inviteB, joinRequestA, joinRequestB] = await Promise.all([
       prisma.communicationConversationInvite.create({
@@ -419,6 +538,9 @@ describe('Communication policy tenancy isolation (security)', () => {
     if (app) await app.close();
     if (prisma) {
       await cleanupCommunicationSchools([schoolAId, schoolBId]);
+      await prisma.file.deleteMany({
+        where: { id: { in: createdFileIds } },
+      });
       await prisma.auditLog.deleteMany({
         where: {
           OR: [{ schoolId: schoolAId }, { schoolId: schoolBId }],
@@ -1183,6 +1305,351 @@ describe('Communication policy tenancy isolation (security)', () => {
     expect(after).toEqual(before);
   });
 
+  it('same-school authorized actor can list upsert delete reactions and list link delete attachments', async () => {
+    await prisma.communicationPolicy.update({
+      where: { id: policyAId },
+      data: {
+        isEnabled: true,
+        allowReactions: true,
+        allowAttachments: true,
+        maxAttachmentSizeMb: 25,
+      },
+    });
+    const { accessToken } = await login(interactionEmail);
+    const beforeAudit = await communicationInteractionAuditCount();
+
+    const reactions = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/reactions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const reactionsJson = JSON.stringify(reactions.body);
+    expect(reactions.body.items.map((item: { id: string }) => item.id)).toContain(
+      reactionAId,
+    );
+    expect(reactionsJson).not.toContain(reactionBId);
+    expect(reactionsJson).not.toContain('schoolId');
+    expect(reactionsJson).not.toContain('private communication body');
+
+    const upsertedReaction = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/reactions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ type: 'love' })
+      .expect(200);
+    expect(upsertedReaction.body).toMatchObject({
+      messageId: messageAId,
+      userId: interactionUserId,
+      type: 'love',
+    });
+    expect(JSON.stringify(upsertedReaction.body)).not.toContain('schoolId');
+
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/reactions/me`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const attachments = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/attachments`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const attachmentsJson = JSON.stringify(attachments.body);
+    expect(
+      attachments.body.items.map((item: { id: string }) => item.id),
+    ).toContain(attachmentAId);
+    expect(attachmentsJson).not.toContain(attachmentBId);
+    expect(attachmentsJson).not.toContain('schoolId');
+    expect(attachmentsJson).not.toContain('private communication body');
+
+    const linkedAttachment = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/attachments`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fileId: interactionFileId, caption: 'Interaction proof' })
+      .expect(201);
+    expect(linkedAttachment.body).toMatchObject({
+      messageId: messageAId,
+      fileId: interactionFileId,
+      uploadedById: interactionUserId,
+      caption: 'Interaction proof',
+    });
+    expect(JSON.stringify(linkedAttachment.body)).not.toContain('schoolId');
+
+    await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/communication/messages/${messageAId}/attachments/${linkedAttachment.body.id}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await expect(communicationInteractionAuditCount()).resolves.toBe(
+      beforeAudit + 4,
+    );
+    await expect(
+      prisma.file.findUnique({
+        where: { id: interactionFileId },
+        select: { id: true },
+      }),
+    ).resolves.toEqual({ id: interactionFileId });
+  });
+
+  it('school A cannot access school B reactions or attachments by guessed message ids', async () => {
+    const { accessToken } = await login(interactionEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageBId}/reactions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/communication/messages/${messageBId}/reactions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ type: 'like' })
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageBId}/attachments`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${messageBId}/attachments`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fileId: interactionFileId })
+      .expect(404);
+  });
+
+  it('reaction and attachment permissions return 403 when required permissions are missing', async () => {
+    const noAccess = await login(noAccessEmail);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/reactions`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/attachments`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+
+    const viewOnly = await login(viewOnlyEmail);
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/reactions`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .send({ type: 'like' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/reactions/me`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/attachments`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .send({ fileId: interactionFileId })
+      .expect(403);
+    await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/communication/messages/${messageAId}/attachments/${attachmentAId}`,
+      )
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .expect(403);
+  });
+
+  it('parent student and teacher access follows seeded interaction permissions', async () => {
+    for (const email of [parentEmail, studentEmail]) {
+      const { accessToken } = await login(email);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/reactions`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .put(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/reactions`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ type: 'like' })
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/attachments`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/attachments`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ fileId: interactionFileId })
+        .expect(403);
+    }
+
+    const teacher = await login(teacherEmail);
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/reactions`)
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .send({ type: 'like' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/attachments`)
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .send({ fileId: interactionFileId })
+      .expect(403);
+  });
+
+  it('disabled policy rejects reaction and attachment mutations', async () => {
+    const { accessToken } = await login(interactionEmail);
+
+    await setCommunicationPolicyEnabled(false);
+    const reaction = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/reactions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ type: 'like' })
+      .expect(403);
+    expect(reaction.body.error.code).toBe('communication.policy.disabled');
+
+    const attachment = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/attachments`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fileId: interactionFileId })
+      .expect(403);
+    expect(attachment.body.error.code).toBe('communication.policy.disabled');
+    await setCommunicationPolicyEnabled(true);
+  });
+
+  it('archived closed hidden deleted and non-participant targets reject interaction mutations', async () => {
+    await prisma.communicationPolicy.update({
+      where: { id: policyAId },
+      data: {
+        isEnabled: true,
+        allowReactions: true,
+        allowAttachments: true,
+      },
+    });
+    const { accessToken } = await login(interactionEmail);
+
+    const archivedConversation = await createConversationWithParticipant({
+      status: CommunicationConversationStatus.ARCHIVED,
+      userId: interactionUserId,
+    });
+    const archivedMessage = await createMessageForConversation(
+      archivedConversation,
+      interactionUserId,
+    );
+    const archivedReaction = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/communication/messages/${archivedMessage}/reactions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ type: 'like' })
+      .expect(409);
+    expect(archivedReaction.body.error.code).toBe(
+      'communication.conversation.archived',
+    );
+
+    const closedConversation = await createConversationWithParticipant({
+      status: CommunicationConversationStatus.CLOSED,
+      userId: interactionUserId,
+    });
+    const closedMessage = await createMessageForConversation(
+      closedConversation,
+      interactionUserId,
+    );
+    const closedAttachment = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${closedMessage}/attachments`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fileId: interactionFileId })
+      .expect(409);
+    expect(closedAttachment.body.error.code).toBe(
+      'communication.conversation.closed',
+    );
+
+    const hiddenMessage = await createMessageForConversation(
+      conversationAId,
+      adminAId,
+      CommunicationMessageStatus.HIDDEN,
+    );
+    const hidden = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/communication/messages/${hiddenMessage}/reactions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ type: 'sad' })
+      .expect(409);
+    expect(hidden.body.error.code).toBe('communication.message.hidden');
+
+    const deletedMessage = await createMessageForConversation(
+      conversationAId,
+      adminAId,
+      CommunicationMessageStatus.DELETED,
+    );
+    const deleted = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${deletedMessage}/attachments`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fileId: interactionFileId })
+      .expect(409);
+    expect(deleted.body.error.code).toBe('communication.message.deleted');
+
+    const nonParticipantConversation = await createConversationWithParticipant({
+      status: CommunicationConversationStatus.ACTIVE,
+      userId: adminAId,
+    });
+    const nonParticipantMessage = await createMessageForConversation(
+      nonParticipantConversation,
+      adminAId,
+    );
+    const nonParticipantReaction = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/communication/messages/${nonParticipantMessage}/reactions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ type: 'wow' })
+      .expect(403);
+    expect(nonParticipantReaction.body.error.code).toBe(
+      'communication.conversation.not_member',
+    );
+    const nonParticipantAttachment = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/messages/${nonParticipantMessage}/attachments`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fileId: interactionFileId })
+      .expect(403);
+    expect(nonParticipantAttachment.body.error.code).toBe(
+      'communication.conversation.not_member',
+    );
+  });
+
+  it('reaction and attachment flows do not create report moderation block restriction delivery announcement or notification side effects', async () => {
+    await prisma.communicationPolicy.update({
+      where: { id: policyAId },
+      data: {
+        isEnabled: true,
+        allowReactions: true,
+        allowAttachments: true,
+      },
+    });
+    const { accessToken } = await login(interactionEmail);
+    const before = await communicationInteractionForbiddenSideEffectCounts(
+      schoolAId,
+    );
+    const sideEffectFile = await createFileRecord({
+      schoolId: schoolAId,
+      uploaderId: interactionUserId,
+      objectKey: `${testSuffix}/interaction-side-effect-file.pdf`,
+      originalName: 'interaction-side-effect-file.pdf',
+      sizeBytes: 1024n,
+    });
+
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/reactions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ type: 'wow' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/reactions/me`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const attachment = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/attachments`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fileId: sideEffectFile.id })
+      .expect(201);
+    await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/communication/messages/${messageAId}/attachments/${attachment.body.id}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const after = await communicationInteractionForbiddenSideEffectCounts(
+      schoolAId,
+    );
+    expect(after).toEqual(before);
+  });
+
   it('school admin can list add update remove promote and demote same-school participants', async () => {
     await setCommunicationPolicyEnabled(true);
     const { accessToken } = await login(adminAEmail);
@@ -1816,6 +2283,7 @@ describe('Communication policy tenancy isolation (security)', () => {
     const before = await communicationAuditCount();
     const beforeConversationAudit = await communicationConversationAuditCount();
     const beforeRuntimeAudit = await communicationRuntimeAuditCount();
+    const beforeInteractionAudit = await communicationInteractionAuditCount();
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/communication/policies`)
@@ -1866,6 +2334,14 @@ describe('Communication policy tenancy isolation (security)', () => {
       .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/read-summary`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/reactions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/attachments`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
 
     await expect(communicationAuditCount()).resolves.toBe(before);
     await expect(communicationConversationAuditCount()).resolves.toBe(
@@ -1873,6 +2349,9 @@ describe('Communication policy tenancy isolation (security)', () => {
     );
     await expect(communicationRuntimeAuditCount()).resolves.toBe(
       beforeRuntimeAudit,
+    );
+    await expect(communicationInteractionAuditCount()).resolves.toBe(
+      beforeInteractionAudit,
     );
   });
 
@@ -2019,6 +2498,33 @@ describe('Communication policy tenancy isolation (security)', () => {
     return user.id;
   }
 
+  async function createFileRecord(params: {
+    schoolId: string;
+    uploaderId: string;
+    objectKey: string;
+    originalName: string;
+    sizeBytes: bigint;
+  }): Promise<{ id: string }> {
+    const file = await prisma.file.create({
+      data: {
+        organizationId:
+          params.schoolId === schoolBId ? organizationBId : organizationAId,
+        schoolId: params.schoolId,
+        uploaderId: params.uploaderId,
+        bucket: 'communication-security',
+        objectKey: params.objectKey,
+        originalName: params.originalName,
+        mimeType: 'application/pdf',
+        sizeBytes: params.sizeBytes,
+        visibility: FileVisibility.PRIVATE,
+      },
+      select: { id: true },
+    });
+    createdFileIds.push(file.id);
+
+    return file;
+  }
+
   async function login(email: string): Promise<{ accessToken: string }> {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/auth/login`)
@@ -2074,6 +2580,21 @@ describe('Communication policy tenancy isolation (security)', () => {
     });
   }
 
+  async function communicationInteractionAuditCount(): Promise<number> {
+    return prisma.auditLog.count({
+      where: {
+        schoolId: schoolAId,
+        module: 'communication',
+        resourceType: {
+          in: [
+            'communication_message_reaction',
+            'communication_message_attachment',
+          ],
+        },
+      },
+    });
+  }
+
   async function setCommunicationPolicyEnabled(isEnabled: boolean): Promise<void> {
     await prisma.communicationPolicy.update({
       where: { id: policyAId },
@@ -2110,6 +2631,37 @@ describe('Communication policy tenancy isolation (security)', () => {
     });
 
     return conversation.id;
+  }
+
+  async function createMessageForConversation(
+    conversationId: string,
+    senderUserId: string,
+    status: CommunicationMessageStatus = CommunicationMessageStatus.SENT,
+  ): Promise<string> {
+    const now = new Date('2026-05-02T10:00:00.000Z');
+    const message = await prisma.communicationMessage.create({
+      data: {
+        schoolId: schoolAId,
+        conversationId,
+        senderUserId,
+        kind: CommunicationMessageKind.TEXT,
+        status,
+        body: `${testSuffix} interaction state guard`,
+        sentAt: now,
+        hiddenAt:
+          status === CommunicationMessageStatus.HIDDEN ? now : undefined,
+        hiddenById:
+          status === CommunicationMessageStatus.HIDDEN ? adminAId : undefined,
+        deletedAt:
+          status === CommunicationMessageStatus.DELETED ? now : undefined,
+        deletedById:
+          status === CommunicationMessageStatus.DELETED ? adminAId : undefined,
+      },
+      select: { id: true },
+    });
+    createdMessageIds.push(message.id);
+
+    return message.id;
   }
 
   async function communicationSideEffectCounts(schoolId: string) {
@@ -2217,6 +2769,38 @@ describe('Communication policy tenancy isolation (security)', () => {
       moderationActions,
       userBlocks,
       userRestrictions,
+    };
+  }
+
+  async function communicationInteractionForbiddenSideEffectCounts(
+    schoolId: string,
+  ) {
+    const [
+      deliveries,
+      reports,
+      moderationActions,
+      userBlocks,
+      userRestrictions,
+      notificationTemplates,
+      notificationTemplateChannelStates,
+    ] = await Promise.all([
+      prisma.communicationMessageDelivery.count({ where: { schoolId } }),
+      prisma.communicationMessageReport.count({ where: { schoolId } }),
+      prisma.communicationModerationAction.count({ where: { schoolId } }),
+      prisma.communicationUserBlock.count({ where: { schoolId } }),
+      prisma.communicationUserRestriction.count({ where: { schoolId } }),
+      prisma.notificationTemplate.count({ where: { schoolId } }),
+      prisma.notificationTemplateChannelState.count({ where: { schoolId } }),
+    ]);
+
+    return {
+      deliveries,
+      reports,
+      moderationActions,
+      userBlocks,
+      userRestrictions,
+      notificationTemplates,
+      notificationTemplateChannelStates,
     };
   }
 
