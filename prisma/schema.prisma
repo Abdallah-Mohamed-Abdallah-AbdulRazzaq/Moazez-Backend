@@ -712,6 +712,36 @@ enum CommunicationRestrictionType {
   @@map("communication_restriction_type")
 }
 
+enum CommunicationAnnouncementStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+  CANCELLED
+
+  @@map("communication_announcement_status")
+}
+
+enum CommunicationAnnouncementPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+
+  @@map("communication_announcement_priority")
+}
+
+enum CommunicationAnnouncementAudienceType {
+  SCHOOL
+  STAGE
+  GRADE
+  SECTION
+  CLASSROOM
+  CUSTOM
+
+  @@map("communication_announcement_audience_type")
+}
+
 model Organization {
   id     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name   String
@@ -832,6 +862,10 @@ model School {
   communicationModerationActions        CommunicationModerationAction[]
   communicationUserBlocks               CommunicationUserBlock[]
   communicationUserRestrictions         CommunicationUserRestriction[]
+  communicationAnnouncements            CommunicationAnnouncement[]
+  communicationAnnouncementAudiences    CommunicationAnnouncementAudience[]
+  communicationAnnouncementReads        CommunicationAnnouncementRead[]
+  communicationAnnouncementAttachments  CommunicationAnnouncementAttachment[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -938,6 +972,13 @@ model User {
   communicationUserRestrictionsTargeted          CommunicationUserRestriction[]         @relation("CommunicationUserRestrictionsTargetUser")
   communicationUserRestrictionsApplied           CommunicationUserRestriction[]         @relation("CommunicationUserRestrictionsRestrictedByUser")
   communicationUserRestrictionsLifted            CommunicationUserRestriction[]         @relation("CommunicationUserRestrictionsLiftedByUser")
+  communicationAnnouncementsCreated              CommunicationAnnouncement[]            @relation("CommunicationAnnouncementsCreatedByUser")
+  communicationAnnouncementsUpdated              CommunicationAnnouncement[]            @relation("CommunicationAnnouncementsUpdatedByUser")
+  communicationAnnouncementsPublished            CommunicationAnnouncement[]            @relation("CommunicationAnnouncementsPublishedByUser")
+  communicationAnnouncementsArchived             CommunicationAnnouncement[]            @relation("CommunicationAnnouncementsArchivedByUser")
+  communicationAnnouncementAudiences             CommunicationAnnouncementAudience[]    @relation("CommunicationAnnouncementAudiencesUser")
+  communicationAnnouncementReads                 CommunicationAnnouncementRead[]        @relation("CommunicationAnnouncementReadsUser")
+  communicationAnnouncementAttachmentsCreated    CommunicationAnnouncementAttachment[]  @relation("CommunicationAnnouncementAttachmentsCreatedByUser")
 
   @@index([userType])
   @@index([status])
@@ -1525,14 +1566,15 @@ model Stage {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  grades                     Grade[]
-  attendancePolicies         AttendancePolicy[]
-  attendanceSessions         AttendanceSession[]
-  gradeAssessments           GradeAssessment[]
-  reinforcementTaskTargets   ReinforcementTaskTarget[]
-  heroMissions               HeroMission[]
-  communicationConversations CommunicationConversation[]
+  school                             School                              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  grades                             Grade[]
+  attendancePolicies                 AttendancePolicy[]
+  attendanceSessions                 AttendanceSession[]
+  gradeAssessments                   GradeAssessment[]
+  reinforcementTaskTargets           ReinforcementTaskTarget[]
+  heroMissions                       HeroMission[]
+  communicationConversations         CommunicationConversation[]
+  communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -1555,16 +1597,17 @@ model Grade {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  stage                      Stage                       @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  sections                   Section[]
-  requestedApplications      Application[]
-  attendancePolicies         AttendancePolicy[]
-  attendanceSessions         AttendanceSession[]
-  gradeAssessments           GradeAssessment[]
-  gradeRules                 GradeRule[]
-  reinforcementTaskTargets   ReinforcementTaskTarget[]
-  communicationConversations CommunicationConversation[]
+  school                             School                              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  stage                              Stage                               @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  sections                           Section[]
+  requestedApplications              Application[]
+  attendancePolicies                 AttendancePolicy[]
+  attendanceSessions                 AttendanceSession[]
+  gradeAssessments                   GradeAssessment[]
+  gradeRules                         GradeRule[]
+  reinforcementTaskTargets           ReinforcementTaskTarget[]
+  communicationConversations         CommunicationConversation[]
+  communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
 
   @@unique([id, schoolId])
   @@unique([stageId, nameAr])
@@ -1588,14 +1631,15 @@ model Section {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  grade                      Grade                       @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classrooms                 Classroom[]
-  attendancePolicies         AttendancePolicy[]
-  attendanceSessions         AttendanceSession[]
-  gradeAssessments           GradeAssessment[]
-  reinforcementTaskTargets   ReinforcementTaskTarget[]
-  communicationConversations CommunicationConversation[]
+  school                             School                              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  grade                              Grade                               @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classrooms                         Classroom[]
+  attendancePolicies                 AttendancePolicy[]
+  attendanceSessions                 AttendanceSession[]
+  gradeAssessments                   GradeAssessment[]
+  reinforcementTaskTargets           ReinforcementTaskTarget[]
+  communicationConversations         CommunicationConversation[]
+  communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
 
   @@unique([id, schoolId])
   @@unique([gradeId, nameAr])
@@ -1620,16 +1664,17 @@ model Classroom {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  section                    Section                     @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  room                       Room?                       @relation(fields: [roomId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  teacherSubjectAllocations  TeacherSubjectAllocation[]
-  enrollments                Enrollment[]
-  attendancePolicies         AttendancePolicy[]
-  attendanceSessions         AttendanceSession[]
-  gradeAssessments           GradeAssessment[]
-  reinforcementTaskTargets   ReinforcementTaskTarget[]
-  communicationConversations CommunicationConversation[]
+  school                             School                              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  section                            Section                             @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  room                               Room?                               @relation(fields: [roomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  teacherSubjectAllocations          TeacherSubjectAllocation[]
+  enrollments                        Enrollment[]
+  attendancePolicies                 AttendancePolicy[]
+  attendanceSessions                 AttendanceSession[]
+  gradeAssessments                   GradeAssessment[]
+  reinforcementTaskTargets           ReinforcementTaskTarget[]
+  communicationConversations         CommunicationConversation[]
+  communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
 
   @@unique([id, schoolId])
   @@unique([sectionId, nameAr])
@@ -1743,30 +1788,31 @@ model Student {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                     School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  organization               Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  application                Application?              @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  guardians                  StudentGuardian[]
-  enrollments                Enrollment[]
-  documents                  StudentDocument[]
-  medicalProfile             StudentMedicalProfile?
-  notes                      StudentNote[]
-  attendanceEntries          AttendanceEntry[]
-  attendanceExcuseRequests   AttendanceExcuseRequest[]
-  gradeItems                 GradeItem[]
-  gradeSubmissions           GradeSubmission[]
-  gradeSubmissionAnswers     GradeSubmissionAnswer[]
-  reinforcementTaskTargets   ReinforcementTaskTarget[]
-  reinforcementAssignments   ReinforcementAssignment[]
-  reinforcementSubmissions   ReinforcementSubmission[]
-  reinforcementReviews       ReinforcementReview[]
-  xpLedgers                  XpLedger[]
-  heroMissionProgress        HeroMissionProgress[]
-  heroStudentBadges          HeroStudentBadge[]
-  heroJourneyEvents          HeroJourneyEvent[]
-  rewardRedemptions          RewardRedemption[]
-  behaviorRecords            BehaviorRecord[]
-  behaviorPointLedgerEntries BehaviorPointLedger[]
+  school                             School                              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization                       Organization                        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  application                        Application?                        @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  guardians                          StudentGuardian[]
+  enrollments                        Enrollment[]
+  documents                          StudentDocument[]
+  medicalProfile                     StudentMedicalProfile?
+  notes                              StudentNote[]
+  attendanceEntries                  AttendanceEntry[]
+  attendanceExcuseRequests           AttendanceExcuseRequest[]
+  gradeItems                         GradeItem[]
+  gradeSubmissions                   GradeSubmission[]
+  gradeSubmissionAnswers             GradeSubmissionAnswer[]
+  reinforcementTaskTargets           ReinforcementTaskTarget[]
+  reinforcementAssignments           ReinforcementAssignment[]
+  reinforcementSubmissions           ReinforcementSubmission[]
+  reinforcementReviews               ReinforcementReview[]
+  xpLedgers                          XpLedger[]
+  heroMissionProgress                HeroMissionProgress[]
+  heroStudentBadges                  HeroStudentBadge[]
+  heroJourneyEvents                  HeroJourneyEvent[]
+  rewardRedemptions                  RewardRedemption[]
+  behaviorRecords                    BehaviorRecord[]
+  behaviorPointLedgerEntries         BehaviorPointLedger[]
+  communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
 
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
@@ -1794,10 +1840,11 @@ model Guardian {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school       School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  user         User?             @relation("GuardianUser", fields: [userId], references: [id], onDelete: SetNull)
-  students     StudentGuardian[]
+  school                             School                              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization                       Organization                        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user                               User?                               @relation("GuardianUser", fields: [userId], references: [id], onDelete: SetNull)
+  students                           StudentGuardian[]
+  communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -3882,6 +3929,145 @@ model CommunicationUserRestriction {
   @@map("communication_user_restrictions")
 }
 
+model CommunicationAnnouncement {
+  id            String                                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String                                @map("school_id") @db.Uuid
+  title         String
+  body          String
+  status        CommunicationAnnouncementStatus       @default(DRAFT)
+  priority      CommunicationAnnouncementPriority     @default(NORMAL)
+  audienceType  CommunicationAnnouncementAudienceType @default(SCHOOL) @map("audience_type")
+  category      String?
+  isPinned      Boolean                               @default(false) @map("is_pinned")
+  pinnedUntil   DateTime?                             @map("pinned_until")
+  actionLabel   String?                               @map("action_label")
+  actionUrl     String?                               @map("action_url")
+  imageFileId   String?                               @map("image_file_id") @db.Uuid
+  scheduledAt   DateTime?                             @map("scheduled_at")
+  publishedAt   DateTime?                             @map("published_at")
+  archivedAt    DateTime?                             @map("archived_at")
+  expiresAt     DateTime?                             @map("expires_at")
+  createdById   String?                               @map("created_by_id") @db.Uuid
+  updatedById   String?                               @map("updated_by_id") @db.Uuid
+  publishedById String?                               @map("published_by_id") @db.Uuid
+  archivedById  String?                               @map("archived_by_id") @db.Uuid
+  metadata      Json?
+  createdAt     DateTime                              @default(now()) @map("created_at")
+  updatedAt     DateTime                              @updatedAt @map("updated_at")
+
+  school      School                                @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  imageFile   File?                                 @relation("CommunicationAnnouncementImageFile", fields: [imageFileId], references: [id], onDelete: SetNull)
+  createdBy   User?                                 @relation("CommunicationAnnouncementsCreatedByUser", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy   User?                                 @relation("CommunicationAnnouncementsUpdatedByUser", fields: [updatedById], references: [id], onDelete: SetNull)
+  publishedBy User?                                 @relation("CommunicationAnnouncementsPublishedByUser", fields: [publishedById], references: [id], onDelete: SetNull)
+  archivedBy  User?                                 @relation("CommunicationAnnouncementsArchivedByUser", fields: [archivedById], references: [id], onDelete: SetNull)
+  audiences   CommunicationAnnouncementAudience[]
+  reads       CommunicationAnnouncementRead[]
+  attachments CommunicationAnnouncementAttachment[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, status])
+  @@index([schoolId, createdAt(sort: Desc)])
+  @@index([schoolId, publishedAt(sort: Desc)])
+  @@index([schoolId, audienceType])
+  @@index([imageFileId])
+  @@index([createdById])
+  @@index([updatedById])
+  @@index([publishedById])
+  @@index([archivedById])
+  @@index([scheduledAt])
+  @@index([expiresAt])
+  @@map("communication_announcements")
+}
+
+model CommunicationAnnouncementAudience {
+  id             String                                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                                @map("school_id") @db.Uuid
+  announcementId String                                @map("announcement_id") @db.Uuid
+  audienceType   CommunicationAnnouncementAudienceType @map("audience_type")
+  stageId        String?                               @map("stage_id") @db.Uuid
+  gradeId        String?                               @map("grade_id") @db.Uuid
+  sectionId      String?                               @map("section_id") @db.Uuid
+  classroomId    String?                               @map("classroom_id") @db.Uuid
+  studentId      String?                               @map("student_id") @db.Uuid
+  guardianId     String?                               @map("guardian_id") @db.Uuid
+  userId         String?                               @map("user_id") @db.Uuid
+  createdAt      DateTime                              @default(now()) @map("created_at")
+  updatedAt      DateTime                              @updatedAt @map("updated_at")
+
+  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  announcement CommunicationAnnouncement @relation(fields: [announcementId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  stage        Stage?                    @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade        Grade?                    @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  section      Section?                  @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom    Classroom?                @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  student      Student?                  @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  guardian     Guardian?                 @relation(fields: [guardianId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  user         User?                     @relation("CommunicationAnnouncementAudiencesUser", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([announcementId])
+  @@index([audienceType])
+  @@index([schoolId, audienceType])
+  @@index([stageId])
+  @@index([gradeId])
+  @@index([sectionId])
+  @@index([classroomId])
+  @@index([studentId])
+  @@index([guardianId])
+  @@index([userId])
+  @@map("communication_announcement_audiences")
+}
+
+model CommunicationAnnouncementRead {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String   @map("school_id") @db.Uuid
+  announcementId String   @map("announcement_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  readAt         DateTime @default(now()) @map("read_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  announcement CommunicationAnnouncement @relation(fields: [announcementId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  user         User                      @relation("CommunicationAnnouncementReadsUser", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([announcementId, userId])
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([announcementId])
+  @@index([userId])
+  @@index([schoolId, userId, readAt(sort: Desc)])
+  @@map("communication_announcement_reads")
+}
+
+model CommunicationAnnouncementAttachment {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String   @map("school_id") @db.Uuid
+  announcementId String   @map("announcement_id") @db.Uuid
+  fileId         String   @map("file_id") @db.Uuid
+  createdById    String?  @map("created_by_id") @db.Uuid
+  caption        String?
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  announcement CommunicationAnnouncement @relation(fields: [announcementId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  file         File                      @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  createdBy    User?                     @relation("CommunicationAnnouncementAttachmentsCreatedByUser", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@unique([announcementId, fileId])
+  @@index([schoolId])
+  @@index([announcementId])
+  @@index([fileId])
+  @@index([createdById])
+  @@map("communication_announcement_attachments")
+}
+
 // ============================================================
 // AUDIT - append-only activity trail
 // ============================================================
@@ -3937,18 +4123,20 @@ model File {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  organization                     Organization?                    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  school                           School?                          @relation(fields: [schoolId], references: [id], onDelete: SetNull)
-  uploader                         User?                            @relation("FileUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
-  attachments                      Attachment[]
-  reinforcementProofSubmissions    ReinforcementSubmission[]        @relation("ReinforcementSubmissionProofFile")
-  applicationDocuments             ApplicationDocument[]
-  studentDocuments                 StudentDocument[]
-  importJobsUploaded               ImportJob[]                      @relation("ImportJobUploadedFile")
-  heroBadges                       HeroBadge[]
-  rewardCatalogItemImages          RewardCatalogItem[]              @relation("RewardCatalogItemImageFile")
-  communicationConversationAvatars CommunicationConversation[]      @relation("CommunicationConversationAvatarFile")
-  communicationMessageAttachments  CommunicationMessageAttachment[]
+  organization                         Organization?                         @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  school                               School?                               @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  uploader                             User?                                 @relation("FileUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
+  attachments                          Attachment[]
+  reinforcementProofSubmissions        ReinforcementSubmission[]             @relation("ReinforcementSubmissionProofFile")
+  applicationDocuments                 ApplicationDocument[]
+  studentDocuments                     StudentDocument[]
+  importJobsUploaded                   ImportJob[]                           @relation("ImportJobUploadedFile")
+  heroBadges                           HeroBadge[]
+  rewardCatalogItemImages              RewardCatalogItem[]                   @relation("RewardCatalogItemImageFile")
+  communicationConversationAvatars     CommunicationConversation[]           @relation("CommunicationConversationAvatarFile")
+  communicationMessageAttachments      CommunicationMessageAttachment[]
+  communicationAnnouncementImages      CommunicationAnnouncement[]           @relation("CommunicationAnnouncementImageFile")
+  communicationAnnouncementAttachments CommunicationAnnouncementAttachment[]
 
   @@unique([bucket, objectKey])
   @@index([organizationId])

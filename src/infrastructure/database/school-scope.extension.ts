@@ -17,7 +17,7 @@ const EXCLUDED_FROM_SCHOOL_SCOPE = new Set<string>([
 // Models that carry a schoolId column and participate in scope injection.
 // Keep this list in sync with PRISMA_CONVENTIONS.md section 6. Additions
 // made later must be mirrored here.
-const SCHOOL_SCOPED_MODELS = new Set<string>([
+export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'Membership',
   'Role',
   'File',
@@ -100,6 +100,10 @@ const SCHOOL_SCOPED_MODELS = new Set<string>([
   'CommunicationModerationAction',
   'CommunicationUserBlock',
   'CommunicationUserRestriction',
+  'CommunicationAnnouncement',
+  'CommunicationAnnouncementAudience',
+  'CommunicationAnnouncementRead',
+  'CommunicationAnnouncementAttachment',
 ]);
 
 // Models that use soft delete (have a deletedAt column). Read operations
