@@ -3,8 +3,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   CommunicationConversationStatus,
   CommunicationConversationType,
+  CommunicationInviteStatus,
+  CommunicationJoinRequestStatus,
   CommunicationMessageKind,
   CommunicationMessageStatus,
+  CommunicationParticipantRole,
+  CommunicationParticipantStatus,
   CommunicationStudentDirectMode,
   MembershipStatus,
   OrganizationStatus,
@@ -41,12 +45,29 @@ describe('Communication policy tenancy isolation (security)', () => {
   let policyBId: string;
   let conversationAId: string;
   let conversationBId: string;
+  let participantAId: string;
+  let participantBId: string;
+  let inviteAId: string;
+  let inviteBId: string;
+  let joinRequestAId: string;
+  let joinRequestBId: string;
+  let adminAId: string;
+  let noAccessUserId: string;
+  let viewOnlyUserId: string;
+  let teacherUserId: string;
+  let parentUserId: string;
+  let studentUserId: string;
+  let schoolBUserId: string;
+  let joinRequesterUserId: string;
+  let viewOnlyRoleIdForFixtures: string;
   let adminAEmail: string;
   let noAccessEmail: string;
   let viewOnlyEmail: string;
   let teacherEmail: string;
   let parentEmail: string;
   let studentEmail: string;
+  let schoolBUserEmail: string;
+  let joinRequesterEmail: string;
 
   const testSuffix = `communication-security-${Date.now()}`;
   const createdUserIds: string[] = [];
@@ -68,6 +89,7 @@ describe('Communication policy tenancy isolation (security)', () => {
       conversationsViewPermission,
       conversationsCreatePermission,
       conversationsManagePermission,
+      participantsManagePermission,
       adminViewPermission,
     ] = await Promise.all([
       findSystemRole('school_admin'),
@@ -79,6 +101,7 @@ describe('Communication policy tenancy isolation (security)', () => {
       findPermission('communication.conversations.view'),
       findPermission('communication.conversations.create'),
       findPermission('communication.conversations.manage'),
+      findPermission('communication.participants.manage'),
       findPermission('communication.admin.view'),
     ]);
 
@@ -129,10 +152,12 @@ describe('Communication policy tenancy isolation (security)', () => {
       policiesViewPermission.id,
       conversationsViewPermission.id,
     ]);
+    viewOnlyRoleIdForFixtures = viewOnlyRoleId;
     const manageOnlyRoleId = await createCustomRole('manage-only', [
       policiesManagePermission.id,
       conversationsCreatePermission.id,
       conversationsManagePermission.id,
+      participantsManagePermission.id,
     ]);
     expect(manageOnlyRoleId).toBeTruthy();
 
@@ -142,36 +167,50 @@ describe('Communication policy tenancy isolation (security)', () => {
     teacherEmail = `${testSuffix}-teacher@security.moazez.local`;
     parentEmail = `${testSuffix}-parent@security.moazez.local`;
     studentEmail = `${testSuffix}-student@security.moazez.local`;
+    schoolBUserEmail = `${testSuffix}-school-b-user@security.moazez.local`;
+    joinRequesterEmail = `${testSuffix}-join-requester@security.moazez.local`;
 
-    const adminAId = await createUserWithMembership({
+    adminAId = await createUserWithMembership({
       email: adminAEmail,
       userType: UserType.SCHOOL_USER,
       roleId: schoolAdminRole.id,
     });
-    await createUserWithMembership({
+    noAccessUserId = await createUserWithMembership({
       email: noAccessEmail,
       userType: UserType.SCHOOL_USER,
       roleId: noAccessRoleId,
     });
-    await createUserWithMembership({
+    viewOnlyUserId = await createUserWithMembership({
       email: viewOnlyEmail,
       userType: UserType.SCHOOL_USER,
       roleId: viewOnlyRoleId,
     });
-    await createUserWithMembership({
+    teacherUserId = await createUserWithMembership({
       email: teacherEmail,
       userType: UserType.TEACHER,
       roleId: teacherRole.id,
     });
-    await createUserWithMembership({
+    parentUserId = await createUserWithMembership({
       email: parentEmail,
       userType: UserType.PARENT,
       roleId: parentRole.id,
     });
-    await createUserWithMembership({
+    studentUserId = await createUserWithMembership({
       email: studentEmail,
       userType: UserType.STUDENT,
       roleId: studentRole.id,
+    });
+    schoolBUserId = await createUserWithMembership({
+      email: schoolBUserEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: schoolAdminRole.id,
+      organizationId: organizationBId,
+      schoolId: schoolBId,
+    });
+    joinRequesterUserId = await createUserWithMembership({
+      email: joinRequesterEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: viewOnlyRoleId,
     });
 
     const [policyA, policyB] = await Promise.all([
@@ -238,6 +277,92 @@ describe('Communication policy tenancy isolation (security)', () => {
       select: { id: true },
     });
     createdMessageIds.push(message.id);
+
+    const [ownerParticipant, memberParticipant, tenantBParticipant] =
+      await Promise.all([
+        prisma.communicationConversationParticipant.create({
+          data: {
+            schoolId: schoolAId,
+            conversationId: conversationAId,
+            userId: adminAId,
+            role: CommunicationParticipantRole.OWNER,
+            status: CommunicationParticipantStatus.ACTIVE,
+          },
+          select: { id: true },
+        }),
+        prisma.communicationConversationParticipant.create({
+          data: {
+            schoolId: schoolAId,
+            conversationId: conversationAId,
+            userId: viewOnlyUserId,
+            role: CommunicationParticipantRole.MEMBER,
+            status: CommunicationParticipantStatus.ACTIVE,
+            invitedById: adminAId,
+          },
+          select: { id: true },
+        }),
+        prisma.communicationConversationParticipant.create({
+          data: {
+            schoolId: schoolBId,
+            conversationId: conversationBId,
+            userId: schoolBUserId,
+            role: CommunicationParticipantRole.MEMBER,
+            status: CommunicationParticipantStatus.ACTIVE,
+          },
+          select: { id: true },
+        }),
+      ]);
+    expect(ownerParticipant.id).toBeTruthy();
+    participantAId = memberParticipant.id;
+    participantBId = tenantBParticipant.id;
+
+    const [inviteA, inviteB, joinRequestA, joinRequestB] = await Promise.all([
+      prisma.communicationConversationInvite.create({
+        data: {
+          schoolId: schoolAId,
+          conversationId: conversationAId,
+          invitedUserId: teacherUserId,
+          invitedById: adminAId,
+          status: CommunicationInviteStatus.PENDING,
+          metadata: { marker: 'school-a-invite' },
+        },
+        select: { id: true },
+      }),
+      prisma.communicationConversationInvite.create({
+        data: {
+          schoolId: schoolBId,
+          conversationId: conversationBId,
+          invitedUserId: schoolBUserId,
+          status: CommunicationInviteStatus.PENDING,
+          metadata: { marker: 'school-b-invite' },
+        },
+        select: { id: true },
+      }),
+      prisma.communicationConversationJoinRequest.create({
+        data: {
+          schoolId: schoolAId,
+          conversationId: conversationAId,
+          requestedById: joinRequesterUserId,
+          status: CommunicationJoinRequestStatus.PENDING,
+          metadata: { marker: 'school-a-join-request' },
+        },
+        select: { id: true },
+      }),
+      prisma.communicationConversationJoinRequest.create({
+        data: {
+          schoolId: schoolBId,
+          conversationId: conversationBId,
+          requestedById: schoolBUserId,
+          status: CommunicationJoinRequestStatus.PENDING,
+          metadata: { marker: 'school-b-join-request' },
+        },
+        select: { id: true },
+      }),
+    ]);
+    inviteAId = inviteA.id;
+    inviteBId = inviteB.id;
+    joinRequestAId = joinRequestA.id;
+    joinRequestBId = joinRequestB.id;
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -645,6 +770,463 @@ describe('Communication policy tenancy isolation (security)', () => {
       .expect(200);
   });
 
+  it('school admin can list add update remove promote and demote same-school participants', async () => {
+    await setCommunicationPolicyEnabled(true);
+    const { accessToken } = await login(adminAEmail);
+    const beforeAudit = await communicationRuntimeAuditCount();
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(list.body.items.map((item: { id: string }) => item.id)).toContain(
+      participantAId,
+    );
+    expect(JSON.stringify(list.body)).not.toContain(participantBId);
+    expect(JSON.stringify(list.body)).not.toContain('schoolId');
+    expect(JSON.stringify(list.body)).not.toContain('private communication body');
+
+    const added = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        userId: noAccessUserId,
+        role: 'member',
+        metadata: { cohort: 'support', body: 'must not leak' },
+      })
+      .expect(201);
+    const addedParticipantId = added.body.id as string;
+    expect(added.body).toMatchObject({
+      conversationId: conversationAId,
+      userId: noAccessUserId,
+      role: 'member',
+      status: 'active',
+      metadata: { cohort: 'support' },
+    });
+    expect(JSON.stringify(added.body)).not.toContain('schoolId');
+    expect(JSON.stringify(added.body)).not.toContain('must not leak');
+
+    const updated = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants/${addedParticipantId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        role: 'moderator',
+        status: 'muted',
+        mutedUntil: '2026-05-03T09:00:00.000Z',
+        metadata: { desk: 'front-office' },
+      })
+      .expect(200);
+    expect(updated.body).toMatchObject({
+      id: addedParticipantId,
+      role: 'moderator',
+      status: 'muted',
+      mutedUntil: '2026-05-03T09:00:00.000Z',
+      metadata: { cohort: 'support', desk: 'front-office' },
+    });
+
+    const promoted = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants/${addedParticipantId}/promote`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+    expect(promoted.body.role).toBe('admin');
+
+    const demoted = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants/${addedParticipantId}/demote`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+    expect(demoted.body.role).toBe('moderator');
+
+    const removed = await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants/${addedParticipantId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(removed.body).toMatchObject({
+      id: addedParticipantId,
+      status: 'removed',
+      removedById: adminAId,
+      removedAt: expect.any(String),
+    });
+
+    await expect(communicationRuntimeAuditCount()).resolves.toBe(
+      beforeAudit + 5,
+    );
+  });
+
+  it('school admin can leave a conversation as a non-owner participant', async () => {
+    await setCommunicationPolicyEnabled(true);
+    const { accessToken } = await login(adminAEmail);
+    const leaveConversation = await prisma.communicationConversation.create({
+      data: {
+        schoolId: schoolAId,
+        type: CommunicationConversationType.GROUP,
+        status: CommunicationConversationStatus.ACTIVE,
+        titleEn: `${testSuffix} leave-safe conversation`,
+      },
+      select: { id: true },
+    });
+    createdConversationIds.push(leaveConversation.id);
+    const adminParticipant =
+      await prisma.communicationConversationParticipant.create({
+        data: {
+          schoolId: schoolAId,
+          conversationId: leaveConversation.id,
+          userId: adminAId,
+          role: CommunicationParticipantRole.MEMBER,
+          status: CommunicationParticipantStatus.ACTIVE,
+        },
+        select: { id: true },
+      });
+    await prisma.communicationConversationParticipant.create({
+      data: {
+        schoolId: schoolAId,
+        conversationId: leaveConversation.id,
+        userId: viewOnlyUserId,
+        role: CommunicationParticipantRole.OWNER,
+        status: CommunicationParticipantStatus.ACTIVE,
+      },
+    });
+
+    const left = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${leaveConversation.id}/leave`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(left.body).toMatchObject({
+      id: adminParticipant.id,
+      userId: adminAId,
+      status: 'left',
+      leftAt: expect.any(String),
+    });
+  });
+
+  it('school admin can create and list invites, invited actors can accept or reject', async () => {
+    await setCommunicationPolicyEnabled(true);
+    const admin = await login(adminAEmail);
+
+    const created = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/invites`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        invitedUserId: parentUserId,
+        metadata: { source: 'security-test', message: 'must not leak' },
+      })
+      .expect(201);
+    expect(created.body).toMatchObject({
+      conversationId: conversationAId,
+      invitedUserId: parentUserId,
+      status: 'pending',
+      metadata: { source: 'security-test' },
+    });
+    expect(JSON.stringify(created.body)).not.toContain('schoolId');
+    expect(JSON.stringify(created.body)).not.toContain('must not leak');
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/invites`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    expect(list.body.items.map((item: { id: string }) => item.id)).toContain(
+      created.body.id,
+    );
+    expect(JSON.stringify(list.body)).not.toContain(inviteBId);
+    expect(JSON.stringify(list.body)).not.toContain('schoolId');
+
+    const teacher = await login(teacherEmail);
+    const accepted = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversation-invites/${inviteAId}/accept`)
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .expect(201);
+    expect(accepted.body).toMatchObject({
+      conversationId: conversationAId,
+      userId: teacherUserId,
+      status: 'active',
+    });
+
+    const rejectInvite = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/invites`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ invitedUserId: joinRequesterUserId })
+      .expect(201);
+
+    const joinRequester = await login(joinRequesterEmail);
+    const rejected = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversation-invites/${rejectInvite.body.id}/reject`)
+      .set('Authorization', `Bearer ${joinRequester.accessToken}`)
+      .send({ reason: 'Declined for now' })
+      .expect(201);
+    expect(rejected.body).toMatchObject({
+      id: rejectInvite.body.id,
+      status: 'rejected',
+      respondedAt: expect.any(String),
+    });
+  });
+
+  it('school admin can list approve and reject join requests and actors can create them', async () => {
+    await setCommunicationPolicyEnabled(true);
+    const admin = await login(adminAEmail);
+
+    const requesterEmail = `${testSuffix}-join-create@security.moazez.local`;
+    const requesterId = await createUserWithMembership({
+      email: requesterEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: viewOnlyRoleIdForFixtures,
+    });
+    const requester = await login(requesterEmail);
+
+    const created = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/join-requests`)
+      .set('Authorization', `Bearer ${requester.accessToken}`)
+      .send({
+        note: 'Please add me',
+        metadata: { source: 'security-test', body: 'must not leak' },
+      })
+      .expect(201);
+    expect(created.body).toMatchObject({
+      conversationId: conversationAId,
+      requestedById: requesterId,
+      status: 'pending',
+      metadata: { source: 'security-test' },
+    });
+    expect(JSON.stringify(created.body)).not.toContain('schoolId');
+    expect(JSON.stringify(created.body)).not.toContain('must not leak');
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/join-requests`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    expect(list.body.items.map((item: { id: string }) => item.id)).toContain(
+      created.body.id,
+    );
+    expect(JSON.stringify(list.body)).not.toContain(joinRequestBId);
+    expect(JSON.stringify(list.body)).not.toContain('schoolId');
+
+    const approved = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/join-requests/${created.body.id}/approve`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ reason: 'Approved' })
+      .expect(201);
+    expect(approved.body).toMatchObject({
+      conversationId: conversationAId,
+      userId: requesterId,
+      status: 'active',
+    });
+
+    const rejected = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/join-requests/${joinRequestAId}/reject`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ reason: 'Not this group' })
+      .expect(201);
+    expect(rejected.body).toMatchObject({
+      id: joinRequestAId,
+      status: 'rejected',
+      reviewedById: adminAId,
+      reviewedAt: expect.any(String),
+    });
+  });
+
+  it('school A cannot access school B participants invites or join requests by guessed ids', async () => {
+    const { accessToken } = await login(adminAEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationBId}/participants`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationBId}/participants/${participantBId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ role: 'moderator' })
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationBId}/invites`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversation-invites/${inviteBId}/accept`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationBId}/join-requests`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/join-requests/${joinRequestBId}/approve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
+
+  it('participant invite and join request permission boundaries return 403', async () => {
+    const viewOnly = await login(viewOnlyEmail);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .send({ userId: parentUserId })
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants/${participantAId}`,
+      )
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .send({ role: 'moderator' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants/${participantAId}`,
+      )
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants/${participantAId}/promote`,
+      )
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants/${participantAId}/demote`,
+      )
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/invites`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/invites`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .send({ invitedUserId: parentUserId })
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/join-requests`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/join-requests/${joinRequestBId}/approve`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/join-requests/${joinRequestBId}/reject`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .send({ reason: 'No permission' })
+      .expect(403);
+
+    const noAccess = await login(noAccessEmail);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/leave`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversation-invites/${inviteAId}/accept`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversation-invites/${inviteAId}/reject`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .send({ reason: 'No permission' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/join-requests`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .send({ note: 'No permission' })
+      .expect(403);
+  });
+
+  it('parent and student cannot access dashboard participant management routes', async () => {
+    for (const email of [parentEmail, studentEmail]) {
+      const { accessToken } = await login(email);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ userId: parentUserId })
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/invites`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/join-requests`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+    }
+  });
+
+  it('teacher access follows seeded participant permissions', async () => {
+    const { accessToken } = await login(teacherEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/invites`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+  });
+
+  it('disabled communication policy rejects participant invite and join request mutations', async () => {
+    await setCommunicationPolicyEnabled(false);
+    const admin = await login(adminAEmail);
+    const requesterEmail = `${testSuffix}-disabled-requester@security.moazez.local`;
+    await createUserWithMembership({
+      email: requesterEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: viewOnlyRoleIdForFixtures,
+    });
+    const requester = await login(requesterEmail);
+
+    const participant = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ userId: parentUserId })
+      .expect(403);
+    expect(participant.body.error.code).toBe('communication.policy.disabled');
+
+    const invite = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/invites`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ invitedUserId: parentUserId })
+      .expect(403);
+    expect(invite.body.error.code).toBe('communication.policy.disabled');
+
+    const joinRequest = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/join-requests`)
+      .set('Authorization', `Bearer ${requester.accessToken}`)
+      .send({ note: 'Disabled policy should reject' })
+      .expect(403);
+    expect(joinRequest.body.error.code).toBe(
+      'communication.policy.disabled',
+    );
+
+    await setCommunicationPolicyEnabled(true);
+  });
+
   it('disabled communication policy rejects new conversation creation', async () => {
     await setCommunicationPolicyEnabled(false);
     const { accessToken } = await login(adminAEmail);
@@ -714,10 +1296,113 @@ describe('Communication policy tenancy isolation (security)', () => {
     expect(after).toEqual(before);
   });
 
+  it('participant invite and join request mutations do not create message moderation or realtime side effects', async () => {
+    await setCommunicationPolicyEnabled(true);
+    const admin = await login(adminAEmail);
+    const participantTargetEmail = `${testSuffix}-side-participant@security.moazez.local`;
+    const inviteTargetEmail = `${testSuffix}-side-invite@security.moazez.local`;
+    const approveRequesterEmail = `${testSuffix}-side-approve-requester@security.moazez.local`;
+    const rejectRequesterEmail = `${testSuffix}-side-reject-requester@security.moazez.local`;
+    const participantTargetId = await createUserWithMembership({
+      email: participantTargetEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: viewOnlyRoleIdForFixtures,
+    });
+    const inviteTargetId = await createUserWithMembership({
+      email: inviteTargetEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: viewOnlyRoleIdForFixtures,
+    });
+    await createUserWithMembership({
+      email: approveRequesterEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: viewOnlyRoleIdForFixtures,
+    });
+    await createUserWithMembership({
+      email: rejectRequesterEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: viewOnlyRoleIdForFixtures,
+    });
+
+    const before = await communicationMessageSideEffectCounts(schoolAId);
+
+    const participant = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ userId: participantTargetId })
+      .expect(201);
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants/${participant.body.id}`,
+      )
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ role: 'moderator' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants/${participant.body.id}/promote`,
+      )
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({})
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants/${participant.body.id}/demote`,
+      )
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({})
+      .expect(201);
+    await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants/${participant.body.id}`,
+      )
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+
+    const invite = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/invites`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ invitedUserId: inviteTargetId })
+      .expect(201);
+    const inviteTarget = await login(inviteTargetEmail);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversation-invites/${invite.body.id}/accept`)
+      .set('Authorization', `Bearer ${inviteTarget.accessToken}`)
+      .expect(201);
+
+    const approveRequester = await login(approveRequesterEmail);
+    const approveRequest = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/join-requests`)
+      .set('Authorization', `Bearer ${approveRequester.accessToken}`)
+      .send({ note: 'Approve me' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/join-requests/${approveRequest.body.id}/approve`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({})
+      .expect(201);
+
+    const rejectRequester = await login(rejectRequesterEmail);
+    const rejectRequest = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/join-requests`)
+      .set('Authorization', `Bearer ${rejectRequester.accessToken}`)
+      .send({ note: 'Reject me' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/join-requests/${rejectRequest.body.id}/reject`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({ reason: 'Not now' })
+      .expect(201);
+
+    const after = await communicationMessageSideEffectCounts(schoolAId);
+    expect(after).toEqual(before);
+  });
+
   it('read endpoints do not create audit rows', async () => {
     const { accessToken } = await login(adminAEmail);
     const before = await communicationAuditCount();
     const beforeConversationAudit = await communicationConversationAuditCount();
+    const beforeRuntimeAudit = await communicationRuntimeAuditCount();
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/communication/policies`)
@@ -735,16 +1420,38 @@ describe('Communication policy tenancy isolation (security)', () => {
       .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/invites`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/join-requests`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
 
     await expect(communicationAuditCount()).resolves.toBe(before);
     await expect(communicationConversationAuditCount()).resolves.toBe(
       beforeConversationAudit,
+    );
+    await expect(communicationRuntimeAuditCount()).resolves.toBe(
+      beforeRuntimeAudit,
     );
   });
 
   it('mutation endpoints create audit rows', async () => {
     const { accessToken } = await login(adminAEmail);
     const before = await communicationAuditCount();
+    const beforeRuntime = await communicationRuntimeAuditCount();
+    const auditTargetEmail = `${testSuffix}-audit-target@security.moazez.local`;
+    const auditTargetId = await createUserWithMembership({
+      email: auditTargetEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: viewOnlyRoleIdForFixtures,
+    });
 
     await request(app.getHttpServer())
       .patch(`${GLOBAL_PREFIX}/communication/policies`)
@@ -753,6 +1460,16 @@ describe('Communication policy tenancy isolation (security)', () => {
       .expect(200);
 
     await expect(communicationAuditCount()).resolves.toBe(before + 1);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ userId: auditTargetId })
+      .expect(201);
+
+    await expect(communicationRuntimeAuditCount()).resolves.toBe(
+      beforeRuntime + 1,
+    );
   });
 
   it('admin overview does not expose message body', async () => {
@@ -817,6 +1534,8 @@ describe('Communication policy tenancy isolation (security)', () => {
     email: string;
     userType: UserType;
     roleId: string;
+    organizationId?: string;
+    schoolId?: string;
   }): Promise<string> {
     const user = await prisma.user.create({
       data: {
@@ -834,8 +1553,8 @@ describe('Communication policy tenancy isolation (security)', () => {
     await prisma.membership.create({
       data: {
         userId: user.id,
-        organizationId: organizationAId,
-        schoolId: schoolAId,
+        organizationId: params.organizationId ?? organizationAId,
+        schoolId: params.schoolId ?? schoolAId,
         roleId: params.roleId,
         userType: params.userType,
         status: MembershipStatus.ACTIVE,
@@ -870,6 +1589,22 @@ describe('Communication policy tenancy isolation (security)', () => {
         schoolId: schoolAId,
         module: 'communication',
         resourceType: 'communication_conversation',
+      },
+    });
+  }
+
+  async function communicationRuntimeAuditCount(): Promise<number> {
+    return prisma.auditLog.count({
+      where: {
+        schoolId: schoolAId,
+        module: 'communication',
+        resourceType: {
+          in: [
+            'communication_participant',
+            'communication_invite',
+            'communication_join_request',
+          ],
+        },
       },
     });
   }
