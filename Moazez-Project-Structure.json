@@ -487,6 +487,18 @@
               ]
             },
             {
+              "name": "20260501120000_0014_communication_core_chat",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -3469,6 +3481,542 @@
                 },
                 {
                   "name": "behavior.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "communication",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "application",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "communication-block.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-conversation.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-attachment.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-moderation.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-participant.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-policy.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-reaction.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-report.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-restriction.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "controller",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "communication-conversation.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-interactions.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-participant.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-policy.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-safety.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "domain",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "communication-block-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-conversation-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-attachment-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-moderation-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-participant-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-policy-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-reaction-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-report-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-restriction-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "dto",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "communication-block.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-conversation.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-attachment.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-moderation.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-participant.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-policy.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-reaction.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-report.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-restriction.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "infrastructure",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "communication-block.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-conversation.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-attachment.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-moderation.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-participant.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-policy.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-reaction.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-report.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-restriction.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "presenters",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "communication-admin.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-block.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-conversation.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-invite.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-join-request.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-attachment.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-read.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-moderation.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-participant.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-policy.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-reaction.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-report.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-restriction.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "tests",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "communication-admin.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-block-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-block.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-block.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-conversation-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-conversation.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-conversation.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-invite.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-join-request.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-attachment-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-attachment.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-attachment.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-read.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-moderation-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-moderation.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-moderation.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-participant-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-participant.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-participant.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-policy-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-policy.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-policy.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-reaction-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-reaction.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-reaction.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-report-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-report.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-report.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-restriction-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-restriction.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-restriction.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "communication-context.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "communication.module.ts",
                   "type": "file",
                   "icon": "📘"
                 }
@@ -8043,6 +8591,11 @@
               "icon": "📘"
             },
             {
+              "name": "communication-core-chat.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "files-attachments-preview.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -8138,6 +8691,11 @@
             },
             {
               "name": "tenancy.behavior.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.communication.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -8369,7 +8927,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-04-30T22:57:16.463Z",
+    "generated": "2026-05-02T18:01:10.992Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
