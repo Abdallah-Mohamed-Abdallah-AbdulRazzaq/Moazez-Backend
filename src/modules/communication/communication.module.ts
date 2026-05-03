@@ -2,6 +2,20 @@ import { Module } from '@nestjs/common';
 import { RealtimeModule } from '../../infrastructure/realtime/realtime.module';
 import { AuthModule } from '../iam/auth/auth.module';
 import {
+  ArchiveCommunicationAnnouncementUseCase,
+  CancelCommunicationAnnouncementUseCase,
+  CreateCommunicationAnnouncementUseCase,
+  DeleteCommunicationAnnouncementAttachmentUseCase,
+  GetCommunicationAnnouncementReadSummaryUseCase,
+  GetCommunicationAnnouncementUseCase,
+  LinkCommunicationAnnouncementAttachmentUseCase,
+  ListCommunicationAnnouncementAttachmentsUseCase,
+  ListCommunicationAnnouncementsUseCase,
+  MarkCommunicationAnnouncementReadUseCase,
+  PublishCommunicationAnnouncementUseCase,
+  UpdateCommunicationAnnouncementUseCase,
+} from './application/communication-announcement.use-cases';
+import {
   ArchiveCommunicationConversationUseCase,
   CloseCommunicationConversationUseCase,
   CreateCommunicationConversationUseCase,
@@ -75,12 +89,14 @@ import {
   UpdateCommunicationUserRestrictionUseCase,
 } from './application/communication-restriction.use-cases';
 import { CommunicationConversationController } from './controller/communication-conversation.controller';
+import { CommunicationAnnouncementController } from './controller/communication-announcement.controller';
 import { CommunicationMessageInteractionsController } from './controller/communication-message-interactions.controller';
 import { CommunicationMessageController } from './controller/communication-message.controller';
 import { CommunicationParticipantController } from './controller/communication-participant.controller';
 import { CommunicationPolicyController } from './controller/communication-policy.controller';
 import { CommunicationSafetyController } from './controller/communication-safety.controller';
 import { CommunicationBlockRepository } from './infrastructure/communication-block.repository';
+import { CommunicationAnnouncementRepository } from './infrastructure/communication-announcement.repository';
 import { CommunicationConversationRepository } from './infrastructure/communication-conversation.repository';
 import { CommunicationModerationRepository } from './infrastructure/communication-moderation.repository';
 import { CommunicationMessageRepository } from './infrastructure/communication-message.repository';
@@ -95,6 +111,7 @@ import { CommunicationRestrictionRepository } from './infrastructure/communicati
   imports: [AuthModule, RealtimeModule],
   controllers: [
     CommunicationPolicyController,
+    CommunicationAnnouncementController,
     CommunicationConversationController,
     CommunicationParticipantController,
     CommunicationMessageController,
@@ -103,6 +120,7 @@ import { CommunicationRestrictionRepository } from './infrastructure/communicati
   ],
   providers: [
     CommunicationPolicyRepository,
+    CommunicationAnnouncementRepository,
     CommunicationConversationRepository,
     CommunicationParticipantRepository,
     CommunicationMessageRepository,
@@ -115,6 +133,18 @@ import { CommunicationRestrictionRepository } from './infrastructure/communicati
     GetCommunicationPolicyUseCase,
     UpdateCommunicationPolicyUseCase,
     GetCommunicationAdminOverviewUseCase,
+    ListCommunicationAnnouncementsUseCase,
+    CreateCommunicationAnnouncementUseCase,
+    GetCommunicationAnnouncementUseCase,
+    UpdateCommunicationAnnouncementUseCase,
+    PublishCommunicationAnnouncementUseCase,
+    ArchiveCommunicationAnnouncementUseCase,
+    CancelCommunicationAnnouncementUseCase,
+    MarkCommunicationAnnouncementReadUseCase,
+    GetCommunicationAnnouncementReadSummaryUseCase,
+    ListCommunicationAnnouncementAttachmentsUseCase,
+    LinkCommunicationAnnouncementAttachmentUseCase,
+    DeleteCommunicationAnnouncementAttachmentUseCase,
     ListCommunicationConversationsUseCase,
     CreateCommunicationConversationUseCase,
     GetCommunicationConversationUseCase,

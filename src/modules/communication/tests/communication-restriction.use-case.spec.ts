@@ -95,7 +95,7 @@ describe('communication restriction use cases', () => {
         targetUserId: TARGET_ID,
         type: 'mute',
         reason: 'Cooldown',
-        expiresAt: '2026-05-03T08:00:00.000Z',
+        expiresAt: '2099-05-03T08:00:00.000Z',
       }),
     );
     const updated = await withScope(() =>
@@ -172,7 +172,8 @@ function repositoryMock(overrides?: Record<string, unknown>) {
     enqueueJob: jest.fn(),
     emitRealtime: jest.fn(),
     ...(overrides ?? {}),
-  } as unknown as CommunicationRestrictionRepository & Record<string, jest.Mock>;
+  } as unknown as CommunicationRestrictionRepository &
+    Record<string, jest.Mock>;
 }
 
 function restrictionRecord(overrides?: Record<string, unknown>) {
@@ -185,7 +186,7 @@ function restrictionRecord(overrides?: Record<string, unknown>) {
     restrictionType: CommunicationRestrictionType.MUTE,
     reason: 'Cooldown',
     startsAt: now,
-    expiresAt: new Date('2026-05-03T08:00:00.000Z'),
+    expiresAt: new Date('2099-05-03T08:00:00.000Z'),
     liftedById: null,
     liftedAt: null,
     metadata: null,
