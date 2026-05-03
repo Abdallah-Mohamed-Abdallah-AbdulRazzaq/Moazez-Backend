@@ -317,6 +317,11 @@
           "name": ".gitkeep",
           "type": "file",
           "icon": "📁"
+        },
+        {
+          "name": "sprint-6c-planning-audit.md",
+          "type": "file",
+          "icon": "📝"
         }
       ]
     },
@@ -488,6 +493,30 @@
             },
             {
               "name": "20260501120000_0014_communication_core_chat",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260503120000_0015_communication_announcements_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260503135321_0016_notifications_foundation",
               "type": "folder",
               "icon": "📁",
               "children": [
@@ -753,6 +782,18 @@
               "icon": "📁",
               "children": [
                 {
+                  "name": "tests",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "school-scope.extension.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
                   "name": ".gitkeep",
                   "type": "file",
                   "icon": "📁"
@@ -819,9 +860,116 @@
               "icon": "📁",
               "children": [
                 {
+                  "name": "tests",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "realtime-auth.service.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "realtime-communication-access.service.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "realtime-event-names.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "realtime-presence.service.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "realtime-publisher.service.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "realtime-room-names.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "realtime-typing.service.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "realtime.gateway.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
                   "name": ".gitkeep",
                   "type": "file",
                   "icon": "📁"
+                },
+                {
+                  "name": "realtime-auth.service.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "realtime-communication-access.service.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "realtime-event-names.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "realtime-presence.service.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "realtime-presence.types.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "realtime-publisher.service.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "realtime-room-names.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "realtime-state-store.service.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "realtime-typing.service.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "realtime.gateway.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "realtime.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "realtime.types.ts",
+                  "type": "file",
+                  "icon": "📘"
                 }
               ]
             }
@@ -3497,6 +3645,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "communication-announcement.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-block.use-cases.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3522,6 +3675,21 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "communication-notification-generation.service.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-queue.service.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-participant.use-cases.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3533,6 +3701,11 @@
                     },
                     {
                       "name": "communication-reaction.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-realtime-events.service.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -3554,6 +3727,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "communication-announcement.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-conversation.controller.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3565,6 +3743,11 @@
                     },
                     {
                       "name": "communication-message.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification.controller.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -3591,6 +3774,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "communication-announcement-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-block-domain.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3612,6 +3800,16 @@
                     },
                     {
                       "name": "communication-moderation-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-generation-domain.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -3648,6 +3846,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "communication-announcement.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-block.dto.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3669,6 +3872,11 @@
                     },
                     {
                       "name": "communication-moderation.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification.dto.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -3705,6 +3913,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "communication-announcement.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-block.repository.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3726,6 +3939,21 @@
                     },
                     {
                       "name": "communication-moderation.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-generation.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-generation.worker.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification.repository.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -3763,6 +3991,21 @@
                   "children": [
                     {
                       "name": "communication-admin.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-announcement-attachment.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-announcement-read.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-announcement.presenter.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -3807,6 +4050,16 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "communication-notification-delivery.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-participant.presenter.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3840,6 +4093,31 @@
                   "children": [
                     {
                       "name": "communication-admin.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-announcement-attachment.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-announcement-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-announcement-read.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-announcement.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-announcement.use-case.spec.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -3930,6 +4208,46 @@
                     },
                     {
                       "name": "communication-moderation.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-delivery.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-generation-domain.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-generation.repository.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-generation.service.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-queue.service.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification.use-case.spec.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -8596,6 +8914,11 @@
               "icon": "📘"
             },
             {
+              "name": "communication-realtime-announcements-notifications.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "files-attachments-preview.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -8927,7 +9250,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-05-02T18:01:10.992Z",
+    "generated": "2026-05-03T21:09:49.964Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
