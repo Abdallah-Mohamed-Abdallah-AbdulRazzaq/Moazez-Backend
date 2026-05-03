@@ -128,6 +128,8 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'communication.platform.manage', module: 'communication', resource: 'platform', action: 'manage', description: 'Manage platform-level communication controls' },
   { code: 'communication.announcements.view', module: 'communication', resource: 'announcements', action: 'view', description: 'View announcements' },
   { code: 'communication.announcements.manage', module: 'communication', resource: 'announcements', action: 'manage', description: 'Publish announcements' },
+  { code: 'communication.notifications.view', module: 'communication', resource: 'notifications', action: 'view', description: 'View runtime notification center records' },
+  { code: 'communication.notifications.manage', module: 'communication', resource: 'notifications', action: 'manage', description: 'Manage runtime notification records and delivery inspection' },
 
   // files
   { code: 'files.uploads.manage', module: 'files', resource: 'uploads', action: 'manage', description: 'Upload and manage files' },

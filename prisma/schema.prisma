@@ -742,6 +742,70 @@ enum CommunicationAnnouncementAudienceType {
   @@map("communication_announcement_audience_type")
 }
 
+enum CommunicationNotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+
+  @@map("communication_notification_status")
+}
+
+enum CommunicationNotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+
+  @@map("communication_notification_priority")
+}
+
+enum CommunicationNotificationSourceModule {
+  COMMUNICATION
+  ANNOUNCEMENTS
+  ATTENDANCE
+  GRADES
+  BEHAVIOR
+  REINFORCEMENT
+  ADMISSIONS
+  STUDENTS
+  SYSTEM
+
+  @@map("communication_notification_source_module")
+}
+
+enum CommunicationNotificationType {
+  ANNOUNCEMENT_PUBLISHED
+  MESSAGE_RECEIVED
+  MESSAGE_MENTION
+  ATTENDANCE_ABSENCE
+  ATTENDANCE_LATE
+  GRADE_POSTED
+  BEHAVIOR_RECORD_CREATED
+  REINFORCEMENT_REWARD_GRANTED
+  SYSTEM_ALERT
+
+  @@map("communication_notification_type")
+}
+
+enum CommunicationNotificationDeliveryChannel {
+  IN_APP
+  EMAIL
+  SMS
+  PUSH
+
+  @@map("communication_notification_delivery_channel")
+}
+
+enum CommunicationNotificationDeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  SKIPPED
+
+  @@map("communication_notification_delivery_status")
+}
+
 model Organization {
   id     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name   String
@@ -866,6 +930,8 @@ model School {
   communicationAnnouncementAudiences    CommunicationAnnouncementAudience[]
   communicationAnnouncementReads        CommunicationAnnouncementRead[]
   communicationAnnouncementAttachments  CommunicationAnnouncementAttachment[]
+  communicationNotifications            CommunicationNotification[]
+  communicationNotificationDeliveries   CommunicationNotificationDelivery[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -979,6 +1045,8 @@ model User {
   communicationAnnouncementAudiences             CommunicationAnnouncementAudience[]    @relation("CommunicationAnnouncementAudiencesUser")
   communicationAnnouncementReads                 CommunicationAnnouncementRead[]        @relation("CommunicationAnnouncementReadsUser")
   communicationAnnouncementAttachmentsCreated    CommunicationAnnouncementAttachment[]  @relation("CommunicationAnnouncementAttachmentsCreatedByUser")
+  communicationNotificationsReceived             CommunicationNotification[]            @relation("CommunicationNotificationsRecipientUser")
+  communicationNotificationsActed                CommunicationNotification[]            @relation("CommunicationNotificationsActorUser")
 
   @@index([userType])
   @@index([status])
@@ -1176,8 +1244,9 @@ model NotificationTemplate {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  school        School                             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  channelStates NotificationTemplateChannelState[]
+  school                     School                             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  channelStates              NotificationTemplateChannelState[]
+  communicationNotifications CommunicationNotification[]        @relation("CommunicationNotificationsTemplate")
 
   @@unique([schoolId, key])
   @@unique([id, schoolId])
@@ -4066,6 +4135,79 @@ model CommunicationAnnouncementAttachment {
   @@index([fileId])
   @@index([createdById])
   @@map("communication_announcement_attachments")
+}
+
+model CommunicationNotification {
+  id              String                                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                                @map("school_id") @db.Uuid
+  recipientUserId String                                @map("recipient_user_id") @db.Uuid
+  actorUserId     String?                               @map("actor_user_id") @db.Uuid
+  templateId      String?                               @map("template_id") @db.Uuid
+  sourceModule    CommunicationNotificationSourceModule @map("source_module")
+  sourceType      String                                @map("source_type")
+  sourceId        String?                               @map("source_id") @db.Uuid
+  type            CommunicationNotificationType
+  title           String
+  body            String
+  priority        CommunicationNotificationPriority     @default(NORMAL)
+  status          CommunicationNotificationStatus       @default(UNREAD)
+  readAt          DateTime?                             @map("read_at")
+  archivedAt      DateTime?                             @map("archived_at")
+  expiresAt       DateTime?                             @map("expires_at")
+  metadata        Json?
+  createdAt       DateTime                              @default(now()) @map("created_at")
+  updatedAt       DateTime                              @updatedAt @map("updated_at")
+
+  school        School                              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  recipientUser User                                @relation("CommunicationNotificationsRecipientUser", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  actorUser     User?                               @relation("CommunicationNotificationsActorUser", fields: [actorUserId], references: [id], onDelete: SetNull)
+  template      NotificationTemplate?               @relation("CommunicationNotificationsTemplate", fields: [templateId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  deliveries    CommunicationNotificationDelivery[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([recipientUserId])
+  @@index([actorUserId])
+  @@index([templateId])
+  @@index([schoolId, recipientUserId])
+  @@index([schoolId, recipientUserId, status])
+  @@index([schoolId, createdAt(sort: Desc)])
+  @@index([schoolId, sourceModule, sourceType, sourceId])
+  @@index([status])
+  @@index([type])
+  @@index([expiresAt])
+  @@map("communication_notifications")
+}
+
+model CommunicationNotificationDelivery {
+  id                String                                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String                                   @map("school_id") @db.Uuid
+  notificationId    String                                   @map("notification_id") @db.Uuid
+  channel           CommunicationNotificationDeliveryChannel
+  status            CommunicationNotificationDeliveryStatus  @default(PENDING)
+  provider          String?
+  providerMessageId String?                                  @map("provider_message_id")
+  errorCode         String?                                  @map("error_code")
+  errorMessage      String?                                  @map("error_message")
+  attemptedAt       DateTime?                                @map("attempted_at")
+  sentAt            DateTime?                                @map("sent_at")
+  deliveredAt       DateTime?                                @map("delivered_at")
+  failedAt          DateTime?                                @map("failed_at")
+  metadata          Json?
+  createdAt         DateTime                                 @default(now()) @map("created_at")
+  updatedAt         DateTime                                 @updatedAt @map("updated_at")
+
+  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  notification CommunicationNotification @relation(fields: [notificationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([notificationId])
+  @@index([schoolId, channel, status])
+  @@index([channel])
+  @@index([status])
+  @@index([providerMessageId])
+  @@map("communication_notification_deliveries")
 }
 
 // ============================================================
