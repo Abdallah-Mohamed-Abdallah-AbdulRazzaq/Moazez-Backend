@@ -23,6 +23,7 @@ import { IamModule } from './modules/iam/iam.module';
 import { ReinforcementModule } from './modules/reinforcement/reinforcement.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { StudentsModule } from './modules/students/students.module';
+import { TeacherAppModule } from './modules/teacher-app/teacher-app.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { StudentsModule } from './modules/students/students.module';
     ReinforcementModule,
     BehaviorModule,
     CommunicationModule,
+    TeacherAppModule,
   ],
   controllers: [AppController],
   providers: [

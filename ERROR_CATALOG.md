@@ -243,6 +243,14 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `communication.user.restriction_conflict`            | 409  | User restriction conflicts with an active state   |
 | `communication.scope.invalid`                        | 422  | Communication scope is invalid                    |
 
+### Teacher App
+
+| Code                                      | HTTP | Message                                           |
+| ----------------------------------------- | ---- | ------------------------------------------------- |
+| `teacher_app.actor.required_teacher`      | 403  | Teacher App requires an active teacher membership |
+| `teacher_app.allocation.not_found`        | 404  | Teacher App class allocation was not found        |
+| `teacher_app.allocation.forbidden`        | 403  | Teacher does not own this class allocation        |
+
 ### Cross-cutting
 
 | Code                  | HTTP | Message                                               |
