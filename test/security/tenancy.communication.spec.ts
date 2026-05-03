@@ -11,6 +11,12 @@ import {
   CommunicationMessageKind,
   CommunicationMessageStatus,
   CommunicationModerationActionType,
+  CommunicationNotificationDeliveryChannel,
+  CommunicationNotificationDeliveryStatus,
+  CommunicationNotificationPriority,
+  CommunicationNotificationSourceModule,
+  CommunicationNotificationStatus,
+  CommunicationNotificationType,
   CommunicationParticipantRole,
   CommunicationParticipantStatus,
   CommunicationReportStatus,
@@ -28,6 +34,8 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
+import { RealtimePublisherService } from '../../src/infrastructure/realtime/realtime-publisher.service';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'Communication123!';
@@ -4553,6 +4561,650 @@ describe('Communication announcement tenancy isolation (security)', () => {
       where: { schoolId: { in: schoolIds } },
     });
     await prisma.communicationAnnouncement.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+  }
+});
+
+describe('Communication notification tenancy isolation (security)', () => {
+  let app: INestApplication<App>;
+  let prisma: PrismaClient;
+
+  let organizationAId: string;
+  let organizationBId: string;
+  let schoolAId: string;
+  let schoolBId: string;
+  let adminAId: string;
+  let adminBId: string;
+  let viewOnlyUserId: string;
+  let otherRecipientUserId: string;
+  let adminAEmail: string;
+  let adminBEmail: string;
+  let viewOnlyEmail: string;
+  let noAccessEmail: string;
+  let teacherEmail: string;
+  let parentEmail: string;
+  let studentEmail: string;
+  let adminNotificationId: string;
+  let viewOnlyNotificationId: string;
+  let otherNotificationId: string;
+  let schoolBNotificationId: string;
+  let deliveryAId: string;
+  let deliveryBId: string;
+
+  const testSuffix = `communication-notifications-security-${Date.now()}`;
+  const createdUserIds: string[] = [];
+  const createdRoleIds: string[] = [];
+
+  beforeAll(async () => {
+    prisma = new PrismaClient();
+    await prisma.$connect();
+
+    const [
+      schoolAdminRole,
+      teacherRole,
+      parentRole,
+      studentRole,
+      notificationsViewPermission,
+    ] = await Promise.all([
+      findSystemRole('school_admin'),
+      findSystemRole('teacher'),
+      findSystemRole('parent'),
+      findSystemRole('student'),
+      findPermission('communication.notifications.view'),
+      findPermission('communication.notifications.manage'),
+    ]);
+
+    const orgA = await prisma.organization.create({
+      data: {
+        slug: `${testSuffix}-org-a`,
+        name: `${testSuffix} Org A`,
+        status: OrganizationStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    organizationAId = orgA.id;
+
+    const orgB = await prisma.organization.create({
+      data: {
+        slug: `${testSuffix}-org-b`,
+        name: `${testSuffix} Org B`,
+        status: OrganizationStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    organizationBId = orgB.id;
+
+    const schoolA = await prisma.school.create({
+      data: {
+        organizationId: organizationAId,
+        slug: `${testSuffix}-school-a`,
+        name: `${testSuffix} School A`,
+        status: SchoolStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    schoolAId = schoolA.id;
+
+    const schoolB = await prisma.school.create({
+      data: {
+        organizationId: organizationBId,
+        slug: `${testSuffix}-school-b`,
+        name: `${testSuffix} School B`,
+        status: SchoolStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    schoolBId = schoolB.id;
+
+    const noAccessRoleId = await createCustomRole('no-access', []);
+    const viewOnlyRoleId = await createCustomRole('view-only', [
+      notificationsViewPermission.id,
+    ]);
+
+    adminAEmail = `${testSuffix}-admin-a@security.moazez.local`;
+    adminBEmail = `${testSuffix}-admin-b@security.moazez.local`;
+    viewOnlyEmail = `${testSuffix}-view-only@security.moazez.local`;
+    noAccessEmail = `${testSuffix}-no-access@security.moazez.local`;
+    teacherEmail = `${testSuffix}-teacher@security.moazez.local`;
+    parentEmail = `${testSuffix}-parent@security.moazez.local`;
+    studentEmail = `${testSuffix}-student@security.moazez.local`;
+
+    adminAId = await createUserWithMembership({
+      email: adminAEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: schoolAdminRole.id,
+    });
+    adminBId = await createUserWithMembership({
+      email: adminBEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: schoolAdminRole.id,
+      organizationId: organizationBId,
+      schoolId: schoolBId,
+    });
+    viewOnlyUserId = await createUserWithMembership({
+      email: viewOnlyEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: viewOnlyRoleId,
+    });
+    otherRecipientUserId = await createUserWithMembership({
+      email: `${testSuffix}-other-recipient@security.moazez.local`,
+      userType: UserType.SCHOOL_USER,
+      roleId: viewOnlyRoleId,
+    });
+    await createUserWithMembership({
+      email: noAccessEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: noAccessRoleId,
+    });
+    await createUserWithMembership({
+      email: teacherEmail,
+      userType: UserType.TEACHER,
+      roleId: teacherRole.id,
+    });
+    await createUserWithMembership({
+      email: parentEmail,
+      userType: UserType.PARENT,
+      roleId: parentRole.id,
+    });
+    await createUserWithMembership({
+      email: studentEmail,
+      userType: UserType.STUDENT,
+      roleId: studentRole.id,
+    });
+
+    const [adminNotification, viewOnlyNotification, otherNotification, schoolBNotification] =
+      await Promise.all([
+        createNotificationRecord({
+          schoolId: schoolAId,
+          recipientUserId: adminAId,
+          actorUserId: viewOnlyUserId,
+          title: `${testSuffix} school A admin notification`,
+          body: 'school A admin notification body',
+        }),
+        createNotificationRecord({
+          schoolId: schoolAId,
+          recipientUserId: viewOnlyUserId,
+          actorUserId: adminAId,
+          title: `${testSuffix} school A view notification`,
+          body: 'school A view notification body',
+        }),
+        createNotificationRecord({
+          schoolId: schoolAId,
+          recipientUserId: otherRecipientUserId,
+          actorUserId: adminAId,
+          title: `${testSuffix} school A other notification`,
+          body: 'school A other notification body',
+        }),
+        createNotificationRecord({
+          schoolId: schoolBId,
+          recipientUserId: adminBId,
+          actorUserId: adminBId,
+          title: `${testSuffix} school B private notification`,
+          body: 'school B private notification body',
+        }),
+      ]);
+    adminNotificationId = adminNotification.id;
+    viewOnlyNotificationId = viewOnlyNotification.id;
+    otherNotificationId = otherNotification.id;
+    schoolBNotificationId = schoolBNotification.id;
+
+    const [deliveryA, deliveryB] = await Promise.all([
+      prisma.communicationNotificationDelivery.create({
+        data: {
+          schoolId: schoolAId,
+          notificationId: adminNotificationId,
+          channel: CommunicationNotificationDeliveryChannel.IN_APP,
+          status: CommunicationNotificationDeliveryStatus.SENT,
+          provider: 'in-app',
+          providerMessageId: `${testSuffix}-school-a-delivery`,
+          sentAt: new Date('2026-05-03T08:02:00.000Z'),
+        },
+        select: { id: true },
+      }),
+      prisma.communicationNotificationDelivery.create({
+        data: {
+          schoolId: schoolBId,
+          notificationId: schoolBNotificationId,
+          channel: CommunicationNotificationDeliveryChannel.EMAIL,
+          status: CommunicationNotificationDeliveryStatus.FAILED,
+          provider: 'smtp',
+          providerMessageId: `${testSuffix}-school-b-delivery`,
+          errorMessage: 'school B provider failure',
+          failedAt: new Date('2026-05-03T08:03:00.000Z'),
+        },
+        select: { id: true },
+      }),
+    ]);
+    deliveryAId = deliveryA.id;
+    deliveryBId = deliveryB.id;
+
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: false },
+      }),
+    );
+    await app.init();
+  });
+
+  afterAll(async () => {
+    try {
+      await cleanupNotificationSchools([schoolAId, schoolBId]);
+      await prisma.auditLog.deleteMany({
+        where: { schoolId: { in: [schoolAId, schoolBId] } },
+      });
+      await prisma.session.deleteMany({
+        where: { userId: { in: createdUserIds } },
+      });
+      await prisma.membership.deleteMany({
+        where: { userId: { in: createdUserIds } },
+      });
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: { in: createdRoleIds } },
+      });
+      await prisma.role.deleteMany({ where: { id: { in: createdRoleIds } } });
+      await prisma.school.deleteMany({
+        where: { id: { in: [schoolAId, schoolBId] } },
+      });
+      await prisma.organization.deleteMany({
+        where: { id: { in: [organizationAId, organizationBId] } },
+      });
+    } finally {
+      await app.close();
+      await prisma.$disconnect();
+    }
+  });
+
+  it('same-school admin with view and manage can list the notification center', async () => {
+    const { accessToken } = await login(adminAEmail);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notifications`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const json = JSON.stringify(response.body);
+
+    expect(json).toContain(adminNotificationId);
+    expect(json).toContain(viewOnlyNotificationId);
+    expect(json).toContain(otherNotificationId);
+    expect(json).not.toContain(schoolBNotificationId);
+    expect(json).not.toContain('school B private notification');
+    expect(json).not.toContain('schoolId');
+
+    const filtered = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notifications`)
+      .query({ recipientUserId: viewOnlyUserId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const filteredJson = JSON.stringify(filtered.body);
+
+    expect(filteredJson).toContain(viewOnlyNotificationId);
+    expect(filteredJson).not.toContain(adminNotificationId);
+  });
+
+  it('same-school admin with manage can list and detail deliveries', async () => {
+    const { accessToken } = await login(adminAEmail);
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notification-deliveries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const listJson = JSON.stringify(list.body);
+
+    expect(listJson).toContain(deliveryAId);
+    expect(listJson).not.toContain(deliveryBId);
+    expect(listJson).not.toContain('schoolId');
+
+    const detail = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notification-deliveries/${deliveryAId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(detail.body).toMatchObject({
+      id: deliveryAId,
+      notificationId: adminNotificationId,
+      channel: 'in_app',
+      status: 'sent',
+    });
+    expect(JSON.stringify(detail.body)).not.toContain('schoolId');
+  });
+
+  it('current actor can mark own notification read and archive with view permission', async () => {
+    const { accessToken } = await login(viewOnlyEmail);
+
+    const read = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/notifications/${viewOnlyNotificationId}/read`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(read.body).toMatchObject({
+      id: viewOnlyNotificationId,
+      status: 'read',
+      readAt: expect.any(String),
+    });
+    expect(JSON.stringify(read.body)).not.toContain('schoolId');
+
+    const archived = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/notifications/${viewOnlyNotificationId}/archive`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(archived.body).toMatchObject({
+      id: viewOnlyNotificationId,
+      status: 'archived',
+      archivedAt: expect.any(String),
+    });
+    expect(JSON.stringify(archived.body)).not.toContain('schoolId');
+  });
+
+  it('actor cannot view read or archive another actor notification without manage inspection', async () => {
+    const { accessToken } = await login(viewOnlyEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notifications/${adminNotificationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/notifications/${adminNotificationId}/read`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/notifications/${adminNotificationId}/archive`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
+
+  it('school A cannot access school B notifications or deliveries by guessed ids', async () => {
+    const { accessToken } = await login(adminAEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notifications/${schoolBNotificationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/notifications/${schoolBNotificationId}/read`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/notifications/${schoolBNotificationId}/archive`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notification-deliveries/${deliveryBId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notifications`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const deliveries = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notification-deliveries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(JSON.stringify(list.body)).not.toContain(schoolBNotificationId);
+    expect(JSON.stringify(deliveries.body)).not.toContain(deliveryBId);
+  });
+
+  it('permission boundaries deny notification and delivery routes', async () => {
+    const noAccess = await login(noAccessEmail);
+    const viewOnly = await login(viewOnlyEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notifications`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notifications/${adminNotificationId}`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/notifications/${adminNotificationId}/read`,
+      )
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/notifications/read-all`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/notifications/${adminNotificationId}/archive`,
+      )
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notification-deliveries`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notification-deliveries/${deliveryAId}`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .expect(403);
+  });
+
+  it('parent student and teacher default boundaries deny notification center routes', async () => {
+    for (const email of [parentEmail, studentEmail, teacherEmail]) {
+      const { accessToken } = await login(email);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/communication/notifications`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/communication/notification-deliveries`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+    }
+  });
+
+  it('read list detail and archive do not audit queue jobs or realtime notification events', async () => {
+    const notification = await createNotificationRecord({
+      schoolId: schoolAId,
+      recipientUserId: viewOnlyUserId,
+      actorUserId: adminAId,
+      title: `${testSuffix} no side effects notification`,
+      body: 'No side effects body',
+    });
+    const { accessToken } = await login(viewOnlyEmail);
+    const beforeAudit = await communicationNotificationAuditCount();
+    const publisher = app.get(RealtimePublisherService);
+    const publishToUserSpy = jest.spyOn(publisher, 'publishToUser');
+    const publishToSchoolSpy = jest.spyOn(publisher, 'publishToSchool');
+    const bullmqService = app.get(BullmqService, { strict: false });
+    const addJobSpy = jest.spyOn(bullmqService, 'addJob');
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notifications`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/notifications/${notification.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/notifications/${notification.id}/read`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/notifications/${notification.id}/archive`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    await expect(communicationNotificationAuditCount()).resolves.toBe(
+      beforeAudit,
+    );
+    expect(addJobSpy).not.toHaveBeenCalled();
+    expect(publishToUserSpy).not.toHaveBeenCalled();
+    expect(publishToSchoolSpy).not.toHaveBeenCalled();
+
+    addJobSpy.mockRestore();
+    publishToUserSpy.mockRestore();
+    publishToSchoolSpy.mockRestore();
+  });
+
+  async function findSystemRole(key: string): Promise<{ id: string }> {
+    const role = await prisma.role.findFirst({
+      where: { key, schoolId: null, isSystem: true },
+      select: { id: true },
+    });
+    if (!role) throw new Error(`${key} system role not found - run seed.`);
+    return role;
+  }
+
+  async function findPermission(code: string): Promise<{ id: string }> {
+    const permission = await prisma.permission.findUnique({
+      where: { code },
+      select: { id: true },
+    });
+    if (!permission)
+      throw new Error(`${code} permission not found - run seed.`);
+    return permission;
+  }
+
+  async function createCustomRole(
+    keySuffix: string,
+    permissionIds: string[],
+  ): Promise<string> {
+    const role = await prisma.role.create({
+      data: {
+        schoolId: schoolAId,
+        key: `${testSuffix}-${keySuffix}`,
+        name: `${testSuffix} ${keySuffix}`,
+        isSystem: false,
+      },
+      select: { id: true },
+    });
+    createdRoleIds.push(role.id);
+
+    if (permissionIds.length > 0) {
+      await prisma.rolePermission.createMany({
+        data: permissionIds.map((permissionId) => ({
+          roleId: role.id,
+          permissionId,
+        })),
+      });
+    }
+
+    return role.id;
+  }
+
+  async function createUserWithMembership(params: {
+    email: string;
+    userType: UserType;
+    roleId: string;
+    organizationId?: string;
+    schoolId?: string;
+  }): Promise<string> {
+    const user = await prisma.user.create({
+      data: {
+        email: params.email,
+        firstName: 'Notification',
+        lastName: 'Security',
+        userType: params.userType,
+        status: UserStatus.ACTIVE,
+        passwordHash: await argon2.hash(PASSWORD, ARGON2_OPTIONS),
+      },
+      select: { id: true },
+    });
+    createdUserIds.push(user.id);
+
+    await prisma.membership.create({
+      data: {
+        userId: user.id,
+        organizationId: params.organizationId ?? organizationAId,
+        schoolId: params.schoolId ?? schoolAId,
+        roleId: params.roleId,
+        userType: params.userType,
+        status: MembershipStatus.ACTIVE,
+      },
+    });
+
+    return user.id;
+  }
+
+  async function createNotificationRecord(params: {
+    schoolId: string;
+    recipientUserId: string;
+    actorUserId: string | null;
+    title: string;
+    body: string;
+  }): Promise<{ id: string }> {
+    return prisma.communicationNotification.create({
+      data: {
+        schoolId: params.schoolId,
+        recipientUserId: params.recipientUserId,
+        actorUserId: params.actorUserId,
+        sourceModule: CommunicationNotificationSourceModule.SYSTEM,
+        sourceType: 'security_fixture',
+        sourceId: null,
+        type: CommunicationNotificationType.SYSTEM_ALERT,
+        title: params.title,
+        body: params.body,
+        priority: CommunicationNotificationPriority.NORMAL,
+        status: CommunicationNotificationStatus.UNREAD,
+      },
+      select: { id: true },
+    });
+  }
+
+  async function login(email: string): Promise<{ accessToken: string }> {
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/auth/login`)
+      .send({ email, password: PASSWORD })
+      .expect(200);
+
+    return { accessToken: response.body.accessToken };
+  }
+
+  async function communicationNotificationAuditCount(): Promise<number> {
+    return prisma.auditLog.count({
+      where: {
+        schoolId: schoolAId,
+        module: 'communication',
+        resourceType: {
+          in: [
+            'communication_notification',
+            'communication_notification_delivery',
+          ],
+        },
+      },
+    });
+  }
+
+  async function cleanupNotificationSchools(
+    schoolIds: string[],
+  ): Promise<void> {
+    await prisma.communicationNotificationDelivery.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.communicationNotification.deleteMany({
       where: { schoolId: { in: schoolIds } },
     });
   }

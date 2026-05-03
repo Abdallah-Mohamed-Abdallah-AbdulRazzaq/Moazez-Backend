@@ -16,6 +16,15 @@ import {
   UpdateCommunicationAnnouncementUseCase,
 } from './application/communication-announcement.use-cases';
 import {
+  ArchiveCommunicationNotificationUseCase,
+  GetCommunicationNotificationDeliveryUseCase,
+  GetCommunicationNotificationUseCase,
+  ListCommunicationNotificationDeliveriesUseCase,
+  ListCommunicationNotificationsUseCase,
+  MarkAllCommunicationNotificationsReadUseCase,
+  MarkCommunicationNotificationReadUseCase,
+} from './application/communication-notification.use-cases';
+import {
   ArchiveCommunicationConversationUseCase,
   CloseCommunicationConversationUseCase,
   CreateCommunicationConversationUseCase,
@@ -92,6 +101,7 @@ import { CommunicationConversationController } from './controller/communication-
 import { CommunicationAnnouncementController } from './controller/communication-announcement.controller';
 import { CommunicationMessageInteractionsController } from './controller/communication-message-interactions.controller';
 import { CommunicationMessageController } from './controller/communication-message.controller';
+import { CommunicationNotificationController } from './controller/communication-notification.controller';
 import { CommunicationParticipantController } from './controller/communication-participant.controller';
 import { CommunicationPolicyController } from './controller/communication-policy.controller';
 import { CommunicationSafetyController } from './controller/communication-safety.controller';
@@ -106,6 +116,7 @@ import { CommunicationPolicyRepository } from './infrastructure/communication-po
 import { CommunicationReactionRepository } from './infrastructure/communication-reaction.repository';
 import { CommunicationReportRepository } from './infrastructure/communication-report.repository';
 import { CommunicationRestrictionRepository } from './infrastructure/communication-restriction.repository';
+import { CommunicationNotificationRepository } from './infrastructure/communication-notification.repository';
 
 @Module({
   imports: [AuthModule, RealtimeModule],
@@ -116,6 +127,7 @@ import { CommunicationRestrictionRepository } from './infrastructure/communicati
     CommunicationParticipantController,
     CommunicationMessageController,
     CommunicationMessageInteractionsController,
+    CommunicationNotificationController,
     CommunicationSafetyController,
   ],
   providers: [
@@ -130,6 +142,7 @@ import { CommunicationRestrictionRepository } from './infrastructure/communicati
     CommunicationModerationRepository,
     CommunicationBlockRepository,
     CommunicationRestrictionRepository,
+    CommunicationNotificationRepository,
     GetCommunicationPolicyUseCase,
     UpdateCommunicationPolicyUseCase,
     GetCommunicationAdminOverviewUseCase,
@@ -194,6 +207,13 @@ import { CommunicationRestrictionRepository } from './infrastructure/communicati
     CreateCommunicationUserRestrictionUseCase,
     UpdateCommunicationUserRestrictionUseCase,
     RevokeCommunicationUserRestrictionUseCase,
+    ListCommunicationNotificationsUseCase,
+    GetCommunicationNotificationUseCase,
+    MarkCommunicationNotificationReadUseCase,
+    MarkAllCommunicationNotificationsReadUseCase,
+    ArchiveCommunicationNotificationUseCase,
+    ListCommunicationNotificationDeliveriesUseCase,
+    GetCommunicationNotificationDeliveryUseCase,
     CommunicationRealtimeEventsService,
   ],
 })
