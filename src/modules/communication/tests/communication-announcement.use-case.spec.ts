@@ -22,6 +22,7 @@ import {
   PublishCommunicationAnnouncementUseCase,
   UpdateCommunicationAnnouncementUseCase,
 } from '../application/communication-announcement.use-cases';
+import { CommunicationNotificationQueueService } from '../application/communication-notification-queue.service';
 import { CommunicationAnnouncementStateException } from '../domain/communication-announcement-domain';
 import {
   CommunicationAnnouncementAttachmentRecord,
@@ -174,7 +175,7 @@ describe('communication announcement use cases', () => {
     });
   });
 
-  it('publish sets lifecycle fields and audits mutation without notifications or jobs', async () => {
+  it('publish sets lifecycle fields, audits mutation, and enqueues notification generation', async () => {
     let audit: CommunicationAnnouncementAuditInput | undefined;
     const repository = repositoryMock({
       publishCurrentSchoolAnnouncement: jest
@@ -189,11 +190,13 @@ describe('communication announcement use cases', () => {
           return Promise.resolve(published);
         }),
     });
+    const queueService = queueServiceMock();
 
     const result = await withScope(() =>
-      new PublishCommunicationAnnouncementUseCase(repository).execute(
-        ANNOUNCEMENT_ID,
-      ),
+      new PublishCommunicationAnnouncementUseCase(
+        repository,
+        queueService,
+      ).execute(ANNOUNCEMENT_ID),
     );
 
     expect(result).toMatchObject({
@@ -214,7 +217,44 @@ describe('communication announcement use cases', () => {
       }),
     });
     expect(repository.createNotification).not.toHaveBeenCalled();
-    expect(repository.enqueueJob).not.toHaveBeenCalled();
+    expect(
+      queueService.enqueueAnnouncementPublishedNotifications,
+    ).toHaveBeenCalledWith({
+      schoolId: SCHOOL_ID,
+      organizationId: ORGANIZATION_ID,
+      announcementId: ANNOUNCEMENT_ID,
+      actorUserId: ACTOR_ID,
+      actorUserType: UserType.SCHOOL_USER,
+    });
+  });
+
+  it('publish still returns the published announcement if enqueue fails', async () => {
+    const repository = repositoryMock({
+      publishCurrentSchoolAnnouncement: jest.fn().mockResolvedValue(
+        announcementRecord({
+          status: CommunicationAnnouncementStatus.PUBLISHED,
+          publishedAt: new Date('2026-05-03T09:00:00.000Z'),
+          publishedById: ACTOR_ID,
+        }),
+      ),
+    });
+    const queueService = queueServiceMock({
+      enqueueAnnouncementPublishedNotifications: jest
+        .fn()
+        .mockRejectedValue(new Error('redis unavailable')),
+    });
+
+    const result = await withScope(() =>
+      new PublishCommunicationAnnouncementUseCase(
+        repository,
+        queueService,
+      ).execute(ANNOUNCEMENT_ID),
+    );
+
+    expect(result).toMatchObject({
+      id: ANNOUNCEMENT_ID,
+      status: 'published',
+    });
   });
 
   it('archive and cancel audit lifecycle mutations', async () => {
@@ -460,6 +500,18 @@ function repositoryMock(
     deleteFile: jest.fn(),
     ...(overrides ?? {}),
   } as unknown as CommunicationAnnouncementRepository &
+    Record<string, jest.Mock>;
+}
+
+function queueServiceMock(
+  overrides?: Record<string, unknown>,
+): CommunicationNotificationQueueService & Record<string, jest.Mock> {
+  return {
+    enqueueAnnouncementPublishedNotifications: jest.fn().mockResolvedValue({
+      id: 'communication-announcement-notifications-job',
+    }),
+    ...(overrides ?? {}),
+  } as unknown as CommunicationNotificationQueueService &
     Record<string, jest.Mock>;
 }
 

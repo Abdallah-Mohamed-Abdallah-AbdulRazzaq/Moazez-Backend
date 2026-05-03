@@ -38,6 +38,7 @@ import {
   ListCommunicationAnnouncementsQueryDto,
   UpdateCommunicationAnnouncementDto,
 } from '../dto/communication-announcement.dto';
+import { CommunicationNotificationQueueService } from './communication-notification-queue.service';
 import {
   CommunicationAnnouncementAttachmentRecord,
   CommunicationAnnouncementAuditInput,
@@ -329,6 +330,7 @@ export class UpdateCommunicationAnnouncementUseCase {
 export class PublishCommunicationAnnouncementUseCase {
   constructor(
     private readonly communicationAnnouncementRepository: CommunicationAnnouncementRepository,
+    private readonly communicationNotificationQueueService: CommunicationNotificationQueueService,
   ) {}
 
   async execute(announcementId: string) {
@@ -356,6 +358,20 @@ export class PublishCommunicationAnnouncementUseCase {
             }),
         },
       );
+
+    try {
+      await this.communicationNotificationQueueService.enqueueAnnouncementPublishedNotifications(
+        {
+          schoolId: scope.schoolId,
+          organizationId: scope.organizationId,
+          announcementId: published.id,
+          actorUserId: scope.actorId,
+          actorUserType: scope.userType,
+        },
+      );
+    } catch {
+      // The publish transaction remains the source of truth; generation can be replayed by source id.
+    }
 
     return presentCommunicationAnnouncement(published);
   }

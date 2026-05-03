@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { QueueModule } from '../../infrastructure/queue/queue.module';
 import { RealtimeModule } from '../../infrastructure/realtime/realtime.module';
 import { AuthModule } from '../iam/auth/auth.module';
 import {
@@ -24,6 +25,8 @@ import {
   MarkAllCommunicationNotificationsReadUseCase,
   MarkCommunicationNotificationReadUseCase,
 } from './application/communication-notification.use-cases';
+import { CommunicationNotificationGenerationService } from './application/communication-notification-generation.service';
+import { CommunicationNotificationQueueService } from './application/communication-notification-queue.service';
 import {
   ArchiveCommunicationConversationUseCase,
   CloseCommunicationConversationUseCase,
@@ -107,6 +110,8 @@ import { CommunicationPolicyController } from './controller/communication-policy
 import { CommunicationSafetyController } from './controller/communication-safety.controller';
 import { CommunicationBlockRepository } from './infrastructure/communication-block.repository';
 import { CommunicationAnnouncementRepository } from './infrastructure/communication-announcement.repository';
+import { CommunicationNotificationGenerationRepository } from './infrastructure/communication-notification-generation.repository';
+import { CommunicationNotificationGenerationWorker } from './infrastructure/communication-notification-generation.worker';
 import { CommunicationConversationRepository } from './infrastructure/communication-conversation.repository';
 import { CommunicationModerationRepository } from './infrastructure/communication-moderation.repository';
 import { CommunicationMessageRepository } from './infrastructure/communication-message.repository';
@@ -119,7 +124,7 @@ import { CommunicationRestrictionRepository } from './infrastructure/communicati
 import { CommunicationNotificationRepository } from './infrastructure/communication-notification.repository';
 
 @Module({
-  imports: [AuthModule, RealtimeModule],
+  imports: [AuthModule, QueueModule, RealtimeModule],
   controllers: [
     CommunicationPolicyController,
     CommunicationAnnouncementController,
@@ -143,6 +148,7 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     CommunicationBlockRepository,
     CommunicationRestrictionRepository,
     CommunicationNotificationRepository,
+    CommunicationNotificationGenerationRepository,
     GetCommunicationPolicyUseCase,
     UpdateCommunicationPolicyUseCase,
     GetCommunicationAdminOverviewUseCase,
@@ -214,6 +220,9 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     ArchiveCommunicationNotificationUseCase,
     ListCommunicationNotificationDeliveriesUseCase,
     GetCommunicationNotificationDeliveryUseCase,
+    CommunicationNotificationGenerationService,
+    CommunicationNotificationQueueService,
+    CommunicationNotificationGenerationWorker,
     CommunicationRealtimeEventsService,
   ],
 })

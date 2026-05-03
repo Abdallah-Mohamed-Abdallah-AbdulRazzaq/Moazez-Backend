@@ -4160,6 +4160,127 @@ describe('Communication announcement tenancy isolation (security)', () => {
     await expect(announcementAuditCount()).resolves.toBe(beforeAudit);
   });
 
+  it('publishing a school announcement enqueues and generates current-school in-app notifications only', async () => {
+    const { accessToken } = await login(adminAEmail);
+    const publisher = app.get(RealtimePublisherService);
+    const publishToUserSpy = jest.spyOn(publisher, 'publishToUser');
+    const publishToSchoolSpy = jest.spyOn(publisher, 'publishToSchool');
+    const bullmqService = app.get(BullmqService, { strict: false });
+    const addJobSpy = jest.spyOn(bullmqService, 'addJob');
+
+    const created = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/communication/announcements`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        title: `${testSuffix} notification generation announcement`,
+        body: 'Notification generation body',
+        priority: 'high',
+        audienceType: 'school',
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/announcements/${created.body.id}/publish`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(addJobSpy).toHaveBeenCalledWith(
+      'communication-notifications',
+      'communication.announcement.notifications.generate',
+      expect.objectContaining({
+        schoolId: schoolAId,
+        organizationId: organizationAId,
+        announcementId: created.body.id,
+        actorUserId: adminAId,
+        actorUserType: UserType.SCHOOL_USER,
+      }),
+      expect.objectContaining({
+        jobId: `communication-announcement-notifications:${schoolAId}:${created.body.id}`,
+      }),
+    );
+
+    const expectedRecipientUserIds = await activeUserIdsForSchool(schoolAId);
+    await waitForAnnouncementNotificationCount(
+      created.body.id,
+      expectedRecipientUserIds.length,
+    );
+
+    const notifications = await prisma.communicationNotification.findMany({
+      where: {
+        schoolId: schoolAId,
+        sourceModule: CommunicationNotificationSourceModule.ANNOUNCEMENTS,
+        sourceType: 'communication_announcement',
+        sourceId: created.body.id,
+        type: CommunicationNotificationType.ANNOUNCEMENT_PUBLISHED,
+      },
+      select: {
+        recipientUserId: true,
+        actorUserId: true,
+        priority: true,
+        status: true,
+        title: true,
+        body: true,
+        deliveries: {
+          select: {
+            channel: true,
+            status: true,
+            provider: true,
+            providerMessageId: true,
+          },
+        },
+      },
+    });
+
+    expect(new Set(notifications.map((item) => item.recipientUserId))).toEqual(
+      new Set(expectedRecipientUserIds),
+    );
+    expect(notifications).toHaveLength(expectedRecipientUserIds.length);
+    expect(
+      notifications.every(
+        (notification) =>
+          notification.actorUserId === adminAId &&
+          notification.priority === CommunicationNotificationPriority.HIGH &&
+          notification.status === CommunicationNotificationStatus.UNREAD &&
+          notification.title ===
+            `${testSuffix} notification generation announcement` &&
+          notification.body === 'Notification generation body',
+      ),
+    ).toBe(true);
+    expect(
+      notifications.flatMap((notification) => notification.deliveries),
+    ).toHaveLength(expectedRecipientUserIds.length);
+    expect(
+      notifications
+        .flatMap((notification) => notification.deliveries)
+        .every(
+          (delivery) =>
+            delivery.channel ===
+              CommunicationNotificationDeliveryChannel.IN_APP &&
+            delivery.status ===
+              CommunicationNotificationDeliveryStatus.DELIVERED &&
+            delivery.provider === 'in_app' &&
+            delivery.providerMessageId === null,
+        ),
+    ).toBe(true);
+
+    await expect(
+      prisma.communicationNotification.count({
+        where: {
+          schoolId: schoolBId,
+          sourceId: created.body.id,
+        },
+      }),
+    ).resolves.toBe(0);
+    expect(publishToUserSpy).not.toHaveBeenCalled();
+    expect(publishToSchoolSpy).not.toHaveBeenCalled();
+
+    addJobSpy.mockRestore();
+    publishToUserSpy.mockRestore();
+    publishToSchoolSpy.mockRestore();
+  });
+
   it('school A cannot access school B announcements by guessed ids and list excludes school B', async () => {
     const { accessToken } = await login(adminAEmail);
 
@@ -4548,9 +4669,54 @@ describe('Communication announcement tenancy isolation (security)', () => {
     });
   }
 
+  async function activeUserIdsForSchool(schoolId: string): Promise<string[]> {
+    const memberships = await prisma.membership.findMany({
+      where: {
+        schoolId,
+        status: MembershipStatus.ACTIVE,
+        user: {
+          status: UserStatus.ACTIVE,
+          deletedAt: null,
+        },
+      },
+      select: { userId: true },
+    });
+
+    return [...new Set(memberships.map((membership) => membership.userId))];
+  }
+
+  async function waitForAnnouncementNotificationCount(
+    announcementId: string,
+    expectedCount: number,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const count = await prisma.communicationNotification.count({
+        where: {
+          schoolId: schoolAId,
+          sourceModule: CommunicationNotificationSourceModule.ANNOUNCEMENTS,
+          sourceType: 'communication_announcement',
+          sourceId: announcementId,
+          type: CommunicationNotificationType.ANNOUNCEMENT_PUBLISHED,
+        },
+      });
+      if (count >= expectedCount) return;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    throw new Error(
+      `Timed out waiting for announcement notification generation for ${announcementId}`,
+    );
+  }
+
   async function cleanupAnnouncementSchools(
     schoolIds: string[],
   ): Promise<void> {
+    await prisma.communicationNotificationDelivery.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.communicationNotification.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
     await prisma.communicationAnnouncementAttachment.deleteMany({
       where: { schoolId: { in: schoolIds } },
     });
@@ -4713,37 +4879,41 @@ describe('Communication notification tenancy isolation (security)', () => {
       roleId: studentRole.id,
     });
 
-    const [adminNotification, viewOnlyNotification, otherNotification, schoolBNotification] =
-      await Promise.all([
-        createNotificationRecord({
-          schoolId: schoolAId,
-          recipientUserId: adminAId,
-          actorUserId: viewOnlyUserId,
-          title: `${testSuffix} school A admin notification`,
-          body: 'school A admin notification body',
-        }),
-        createNotificationRecord({
-          schoolId: schoolAId,
-          recipientUserId: viewOnlyUserId,
-          actorUserId: adminAId,
-          title: `${testSuffix} school A view notification`,
-          body: 'school A view notification body',
-        }),
-        createNotificationRecord({
-          schoolId: schoolAId,
-          recipientUserId: otherRecipientUserId,
-          actorUserId: adminAId,
-          title: `${testSuffix} school A other notification`,
-          body: 'school A other notification body',
-        }),
-        createNotificationRecord({
-          schoolId: schoolBId,
-          recipientUserId: adminBId,
-          actorUserId: adminBId,
-          title: `${testSuffix} school B private notification`,
-          body: 'school B private notification body',
-        }),
-      ]);
+    const [
+      adminNotification,
+      viewOnlyNotification,
+      otherNotification,
+      schoolBNotification,
+    ] = await Promise.all([
+      createNotificationRecord({
+        schoolId: schoolAId,
+        recipientUserId: adminAId,
+        actorUserId: viewOnlyUserId,
+        title: `${testSuffix} school A admin notification`,
+        body: 'school A admin notification body',
+      }),
+      createNotificationRecord({
+        schoolId: schoolAId,
+        recipientUserId: viewOnlyUserId,
+        actorUserId: adminAId,
+        title: `${testSuffix} school A view notification`,
+        body: 'school A view notification body',
+      }),
+      createNotificationRecord({
+        schoolId: schoolAId,
+        recipientUserId: otherRecipientUserId,
+        actorUserId: adminAId,
+        title: `${testSuffix} school A other notification`,
+        body: 'school A other notification body',
+      }),
+      createNotificationRecord({
+        schoolId: schoolBId,
+        recipientUserId: adminBId,
+        actorUserId: adminBId,
+        title: `${testSuffix} school B private notification`,
+        body: 'school B private notification body',
+      }),
+    ]);
     adminNotificationId = adminNotification.id;
     viewOnlyNotificationId = viewOnlyNotification.id;
     otherNotificationId = otherNotification.id;
@@ -4866,7 +5036,9 @@ describe('Communication notification tenancy isolation (security)', () => {
     expect(listJson).not.toContain('schoolId');
 
     const detail = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/communication/notification-deliveries/${deliveryAId}`)
+      .get(
+        `${GLOBAL_PREFIX}/communication/notification-deliveries/${deliveryAId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
@@ -4915,7 +5087,9 @@ describe('Communication notification tenancy isolation (security)', () => {
     const { accessToken } = await login(viewOnlyEmail);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/communication/notifications/${adminNotificationId}`)
+      .get(
+        `${GLOBAL_PREFIX}/communication/notifications/${adminNotificationId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     await request(app.getHttpServer())
@@ -4936,7 +5110,9 @@ describe('Communication notification tenancy isolation (security)', () => {
     const { accessToken } = await login(adminAEmail);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/communication/notifications/${schoolBNotificationId}`)
+      .get(
+        `${GLOBAL_PREFIX}/communication/notifications/${schoolBNotificationId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     await request(app.getHttpServer())
@@ -4952,7 +5128,9 @@ describe('Communication notification tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/communication/notification-deliveries/${deliveryBId}`)
+      .get(
+        `${GLOBAL_PREFIX}/communication/notification-deliveries/${deliveryBId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
 
@@ -4978,7 +5156,9 @@ describe('Communication notification tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${noAccess.accessToken}`)
       .expect(403);
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/communication/notifications/${adminNotificationId}`)
+      .get(
+        `${GLOBAL_PREFIX}/communication/notifications/${adminNotificationId}`,
+      )
       .set('Authorization', `Bearer ${noAccess.accessToken}`)
       .expect(403);
     await request(app.getHttpServer())
@@ -5003,7 +5183,9 @@ describe('Communication notification tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${viewOnly.accessToken}`)
       .expect(403);
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/communication/notification-deliveries/${deliveryAId}`)
+      .get(
+        `${GLOBAL_PREFIX}/communication/notification-deliveries/${deliveryAId}`,
+      )
       .set('Authorization', `Bearer ${viewOnly.accessToken}`)
       .expect(403);
   });
@@ -5047,7 +5229,9 @@ describe('Communication notification tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/communication/notifications/${notification.id}/read`)
+      .post(
+        `${GLOBAL_PREFIX}/communication/notifications/${notification.id}/read`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(201);
     await request(app.getHttpServer())
