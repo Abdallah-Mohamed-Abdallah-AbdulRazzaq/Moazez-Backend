@@ -46,10 +46,14 @@ describe('Teacher App tenancy isolation (security)', () => {
   let ownAllocationId: string;
   let otherTeacherAllocationId: string;
   let crossSchoolAllocationId: string;
+  let ownStudentIds: string[] = [];
 
   const testSuffix = `teacher-app-security-${Date.now()}`;
   const createdUserIds: string[] = [];
   const createdStudentIds: string[] = [];
+  const createdGuardianIds: string[] = [];
+  const createdStudentGuardianIds: string[] = [];
+  const createdMedicalProfileStudentIds: string[] = [];
   const createdEnrollmentIds: string[] = [];
   const createdAllocationIds: string[] = [];
   const createdSubjectIds: string[] = [];
@@ -172,26 +176,38 @@ describe('Teacher App tenancy isolation (security)', () => {
       schoolId: schoolAId,
     });
 
-    ownAllocationId = await createAcademicFixture({
+    const ownFixture = await createAcademicFixture({
       organizationId: organizationAId,
       schoolId: schoolAId,
       teacherUserId: teacherAId,
       marker: 'own',
       studentCount: 2,
     });
-    otherTeacherAllocationId = await createAcademicFixture({
+    ownAllocationId = ownFixture.allocationId;
+    ownStudentIds = ownFixture.studentIds;
+
+    const otherTeacherFixture = await createAcademicFixture({
       organizationId: organizationAId,
       schoolId: schoolAId,
       teacherUserId: teacherBId,
       marker: 'other-teacher',
       studentCount: 1,
     });
-    crossSchoolAllocationId = await createAcademicFixture({
+    otherTeacherAllocationId = otherTeacherFixture.allocationId;
+
+    const crossSchoolFixture = await createAcademicFixture({
       organizationId: organizationBId,
       schoolId: schoolBId,
       teacherUserId: teacherCrossSchoolId,
       marker: 'cross-school',
       studentCount: 1,
+    });
+    crossSchoolAllocationId = crossSchoolFixture.allocationId;
+
+    await createPrivateStudentData({
+      organizationId: organizationAId,
+      schoolId: schoolAId,
+      studentId: ownStudentIds[0],
     });
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -215,6 +231,15 @@ describe('Teacher App tenancy isolation (security)', () => {
     try {
       await prisma.session.deleteMany({
         where: { userId: { in: createdUserIds } },
+      });
+      await prisma.studentGuardian.deleteMany({
+        where: { id: { in: createdStudentGuardianIds } },
+      });
+      await prisma.studentMedicalProfile.deleteMany({
+        where: { studentId: { in: createdMedicalProfileStudentIds } },
+      });
+      await prisma.guardian.deleteMany({
+        where: { id: { in: createdGuardianIds } },
       });
       await prisma.enrollment.deleteMany({
         where: { id: { in: createdEnrollmentIds } },
@@ -333,6 +358,78 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(json).not.toContain('scheduleId');
   });
 
+  it('teacher can access owned classroom detail without schoolId or scheduleId', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const json = JSON.stringify(response.body);
+
+    expect(response.body).toMatchObject({
+      classId: ownAllocationId,
+      classroom: {
+        code: null,
+      },
+      summary: {
+        studentsCount: 2,
+        presentTodayCount: null,
+        absentTodayCount: null,
+        pendingAssignmentsCount: null,
+        averageGrade: null,
+        behaviorAlertsCount: null,
+      },
+      schedule: {
+        available: false,
+        reason: 'timetable_not_available',
+      },
+    });
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('scheduleId');
+  });
+
+  it('teacher can access owned classroom roster only', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/roster`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const json = JSON.stringify(response.body);
+
+    expect(response.body.classId).toBe(ownAllocationId);
+    expect(response.body.pagination).toEqual({
+      page: 1,
+      limit: 20,
+      total: 2,
+    });
+    expect(response.body.students.map((student: { id: string }) => student.id))
+      .toEqual(ownStudentIds);
+    expect(json).not.toContain(otherTeacherAllocationId);
+    expect(json).not.toContain(crossSchoolAllocationId);
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('scheduleId');
+  });
+
+  it('classroom roster does not expose guardian, medical, document, or private data', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/roster`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const json = JSON.stringify(response.body);
+
+    expect(json).not.toContain('guardian');
+    expect(json).not.toContain('medical');
+    expect(json).not.toContain('document');
+    expect(json).not.toContain('private-phone-sentinel');
+    expect(json).not.toContain('private-guardian-sentinel');
+    expect(json).not.toContain('private-allergy-sentinel');
+    expect(json).not.toContain('private-condition-sentinel');
+  });
+
   it('teacher cannot access another teacher class in the same school', async () => {
     const { accessToken } = await login(teacherAEmail);
 
@@ -342,6 +439,23 @@ describe('Teacher App tenancy isolation (security)', () => {
       .expect(404);
 
     expect(response.body?.error?.code).toBe(
+      'teacher_app.allocation.not_found',
+    );
+
+    const classroomDetailResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/classroom/${otherTeacherAllocationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    const classroomRosterResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${otherTeacherAllocationId}/roster`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(classroomDetailResponse.body?.error?.code).toBe(
+      'teacher_app.allocation.not_found',
+    );
+    expect(classroomRosterResponse.body?.error?.code).toBe(
       'teacher_app.allocation.not_found',
     );
   });
@@ -355,6 +469,23 @@ describe('Teacher App tenancy isolation (security)', () => {
       .expect(404);
 
     expect(response.body?.error?.code).toBe(
+      'teacher_app.allocation.not_found',
+    );
+
+    const classroomDetailResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/classroom/${crossSchoolAllocationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    const classroomRosterResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${crossSchoolAllocationId}/roster`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(classroomDetailResponse.body?.error?.code).toBe(
+      'teacher_app.allocation.not_found',
+    );
+    expect(classroomRosterResponse.body?.error?.code).toBe(
       'teacher_app.allocation.not_found',
     );
   });
@@ -373,6 +504,14 @@ describe('Teacher App tenancy isolation (security)', () => {
         .expect(403);
       await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}/teacher/my-classes/${ownAllocationId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/roster`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
     }
@@ -444,7 +583,7 @@ describe('Teacher App tenancy isolation (security)', () => {
     teacherUserId: string;
     marker: string;
     studentCount: number;
-  }): Promise<string> {
+  }): Promise<{ allocationId: string; studentIds: string[] }> {
     const year = await prisma.academicYear.create({
       data: {
         schoolId: params.schoolId,
@@ -543,6 +682,7 @@ describe('Teacher App tenancy isolation (security)', () => {
     });
     createdAllocationIds.push(allocation.id);
 
+    const studentIds: string[] = [];
     for (let index = 0; index < params.studentCount; index += 1) {
       const student = await prisma.student.create({
         data: {
@@ -555,6 +695,7 @@ describe('Teacher App tenancy isolation (security)', () => {
         select: { id: true },
       });
       createdStudentIds.push(student.id);
+      studentIds.push(student.id);
 
       const enrollment = await prisma.enrollment.create({
         data: {
@@ -571,7 +712,51 @@ describe('Teacher App tenancy isolation (security)', () => {
       createdEnrollmentIds.push(enrollment.id);
     }
 
-    return allocation.id;
+    return { allocationId: allocation.id, studentIds };
+  }
+
+  async function createPrivateStudentData(params: {
+    organizationId: string;
+    schoolId: string;
+    studentId: string;
+  }): Promise<void> {
+    const guardian = await prisma.guardian.create({
+      data: {
+        schoolId: params.schoolId,
+        organizationId: params.organizationId,
+        firstName: 'Private',
+        lastName: 'Guardian',
+        phone: 'private-phone-sentinel',
+        email: 'private-guardian-sentinel@security.moazez.local',
+        relation: 'guardian',
+        isPrimary: true,
+      },
+      select: { id: true },
+    });
+    createdGuardianIds.push(guardian.id);
+
+    const link = await prisma.studentGuardian.create({
+      data: {
+        schoolId: params.schoolId,
+        studentId: params.studentId,
+        guardianId: guardian.id,
+        isPrimary: true,
+      },
+      select: { id: true },
+    });
+    createdStudentGuardianIds.push(link.id);
+
+    await prisma.studentMedicalProfile.create({
+      data: {
+        schoolId: params.schoolId,
+        studentId: params.studentId,
+        allergies: 'private-allergy-sentinel',
+        conditions: ['private-condition-sentinel'],
+        medications: ['private-medication-sentinel'],
+        emergencyNotes: 'private-emergency-note-sentinel',
+      },
+    });
+    createdMedicalProfileStudentIds.push(params.studentId);
   }
 
   async function login(email: string): Promise<{ accessToken: string }> {
