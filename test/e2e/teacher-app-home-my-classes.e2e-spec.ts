@@ -301,8 +301,12 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
   it('registers only the current Teacher App read routes', () => {
     expect(listRegisteredTeacherRoutes()).toEqual([
       'GET /api/v1/teacher/classroom/:classId',
+      'GET /api/v1/teacher/classroom/:classId/assignments',
       'GET /api/v1/teacher/classroom/:classId/attendance/roster',
       'GET /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId',
+      'GET /api/v1/teacher/classroom/:classId/grades/assessments',
+      'GET /api/v1/teacher/classroom/:classId/grades/assessments/:assessmentId',
+      'GET /api/v1/teacher/classroom/:classId/grades/gradebook',
       'GET /api/v1/teacher/classroom/:classId/roster',
       'GET /api/v1/teacher/home',
       'GET /api/v1/teacher/my-classes',
@@ -457,7 +461,6 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
       '/teacher/classes',
       '/teacher/classroom',
       `/teacher/classroom/${ownFixture.allocationId}/attendance`,
-      `/teacher/classroom/${ownFixture.allocationId}/assignments`,
       '/teacher/homeworks',
       '/teacher/tasks',
       '/teacher/messages',

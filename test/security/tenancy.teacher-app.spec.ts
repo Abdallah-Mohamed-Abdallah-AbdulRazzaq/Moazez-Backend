@@ -2,6 +2,11 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   MembershipStatus,
+  GradeAssessmentApprovalStatus,
+  GradeAssessmentDeliveryMode,
+  GradeAssessmentType,
+  GradeItemStatus,
+  GradeScopeType,
   OrganizationStatus,
   PrismaClient,
   SchoolStatus,
@@ -46,6 +51,10 @@ describe('Teacher App tenancy isolation (security)', () => {
   let ownAllocationId: string;
   let otherTeacherAllocationId: string;
   let crossSchoolAllocationId: string;
+  let ownAssessmentId: string;
+  let ownAssignmentId: string;
+  let otherTeacherAssessmentId: string;
+  let crossSchoolAssessmentId: string;
   let ownStudentIds: string[] = [];
   let otherTeacherStudentIds: string[] = [];
 
@@ -56,6 +65,8 @@ describe('Teacher App tenancy isolation (security)', () => {
   const createdStudentGuardianIds: string[] = [];
   const createdMedicalProfileStudentIds: string[] = [];
   const createdEnrollmentIds: string[] = [];
+  const createdGradeItemIds: string[] = [];
+  const createdGradeAssessmentIds: string[] = [];
   const createdAllocationIds: string[] = [];
   const createdSubjectIds: string[] = [];
   const createdClassroomIds: string[] = [];
@@ -212,6 +223,59 @@ describe('Teacher App tenancy isolation (security)', () => {
       studentId: ownStudentIds[0],
     });
 
+    ownAssessmentId = await createGradeAssessmentFixture({
+      schoolId: schoolAId,
+      fixture: ownFixture,
+      title: `${testSuffix} Own Quiz`,
+      type: GradeAssessmentType.QUIZ,
+      approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+      maxScore: 20,
+      weight: 10,
+    });
+    ownAssignmentId = await createGradeAssessmentFixture({
+      schoolId: schoolAId,
+      fixture: ownFixture,
+      title: `${testSuffix} Grade-backed Assignment`,
+      type: GradeAssessmentType.ASSIGNMENT,
+      approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      maxScore: 10,
+      weight: 5,
+    });
+    otherTeacherAssessmentId = await createGradeAssessmentFixture({
+      schoolId: schoolAId,
+      fixture: otherTeacherFixture,
+      title: `${testSuffix} Other Teacher Quiz`,
+      type: GradeAssessmentType.QUIZ,
+      approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+      maxScore: 20,
+      weight: 10,
+    });
+    crossSchoolAssessmentId = await createGradeAssessmentFixture({
+      schoolId: schoolBId,
+      fixture: crossSchoolFixture,
+      title: `${testSuffix} Cross School Quiz`,
+      type: GradeAssessmentType.QUIZ,
+      approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+      maxScore: 20,
+      weight: 10,
+    });
+
+    const ownGradeItem = await prisma.gradeItem.create({
+      data: {
+        schoolId: schoolAId,
+        termId: ownFixture.termId,
+        assessmentId: ownAssessmentId,
+        studentId: ownFixture.studentIds[0],
+        enrollmentId: ownFixture.enrollmentIds[0],
+        score: 18,
+        status: GradeItemStatus.ENTERED,
+        enteredById: teacherAId,
+        enteredAt: new Date('2026-09-15T09:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdGradeItemIds.push(ownGradeItem.id);
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -239,6 +303,12 @@ describe('Teacher App tenancy isolation (security)', () => {
       });
       await prisma.studentMedicalProfile.deleteMany({
         where: { studentId: { in: createdMedicalProfileStudentIds } },
+      });
+      await prisma.gradeItem.deleteMany({
+        where: { id: { in: createdGradeItemIds } },
+      });
+      await prisma.gradeAssessment.deleteMany({
+        where: { id: { in: createdGradeAssessmentIds } },
       });
       await prisma.attendanceEntry.deleteMany({
         where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
@@ -412,8 +482,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       limit: 20,
       total: 2,
     });
-    expect(response.body.students.map((student: { id: string }) => student.id))
-      .toEqual(ownStudentIds);
+    expect(
+      response.body.students.map((student: { id: string }) => student.id),
+    ).toEqual(ownStudentIds);
     expect(json).not.toContain(otherTeacherAllocationId);
     expect(json).not.toContain(crossSchoolAllocationId);
     expect(json).not.toContain('schoolId');
@@ -460,8 +531,9 @@ describe('Teacher App tenancy isolation (security)', () => {
         total: 2,
       },
     });
-    expect(response.body.students.map((student: { id: string }) => student.id))
-      .toEqual(ownStudentIds);
+    expect(
+      response.body.students.map((student: { id: string }) => student.id),
+    ).toEqual(ownStudentIds);
     expect(json).not.toContain('schoolId');
     expect(json).not.toContain('scheduleId');
     expect(json).not.toContain('period');
@@ -564,13 +636,128 @@ describe('Teacher App tenancy isolation (security)', () => {
       )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
-        entries: [
-          { studentId: otherTeacherStudentIds[0], status: 'present' },
-        ],
+        entries: [{ studentId: otherTeacherStudentIds[0], status: 'present' }],
       })
       .expect(404);
 
     expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('teacher can read owned classroom grades and assignment-like views', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const assessments = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const assessmentsJson = JSON.stringify(assessments.body);
+
+    expect(assessments.body.classId).toBe(ownAllocationId);
+    expect(assessmentsJson).toContain(ownAssessmentId);
+    expect(assessmentsJson).toContain(ownAssignmentId);
+    expect(assessmentsJson).not.toContain(otherTeacherAssessmentId);
+    expect(assessmentsJson).not.toContain(crossSchoolAssessmentId);
+    expect(assessmentsJson).not.toContain('schoolId');
+    expect(assessmentsJson).not.toContain('scheduleId');
+
+    const detail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments/${ownAssessmentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const detailJson = JSON.stringify(detail.body);
+
+    expect(detail.body).toMatchObject({
+      classId: ownAllocationId,
+      assessment: {
+        assessmentId: ownAssessmentId,
+        status: 'published',
+        maxScore: 20,
+      },
+      itemsSummary: {
+        itemsCount: 1,
+        enteredCount: 1,
+      },
+    });
+    expect(detailJson).not.toContain('schoolId');
+    expect(detailJson).not.toContain('scheduleId');
+    expect(detailJson).not.toContain('answerKey');
+    expect(detailJson).not.toContain('metadata');
+
+    const gradebook = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/gradebook`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const gradebookJson = JSON.stringify(gradebook.body);
+
+    expect(gradebook.body.classId).toBe(ownAllocationId);
+    expect(
+      gradebook.body.students.map(
+        (student: { studentId: string }) => student.studentId,
+      ),
+    ).toEqual(ownStudentIds);
+    expect(gradebookJson).toContain(ownAssessmentId);
+    expect(gradebookJson).not.toContain(otherTeacherStudentIds[0]);
+    expect(gradebookJson).not.toContain(otherTeacherAssessmentId);
+    expect(gradebookJson).not.toContain('schoolId');
+    expect(gradebookJson).not.toContain('scheduleId');
+    expect(gradebookJson).not.toContain('guardian');
+    expect(gradebookJson).not.toContain('medical');
+
+    const assignments = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const assignmentsJson = JSON.stringify(assignments.body);
+
+    expect(assignments.body).toMatchObject({
+      classId: ownAllocationId,
+      assignments: [
+        expect.objectContaining({
+          assignmentId: ownAssignmentId,
+          source: 'grades_assessment',
+          type: 'assignment',
+          dueAt: null,
+        }),
+      ],
+    });
+    expect(assignmentsJson).not.toContain('homeworkId');
+    expect(assignmentsJson).not.toContain('schoolId');
+    expect(assignmentsJson).not.toContain('scheduleId');
+  });
+
+  it('teacher cannot access grade reads outside the owned classroom/subject/term', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const sameSchoolDetail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments/${otherTeacherAssessmentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(sameSchoolDetail.body?.error?.code).toBe('not_found');
+
+    const crossSchoolDetail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments/${crossSchoolAssessmentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(crossSchoolDetail.body?.error?.code).toBe('not_found');
+
+    const filteredGradebook = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/gradebook`,
+      )
+      .query({ assessmentId: otherTeacherAssessmentId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(filteredGradebook.body?.error?.code).toBe('not_found');
   });
 
   it('teacher cannot access another teacher class in the same school', async () => {
@@ -581,9 +768,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
 
-    expect(response.body?.error?.code).toBe(
-      'teacher_app.allocation.not_found',
-    );
+    expect(response.body?.error?.code).toBe('teacher_app.allocation.not_found');
 
     const classroomDetailResponse = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/teacher/classroom/${otherTeacherAllocationId}`)
@@ -622,6 +807,21 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(attendanceResolveResponse.body?.error?.code).toBe(
       'teacher_app.allocation.not_found',
     );
+
+    for (const route of [
+      `/teacher/classroom/${otherTeacherAllocationId}/grades/assessments`,
+      `/teacher/classroom/${otherTeacherAllocationId}/grades/assessments/${otherTeacherAssessmentId}`,
+      `/teacher/classroom/${otherTeacherAllocationId}/grades/gradebook`,
+      `/teacher/classroom/${otherTeacherAllocationId}/assignments`,
+    ]) {
+      const gradesResponse = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}${route}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+      expect(gradesResponse.body?.error?.code).toBe(
+        'teacher_app.allocation.not_found',
+      );
+    }
   });
 
   it('teacher cannot access a cross-school class id', async () => {
@@ -632,9 +832,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
 
-    expect(response.body?.error?.code).toBe(
-      'teacher_app.allocation.not_found',
-    );
+    expect(response.body?.error?.code).toBe('teacher_app.allocation.not_found');
 
     const classroomDetailResponse = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/teacher/classroom/${crossSchoolAllocationId}`)
@@ -663,6 +861,21 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(attendanceRosterResponse.body?.error?.code).toBe(
       'teacher_app.allocation.not_found',
     );
+
+    for (const route of [
+      `/teacher/classroom/${crossSchoolAllocationId}/grades/assessments`,
+      `/teacher/classroom/${crossSchoolAllocationId}/grades/assessments/${crossSchoolAssessmentId}`,
+      `/teacher/classroom/${crossSchoolAllocationId}/grades/gradebook`,
+      `/teacher/classroom/${crossSchoolAllocationId}/assignments`,
+    ]) {
+      const gradesResponse = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}${route}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+      expect(gradesResponse.body?.error?.code).toBe(
+        'teacher_app.allocation.not_found',
+      );
+    }
   });
 
   it('teacher cannot read a cross-school guessed attendance session', async () => {
@@ -754,7 +967,68 @@ describe('Teacher App tenancy isolation (security)', () => {
         )
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments/${ownAssessmentId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/gradebook`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
     }
+  });
+
+  it('does not register Teacher App grade or assignment mutation endpoints', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments/${ownAssessmentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/gradebook`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
   });
 
   it('does not register deferred Teacher App routes', async () => {
@@ -823,7 +1097,15 @@ describe('Teacher App tenancy isolation (security)', () => {
     teacherUserId: string;
     marker: string;
     studentCount: number;
-  }): Promise<{ allocationId: string; studentIds: string[] }> {
+  }): Promise<{
+    allocationId: string;
+    academicYearId: string;
+    termId: string;
+    classroomId: string;
+    subjectId: string;
+    studentIds: string[];
+    enrollmentIds: string[];
+  }> {
     const isAttendanceWritable = params.marker !== 'other-teacher';
     const year = await prisma.academicYear.create({
       data: {
@@ -924,6 +1206,7 @@ describe('Teacher App tenancy isolation (security)', () => {
     createdAllocationIds.push(allocation.id);
 
     const studentIds: string[] = [];
+    const enrollmentIds: string[] = [];
     for (let index = 0; index < params.studentCount; index += 1) {
       const student = await prisma.student.create({
         data: {
@@ -951,9 +1234,64 @@ describe('Teacher App tenancy isolation (security)', () => {
         select: { id: true },
       });
       createdEnrollmentIds.push(enrollment.id);
+      enrollmentIds.push(enrollment.id);
     }
 
-    return { allocationId: allocation.id, studentIds };
+    return {
+      allocationId: allocation.id,
+      academicYearId: year.id,
+      termId: term.id,
+      classroomId: classroom.id,
+      subjectId: subject.id,
+      studentIds,
+      enrollmentIds,
+    };
+  }
+
+  async function createGradeAssessmentFixture(params: {
+    schoolId: string;
+    fixture: {
+      academicYearId: string;
+      termId: string;
+      classroomId: string;
+      subjectId: string;
+    };
+    title: string;
+    type: GradeAssessmentType;
+    approvalStatus: GradeAssessmentApprovalStatus;
+    maxScore: number;
+    weight: number;
+  }): Promise<string> {
+    const assessment = await prisma.gradeAssessment.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.fixture.academicYearId,
+        termId: params.fixture.termId,
+        subjectId: params.fixture.subjectId,
+        scopeType: GradeScopeType.CLASSROOM,
+        scopeKey: params.fixture.classroomId,
+        classroomId: params.fixture.classroomId,
+        titleEn: params.title,
+        type: params.type,
+        deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
+        date: new Date('2026-09-15T00:00:00.000Z'),
+        weight: params.weight,
+        maxScore: params.maxScore,
+        approvalStatus: params.approvalStatus,
+        publishedAt:
+          params.approvalStatus === GradeAssessmentApprovalStatus.DRAFT
+            ? null
+            : new Date('2026-09-14T08:00:00.000Z'),
+        approvedAt:
+          params.approvalStatus === GradeAssessmentApprovalStatus.APPROVED
+            ? new Date('2026-09-14T09:00:00.000Z')
+            : null,
+      },
+      select: { id: true },
+    });
+    createdGradeAssessmentIds.push(assessment.id);
+
+    return assessment.id;
   }
 
   async function createPrivateStudentData(params: {

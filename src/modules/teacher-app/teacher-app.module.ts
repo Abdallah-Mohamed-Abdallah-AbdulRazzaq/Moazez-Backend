@@ -12,6 +12,13 @@ import { TeacherClassroomAttendanceAdapter } from './classroom/attendance/infras
 import { GetTeacherClassroomUseCase } from './classroom/application/get-teacher-classroom.use-case';
 import { ListTeacherClassroomRosterUseCase } from './classroom/application/list-teacher-classroom-roster.use-case';
 import { TeacherClassroomController } from './classroom/controller/teacher-classroom.controller';
+import { GetTeacherClassroomAssessmentUseCase } from './classroom/grades/application/get-teacher-classroom-assessment.use-case';
+import { GetTeacherClassroomGradebookUseCase } from './classroom/grades/application/get-teacher-classroom-gradebook.use-case';
+import { ListTeacherClassroomAssignmentsUseCase } from './classroom/grades/application/list-teacher-classroom-assignments.use-case';
+import { ListTeacherClassroomAssessmentsUseCase } from './classroom/grades/application/list-teacher-classroom-assessments.use-case';
+import { TeacherClassroomAssignmentsController } from './classroom/grades/controller/teacher-classroom-assignments.controller';
+import { TeacherClassroomGradesController } from './classroom/grades/controller/teacher-classroom-grades.controller';
+import { TeacherClassroomGradesReadAdapter } from './classroom/grades/infrastructure/teacher-classroom-grades-read.adapter';
 import { TeacherClassroomReadAdapter } from './classroom/infrastructure/teacher-classroom-read.adapter';
 import { GetTeacherHomeUseCase } from './home/application/get-teacher-home.use-case';
 import { TeacherHomeController } from './home/controller/teacher-home.controller';
@@ -27,6 +34,8 @@ import { TeacherAppCompositionReadAdapter } from './shared/infrastructure/teache
     TeacherMyClassesController,
     TeacherClassroomController,
     TeacherClassroomAttendanceController,
+    TeacherClassroomGradesController,
+    TeacherClassroomAssignmentsController,
   ],
   providers: [
     TeacherAppAccessService,
@@ -34,11 +43,16 @@ import { TeacherAppCompositionReadAdapter } from './shared/infrastructure/teache
     TeacherAppCompositionReadAdapter,
     TeacherClassroomReadAdapter,
     TeacherClassroomAttendanceAdapter,
+    TeacherClassroomGradesReadAdapter,
     GetTeacherHomeUseCase,
     ListTeacherClassesUseCase,
     GetTeacherClassDetailUseCase,
     GetTeacherClassroomUseCase,
     ListTeacherClassroomRosterUseCase,
+    ListTeacherClassroomAssessmentsUseCase,
+    GetTeacherClassroomAssessmentUseCase,
+    GetTeacherClassroomGradebookUseCase,
+    ListTeacherClassroomAssignmentsUseCase,
     GetTeacherClassroomAttendanceRosterUseCase,
     ResolveTeacherClassroomAttendanceSessionUseCase,
     GetTeacherClassroomAttendanceSessionUseCase,
