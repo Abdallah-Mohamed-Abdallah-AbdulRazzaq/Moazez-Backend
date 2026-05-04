@@ -34,6 +34,7 @@
     "test:e2e:sprint6a": "jest --config ./test/jest-e2e.json --runInBand test/e2e/behavior-foundation.e2e-spec.ts",
     "test:e2e:sprint6b": "jest --config ./test/jest-e2e.json --runInBand test/e2e/communication-core-chat.e2e-spec.ts",
     "test:e2e:sprint6c": "jest --config ./test/jest-e2e.json --runInBand test/e2e/communication-realtime-announcements-notifications.e2e-spec.ts",
+    "test:e2e:sprint7b": "jest --config ./test/jest-e2e.json --runInBand test/e2e/teacher-app-home-my-classes.e2e-spec.ts",
     "test:security": "jest --config ./test/jest-e2e.json test/security",
     "seed": "prisma db seed",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",
@@ -54,6 +55,7 @@
     "verify:sprint6a": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b && npm run test:e2e:sprint3a && npm run test:e2e:sprint3b && npm run test:e2e:sprint4a && npm run test:e2e:sprint4b && npm run test:e2e:sprint5a && npm run test:e2e:sprint5b && npm run test:e2e:sprint5c && npm run test:e2e:sprint6a",
     "verify:sprint6b": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b && npm run test:e2e:sprint3a && npm run test:e2e:sprint3b && npm run test:e2e:sprint4a && npm run test:e2e:sprint4b && npm run test:e2e:sprint5a && npm run test:e2e:sprint5b && npm run test:e2e:sprint5c && npm run test:e2e:sprint6a && npm run test:e2e:sprint6b",
     "verify:sprint6c": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b && npm run test:e2e:sprint3a && npm run test:e2e:sprint3b && npm run test:e2e:sprint4a && npm run test:e2e:sprint4b && npm run test:e2e:sprint5a && npm run test:e2e:sprint5b && npm run test:e2e:sprint5c && npm run test:e2e:sprint6a && npm run test:e2e:sprint6b && npm run test:e2e:sprint6c",
+    "verify:sprint7b": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- teacher-app --runInBand && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b && npm run test:e2e:sprint3a && npm run test:e2e:sprint3b && npm run test:e2e:sprint4a && npm run test:e2e:sprint4b && npm run test:e2e:sprint5a && npm run test:e2e:sprint5b && npm run test:e2e:sprint5c && npm run test:e2e:sprint6a && npm run test:e2e:sprint6b && npm run test:e2e:sprint6c && npm run test:e2e:sprint7b",
     "demo:sprint1c": "node scripts/demo-sprint1c.cjs",
     "demo:sprint2a": "node scripts/demo-sprint2a.cjs",
     "demo:sprint2b": "node scripts/demo-sprint2b.cjs"

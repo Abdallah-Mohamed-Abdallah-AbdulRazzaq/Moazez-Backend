@@ -982,6 +982,49 @@ Deferred beyond Sprint 6C:
 
 No `demo:sprint6c` script is added for this closeout. The focused E2E flow is the verification artifact.
 
+## Sprint 7B Teacher App Home + My Classes Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Ensure SEED_DEMO_DATA=true
+
+npm run infra:up
+npm run verify:sprint7b
+```
+
+For a human demo against a running app:
+
+```bash
+npm run start:dev
+```
+
+Sprint 7B Teacher App verification covers:
+
+- `GET /api/v1/teacher/home`
+- `GET /api/v1/teacher/my-classes`
+- `GET /api/v1/teacher/my-classes/:classId`
+
+State:
+
+- Teacher App remains composition-only over core modules.
+- `classId` is `TeacherSubjectAllocation.id`.
+- Teacher ownership enforcement is required for Teacher App class reads.
+- Timetable and durable `scheduleId` remain deferred.
+
+Deferred beyond Sprint 7B:
+
+- Teacher Schedule APIs
+- Classroom operations
+- Homeworks
+- Tasks
+- Messages
+- Profile
+- Settings
+- timetable, period, and schedule occurrence model
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -1012,6 +1055,7 @@ No `demo:sprint6c` script is added for this closeout. The focused E2E flow is th
 | `npm run test:e2e:sprint6a`         | Run the Sprint 6A Behavior Foundation closeout e2e flow                                                                  |
 | `npm run test:e2e:sprint6b`         | Run the Sprint 6B Communication Core Chat closeout e2e flow                                                              |
 | `npm run test:e2e:sprint6c`         | Run the Sprint 6C Realtime + Announcements + Notifications closeout e2e flow                                             |
+| `npm run test:e2e:sprint7b`         | Run the Sprint 7B Teacher App Home + My Classes closeout e2e flow                                                        |
 | `npm run test:security`             | Tenancy isolation tests                                                                                                  |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                                             |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                                                   |
@@ -1031,6 +1075,7 @@ No `demo:sprint6c` script is added for this closeout. The focused E2E flow is th
 | `npm run verify:sprint6a`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B/4A/4B/5A/5B/5C e2e, and Sprint 6A e2e       |
 | `npm run verify:sprint6b`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B/4A/4B/5A/5B/5C/6A e2e, and Sprint 6B e2e    |
 | `npm run verify:sprint6c`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B/4A/4B/5A/5B/5C/6A/6B e2e, and Sprint 6C e2e |
+| `npm run verify:sprint7b`           | Run Sprint 6C verification coverage, Teacher App focused unit/security coverage, and Sprint 7B e2e                       |
 | `npm run seed`                      | Re-run idempotent seeds                                                                                                  |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                                                    |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                                               |
