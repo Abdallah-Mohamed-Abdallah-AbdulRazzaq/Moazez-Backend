@@ -44,16 +44,68 @@ describe('TeacherAppAllocationReadAdapter', () => {
     expect(query.orderBy).toEqual([{ createdAt: 'desc' }]);
   });
 
+  it('lists owned allocation rows with filters and pagination', async () => {
+    const { adapter, prismaMocks } = createAdapter();
+    prismaMocks.findMany.mockResolvedValue([]);
+    prismaMocks.count.mockResolvedValue(0);
+
+    const result = await adapter.listOwnedAllocations({
+      teacherUserId: 'teacher-1',
+      filters: {
+        search: 'math',
+        termId: 'term-1',
+        subjectId: 'subject-1',
+        classroomId: 'classroom-1',
+        page: 2,
+        limit: 10,
+      },
+    });
+
+    const query = prismaMocks.findMany.mock.calls[0][0];
+    const queryJson = JSON.stringify(query.where);
+
+    expect(result).toEqual({
+      items: [],
+      total: 0,
+      page: 2,
+      limit: 10,
+    });
+    expect(query.take).toBe(10);
+    expect(query.skip).toBe(10);
+    expect(queryJson).toContain('teacher-1');
+    expect(queryJson).toContain('term-1');
+    expect(queryJson).toContain('subject-1');
+    expect(queryJson).toContain('classroom-1');
+    expect(queryJson).toContain('math');
+    expect(query.where).not.toHaveProperty('schoolId');
+  });
+
+  it('lists all owned allocations without pagination for composition summaries', async () => {
+    const { adapter, prismaMocks } = createAdapter();
+    prismaMocks.findMany.mockResolvedValue([]);
+
+    await adapter.listAllOwnedAllocations('teacher-1');
+
+    const query = prismaMocks.findMany.mock.calls[0][0];
+    expect(query.where).toMatchObject({ teacherUserId: 'teacher-1' });
+    expect(query).not.toHaveProperty('take');
+    expect(query).not.toHaveProperty('skip');
+    expect(query.where).not.toHaveProperty('schoolId');
+  });
+
   it('does not perform mutations', async () => {
     const { adapter, prismaMocks } = createAdapter();
     prismaMocks.findFirst.mockResolvedValue(null);
     prismaMocks.findMany.mockResolvedValue([]);
+    prismaMocks.count.mockResolvedValue(0);
 
     await adapter.findOwnedAllocationById({
       allocationId: 'allocation-1',
       teacherUserId: 'teacher-1',
     });
     await adapter.listOwnedAllocationIds('teacher-1');
+    await adapter.listOwnedAllocations({ teacherUserId: 'teacher-1' });
+    await adapter.listAllOwnedAllocations('teacher-1');
 
     expect(prismaMocks.create).not.toHaveBeenCalled();
     expect(prismaMocks.update).not.toHaveBeenCalled();
@@ -68,6 +120,7 @@ function createAdapter(): {
   prismaMocks: {
     findFirst: jest.Mock;
     findMany: jest.Mock;
+    count: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
     updateMany: jest.Mock;
@@ -78,6 +131,7 @@ function createAdapter(): {
   const prismaMocks = {
     findFirst: jest.fn(),
     findMany: jest.fn(),
+    count: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn(),
