@@ -27,5 +27,12 @@ import { AttendanceRollCallRepository } from './infrastructure/attendance-roll-c
     UnsubmitRollCallSessionUseCase,
     CorrectAttendanceEntryUseCase,
   ],
+  exports: [
+    GetRollCallRosterUseCase,
+    ResolveRollCallSessionUseCase,
+    GetRollCallSessionDetailUseCase,
+    SaveRollCallEntriesUseCase,
+    SubmitRollCallSessionUseCase,
+  ],
 })
 export class RollCallModule {}

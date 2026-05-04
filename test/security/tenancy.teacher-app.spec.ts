@@ -47,6 +47,7 @@ describe('Teacher App tenancy isolation (security)', () => {
   let otherTeacherAllocationId: string;
   let crossSchoolAllocationId: string;
   let ownStudentIds: string[] = [];
+  let otherTeacherStudentIds: string[] = [];
 
   const testSuffix = `teacher-app-security-${Date.now()}`;
   const createdUserIds: string[] = [];
@@ -194,6 +195,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       studentCount: 1,
     });
     otherTeacherAllocationId = otherTeacherFixture.allocationId;
+    otherTeacherStudentIds = otherTeacherFixture.studentIds;
 
     const crossSchoolFixture = await createAcademicFixture({
       organizationId: organizationBId,
@@ -237,6 +239,12 @@ describe('Teacher App tenancy isolation (security)', () => {
       });
       await prisma.studentMedicalProfile.deleteMany({
         where: { studentId: { in: createdMedicalProfileStudentIds } },
+      });
+      await prisma.attendanceEntry.deleteMany({
+        where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+      });
+      await prisma.attendanceSession.deleteMany({
+        where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
       });
       await prisma.guardian.deleteMany({
         where: { id: { in: createdGuardianIds } },
@@ -430,6 +438,141 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(json).not.toContain('private-condition-sentinel');
   });
 
+  it('teacher can get attendance roster for owned class without creating a session', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/roster`,
+      )
+      .query({ date: '2026-09-10' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const json = JSON.stringify(response.body);
+
+    expect(response.body).toMatchObject({
+      classId: ownAllocationId,
+      date: '2026-09-10',
+      session: null,
+      pagination: {
+        page: 1,
+        limit: 20,
+        total: 2,
+      },
+    });
+    expect(response.body.students.map((student: { id: string }) => student.id))
+      .toEqual(ownStudentIds);
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('scheduleId');
+    expect(json).not.toContain('period');
+    expect(json).not.toContain('timetable');
+  });
+
+  it('teacher can resolve, update, and submit owned classroom attendance', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const resolved = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/session/resolve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ date: '2026-09-10' })
+      .expect(201);
+    const sessionId = resolved.body.session.id;
+
+    expect(resolved.body).toMatchObject({
+      classId: ownAllocationId,
+      date: '2026-09-10',
+      session: {
+        id: sessionId,
+        status: 'draft',
+        submittedAt: null,
+      },
+      entries: [],
+    });
+    expect(JSON.stringify(resolved.body)).not.toContain('schoolId');
+    expect(JSON.stringify(resolved.body)).not.toContain('scheduleId');
+
+    const updated = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${sessionId}/entries`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        entries: [
+          { studentId: ownStudentIds[0], status: 'present', note: 'Arrived' },
+          { studentId: ownStudentIds[1], status: 'absent' },
+        ],
+      })
+      .expect(200);
+
+    expect(updated.body.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          studentId: ownStudentIds[0],
+          attendanceStatus: 'present',
+          note: 'Arrived',
+        }),
+        expect.objectContaining({
+          studentId: ownStudentIds[1],
+          attendanceStatus: 'absent',
+          note: null,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(updated.body)).not.toContain('schoolId');
+    expect(JSON.stringify(updated.body)).not.toContain('scheduleId');
+
+    const detail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${sessionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(detail.body.entries).toHaveLength(2);
+
+    const submitted = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${sessionId}/submit`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(submitted.body.session).toMatchObject({
+      id: sessionId,
+      status: 'submitted',
+    });
+    expect(submitted.body.session.submittedAt).toEqual(expect.any(String));
+    expect(JSON.stringify(submitted.body)).not.toContain('schoolId');
+    expect(JSON.stringify(submitted.body)).not.toContain('scheduleId');
+  });
+
+  it('teacher cannot update attendance for students outside the owned classroom', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const resolved = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/session/resolve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ date: '2026-09-11' })
+      .expect(201);
+
+    const response = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${resolved.body.session.id}/entries`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        entries: [
+          { studentId: otherTeacherStudentIds[0], status: 'present' },
+        ],
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
   it('teacher cannot access another teacher class in the same school', async () => {
     const { accessToken } = await login(teacherAEmail);
 
@@ -456,6 +599,27 @@ describe('Teacher App tenancy isolation (security)', () => {
       'teacher_app.allocation.not_found',
     );
     expect(classroomRosterResponse.body?.error?.code).toBe(
+      'teacher_app.allocation.not_found',
+    );
+
+    const attendanceRosterResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${otherTeacherAllocationId}/attendance/roster`,
+      )
+      .query({ date: '2026-09-10' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    const attendanceResolveResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/classroom/${otherTeacherAllocationId}/attendance/session/resolve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ date: '2026-09-10' })
+      .expect(404);
+    expect(attendanceRosterResponse.body?.error?.code).toBe(
+      'teacher_app.allocation.not_found',
+    );
+    expect(attendanceResolveResponse.body?.error?.code).toBe(
       'teacher_app.allocation.not_found',
     );
   });
@@ -488,9 +652,50 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(classroomRosterResponse.body?.error?.code).toBe(
       'teacher_app.allocation.not_found',
     );
+
+    const attendanceRosterResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${crossSchoolAllocationId}/attendance/roster`,
+      )
+      .query({ date: '2026-09-10' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(attendanceRosterResponse.body?.error?.code).toBe(
+      'teacher_app.allocation.not_found',
+    );
+  });
+
+  it('teacher cannot read a cross-school guessed attendance session', async () => {
+    const crossSchoolTeacher = await login(teacherCrossSchoolEmail);
+    const crossSchoolResolved = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/classroom/${crossSchoolAllocationId}/attendance/session/resolve`,
+      )
+      .set('Authorization', `Bearer ${crossSchoolTeacher.accessToken}`)
+      .send({ date: '2026-09-10' })
+      .expect(201);
+
+    const teacherA = await login(teacherAEmail);
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${crossSchoolResolved.body.session.id}`,
+      )
+      .set('Authorization', `Bearer ${teacherA.accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
   });
 
   it('school admin, parent, and student actors are denied Teacher App routes', async () => {
+    const teacherA = await login(teacherAEmail);
+    const deniedSession = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/session/resolve`,
+      )
+      .set('Authorization', `Bearer ${teacherA.accessToken}`)
+      .send({ date: '2026-09-12' })
+      .expect(201);
+
     for (const email of [adminEmail, parentEmail, studentEmail]) {
       const { accessToken } = await login(email);
 
@@ -512,6 +717,41 @@ describe('Teacher App tenancy isolation (security)', () => {
         .expect(403);
       await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/roster`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/roster`,
+        )
+        .query({ date: '2026-09-10' })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/session/resolve`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ date: '2026-09-10' })
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${deniedSession.body.session.id}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .put(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${deniedSession.body.session.id}/entries`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          entries: [{ studentId: ownStudentIds[0], status: 'present' }],
+        })
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${deniedSession.body.session.id}/submit`,
+        )
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
     }
@@ -584,6 +824,7 @@ describe('Teacher App tenancy isolation (security)', () => {
     marker: string;
     studentCount: number;
   }): Promise<{ allocationId: string; studentIds: string[] }> {
+    const isAttendanceWritable = params.marker !== 'other-teacher';
     const year = await prisma.academicYear.create({
       data: {
         schoolId: params.schoolId,
@@ -591,7 +832,7 @@ describe('Teacher App tenancy isolation (security)', () => {
         nameEn: `${testSuffix}-${params.marker}-year`,
         startDate: new Date('2026-09-01T00:00:00.000Z'),
         endDate: new Date('2027-06-30T00:00:00.000Z'),
-        isActive: false,
+        isActive: isAttendanceWritable,
       },
       select: { id: true },
     });
@@ -605,7 +846,7 @@ describe('Teacher App tenancy isolation (security)', () => {
         nameEn: `${testSuffix}-${params.marker}-term`,
         startDate: new Date('2026-09-01T00:00:00.000Z'),
         endDate: new Date('2026-12-31T00:00:00.000Z'),
-        isActive: false,
+        isActive: isAttendanceWritable,
       },
       select: { id: true },
     });

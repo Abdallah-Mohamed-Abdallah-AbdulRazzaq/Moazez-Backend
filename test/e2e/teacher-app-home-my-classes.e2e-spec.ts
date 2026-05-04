@@ -301,10 +301,15 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
   it('registers only the current Teacher App read routes', () => {
     expect(listRegisteredTeacherRoutes()).toEqual([
       'GET /api/v1/teacher/classroom/:classId',
+      'GET /api/v1/teacher/classroom/:classId/attendance/roster',
+      'GET /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId',
       'GET /api/v1/teacher/classroom/:classId/roster',
       'GET /api/v1/teacher/home',
       'GET /api/v1/teacher/my-classes',
       'GET /api/v1/teacher/my-classes/:classId',
+      'POST /api/v1/teacher/classroom/:classId/attendance/session/resolve',
+      'POST /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/submit',
+      'PUT /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/entries',
     ]);
   });
 
