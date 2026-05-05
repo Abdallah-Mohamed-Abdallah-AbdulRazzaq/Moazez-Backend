@@ -8882,6 +8882,368 @@
                   ]
                 },
                 {
+                  "name": "classroom",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-teacher-classroom.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-teacher-classroom-roster.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "attendance",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "application",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "get-teacher-classroom-attendance-roster.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "get-teacher-classroom-attendance-session.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "resolve-teacher-classroom-attendance-session.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "submit-teacher-classroom-attendance-session.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "update-teacher-classroom-attendance-entries.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "controller",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-classroom-attendance.controller.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "dto",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-classroom-attendance.dto.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "infrastructure",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-classroom-attendance.adapter.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "presenters",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-classroom-attendance.presenter.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "tests",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-classroom-attendance.adapter.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "teacher-classroom-attendance.use-case.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-classroom.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-classroom.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "grades",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "application",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "bulk-review-teacher-classroom-submission-answers.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "finalize-teacher-classroom-submission-review.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "get-teacher-classroom-assessment.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "get-teacher-classroom-assignment-submission.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "get-teacher-classroom-assignment.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "get-teacher-classroom-gradebook.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "list-teacher-classroom-assessments.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "list-teacher-classroom-assignment-submissions.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "list-teacher-classroom-assignments.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "review-teacher-classroom-submission-answer.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "sync-teacher-classroom-submission-grade-item.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "controller",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-classroom-assignments.controller.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "teacher-classroom-grades.controller.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "teacher-classroom-submission-review.controller.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "dto",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-classroom-grades.dto.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "teacher-classroom-submission-review.dto.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "infrastructure",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-classroom-grades-read.adapter.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "presenters",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-classroom-grades.presenter.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "teacher-classroom-submission-review.presenter.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "tests",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-classroom-grades-read.adapter.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "teacher-classroom-grades.use-case.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "teacher-classroom-submission-review.use-case.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-classroom-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-classroom.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-teacher-classroom.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-teacher-classroom-roster.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-classroom-read.adapter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-classroom.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
                   "name": "home",
                   "type": "folder",
                   "icon": "📁",
@@ -9230,6 +9592,11 @@
               "icon": "📘"
             },
             {
+              "name": "teacher-app-classroom-operations.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "teacher-app-home-my-classes.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -9516,7 +9883,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-05-04T01:54:17.260Z",
+    "generated": "2026-05-05T02:38:53.671Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
