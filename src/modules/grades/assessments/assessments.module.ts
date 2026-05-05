@@ -81,5 +81,11 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
     FinalizeGradeSubmissionReviewUseCase,
     SyncGradeSubmissionToGradeItemUseCase,
   ],
+  exports: [
+    ReviewGradeSubmissionAnswerUseCase,
+    BulkReviewGradeSubmissionAnswersUseCase,
+    FinalizeGradeSubmissionReviewUseCase,
+    SyncGradeSubmissionToGradeItemUseCase,
+  ],
 })
 export class AssessmentsModule {}

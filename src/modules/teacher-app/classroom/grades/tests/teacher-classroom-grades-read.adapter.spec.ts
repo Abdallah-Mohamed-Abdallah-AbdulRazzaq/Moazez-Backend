@@ -386,6 +386,70 @@ describe('TeacherClassroomGradesReadAdapter', () => {
     ).rejects.toMatchObject({ code: 'not_found' });
   });
 
+  it('validates submission review answer boundaries with scoped read-only queries', async () => {
+    const { adapter, prismaMocks } = createAdapter();
+    prismaMocks.gradeSubmissionAnswer.findFirst.mockResolvedValue({
+      id: 'answer-1',
+    });
+    prismaMocks.gradeSubmissionAnswer.findMany.mockResolvedValue([
+      { id: 'answer-1' },
+      { id: 'answer-2' },
+    ]);
+
+    await adapter.assertOwnedSubmissionAnswer({
+      allocation: allocationFixture(),
+      assignmentId: 'assignment-1',
+      submissionId: 'submission-1',
+      answerId: 'answer-1',
+    });
+    await adapter.assertOwnedSubmissionAnswers({
+      allocation: allocationFixture(),
+      assignmentId: 'assignment-1',
+      submissionId: 'submission-1',
+      answerIds: ['answer-1', 'answer-2'],
+    });
+
+    const singleWhere =
+      prismaMocks.gradeSubmissionAnswer.findFirst.mock.calls[0][0].where;
+    const bulkWhere =
+      prismaMocks.gradeSubmissionAnswer.findMany.mock.calls[0][0].where;
+
+    expect(singleWhere).toMatchObject({
+      id: 'answer-1',
+      submissionId: 'submission-1',
+      assessmentId: 'assignment-1',
+      submission: {
+        is: {
+          assessmentId: 'assignment-1',
+          termId: 'term-1',
+          enrollment: {
+            is: {
+              academicYearId: 'year-1',
+              classroomId: 'classroom-1',
+              status: StudentEnrollmentStatus.ACTIVE,
+            },
+          },
+        },
+      },
+    });
+    expect(singleWhere).not.toHaveProperty('schoolId');
+    expect(bulkWhere).toMatchObject({
+      id: { in: ['answer-1', 'answer-2'] },
+      submissionId: 'submission-1',
+      assessmentId: 'assignment-1',
+    });
+
+    prismaMocks.gradeSubmissionAnswer.findFirst.mockResolvedValueOnce(null);
+    await expect(
+      adapter.assertOwnedSubmissionAnswer({
+        allocation: allocationFixture(),
+        assignmentId: 'assignment-1',
+        submissionId: 'submission-1',
+        answerId: 'answer-from-another-submission',
+      }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+  });
+
   it('does not call mutations from any read method', async () => {
     const { adapter, prismaMocks } = createAdapter();
     prismaMocks.gradeAssessment.findMany.mockResolvedValue([]);
@@ -406,6 +470,9 @@ describe('TeacherClassroomGradesReadAdapter', () => {
     prismaMocks.gradeSubmission.findFirst.mockResolvedValue(
       assignmentSubmissionDetailFixture(),
     );
+    prismaMocks.gradeSubmissionAnswer.findFirst.mockResolvedValue({
+      id: 'answer-1',
+    });
 
     await adapter.listAssessments({ allocation: allocationFixture() });
     await adapter.getGradebook({ allocation: allocationFixture() });
@@ -423,6 +490,12 @@ describe('TeacherClassroomGradesReadAdapter', () => {
       assignmentId: 'assignment-1',
       submissionId: 'submission-1',
     });
+    await adapter.assertOwnedSubmissionAnswer({
+      allocation: allocationFixture(),
+      assignmentId: 'assignment-1',
+      submissionId: 'submission-1',
+      answerId: 'answer-1',
+    });
 
     expect(prismaMocks.gradeAssessment.create).not.toHaveBeenCalled();
     expect(prismaMocks.gradeAssessment.update).not.toHaveBeenCalled();
@@ -431,6 +504,8 @@ describe('TeacherClassroomGradesReadAdapter', () => {
     expect(prismaMocks.gradeItem.update).not.toHaveBeenCalled();
     expect(prismaMocks.gradeSubmission.create).not.toHaveBeenCalled();
     expect(prismaMocks.gradeSubmission.update).not.toHaveBeenCalled();
+    expect(prismaMocks.gradeSubmissionAnswer.create).not.toHaveBeenCalled();
+    expect(prismaMocks.gradeSubmissionAnswer.update).not.toHaveBeenCalled();
   });
 });
 
@@ -458,6 +533,13 @@ function createAdapter(): {
       findFirst: jest.Mock;
       count: jest.Mock;
       groupBy: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+      delete: jest.Mock;
+    };
+    gradeSubmissionAnswer: {
+      findMany: jest.Mock;
+      findFirst: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
       delete: jest.Mock;
@@ -490,6 +572,13 @@ function createAdapter(): {
       findFirst: jest.fn(),
       count: jest.fn(),
       groupBy: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
+    gradeSubmissionAnswer: {
+      findMany: jest.fn(),
+      findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),

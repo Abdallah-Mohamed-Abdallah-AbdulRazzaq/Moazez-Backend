@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { RollCallModule } from '../attendance/roll-call/roll-call.module';
+import { AssessmentsModule } from '../grades/assessments/assessments.module';
 import { TeacherAppAccessService } from './access/teacher-app-access.service';
 import { TeacherAppAllocationReadAdapter } from './access/teacher-app-allocation-read.adapter';
 import { GetTeacherClassroomAttendanceRosterUseCase } from './classroom/attendance/application/get-teacher-classroom-attendance-roster.use-case';
@@ -16,11 +17,16 @@ import { GetTeacherClassroomAssignmentUseCase } from './classroom/grades/applica
 import { GetTeacherClassroomAssignmentSubmissionUseCase } from './classroom/grades/application/get-teacher-classroom-assignment-submission.use-case';
 import { GetTeacherClassroomAssessmentUseCase } from './classroom/grades/application/get-teacher-classroom-assessment.use-case';
 import { GetTeacherClassroomGradebookUseCase } from './classroom/grades/application/get-teacher-classroom-gradebook.use-case';
+import { BulkReviewTeacherClassroomSubmissionAnswersUseCase } from './classroom/grades/application/bulk-review-teacher-classroom-submission-answers.use-case';
+import { FinalizeTeacherClassroomSubmissionReviewUseCase } from './classroom/grades/application/finalize-teacher-classroom-submission-review.use-case';
 import { ListTeacherClassroomAssignmentSubmissionsUseCase } from './classroom/grades/application/list-teacher-classroom-assignment-submissions.use-case';
 import { ListTeacherClassroomAssignmentsUseCase } from './classroom/grades/application/list-teacher-classroom-assignments.use-case';
 import { ListTeacherClassroomAssessmentsUseCase } from './classroom/grades/application/list-teacher-classroom-assessments.use-case';
+import { ReviewTeacherClassroomSubmissionAnswerUseCase } from './classroom/grades/application/review-teacher-classroom-submission-answer.use-case';
+import { SyncTeacherClassroomSubmissionGradeItemUseCase } from './classroom/grades/application/sync-teacher-classroom-submission-grade-item.use-case';
 import { TeacherClassroomAssignmentsController } from './classroom/grades/controller/teacher-classroom-assignments.controller';
 import { TeacherClassroomGradesController } from './classroom/grades/controller/teacher-classroom-grades.controller';
+import { TeacherClassroomSubmissionReviewController } from './classroom/grades/controller/teacher-classroom-submission-review.controller';
 import { TeacherClassroomGradesReadAdapter } from './classroom/grades/infrastructure/teacher-classroom-grades-read.adapter';
 import { TeacherClassroomReadAdapter } from './classroom/infrastructure/teacher-classroom-read.adapter';
 import { GetTeacherHomeUseCase } from './home/application/get-teacher-home.use-case';
@@ -31,7 +37,7 @@ import { TeacherMyClassesController } from './my-classes/controller/teacher-my-c
 import { TeacherAppCompositionReadAdapter } from './shared/infrastructure/teacher-app-composition-read.adapter';
 
 @Module({
-  imports: [RollCallModule],
+  imports: [RollCallModule, AssessmentsModule],
   controllers: [
     TeacherHomeController,
     TeacherMyClassesController,
@@ -39,6 +45,7 @@ import { TeacherAppCompositionReadAdapter } from './shared/infrastructure/teache
     TeacherClassroomAttendanceController,
     TeacherClassroomGradesController,
     TeacherClassroomAssignmentsController,
+    TeacherClassroomSubmissionReviewController,
   ],
   providers: [
     TeacherAppAccessService,
@@ -59,6 +66,10 @@ import { TeacherAppCompositionReadAdapter } from './shared/infrastructure/teache
     GetTeacherClassroomAssignmentUseCase,
     ListTeacherClassroomAssignmentSubmissionsUseCase,
     GetTeacherClassroomAssignmentSubmissionUseCase,
+    ReviewTeacherClassroomSubmissionAnswerUseCase,
+    BulkReviewTeacherClassroomSubmissionAnswersUseCase,
+    FinalizeTeacherClassroomSubmissionReviewUseCase,
+    SyncTeacherClassroomSubmissionGradeItemUseCase,
     GetTeacherClassroomAttendanceRosterUseCase,
     ResolveTeacherClassroomAttendanceSessionUseCase,
     GetTeacherClassroomAttendanceSessionUseCase,

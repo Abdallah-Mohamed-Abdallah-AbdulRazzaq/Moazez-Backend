@@ -57,9 +57,13 @@ describe('Teacher App tenancy isolation (security)', () => {
   let ownAssessmentId: string;
   let ownAssignmentId: string;
   let ownAssignmentSubmissionId: string;
+  let ownAssignmentAnswerId: string;
   let otherAssignmentSubmissionId: string;
+  let otherAssignmentAnswerId: string;
   let outsideStudentSubmissionId: string;
+  let outsideStudentAnswerId: string;
   let crossSchoolSubmissionId: string;
+  let crossSchoolAnswerId: string;
   let otherClassroomAssignmentId: string;
   let otherSubjectAssignmentId: string;
   let otherTermAssignmentId: string;
@@ -271,7 +275,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       submittedAt: new Date('2026-09-15T10:00:00.000Z'),
       maxScore: 10,
     });
-    await createGradeSubmissionAnswerFixture({
+    ownAssignmentAnswerId = await createGradeSubmissionAnswerFixture({
       schoolId: schoolAId,
       submissionId: ownAssignmentSubmissionId,
       assessmentId: ownAssignmentId,
@@ -316,7 +320,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       submittedAt: new Date('2026-09-15T11:00:00.000Z'),
       maxScore: 10,
     });
-    await createGradeSubmissionAnswerFixture({
+    otherAssignmentAnswerId = await createGradeSubmissionAnswerFixture({
       schoolId: schoolAId,
       submissionId: otherAssignmentSubmissionId,
       assessmentId: otherOwnedAssignmentId,
@@ -336,7 +340,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       submittedAt: new Date('2026-09-15T12:00:00.000Z'),
       maxScore: 10,
     });
-    await createGradeSubmissionAnswerFixture({
+    outsideStudentAnswerId = await createGradeSubmissionAnswerFixture({
       schoolId: schoolAId,
       submissionId: outsideStudentSubmissionId,
       assessmentId: ownAssignmentId,
@@ -406,6 +410,22 @@ describe('Teacher App tenancy isolation (security)', () => {
       status: GradeSubmissionStatus.SUBMITTED,
       submittedAt: new Date('2026-09-15T13:00:00.000Z'),
       maxScore: 20,
+    });
+    const crossSchoolQuestionId = await createGradeQuestionFixture({
+      schoolId: schoolBId,
+      assessmentId: crossSchoolAssessmentId,
+      prompt: `${testSuffix} Cross School Prompt`,
+      points: 20,
+    });
+    crossSchoolAnswerId = await createGradeSubmissionAnswerFixture({
+      schoolId: schoolBId,
+      submissionId: crossSchoolSubmissionId,
+      assessmentId: crossSchoolAssessmentId,
+      questionId: crossSchoolQuestionId,
+      studentId: crossSchoolFixture.studentIds[0],
+      answerText: `${testSuffix} cross-school-answer`,
+      correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+      maxPoints: 20,
     });
 
     const ownGradeItem = await prisma.gradeItem.create({
@@ -988,6 +1008,198 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(submissionDetailJson).not.toContain('scheduleId');
   });
 
+  it('teacher can review, bulk-review, finalize, and sync an owned submission safely', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const reviewed = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/answers/${ownAssignmentAnswerId}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        awardedPoints: 8,
+        reviewerComment: 'Good reasoning',
+      })
+      .expect(200);
+    const reviewedJson = JSON.stringify(reviewed.body);
+
+    expect(reviewed.body).toMatchObject({
+      classId: ownAllocationId,
+      assignmentId: ownAssignmentId,
+      submissionId: ownAssignmentSubmissionId,
+      source: 'grades_assessment',
+      answer: {
+        answerId: ownAssignmentAnswerId,
+        questionId: expect.any(String),
+        correctionStatus: 'corrected',
+        score: 8,
+        maxScore: 10,
+        feedback: 'Good reasoning',
+      },
+    });
+    expect(reviewedJson).toContain(`${testSuffix} student-visible-answer`);
+    expect(reviewedJson).not.toContain('schoolId');
+    expect(reviewedJson).not.toContain('scheduleId');
+    expect(reviewedJson).not.toContain('answer-key-sentinel');
+    expect(reviewedJson).not.toContain('correctAnswer');
+    expect(reviewedJson).not.toContain('isCorrect');
+    expect(reviewedJson).not.toContain('reviewedById');
+
+    const bulkReviewed = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/answers/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        reviews: [
+          {
+            answerId: ownAssignmentAnswerId,
+            awardedPoints: 9,
+            reviewerComment: 'Updated after rubric pass',
+          },
+        ],
+      })
+      .expect(200);
+    const bulkReviewedJson = JSON.stringify(bulkReviewed.body);
+
+    expect(bulkReviewed.body).toMatchObject({
+      classId: ownAllocationId,
+      assignmentId: ownAssignmentId,
+      submissionId: ownAssignmentSubmissionId,
+      reviewedCount: 1,
+      answers: [
+        expect.objectContaining({
+          answerId: ownAssignmentAnswerId,
+          score: 9,
+          feedback: 'Updated after rubric pass',
+        }),
+      ],
+    });
+    expect(bulkReviewedJson).not.toContain('schoolId');
+    expect(bulkReviewedJson).not.toContain('scheduleId');
+    expect(bulkReviewedJson).not.toContain('answer-key-sentinel');
+
+    const finalized = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/review/finalize`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+    const finalizedJson = JSON.stringify(finalized.body);
+
+    expect(finalized.body).toMatchObject({
+      classId: ownAllocationId,
+      assignmentId: ownAssignmentId,
+      source: 'grades_assessment',
+      submission: {
+        submissionId: ownAssignmentSubmissionId,
+        status: 'corrected',
+        score: 9,
+        maxScore: 10,
+        finalizedAt: expect.any(String),
+      },
+    });
+    expect(finalizedJson).not.toContain('schoolId');
+    expect(finalizedJson).not.toContain('scheduleId');
+    expect(finalizedJson).not.toContain('answer-key-sentinel');
+    expect(finalizedJson).not.toContain('submission-metadata-sentinel');
+    expect(finalizedJson).not.toContain('reviewedById');
+
+    const synced = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/sync-grade-item`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+    const syncedJson = JSON.stringify(synced.body);
+    createdGradeItemIds.push(synced.body.gradeItem.gradeItemId);
+
+    expect(synced.body).toMatchObject({
+      classId: ownAllocationId,
+      assignmentId: ownAssignmentId,
+      submissionId: ownAssignmentSubmissionId,
+      source: 'grades_assessment',
+      synced: true,
+      submission: {
+        submissionId: ownAssignmentSubmissionId,
+        assignmentId: ownAssignmentId,
+        studentId: ownStudentIds[0],
+        status: 'corrected',
+        totalScore: 9,
+        maxScore: 10,
+      },
+      gradeItem: {
+        assignmentId: ownAssignmentId,
+        studentId: ownStudentIds[0],
+        status: 'entered',
+        score: 9,
+      },
+    });
+    expect(syncedJson).not.toContain('schoolId');
+    expect(syncedJson).not.toContain('scheduleId');
+    expect(syncedJson).not.toContain('enteredById');
+  });
+
+  it('teacher cannot mutate submission review outside owned classroom, subject, term, submission, or answer boundaries', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    for (const classId of [otherTeacherAllocationId, crossSchoolAllocationId]) {
+      const response = await request(app.getHttpServer())
+        .patch(
+          `${GLOBAL_PREFIX}/teacher/classroom/${classId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/answers/${ownAssignmentAnswerId}/review`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ awardedPoints: 1 })
+        .expect(404);
+      expect(response.body?.error?.code).toBe(
+        'teacher_app.allocation.not_found',
+      );
+    }
+
+    for (const assignmentId of [
+      otherClassroomAssignmentId,
+      otherSubjectAssignmentId,
+      otherTermAssignmentId,
+      crossSchoolAssessmentId,
+    ]) {
+      const response = await request(app.getHttpServer())
+        .patch(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${assignmentId}/submissions/${ownAssignmentSubmissionId}/answers/${ownAssignmentAnswerId}/review`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ awardedPoints: 1 })
+        .expect(404);
+      expect(response.body?.error?.code).toBe('not_found');
+    }
+
+    for (const route of [
+      `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${otherAssignmentSubmissionId}/review/finalize`,
+      `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${outsideStudentSubmissionId}/review/finalize`,
+      `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${crossSchoolSubmissionId}/review/finalize`,
+    ]) {
+      const response = await request(app.getHttpServer())
+        .post(route)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+      expect(response.body?.error?.code).toBe('not_found');
+    }
+
+    for (const answerId of [
+      otherAssignmentAnswerId,
+      outsideStudentAnswerId,
+      crossSchoolAnswerId,
+    ]) {
+      const response = await request(app.getHttpServer())
+        .patch(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/answers/${answerId}/review`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ awardedPoints: 1 })
+        .expect(404);
+      expect(response.body?.error?.code).toBe('not_found');
+    }
+  });
+
   it('teacher cannot access grade reads outside the owned classroom/subject/term', async () => {
     const { accessToken } = await login(teacherAEmail);
 
@@ -1312,6 +1524,32 @@ describe('Teacher App tenancy isolation (security)', () => {
       await request(app.getHttpServer())
         .get(
           `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .patch(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/answers/${ownAssignmentAnswerId}/review`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ awardedPoints: 1 })
+        .expect(403);
+      await request(app.getHttpServer())
+        .put(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/answers/review`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ reviews: [{ answerId: ownAssignmentAnswerId, awardedPoints: 1 }] })
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/review/finalize`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/sync-grade-item`,
         )
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);

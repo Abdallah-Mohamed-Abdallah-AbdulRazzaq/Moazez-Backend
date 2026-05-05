@@ -221,6 +221,29 @@ const ASSIGNMENT_SUBMISSION_DETAIL_ARGS =
     },
   });
 
+const ASSIGNMENT_MUTATION_BOUNDARY_ARGS =
+  Prisma.validator<Prisma.GradeAssessmentDefaultArgs>()({
+    select: {
+      id: true,
+      academicYearId: true,
+      termId: true,
+      subjectId: true,
+      classroomId: true,
+      type: true,
+    },
+  });
+
+const SUBMISSION_MUTATION_BOUNDARY_ARGS =
+  Prisma.validator<Prisma.GradeSubmissionDefaultArgs>()({
+    select: {
+      id: true,
+      assessmentId: true,
+      termId: true,
+      studentId: true,
+      enrollmentId: true,
+    },
+  });
+
 export type TeacherClassroomAssessmentCardRecord =
   Prisma.GradeAssessmentGetPayload<typeof ASSESSMENT_CARD_ARGS>;
 export type TeacherClassroomAssessmentDetailRecord =
@@ -234,6 +257,10 @@ export type TeacherClassroomAssignmentSubmissionListRecord =
   Prisma.GradeSubmissionGetPayload<typeof ASSIGNMENT_SUBMISSION_LIST_ARGS>;
 export type TeacherClassroomAssignmentSubmissionDetailRecord =
   Prisma.GradeSubmissionGetPayload<typeof ASSIGNMENT_SUBMISSION_DETAIL_ARGS>;
+export type TeacherClassroomAssignmentMutationBoundaryRecord =
+  Prisma.GradeAssessmentGetPayload<typeof ASSIGNMENT_MUTATION_BOUNDARY_ARGS>;
+export type TeacherClassroomSubmissionMutationBoundaryRecord =
+  Prisma.GradeSubmissionGetPayload<typeof SUBMISSION_MUTATION_BOUNDARY_ARGS>;
 
 export interface TeacherClassroomAssessmentListResult {
   items: TeacherClassroomAssessmentCardRecord[];
@@ -283,6 +310,11 @@ export interface TeacherClassroomAssignmentSubmissionsResult {
 export interface TeacherClassroomAssignmentSubmissionDetailResult {
   assignment: TeacherClassroomAssessmentDetailRecord;
   submission: TeacherClassroomAssignmentSubmissionDetailRecord;
+}
+
+export interface TeacherClassroomSubmissionReviewBoundaryResult {
+  assignment: TeacherClassroomAssignmentMutationBoundaryRecord;
+  submission: TeacherClassroomSubmissionMutationBoundaryRecord;
 }
 
 @Injectable()
@@ -622,6 +654,156 @@ export class TeacherClassroomGradesReadAdapter {
       assignment: assignment.assignment,
       submission,
     };
+  }
+
+  findOwnedAssignmentForMutationBoundary(params: {
+    allocation: TeacherAppAllocationRecord;
+    assignmentId: string;
+  }): Promise<TeacherClassroomAssignmentMutationBoundaryRecord> {
+    return this.scopedPrisma.gradeAssessment
+      .findFirst({
+        where: buildAssignmentWhere(params),
+        ...ASSIGNMENT_MUTATION_BOUNDARY_ARGS,
+      })
+      .then((assignment) => {
+        if (!assignment) {
+          throw new NotFoundDomainException('Grade assignment not found', {
+            assignmentId: params.assignmentId,
+          });
+        }
+
+        return assignment;
+      });
+  }
+
+  async findOwnedSubmissionForMutationBoundary(params: {
+    allocation: TeacherAppAllocationRecord;
+    assignmentId: string;
+    submissionId: string;
+  }): Promise<TeacherClassroomSubmissionMutationBoundaryRecord> {
+    const assignment = await this.findOwnedAssignmentForMutationBoundary({
+      allocation: params.allocation,
+      assignmentId: params.assignmentId,
+    });
+    const submission = await this.scopedPrisma.gradeSubmission.findFirst({
+      where: {
+        ...buildAssignmentSubmissionWhere({
+          allocation: params.allocation,
+          assignmentId: assignment.id,
+        }),
+        id: params.submissionId,
+      },
+      ...SUBMISSION_MUTATION_BOUNDARY_ARGS,
+    });
+
+    if (!submission) {
+      throw new NotFoundDomainException(
+        'Grade assignment submission not found',
+        {
+          assignmentId: params.assignmentId,
+          submissionId: params.submissionId,
+        },
+      );
+    }
+
+    return submission;
+  }
+
+  async assertOwnedAssignmentSubmissionReviewTarget(params: {
+    allocation: TeacherAppAllocationRecord;
+    assignmentId: string;
+    submissionId: string;
+  }): Promise<TeacherClassroomSubmissionReviewBoundaryResult> {
+    const assignment = await this.findOwnedAssignmentForMutationBoundary({
+      allocation: params.allocation,
+      assignmentId: params.assignmentId,
+    });
+    const submission = await this.scopedPrisma.gradeSubmission.findFirst({
+      where: {
+        ...buildAssignmentSubmissionWhere({
+          allocation: params.allocation,
+          assignmentId: assignment.id,
+        }),
+        id: params.submissionId,
+      },
+      ...SUBMISSION_MUTATION_BOUNDARY_ARGS,
+    });
+
+    if (!submission) {
+      throw new NotFoundDomainException(
+        'Grade assignment submission not found',
+        {
+          assignmentId: params.assignmentId,
+          submissionId: params.submissionId,
+        },
+      );
+    }
+
+    return { assignment, submission };
+  }
+
+  async assertOwnedSubmissionAnswer(params: {
+    allocation: TeacherAppAllocationRecord;
+    assignmentId: string;
+    submissionId: string;
+    answerId: string;
+  }): Promise<void> {
+    const answer = await this.scopedPrisma.gradeSubmissionAnswer.findFirst({
+      where: {
+        id: params.answerId,
+        submissionId: params.submissionId,
+        assessmentId: params.assignmentId,
+        submission: {
+          is: buildAssignmentSubmissionWhere({
+            allocation: params.allocation,
+            assignmentId: params.assignmentId,
+          }),
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!answer) {
+      throw new NotFoundDomainException('Grade submission answer not found', {
+        assignmentId: params.assignmentId,
+        submissionId: params.submissionId,
+        answerId: params.answerId,
+      });
+    }
+  }
+
+  async assertOwnedSubmissionAnswers(params: {
+    allocation: TeacherAppAllocationRecord;
+    assignmentId: string;
+    submissionId: string;
+    answerIds: string[];
+  }): Promise<void> {
+    if (params.answerIds.length === 0) return;
+
+    const answers = await this.scopedPrisma.gradeSubmissionAnswer.findMany({
+      where: {
+        id: { in: params.answerIds },
+        submissionId: params.submissionId,
+        assessmentId: params.assignmentId,
+        submission: {
+          is: buildAssignmentSubmissionWhere({
+            allocation: params.allocation,
+            assignmentId: params.assignmentId,
+          }),
+        },
+      },
+      select: { id: true },
+    });
+    const foundIds = new Set(answers.map((answer) => answer.id));
+    const missingAnswerIds = params.answerIds.filter((id) => !foundIds.has(id));
+
+    if (missingAnswerIds.length > 0) {
+      throw new NotFoundDomainException('Grade submission answer not found', {
+        assignmentId: params.assignmentId,
+        submissionId: params.submissionId,
+        answerIds: missingAnswerIds,
+      });
+    }
   }
 
   private async findOwnedAssignmentCardOrThrow(params: {

@@ -314,8 +314,12 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
       'GET /api/v1/teacher/home',
       'GET /api/v1/teacher/my-classes',
       'GET /api/v1/teacher/my-classes/:classId',
+      'PATCH /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/answers/:answerId/review',
+      'POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/review/finalize',
+      'POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/sync-grade-item',
       'POST /api/v1/teacher/classroom/:classId/attendance/session/resolve',
       'POST /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/submit',
+      'PUT /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/answers/review',
       'PUT /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/entries',
     ]);
   });
