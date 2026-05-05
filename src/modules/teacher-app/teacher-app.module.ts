@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { RollCallModule } from '../attendance/roll-call/roll-call.module';
 import { AssessmentsModule } from '../grades/assessments/assessments.module';
+import { ReviewsModule } from '../reinforcement/reviews/reviews.module';
 import { TasksModule } from '../reinforcement/tasks/tasks.module';
 import { TeacherAppAccessService } from './access/teacher-app-access.service';
 import { TeacherAppAllocationReadAdapter } from './access/teacher-app-allocation-read.adapter';
@@ -43,9 +44,21 @@ import { GetTeacherTasksDashboardUseCase } from './tasks/application/get-teacher
 import { ListTeacherTasksUseCase } from './tasks/application/list-teacher-tasks.use-case';
 import { TeacherTasksController } from './tasks/controller/teacher-tasks.controller';
 import { TeacherTasksReadAdapter } from './tasks/infrastructure/teacher-tasks-read.adapter';
+import { ApproveTeacherTaskReviewSubmissionUseCase } from './tasks/review/application/approve-teacher-task-review-submission.use-case';
+import { GetTeacherTaskReviewSubmissionUseCase } from './tasks/review/application/get-teacher-task-review-submission.use-case';
+import { ListTeacherTaskReviewQueueUseCase } from './tasks/review/application/list-teacher-task-review-queue.use-case';
+import { RejectTeacherTaskReviewSubmissionUseCase } from './tasks/review/application/reject-teacher-task-review-submission.use-case';
+import { TeacherTaskReviewQueueController } from './tasks/review/controller/teacher-task-review-queue.controller';
+import { TeacherTaskReviewReadAdapter } from './tasks/review/infrastructure/teacher-task-review-read.adapter';
+import { GetTeacherClassXpUseCase } from './xp/application/get-teacher-class-xp.use-case';
+import { GetTeacherStudentXpUseCase } from './xp/application/get-teacher-student-xp.use-case';
+import { GetTeacherXpDashboardUseCase } from './xp/application/get-teacher-xp-dashboard.use-case';
+import { ListTeacherStudentXpHistoryUseCase } from './xp/application/list-teacher-student-xp-history.use-case';
+import { TeacherXpController } from './xp/controller/teacher-xp.controller';
+import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapter';
 
 @Module({
-  imports: [RollCallModule, AssessmentsModule, TasksModule],
+  imports: [RollCallModule, AssessmentsModule, TasksModule, ReviewsModule],
   controllers: [
     TeacherHomeController,
     TeacherMyClassesController,
@@ -54,7 +67,9 @@ import { TeacherTasksReadAdapter } from './tasks/infrastructure/teacher-tasks-re
     TeacherClassroomGradesController,
     TeacherClassroomAssignmentsController,
     TeacherClassroomSubmissionReviewController,
+    TeacherTaskReviewQueueController,
     TeacherTasksController,
+    TeacherXpController,
   ],
   providers: [
     TeacherAppAccessService,
@@ -90,6 +105,16 @@ import { TeacherTasksReadAdapter } from './tasks/infrastructure/teacher-tasks-re
     GetTeacherTaskUseCase,
     GetTeacherTaskSelectorsUseCase,
     CreateTeacherTaskUseCase,
+    TeacherTaskReviewReadAdapter,
+    ListTeacherTaskReviewQueueUseCase,
+    GetTeacherTaskReviewSubmissionUseCase,
+    ApproveTeacherTaskReviewSubmissionUseCase,
+    RejectTeacherTaskReviewSubmissionUseCase,
+    TeacherXpReadAdapter,
+    GetTeacherXpDashboardUseCase,
+    GetTeacherClassXpUseCase,
+    GetTeacherStudentXpUseCase,
+    ListTeacherStudentXpHistoryUseCase,
   ],
   exports: [TeacherAppAccessService],
 })

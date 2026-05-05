@@ -24,6 +24,7 @@ import {
   StudentStatus,
   UserStatus,
   UserType,
+  XpSourceType,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
 import request from 'supertest';
@@ -79,7 +80,15 @@ describe('Teacher App tenancy isolation (security)', () => {
   let ownTaskId: string;
   let otherTeacherTaskId: string;
   let crossSchoolTaskId: string;
+  let ownTaskSubmissionId: string;
+  let otherTeacherTaskSubmissionId: string;
+  let crossSchoolTaskSubmissionId: string;
+  let ownAcademicYearId: string;
+  let ownTermId: string;
+  let ownClassroomId: string;
+  let ownSubjectId: string;
   let ownStudentIds: string[] = [];
+  let ownEnrollmentIds: string[] = [];
   let otherTeacherStudentIds: string[] = [];
   let crossSchoolStudentIds: string[] = [];
 
@@ -95,6 +104,7 @@ describe('Teacher App tenancy isolation (security)', () => {
   const createdGradeSubmissionIds: string[] = [];
   const createdGradeQuestionIds: string[] = [];
   const createdGradeAssessmentIds: string[] = [];
+  const createdXpLedgerIds: string[] = [];
   const createdReinforcementSubmissionIds: string[] = [];
   const createdReinforcementStageIds: string[] = [];
   const createdReinforcementAssignmentIds: string[] = [];
@@ -230,7 +240,12 @@ describe('Teacher App tenancy isolation (security)', () => {
       studentCount: 2,
     });
     ownAllocationId = ownFixture.allocationId;
+    ownAcademicYearId = ownFixture.academicYearId;
+    ownTermId = ownFixture.termId;
+    ownClassroomId = ownFixture.classroomId;
+    ownSubjectId = ownFixture.subjectId;
     ownStudentIds = ownFixture.studentIds;
+    ownEnrollmentIds = ownFixture.enrollmentIds;
 
     const otherTeacherFixture = await createAcademicFixture({
       organizationId: organizationAId,
@@ -470,21 +485,53 @@ describe('Teacher App tenancy isolation (security)', () => {
       status: ReinforcementTaskStatus.UNDER_REVIEW,
       withProofFile: true,
     });
+    ownTaskSubmissionId = await findTaskSubmissionId(ownTaskId);
     otherTeacherTaskId = await createTaskFixture({
       schoolId: schoolAId,
       fixture: otherTeacherFixture,
       teacherUserId: teacherBId,
       marker: 'other-teacher-task',
       status: ReinforcementTaskStatus.NOT_COMPLETED,
-      withProofFile: false,
+      withProofFile: true,
     });
+    otherTeacherTaskSubmissionId =
+      await findTaskSubmissionId(otherTeacherTaskId);
     crossSchoolTaskId = await createTaskFixture({
       schoolId: schoolBId,
       fixture: crossSchoolFixture,
       teacherUserId: teacherCrossSchoolId,
       marker: 'cross-school-task',
       status: ReinforcementTaskStatus.NOT_COMPLETED,
-      withProofFile: false,
+      withProofFile: true,
+    });
+    crossSchoolTaskSubmissionId = await findTaskSubmissionId(crossSchoolTaskId);
+
+    await createXpLedgerFixture({
+      schoolId: schoolAId,
+      fixture: ownFixture,
+      studentIndex: 0,
+      sourceType: XpSourceType.REINFORCEMENT_TASK,
+      sourceId: `${testSuffix}-own-xp`,
+      amount: 30,
+      reason: `${testSuffix}-own-xp-reason`,
+    });
+    await createXpLedgerFixture({
+      schoolId: schoolAId,
+      fixture: otherTeacherFixture,
+      studentIndex: 0,
+      sourceType: XpSourceType.REINFORCEMENT_TASK,
+      sourceId: `${testSuffix}-other-teacher-xp`,
+      amount: 40,
+      reason: `${testSuffix}-other-xp-reason`,
+    });
+    await createXpLedgerFixture({
+      schoolId: schoolBId,
+      fixture: crossSchoolFixture,
+      studentIndex: 0,
+      sourceType: XpSourceType.REINFORCEMENT_TASK,
+      sourceId: `${testSuffix}-cross-school-xp`,
+      amount: 50,
+      reason: `${testSuffix}-cross-xp-reason`,
     });
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -535,6 +582,16 @@ describe('Teacher App tenancy isolation (security)', () => {
       });
       await prisma.attendanceSession.deleteMany({
         where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+      });
+      await prisma.xpLedger.deleteMany({
+        where: { id: { in: createdXpLedgerIds } },
+      });
+      await prisma.reinforcementSubmission.updateMany({
+        where: { id: { in: createdReinforcementSubmissionIds } },
+        data: { currentReviewId: null },
+      });
+      await prisma.reinforcementReview.deleteMany({
+        where: { submissionId: { in: createdReinforcementSubmissionIds } },
       });
       await prisma.reinforcementSubmission.deleteMany({
         where: { id: { in: createdReinforcementSubmissionIds } },
@@ -1121,8 +1178,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       .query({ studentId: ownStudentIds[0] })
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
-    expect(studentList.body.tasks.map((task: { taskId: string }) => task.taskId))
-      .toEqual([ownTaskId]);
+    expect(
+      studentList.body.tasks.map((task: { taskId: string }) => task.taskId),
+    ).toEqual([ownTaskId]);
 
     const detail = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/teacher/tasks/${ownTaskId}`)
@@ -1170,6 +1228,219 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(selectorsJson).not.toContain(otherTeacherAllocationId);
     expect(selectorsJson).not.toContain(otherTeacherStudentIds[0]);
     expectSafeTeacherTaskPayload(selectors.body);
+  });
+
+  it('teacher can read owned task review queue and submission detail safely', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const queue = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks/review-queue`)
+      .query({ classId: ownAllocationId, studentId: ownStudentIds[0] })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const queueJson = JSON.stringify(queue.body);
+
+    expect(queue.body.items).toEqual([
+      expect.objectContaining({
+        submissionId: ownTaskSubmissionId,
+        taskId: ownTaskId,
+        taskTitle: `${testSuffix}-own-task`,
+        class: expect.objectContaining({
+          classId: ownAllocationId,
+        }),
+        student: expect.objectContaining({
+          studentId: ownStudentIds[0],
+        }),
+        review: expect.objectContaining({
+          status: 'pending',
+        }),
+      }),
+    ]);
+    expect(queueJson).not.toContain(otherTeacherTaskSubmissionId);
+    expect(queueJson).not.toContain(crossSchoolTaskSubmissionId);
+    expectSafeTeacherTaskPayload(queue.body);
+
+    const detail = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks/review-queue/${ownTaskSubmissionId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const detailJson = JSON.stringify(detail.body);
+
+    expect(detail.body.submission).toMatchObject({
+      submissionId: ownTaskSubmissionId,
+      taskId: ownTaskId,
+      stage: expect.objectContaining({
+        proofType: 'image',
+        requiresApproval: true,
+      }),
+      class: expect.objectContaining({
+        classId: ownAllocationId,
+      }),
+      proof: {
+        text: `${testSuffix}-proof-text`,
+        file: expect.objectContaining({
+          id: expect.any(String),
+          downloadPath: expect.stringContaining('/api/v1/files/'),
+        }),
+      },
+      reviewHistory: [],
+    });
+    expect(detailJson).not.toContain(otherTeacherTaskSubmissionId);
+    expect(detailJson).not.toContain(crossSchoolTaskSubmissionId);
+    expectSafeTeacherTaskPayload(detail.body);
+  });
+
+  it('teacher can approve and reject owned review submissions without XP or Behavior side effects', async () => {
+    const { accessToken } = await login(teacherAEmail);
+    const approveSubmissionId = await createOwnedReviewSubmissionFixture(
+      'owned-review-approve',
+    );
+    const rejectSubmissionId = await createOwnedReviewSubmissionFixture(
+      'owned-review-reject',
+    );
+    const beforeXpLedgerCount = await prisma.xpLedger.count({
+      where: { schoolId: schoolAId },
+    });
+    const beforeBehaviorRecordCount = await prisma.behaviorRecord.count({
+      where: { schoolId: schoolAId },
+    });
+    const beforeBehaviorPointLedgerCount =
+      await prisma.behaviorPointLedger.count({
+        where: { schoolId: schoolAId },
+      });
+
+    const approved = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${approveSubmissionId}/approve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ comment: 'Great evidence' })
+      .expect(201);
+    expect(approved.body.submission).toMatchObject({
+      submissionId: approveSubmissionId,
+      status: 'approved',
+      review: expect.objectContaining({
+        status: 'approved',
+        comment: 'Great evidence',
+      }),
+    });
+    expectSafeTeacherTaskPayload(approved.body);
+
+    const rejected = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${rejectSubmissionId}/reject`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reason: 'Needs clearer proof' })
+      .expect(201);
+    expect(rejected.body.submission).toMatchObject({
+      submissionId: rejectSubmissionId,
+      status: 'rejected',
+      review: expect.objectContaining({
+        status: 'rejected',
+        comment: 'Needs clearer proof',
+      }),
+    });
+    expectSafeTeacherTaskPayload(rejected.body);
+
+    await expect(
+      prisma.xpLedger.count({ where: { schoolId: schoolAId } }),
+    ).resolves.toBe(beforeXpLedgerCount);
+    await expect(
+      prisma.behaviorRecord.count({ where: { schoolId: schoolAId } }),
+    ).resolves.toBe(beforeBehaviorRecordCount);
+    await expect(
+      prisma.behaviorPointLedger.count({ where: { schoolId: schoolAId } }),
+    ).resolves.toBe(beforeBehaviorPointLedgerCount);
+  });
+
+  it('teacher can read XP dashboard, class, student, and history from XP ledger only', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const dashboard = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/xp/dashboard`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const dashboardJson = JSON.stringify(dashboard.body);
+
+    expect(dashboard.body.summary).toMatchObject({
+      studentsCount: 2,
+      totalXp: 30,
+      averageXp: 15,
+    });
+    expect(dashboard.body.byClass).toEqual([
+      expect.objectContaining({
+        classId: ownAllocationId,
+        studentsCount: 2,
+        totalXp: 30,
+      }),
+    ]);
+    expect(dashboardJson).toContain(`${testSuffix}-own-xp-reason`);
+    expect(dashboardJson).not.toContain(`${testSuffix}-other-xp-reason`);
+    expect(dashboardJson).not.toContain(`${testSuffix}-cross-xp-reason`);
+    expectSafeTeacherTaskPayload(dashboard.body);
+
+    const classXp = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/xp/classes/${ownAllocationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(classXp.body).toMatchObject({
+      classId: ownAllocationId,
+      subjectName: `${testSuffix}-own-subject`,
+      summary: expect.objectContaining({
+        totalXp: 30,
+        studentsCount: 2,
+      }),
+      students: expect.arrayContaining([
+        expect.objectContaining({
+          studentId: ownStudentIds[0],
+          totalXp: 30,
+          rank: null,
+          tier: null,
+          level: null,
+        }),
+      ]),
+    });
+    expectSafeTeacherTaskPayload(classXp.body);
+
+    const studentXp = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/xp/students/${ownStudentIds[0]}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(studentXp.body).toMatchObject({
+      studentId: ownStudentIds[0],
+      totalXp: 30,
+      rank: null,
+      tier: null,
+      level: null,
+      recentActivity: [
+        expect.objectContaining({
+          amount: 30,
+          sourceType: 'reinforcement_task',
+          reason: `${testSuffix}-own-xp-reason`,
+        }),
+      ],
+    });
+    expectSafeTeacherTaskPayload(studentXp.body);
+
+    const history = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/xp/students/${ownStudentIds[0]}/history`)
+      .query({ source: 'reinforcement_task' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(history.body).toMatchObject({
+      studentId: ownStudentIds[0],
+      items: [
+        expect.objectContaining({
+          amount: 30,
+          reason: `${testSuffix}-own-xp-reason`,
+        }),
+      ],
+      pagination: expect.objectContaining({
+        total: 1,
+      }),
+    });
+    expectSafeTeacherTaskPayload(history.body);
   });
 
   it('teacher can create owned class and student tasks without XP or Behavior side effects', async () => {
@@ -1673,6 +1944,59 @@ describe('Teacher App tenancy isolation (security)', () => {
     }
   });
 
+  it('teacher cannot see or mutate same-school other-teacher review or XP targets', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const queue = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks/review-queue`)
+      .query({ classId: otherTeacherAllocationId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(queue.body?.error?.code).toBe('teacher_app.allocation.not_found');
+
+    const detail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${otherTeacherTaskSubmissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(detail.body?.error?.code).toBe('not_found');
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${otherTeacherTaskSubmissionId}/approve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ comment: 'Nope' })
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${otherTeacherTaskSubmissionId}/reject`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reason: 'Nope' })
+      .expect(404);
+
+    const classXp = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/xp/classes/${otherTeacherAllocationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(classXp.body?.error?.code).toBe('teacher_app.allocation.not_found');
+
+    const studentXp = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/xp/students/${otherTeacherStudentIds[0]}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    const history = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/xp/students/${otherTeacherStudentIds[0]}/history`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(studentXp.body?.error?.code).toBe('not_found');
+    expect(history.body?.error?.code).toBe('not_found');
+  });
+
   it('teacher cannot access a cross-school class id', async () => {
     const { accessToken } = await login(teacherAEmail);
 
@@ -1728,6 +2052,59 @@ describe('Teacher App tenancy isolation (security)', () => {
         'teacher_app.allocation.not_found',
       );
     }
+  });
+
+  it('teacher cannot see or mutate cross-school review or XP targets', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const queue = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks/review-queue`)
+      .query({ classId: crossSchoolAllocationId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(queue.body?.error?.code).toBe('teacher_app.allocation.not_found');
+
+    const detail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${crossSchoolTaskSubmissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(detail.body?.error?.code).toBe('not_found');
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${crossSchoolTaskSubmissionId}/approve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ comment: 'Nope' })
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${crossSchoolTaskSubmissionId}/reject`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reason: 'Nope' })
+      .expect(404);
+
+    const classXp = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/xp/classes/${crossSchoolAllocationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(classXp.body?.error?.code).toBe('teacher_app.allocation.not_found');
+
+    const studentXp = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/xp/students/${crossSchoolStudentIds[0]}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    const history = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/xp/students/${crossSchoolStudentIds[0]}/history`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(studentXp.body?.error?.code).toBe('not_found');
+    expect(history.body?.error?.code).toBe('not_found');
   });
 
   it('teacher cannot read a cross-school guessed attendance session', async () => {
@@ -1873,7 +2250,9 @@ describe('Teacher App tenancy isolation (security)', () => {
           `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/answers/review`,
         )
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ reviews: [{ answerId: ownAssignmentAnswerId, awardedPoints: 1 }] })
+        .send({
+          reviews: [{ answerId: ownAssignmentAnswerId, awardedPoints: 1 }],
+        })
         .expect(403);
       await request(app.getHttpServer())
         .post(
@@ -1912,6 +2291,46 @@ describe('Teacher App tenancy isolation (security)', () => {
             classIds: [ownAllocationId],
           }),
         )
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/tasks/review-queue`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${ownTaskSubmissionId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${ownTaskSubmissionId}/approve`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ comment: 'Denied' })
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/tasks/review-queue/${ownTaskSubmissionId}/reject`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ reason: 'Denied' })
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/xp/dashboard`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/xp/classes/${ownAllocationId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/xp/students/${ownStudentIds[0]}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/xp/students/${ownStudentIds[0]}/history`)
+        .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
     }
   });
@@ -1999,7 +2418,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       .send({})
       .expect(404);
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/teacher/tasks/${ownTaskId}/stages/stage-1/approve`)
+      .post(
+        `${GLOBAL_PREFIX}/teacher/tasks/${ownTaskId}/stages/stage-1/approve`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({})
       .expect(404);
@@ -2503,8 +2924,8 @@ describe('Teacher App tenancy isolation (security)', () => {
         data: {
           schoolId: params.schoolId,
           uploaderId: params.teacherUserId,
-          bucket: `${testSuffix}-private-bucket`,
-          objectKey: `${testSuffix}-raw-storage-key`,
+          bucket: `${testSuffix}-${params.marker}-private-bucket`,
+          objectKey: `${testSuffix}-${params.marker}-raw-storage-key`,
           originalName: `${params.marker}-proof.png`,
           mimeType: 'image/png',
           sizeBytes: BigInt(1234),
@@ -2534,6 +2955,76 @@ describe('Teacher App tenancy isolation (security)', () => {
     }
 
     return task.id;
+  }
+
+  async function createOwnedReviewSubmissionFixture(
+    marker: string,
+  ): Promise<string> {
+    const taskId = await createTaskFixture({
+      schoolId: schoolAId,
+      fixture: {
+        academicYearId: ownAcademicYearId,
+        termId: ownTermId,
+        classroomId: ownClassroomId,
+        subjectId: ownSubjectId,
+        studentIds: ownStudentIds,
+        enrollmentIds: ownEnrollmentIds,
+      },
+      teacherUserId: teacherAId,
+      marker,
+      status: ReinforcementTaskStatus.UNDER_REVIEW,
+      withProofFile: true,
+    });
+
+    return findTaskSubmissionId(taskId);
+  }
+
+  async function findTaskSubmissionId(taskId: string): Promise<string> {
+    const submission = await prisma.reinforcementSubmission.findFirst({
+      where: { taskId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+
+    if (!submission) {
+      throw new Error(`Expected reinforcement submission for task ${taskId}`);
+    }
+
+    return submission.id;
+  }
+
+  async function createXpLedgerFixture(params: {
+    schoolId: string;
+    fixture: {
+      academicYearId: string;
+      termId: string;
+      studentIds: string[];
+      enrollmentIds: string[];
+    };
+    studentIndex: number;
+    sourceType: XpSourceType;
+    sourceId: string;
+    amount: number;
+    reason: string;
+  }): Promise<string> {
+    const ledger = await prisma.xpLedger.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.fixture.academicYearId,
+        termId: params.fixture.termId,
+        studentId: params.fixture.studentIds[params.studentIndex],
+        enrollmentId: params.fixture.enrollmentIds[params.studentIndex],
+        sourceType: params.sourceType,
+        sourceId: params.sourceId,
+        amount: params.amount,
+        reason: params.reason,
+        occurredAt: new Date('2026-09-17T10:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdXpLedgerIds.push(ledger.id);
+
+    return ledger.id;
   }
 
   function teacherTaskCreatePayload(params?: {
@@ -2613,6 +3104,8 @@ describe('Teacher App tenancy isolation (security)', () => {
       'objectKey',
       'raw-storage-key',
       'private-bucket',
+      'actorUserId',
+      'metadata',
       'BehaviorPointLedger',
       'behaviorPoint',
     ]) {

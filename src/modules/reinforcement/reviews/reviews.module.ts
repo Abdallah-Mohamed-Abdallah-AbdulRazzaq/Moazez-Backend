@@ -19,5 +19,9 @@ import { ReinforcementReviewsRepository } from './infrastructure/reinforcement-r
     ApproveReinforcementSubmissionUseCase,
     RejectReinforcementSubmissionUseCase,
   ],
+  exports: [
+    ApproveReinforcementSubmissionUseCase,
+    RejectReinforcementSubmissionUseCase,
+  ],
 })
 export class ReviewsModule {}
