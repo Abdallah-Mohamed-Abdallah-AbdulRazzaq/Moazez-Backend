@@ -21,5 +21,6 @@ import { ReinforcementTasksRepository } from './infrastructure/reinforcement-tas
     DuplicateReinforcementTaskUseCase,
     CancelReinforcementTaskUseCase,
   ],
+  exports: [CreateReinforcementTaskUseCase],
 })
 export class TasksModule {}

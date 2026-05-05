@@ -1,13 +1,22 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
+  IsDateString,
   IsEnum,
   IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 
 export enum TeacherTaskStatusQueryValue {
@@ -21,6 +30,22 @@ export enum TeacherTaskSourceQueryValue {
   TEACHER = 'teacher',
   PARENT = 'parent',
   SYSTEM = 'system',
+}
+
+export enum TeacherTaskCreateProofType {
+  TEXT = 'text',
+  FILE = 'file',
+  IMAGE = 'image',
+  DOCUMENT = 'document',
+  NONE = 'none',
+}
+
+export enum TeacherTaskCreateRewardType {
+  XP = 'xp',
+  POINTS = 'points',
+  MORAL = 'moral',
+  FINANCIAL = 'financial',
+  NONE = 'none',
 }
 
 export class TeacherTaskParamsDto {
@@ -62,6 +87,111 @@ export class ListTeacherTasksQueryDto {
   @Min(1)
   @Max(100)
   limit?: number;
+}
+
+export class TeacherTaskCreateStageDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  order?: number | null;
+
+  @IsOptional()
+  @IsEnum(TeacherTaskCreateProofType)
+  proofType?: TeacherTaskCreateProofType;
+
+  @IsOptional()
+  @IsBoolean()
+  requiresApproval?: boolean | null;
+}
+
+export class TeacherTaskCreateRewardDto {
+  @IsEnum(TeacherTaskCreateRewardType)
+  type!: TeacherTaskCreateRewardType;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100000)
+  value?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  label?: string | null;
+}
+
+export class TeacherTaskCreateDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string | null;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @IsUUID(undefined, { each: true })
+  classIds!: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsUUID(undefined, { each: true })
+  studentIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => TeacherTaskCreateStageDto)
+  stages?: TeacherTaskCreateStageDto[];
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => TeacherTaskCreateRewardDto)
+  reward?: TeacherTaskCreateRewardDto | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  rewardValue?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  subjectName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  @IsEnum(TeacherTaskCreateRewardType)
+  rewardType?: TeacherTaskCreateRewardType | null;
+
+  @IsOptional()
+  @IsDateString()
+  dueAt?: string | null;
+
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string | null;
 }
 
 export class TeacherTaskSummaryDto {

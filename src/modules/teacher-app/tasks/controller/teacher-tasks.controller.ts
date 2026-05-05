@@ -1,11 +1,18 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { CreateTeacherTaskUseCase } from '../application/create-teacher-task.use-case';
 import { GetTeacherTaskSelectorsUseCase } from '../application/get-teacher-task-selectors.use-case';
 import { GetTeacherTaskUseCase } from '../application/get-teacher-task.use-case';
 import { GetTeacherTasksDashboardUseCase } from '../application/get-teacher-tasks-dashboard.use-case';
 import { ListTeacherTasksUseCase } from '../application/list-teacher-tasks.use-case';
 import {
   ListTeacherTasksQueryDto,
+  TeacherTaskCreateDto,
   TeacherTaskDashboardResponseDto,
   TeacherTaskDetailResponseDto,
   TeacherTaskParamsDto,
@@ -22,6 +29,7 @@ export class TeacherTasksController {
     private readonly listTeacherTasksUseCase: ListTeacherTasksUseCase,
     private readonly getTeacherTaskUseCase: GetTeacherTaskUseCase,
     private readonly getTeacherTaskSelectorsUseCase: GetTeacherTaskSelectorsUseCase,
+    private readonly createTeacherTaskUseCase: CreateTeacherTaskUseCase,
   ) {}
 
   @Get('dashboard')
@@ -42,6 +50,14 @@ export class TeacherTasksController {
   @ApiOkResponse({ type: TeacherTaskSelectorsResponseDto })
   getSelectors(): Promise<TeacherTaskSelectorsResponseDto> {
     return this.getTeacherTaskSelectorsUseCase.execute();
+  }
+
+  @Post()
+  @ApiCreatedResponse({ type: TeacherTaskDetailResponseDto })
+  createTask(
+    @Body() dto: TeacherTaskCreateDto,
+  ): Promise<TeacherTaskDetailResponseDto> {
+    return this.createTeacherTaskUseCase.execute(dto);
   }
 
   @Get(':taskId')

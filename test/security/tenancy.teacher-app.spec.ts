@@ -1172,6 +1172,142 @@ describe('Teacher App tenancy isolation (security)', () => {
     expectSafeTeacherTaskPayload(selectors.body);
   });
 
+  it('teacher can create owned class and student tasks without XP or Behavior side effects', async () => {
+    const { accessToken } = await login(teacherAEmail);
+    const beforeXpLedgerCount = await prisma.xpLedger.count({
+      where: { schoolId: schoolAId },
+    });
+    const beforeBehaviorRecordCount = await prisma.behaviorRecord.count({
+      where: { schoolId: schoolAId },
+    });
+    const beforeBehaviorPointLedgerCount =
+      await prisma.behaviorPointLedger.count({
+        where: { schoolId: schoolAId },
+      });
+
+    const classTask = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/tasks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        teacherTaskCreatePayload({
+          title: `${testSuffix}-created-class-task`,
+          classIds: [ownAllocationId],
+          reward: { type: 'xp', value: 10 },
+        }),
+      )
+      .expect(201);
+    await trackCreatedReinforcementTaskTree(classTask.body.task.taskId);
+
+    expect(classTask.body.task).toMatchObject({
+      title: `${testSuffix}-created-class-task`,
+      status: 'pending',
+      source: 'teacher',
+      target: expect.objectContaining({
+        type: 'class',
+        classId: ownAllocationId,
+        studentsCount: 2,
+      }),
+      reward: expect.objectContaining({
+        type: 'xp',
+        value: 10,
+      }),
+    });
+    expectSafeTeacherTaskPayload(classTask.body);
+
+    const studentTask = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/tasks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        teacherTaskCreatePayload({
+          title: `${testSuffix}-created-student-task`,
+          classIds: [ownAllocationId],
+          studentIds: [ownStudentIds[1]],
+          reward: { type: 'none' },
+        }),
+      )
+      .expect(201);
+    await trackCreatedReinforcementTaskTree(studentTask.body.task.taskId);
+
+    expect(studentTask.body.task).toMatchObject({
+      title: `${testSuffix}-created-student-task`,
+      source: 'teacher',
+      target: expect.objectContaining({
+        type: 'student',
+        classId: ownAllocationId,
+        studentId: ownStudentIds[1],
+        studentsCount: 1,
+      }),
+    });
+    expectSafeTeacherTaskPayload(studentTask.body);
+
+    await expect(
+      prisma.xpLedger.count({ where: { schoolId: schoolAId } }),
+    ).resolves.toBe(beforeXpLedgerCount);
+    await expect(
+      prisma.behaviorRecord.count({ where: { schoolId: schoolAId } }),
+    ).resolves.toBe(beforeBehaviorRecordCount);
+    await expect(
+      prisma.behaviorPointLedger.count({ where: { schoolId: schoolAId } }),
+    ).resolves.toBe(beforeBehaviorPointLedgerCount);
+  });
+
+  it('teacher task create rejects other-teacher, cross-school, and outside-student targets', async () => {
+    const { accessToken } = await login(teacherAEmail);
+    const beforeTaskCount = await prisma.reinforcementTask.count({
+      where: { schoolId: schoolAId },
+    });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/tasks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        teacherTaskCreatePayload({
+          classIds: [otherTeacherAllocationId],
+          title: `${testSuffix}-rejected-other-class-task`,
+        }),
+      )
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/tasks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        teacherTaskCreatePayload({
+          classIds: [crossSchoolAllocationId],
+          title: `${testSuffix}-rejected-cross-class-task`,
+        }),
+      )
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/tasks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        teacherTaskCreatePayload({
+          classIds: [ownAllocationId],
+          studentIds: [otherTeacherStudentIds[0]],
+          title: `${testSuffix}-rejected-other-student-task`,
+        }),
+      )
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/tasks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        teacherTaskCreatePayload({
+          classIds: [ownAllocationId],
+          studentIds: [crossSchoolStudentIds[0]],
+          title: `${testSuffix}-rejected-cross-student-task`,
+        }),
+      )
+      .expect(404);
+
+    await expect(
+      prisma.reinforcementTask.count({ where: { schoolId: schoolAId } }),
+    ).resolves.toBe(beforeTaskCount);
+  });
+
   it('teacher cannot read same-school other-teacher or cross-school task data', async () => {
     const { accessToken } = await login(teacherAEmail);
 
@@ -1767,6 +1903,16 @@ describe('Teacher App tenancy isolation (security)', () => {
         .get(`${GLOBAL_PREFIX}/teacher/tasks/${ownTaskId}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/teacher/tasks`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(
+          teacherTaskCreatePayload({
+            title: `${testSuffix}-non-teacher-denied-task`,
+            classIds: [ownAllocationId],
+          }),
+        )
+        .expect(403);
     }
   });
 
@@ -1835,14 +1981,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       .expect(404);
   });
 
-  it('does not register Teacher Tasks mutation or XP mutation endpoints', async () => {
+  it('does not register deferred Teacher Tasks mutation or XP mutation endpoints', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/teacher/tasks`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({})
-      .expect(404);
     await request(app.getHttpServer())
       .patch(`${GLOBAL_PREFIX}/teacher/tasks/${ownTaskId}`)
       .set('Authorization', `Bearer ${accessToken}`)
@@ -2393,6 +2534,73 @@ describe('Teacher App tenancy isolation (security)', () => {
     }
 
     return task.id;
+  }
+
+  function teacherTaskCreatePayload(params?: {
+    title?: string;
+    classIds?: string[];
+    studentIds?: string[];
+    reward?: { type: 'xp' | 'points' | 'none'; value?: number };
+  }): Record<string, unknown> {
+    return {
+      title: params?.title ?? `${testSuffix}-teacher-created-task`,
+      description: `${testSuffix}-teacher-created-task-description`,
+      classIds: params?.classIds ?? [ownAllocationId],
+      ...(params?.studentIds ? { studentIds: params.studentIds } : {}),
+      stages: [
+        {
+          title: `${testSuffix}-teacher-created-stage`,
+          description: `${testSuffix}-teacher-created-stage-description`,
+          order: 1,
+          proofType: 'file',
+        },
+      ],
+      reward: params?.reward ?? { type: 'none' },
+      dueAt: '2026-09-20T00:00:00.000Z',
+    };
+  }
+
+  async function trackCreatedReinforcementTaskTree(
+    taskId: string,
+  ): Promise<void> {
+    const [targets, stages, assignments, submissions] = await Promise.all([
+      prisma.reinforcementTaskTarget.findMany({
+        where: { taskId },
+        select: { id: true },
+      }),
+      prisma.reinforcementTaskStage.findMany({
+        where: { taskId },
+        select: { id: true },
+      }),
+      prisma.reinforcementAssignment.findMany({
+        where: { taskId },
+        select: { id: true },
+      }),
+      prisma.reinforcementSubmission.findMany({
+        where: { taskId },
+        select: { id: true },
+      }),
+    ]);
+
+    pushUnique(createdReinforcementTaskIds, taskId);
+    for (const target of targets) {
+      pushUnique(createdReinforcementTargetIds, target.id);
+    }
+    for (const stage of stages) {
+      pushUnique(createdReinforcementStageIds, stage.id);
+    }
+    for (const assignment of assignments) {
+      pushUnique(createdReinforcementAssignmentIds, assignment.id);
+    }
+    for (const submission of submissions) {
+      pushUnique(createdReinforcementSubmissionIds, submission.id);
+    }
+  }
+
+  function pushUnique(values: string[], value: string): void {
+    if (!values.includes(value)) {
+      values.push(value);
+    }
   }
 
   function expectSafeTeacherTaskPayload(value: unknown): void {

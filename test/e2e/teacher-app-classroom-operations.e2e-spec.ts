@@ -485,6 +485,7 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
       'POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/sync-grade-item',
       'POST /api/v1/teacher/classroom/:classId/attendance/session/resolve',
       'POST /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/submit',
+      'POST /api/v1/teacher/tasks',
       'PUT /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/answers/review',
       'PUT /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/entries',
     ]);

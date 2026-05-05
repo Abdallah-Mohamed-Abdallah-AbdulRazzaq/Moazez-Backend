@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { RollCallModule } from '../attendance/roll-call/roll-call.module';
 import { AssessmentsModule } from '../grades/assessments/assessments.module';
+import { TasksModule } from '../reinforcement/tasks/tasks.module';
 import { TeacherAppAccessService } from './access/teacher-app-access.service';
 import { TeacherAppAllocationReadAdapter } from './access/teacher-app-allocation-read.adapter';
 import { GetTeacherClassroomAttendanceRosterUseCase } from './classroom/attendance/application/get-teacher-classroom-attendance-roster.use-case';
@@ -35,6 +36,7 @@ import { GetTeacherClassDetailUseCase } from './my-classes/application/get-teach
 import { ListTeacherClassesUseCase } from './my-classes/application/list-teacher-classes.use-case';
 import { TeacherMyClassesController } from './my-classes/controller/teacher-my-classes.controller';
 import { TeacherAppCompositionReadAdapter } from './shared/infrastructure/teacher-app-composition-read.adapter';
+import { CreateTeacherTaskUseCase } from './tasks/application/create-teacher-task.use-case';
 import { GetTeacherTaskSelectorsUseCase } from './tasks/application/get-teacher-task-selectors.use-case';
 import { GetTeacherTaskUseCase } from './tasks/application/get-teacher-task.use-case';
 import { GetTeacherTasksDashboardUseCase } from './tasks/application/get-teacher-tasks-dashboard.use-case';
@@ -43,7 +45,7 @@ import { TeacherTasksController } from './tasks/controller/teacher-tasks.control
 import { TeacherTasksReadAdapter } from './tasks/infrastructure/teacher-tasks-read.adapter';
 
 @Module({
-  imports: [RollCallModule, AssessmentsModule],
+  imports: [RollCallModule, AssessmentsModule, TasksModule],
   controllers: [
     TeacherHomeController,
     TeacherMyClassesController,
@@ -87,6 +89,7 @@ import { TeacherTasksReadAdapter } from './tasks/infrastructure/teacher-tasks-re
     ListTeacherTasksUseCase,
     GetTeacherTaskUseCase,
     GetTeacherTaskSelectorsUseCase,
+    CreateTeacherTaskUseCase,
   ],
   exports: [TeacherAppAccessService],
 })
