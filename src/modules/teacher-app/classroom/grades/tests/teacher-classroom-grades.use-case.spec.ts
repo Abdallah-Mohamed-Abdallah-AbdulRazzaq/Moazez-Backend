@@ -1,4 +1,5 @@
 import {
+  GradeAnswerCorrectionStatus,
   GradeAssessmentApprovalStatus,
   GradeAssessmentDeliveryMode,
   GradeAssessmentType,
@@ -13,8 +14,11 @@ import {
   TeacherAppRequiredTeacherException,
 } from '../../../shared/teacher-app.errors';
 import type { TeacherAppAllocationRecord } from '../../../shared/teacher-app.types';
+import { GetTeacherClassroomAssignmentUseCase } from '../application/get-teacher-classroom-assignment.use-case';
+import { GetTeacherClassroomAssignmentSubmissionUseCase } from '../application/get-teacher-classroom-assignment-submission.use-case';
 import { GetTeacherClassroomAssessmentUseCase } from '../application/get-teacher-classroom-assessment.use-case';
 import { GetTeacherClassroomGradebookUseCase } from '../application/get-teacher-classroom-gradebook.use-case';
+import { ListTeacherClassroomAssignmentSubmissionsUseCase } from '../application/list-teacher-classroom-assignment-submissions.use-case';
 import { ListTeacherClassroomAssignmentsUseCase } from '../application/list-teacher-classroom-assignments.use-case';
 import { ListTeacherClassroomAssessmentsUseCase } from '../application/list-teacher-classroom-assessments.use-case';
 import { TeacherClassroomGradesReadAdapter } from '../infrastructure/teacher-classroom-grades-read.adapter';
@@ -34,6 +38,13 @@ describe('Teacher classroom grades use-cases', () => {
       expect(gradesAdapter.getAssessmentDetail).not.toHaveBeenCalled();
       expect(gradesAdapter.getGradebook).not.toHaveBeenCalled();
       expect(gradesAdapter.listAssignments).not.toHaveBeenCalled();
+      expect(gradesAdapter.findOwnedAssignmentDetail).not.toHaveBeenCalled();
+      expect(
+        gradesAdapter.listOwnedAssignmentSubmissions,
+      ).not.toHaveBeenCalled();
+      expect(
+        gradesAdapter.findOwnedAssignmentSubmissionDetail,
+      ).not.toHaveBeenCalled();
     }
   });
 
@@ -196,6 +207,162 @@ describe('Teacher classroom grades use-cases', () => {
     expect(json).not.toContain('schoolId');
   });
 
+  it('returns safe assignment detail for an owned GradeAssessment assignment', async () => {
+    const { useCases, gradesAdapter } = createUseCases();
+
+    const result = await useCases.getAssignment.execute(
+      'allocation-1',
+      'assignment-1',
+    );
+    const json = JSON.stringify(result);
+
+    expect(gradesAdapter.findOwnedAssignmentDetail).toHaveBeenCalledWith({
+      allocation: expect.objectContaining({
+        classroomId: 'classroom-1',
+        subjectId: 'subject-1',
+        termId: 'term-1',
+      }),
+      assignmentId: 'assignment-1',
+    });
+    expect(result.assignment).toMatchObject({
+      assignmentId: 'assignment-1',
+      source: 'grades_assessment',
+      title: 'Worksheet',
+      description: null,
+      type: 'assignment',
+      status: 'approved',
+      maxScore: 10,
+      dueAt: null,
+      submissionsCount: 1,
+      gradedCount: 1,
+      pendingReviewCount: 1,
+      questionSummary: {
+        available: true,
+        questionsCount: 1,
+        requiredQuestionsCount: 1,
+        totalPoints: 10,
+        types: ['short_answer'],
+      },
+    });
+    expect(json).not.toContain('homeworkId');
+    expect(json).not.toContain('answerKey');
+    expect(json).not.toContain('metadata');
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('scheduleId');
+
+    gradesAdapter.findOwnedAssignmentDetail.mockRejectedValueOnce(
+      new NotFoundDomainException('Grade assignment not found', {
+        assignmentId: 'other-assignment',
+      }),
+    );
+    await expect(
+      useCases.getAssignment.execute('allocation-1', 'other-assignment'),
+    ).rejects.toMatchObject({ code: 'not_found' });
+  });
+
+  it('lists assignment submissions from owned classroom students only', async () => {
+    const { useCases, gradesAdapter } = createUseCases();
+
+    const result = await useCases.listAssignmentSubmissions.execute(
+      'allocation-1',
+      'assignment-1',
+      { status: 'submitted', studentId: 'student-1', search: 'Mona' },
+    );
+    const json = JSON.stringify(result);
+
+    expect(gradesAdapter.listOwnedAssignmentSubmissions).toHaveBeenCalledWith({
+      allocation: expect.objectContaining({ id: 'allocation-1' }),
+      assignmentId: 'assignment-1',
+      filters: {
+        status: 'submitted',
+        studentId: 'student-1',
+        search: 'Mona',
+      },
+    });
+    expect(result.submissions).toEqual([
+      expect.objectContaining({
+        submissionId: 'submission-1',
+        status: 'submitted',
+        student: {
+          studentId: 'student-1',
+          displayName: 'Mona Ahmed',
+        },
+        score: null,
+        maxScore: 10,
+        answersCount: 1,
+        reviewedAnswersCount: 0,
+      }),
+    ]);
+    expect(json).not.toContain('student-outside');
+    expect(json).not.toContain('answerText');
+    expect(json).not.toContain('answerJson');
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('scheduleId');
+  });
+
+  it('returns safe assignment submission detail without answer keys', async () => {
+    const { useCases, gradesAdapter } = createUseCases();
+
+    const result = await useCases.getAssignmentSubmission.execute(
+      'allocation-1',
+      'assignment-1',
+      'submission-1',
+    );
+    const json = JSON.stringify(result);
+
+    expect(
+      gradesAdapter.findOwnedAssignmentSubmissionDetail,
+    ).toHaveBeenCalledWith({
+      allocation: expect.objectContaining({ id: 'allocation-1' }),
+      assignmentId: 'assignment-1',
+      submissionId: 'submission-1',
+    });
+    expect(result.submission).toMatchObject({
+      submissionId: 'submission-1',
+      status: 'submitted',
+      student: {
+        studentId: 'student-1',
+        displayName: 'Mona Ahmed',
+      },
+      answers: [
+        {
+          answerId: 'answer-1',
+          questionId: 'question-1',
+          prompt: 'Solve it',
+          studentAnswer: {
+            text: 'Student visible answer',
+            json: null,
+            selectedOptions: [],
+          },
+          correctionStatus: 'pending',
+          score: null,
+          maxScore: 10,
+        },
+      ],
+    });
+    expect(json).toContain('Student visible answer');
+    expect(json).not.toContain('student-outside');
+    expect(json).not.toContain('answerKey');
+    expect(json).not.toContain('correctAnswer');
+    expect(json).not.toContain('isCorrect');
+    expect(json).not.toContain('metadata');
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('scheduleId');
+
+    gradesAdapter.findOwnedAssignmentSubmissionDetail.mockRejectedValueOnce(
+      new NotFoundDomainException('Grade assignment submission not found', {
+        submissionId: 'other-submission',
+      }),
+    );
+    await expect(
+      useCases.getAssignmentSubmission.execute(
+        'allocation-1',
+        'assignment-1',
+        'other-submission',
+      ),
+    ).rejects.toMatchObject({ code: 'not_found' });
+  });
+
   it('rejects same-school and cross-school unowned allocations before grades access', async () => {
     for (const classId of ['same-school-other-teacher', 'cross-school']) {
       const { useCases, accessService, gradesAdapter } = createUseCases();
@@ -220,6 +387,9 @@ function createUseCaseScenarios(): Array<{
     | 'getAssessmentDetail'
     | 'getGradebook'
     | 'listAssignments'
+    | 'findOwnedAssignmentDetail'
+    | 'listOwnedAssignmentSubmissions'
+    | 'findOwnedAssignmentSubmissionDetail'
   >;
   execute: (
     useCases: ReturnType<typeof createUseCases>['useCases'],
@@ -245,6 +415,29 @@ function createUseCaseScenarios(): Array<{
       execute: (useCases) =>
         useCases.listAssignments.execute('allocation-1', {}),
     },
+    {
+      adapterMethod: 'findOwnedAssignmentDetail',
+      execute: (useCases) =>
+        useCases.getAssignment.execute('allocation-1', 'assignment-1'),
+    },
+    {
+      adapterMethod: 'listOwnedAssignmentSubmissions',
+      execute: (useCases) =>
+        useCases.listAssignmentSubmissions.execute(
+          'allocation-1',
+          'assignment-1',
+          {},
+        ),
+    },
+    {
+      adapterMethod: 'findOwnedAssignmentSubmissionDetail',
+      execute: (useCases) =>
+        useCases.getAssignmentSubmission.execute(
+          'allocation-1',
+          'assignment-1',
+          'submission-1',
+        ),
+    },
   ];
 }
 
@@ -254,6 +447,9 @@ function createUseCases(): {
     getAssessment: GetTeacherClassroomAssessmentUseCase;
     getGradebook: GetTeacherClassroomGradebookUseCase;
     listAssignments: ListTeacherClassroomAssignmentsUseCase;
+    getAssignment: GetTeacherClassroomAssignmentUseCase;
+    listAssignmentSubmissions: ListTeacherClassroomAssignmentSubmissionsUseCase;
+    getAssignmentSubmission: GetTeacherClassroomAssignmentSubmissionUseCase;
   };
   accessService: jest.Mocked<TeacherAppAccessService>;
   gradesAdapter: jest.Mocked<TeacherClassroomGradesReadAdapter>;
@@ -321,9 +517,37 @@ function createUseCases(): {
           }),
         ],
         gradedCounts: new Map([['assignment-1', 1]]),
+        submissionCounts: new Map([['assignment-1', 0]]),
         page: 1,
         limit: 20,
         total: 1,
+      }),
+    ),
+    findOwnedAssignmentDetail: jest.fn(() =>
+      Promise.resolve({
+        assignment: assignmentDetailFixture(),
+        itemStatusCounts: new Map([[GradeItemStatus.ENTERED, 1]]),
+        submissionStatusCounts: new Map([[GradeSubmissionStatus.SUBMITTED, 1]]),
+      }),
+    ),
+    listOwnedAssignmentSubmissions: jest.fn(() =>
+      Promise.resolve({
+        assignment: assessmentFixture({
+          id: 'assignment-1',
+          titleEn: 'Worksheet',
+          type: GradeAssessmentType.ASSIGNMENT,
+          maxScore: 10,
+        }),
+        submissions: [assignmentSubmissionListFixture()],
+        page: 1,
+        limit: 20,
+        total: 1,
+      }),
+    ),
+    findOwnedAssignmentSubmissionDetail: jest.fn(() =>
+      Promise.resolve({
+        assignment: assignmentDetailFixture(),
+        submission: assignmentSubmissionDetailFixture(),
       }),
     ),
   } as unknown as jest.Mocked<TeacherClassroomGradesReadAdapter>;
@@ -346,6 +570,20 @@ function createUseCases(): {
         accessService,
         gradesAdapter,
       ),
+      getAssignment: new GetTeacherClassroomAssignmentUseCase(
+        accessService,
+        gradesAdapter,
+      ),
+      listAssignmentSubmissions:
+        new ListTeacherClassroomAssignmentSubmissionsUseCase(
+          accessService,
+          gradesAdapter,
+        ),
+      getAssignmentSubmission:
+        new GetTeacherClassroomAssignmentSubmissionUseCase(
+          accessService,
+          gradesAdapter,
+        ),
     },
     accessService,
     gradesAdapter,
@@ -407,10 +645,86 @@ function assessmentDetailFixture() {
         id: 'question-1',
         type: GradeQuestionType.SHORT_ANSWER,
         prompt: 'Explain the idea',
+        promptAr: null,
         points: 5,
         sortOrder: 1,
         required: true,
         _count: { options: 0 },
+      },
+    ],
+  };
+}
+
+function assignmentDetailFixture() {
+  return {
+    ...assessmentFixture({
+      id: 'assignment-1',
+      titleEn: 'Worksheet',
+      type: GradeAssessmentType.ASSIGNMENT,
+      deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+      approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      maxScore: 10,
+      weight: 5,
+      _count: { items: 1, submissions: 1, questions: 1 },
+    }),
+    questions: [
+      {
+        id: 'question-1',
+        type: GradeQuestionType.SHORT_ANSWER,
+        prompt: 'Solve it',
+        promptAr: null,
+        points: 10,
+        sortOrder: 1,
+        required: true,
+        _count: { options: 0 },
+      },
+    ],
+  };
+}
+
+function assignmentSubmissionListFixture() {
+  return {
+    id: 'submission-1',
+    assessmentId: 'assignment-1',
+    studentId: 'student-1',
+    enrollmentId: 'enrollment-1',
+    status: GradeSubmissionStatus.SUBMITTED,
+    startedAt: new Date('2026-09-15T08:00:00.000Z'),
+    submittedAt: new Date('2026-09-15T09:00:00.000Z'),
+    correctedAt: null,
+    totalScore: null,
+    maxScore: 10,
+    student: {
+      id: 'student-1',
+      firstName: 'Mona',
+      lastName: 'Ahmed',
+    },
+    answers: [
+      {
+        id: 'answer-1',
+        correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+      },
+    ],
+  };
+}
+
+function assignmentSubmissionDetailFixture() {
+  return {
+    ...assignmentSubmissionListFixture(),
+    termId: 'term-1',
+    answers: [
+      {
+        id: 'answer-1',
+        questionId: 'question-1',
+        answerText: 'Student visible answer',
+        answerJson: null,
+        correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+        awardedPoints: null,
+        maxPoints: 10,
+        reviewerComment: null,
+        reviewerCommentAr: null,
+        reviewedAt: null,
+        selectedOptions: [],
       },
     ],
   };

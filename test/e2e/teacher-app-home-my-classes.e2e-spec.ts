@@ -302,6 +302,9 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
     expect(listRegisteredTeacherRoutes()).toEqual([
       'GET /api/v1/teacher/classroom/:classId',
       'GET /api/v1/teacher/classroom/:classId/assignments',
+      'GET /api/v1/teacher/classroom/:classId/assignments/:assignmentId',
+      'GET /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions',
+      'GET /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId',
       'GET /api/v1/teacher/classroom/:classId/attendance/roster',
       'GET /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId',
       'GET /api/v1/teacher/classroom/:classId/grades/assessments',

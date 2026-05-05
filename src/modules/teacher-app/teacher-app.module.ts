@@ -12,8 +12,11 @@ import { TeacherClassroomAttendanceAdapter } from './classroom/attendance/infras
 import { GetTeacherClassroomUseCase } from './classroom/application/get-teacher-classroom.use-case';
 import { ListTeacherClassroomRosterUseCase } from './classroom/application/list-teacher-classroom-roster.use-case';
 import { TeacherClassroomController } from './classroom/controller/teacher-classroom.controller';
+import { GetTeacherClassroomAssignmentUseCase } from './classroom/grades/application/get-teacher-classroom-assignment.use-case';
+import { GetTeacherClassroomAssignmentSubmissionUseCase } from './classroom/grades/application/get-teacher-classroom-assignment-submission.use-case';
 import { GetTeacherClassroomAssessmentUseCase } from './classroom/grades/application/get-teacher-classroom-assessment.use-case';
 import { GetTeacherClassroomGradebookUseCase } from './classroom/grades/application/get-teacher-classroom-gradebook.use-case';
+import { ListTeacherClassroomAssignmentSubmissionsUseCase } from './classroom/grades/application/list-teacher-classroom-assignment-submissions.use-case';
 import { ListTeacherClassroomAssignmentsUseCase } from './classroom/grades/application/list-teacher-classroom-assignments.use-case';
 import { ListTeacherClassroomAssessmentsUseCase } from './classroom/grades/application/list-teacher-classroom-assessments.use-case';
 import { TeacherClassroomAssignmentsController } from './classroom/grades/controller/teacher-classroom-assignments.controller';
@@ -53,6 +56,9 @@ import { TeacherAppCompositionReadAdapter } from './shared/infrastructure/teache
     GetTeacherClassroomAssessmentUseCase,
     GetTeacherClassroomGradebookUseCase,
     ListTeacherClassroomAssignmentsUseCase,
+    GetTeacherClassroomAssignmentUseCase,
+    ListTeacherClassroomAssignmentSubmissionsUseCase,
+    GetTeacherClassroomAssignmentSubmissionUseCase,
     GetTeacherClassroomAttendanceRosterUseCase,
     ResolveTeacherClassroomAttendanceSessionUseCase,
     GetTeacherClassroomAttendanceSessionUseCase,

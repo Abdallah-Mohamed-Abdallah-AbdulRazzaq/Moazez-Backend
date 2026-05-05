@@ -1,4 +1,5 @@
 import {
+  GradeAnswerCorrectionStatus,
   GradeAssessmentApprovalStatus,
   GradeAssessmentDeliveryMode,
   GradeItemStatus,
@@ -7,6 +8,11 @@ import {
 import {
   TeacherClassroomAssessmentDetailResponseDto,
   TeacherClassroomAssessmentCardDto,
+  TeacherClassroomAssignmentDetailResponseDto,
+  TeacherClassroomAssignmentSubmissionDetailResponseDto,
+  TeacherClassroomAssignmentSubmissionListItemDto,
+  TeacherClassroomAssignmentSubmissionStatus,
+  TeacherClassroomAssignmentSubmissionsListResponseDto,
   TeacherClassroomAssignmentsListResponseDto,
   TeacherClassroomAssessmentsListResponseDto,
   TeacherClassroomGradebookResponseDto,
@@ -16,6 +22,11 @@ import {
 import type {
   TeacherClassroomAssessmentCardRecord,
   TeacherClassroomAssessmentDetailResult,
+  TeacherClassroomAssignmentDetailResult,
+  TeacherClassroomAssignmentSubmissionDetailRecord,
+  TeacherClassroomAssignmentSubmissionDetailResult,
+  TeacherClassroomAssignmentSubmissionListRecord,
+  TeacherClassroomAssignmentSubmissionsResult,
   TeacherClassroomAssignmentsResult,
   TeacherClassroomAssessmentListResult,
   TeacherClassroomGradebookResult,
@@ -148,10 +159,131 @@ export class TeacherClassroomGradesPresenter {
         status: presentAssessmentStatus(assessment),
         maxScore: decimalToNumber(assessment.maxScore) ?? 0,
         dueAt: null,
-        submissionsCount: assessment._count.submissions,
+        submissionsCount:
+          params.result.submissionCounts.get(assessment.id) ?? 0,
         gradedCount: params.result.gradedCounts.get(assessment.id) ?? 0,
       })),
       pagination: presentPagination(params.result),
+    };
+  }
+
+  static presentAssignmentDetail(params: {
+    classId: string;
+    result: TeacherClassroomAssignmentDetailResult;
+  }): TeacherClassroomAssignmentDetailResponseDto {
+    const assignment = params.result.assignment;
+
+    return {
+      classId: params.classId,
+      assignment: {
+        assignmentId: assignment.id,
+        source: 'grades_assessment',
+        title: assessmentTitle(assignment),
+        description: null,
+        type: toLowerEnum(assignment.type),
+        status: presentAssessmentStatus(assignment),
+        maxScore: decimalToNumber(assignment.maxScore) ?? 0,
+        weight: decimalToNumber(assignment.weight) ?? 0,
+        dueAt: null,
+        publishedAt: nullableDate(assignment.publishedAt),
+        approvedAt: nullableDate(assignment.approvedAt),
+        lockedAt: nullableDate(assignment.lockedAt),
+        itemsCount: countMapTotal(params.result.itemStatusCounts),
+        submissionsCount: countMapTotal(params.result.submissionStatusCounts),
+        gradedCount:
+          params.result.itemStatusCounts.get(GradeItemStatus.ENTERED) ?? 0,
+        pendingReviewCount:
+          params.result.submissionStatusCounts.get(
+            GradeSubmissionStatus.SUBMITTED,
+          ) ?? 0,
+        questionSummary:
+          assignment.deliveryMode === GradeAssessmentDeliveryMode.QUESTION_BASED
+            ? presentAssignmentQuestionSummary(assignment)
+            : null,
+      },
+    };
+  }
+
+  static presentAssignmentSubmissions(params: {
+    classId: string;
+    result: TeacherClassroomAssignmentSubmissionsResult;
+  }): TeacherClassroomAssignmentSubmissionsListResponseDto {
+    return {
+      classId: params.classId,
+      assignmentId: params.result.assignment.id,
+      source: 'grades_assessment',
+      submissions: params.result.submissions.map((submission) =>
+        presentAssignmentSubmissionListItem({
+          submission,
+          assignmentMaxScore:
+            decimalToNumber(params.result.assignment.maxScore) ?? 0,
+        }),
+      ),
+      pagination: presentPagination(params.result),
+    };
+  }
+
+  static presentAssignmentSubmissionDetail(params: {
+    classId: string;
+    result: TeacherClassroomAssignmentSubmissionDetailResult;
+  }): TeacherClassroomAssignmentSubmissionDetailResponseDto {
+    const assignmentMaxScore =
+      decimalToNumber(params.result.assignment.maxScore) ?? 0;
+    const listItem = presentAssignmentSubmissionListItem({
+      submission: params.result.submission,
+      assignmentMaxScore,
+    });
+    const answerByQuestionId = new Map(
+      params.result.submission.answers.map((answer) => [
+        answer.questionId,
+        answer,
+      ]),
+    );
+
+    return {
+      classId: params.classId,
+      assignmentId: params.result.assignment.id,
+      source: 'grades_assessment',
+      submission: {
+        ...listItem,
+        startedAt: params.result.submission.startedAt.toISOString(),
+        answers: params.result.assignment.questions.map((question) => {
+          const answer = answerByQuestionId.get(question.id) ?? null;
+
+          return {
+            answerId: answer?.id ?? null,
+            questionId: question.id,
+            type: toLowerEnum(question.type),
+            prompt: question.prompt,
+            promptAr: question.promptAr,
+            required: question.required,
+            sortOrder: question.sortOrder,
+            studentAnswer: answer
+              ? {
+                  text: answer.answerText,
+                  json: answer.answerJson ?? null,
+                  selectedOptions: answer.selectedOptions.map((selected) => ({
+                    optionId: selected.optionId,
+                    label: selected.option.label,
+                    labelAr: selected.option.labelAr,
+                    value: selected.option.value,
+                  })),
+                }
+              : null,
+            correctionStatus: answer
+              ? toLowerEnum(answer.correctionStatus)
+              : null,
+            score: decimalToNumber(answer?.awardedPoints),
+            maxScore:
+              decimalToNumber(answer?.maxPoints) ??
+              decimalToNumber(question.points) ??
+              0,
+            reviewedAt: nullableDate(answer?.reviewedAt ?? null),
+            feedback:
+              answer?.reviewerComment ?? answer?.reviewerCommentAr ?? null,
+          };
+        }),
+      },
     };
   }
 }
@@ -173,6 +305,59 @@ function presentAssessmentCard(
     lockedAt: nullableDate(assessment.lockedAt),
     itemsCount: assessment._count.items,
     submissionsCount: assessment._count.submissions,
+  };
+}
+
+function presentAssignmentSubmissionListItem(params: {
+  submission:
+    | TeacherClassroomAssignmentSubmissionListRecord
+    | TeacherClassroomAssignmentSubmissionDetailRecord;
+  assignmentMaxScore: number;
+}): TeacherClassroomAssignmentSubmissionListItemDto {
+  const correctedAt = nullableDate(params.submission.correctedAt);
+
+  return {
+    submissionId: params.submission.id,
+    status: toLowerEnum(
+      params.submission.status,
+    ) as TeacherClassroomAssignmentSubmissionStatus,
+    student: {
+      studentId: params.submission.studentId,
+      displayName: fullName(params.submission.student),
+    },
+    score: decimalToNumber(params.submission.totalScore),
+    maxScore:
+      decimalToNumber(params.submission.maxScore) ?? params.assignmentMaxScore,
+    submittedAt: nullableDate(params.submission.submittedAt),
+    reviewedAt: correctedAt,
+    finalizedAt: correctedAt,
+    answersCount: params.submission.answers.length,
+    reviewedAnswersCount: params.submission.answers.filter(
+      (answer) =>
+        answer.correctionStatus === GradeAnswerCorrectionStatus.CORRECTED,
+    ).length,
+  };
+}
+
+function presentAssignmentQuestionSummary(
+  assignment: TeacherClassroomAssessmentDetailResult['assessment'],
+) {
+  const types = new Set<string>();
+  let totalPoints = 0;
+  let requiredQuestionsCount = 0;
+
+  for (const question of assignment.questions) {
+    types.add(toLowerEnum(question.type));
+    totalPoints += decimalToNumber(question.points) ?? 0;
+    if (question.required) requiredQuestionsCount += 1;
+  }
+
+  return {
+    available: true,
+    questionsCount: assignment.questions.length,
+    requiredQuestionsCount,
+    totalPoints,
+    types: [...types].sort(),
   };
 }
 
@@ -209,6 +394,10 @@ function presentPagination(input: {
     limit: input.limit,
     total: input.total,
   };
+}
+
+function countMapTotal(map: Map<unknown, number>): number {
+  return [...map.values()].reduce((total, count) => total + count, 0);
 }
 
 function decimalToNumber(value: PresentableDecimal): number | null {

@@ -1,12 +1,15 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  GradeAnswerCorrectionStatus,
   MembershipStatus,
   GradeAssessmentApprovalStatus,
   GradeAssessmentDeliveryMode,
+  GradeQuestionType,
   GradeAssessmentType,
   GradeItemStatus,
   GradeScopeType,
+  GradeSubmissionStatus,
   OrganizationStatus,
   PrismaClient,
   SchoolStatus,
@@ -53,6 +56,13 @@ describe('Teacher App tenancy isolation (security)', () => {
   let crossSchoolAllocationId: string;
   let ownAssessmentId: string;
   let ownAssignmentId: string;
+  let ownAssignmentSubmissionId: string;
+  let otherAssignmentSubmissionId: string;
+  let outsideStudentSubmissionId: string;
+  let crossSchoolSubmissionId: string;
+  let otherClassroomAssignmentId: string;
+  let otherSubjectAssignmentId: string;
+  let otherTermAssignmentId: string;
   let otherTeacherAssessmentId: string;
   let crossSchoolAssessmentId: string;
   let ownStudentIds: string[] = [];
@@ -66,6 +76,9 @@ describe('Teacher App tenancy isolation (security)', () => {
   const createdMedicalProfileStudentIds: string[] = [];
   const createdEnrollmentIds: string[] = [];
   const createdGradeItemIds: string[] = [];
+  const createdGradeSubmissionAnswerIds: string[] = [];
+  const createdGradeSubmissionIds: string[] = [];
+  const createdGradeQuestionIds: string[] = [];
   const createdGradeAssessmentIds: string[] = [];
   const createdAllocationIds: string[] = [];
   const createdSubjectIds: string[] = [];
@@ -238,8 +251,35 @@ describe('Teacher App tenancy isolation (security)', () => {
       title: `${testSuffix} Grade-backed Assignment`,
       type: GradeAssessmentType.ASSIGNMENT,
       approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
       maxScore: 10,
       weight: 5,
+    });
+    const ownAssignmentQuestionId = await createGradeQuestionFixture({
+      schoolId: schoolAId,
+      assessmentId: ownAssignmentId,
+      prompt: `${testSuffix} Safe assignment prompt`,
+      points: 10,
+    });
+    ownAssignmentSubmissionId = await createGradeSubmissionFixture({
+      schoolId: schoolAId,
+      assessmentId: ownAssignmentId,
+      termId: ownFixture.termId,
+      studentId: ownFixture.studentIds[0],
+      enrollmentId: ownFixture.enrollmentIds[0],
+      status: GradeSubmissionStatus.SUBMITTED,
+      submittedAt: new Date('2026-09-15T10:00:00.000Z'),
+      maxScore: 10,
+    });
+    await createGradeSubmissionAnswerFixture({
+      schoolId: schoolAId,
+      submissionId: ownAssignmentSubmissionId,
+      assessmentId: ownAssignmentId,
+      questionId: ownAssignmentQuestionId,
+      studentId: ownFixture.studentIds[0],
+      answerText: `${testSuffix} student-visible-answer`,
+      correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+      maxPoints: 10,
     });
     otherTeacherAssessmentId = await createGradeAssessmentFixture({
       schoolId: schoolAId,
@@ -250,6 +290,104 @@ describe('Teacher App tenancy isolation (security)', () => {
       maxScore: 20,
       weight: 10,
     });
+    const otherOwnedAssignmentId = await createGradeAssessmentFixture({
+      schoolId: schoolAId,
+      fixture: ownFixture,
+      title: `${testSuffix} Other Owned Assignment`,
+      type: GradeAssessmentType.ASSIGNMENT,
+      approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+      maxScore: 10,
+      weight: 5,
+    });
+    const otherOwnedQuestionId = await createGradeQuestionFixture({
+      schoolId: schoolAId,
+      assessmentId: otherOwnedAssignmentId,
+      prompt: `${testSuffix} Other owned prompt`,
+      points: 10,
+    });
+    otherAssignmentSubmissionId = await createGradeSubmissionFixture({
+      schoolId: schoolAId,
+      assessmentId: otherOwnedAssignmentId,
+      termId: ownFixture.termId,
+      studentId: ownFixture.studentIds[1],
+      enrollmentId: ownFixture.enrollmentIds[1],
+      status: GradeSubmissionStatus.SUBMITTED,
+      submittedAt: new Date('2026-09-15T11:00:00.000Z'),
+      maxScore: 10,
+    });
+    await createGradeSubmissionAnswerFixture({
+      schoolId: schoolAId,
+      submissionId: otherAssignmentSubmissionId,
+      assessmentId: otherOwnedAssignmentId,
+      questionId: otherOwnedQuestionId,
+      studentId: ownFixture.studentIds[1],
+      answerText: `${testSuffix} other-assignment-answer`,
+      correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+      maxPoints: 10,
+    });
+    outsideStudentSubmissionId = await createGradeSubmissionFixture({
+      schoolId: schoolAId,
+      assessmentId: ownAssignmentId,
+      termId: ownFixture.termId,
+      studentId: otherTeacherFixture.studentIds[0],
+      enrollmentId: otherTeacherFixture.enrollmentIds[0],
+      status: GradeSubmissionStatus.SUBMITTED,
+      submittedAt: new Date('2026-09-15T12:00:00.000Z'),
+      maxScore: 10,
+    });
+    await createGradeSubmissionAnswerFixture({
+      schoolId: schoolAId,
+      submissionId: outsideStudentSubmissionId,
+      assessmentId: ownAssignmentId,
+      questionId: ownAssignmentQuestionId,
+      studentId: otherTeacherFixture.studentIds[0],
+      answerText: `${testSuffix} outside-student-answer`,
+      correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+      maxPoints: 10,
+    });
+    otherClassroomAssignmentId = await createGradeAssessmentFixture({
+      schoolId: schoolAId,
+      fixture: {
+        academicYearId: ownFixture.academicYearId,
+        termId: ownFixture.termId,
+        classroomId: otherTeacherFixture.classroomId,
+        subjectId: ownFixture.subjectId,
+      },
+      title: `${testSuffix} Other Classroom Assignment`,
+      type: GradeAssessmentType.ASSIGNMENT,
+      approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      maxScore: 10,
+      weight: 5,
+    });
+    otherSubjectAssignmentId = await createGradeAssessmentFixture({
+      schoolId: schoolAId,
+      fixture: {
+        academicYearId: ownFixture.academicYearId,
+        termId: ownFixture.termId,
+        classroomId: ownFixture.classroomId,
+        subjectId: otherTeacherFixture.subjectId,
+      },
+      title: `${testSuffix} Other Subject Assignment`,
+      type: GradeAssessmentType.ASSIGNMENT,
+      approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      maxScore: 10,
+      weight: 5,
+    });
+    otherTermAssignmentId = await createGradeAssessmentFixture({
+      schoolId: schoolAId,
+      fixture: {
+        academicYearId: otherTeacherFixture.academicYearId,
+        termId: otherTeacherFixture.termId,
+        classroomId: ownFixture.classroomId,
+        subjectId: ownFixture.subjectId,
+      },
+      title: `${testSuffix} Other Term Assignment`,
+      type: GradeAssessmentType.ASSIGNMENT,
+      approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      maxScore: 10,
+      weight: 5,
+    });
     crossSchoolAssessmentId = await createGradeAssessmentFixture({
       schoolId: schoolBId,
       fixture: crossSchoolFixture,
@@ -258,6 +396,16 @@ describe('Teacher App tenancy isolation (security)', () => {
       approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
       maxScore: 20,
       weight: 10,
+    });
+    crossSchoolSubmissionId = await createGradeSubmissionFixture({
+      schoolId: schoolBId,
+      assessmentId: crossSchoolAssessmentId,
+      termId: crossSchoolFixture.termId,
+      studentId: crossSchoolFixture.studentIds[0],
+      enrollmentId: crossSchoolFixture.enrollmentIds[0],
+      status: GradeSubmissionStatus.SUBMITTED,
+      submittedAt: new Date('2026-09-15T13:00:00.000Z'),
+      maxScore: 20,
     });
 
     const ownGradeItem = await prisma.gradeItem.create({
@@ -303,6 +451,15 @@ describe('Teacher App tenancy isolation (security)', () => {
       });
       await prisma.studentMedicalProfile.deleteMany({
         where: { studentId: { in: createdMedicalProfileStudentIds } },
+      });
+      await prisma.gradeSubmissionAnswer.deleteMany({
+        where: { id: { in: createdGradeSubmissionAnswerIds } },
+      });
+      await prisma.gradeSubmission.deleteMany({
+        where: { id: { in: createdGradeSubmissionIds } },
+      });
+      await prisma.gradeAssessmentQuestion.deleteMany({
+        where: { id: { in: createdGradeQuestionIds } },
       });
       await prisma.gradeItem.deleteMany({
         where: { id: { in: createdGradeItemIds } },
@@ -717,18 +874,118 @@ describe('Teacher App tenancy isolation (security)', () => {
 
     expect(assignments.body).toMatchObject({
       classId: ownAllocationId,
-      assignments: [
+      assignments: expect.arrayContaining([
         expect.objectContaining({
           assignmentId: ownAssignmentId,
           source: 'grades_assessment',
           type: 'assignment',
           dueAt: null,
         }),
-      ],
+      ]),
     });
     expect(assignmentsJson).not.toContain('homeworkId');
     expect(assignmentsJson).not.toContain('schoolId');
     expect(assignmentsJson).not.toContain('scheduleId');
+
+    const assignmentDetail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const assignmentDetailJson = JSON.stringify(assignmentDetail.body);
+
+    expect(assignmentDetail.body).toMatchObject({
+      classId: ownAllocationId,
+      assignment: {
+        assignmentId: ownAssignmentId,
+        source: 'grades_assessment',
+        type: 'assignment',
+        dueAt: null,
+        questionSummary: {
+          available: true,
+          questionsCount: 1,
+        },
+      },
+    });
+    expect(assignmentDetailJson).not.toContain('schoolId');
+    expect(assignmentDetailJson).not.toContain('scheduleId');
+    expect(assignmentDetailJson).not.toContain('answer-key-sentinel');
+    expect(assignmentDetailJson).not.toContain('question-metadata-sentinel');
+    expect(assignmentDetailJson).not.toContain('submission-metadata-sentinel');
+
+    const submissions = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const submissionsJson = JSON.stringify(submissions.body);
+
+    expect(submissions.body).toMatchObject({
+      classId: ownAllocationId,
+      assignmentId: ownAssignmentId,
+      source: 'grades_assessment',
+    });
+    expect(submissions.body.submissions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          submissionId: ownAssignmentSubmissionId,
+          status: 'submitted',
+          student: expect.objectContaining({
+            studentId: ownStudentIds[0],
+          }),
+          answersCount: 1,
+          reviewedAnswersCount: 0,
+        }),
+      ]),
+    );
+    expect(submissionsJson).toContain(ownAssignmentSubmissionId);
+    expect(submissionsJson).not.toContain(outsideStudentSubmissionId);
+    expect(submissionsJson).not.toContain(otherTeacherStudentIds[0]);
+    expect(submissionsJson).not.toContain('student-visible-answer');
+    expect(submissionsJson).not.toContain('schoolId');
+    expect(submissionsJson).not.toContain('scheduleId');
+
+    const submissionDetail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const submissionDetailJson = JSON.stringify(submissionDetail.body);
+
+    expect(submissionDetail.body).toMatchObject({
+      classId: ownAllocationId,
+      assignmentId: ownAssignmentId,
+      source: 'grades_assessment',
+      submission: {
+        submissionId: ownAssignmentSubmissionId,
+        student: {
+          studentId: ownStudentIds[0],
+        },
+        answers: [
+          expect.objectContaining({
+            questionId: expect.any(String),
+            prompt: `${testSuffix} Safe assignment prompt`,
+            studentAnswer: {
+              text: `${testSuffix} student-visible-answer`,
+              json: null,
+              selectedOptions: [],
+            },
+          }),
+        ],
+      },
+    });
+    expect(submissionDetailJson).toContain(
+      `${testSuffix} student-visible-answer`,
+    );
+    expect(submissionDetailJson).not.toContain('answer-key-sentinel');
+    expect(submissionDetailJson).not.toContain('correctAnswer');
+    expect(submissionDetailJson).not.toContain('isCorrect');
+    expect(submissionDetailJson).not.toContain('metadata');
+    expect(submissionDetailJson).not.toContain('schoolId');
+    expect(submissionDetailJson).not.toContain('scheduleId');
   });
 
   it('teacher cannot access grade reads outside the owned classroom/subject/term', async () => {
@@ -758,6 +1015,49 @@ describe('Teacher App tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     expect(filteredGradebook.body?.error?.code).toBe('not_found');
+
+    for (const assignmentId of [
+      otherClassroomAssignmentId,
+      otherSubjectAssignmentId,
+      otherTermAssignmentId,
+      crossSchoolAssessmentId,
+    ]) {
+      const assignmentResponse = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${assignmentId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+      expect(assignmentResponse.body?.error?.code).toBe('not_found');
+    }
+
+    const otherAssignmentSubmissionResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${otherAssignmentSubmissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(otherAssignmentSubmissionResponse.body?.error?.code).toBe(
+      'not_found',
+    );
+
+    const outsideStudentSubmissionResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${outsideStudentSubmissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(outsideStudentSubmissionResponse.body?.error?.code).toBe(
+      'not_found',
+    );
+
+    const crossSchoolSubmissionResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${crossSchoolSubmissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    expect(crossSchoolSubmissionResponse.body?.error?.code).toBe('not_found');
   });
 
   it('teacher cannot access another teacher class in the same school', async () => {
@@ -813,6 +1113,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       `/teacher/classroom/${otherTeacherAllocationId}/grades/assessments/${otherTeacherAssessmentId}`,
       `/teacher/classroom/${otherTeacherAllocationId}/grades/gradebook`,
       `/teacher/classroom/${otherTeacherAllocationId}/assignments`,
+      `/teacher/classroom/${otherTeacherAllocationId}/assignments/${ownAssignmentId}`,
+      `/teacher/classroom/${otherTeacherAllocationId}/assignments/${ownAssignmentId}/submissions`,
+      `/teacher/classroom/${otherTeacherAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}`,
     ]) {
       const gradesResponse = await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}${route}`)
@@ -867,6 +1170,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       `/teacher/classroom/${crossSchoolAllocationId}/grades/assessments/${crossSchoolAssessmentId}`,
       `/teacher/classroom/${crossSchoolAllocationId}/grades/gradebook`,
       `/teacher/classroom/${crossSchoolAllocationId}/assignments`,
+      `/teacher/classroom/${crossSchoolAllocationId}/assignments/${ownAssignmentId}`,
+      `/teacher/classroom/${crossSchoolAllocationId}/assignments/${ownAssignmentId}/submissions`,
+      `/teacher/classroom/${crossSchoolAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}`,
     ]) {
       const gradesResponse = await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}${route}`)
@@ -991,6 +1297,24 @@ describe('Teacher App tenancy isolation (security)', () => {
         )
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
     }
   });
 
@@ -1028,6 +1352,34 @@ describe('Teacher App tenancy isolation (security)', () => {
         `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}`,
       )
       .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
       .expect(404);
   });
 
@@ -1259,6 +1611,7 @@ describe('Teacher App tenancy isolation (security)', () => {
     title: string;
     type: GradeAssessmentType;
     approvalStatus: GradeAssessmentApprovalStatus;
+    deliveryMode?: GradeAssessmentDeliveryMode;
     maxScore: number;
     weight: number;
   }): Promise<string> {
@@ -1273,7 +1626,8 @@ describe('Teacher App tenancy isolation (security)', () => {
         classroomId: params.fixture.classroomId,
         titleEn: params.title,
         type: params.type,
-        deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
+        deliveryMode:
+          params.deliveryMode ?? GradeAssessmentDeliveryMode.SCORE_ONLY,
         date: new Date('2026-09-15T00:00:00.000Z'),
         weight: params.weight,
         maxScore: params.maxScore,
@@ -1292,6 +1646,105 @@ describe('Teacher App tenancy isolation (security)', () => {
     createdGradeAssessmentIds.push(assessment.id);
 
     return assessment.id;
+  }
+
+  async function createGradeQuestionFixture(params: {
+    schoolId: string;
+    assessmentId: string;
+    prompt: string;
+    points: number;
+  }): Promise<string> {
+    const question = await prisma.gradeAssessmentQuestion.create({
+      data: {
+        schoolId: params.schoolId,
+        assessmentId: params.assessmentId,
+        type: GradeQuestionType.SHORT_ANSWER,
+        prompt: params.prompt,
+        points: params.points,
+        sortOrder: 1,
+        required: true,
+        answerKey: { private: 'answer-key-sentinel' },
+        metadata: { private: 'question-metadata-sentinel' },
+      },
+      select: { id: true },
+    });
+    createdGradeQuestionIds.push(question.id);
+
+    return question.id;
+  }
+
+  async function createGradeSubmissionFixture(params: {
+    schoolId: string;
+    assessmentId: string;
+    termId: string;
+    studentId: string;
+    enrollmentId: string;
+    status: GradeSubmissionStatus;
+    submittedAt: Date | null;
+    maxScore: number;
+  }): Promise<string> {
+    const submission = await prisma.gradeSubmission.create({
+      data: {
+        schoolId: params.schoolId,
+        assessmentId: params.assessmentId,
+        termId: params.termId,
+        studentId: params.studentId,
+        enrollmentId: params.enrollmentId,
+        status: params.status,
+        submittedAt: params.submittedAt,
+        correctedAt:
+          params.status === GradeSubmissionStatus.CORRECTED
+            ? new Date('2026-09-15T14:00:00.000Z')
+            : null,
+        totalScore:
+          params.status === GradeSubmissionStatus.CORRECTED
+            ? params.maxScore
+            : null,
+        maxScore: params.maxScore,
+        metadata: { private: 'submission-metadata-sentinel' },
+      },
+      select: { id: true },
+    });
+    createdGradeSubmissionIds.push(submission.id);
+
+    return submission.id;
+  }
+
+  async function createGradeSubmissionAnswerFixture(params: {
+    schoolId: string;
+    submissionId: string;
+    assessmentId: string;
+    questionId: string;
+    studentId: string;
+    answerText: string;
+    correctionStatus: GradeAnswerCorrectionStatus;
+    maxPoints: number;
+  }): Promise<string> {
+    const answer = await prisma.gradeSubmissionAnswer.create({
+      data: {
+        schoolId: params.schoolId,
+        submissionId: params.submissionId,
+        assessmentId: params.assessmentId,
+        questionId: params.questionId,
+        studentId: params.studentId,
+        answerText: params.answerText,
+        correctionStatus: params.correctionStatus,
+        awardedPoints:
+          params.correctionStatus === GradeAnswerCorrectionStatus.CORRECTED
+            ? params.maxPoints
+            : null,
+        maxPoints: params.maxPoints,
+        reviewerComment: 'safe teacher feedback',
+        reviewedAt:
+          params.correctionStatus === GradeAnswerCorrectionStatus.CORRECTED
+            ? new Date('2026-09-15T14:00:00.000Z')
+            : null,
+      },
+      select: { id: true },
+    });
+    createdGradeSubmissionAnswerIds.push(answer.id);
+
+    return answer.id;
   }
 
   async function createPrivateStudentData(params: {

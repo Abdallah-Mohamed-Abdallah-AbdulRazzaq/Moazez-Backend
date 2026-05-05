@@ -13,8 +13,10 @@ import { PrismaService } from '../../../../../infrastructure/database/prisma.ser
 import type { TeacherAppAllocationRecord } from '../../../shared/teacher-app.types';
 import type {
   GetTeacherClassroomGradebookQueryDto,
+  ListTeacherClassroomAssignmentSubmissionsQueryDto,
   ListTeacherClassroomAssignmentsQueryDto,
   ListTeacherClassroomAssessmentsQueryDto,
+  TeacherClassroomAssignmentSubmissionStatus,
   TeacherClassroomAssessmentStatus,
   TeacherClassroomAssessmentType,
 } from '../dto/teacher-classroom-grades.dto';
@@ -95,6 +97,7 @@ const ASSESSMENT_DETAIL_ARGS =
           id: true,
           type: true,
           prompt: true,
+          promptAr: true,
           points: true,
           sortOrder: true,
           required: true,
@@ -136,6 +139,88 @@ const GRADE_ITEM_ARGS = Prisma.validator<Prisma.GradeItemDefaultArgs>()({
   },
 });
 
+const ASSIGNMENT_SUBMISSION_LIST_ARGS =
+  Prisma.validator<Prisma.GradeSubmissionDefaultArgs>()({
+    select: {
+      id: true,
+      assessmentId: true,
+      studentId: true,
+      enrollmentId: true,
+      status: true,
+      startedAt: true,
+      submittedAt: true,
+      correctedAt: true,
+      totalScore: true,
+      maxScore: true,
+      student: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
+      answers: {
+        select: {
+          id: true,
+          correctionStatus: true,
+        },
+      },
+    },
+  });
+
+const ASSIGNMENT_SUBMISSION_DETAIL_ARGS =
+  Prisma.validator<Prisma.GradeSubmissionDefaultArgs>()({
+    select: {
+      id: true,
+      assessmentId: true,
+      termId: true,
+      studentId: true,
+      enrollmentId: true,
+      status: true,
+      startedAt: true,
+      submittedAt: true,
+      correctedAt: true,
+      totalScore: true,
+      maxScore: true,
+      student: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
+      answers: {
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          questionId: true,
+          answerText: true,
+          answerJson: true,
+          correctionStatus: true,
+          awardedPoints: true,
+          maxPoints: true,
+          reviewerComment: true,
+          reviewerCommentAr: true,
+          reviewedAt: true,
+          selectedOptions: {
+            orderBy: [{ createdAt: 'asc' }, { optionId: 'asc' }],
+            select: {
+              optionId: true,
+              option: {
+                select: {
+                  id: true,
+                  label: true,
+                  labelAr: true,
+                  value: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
 export type TeacherClassroomAssessmentCardRecord =
   Prisma.GradeAssessmentGetPayload<typeof ASSESSMENT_CARD_ARGS>;
 export type TeacherClassroomAssessmentDetailRecord =
@@ -145,6 +230,10 @@ export type TeacherClassroomGradebookEnrollmentRecord =
 export type TeacherClassroomGradebookItemRecord = Prisma.GradeItemGetPayload<
   typeof GRADE_ITEM_ARGS
 >;
+export type TeacherClassroomAssignmentSubmissionListRecord =
+  Prisma.GradeSubmissionGetPayload<typeof ASSIGNMENT_SUBMISSION_LIST_ARGS>;
+export type TeacherClassroomAssignmentSubmissionDetailRecord =
+  Prisma.GradeSubmissionGetPayload<typeof ASSIGNMENT_SUBMISSION_DETAIL_ARGS>;
 
 export interface TeacherClassroomAssessmentListResult {
   items: TeacherClassroomAssessmentCardRecord[];
@@ -171,9 +260,29 @@ export interface TeacherClassroomGradebookResult {
 export interface TeacherClassroomAssignmentsResult {
   items: TeacherClassroomAssessmentCardRecord[];
   gradedCounts: Map<string, number>;
+  submissionCounts: Map<string, number>;
   page: number;
   limit: number;
   total: number;
+}
+
+export interface TeacherClassroomAssignmentDetailResult {
+  assignment: TeacherClassroomAssessmentDetailRecord;
+  itemStatusCounts: Map<GradeItemStatus, number>;
+  submissionStatusCounts: Map<GradeSubmissionStatus, number>;
+}
+
+export interface TeacherClassroomAssignmentSubmissionsResult {
+  assignment: TeacherClassroomAssessmentCardRecord;
+  submissions: TeacherClassroomAssignmentSubmissionListRecord[];
+  page: number;
+  limit: number;
+  total: number;
+}
+
+export interface TeacherClassroomAssignmentSubmissionDetailResult {
+  assignment: TeacherClassroomAssessmentDetailRecord;
+  submission: TeacherClassroomAssignmentSubmissionDetailRecord;
 }
 
 @Injectable()
@@ -349,28 +458,200 @@ export class TeacherClassroomGradesReadAdapter {
       this.scopedPrisma.gradeAssessment.count({ where }),
     ]);
 
-    const gradedRows =
+    const assessmentIds = items.map((assessment) => assessment.id);
+    const [gradedRows, submissionRows] =
       items.length === 0
-        ? []
-        : await this.scopedPrisma.gradeItem.groupBy({
-            by: ['assessmentId'],
-            where: {
-              assessmentId: { in: items.map((assessment) => assessment.id) },
-              status: GradeItemStatus.ENTERED,
-            },
-            _count: { _all: true },
-          });
+        ? [[], []]
+        : await Promise.all([
+            this.scopedPrisma.gradeItem.groupBy({
+              by: ['assessmentId'],
+              where: {
+                ...buildOwnedGradeItemsWhere({
+                  allocation: params.allocation,
+                  assessmentIds,
+                }),
+                status: GradeItemStatus.ENTERED,
+              },
+              _count: { _all: true },
+            }),
+            this.scopedPrisma.gradeSubmission.groupBy({
+              by: ['assessmentId'],
+              where: buildAssignmentSubmissionsWhereForAssessmentIds({
+                allocation: params.allocation,
+                assessmentIds,
+              }),
+              _count: { _all: true },
+            }),
+          ]);
 
     return {
       items,
       gradedCounts: new Map(
         gradedRows.map((row) => [row.assessmentId, row._count._all]),
       ),
+      submissionCounts: new Map(
+        submissionRows.map((row) => [row.assessmentId, row._count._all]),
+      ),
       page,
       limit,
       total,
     };
   }
+
+  async findOwnedAssignmentDetail(params: {
+    allocation: TeacherAppAllocationRecord;
+    assignmentId: string;
+  }): Promise<TeacherClassroomAssignmentDetailResult> {
+    const assignment = await this.scopedPrisma.gradeAssessment.findFirst({
+      where: buildAssignmentWhere({
+        allocation: params.allocation,
+        assignmentId: params.assignmentId,
+      }),
+      ...ASSESSMENT_DETAIL_ARGS,
+    });
+
+    if (!assignment) {
+      throw new NotFoundDomainException('Grade assignment not found', {
+        assignmentId: params.assignmentId,
+      });
+    }
+
+    const [itemStatusRows, submissionStatusRows] = await Promise.all([
+      this.scopedPrisma.gradeItem.groupBy({
+        by: ['status'],
+        where: buildOwnedGradeItemWhere({
+          allocation: params.allocation,
+          assessmentId: assignment.id,
+        }),
+        _count: { _all: true },
+      }),
+      this.scopedPrisma.gradeSubmission.groupBy({
+        by: ['status'],
+        where: buildAssignmentSubmissionWhere({
+          allocation: params.allocation,
+          assignmentId: assignment.id,
+        }),
+        _count: { _all: true },
+      }),
+    ]);
+
+    return {
+      assignment,
+      itemStatusCounts: new Map(
+        itemStatusRows.map((row) => [row.status, row._count._all]),
+      ),
+      submissionStatusCounts: new Map(
+        submissionStatusRows.map((row) => [row.status, row._count._all]),
+      ),
+    };
+  }
+
+  async listOwnedAssignmentSubmissions(params: {
+    allocation: TeacherAppAllocationRecord;
+    assignmentId: string;
+    filters?: ListTeacherClassroomAssignmentSubmissionsQueryDto;
+  }): Promise<TeacherClassroomAssignmentSubmissionsResult> {
+    const assignment = await this.findOwnedAssignmentCardOrThrow({
+      allocation: params.allocation,
+      assignmentId: params.assignmentId,
+    });
+    const limit = resolveLimit(params.filters?.limit, DEFAULT_LIST_LIMIT);
+    const page = resolvePage(params.filters?.page);
+    const where = buildAssignmentSubmissionWhere({
+      allocation: params.allocation,
+      assignmentId: assignment.id,
+      filters: params.filters,
+    });
+
+    const [submissions, total] = await Promise.all([
+      this.scopedPrisma.gradeSubmission.findMany({
+        where,
+        orderBy: [
+          { submittedAt: 'desc' },
+          { startedAt: 'desc' },
+          { id: 'asc' },
+        ],
+        take: limit,
+        skip: (page - 1) * limit,
+        ...ASSIGNMENT_SUBMISSION_LIST_ARGS,
+      }),
+      this.scopedPrisma.gradeSubmission.count({ where }),
+    ]);
+
+    return {
+      assignment,
+      submissions,
+      page,
+      limit,
+      total,
+    };
+  }
+
+  async findOwnedAssignmentSubmissionDetail(params: {
+    allocation: TeacherAppAllocationRecord;
+    assignmentId: string;
+    submissionId: string;
+  }): Promise<TeacherClassroomAssignmentSubmissionDetailResult> {
+    const assignment = await this.findOwnedAssignmentDetail({
+      allocation: params.allocation,
+      assignmentId: params.assignmentId,
+    });
+
+    const submission = await this.scopedPrisma.gradeSubmission.findFirst({
+      where: {
+        ...buildAssignmentSubmissionWhere({
+          allocation: params.allocation,
+          assignmentId: assignment.assignment.id,
+        }),
+        id: params.submissionId,
+      },
+      ...ASSIGNMENT_SUBMISSION_DETAIL_ARGS,
+    });
+
+    if (!submission) {
+      throw new NotFoundDomainException(
+        'Grade assignment submission not found',
+        {
+          assignmentId: params.assignmentId,
+          submissionId: params.submissionId,
+        },
+      );
+    }
+
+    return {
+      assignment: assignment.assignment,
+      submission,
+    };
+  }
+
+  private async findOwnedAssignmentCardOrThrow(params: {
+    allocation: TeacherAppAllocationRecord;
+    assignmentId: string;
+  }): Promise<TeacherClassroomAssessmentCardRecord> {
+    const assignment = await this.scopedPrisma.gradeAssessment.findFirst({
+      where: buildAssignmentWhere(params),
+      ...ASSESSMENT_CARD_ARGS,
+    });
+
+    if (!assignment) {
+      throw new NotFoundDomainException('Grade assignment not found', {
+        assignmentId: params.assignmentId,
+      });
+    }
+
+    return assignment;
+  }
+}
+
+function buildAssignmentWhere(params: {
+  allocation: TeacherAppAllocationRecord;
+  assignmentId: string;
+}): Prisma.GradeAssessmentWhereInput {
+  return buildAssessmentWhere({
+    allocation: params.allocation,
+    assessmentId: params.assignmentId,
+    filters: { type: 'assignment' },
+  });
 }
 
 function buildAssessmentWhere(params: {
@@ -457,6 +738,109 @@ function buildActiveEnrollmentWhere(params: {
   };
 }
 
+function buildOwnedGradeItemWhere(params: {
+  allocation: TeacherAppAllocationRecord;
+  assessmentId: string;
+}): Prisma.GradeItemWhereInput {
+  return buildOwnedGradeItemsWhere({
+    allocation: params.allocation,
+    assessmentIds: [params.assessmentId],
+  });
+}
+
+function buildOwnedGradeItemsWhere(params: {
+  allocation: TeacherAppAllocationRecord;
+  assessmentIds: string[];
+}): Prisma.GradeItemWhereInput {
+  return {
+    assessmentId: { in: params.assessmentIds },
+    student: {
+      is: {
+        status: StudentStatus.ACTIVE,
+        deletedAt: null,
+        enrollments: {
+          some: buildActiveEnrollmentWhere({
+            allocation: params.allocation,
+            academicYearId: requireAllocationAcademicYearId(params.allocation),
+          }),
+        },
+      },
+    },
+  };
+}
+
+function buildAssignmentSubmissionsWhereForAssessmentIds(params: {
+  allocation: TeacherAppAllocationRecord;
+  assessmentIds: string[];
+}): Prisma.GradeSubmissionWhereInput {
+  return {
+    assessmentId: { in: params.assessmentIds },
+    termId: params.allocation.termId,
+    student: {
+      is: {
+        status: StudentStatus.ACTIVE,
+        deletedAt: null,
+      },
+    },
+    enrollment: {
+      is: buildActiveEnrollmentWhere({
+        allocation: params.allocation,
+        academicYearId: requireAllocationAcademicYearId(params.allocation),
+      }),
+    },
+  };
+}
+
+function buildAssignmentSubmissionWhere(params: {
+  allocation: TeacherAppAllocationRecord;
+  assignmentId: string;
+  filters?: ListTeacherClassroomAssignmentSubmissionsQueryDto;
+}): Prisma.GradeSubmissionWhereInput {
+  const academicYearId = requireAllocationAcademicYearId(params.allocation);
+  const search = params.filters?.search?.trim();
+  const studentWhere: Prisma.StudentWhereInput = {
+    status: StudentStatus.ACTIVE,
+    deletedAt: null,
+    ...(search
+      ? {
+          OR: [
+            {
+              firstName: {
+                contains: search,
+                mode: Prisma.QueryMode.insensitive,
+              },
+            },
+            {
+              lastName: {
+                contains: search,
+                mode: Prisma.QueryMode.insensitive,
+              },
+            },
+          ],
+        }
+      : {}),
+  };
+
+  return {
+    assessmentId: params.assignmentId,
+    termId: params.allocation.termId,
+    ...(params.filters?.status
+      ? { status: toCoreSubmissionStatus(params.filters.status) }
+      : {}),
+    ...(params.filters?.studentId
+      ? { studentId: params.filters.studentId }
+      : {}),
+    student: { is: studentWhere },
+    enrollment: {
+      is: buildActiveEnrollmentWhere({
+        allocation: params.allocation,
+        academicYearId,
+        studentId: params.filters?.studentId,
+      }),
+    },
+  };
+}
+
 function requireAllocationAcademicYearId(
   allocation: TeacherAppAllocationRecord,
 ): string {
@@ -472,6 +856,19 @@ function requireAllocationAcademicYearId(
   }
 
   return academicYearId;
+}
+
+function toCoreSubmissionStatus(
+  status: TeacherClassroomAssignmentSubmissionStatus,
+): GradeSubmissionStatus {
+  switch (status) {
+    case 'in_progress':
+      return GradeSubmissionStatus.IN_PROGRESS;
+    case 'submitted':
+      return GradeSubmissionStatus.SUBMITTED;
+    case 'corrected':
+      return GradeSubmissionStatus.CORRECTED;
+  }
 }
 
 function toCoreAssessmentType(
