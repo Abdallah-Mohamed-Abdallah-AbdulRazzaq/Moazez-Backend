@@ -11,7 +11,14 @@ import {
   GradeScopeType,
   GradeSubmissionStatus,
   OrganizationStatus,
+  FileVisibility,
   PrismaClient,
+  ReinforcementProofType,
+  ReinforcementRewardType,
+  ReinforcementSource,
+  ReinforcementSubmissionStatus,
+  ReinforcementTargetScope,
+  ReinforcementTaskStatus,
   SchoolStatus,
   StudentEnrollmentStatus,
   StudentStatus,
@@ -69,8 +76,12 @@ describe('Teacher App tenancy isolation (security)', () => {
   let otherTermAssignmentId: string;
   let otherTeacherAssessmentId: string;
   let crossSchoolAssessmentId: string;
+  let ownTaskId: string;
+  let otherTeacherTaskId: string;
+  let crossSchoolTaskId: string;
   let ownStudentIds: string[] = [];
   let otherTeacherStudentIds: string[] = [];
+  let crossSchoolStudentIds: string[] = [];
 
   const testSuffix = `teacher-app-security-${Date.now()}`;
   const createdUserIds: string[] = [];
@@ -84,6 +95,12 @@ describe('Teacher App tenancy isolation (security)', () => {
   const createdGradeSubmissionIds: string[] = [];
   const createdGradeQuestionIds: string[] = [];
   const createdGradeAssessmentIds: string[] = [];
+  const createdReinforcementSubmissionIds: string[] = [];
+  const createdReinforcementStageIds: string[] = [];
+  const createdReinforcementAssignmentIds: string[] = [];
+  const createdReinforcementTargetIds: string[] = [];
+  const createdReinforcementTaskIds: string[] = [];
+  const createdFileIds: string[] = [];
   const createdAllocationIds: string[] = [];
   const createdSubjectIds: string[] = [];
   const createdClassroomIds: string[] = [];
@@ -233,6 +250,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       studentCount: 1,
     });
     crossSchoolAllocationId = crossSchoolFixture.allocationId;
+    crossSchoolStudentIds = crossSchoolFixture.studentIds;
 
     await createPrivateStudentData({
       organizationId: organizationAId,
@@ -444,6 +462,31 @@ describe('Teacher App tenancy isolation (security)', () => {
     });
     createdGradeItemIds.push(ownGradeItem.id);
 
+    ownTaskId = await createTaskFixture({
+      schoolId: schoolAId,
+      fixture: ownFixture,
+      teacherUserId: teacherAId,
+      marker: 'own-task',
+      status: ReinforcementTaskStatus.UNDER_REVIEW,
+      withProofFile: true,
+    });
+    otherTeacherTaskId = await createTaskFixture({
+      schoolId: schoolAId,
+      fixture: otherTeacherFixture,
+      teacherUserId: teacherBId,
+      marker: 'other-teacher-task',
+      status: ReinforcementTaskStatus.NOT_COMPLETED,
+      withProofFile: false,
+    });
+    crossSchoolTaskId = await createTaskFixture({
+      schoolId: schoolBId,
+      fixture: crossSchoolFixture,
+      teacherUserId: teacherCrossSchoolId,
+      marker: 'cross-school-task',
+      status: ReinforcementTaskStatus.NOT_COMPLETED,
+      withProofFile: false,
+    });
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -492,6 +535,24 @@ describe('Teacher App tenancy isolation (security)', () => {
       });
       await prisma.attendanceSession.deleteMany({
         where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+      });
+      await prisma.reinforcementSubmission.deleteMany({
+        where: { id: { in: createdReinforcementSubmissionIds } },
+      });
+      await prisma.reinforcementTaskStage.deleteMany({
+        where: { id: { in: createdReinforcementStageIds } },
+      });
+      await prisma.reinforcementAssignment.deleteMany({
+        where: { id: { in: createdReinforcementAssignmentIds } },
+      });
+      await prisma.reinforcementTaskTarget.deleteMany({
+        where: { id: { in: createdReinforcementTargetIds } },
+      });
+      await prisma.reinforcementTask.deleteMany({
+        where: { id: { in: createdReinforcementTaskIds } },
+      });
+      await prisma.file.deleteMany({
+        where: { id: { in: createdFileIds } },
       });
       await prisma.guardian.deleteMany({
         where: { id: { in: createdGuardianIds } },
@@ -1006,6 +1067,143 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(submissionDetailJson).not.toContain('metadata');
     expect(submissionDetailJson).not.toContain('schoolId');
     expect(submissionDetailJson).not.toContain('scheduleId');
+  });
+
+  it('teacher can read owned task dashboard, list, detail, and selectors safely', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const dashboard = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks/dashboard`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const dashboardJson = JSON.stringify(dashboard.body);
+
+    expect(dashboard.body.summary).toMatchObject({
+      totalTasks: 1,
+      underReviewTasks: 1,
+    });
+    expect(dashboard.body.byClass).toEqual([
+      expect.objectContaining({
+        classId: ownAllocationId,
+        studentsCount: 2,
+        activeTasksCount: 1,
+      }),
+    ]);
+    expect(dashboardJson).toContain(ownTaskId);
+    expect(dashboardJson).not.toContain(otherTeacherTaskId);
+    expect(dashboardJson).not.toContain(crossSchoolTaskId);
+    expectSafeTeacherTaskPayload(dashboard.body);
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks`)
+      .query({ classId: ownAllocationId, status: 'underReview' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const listJson = JSON.stringify(list.body);
+
+    expect(list.body.tasks).toEqual([
+      expect.objectContaining({
+        taskId: ownTaskId,
+        status: 'underReview',
+        source: 'teacher',
+        target: expect.objectContaining({
+          classId: ownAllocationId,
+          studentId: ownStudentIds[0],
+        }),
+      }),
+    ]);
+    expect(listJson).not.toContain(otherTeacherTaskId);
+    expect(listJson).not.toContain(crossSchoolTaskId);
+    expectSafeTeacherTaskPayload(list.body);
+
+    const studentList = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks`)
+      .query({ studentId: ownStudentIds[0] })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(studentList.body.tasks.map((task: { taskId: string }) => task.taskId))
+      .toEqual([ownTaskId]);
+
+    const detail = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks/${ownTaskId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const detailJson = JSON.stringify(detail.body);
+
+    expect(detail.body.task).toMatchObject({
+      taskId: ownTaskId,
+      status: 'underReview',
+      target: {
+        classId: ownAllocationId,
+        studentId: ownStudentIds[0],
+      },
+      submissions: [
+        expect.objectContaining({
+          studentId: ownStudentIds[0],
+          proofFile: expect.objectContaining({
+            id: expect.any(String),
+            downloadPath: expect.stringContaining('/api/v1/files/'),
+          }),
+        }),
+      ],
+    });
+    expect(detailJson).toContain(`${testSuffix}-proof-text`);
+    expectSafeTeacherTaskPayload(detail.body);
+
+    const selectors = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks/selectors`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const selectorsJson = JSON.stringify(selectors.body);
+
+    expect(selectors.body.classes).toEqual([
+      expect.objectContaining({
+        classId: ownAllocationId,
+        studentsCount: 2,
+      }),
+    ]);
+    expect(
+      selectors.body.students.map(
+        (student: { studentId: string }) => student.studentId,
+      ),
+    ).toEqual(ownStudentIds);
+    expect(selectorsJson).not.toContain(otherTeacherAllocationId);
+    expect(selectorsJson).not.toContain(otherTeacherStudentIds[0]);
+    expectSafeTeacherTaskPayload(selectors.body);
+  });
+
+  it('teacher cannot read same-school other-teacher or cross-school task data', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks`)
+      .query({ classId: otherTeacherAllocationId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks`)
+      .query({ studentId: otherTeacherStudentIds[0] })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks/${otherTeacherTaskId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks`)
+      .query({ classId: crossSchoolAllocationId })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks`)
+      .query({ studentId: crossSchoolStudentIds[0] })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/tasks/${crossSchoolTaskId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
   });
 
   it('teacher can review, bulk-review, finalize, and sync an owned submission safely', async () => {
@@ -1553,6 +1751,22 @@ describe('Teacher App tenancy isolation (security)', () => {
         )
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/tasks/dashboard`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/tasks`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/tasks/selectors`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/tasks/${ownTaskId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
     }
   });
 
@@ -1616,6 +1830,40 @@ describe('Teacher App tenancy isolation (security)', () => {
       .post(
         `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/review`,
       )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+  });
+
+  it('does not register Teacher Tasks mutation or XP mutation endpoints', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/tasks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/teacher/tasks/${ownTaskId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/teacher/tasks/${ownTaskId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/tasks/${ownTaskId}/cancel`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/tasks/${ownTaskId}/stages/stage-1/approve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/xp/bonus`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({})
       .expect(404);
@@ -2027,6 +2275,141 @@ describe('Teacher App tenancy isolation (security)', () => {
       },
     });
     createdMedicalProfileStudentIds.push(params.studentId);
+  }
+
+  async function createTaskFixture(params: {
+    schoolId: string;
+    fixture: {
+      academicYearId: string;
+      termId: string;
+      classroomId: string;
+      subjectId: string;
+      studentIds: string[];
+      enrollmentIds: string[];
+    };
+    teacherUserId: string;
+    marker: string;
+    status: ReinforcementTaskStatus;
+    withProofFile: boolean;
+  }): Promise<string> {
+    const task = await prisma.reinforcementTask.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.fixture.academicYearId,
+        termId: params.fixture.termId,
+        subjectId: params.fixture.subjectId,
+        titleEn: `${testSuffix}-${params.marker}`,
+        descriptionEn: `${testSuffix}-${params.marker}-description`,
+        source: ReinforcementSource.TEACHER,
+        status: params.status,
+        rewardType: ReinforcementRewardType.MORAL,
+        rewardLabelEn: `${testSuffix}-${params.marker}-reward`,
+        dueDate: new Date('2026-09-20T00:00:00.000Z'),
+        assignedById: params.teacherUserId,
+        assignedByName: `${params.marker} teacher`,
+        createdById: params.teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdReinforcementTaskIds.push(task.id);
+
+    const target = await prisma.reinforcementTaskTarget.create({
+      data: {
+        schoolId: params.schoolId,
+        taskId: task.id,
+        scopeType: ReinforcementTargetScope.STUDENT,
+        scopeKey: params.fixture.studentIds[0],
+        classroomId: params.fixture.classroomId,
+        studentId: params.fixture.studentIds[0],
+      },
+      select: { id: true },
+    });
+    createdReinforcementTargetIds.push(target.id);
+
+    const stage = await prisma.reinforcementTaskStage.create({
+      data: {
+        schoolId: params.schoolId,
+        taskId: task.id,
+        sortOrder: 1,
+        titleEn: `${testSuffix}-${params.marker}-stage`,
+        proofType: params.withProofFile
+          ? ReinforcementProofType.IMAGE
+          : ReinforcementProofType.NONE,
+        requiresApproval: true,
+      },
+      select: { id: true },
+    });
+    createdReinforcementStageIds.push(stage.id);
+
+    const assignment = await prisma.reinforcementAssignment.create({
+      data: {
+        schoolId: params.schoolId,
+        taskId: task.id,
+        academicYearId: params.fixture.academicYearId,
+        termId: params.fixture.termId,
+        studentId: params.fixture.studentIds[0],
+        enrollmentId: params.fixture.enrollmentIds[0],
+        status: params.status,
+        progress:
+          params.status === ReinforcementTaskStatus.COMPLETED ? 100 : 50,
+      },
+      select: { id: true },
+    });
+    createdReinforcementAssignmentIds.push(assignment.id);
+
+    if (params.withProofFile) {
+      const file = await prisma.file.create({
+        data: {
+          schoolId: params.schoolId,
+          uploaderId: params.teacherUserId,
+          bucket: `${testSuffix}-private-bucket`,
+          objectKey: `${testSuffix}-raw-storage-key`,
+          originalName: `${params.marker}-proof.png`,
+          mimeType: 'image/png',
+          sizeBytes: BigInt(1234),
+          visibility: FileVisibility.PRIVATE,
+        },
+        select: { id: true },
+      });
+      createdFileIds.push(file.id);
+
+      const submission = await prisma.reinforcementSubmission.create({
+        data: {
+          schoolId: params.schoolId,
+          assignmentId: assignment.id,
+          taskId: task.id,
+          stageId: stage.id,
+          studentId: params.fixture.studentIds[0],
+          enrollmentId: params.fixture.enrollmentIds[0],
+          status: ReinforcementSubmissionStatus.SUBMITTED,
+          proofFileId: file.id,
+          proofText: `${testSuffix}-proof-text`,
+          submittedById: params.teacherUserId,
+          submittedAt: new Date('2026-09-16T10:00:00.000Z'),
+        },
+        select: { id: true },
+      });
+      createdReinforcementSubmissionIds.push(submission.id);
+    }
+
+    return task.id;
+  }
+
+  function expectSafeTeacherTaskPayload(value: unknown): void {
+    const json = JSON.stringify(value);
+
+    for (const forbidden of [
+      'schoolId',
+      'scheduleId',
+      'bucket',
+      'objectKey',
+      'raw-storage-key',
+      'private-bucket',
+      'BehaviorPointLedger',
+      'behaviorPoint',
+    ]) {
+      expect(json).not.toContain(forbidden);
+    }
   }
 
   async function login(email: string): Promise<{ accessToken: string }> {

@@ -35,6 +35,12 @@ import { GetTeacherClassDetailUseCase } from './my-classes/application/get-teach
 import { ListTeacherClassesUseCase } from './my-classes/application/list-teacher-classes.use-case';
 import { TeacherMyClassesController } from './my-classes/controller/teacher-my-classes.controller';
 import { TeacherAppCompositionReadAdapter } from './shared/infrastructure/teacher-app-composition-read.adapter';
+import { GetTeacherTaskSelectorsUseCase } from './tasks/application/get-teacher-task-selectors.use-case';
+import { GetTeacherTaskUseCase } from './tasks/application/get-teacher-task.use-case';
+import { GetTeacherTasksDashboardUseCase } from './tasks/application/get-teacher-tasks-dashboard.use-case';
+import { ListTeacherTasksUseCase } from './tasks/application/list-teacher-tasks.use-case';
+import { TeacherTasksController } from './tasks/controller/teacher-tasks.controller';
+import { TeacherTasksReadAdapter } from './tasks/infrastructure/teacher-tasks-read.adapter';
 
 @Module({
   imports: [RollCallModule, AssessmentsModule],
@@ -46,6 +52,7 @@ import { TeacherAppCompositionReadAdapter } from './shared/infrastructure/teache
     TeacherClassroomGradesController,
     TeacherClassroomAssignmentsController,
     TeacherClassroomSubmissionReviewController,
+    TeacherTasksController,
   ],
   providers: [
     TeacherAppAccessService,
@@ -75,6 +82,11 @@ import { TeacherAppCompositionReadAdapter } from './shared/infrastructure/teache
     GetTeacherClassroomAttendanceSessionUseCase,
     UpdateTeacherClassroomAttendanceEntriesUseCase,
     SubmitTeacherClassroomAttendanceSessionUseCase,
+    TeacherTasksReadAdapter,
+    GetTeacherTasksDashboardUseCase,
+    ListTeacherTasksUseCase,
+    GetTeacherTaskUseCase,
+    GetTeacherTaskSelectorsUseCase,
   ],
   exports: [TeacherAppAccessService],
 })
