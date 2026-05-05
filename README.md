@@ -1025,6 +1025,67 @@ Deferred beyond Sprint 7B:
 - Settings
 - timetable, period, and schedule occurrence model
 
+## Sprint 7C Teacher Classroom Operations Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Ensure SEED_DEMO_DATA=true
+
+npm run infra:up
+npm run verify:sprint7c
+```
+
+For a human demo against a running app:
+
+```bash
+npm run start:dev
+```
+
+Sprint 7C Teacher Classroom Operations verification covers:
+
+- `GET /api/v1/teacher/classroom/:classId`
+- `GET /api/v1/teacher/classroom/:classId/roster`
+- `GET /api/v1/teacher/classroom/:classId/attendance/roster`
+- `POST /api/v1/teacher/classroom/:classId/attendance/session/resolve`
+- `GET /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId`
+- `PUT /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/entries`
+- `POST /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/submit`
+- `GET /api/v1/teacher/classroom/:classId/grades/assessments`
+- `GET /api/v1/teacher/classroom/:classId/grades/assessments/:assessmentId`
+- `GET /api/v1/teacher/classroom/:classId/grades/gradebook`
+- `GET /api/v1/teacher/classroom/:classId/assignments`
+- `GET /api/v1/teacher/classroom/:classId/assignments/:assignmentId`
+- `GET /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions`
+- `GET /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId`
+- `PATCH /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/answers/:answerId/review`
+- `PUT /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/answers/review`
+- `POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/review/finalize`
+- `POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/sync-grade-item`
+
+State:
+
+- Teacher App remains composition-only over core modules.
+- `classId` is `TeacherSubjectAllocation.id`.
+- `assignmentId` is `GradeAssessment.id`.
+- Assignment source is `grades_assessment`.
+- Attendance uses allocation-backed classroom/date identity.
+- Submission review delegates to Grades Core.
+
+Deferred beyond Sprint 7C:
+
+- Teacher Schedule APIs
+- timetable, period, and schedule occurrence model
+- durable `scheduleId`
+- full Homework core
+- Teacher Tasks
+- Teacher Messages
+- Teacher Profile
+- Teacher Settings
+- Teacher XP bonus grants
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -1056,6 +1117,7 @@ Deferred beyond Sprint 7B:
 | `npm run test:e2e:sprint6b`         | Run the Sprint 6B Communication Core Chat closeout e2e flow                                                              |
 | `npm run test:e2e:sprint6c`         | Run the Sprint 6C Realtime + Announcements + Notifications closeout e2e flow                                             |
 | `npm run test:e2e:sprint7b`         | Run the Sprint 7B Teacher App Home + My Classes closeout e2e flow                                                        |
+| `npm run test:e2e:sprint7c`         | Run the Sprint 7C Teacher Classroom Operations closeout e2e flow                                                         |
 | `npm run test:security`             | Tenancy isolation tests                                                                                                  |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                                             |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                                                   |
@@ -1076,6 +1138,7 @@ Deferred beyond Sprint 7B:
 | `npm run verify:sprint6b`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B/4A/4B/5A/5B/5C/6A e2e, and Sprint 6B e2e    |
 | `npm run verify:sprint6c`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B/4A/4B/5A/5B/5C/6A/6B e2e, and Sprint 6C e2e |
 | `npm run verify:sprint7b`           | Run Sprint 6C verification coverage, Teacher App focused unit/security coverage, and Sprint 7B e2e                       |
+| `npm run verify:sprint7c`           | Run Sprint 7B verification coverage plus the Sprint 7C Teacher Classroom Operations e2e                                  |
 | `npm run seed`                      | Re-run idempotent seeds                                                                                                  |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                                                    |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                                               |
