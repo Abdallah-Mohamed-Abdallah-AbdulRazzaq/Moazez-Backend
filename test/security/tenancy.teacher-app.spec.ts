@@ -690,6 +690,105 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(json).not.toContain('raw-storage-logo-should-not-be-returned');
   });
 
+  it('teacher can read profile and employment profile safely', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const profile = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/profile`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(profile.body.teacher).toMatchObject({
+      userId: teacherAId,
+      email: teacherAEmail,
+      userType: 'teacher',
+      avatarUrl: null,
+    });
+    expect(profile.body.school).toEqual({
+      name: `${testSuffix} Academy`,
+      logoUrl: null,
+    });
+    expect(profile.body.classesSummary).toMatchObject({
+      classesCount: 1,
+      subjectsCount: 1,
+      studentsCount: 2,
+    });
+    expectSafeTeacherTaskPayload(profile.body);
+
+    const employment = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/profile/employment`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(employment.body).toEqual({
+      employment: {
+        employeeId: null,
+        department: null,
+        specialization: null,
+        employmentType: null,
+        joiningDate: null,
+        officeHours: null,
+        manager: null,
+        status: 'unsupported',
+      },
+      reason: 'teacher_employment_profile_not_available',
+    });
+    expectSafeTeacherTaskPayload(employment.body);
+  });
+
+  it('teacher can read settings about and contact safely', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const about = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/settings/about`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(about.body).toMatchObject({
+      app: {
+        name: 'Moazez',
+        version: null,
+        environment: null,
+      },
+      school: {
+        name: `${testSuffix} Academy`,
+        logoUrl: null,
+      },
+      legal: {
+        termsUrl: null,
+        privacyUrl: null,
+        status: 'not_configured',
+      },
+      unsupported: {
+        privacySettings: true,
+        appPreferences: true,
+        supportTickets: true,
+        rating: true,
+      },
+    });
+    expectSafeTeacherTaskPayload(about.body);
+
+    const contact = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/settings/contact`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(contact.body).toEqual({
+      school: {
+        name: `${testSuffix} Academy`,
+        email: null,
+        phone: null,
+        address: null,
+      },
+      support: {
+        email: null,
+        phone: null,
+        status: 'not_configured',
+      },
+    });
+    expectSafeTeacherTaskPayload(contact.body);
+  });
+
   it('teacher can list only own allocation-backed classes', async () => {
     const { accessToken } = await login(teacherAEmail);
 
@@ -2154,6 +2253,22 @@ describe('Teacher App tenancy isolation (security)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
       await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/profile`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/profile/employment`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/settings/about`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/settings/contact`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
@@ -2428,6 +2543,59 @@ describe('Teacher App tenancy isolation (security)', () => {
       .post(`${GLOBAL_PREFIX}/teacher/xp/bonus`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({})
+      .expect(404);
+  });
+
+  it('does not register Teacher Profile or Settings mutation and CMS endpoints', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/teacher/profile`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/profile/avatar`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/teacher/profile/employment`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/teacher/settings/about`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/teacher/settings/contact`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/teacher/settings/privacy`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/settings/support-ticket`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/settings/app-rating`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/settings/legal/privacy-policy`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/settings/help-center`)
+      .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
   });
 
@@ -3108,6 +3276,11 @@ describe('Teacher App tenancy isolation (security)', () => {
       'metadata',
       'BehaviorPointLedger',
       'behaviorPoint',
+      'password',
+      'passwordHash',
+      'sessionId',
+      'refreshToken',
+      'raw-storage-logo-should-not-be-returned',
     ]) {
       expect(json).not.toContain(forbidden);
     }

@@ -476,6 +476,10 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
       'GET /api/v1/teacher/home',
       'GET /api/v1/teacher/my-classes',
       'GET /api/v1/teacher/my-classes/:classId',
+      'GET /api/v1/teacher/profile',
+      'GET /api/v1/teacher/profile/employment',
+      'GET /api/v1/teacher/settings/about',
+      'GET /api/v1/teacher/settings/contact',
       'GET /api/v1/teacher/tasks',
       'GET /api/v1/teacher/tasks/:taskId',
       'GET /api/v1/teacher/tasks/dashboard',
@@ -508,7 +512,6 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
       '/teacher/homeworks',
       `/teacher/homeworks/${ownAssignmentId}`,
       '/teacher/messages',
-      '/teacher/profile',
       '/teacher/settings',
       '/teacher/xp',
     ]) {

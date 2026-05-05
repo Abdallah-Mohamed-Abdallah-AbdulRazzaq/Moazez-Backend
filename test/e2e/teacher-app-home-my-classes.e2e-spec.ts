@@ -314,6 +314,10 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
       'GET /api/v1/teacher/home',
       'GET /api/v1/teacher/my-classes',
       'GET /api/v1/teacher/my-classes/:classId',
+      'GET /api/v1/teacher/profile',
+      'GET /api/v1/teacher/profile/employment',
+      'GET /api/v1/teacher/settings/about',
+      'GET /api/v1/teacher/settings/contact',
       'GET /api/v1/teacher/tasks',
       'GET /api/v1/teacher/tasks/:taskId',
       'GET /api/v1/teacher/tasks/dashboard',
@@ -483,7 +487,6 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
       `/teacher/classroom/${ownFixture.allocationId}/attendance`,
       '/teacher/homeworks',
       '/teacher/messages',
-      '/teacher/profile',
       '/teacher/settings',
     ]) {
       await request(app.getHttpServer())

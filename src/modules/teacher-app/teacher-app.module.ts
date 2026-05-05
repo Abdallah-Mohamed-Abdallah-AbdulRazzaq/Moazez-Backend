@@ -36,6 +36,14 @@ import { TeacherHomeController } from './home/controller/teacher-home.controller
 import { GetTeacherClassDetailUseCase } from './my-classes/application/get-teacher-class-detail.use-case';
 import { ListTeacherClassesUseCase } from './my-classes/application/list-teacher-classes.use-case';
 import { TeacherMyClassesController } from './my-classes/controller/teacher-my-classes.controller';
+import { GetTeacherEmploymentProfileUseCase } from './profile/application/get-teacher-employment-profile.use-case';
+import { GetTeacherProfileUseCase } from './profile/application/get-teacher-profile.use-case';
+import { TeacherProfileController } from './profile/controller/teacher-profile.controller';
+import { TeacherProfileReadAdapter } from './profile/infrastructure/teacher-profile-read.adapter';
+import { GetTeacherSettingsAboutUseCase } from './settings/application/get-teacher-settings-about.use-case';
+import { GetTeacherSettingsContactUseCase } from './settings/application/get-teacher-settings-contact.use-case';
+import { TeacherSettingsController } from './settings/controller/teacher-settings.controller';
+import { TeacherSettingsReadAdapter } from './settings/infrastructure/teacher-settings-read.adapter';
 import { TeacherAppCompositionReadAdapter } from './shared/infrastructure/teacher-app-composition-read.adapter';
 import { CreateTeacherTaskUseCase } from './tasks/application/create-teacher-task.use-case';
 import { GetTeacherTaskSelectorsUseCase } from './tasks/application/get-teacher-task-selectors.use-case';
@@ -70,6 +78,8 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     TeacherTaskReviewQueueController,
     TeacherTasksController,
     TeacherXpController,
+    TeacherProfileController,
+    TeacherSettingsController,
   ],
   providers: [
     TeacherAppAccessService,
@@ -115,6 +125,12 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     GetTeacherClassXpUseCase,
     GetTeacherStudentXpUseCase,
     ListTeacherStudentXpHistoryUseCase,
+    TeacherProfileReadAdapter,
+    GetTeacherProfileUseCase,
+    GetTeacherEmploymentProfileUseCase,
+    TeacherSettingsReadAdapter,
+    GetTeacherSettingsAboutUseCase,
+    GetTeacherSettingsContactUseCase,
   ],
   exports: [TeacherAppAccessService],
 })
