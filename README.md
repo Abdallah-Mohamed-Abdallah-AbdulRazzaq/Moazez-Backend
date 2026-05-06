@@ -1086,6 +1086,61 @@ Deferred beyond Sprint 7C:
 - Teacher Settings
 - Teacher XP bonus grants
 
+## Sprint 7D Teacher App APIs Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Ensure SEED_DEMO_DATA=true
+
+npm run infra:up
+npm run verify:sprint7d
+```
+
+For a human demo against a running app:
+
+```bash
+npm run start:dev
+```
+
+Sprint 7D Teacher App verification covers:
+
+- Home
+- My Classes
+- Classroom Operations
+- Attendance Adapter
+- Grades / Assignments Adapter
+- Submission Review Adapter
+- Tasks
+- Task Review Queue
+- XP Center read
+- Profile read
+- Settings read-only
+- Messages over existing conversations
+
+Source of truth rules:
+
+- Teacher App remains a composition layer.
+- Attendance core owns attendance rules.
+- Grades core owns assessments, submissions, and review.
+- Reinforcement core owns tasks, reviews, and XP.
+- Communication core owns conversations and messages.
+- `classId` is `TeacherSubjectAllocation.id`.
+
+Deferred beyond Sprint 7D:
+
+- Teacher Schedule APIs
+- timetable, period, schedule occurrence, and durable `scheduleId`
+- full Homework core
+- XP bonus grants
+- contact discovery and new conversation creation
+- message attachment/audio routes
+- profile/settings mutations
+- support, rating, legal, privacy, preferences, and CMS-backed help center
+- standalone Teacher announcements/notification center unless future approved
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -1118,6 +1173,7 @@ Deferred beyond Sprint 7C:
 | `npm run test:e2e:sprint6c`         | Run the Sprint 6C Realtime + Announcements + Notifications closeout e2e flow                                             |
 | `npm run test:e2e:sprint7b`         | Run the Sprint 7B Teacher App Home + My Classes closeout e2e flow                                                        |
 | `npm run test:e2e:sprint7c`         | Run the Sprint 7C Teacher Classroom Operations closeout e2e flow                                                         |
+| `npm run test:e2e:sprint7d`         | Run the Sprint 7D Teacher App final closeout e2e flow                                                                    |
 | `npm run test:security`             | Tenancy isolation tests                                                                                                  |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                                             |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                                                   |
@@ -1139,6 +1195,7 @@ Deferred beyond Sprint 7C:
 | `npm run verify:sprint6c`           | Run preflight, migrations, seed, build, unit/security tests, Sprint 2B/3A/3B/4A/4B/5A/5B/5C/6A/6B e2e, and Sprint 6C e2e |
 | `npm run verify:sprint7b`           | Run Sprint 6C verification coverage, Teacher App focused unit/security coverage, and Sprint 7B e2e                       |
 | `npm run verify:sprint7c`           | Run Sprint 7B verification coverage plus the Sprint 7C Teacher Classroom Operations e2e                                  |
+| `npm run verify:sprint7d`           | Run Sprint 7C verification coverage plus the Sprint 7D Teacher App final closeout e2e                                    |
 | `npm run seed`                      | Re-run idempotent seeds                                                                                                  |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                                                    |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                                               |
