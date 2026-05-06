@@ -327,6 +327,11 @@
           "name": "sprint-7a-teacher-app-contract-audit.md",
           "type": "file",
           "icon": "📝"
+        },
+        {
+          "name": "sprint-7d-teacher-tasks-xp-audit.md",
+          "type": "file",
+          "icon": "📝"
         }
       ]
     },
@@ -9316,6 +9321,115 @@
                   ]
                 },
                 {
+                  "name": "messages",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-teacher-message-conversation.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-teacher-conversation-messages.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-teacher-message-conversations.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "mark-teacher-conversation-read.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "send-teacher-conversation-message.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-messages.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-messages.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-messages-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-messages.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-messages-read.adapter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-messages.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-messages.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
                   "name": "my-classes",
                   "type": "folder",
                   "icon": "📁",
@@ -9393,6 +9507,194 @@
                   ]
                 },
                 {
+                  "name": "profile",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-teacher-employment-profile.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-teacher-profile.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-profile.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-profile.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-profile-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-profile.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-profile-read.adapter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-profile.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-profile.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "settings",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-teacher-settings-about.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-teacher-settings-contact.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-settings.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-settings.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-settings-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-settings.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-settings-read.adapter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-settings.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-settings.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
                   "name": "shared",
                   "type": "folder",
                   "icon": "📁",
@@ -9435,6 +9737,328 @@
                       "name": "teacher-app.types.ts",
                       "type": "file",
                       "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "tasks",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-teacher-task.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-teacher-task-selectors.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-teacher-task.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-teacher-tasks-dashboard.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-teacher-tasks.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-tasks.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-tasks.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-tasks-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-tasks.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "review",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "application",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "approve-teacher-task-review-submission.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "get-teacher-task-review-submission.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "list-teacher-task-review-queue.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "reject-teacher-task-review-submission.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "controller",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-task-review-queue.controller.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "dto",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-task-review-queue.dto.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "infrastructure",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-task-review-read.adapter.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "presenters",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-task-review.presenter.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "tests",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "teacher-task-review-read.adapter.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "teacher-task-review.presenter.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "teacher-task-review.use-case.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-teacher-task.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-tasks-read.adapter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-tasks.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-tasks.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "xp",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-teacher-class-xp.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-teacher-student-xp.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-teacher-xp-dashboard.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-teacher-student-xp-history.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-xp.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-xp.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-xp-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-xp.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-xp-read.adapter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-xp.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-xp.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
                     }
                   ]
                 },
@@ -9593,6 +10217,11 @@
             },
             {
               "name": "teacher-app-classroom-operations.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "teacher-app-final-closeout.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -9883,7 +10512,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-05-05T02:38:53.671Z",
+    "generated": "2026-05-06T01:17:12.791Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
