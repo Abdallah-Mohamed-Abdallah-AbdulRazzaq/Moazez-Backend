@@ -1141,6 +1141,67 @@ Deferred beyond Sprint 7D:
 - support, rating, legal, privacy, preferences, and CMS-backed help center
 - standalone Teacher announcements/notification center unless future approved
 
+## Sprint 8F Student App APIs Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Ensure SEED_DEMO_DATA=true
+
+npm run infra:up
+npm run verify:sprint8f
+```
+
+For a human demo against a running app:
+
+```bash
+npm run start:dev
+```
+
+Sprint 8F Student App verification covers:
+
+- Ownership foundation
+- Home
+- Profile
+- Subjects
+- Grades
+- Exams
+- Behavior
+- Progress
+- Hero Journey
+- Tasks read
+- Messages over existing conversations
+- Announcements read/read-marker/attachments
+
+Source of truth rules:
+
+- Student App is a composition layer.
+- `StudentAppAccessService` owns current student/enrollment resolution.
+- Academics owns subjects/classroom hierarchy.
+- Grades owns assessments/items/submissions.
+- Behavior owns behavior records and points.
+- Reinforcement owns tasks/XP/Hero Journey/rewards.
+- Communication owns messages/conversations/announcements.
+- Behavior points are not XP.
+
+Deferred beyond Sprint 8F:
+
+- Student Schedule APIs
+- timetable/period/schedule occurrence/durable `scheduleId`
+- full Homework Core
+- Pickup
+- Notification Center
+- task stage submit
+- contact discovery / new conversation creation
+- message attachment/audio routes
+- announcement management
+- profile mutation/avatar upload
+- XP grants
+- reward redemption
+- mission start/complete
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -1174,6 +1235,7 @@ Deferred beyond Sprint 7D:
 | `npm run test:e2e:sprint7b`         | Run the Sprint 7B Teacher App Home + My Classes closeout e2e flow                                                        |
 | `npm run test:e2e:sprint7c`         | Run the Sprint 7C Teacher Classroom Operations closeout e2e flow                                                         |
 | `npm run test:e2e:sprint7d`         | Run the Sprint 7D Teacher App final closeout e2e flow                                                                    |
+| `npm run test:e2e:sprint8f`         | Run the Sprint 8F Student App final closeout e2e flow                                                                    |
 | `npm run test:security`             | Tenancy isolation tests                                                                                                  |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                                             |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                                                   |
@@ -1196,6 +1258,7 @@ Deferred beyond Sprint 7D:
 | `npm run verify:sprint7b`           | Run Sprint 6C verification coverage, Teacher App focused unit/security coverage, and Sprint 7B e2e                       |
 | `npm run verify:sprint7c`           | Run Sprint 7B verification coverage plus the Sprint 7C Teacher Classroom Operations e2e                                  |
 | `npm run verify:sprint7d`           | Run Sprint 7C verification coverage plus the Sprint 7D Teacher App final closeout e2e                                    |
+| `npm run verify:sprint8f`           | Run Sprint 7D verification coverage plus the Sprint 8F Student App final closeout e2e                                    |
 | `npm run seed`                      | Re-run idempotent seeds                                                                                                  |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                                                    |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                                               |

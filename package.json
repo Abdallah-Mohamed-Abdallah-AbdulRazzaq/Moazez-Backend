@@ -37,6 +37,7 @@
     "test:e2e:sprint7b": "jest --config ./test/jest-e2e.json --runInBand test/e2e/teacher-app-home-my-classes.e2e-spec.ts",
     "test:e2e:sprint7c": "jest --config ./test/jest-e2e.json --runInBand test/e2e/teacher-app-classroom-operations.e2e-spec.ts",
     "test:e2e:sprint7d": "jest --config ./test/jest-e2e.json --runInBand test/e2e/teacher-app-final-closeout.e2e-spec.ts",
+    "test:e2e:sprint8f": "jest --config ./test/jest-e2e.json --runInBand test/e2e/student-app-final-closeout.e2e-spec.ts",
     "test:security": "jest --config ./test/jest-e2e.json test/security",
     "seed": "prisma db seed",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",
@@ -60,6 +61,7 @@
     "verify:sprint7b": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- teacher-app --runInBand && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b && npm run test:e2e:sprint3a && npm run test:e2e:sprint3b && npm run test:e2e:sprint4a && npm run test:e2e:sprint4b && npm run test:e2e:sprint5a && npm run test:e2e:sprint5b && npm run test:e2e:sprint5c && npm run test:e2e:sprint6a && npm run test:e2e:sprint6b && npm run test:e2e:sprint6c && npm run test:e2e:sprint7b",
     "verify:sprint7c": "npm run verify:sprint2b:preflight && npm run db:migrate && npm run seed && npm run build && npm run test -- teacher-app --runInBand && npm run test -- --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint2b && npm run test:e2e:sprint3a && npm run test:e2e:sprint3b && npm run test:e2e:sprint4a && npm run test:e2e:sprint4b && npm run test:e2e:sprint5a && npm run test:e2e:sprint5b && npm run test:e2e:sprint5c && npm run test:e2e:sprint6a && npm run test:e2e:sprint6b && npm run test:e2e:sprint6c && npm run test:e2e:sprint7b && npm run test:e2e:sprint7c",
     "verify:sprint7d": "npm run verify:sprint7c && npm run test:e2e:sprint7d",
+    "verify:sprint8f": "npm run verify:sprint7d && npm run test:e2e:sprint8f",
     "demo:sprint1c": "node scripts/demo-sprint1c.cjs",
     "demo:sprint2a": "node scripts/demo-sprint2a.cjs",
     "demo:sprint2b": "node scripts/demo-sprint2b.cjs"
