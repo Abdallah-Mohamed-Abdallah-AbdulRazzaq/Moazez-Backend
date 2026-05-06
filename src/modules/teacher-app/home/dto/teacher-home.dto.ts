@@ -14,7 +14,7 @@ export class TeacherHomeSummaryDto {
   classesCount!: number;
   studentsCount!: number;
   pendingTasksCount!: number;
-  unreadMessagesCount!: number | null;
+  unreadMessagesCount!: number;
   unreadNotificationsCount!: number | null;
 }
 
@@ -54,6 +54,50 @@ export class TeacherHomeActionSummaryDto {
   progress!: number | null;
 }
 
+export class TeacherHomeTaskSummaryItemDto {
+  taskId!: string;
+  title!: string;
+  status!: string;
+  dueAt!: string | null;
+}
+
+export class TeacherHomeTasksDto {
+  activeTasksCount!: number;
+  pendingReviewCount!: number;
+  recentTasks!: TeacherHomeTaskSummaryItemDto[];
+}
+
+export class TeacherHomeTopStudentDto {
+  studentId!: string;
+  displayName!: string;
+  totalXp!: number;
+}
+
+export class TeacherHomeXpDto {
+  studentsCount!: number;
+  totalXp!: number;
+  averageXp!: number;
+  topStudent!: TeacherHomeTopStudentDto | null;
+}
+
+export class TeacherHomeMessageConversationDto {
+  conversationId!: string;
+  type!: string;
+  title!: string | null;
+  displayName!: string;
+  status!: string;
+  unreadCount!: number;
+  participantsCount!: number;
+  lastActivityAt!: string | null;
+  updatedAt!: string;
+}
+
+export class TeacherHomeMessagesDto {
+  unreadConversationsCount!: number;
+  unreadMessagesCount!: number;
+  recentConversations!: TeacherHomeMessageConversationDto[];
+}
+
 export class TeacherHomeResponseDto {
   teacher!: TeacherHomeTeacherDto;
   school!: TeacherHomeSchoolDto;
@@ -63,4 +107,7 @@ export class TeacherHomeResponseDto {
   stats!: TeacherHomeStatDto[];
   weeklySchedule!: TeacherHomeWeeklyScheduleDayDto[];
   actionSummaries!: TeacherHomeActionSummaryDto[];
+  tasks!: TeacherHomeTasksDto;
+  xp!: TeacherHomeXpDto;
+  messages!: TeacherHomeMessagesDto;
 }

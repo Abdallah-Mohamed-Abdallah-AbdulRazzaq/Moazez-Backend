@@ -1,6 +1,12 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  CommunicationConversationStatus,
+  CommunicationConversationType,
+  CommunicationMessageKind,
+  CommunicationMessageStatus,
+  CommunicationParticipantRole,
+  CommunicationParticipantStatus,
   GradeAnswerCorrectionStatus,
   MembershipStatus,
   GradeAssessmentApprovalStatus,
@@ -59,6 +65,9 @@ describe('Teacher App tenancy isolation (security)', () => {
   let teacherAId: string;
   let teacherBId: string;
   let teacherCrossSchoolId: string;
+  let adminUserId: string;
+  let parentUserId: string;
+  let studentUserId: string;
   let ownAllocationId: string;
   let otherTeacherAllocationId: string;
   let crossSchoolAllocationId: string;
@@ -83,6 +92,12 @@ describe('Teacher App tenancy isolation (security)', () => {
   let ownTaskSubmissionId: string;
   let otherTeacherTaskSubmissionId: string;
   let crossSchoolTaskSubmissionId: string;
+  let ownConversationId: string;
+  let otherTeacherConversationId: string;
+  let crossSchoolConversationId: string;
+  let ownVisibleMessageId: string;
+  let ownHiddenMessageId: string;
+  let ownDeletedMessageId: string;
   let ownAcademicYearId: string;
   let ownTermId: string;
   let ownClassroomId: string;
@@ -105,6 +120,12 @@ describe('Teacher App tenancy isolation (security)', () => {
   const createdGradeQuestionIds: string[] = [];
   const createdGradeAssessmentIds: string[] = [];
   const createdXpLedgerIds: string[] = [];
+  const createdCommunicationAttachmentIds: string[] = [];
+  const createdCommunicationReactionIds: string[] = [];
+  const createdCommunicationReadIds: string[] = [];
+  const createdCommunicationMessageIds: string[] = [];
+  const createdCommunicationParticipantIds: string[] = [];
+  const createdCommunicationConversationIds: string[] = [];
   const createdReinforcementSubmissionIds: string[] = [];
   const createdReinforcementStageIds: string[] = [];
   const createdReinforcementAssignmentIds: string[] = [];
@@ -210,21 +231,21 @@ describe('Teacher App tenancy isolation (security)', () => {
       organizationId: organizationBId,
       schoolId: schoolBId,
     });
-    await createUserWithMembership({
+    adminUserId = await createUserWithMembership({
       email: adminEmail,
       userType: UserType.SCHOOL_USER,
       roleId: schoolAdminRole.id,
       organizationId: organizationAId,
       schoolId: schoolAId,
     });
-    await createUserWithMembership({
+    parentUserId = await createUserWithMembership({
       email: parentEmail,
       userType: UserType.PARENT,
       roleId: parentRole.id,
       organizationId: organizationAId,
       schoolId: schoolAId,
     });
-    await createUserWithMembership({
+    studentUserId = await createUserWithMembership({
       email: studentEmail,
       userType: UserType.STUDENT,
       roleId: studentRole.id,
@@ -534,6 +555,39 @@ describe('Teacher App tenancy isolation (security)', () => {
       reason: `${testSuffix}-cross-xp-reason`,
     });
 
+    const ownConversation = await createMessageConversationFixture({
+      schoolId: schoolAId,
+      title: null,
+      participantUserIds: [teacherAId, parentUserId],
+      messagePrefix: 'own',
+      attachFile: true,
+      hiddenAndDeleted: true,
+    });
+    ownConversationId = ownConversation.conversationId;
+    ownVisibleMessageId = ownConversation.visibleMessageId;
+    ownHiddenMessageId = ownConversation.hiddenMessageId;
+    ownDeletedMessageId = ownConversation.deletedMessageId;
+
+    const otherConversation = await createMessageConversationFixture({
+      schoolId: schoolAId,
+      title: `${testSuffix} Other Teacher Conversation`,
+      participantUserIds: [teacherBId],
+      messagePrefix: 'other-teacher',
+      attachFile: false,
+      hiddenAndDeleted: false,
+    });
+    otherTeacherConversationId = otherConversation.conversationId;
+
+    const crossConversation = await createMessageConversationFixture({
+      schoolId: schoolBId,
+      title: `${testSuffix} Cross School Conversation`,
+      participantUserIds: [teacherCrossSchoolId],
+      messagePrefix: 'cross-school',
+      attachFile: false,
+      hiddenAndDeleted: false,
+    });
+    crossSchoolConversationId = crossConversation.conversationId;
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -607,6 +661,46 @@ describe('Teacher App tenancy isolation (security)', () => {
       });
       await prisma.reinforcementTask.deleteMany({
         where: { id: { in: createdReinforcementTaskIds } },
+      });
+      await prisma.communicationMessageAttachment.deleteMany({
+        where: { id: { in: createdCommunicationAttachmentIds } },
+      });
+      await prisma.communicationMessageReaction.deleteMany({
+        where: { id: { in: createdCommunicationReactionIds } },
+      });
+      await prisma.communicationMessageRead.deleteMany({
+        where: {
+          OR: [
+            { id: { in: createdCommunicationReadIds } },
+            {
+              conversationId: {
+                in: createdCommunicationConversationIds,
+              },
+            },
+          ],
+        },
+      });
+      await prisma.communicationConversationParticipant.updateMany({
+        where: { id: { in: createdCommunicationParticipantIds } },
+        data: { lastReadMessageId: null, lastReadAt: null },
+      });
+      await prisma.communicationMessage.deleteMany({
+        where: {
+          OR: [
+            { id: { in: createdCommunicationMessageIds } },
+            {
+              conversationId: {
+                in: createdCommunicationConversationIds,
+              },
+            },
+          ],
+        },
+      });
+      await prisma.communicationConversationParticipant.deleteMany({
+        where: { id: { in: createdCommunicationParticipantIds } },
+      });
+      await prisma.communicationConversation.deleteMany({
+        where: { id: { in: createdCommunicationConversationIds } },
       });
       await prisma.file.deleteMany({
         where: { id: { in: createdFileIds } },
@@ -684,6 +778,21 @@ describe('Teacher App tenancy isolation (security)', () => {
       available: false,
       reason: 'timetable_not_available',
       items: [],
+    });
+    expect(response.body.tasks).toMatchObject({
+      activeTasksCount: expect.any(Number),
+      pendingReviewCount: expect.any(Number),
+      recentTasks: expect.any(Array),
+    });
+    expect(response.body.xp).toMatchObject({
+      studentsCount: 2,
+      totalXp: 30,
+      averageXp: 15,
+    });
+    expect(response.body.messages).toMatchObject({
+      unreadConversationsCount: expect.any(Number),
+      unreadMessagesCount: expect.any(Number),
+      recentConversations: expect.any(Array),
     });
     expect(json).not.toContain('schoolId');
     expect(json).not.toContain('scheduleId');
@@ -787,6 +896,185 @@ describe('Teacher App tenancy isolation (security)', () => {
       },
     });
     expectSafeTeacherTaskPayload(contact.body);
+  });
+
+  it('teacher can use existing participant message conversations safely', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const conversations = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/messages/conversations`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const conversationsJson = JSON.stringify(conversations.body);
+
+    expect(conversationsJson).toContain(ownConversationId);
+    expect(conversationsJson).not.toContain(otherTeacherConversationId);
+    expect(conversationsJson).not.toContain(crossSchoolConversationId);
+    expect(conversations.body.summary.unreadMessagesCount).toBeGreaterThan(0);
+    expectSafeTeacherTaskPayload(conversations.body);
+    expect(conversationsJson).not.toContain(`${testSuffix}-message-object-key`);
+
+    const detail = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const detailJson = JSON.stringify(detail.body);
+
+    expect(detail.body.conversation).toMatchObject({
+      conversationId: ownConversationId,
+      status: 'active',
+      participantsCount: 2,
+      ownReadState: {
+        lastReadMessageId: null,
+        lastReadAt: null,
+      },
+    });
+    expect(detail.body.conversation.participants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          userId: teacherAId,
+          isMe: true,
+          userType: 'teacher',
+        }),
+        expect.objectContaining({
+          userId: parentUserId,
+          isMe: false,
+          userType: 'parent',
+        }),
+      ]),
+    );
+    expectSafeTeacherTaskPayload(detail.body);
+    expect(detailJson).not.toContain('mutedUntil');
+    expect(detailJson).not.toContain(parentEmail);
+
+    const messages = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const messagesJson = JSON.stringify(messages.body);
+    const visibleMessage = messages.body.messages.find(
+      (message: { messageId: string }) =>
+        message.messageId === ownVisibleMessageId,
+    );
+    const hiddenMessage = messages.body.messages.find(
+      (message: { messageId: string }) =>
+        message.messageId === ownHiddenMessageId,
+    );
+    const deletedMessage = messages.body.messages.find(
+      (message: { messageId: string }) =>
+        message.messageId === ownDeletedMessageId,
+    );
+
+    expect(visibleMessage).toMatchObject({
+      messageId: ownVisibleMessageId,
+      body: `${testSuffix}-own-visible-message`,
+      content: `${testSuffix}-own-visible-message`,
+    });
+    expect(visibleMessage.attachments[0]).toMatchObject({
+      fileId: expect.any(String),
+      downloadPath: expect.stringContaining('/api/v1/files/'),
+    });
+    expect(hiddenMessage.body).toBeNull();
+    expect(hiddenMessage.content).toBeNull();
+    expect(deletedMessage.body).toBeNull();
+    expect(deletedMessage.content).toBeNull();
+    expect(messagesJson).not.toContain(`${testSuffix}-own-hidden-message`);
+    expect(messagesJson).not.toContain(`${testSuffix}-own-deleted-message`);
+    expect(messagesJson).not.toContain(`${testSuffix}-message-object-key`);
+    expect(messagesJson).not.toContain(`${testSuffix}-message-bucket`);
+    expect(messagesJson).not.toContain('hiddenReason');
+    expectSafeTeacherTaskPayload(messages.body);
+
+    const sent = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ body: `${testSuffix}-teacher-text-reply` })
+      .expect(201);
+
+    expect(sent.body.message).toMatchObject({
+      body: `${testSuffix}-teacher-text-reply`,
+      type: 'text',
+      sender: {
+        userId: teacherAId,
+        isMe: true,
+      },
+    });
+    expectSafeTeacherTaskPayload(sent.body);
+
+    const read = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/read`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(read.body).toMatchObject({
+      conversationId: ownConversationId,
+      readAt: expect.any(String),
+      markedCount: expect.any(Number),
+    });
+  });
+
+  it('same-school non-participant teacher cannot access message conversation operations', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${otherTeacherConversationId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${otherTeacherConversationId}/messages`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${otherTeacherConversationId}/messages`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ body: `${testSuffix}-forbidden-message` })
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${otherTeacherConversationId}/read`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
+
+  it('cross-school guessed message conversation ids return safe 404', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    for (const route of [
+      `/teacher/messages/conversations/${crossSchoolConversationId}`,
+      `/teacher/messages/conversations/${crossSchoolConversationId}/messages`,
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}${route}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${crossSchoolConversationId}/messages`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ body: `${testSuffix}-cross-school-forbidden-message` })
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${crossSchoolConversationId}/read`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
   });
 
   it('teacher can list only own allocation-backed classes', async () => {
@@ -2269,6 +2557,33 @@ describe('Teacher App tenancy isolation (security)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
       await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/messages/conversations`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ body: `${testSuffix}-non-teacher-message` })
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/read`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
@@ -2613,6 +2928,34 @@ describe('Teacher App tenancy isolation (security)', () => {
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/teacher/classrooms/${ownAllocationId}`)
       .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
+
+  it('does not register Teacher Message contact discovery, creation, attachment, or audio routes', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/messages/contacts`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/messages/conversations`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ participantIds: [parentUserId] })
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/attachments`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fileId: 'file-1' })
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/audio`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ audioUrl: 'https://example.test/audio.mp3' })
       .expect(404);
   });
 
@@ -3159,6 +3502,137 @@ describe('Teacher App tenancy isolation (security)', () => {
     }
 
     return submission.id;
+  }
+
+  async function createMessageConversationFixture(params: {
+    schoolId: string;
+    title: string | null;
+    participantUserIds: string[];
+    messagePrefix: string;
+    attachFile: boolean;
+    hiddenAndDeleted: boolean;
+  }): Promise<{
+    conversationId: string;
+    visibleMessageId: string;
+    hiddenMessageId: string;
+    deletedMessageId: string;
+  }> {
+    const conversation = await prisma.communicationConversation.create({
+      data: {
+        schoolId: params.schoolId,
+        type: CommunicationConversationType.DIRECT,
+        status: CommunicationConversationStatus.ACTIVE,
+        titleEn: params.title,
+        lastMessageAt: new Date('2026-09-18T10:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdCommunicationConversationIds.push(conversation.id);
+
+    for (const userId of params.participantUserIds) {
+      const participant = await prisma.communicationConversationParticipant.create({
+        data: {
+          schoolId: params.schoolId,
+          conversationId: conversation.id,
+          userId,
+          role: CommunicationParticipantRole.MEMBER,
+          status: CommunicationParticipantStatus.ACTIVE,
+        },
+        select: { id: true },
+      });
+      createdCommunicationParticipantIds.push(participant.id);
+    }
+
+    const senderUserId = params.participantUserIds[1] ?? params.participantUserIds[0];
+
+    const visibleMessage = await prisma.communicationMessage.create({
+      data: {
+        schoolId: params.schoolId,
+        conversationId: conversation.id,
+        senderUserId,
+        kind: CommunicationMessageKind.TEXT,
+        status: CommunicationMessageStatus.SENT,
+        body: `${testSuffix}-${params.messagePrefix}-visible-message`,
+        sentAt: new Date('2026-09-18T10:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdCommunicationMessageIds.push(visibleMessage.id);
+
+    if (params.attachFile) {
+      const file = await prisma.file.create({
+        data: {
+          schoolId: params.schoolId,
+          uploaderId: senderUserId,
+          bucket: `${testSuffix}-message-bucket`,
+          objectKey: `${testSuffix}-message-object-key`,
+          originalName: `${params.messagePrefix}-message-file.pdf`,
+          mimeType: 'application/pdf',
+          sizeBytes: BigInt(4321),
+          visibility: FileVisibility.PRIVATE,
+        },
+        select: { id: true },
+      });
+      createdFileIds.push(file.id);
+
+      const attachment = await prisma.communicationMessageAttachment.create({
+        data: {
+          schoolId: params.schoolId,
+          conversationId: conversation.id,
+          messageId: visibleMessage.id,
+          fileId: file.id,
+          uploadedById: senderUserId,
+          caption: `${testSuffix}-${params.messagePrefix}-attachment-caption`,
+          sortOrder: 1,
+        },
+        select: { id: true },
+      });
+      createdCommunicationAttachmentIds.push(attachment.id);
+    }
+
+    let hiddenMessageId = visibleMessage.id;
+    let deletedMessageId = visibleMessage.id;
+
+    if (params.hiddenAndDeleted) {
+      const hiddenMessage = await prisma.communicationMessage.create({
+        data: {
+          schoolId: params.schoolId,
+          conversationId: conversation.id,
+          senderUserId,
+          kind: CommunicationMessageKind.TEXT,
+          status: CommunicationMessageStatus.HIDDEN,
+          body: `${testSuffix}-${params.messagePrefix}-hidden-message`,
+          hiddenAt: new Date('2026-09-18T09:59:00.000Z'),
+          hiddenReason: `${testSuffix}-hidden-reason`,
+          sentAt: new Date('2026-09-18T09:59:00.000Z'),
+        },
+        select: { id: true },
+      });
+      createdCommunicationMessageIds.push(hiddenMessage.id);
+      hiddenMessageId = hiddenMessage.id;
+
+      const deletedMessage = await prisma.communicationMessage.create({
+        data: {
+          schoolId: params.schoolId,
+          conversationId: conversation.id,
+          senderUserId,
+          kind: CommunicationMessageKind.TEXT,
+          status: CommunicationMessageStatus.DELETED,
+          body: `${testSuffix}-${params.messagePrefix}-deleted-message`,
+          sentAt: new Date('2026-09-18T09:58:00.000Z'),
+        },
+        select: { id: true },
+      });
+      createdCommunicationMessageIds.push(deletedMessage.id);
+      deletedMessageId = deletedMessage.id;
+    }
+
+    return {
+      conversationId: conversation.id,
+      visibleMessageId: visibleMessage.id,
+      hiddenMessageId,
+      deletedMessageId,
+    };
   }
 
   async function createXpLedgerFixture(params: {

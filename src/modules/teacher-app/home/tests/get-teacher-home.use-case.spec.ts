@@ -1,9 +1,21 @@
-import { UserStatus, UserType } from '@prisma/client';
+import {
+  ReinforcementSource,
+  ReinforcementTaskStatus,
+  StudentEnrollmentStatus,
+  StudentStatus,
+  UserStatus,
+  UserType,
+  XpSourceType,
+} from '@prisma/client';
 import { TeacherAppAllocationReadAdapter } from '../../access/teacher-app-allocation-read.adapter';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
+import { TeacherMessagesReadAdapter } from '../../messages/infrastructure/teacher-messages-read.adapter';
 import { TeacherAppRequiredTeacherException } from '../../shared/teacher-app.errors';
 import type { TeacherAppAllocationRecord } from '../../shared/teacher-app.types';
 import { TeacherAppCompositionReadAdapter } from '../../shared/infrastructure/teacher-app-composition-read.adapter';
+import { TeacherTasksReadAdapter } from '../../tasks/infrastructure/teacher-tasks-read.adapter';
+import { TeacherTaskReviewReadAdapter } from '../../tasks/review/infrastructure/teacher-task-review-read.adapter';
+import { TeacherXpReadAdapter } from '../../xp/infrastructure/teacher-xp-read.adapter';
 import { GetTeacherHomeUseCase } from '../application/get-teacher-home.use-case';
 
 const TEACHER_ID = 'teacher-1';
@@ -48,8 +60,21 @@ describe('GetTeacherHomeUseCase', () => {
       classesCount: 2,
       studentsCount: 42,
       pendingTasksCount: 3,
-      unreadMessagesCount: null,
+      unreadMessagesCount: 5,
       unreadNotificationsCount: null,
+    });
+    expect(result.tasks).toMatchObject({
+      activeTasksCount: 1,
+      pendingReviewCount: 2,
+    });
+    expect(result.xp).toMatchObject({
+      studentsCount: 1,
+      totalXp: 30,
+      averageXp: 30,
+    });
+    expect(result.messages).toMatchObject({
+      unreadConversationsCount: 2,
+      unreadMessagesCount: 5,
     });
     expect(allocationReadAdapter.listAllOwnedAllocations).toHaveBeenCalledWith(
       TEACHER_ID,
@@ -81,8 +106,15 @@ describe('GetTeacherHomeUseCase', () => {
   });
 
   it('does not expose schoolId and handles teachers without allocations', async () => {
-    const { useCase, allocationReadAdapter, compositionReadAdapter } =
-      createUseCase();
+    const {
+      useCase,
+      allocationReadAdapter,
+      compositionReadAdapter,
+      tasksReadAdapter,
+      taskReviewReadAdapter,
+      xpReadAdapter,
+      messagesReadAdapter,
+    } = createUseCase();
     allocationReadAdapter.listAllOwnedAllocations.mockResolvedValue([]);
     compositionReadAdapter.countActiveStudentsAcrossClassrooms.mockResolvedValue(
       0,
@@ -90,6 +122,26 @@ describe('GetTeacherHomeUseCase', () => {
     compositionReadAdapter.countPendingTeacherTaskAssignments.mockResolvedValue(
       0,
     );
+    tasksReadAdapter.listAllVisibleTasks.mockResolvedValue([]);
+    taskReviewReadAdapter.listReviewQueue.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      limit: 1,
+    });
+    xpReadAdapter.listOwnedEnrollments.mockResolvedValue([]);
+    xpReadAdapter.listAllLedger.mockResolvedValue([]);
+    messagesReadAdapter.listConversations.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      limit: 3,
+      unreadCounts: new Map(),
+    });
+    messagesReadAdapter.getUnreadSummary.mockResolvedValue({
+      unreadConversationsCount: 0,
+      unreadMessagesCount: 0,
+    });
 
     const result = await useCase.execute();
     const json = JSON.stringify(result);
@@ -97,7 +149,24 @@ describe('GetTeacherHomeUseCase', () => {
     expect(result.summary.classesCount).toBe(0);
     expect(result.summary.studentsCount).toBe(0);
     expect(result.summary.pendingTasksCount).toBe(0);
+    expect(result.tasks).toEqual({
+      activeTasksCount: 0,
+      pendingReviewCount: 0,
+      recentTasks: [],
+    });
+    expect(result.xp).toEqual({
+      studentsCount: 0,
+      totalXp: 0,
+      averageXp: 0,
+      topStudent: null,
+    });
+    expect(result.messages).toEqual({
+      unreadConversationsCount: 0,
+      unreadMessagesCount: 0,
+      recentConversations: [],
+    });
     expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('scheduleId');
   });
 
   it('does not perform mutations while composing home data', async () => {
@@ -125,6 +194,10 @@ function createUseCase(extraCompositionMethods?: Record<string, jest.Mock>): {
   accessService: jest.Mocked<TeacherAppAccessService>;
   allocationReadAdapter: jest.Mocked<TeacherAppAllocationReadAdapter>;
   compositionReadAdapter: jest.Mocked<TeacherAppCompositionReadAdapter>;
+  tasksReadAdapter: jest.Mocked<TeacherTasksReadAdapter>;
+  taskReviewReadAdapter: jest.Mocked<TeacherTaskReviewReadAdapter>;
+  xpReadAdapter: jest.Mocked<TeacherXpReadAdapter>;
+  messagesReadAdapter: jest.Mocked<TeacherMessagesReadAdapter>;
 } {
   const accessService = {
     assertCurrentTeacher: jest.fn(() => ({
@@ -159,16 +232,55 @@ function createUseCase(extraCompositionMethods?: Record<string, jest.Mock>): {
     countPendingTeacherTaskAssignments: jest.fn(() => Promise.resolve(1)),
     ...extraCompositionMethods,
   } as unknown as jest.Mocked<TeacherAppCompositionReadAdapter>;
+  const tasksReadAdapter = {
+    listAllVisibleTasks: jest.fn(() => Promise.resolve([teacherTaskFixture()])),
+  } as unknown as jest.Mocked<TeacherTasksReadAdapter>;
+  const taskReviewReadAdapter = {
+    listReviewQueue: jest.fn(() =>
+      Promise.resolve({ items: [], total: 2, page: 1, limit: 1 }),
+    ),
+  } as unknown as jest.Mocked<TeacherTaskReviewReadAdapter>;
+  const xpReadAdapter = {
+    listOwnedEnrollments: jest.fn(() =>
+      Promise.resolve([ownedEnrollmentFixture()]),
+    ),
+    listAllLedger: jest.fn(() => Promise.resolve([xpLedgerFixture()])),
+  } as unknown as jest.Mocked<TeacherXpReadAdapter>;
+  const messagesReadAdapter = {
+    listConversations: jest.fn(() =>
+      Promise.resolve({
+        items: [],
+        total: 0,
+        page: 1,
+        limit: 3,
+        unreadCounts: new Map(),
+      }),
+    ),
+    getUnreadSummary: jest.fn(() =>
+      Promise.resolve({
+        unreadConversationsCount: 2,
+        unreadMessagesCount: 5,
+      }),
+    ),
+  } as unknown as jest.Mocked<TeacherMessagesReadAdapter>;
 
   return {
     useCase: new GetTeacherHomeUseCase(
       accessService,
       allocationReadAdapter,
       compositionReadAdapter,
+      tasksReadAdapter,
+      taskReviewReadAdapter,
+      xpReadAdapter,
+      messagesReadAdapter,
     ),
     accessService,
     allocationReadAdapter,
     compositionReadAdapter,
+    tasksReadAdapter,
+    taskReviewReadAdapter,
+    xpReadAdapter,
+    messagesReadAdapter,
   };
 }
 
@@ -229,5 +341,85 @@ function allocationFixture(
       isActive: true,
     },
     ...overrides,
+  };
+}
+
+function teacherTaskFixture() {
+  return {
+    id: 'task-1',
+    titleEn: 'Review kindness task',
+    titleAr: null,
+    status: ReinforcementTaskStatus.UNDER_REVIEW,
+    source: ReinforcementSource.TEACHER,
+    dueDate: new Date('2026-09-20T00:00:00.000Z'),
+  };
+}
+
+function ownedEnrollmentFixture() {
+  return {
+    id: 'enrollment-1',
+    studentId: 'student-1',
+    academicYearId: 'year-1',
+    termId: 'term-1',
+    classroomId: 'classroom-1',
+    status: StudentEnrollmentStatus.ACTIVE,
+    student: {
+      id: 'student-1',
+      firstName: 'Mona',
+      lastName: 'Ahmed',
+      status: StudentStatus.ACTIVE,
+    },
+    classroom: {
+      id: 'classroom-1',
+      nameAr: 'Classroom AR',
+      nameEn: 'Classroom',
+      section: {
+        id: 'section-1',
+        nameAr: 'Section AR',
+        nameEn: 'Section',
+        grade: {
+          id: 'grade-1',
+          nameAr: 'Grade AR',
+          nameEn: 'Grade',
+          stage: {
+            id: 'stage-1',
+            nameAr: 'Stage AR',
+            nameEn: 'Stage',
+          },
+        },
+      },
+    },
+  };
+}
+
+function xpLedgerFixture() {
+  const now = new Date('2026-09-18T10:00:00.000Z');
+  return {
+    id: 'xp-1',
+    academicYearId: 'year-1',
+    termId: 'term-1',
+    studentId: 'student-1',
+    enrollmentId: 'enrollment-1',
+    assignmentId: null,
+    sourceType: XpSourceType.REINFORCEMENT_TASK,
+    sourceId: 'submission-1',
+    amount: 30,
+    reason: 'approved_task',
+    reasonAr: null,
+    occurredAt: now,
+    createdAt: now,
+    student: {
+      id: 'student-1',
+      firstName: 'Mona',
+      lastName: 'Ahmed',
+      status: StudentStatus.ACTIVE,
+    },
+    enrollment: {
+      id: 'enrollment-1',
+      studentId: 'student-1',
+      academicYearId: 'year-1',
+      termId: 'term-1',
+      classroomId: 'classroom-1',
+    },
   };
 }

@@ -5,6 +5,8 @@ import type {
 import {
   TeacherHomeResponseDto,
   TeacherHomeStatDto,
+  TeacherHomeTasksDto,
+  TeacherHomeXpDto,
 } from '../dto/teacher-home.dto';
 
 export interface TeacherHomePresenterInput {
@@ -13,6 +15,9 @@ export interface TeacherHomePresenterInput {
   classesCount: number;
   studentsCount: number;
   pendingTasksCount: number;
+  tasks: TeacherHomeTasksDto;
+  xp: TeacherHomeXpDto;
+  messages: TeacherHomeResponseDto['messages'];
   now: Date;
 }
 
@@ -34,7 +39,7 @@ export class TeacherHomePresenter {
         classesCount: input.classesCount,
         studentsCount: input.studentsCount,
         pendingTasksCount: input.pendingTasksCount,
-        unreadMessagesCount: null,
+        unreadMessagesCount: input.messages.unreadMessagesCount,
         unreadNotificationsCount: null,
       },
       schedule: {
@@ -57,8 +62,25 @@ export class TeacherHomePresenter {
         {
           title: 'Pending tasks',
           subTitle: 'Teacher-assigned reinforcement follow-up',
-          count: input.pendingTasksCount,
+          count: input.tasks.activeTasksCount,
           tag: null,
+          progress: null,
+        },
+        {
+          title: 'Pending reviews',
+          subTitle: 'Student submissions awaiting review',
+          count: input.tasks.pendingReviewCount,
+          tag: null,
+          progress: null,
+        },
+        {
+          title: 'Unread messages',
+          subTitle: 'Existing participant conversations',
+          count: input.messages.unreadMessagesCount,
+          tag:
+            input.messages.unreadConversationsCount > 0
+              ? 'unread_conversations'
+              : null,
           progress: null,
         },
         {
@@ -69,6 +91,9 @@ export class TeacherHomePresenter {
           progress: null,
         },
       ],
+      tasks: input.tasks,
+      xp: input.xp,
+      messages: input.messages,
     };
   }
 }

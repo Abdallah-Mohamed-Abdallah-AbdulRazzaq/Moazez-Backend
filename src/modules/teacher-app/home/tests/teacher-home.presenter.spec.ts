@@ -19,6 +19,33 @@ describe('TeacherHomePresenter', () => {
       classesCount: 2,
       studentsCount: 35,
       pendingTasksCount: 4,
+      tasks: {
+        activeTasksCount: 3,
+        pendingReviewCount: 2,
+        recentTasks: [
+          {
+            taskId: 'task-1',
+            title: 'Review kindness',
+            status: 'underReview',
+            dueAt: null,
+          },
+        ],
+      },
+      xp: {
+        studentsCount: 35,
+        totalXp: 120,
+        averageXp: 3.43,
+        topStudent: {
+          studentId: 'student-1',
+          displayName: 'Mona Ahmed',
+          totalXp: 30,
+        },
+      },
+      messages: {
+        unreadConversationsCount: 1,
+        unreadMessagesCount: 5,
+        recentConversations: [],
+      },
       now: new Date('2026-05-04T08:00:00.000Z'),
     });
 
@@ -44,8 +71,21 @@ describe('TeacherHomePresenter', () => {
       classesCount: 2,
       studentsCount: 35,
       pendingTasksCount: 4,
-      unreadMessagesCount: null,
+      unreadMessagesCount: 5,
       unreadNotificationsCount: null,
+    });
+    expect(result.tasks).toMatchObject({
+      activeTasksCount: 3,
+      pendingReviewCount: 2,
+    });
+    expect(result.xp).toMatchObject({
+      studentsCount: 35,
+      totalXp: 120,
+      averageXp: 3.43,
+    });
+    expect(result.messages).toMatchObject({
+      unreadConversationsCount: 1,
+      unreadMessagesCount: 5,
     });
     expect(result.stats).toEqual([
       {
@@ -86,6 +126,22 @@ describe('TeacherHomePresenter', () => {
       classesCount: 0,
       studentsCount: 0,
       pendingTasksCount: 0,
+      tasks: {
+        activeTasksCount: 0,
+        pendingReviewCount: 0,
+        recentTasks: [],
+      },
+      xp: {
+        studentsCount: 0,
+        totalXp: 0,
+        averageXp: 0,
+        topStudent: null,
+      },
+      messages: {
+        unreadConversationsCount: 0,
+        unreadMessagesCount: 0,
+        recentConversations: [],
+      },
       now: new Date('2026-05-04T08:00:00.000Z'),
     });
     const json = JSON.stringify(result);

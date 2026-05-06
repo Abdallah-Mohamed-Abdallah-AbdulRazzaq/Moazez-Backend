@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CommunicationModule } from '../communication/communication.module';
 import { RollCallModule } from '../attendance/roll-call/roll-call.module';
 import { AssessmentsModule } from '../grades/assessments/assessments.module';
 import { ReviewsModule } from '../reinforcement/reviews/reviews.module';
@@ -33,6 +34,13 @@ import { TeacherClassroomGradesReadAdapter } from './classroom/grades/infrastruc
 import { TeacherClassroomReadAdapter } from './classroom/infrastructure/teacher-classroom-read.adapter';
 import { GetTeacherHomeUseCase } from './home/application/get-teacher-home.use-case';
 import { TeacherHomeController } from './home/controller/teacher-home.controller';
+import { GetTeacherMessageConversationUseCase } from './messages/application/get-teacher-message-conversation.use-case';
+import { ListTeacherConversationMessagesUseCase } from './messages/application/list-teacher-conversation-messages.use-case';
+import { ListTeacherMessageConversationsUseCase } from './messages/application/list-teacher-message-conversations.use-case';
+import { MarkTeacherConversationReadUseCase } from './messages/application/mark-teacher-conversation-read.use-case';
+import { SendTeacherConversationMessageUseCase } from './messages/application/send-teacher-conversation-message.use-case';
+import { TeacherMessagesController } from './messages/controller/teacher-messages.controller';
+import { TeacherMessagesReadAdapter } from './messages/infrastructure/teacher-messages-read.adapter';
 import { GetTeacherClassDetailUseCase } from './my-classes/application/get-teacher-class-detail.use-case';
 import { ListTeacherClassesUseCase } from './my-classes/application/list-teacher-classes.use-case';
 import { TeacherMyClassesController } from './my-classes/controller/teacher-my-classes.controller';
@@ -66,7 +74,13 @@ import { TeacherXpController } from './xp/controller/teacher-xp.controller';
 import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapter';
 
 @Module({
-  imports: [RollCallModule, AssessmentsModule, TasksModule, ReviewsModule],
+  imports: [
+    RollCallModule,
+    AssessmentsModule,
+    TasksModule,
+    ReviewsModule,
+    CommunicationModule,
+  ],
   controllers: [
     TeacherHomeController,
     TeacherMyClassesController,
@@ -78,6 +92,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     TeacherTaskReviewQueueController,
     TeacherTasksController,
     TeacherXpController,
+    TeacherMessagesController,
     TeacherProfileController,
     TeacherSettingsController,
   ],
@@ -125,6 +140,12 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     GetTeacherClassXpUseCase,
     GetTeacherStudentXpUseCase,
     ListTeacherStudentXpHistoryUseCase,
+    TeacherMessagesReadAdapter,
+    ListTeacherMessageConversationsUseCase,
+    GetTeacherMessageConversationUseCase,
+    ListTeacherConversationMessagesUseCase,
+    SendTeacherConversationMessageUseCase,
+    MarkTeacherConversationReadUseCase,
     TeacherProfileReadAdapter,
     GetTeacherProfileUseCase,
     GetTeacherEmploymentProfileUseCase,

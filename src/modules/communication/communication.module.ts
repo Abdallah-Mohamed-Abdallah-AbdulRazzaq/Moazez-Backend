@@ -225,5 +225,9 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     CommunicationNotificationGenerationWorker,
     CommunicationRealtimeEventsService,
   ],
+  exports: [
+    CreateCommunicationMessageUseCase,
+    MarkCommunicationConversationReadUseCase,
+  ],
 })
 export class CommunicationModule {}
