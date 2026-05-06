@@ -251,6 +251,15 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `teacher_app.allocation.not_found`        | 404  | Teacher App class allocation was not found        |
 | `teacher_app.allocation.forbidden`        | 403  | Teacher does not own this class allocation        |
 
+### Student App
+
+| Code                                      | HTTP | Message                                          |
+| ----------------------------------------- | ---- | ------------------------------------------------ |
+| `student_app.actor.required_student`      | 403  | Student App requires an active student membership |
+| `student_app.student.not_found`           | 404  | Student App student was not found                |
+| `student_app.enrollment.not_found`        | 404  | Student App active enrollment was not found      |
+| `student_app.classroom.not_found`         | 404  | Student App classroom was not found              |
+
 ### Cross-cutting
 
 | Code                  | HTTP | Message                                               |

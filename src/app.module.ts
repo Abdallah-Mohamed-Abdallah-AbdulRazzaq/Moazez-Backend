@@ -22,6 +22,7 @@ import { HealthModule } from './modules/health/health.module';
 import { IamModule } from './modules/iam/iam.module';
 import { ReinforcementModule } from './modules/reinforcement/reinforcement.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { StudentAppModule } from './modules/student-app/student-app.module';
 import { StudentsModule } from './modules/students/students.module';
 import { TeacherAppModule } from './modules/teacher-app/teacher-app.module';
 
@@ -47,6 +48,7 @@ import { TeacherAppModule } from './modules/teacher-app/teacher-app.module';
     BehaviorModule,
     CommunicationModule,
     TeacherAppModule,
+    StudentAppModule,
   ],
   controllers: [AppController],
   providers: [

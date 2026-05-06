@@ -973,6 +973,7 @@ model User {
   admissionDecisionsCreated                      AdmissionDecision[]                    @relation("AdmissionDecisionDecidedBy")
   teacherSubjectAllocations                      TeacherSubjectAllocation[]             @relation("TeacherSubjectAllocationTeacher")
   guardianProfiles                               Guardian[]                             @relation("GuardianUser")
+  studentProfile                                 Student?                               @relation("StudentUser")
   studentNotesAuthored                           StudentNote[]                          @relation("StudentNoteAuthor")
   attendanceSessionsSubmitted                    AttendanceSession[]                    @relation("AttendanceSessionSubmittedBy")
   attendanceEntriesMarked                        AttendanceEntry[]                      @relation("AttendanceEntryMarkedBy")
@@ -1848,6 +1849,7 @@ model Student {
   schoolId       String        @map("school_id") @db.Uuid
   organizationId String        @map("organization_id") @db.Uuid
   applicationId  String?       @map("application_id") @db.Uuid
+  userId         String?       @unique @map("user_id") @db.Uuid
   firstName      String        @map("first_name")
   lastName       String        @map("last_name")
   birthDate      DateTime?     @map("birth_date") @db.Date
@@ -1860,6 +1862,7 @@ model Student {
   school                             School                              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   organization                       Organization                        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   application                        Application?                        @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  user                               User?                               @relation("StudentUser", fields: [userId], references: [id], onDelete: SetNull)
   guardians                          StudentGuardian[]
   enrollments                        Enrollment[]
   documents                          StudentDocument[]
