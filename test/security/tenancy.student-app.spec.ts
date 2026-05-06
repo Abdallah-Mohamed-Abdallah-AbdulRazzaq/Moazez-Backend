@@ -8,6 +8,16 @@ import {
   BehaviorPointLedgerEntryType,
   BehaviorRecordStatus,
   BehaviorRecordType,
+  CommunicationAnnouncementAudienceType,
+  CommunicationAnnouncementPriority,
+  CommunicationAnnouncementStatus,
+  CommunicationConversationStatus,
+  CommunicationConversationType,
+  CommunicationMessageKind,
+  CommunicationMessageStatus,
+  CommunicationParticipantRole,
+  CommunicationParticipantStatus,
+  FileVisibility,
   GradeAnswerCorrectionStatus,
   GradeAssessmentApprovalStatus,
   GradeAssessmentDeliveryMode,
@@ -22,7 +32,9 @@ import {
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
+  ReinforcementProofType,
   ReinforcementSource,
+  ReinforcementSubmissionStatus,
   ReinforcementTaskStatus,
   RewardCatalogItemStatus,
   RewardCatalogItemType,
@@ -234,6 +246,19 @@ describe('Student App Home/Profile routes (security)', () => {
   let otherHeroProgressId: string;
   let heroBadgeId: string;
   let tenantBHeroMissionId: string;
+  let ownTaskId: string;
+  let ownTaskSubmissionId: string;
+  let sameSchoolOtherTaskId: string;
+  let sameSchoolOtherTaskSubmissionId: string;
+  let tenantBTaskId: string;
+  let tenantBTaskSubmissionId: string;
+  let ownConversationId: string;
+  let sameSchoolOtherConversationId: string;
+  let tenantBConversationId: string;
+  let ownAnnouncementId: string;
+  let customAnnouncementId: string;
+  let outOfAudienceAnnouncementId: string;
+  let tenantBAnnouncementId: string;
   let otherClassroomSubjectId: string;
   let otherClassroomAssessmentId: string;
   let tenantBSubjectId: string;
@@ -241,7 +266,11 @@ describe('Student App Home/Profile routes (security)', () => {
   let linkedStudentUserId: string;
   let linkedStudentId: string;
   let linkedEnrollmentId: string;
+  let sameSchoolOtherStudentUserId: string;
+  let sameSchoolOtherStudentId: string;
+  let sameSchoolOtherEnrollmentId: string;
   let linkedStudentEmail: string;
+  let sameSchoolOtherStudentEmail: string;
   let unlinkedStudentEmail: string;
   let noEnrollmentStudentEmail: string;
   let adminEmail: string;
@@ -266,7 +295,18 @@ describe('Student App Home/Profile routes (security)', () => {
   const createdRewardCatalogItemIds: string[] = [];
   const createdRewardRedemptionIds: string[] = [];
   const createdXpLedgerIds: string[] = [];
+  const createdFileIds: string[] = [];
   const createdAssignmentIds: string[] = [];
+  const createdTaskStageIds: string[] = [];
+  const createdTaskSubmissionIds: string[] = [];
+  const createdConversationIds: string[] = [];
+  const createdConversationParticipantIds: string[] = [];
+  const createdMessageIds: string[] = [];
+  const createdMessageReadIds: string[] = [];
+  const createdAnnouncementIds: string[] = [];
+  const createdAnnouncementAudienceIds: string[] = [];
+  const createdAnnouncementReadIds: string[] = [];
+  const createdAnnouncementAttachmentIds: string[] = [];
   const createdGradeAssessmentIds: string[] = [];
   const createdGradeItemIds: string[] = [];
   const createdGradeQuestionIds: string[] = [];
@@ -332,6 +372,7 @@ describe('Student App Home/Profile routes (security)', () => {
     teacherEmail = `${testSuffix}-teacher@example.test`;
     parentEmail = `${testSuffix}-parent@example.test`;
     linkedStudentEmail = `${testSuffix}-linked-student@example.test`;
+    sameSchoolOtherStudentEmail = `${testSuffix}-other-student@example.test`;
     unlinkedStudentEmail = `${testSuffix}-unlinked-student@example.test`;
     noEnrollmentStudentEmail = `${testSuffix}-no-enrollment@example.test`;
 
@@ -352,6 +393,11 @@ describe('Student App Home/Profile routes (security)', () => {
     });
     linkedStudentUserId = await createUserWithMembership({
       email: linkedStudentEmail,
+      userType: UserType.STUDENT,
+      roleId: studentRole.id,
+    });
+    sameSchoolOtherStudentUserId = await createUserWithMembership({
+      email: sameSchoolOtherStudentEmail,
       userType: UserType.STUDENT,
       roleId: studentRole.id,
     });
@@ -415,7 +461,11 @@ describe('Student App Home/Profile routes (security)', () => {
     linkedEnrollmentId = enrollment.id;
     createdEnrollmentIds.push(enrollment.id);
 
-    const otherStudentFixture = await createOtherStudentFixture();
+    const otherStudentFixture = await createOtherStudentFixture({
+      userId: sameSchoolOtherStudentUserId,
+    });
+    sameSchoolOtherStudentId = otherStudentFixture.studentId;
+    sameSchoolOtherEnrollmentId = otherStudentFixture.enrollmentId;
 
     const behaviorFixture = await createStudentBehaviorFixture({
       otherStudentId: otherStudentFixture.studentId,
@@ -453,36 +503,35 @@ describe('Student App Home/Profile routes (security)', () => {
     tenantBAssessmentId = tenantBFixture.assessmentId;
     tenantBBehaviorRecordId = tenantBFixture.behaviorRecordId;
     tenantBHeroMissionId = tenantBFixture.heroMissionId;
+    tenantBTaskId = tenantBFixture.taskId;
+    tenantBTaskSubmissionId = tenantBFixture.taskSubmissionId;
 
-    const task = await prisma.reinforcementTask.create({
-      data: {
-        schoolId,
-        academicYearId,
-        termId,
-        titleEn: `${testSuffix} Student Task`,
-        source: ReinforcementSource.TEACHER,
-        status: ReinforcementTaskStatus.NOT_COMPLETED,
-        assignedById: teacherUserId,
-        createdById: teacherUserId,
-      },
-      select: { id: true },
+    const taskFixture = await createStudentTaskFixture({
+      teacherUserId,
+      otherStudentId: sameSchoolOtherStudentId,
+      otherEnrollmentId: sameSchoolOtherEnrollmentId,
+      otherStudentUserId: sameSchoolOtherStudentUserId,
     });
-    createdTaskIds.push(task.id);
+    ownTaskId = taskFixture.taskId;
+    ownTaskSubmissionId = taskFixture.submissionId;
+    sameSchoolOtherTaskId = taskFixture.otherTaskId;
+    sameSchoolOtherTaskSubmissionId = taskFixture.otherSubmissionId;
 
-    const assignment = await prisma.reinforcementAssignment.create({
-      data: {
-        schoolId,
-        taskId: task.id,
-        academicYearId,
-        termId,
-        studentId: linkedStudentId,
-        enrollmentId: linkedEnrollmentId,
-        status: ReinforcementTaskStatus.NOT_COMPLETED,
-        progress: 0,
-      },
-      select: { id: true },
+    const communicationFixture = await createStudentCommunicationFixture({
+      teacherUserId,
+      otherStudentUserId: sameSchoolOtherStudentUserId,
+      tenantBConversationId: tenantBFixture.conversationId,
+      tenantBAnnouncementId: tenantBFixture.announcementId,
     });
-    createdAssignmentIds.push(assignment.id);
+    ownConversationId = communicationFixture.conversationId;
+    sameSchoolOtherConversationId =
+      communicationFixture.otherConversationId;
+    tenantBConversationId = communicationFixture.tenantBConversationId;
+    ownAnnouncementId = communicationFixture.schoolAnnouncementId;
+    customAnnouncementId = communicationFixture.customAnnouncementId;
+    outOfAudienceAnnouncementId =
+      communicationFixture.outOfAudienceAnnouncementId;
+    tenantBAnnouncementId = communicationFixture.tenantBAnnouncementId;
 
     const xpLedger = await prisma.xpLedger.create({
       data: {
@@ -564,6 +613,30 @@ describe('Student App Home/Profile routes (security)', () => {
       await prisma.xpLedger.deleteMany({
         where: { id: { in: createdXpLedgerIds } },
       });
+      await prisma.communicationAnnouncementRead.deleteMany({
+        where: { announcementId: { in: createdAnnouncementIds } },
+      });
+      await prisma.communicationAnnouncementAttachment.deleteMany({
+        where: { id: { in: createdAnnouncementAttachmentIds } },
+      });
+      await prisma.communicationAnnouncementAudience.deleteMany({
+        where: { id: { in: createdAnnouncementAudienceIds } },
+      });
+      await prisma.communicationAnnouncement.deleteMany({
+        where: { id: { in: createdAnnouncementIds } },
+      });
+      await prisma.communicationMessageRead.deleteMany({
+        where: { conversationId: { in: createdConversationIds } },
+      });
+      await prisma.communicationConversationParticipant.deleteMany({
+        where: { id: { in: createdConversationParticipantIds } },
+      });
+      await prisma.communicationMessage.deleteMany({
+        where: { conversationId: { in: createdConversationIds } },
+      });
+      await prisma.communicationConversation.deleteMany({
+        where: { id: { in: createdConversationIds } },
+      });
       await prisma.gradeSubmissionAnswerOption.deleteMany({
         where: { answerId: { in: createdGradeSubmissionAnswerIds } },
       });
@@ -585,11 +658,20 @@ describe('Student App Home/Profile routes (security)', () => {
       await prisma.gradeAssessment.deleteMany({
         where: { id: { in: createdGradeAssessmentIds } },
       });
+      await prisma.reinforcementSubmission.deleteMany({
+        where: { id: { in: createdTaskSubmissionIds } },
+      });
+      await prisma.reinforcementTaskStage.deleteMany({
+        where: { id: { in: createdTaskStageIds } },
+      });
       await prisma.reinforcementAssignment.deleteMany({
         where: { id: { in: createdAssignmentIds } },
       });
       await prisma.reinforcementTask.deleteMany({
         where: { id: { in: createdTaskIds } },
+      });
+      await prisma.file.deleteMany({
+        where: { id: { in: createdFileIds } },
       });
       await prisma.teacherSubjectAllocation.deleteMany({
         where: { id: { in: createdAllocationIds } },
@@ -1113,6 +1195,299 @@ describe('Student App Home/Profile routes (security)', () => {
     assertNoForbiddenStudentAppFields(heroMission.body);
   });
 
+  it('allows a linked student to read own tasks and submissions only', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/tasks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(list.body.tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: ownTaskId,
+          status: 'under_review',
+          subject_name: expect.any(String),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(list.body)).not.toContain(sameSchoolOtherTaskId);
+    expect(JSON.stringify(list.body)).not.toContain(tenantBTaskId);
+    assertNoForbiddenStudentAppFields(list.body);
+
+    const summary = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/tasks/summary`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(summary.body.summary.total).toBeGreaterThanOrEqual(1);
+    assertNoForbiddenStudentAppFields(summary.body);
+
+    const detail = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/tasks/${ownTaskId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(detail.body.task).toMatchObject({
+      taskId: ownTaskId,
+      status: 'under_review',
+      progress: 0.5,
+    });
+    expect(detail.body.task.submissions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          submissionId: ownTaskSubmissionId,
+          proofFile: expect.objectContaining({
+            fileId: expect.any(String),
+            filename: 'student-task-proof.png',
+            mimeType: 'image/png',
+            size: '123',
+          }),
+        }),
+      ]),
+    );
+    assertNoForbiddenStudentAppFields(detail.body);
+
+    const submissions = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/tasks/${ownTaskId}/submissions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(submissions.body.submissions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ submissionId: ownTaskSubmissionId }),
+      ]),
+    );
+    assertNoForbiddenStudentAppFields(submissions.body);
+
+    const submission = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/student/tasks/${ownTaskId}/submissions/${ownTaskSubmissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(submission.body.submission).toMatchObject({
+      submissionId: ownTaskSubmissionId,
+      status: 'submitted',
+    });
+    assertNoForbiddenStudentAppFields(submission.body);
+
+    for (const path of [
+      `student/tasks/${sameSchoolOtherTaskId}`,
+      `student/tasks/${sameSchoolOtherTaskId}/submissions`,
+      `student/tasks/${sameSchoolOtherTaskId}/submissions/${sameSchoolOtherTaskSubmissionId}`,
+      `student/tasks/${tenantBTaskId}`,
+      `student/tasks/${tenantBTaskId}/submissions`,
+      `student/tasks/${tenantBTaskId}/submissions/${tenantBTaskSubmissionId}`,
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/${path}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+
+    const { accessToken: otherStudentToken } = await login(
+      sameSchoolOtherStudentEmail,
+    );
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/tasks/${ownTaskId}`)
+      .set('Authorization', `Bearer ${otherStudentToken}`)
+      .expect(404);
+  });
+
+  it('allows a linked student to use participant conversations only', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+
+    const conversations = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/messages/conversations`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(conversations.body.conversations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          conversationId: ownConversationId,
+          unreadCount: expect.any(Number),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(conversations.body)).not.toContain(
+      sameSchoolOtherConversationId,
+    );
+    expect(JSON.stringify(conversations.body)).not.toContain(
+      tenantBConversationId,
+    );
+    assertNoForbiddenStudentAppFields(conversations.body);
+
+    const conversation = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(conversation.body.conversation).toMatchObject({
+      conversationId: ownConversationId,
+      status: 'active',
+    });
+    assertNoForbiddenStudentAppFields(conversation.body);
+
+    const messages = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}/messages`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const serializedMessages = JSON.stringify(messages.body);
+
+    expect(serializedMessages).toContain('Visible teacher message');
+    expect(serializedMessages).not.toContain('hidden raw student body');
+    expect(serializedMessages).not.toContain('deleted raw student body');
+    assertNoForbiddenStudentAppFields(messages.body);
+
+    const send = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}/messages`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ body: 'Student text reply' })
+      .expect(201);
+
+    expect(send.body.message).toMatchObject({
+      senderType: 'me',
+      type: 'text',
+      body: 'Student text reply',
+    });
+    assertNoForbiddenStudentAppFields(send.body);
+
+    const read = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}/read`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+
+    expect(read.body).toMatchObject({
+      conversationId: ownConversationId,
+      markedCount: expect.any(Number),
+    });
+    assertNoForbiddenStudentAppFields(read.body);
+
+    for (const path of [
+      `student/messages/conversations/${sameSchoolOtherConversationId}`,
+      `student/messages/conversations/${sameSchoolOtherConversationId}/messages`,
+      `student/messages/conversations/${tenantBConversationId}`,
+      `student/messages/conversations/${tenantBConversationId}/messages`,
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/${path}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+
+    for (const path of [
+      `student/messages/conversations/${sameSchoolOtherConversationId}/messages`,
+      `student/messages/conversations/${sameSchoolOtherConversationId}/read`,
+      `student/messages/conversations/${tenantBConversationId}/messages`,
+      `student/messages/conversations/${tenantBConversationId}/read`,
+    ]) {
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/${path}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ body: 'blocked' })
+        .expect(404);
+    }
+
+    const { accessToken: otherStudentToken } = await login(
+      sameSchoolOtherStudentEmail,
+    );
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}`)
+      .set('Authorization', `Bearer ${otherStudentToken}`)
+      .expect(404);
+  });
+
+  it('allows a linked student to read audience-matched announcements only', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/announcements`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const serializedList = JSON.stringify(list.body);
+
+    expect(serializedList).toContain(ownAnnouncementId);
+    expect(serializedList).toContain(customAnnouncementId);
+    expect(serializedList).not.toContain(outOfAudienceAnnouncementId);
+    expect(serializedList).not.toContain(tenantBAnnouncementId);
+    assertNoForbiddenStudentAppFields(list.body);
+
+    const detail = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/announcements/${ownAnnouncementId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(detail.body.announcement).toMatchObject({
+      announcementId: ownAnnouncementId,
+      title: expect.any(String),
+      image: null,
+    });
+    assertNoForbiddenStudentAppFields(detail.body);
+
+    const read = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/announcements/${ownAnnouncementId}/read`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+
+    expect(read.body).toMatchObject({
+      announcementId: ownAnnouncementId,
+      readAt: expect.any(String),
+    });
+    assertNoForbiddenStudentAppFields(read.body);
+
+    const attachments = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/student/announcements/${ownAnnouncementId}/attachments`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(attachments.body.attachments).toEqual([
+      expect.objectContaining({
+        fileId: expect.any(String),
+        filename: 'announcement.pdf',
+        mimeType: 'application/pdf',
+        size: '456',
+      }),
+    ]);
+    assertNoForbiddenStudentAppFields(attachments.body);
+
+    for (const path of [
+      `student/announcements/${outOfAudienceAnnouncementId}`,
+      `student/announcements/${outOfAudienceAnnouncementId}/attachments`,
+      `student/announcements/${tenantBAnnouncementId}`,
+      `student/announcements/${tenantBAnnouncementId}/attachments`,
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/${path}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+
+    for (const path of [
+      `student/announcements/${outOfAudienceAnnouncementId}/read`,
+      `student/announcements/${tenantBAnnouncementId}/read`,
+    ]) {
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/${path}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(404);
+    }
+  });
+
   it('hides same-school other-classroom and cross-school guessed ids', async () => {
     const { accessToken } = await login(linkedStudentEmail);
 
@@ -1163,10 +1538,33 @@ describe('Student App Home/Profile routes (security)', () => {
         'hero/badges',
         'hero/missions',
         `hero/missions/${heroMissionId}`,
+        'tasks',
+        'tasks/summary',
+        `tasks/${ownTaskId}`,
+        `tasks/${ownTaskId}/submissions`,
+        `tasks/${ownTaskId}/submissions/${ownTaskSubmissionId}`,
+        'messages/conversations',
+        `messages/conversations/${ownConversationId}`,
+        `messages/conversations/${ownConversationId}/messages`,
+        'announcements',
+        `announcements/${ownAnnouncementId}`,
+        `announcements/${ownAnnouncementId}/attachments`,
       ]) {
         await request(app.getHttpServer())
           .get(`${GLOBAL_PREFIX}/student/${path}`)
           .set('Authorization', `Bearer ${accessToken}`)
+          .expect(403);
+      }
+
+      for (const path of [
+        `messages/conversations/${ownConversationId}/messages`,
+        `messages/conversations/${ownConversationId}/read`,
+        `announcements/${ownAnnouncementId}/read`,
+      ]) {
+        await request(app.getHttpServer())
+          .post(`${GLOBAL_PREFIX}/student/${path}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({ body: 'blocked' })
           .expect(403);
       }
     }
@@ -1236,6 +1634,11 @@ describe('Student App Home/Profile routes (security)', () => {
         'hero/badges',
         'hero/missions',
         `hero/missions/${heroMissionId}`,
+        'tasks',
+        'tasks/summary',
+        `tasks/${ownTaskId}`,
+        `tasks/${ownTaskId}/submissions`,
+        `tasks/${ownTaskId}/submissions/${ownTaskSubmissionId}`,
       ]) {
         await request(app.getHttpServer())
           [method](`${GLOBAL_PREFIX}/student/${path}`)
@@ -1257,6 +1660,15 @@ describe('Student App Home/Profile routes (security)', () => {
       `hero/badges/${heroBadgeId}/award`,
       'hero/rewards/redeem',
       'rewards/redemptions',
+      `tasks/${ownTaskId}/stages/student-stage/submit`,
+      'messages/contacts',
+      'messages/conversations',
+      `messages/conversations/${ownConversationId}/attachments`,
+      `messages/conversations/${ownConversationId}/audio`,
+      'announcements',
+      `announcements/${ownAnnouncementId}/publish`,
+      `announcements/${ownAnnouncementId}/archive`,
+      `announcements/${ownAnnouncementId}/cancel`,
     ]) {
       await request(app.getHttpServer())
         .post(`${GLOBAL_PREFIX}/student/${path}`)
@@ -1264,9 +1676,28 @@ describe('Student App Home/Profile routes (security)', () => {
         .send({})
         .expect(404);
     }
+
+    for (const method of ['put', 'patch', 'delete'] as const) {
+      for (const path of [
+        'messages/conversations',
+        `messages/conversations/${ownConversationId}`,
+        `messages/conversations/${ownConversationId}/messages`,
+        `messages/conversations/${ownConversationId}/read`,
+        'announcements',
+        `announcements/${ownAnnouncementId}`,
+        `announcements/${ownAnnouncementId}/read`,
+        `announcements/${ownAnnouncementId}/attachments`,
+      ]) {
+        await request(app.getHttpServer())
+          [method](`${GLOBAL_PREFIX}/student/${path}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({})
+          .expect(404);
+      }
+    }
   });
 
-  it('does not expose schedule, homework, pickup, messages, announcements, or notifications routes', async () => {
+  it('does not expose out-of-scope Student App routes', async () => {
     const { accessToken } = await login(linkedStudentEmail);
 
     for (const path of [
@@ -1274,9 +1705,16 @@ describe('Student App Home/Profile routes (security)', () => {
       'homework',
       'homeworks',
       'pickup',
-      'messages',
-      'announcements',
       'notifications',
+      'messages/contacts',
+      'messages/new',
+      `messages/conversations/${ownConversationId}/participants`,
+      `messages/conversations/${ownConversationId}/invites`,
+      `messages/conversations/${ownConversationId}/join-requests`,
+      `messages/conversations/${ownConversationId}/attachments`,
+      `messages/conversations/${ownConversationId}/audio`,
+      `announcements/${ownAnnouncementId}/manage`,
+      `announcements/${ownAnnouncementId}/read-summary`,
     ]) {
       await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}/student/${path}`)
@@ -1442,7 +1880,9 @@ describe('Student App Home/Profile routes (security)', () => {
     };
   }
 
-  async function createOtherStudentFixture(): Promise<{
+  async function createOtherStudentFixture(params?: {
+    userId?: string;
+  }): Promise<{
     studentId: string;
     enrollmentId: string;
   }> {
@@ -1450,6 +1890,7 @@ describe('Student App Home/Profile routes (security)', () => {
       data: {
         schoolId,
         organizationId,
+        userId: params?.userId,
         firstName: 'Other',
         lastName: 'Student',
         status: StudentStatus.ACTIVE,
@@ -1473,6 +1914,388 @@ describe('Student App Home/Profile routes (security)', () => {
     createdEnrollmentIds.push(enrollment.id);
 
     return { studentId: student.id, enrollmentId: enrollment.id };
+  }
+
+  async function createStudentTaskFixture(params: {
+    teacherUserId: string;
+    otherStudentId: string;
+    otherEnrollmentId: string;
+    otherStudentUserId: string;
+  }): Promise<{
+    taskId: string;
+    submissionId: string;
+    otherTaskId: string;
+    otherSubmissionId: string;
+  }> {
+    const task = await prisma.reinforcementTask.create({
+      data: {
+        schoolId,
+        academicYearId,
+        termId,
+        subjectId,
+        titleEn: `${testSuffix} Student Task`,
+        descriptionEn: 'Visible student app task.',
+        source: ReinforcementSource.TEACHER,
+        status: ReinforcementTaskStatus.UNDER_REVIEW,
+        dueDate: new Date('2026-10-15T08:00:00.000Z'),
+        assignedById: params.teacherUserId,
+        assignedByName: 'StudentApp Teacher',
+        createdById: params.teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdTaskIds.push(task.id);
+
+    const stage = await prisma.reinforcementTaskStage.create({
+      data: {
+        schoolId,
+        taskId: task.id,
+        sortOrder: 1,
+        titleEn: `${testSuffix} Proof stage`,
+        proofType: ReinforcementProofType.IMAGE,
+        requiresApproval: true,
+      },
+      select: { id: true },
+    });
+    createdTaskStageIds.push(stage.id);
+
+    const assignment = await prisma.reinforcementAssignment.create({
+      data: {
+        schoolId,
+        taskId: task.id,
+        academicYearId,
+        termId,
+        studentId: linkedStudentId,
+        enrollmentId: linkedEnrollmentId,
+        status: ReinforcementTaskStatus.UNDER_REVIEW,
+        progress: 50,
+      },
+      select: { id: true },
+    });
+    createdAssignmentIds.push(assignment.id);
+
+    const proofFile = await prisma.file.create({
+      data: {
+        organizationId,
+        schoolId,
+        uploaderId: linkedStudentUserId,
+        bucket: `${testSuffix}-bucket`,
+        objectKey: `${testSuffix}/student-task-proof.png`,
+        originalName: 'student-task-proof.png',
+        mimeType: 'image/png',
+        sizeBytes: 123n,
+        visibility: FileVisibility.PRIVATE,
+      },
+      select: { id: true },
+    });
+    createdFileIds.push(proofFile.id);
+
+    const submission = await prisma.reinforcementSubmission.create({
+      data: {
+        schoolId,
+        assignmentId: assignment.id,
+        taskId: task.id,
+        stageId: stage.id,
+        studentId: linkedStudentId,
+        enrollmentId: linkedEnrollmentId,
+        status: ReinforcementSubmissionStatus.SUBMITTED,
+        proofFileId: proofFile.id,
+        proofText: 'Student proof text',
+        submittedById: linkedStudentUserId,
+        submittedAt: new Date('2026-10-10T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdTaskSubmissionIds.push(submission.id);
+
+    const otherTask = await prisma.reinforcementTask.create({
+      data: {
+        schoolId,
+        academicYearId,
+        termId,
+        titleEn: `${testSuffix} Other Student Task`,
+        source: ReinforcementSource.TEACHER,
+        status: ReinforcementTaskStatus.NOT_COMPLETED,
+        assignedById: params.teacherUserId,
+        createdById: params.teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdTaskIds.push(otherTask.id);
+
+    const otherStage = await prisma.reinforcementTaskStage.create({
+      data: {
+        schoolId,
+        taskId: otherTask.id,
+        sortOrder: 1,
+        titleEn: `${testSuffix} Other proof stage`,
+        proofType: ReinforcementProofType.NONE,
+      },
+      select: { id: true },
+    });
+    createdTaskStageIds.push(otherStage.id);
+
+    const otherAssignment = await prisma.reinforcementAssignment.create({
+      data: {
+        schoolId,
+        taskId: otherTask.id,
+        academicYearId,
+        termId,
+        studentId: params.otherStudentId,
+        enrollmentId: params.otherEnrollmentId,
+        status: ReinforcementTaskStatus.NOT_COMPLETED,
+        progress: 0,
+      },
+      select: { id: true },
+    });
+    createdAssignmentIds.push(otherAssignment.id);
+
+    const otherSubmission = await prisma.reinforcementSubmission.create({
+      data: {
+        schoolId,
+        assignmentId: otherAssignment.id,
+        taskId: otherTask.id,
+        stageId: otherStage.id,
+        studentId: params.otherStudentId,
+        enrollmentId: params.otherEnrollmentId,
+        status: ReinforcementSubmissionStatus.PENDING,
+        submittedById: params.otherStudentUserId,
+      },
+      select: { id: true },
+    });
+    createdTaskSubmissionIds.push(otherSubmission.id);
+
+    return {
+      taskId: task.id,
+      submissionId: submission.id,
+      otherTaskId: otherTask.id,
+      otherSubmissionId: otherSubmission.id,
+    };
+  }
+
+  async function createStudentCommunicationFixture(params: {
+    teacherUserId: string;
+    otherStudentUserId: string;
+    tenantBConversationId: string;
+    tenantBAnnouncementId: string;
+  }): Promise<{
+    conversationId: string;
+    otherConversationId: string;
+    tenantBConversationId: string;
+    schoolAnnouncementId: string;
+    customAnnouncementId: string;
+    outOfAudienceAnnouncementId: string;
+    tenantBAnnouncementId: string;
+  }> {
+    const conversation = await prisma.communicationConversation.create({
+      data: {
+        schoolId,
+        type: CommunicationConversationType.DIRECT,
+        status: CommunicationConversationStatus.ACTIVE,
+        titleEn: `${testSuffix} Student Conversation`,
+        lastMessageAt: new Date('2026-10-11T08:02:00.000Z'),
+        createdById: params.teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdConversationIds.push(conversation.id);
+
+    for (const userId of [linkedStudentUserId, params.teacherUserId]) {
+      const participant =
+        await prisma.communicationConversationParticipant.create({
+          data: {
+            schoolId,
+            conversationId: conversation.id,
+            userId,
+            role: CommunicationParticipantRole.MEMBER,
+            status: CommunicationParticipantStatus.ACTIVE,
+          },
+          select: { id: true },
+        });
+      createdConversationParticipantIds.push(participant.id);
+    }
+
+    for (const data of [
+      {
+        body: 'Visible teacher message',
+        status: CommunicationMessageStatus.SENT,
+        hiddenAt: null,
+        deletedAt: null,
+      },
+      {
+        body: 'hidden raw student body',
+        status: CommunicationMessageStatus.HIDDEN,
+        hiddenAt: new Date('2026-10-11T08:03:00.000Z'),
+        deletedAt: null,
+      },
+      {
+        body: 'deleted raw student body',
+        status: CommunicationMessageStatus.DELETED,
+        hiddenAt: null,
+        deletedAt: new Date('2026-10-11T08:04:00.000Z'),
+      },
+    ]) {
+      const message = await prisma.communicationMessage.create({
+        data: {
+          schoolId,
+          conversationId: conversation.id,
+          senderUserId: params.teacherUserId,
+          kind: CommunicationMessageKind.TEXT,
+          status: data.status,
+          body: data.body,
+          hiddenAt: data.hiddenAt,
+          deletedAt: data.deletedAt,
+          sentAt: new Date('2026-10-11T08:02:00.000Z'),
+        },
+        select: { id: true },
+      });
+      createdMessageIds.push(message.id);
+    }
+
+    const otherConversation = await prisma.communicationConversation.create({
+      data: {
+        schoolId,
+        type: CommunicationConversationType.DIRECT,
+        status: CommunicationConversationStatus.ACTIVE,
+        titleEn: `${testSuffix} Other Student Conversation`,
+        lastMessageAt: new Date('2026-10-11T09:00:00.000Z'),
+        createdById: params.teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdConversationIds.push(otherConversation.id);
+
+    for (const userId of [params.otherStudentUserId, params.teacherUserId]) {
+      const participant =
+        await prisma.communicationConversationParticipant.create({
+          data: {
+            schoolId,
+            conversationId: otherConversation.id,
+            userId,
+            role: CommunicationParticipantRole.MEMBER,
+            status: CommunicationParticipantStatus.ACTIVE,
+          },
+          select: { id: true },
+        });
+      createdConversationParticipantIds.push(participant.id);
+    }
+
+    const schoolAnnouncement = await prisma.communicationAnnouncement.create({
+      data: {
+        schoolId,
+        title: `${testSuffix} School Announcement`,
+        body: 'Published announcement for the school.',
+        status: CommunicationAnnouncementStatus.PUBLISHED,
+        priority: CommunicationAnnouncementPriority.NORMAL,
+        audienceType: CommunicationAnnouncementAudienceType.SCHOOL,
+        category: 'school',
+        isPinned: true,
+        actionLabel: 'Open',
+        publishedAt: new Date('2026-01-09T08:00:00.000Z'),
+        createdById: params.teacherUserId,
+        publishedById: params.teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdAnnouncementIds.push(schoolAnnouncement.id);
+
+    const customAnnouncement = await prisma.communicationAnnouncement.create({
+      data: {
+        schoolId,
+        title: `${testSuffix} Custom Student Announcement`,
+        body: 'Published announcement for the linked student.',
+        status: CommunicationAnnouncementStatus.PUBLISHED,
+        priority: CommunicationAnnouncementPriority.HIGH,
+        audienceType: CommunicationAnnouncementAudienceType.CUSTOM,
+        category: 'student',
+        publishedAt: new Date('2026-01-09T09:00:00.000Z'),
+        createdById: params.teacherUserId,
+        publishedById: params.teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdAnnouncementIds.push(customAnnouncement.id);
+    const customAudience =
+      await prisma.communicationAnnouncementAudience.create({
+        data: {
+          schoolId,
+          announcementId: customAnnouncement.id,
+          audienceType: CommunicationAnnouncementAudienceType.CUSTOM,
+          studentId: linkedStudentId,
+          userId: linkedStudentUserId,
+        },
+        select: { id: true },
+      });
+    createdAnnouncementAudienceIds.push(customAudience.id);
+
+    const outOfAudienceAnnouncement =
+      await prisma.communicationAnnouncement.create({
+        data: {
+          schoolId,
+          title: `${testSuffix} Other Student Announcement`,
+          body: 'Hidden announcement for another student.',
+          status: CommunicationAnnouncementStatus.PUBLISHED,
+          priority: CommunicationAnnouncementPriority.NORMAL,
+          audienceType: CommunicationAnnouncementAudienceType.CUSTOM,
+          category: 'student',
+          publishedAt: new Date('2026-01-09T10:00:00.000Z'),
+          createdById: params.teacherUserId,
+          publishedById: params.teacherUserId,
+        },
+        select: { id: true },
+      });
+    createdAnnouncementIds.push(outOfAudienceAnnouncement.id);
+    const outOfAudience =
+      await prisma.communicationAnnouncementAudience.create({
+        data: {
+          schoolId,
+          announcementId: outOfAudienceAnnouncement.id,
+          audienceType: CommunicationAnnouncementAudienceType.CUSTOM,
+          studentId: sameSchoolOtherStudentId,
+          userId: params.otherStudentUserId,
+        },
+        select: { id: true },
+      });
+    createdAnnouncementAudienceIds.push(outOfAudience.id);
+
+    const attachmentFile = await prisma.file.create({
+      data: {
+        organizationId,
+        schoolId,
+        uploaderId: params.teacherUserId,
+        bucket: `${testSuffix}-announcement-bucket`,
+        objectKey: `${testSuffix}/announcement.pdf`,
+        originalName: 'announcement.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 456n,
+        visibility: FileVisibility.PRIVATE,
+      },
+      select: { id: true },
+    });
+    createdFileIds.push(attachmentFile.id);
+
+    const attachment =
+      await prisma.communicationAnnouncementAttachment.create({
+        data: {
+          schoolId,
+          announcementId: schoolAnnouncement.id,
+          fileId: attachmentFile.id,
+          createdById: params.teacherUserId,
+          sortOrder: 1,
+        },
+        select: { id: true },
+      });
+    createdAnnouncementAttachmentIds.push(attachment.id);
+
+    return {
+      conversationId: conversation.id,
+      otherConversationId: otherConversation.id,
+      tenantBConversationId: params.tenantBConversationId,
+      schoolAnnouncementId: schoolAnnouncement.id,
+      customAnnouncementId: customAnnouncement.id,
+      outOfAudienceAnnouncementId: outOfAudienceAnnouncement.id,
+      tenantBAnnouncementId: params.tenantBAnnouncementId,
+    };
   }
 
   async function createStudentBehaviorFixture(params: {
@@ -2109,6 +2932,10 @@ describe('Student App Home/Profile routes (security)', () => {
     assessmentId: string;
     behaviorRecordId: string;
     heroMissionId: string;
+    taskId: string;
+    taskSubmissionId: string;
+    conversationId: string;
+    announcementId: string;
   }> {
     const organization = await prisma.organization.create({
       data: {
@@ -2319,11 +3146,100 @@ describe('Student App Home/Profile routes (security)', () => {
     });
     createdHeroMissionIds.push(heroMission.id);
 
+    const task = await prisma.reinforcementTask.create({
+      data: {
+        schoolId: school.id,
+        academicYearId: year.id,
+        termId: term.id,
+        titleEn: `${testSuffix} Tenant B Task`,
+        source: ReinforcementSource.TEACHER,
+        status: ReinforcementTaskStatus.NOT_COMPLETED,
+        assignedById: teacherUserId,
+        createdById: teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdTaskIds.push(task.id);
+
+    const stageBTask = await prisma.reinforcementTaskStage.create({
+      data: {
+        schoolId: school.id,
+        taskId: task.id,
+        sortOrder: 1,
+        titleEn: `${testSuffix} Tenant B Task Stage`,
+        proofType: ReinforcementProofType.NONE,
+      },
+      select: { id: true },
+    });
+    createdTaskStageIds.push(stageBTask.id);
+
+    const assignment = await prisma.reinforcementAssignment.create({
+      data: {
+        schoolId: school.id,
+        taskId: task.id,
+        academicYearId: year.id,
+        termId: term.id,
+        studentId: student.id,
+        enrollmentId: enrollment.id,
+        status: ReinforcementTaskStatus.NOT_COMPLETED,
+        progress: 0,
+      },
+      select: { id: true },
+    });
+    createdAssignmentIds.push(assignment.id);
+
+    const submission = await prisma.reinforcementSubmission.create({
+      data: {
+        schoolId: school.id,
+        assignmentId: assignment.id,
+        taskId: task.id,
+        stageId: stageBTask.id,
+        studentId: student.id,
+        enrollmentId: enrollment.id,
+        status: ReinforcementSubmissionStatus.PENDING,
+      },
+      select: { id: true },
+    });
+    createdTaskSubmissionIds.push(submission.id);
+
+    const conversation = await prisma.communicationConversation.create({
+      data: {
+        schoolId: school.id,
+        type: CommunicationConversationType.DIRECT,
+        status: CommunicationConversationStatus.ACTIVE,
+        titleEn: `${testSuffix} Tenant B Conversation`,
+        createdById: teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdConversationIds.push(conversation.id);
+
+    const announcement = await prisma.communicationAnnouncement.create({
+      data: {
+        schoolId: school.id,
+        title: `${testSuffix} Tenant B Announcement`,
+        body: 'Hidden tenant announcement.',
+        status: CommunicationAnnouncementStatus.PUBLISHED,
+        priority: CommunicationAnnouncementPriority.NORMAL,
+        audienceType: CommunicationAnnouncementAudienceType.SCHOOL,
+        category: 'school',
+        publishedAt: new Date('2026-01-10T08:00:00.000Z'),
+        createdById: teacherUserId,
+        publishedById: teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdAnnouncementIds.push(announcement.id);
+
     return {
       subjectId: subject.id,
       assessmentId: assessment.id,
       behaviorRecordId: behaviorRecord.id,
       heroMissionId: heroMission.id,
+      taskId: task.id,
+      taskSubmissionId: submission.id,
+      conversationId: conversation.id,
+      announcementId: announcement.id,
     };
   }
 

@@ -1,6 +1,13 @@
 import { Module } from '@nestjs/common';
+import { CommunicationModule } from '../communication/communication.module';
 import { StudentAppAccessService } from './access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from './access/student-app-student-read.adapter';
+import { GetStudentAnnouncementUseCase } from './announcements/application/get-student-announcement.use-case';
+import { ListStudentAnnouncementAttachmentsUseCase } from './announcements/application/list-student-announcement-attachments.use-case';
+import { ListStudentAnnouncementsUseCase } from './announcements/application/list-student-announcements.use-case';
+import { MarkStudentAnnouncementReadUseCase } from './announcements/application/mark-student-announcement-read.use-case';
+import { StudentAnnouncementsController } from './announcements/controller/student-announcements.controller';
+import { StudentAnnouncementsReadAdapter } from './announcements/infrastructure/student-announcements-read.adapter';
 import { GetStudentBehaviorRecordUseCase } from './behavior/application/get-student-behavior-record.use-case';
 import { GetStudentBehaviorSummaryUseCase } from './behavior/application/get-student-behavior-summary.use-case';
 import { ListStudentBehaviorRecordsUseCase } from './behavior/application/list-student-behavior-records.use-case';
@@ -26,6 +33,13 @@ import { StudentHeroReadAdapter } from './hero/infrastructure/student-hero-read.
 import { GetStudentHomeUseCase } from './home/application/get-student-home.use-case';
 import { StudentHomeController } from './home/controller/student-home.controller';
 import { StudentHomeReadAdapter } from './home/infrastructure/student-home-read.adapter';
+import { GetStudentMessageConversationUseCase } from './messages/application/get-student-message-conversation.use-case';
+import { ListStudentConversationMessagesUseCase } from './messages/application/list-student-conversation-messages.use-case';
+import { ListStudentMessageConversationsUseCase } from './messages/application/list-student-message-conversations.use-case';
+import { MarkStudentConversationReadUseCase } from './messages/application/mark-student-conversation-read.use-case';
+import { SendStudentConversationMessageUseCase } from './messages/application/send-student-conversation-message.use-case';
+import { StudentMessagesController } from './messages/controller/student-messages.controller';
+import { StudentMessagesReadAdapter } from './messages/infrastructure/student-messages-read.adapter';
 import { GetStudentProfileUseCase } from './profile/application/get-student-profile.use-case';
 import { StudentProfileController } from './profile/controller/student-profile.controller';
 import { StudentProfileReadAdapter } from './profile/infrastructure/student-profile-read.adapter';
@@ -39,8 +53,16 @@ import { GetStudentSubjectUseCase } from './subjects/application/get-student-sub
 import { ListStudentSubjectsUseCase } from './subjects/application/list-student-subjects.use-case';
 import { StudentSubjectsController } from './subjects/controller/student-subjects.controller';
 import { StudentSubjectsReadAdapter } from './subjects/infrastructure/student-subjects-read.adapter';
+import { GetStudentTaskSubmissionUseCase } from './tasks/application/get-student-task-submission.use-case';
+import { GetStudentTaskUseCase } from './tasks/application/get-student-task.use-case';
+import { GetStudentTasksSummaryUseCase } from './tasks/application/get-student-tasks-summary.use-case';
+import { ListStudentTaskSubmissionsUseCase } from './tasks/application/list-student-task-submissions.use-case';
+import { ListStudentTasksUseCase } from './tasks/application/list-student-tasks.use-case';
+import { StudentTasksController } from './tasks/controller/student-tasks.controller';
+import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-read.adapter';
 
 @Module({
+  imports: [CommunicationModule],
   controllers: [
     StudentHomeController,
     StudentProfileController,
@@ -50,6 +72,9 @@ import { StudentSubjectsReadAdapter } from './subjects/infrastructure/student-su
     StudentBehaviorController,
     StudentProgressController,
     StudentHeroController,
+    StudentTasksController,
+    StudentMessagesController,
+    StudentAnnouncementsController,
   ],
   providers: [
     StudentAppAccessService,
@@ -84,6 +109,23 @@ import { StudentSubjectsReadAdapter } from './subjects/infrastructure/student-su
     ListStudentHeroBadgesUseCase,
     ListStudentHeroMissionsUseCase,
     GetStudentHeroMissionUseCase,
+    StudentTasksReadAdapter,
+    ListStudentTasksUseCase,
+    GetStudentTasksSummaryUseCase,
+    GetStudentTaskUseCase,
+    ListStudentTaskSubmissionsUseCase,
+    GetStudentTaskSubmissionUseCase,
+    StudentMessagesReadAdapter,
+    ListStudentMessageConversationsUseCase,
+    GetStudentMessageConversationUseCase,
+    ListStudentConversationMessagesUseCase,
+    SendStudentConversationMessageUseCase,
+    MarkStudentConversationReadUseCase,
+    StudentAnnouncementsReadAdapter,
+    ListStudentAnnouncementsUseCase,
+    GetStudentAnnouncementUseCase,
+    MarkStudentAnnouncementReadUseCase,
+    ListStudentAnnouncementAttachmentsUseCase,
   ],
   exports: [StudentAppAccessService],
 })
