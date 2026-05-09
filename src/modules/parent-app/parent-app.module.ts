@@ -1,6 +1,13 @@
 import { Module } from '@nestjs/common';
+import { CommunicationModule } from '../communication/communication.module';
 import { ParentAppAccessService } from './access/parent-app-access.service';
 import { ParentAppGuardianReadAdapter } from './access/parent-app-guardian-read.adapter';
+import { GetParentAnnouncementUseCase } from './announcements/application/get-parent-announcement.use-case';
+import { ListParentAnnouncementAttachmentsUseCase } from './announcements/application/list-parent-announcement-attachments.use-case';
+import { ListParentAnnouncementsUseCase } from './announcements/application/list-parent-announcements.use-case';
+import { MarkParentAnnouncementReadUseCase } from './announcements/application/mark-parent-announcement-read.use-case';
+import { ParentAnnouncementsController } from './announcements/controller/parent-announcements.controller';
+import { ParentAnnouncementsReadAdapter } from './announcements/infrastructure/parent-announcements-read.adapter';
 import { GetParentChildBehaviorRecordUseCase } from './behavior/application/get-parent-child-behavior-record.use-case';
 import { GetParentChildBehaviorSummaryUseCase } from './behavior/application/get-parent-child-behavior-summary.use-case';
 import { ListParentChildBehaviorUseCase } from './behavior/application/list-parent-child-behavior.use-case';
@@ -18,6 +25,13 @@ import { ParentGradesReadAdapter } from './grades/infrastructure/parent-grades-r
 import { GetParentHomeUseCase } from './home/application/get-parent-home.use-case';
 import { ParentHomeController } from './home/controller/parent-home.controller';
 import { ParentHomeReadAdapter } from './home/infrastructure/parent-home-read.adapter';
+import { GetParentMessageConversationUseCase } from './messages/application/get-parent-message-conversation.use-case';
+import { ListParentConversationMessagesUseCase } from './messages/application/list-parent-conversation-messages.use-case';
+import { ListParentMessageConversationsUseCase } from './messages/application/list-parent-message-conversations.use-case';
+import { MarkParentConversationReadUseCase } from './messages/application/mark-parent-conversation-read.use-case';
+import { SendParentConversationMessageUseCase } from './messages/application/send-parent-conversation-message.use-case';
+import { ParentMessagesController } from './messages/controller/parent-messages.controller';
+import { ParentMessagesReadAdapter } from './messages/infrastructure/parent-messages-read.adapter';
 import { GetParentProfileUseCase } from './profile/application/get-parent-profile.use-case';
 import { ParentProfileController } from './profile/controller/parent-profile.controller';
 import { ParentProfileReadAdapter } from './profile/infrastructure/parent-profile-read.adapter';
@@ -31,8 +45,16 @@ import { GetParentChildReportsSummaryUseCase } from './reports/application/get-p
 import { ListParentChildReportsUseCase } from './reports/application/list-parent-child-reports.use-case';
 import { ParentReportsController } from './reports/controller/parent-reports.controller';
 import { ParentReportsReadAdapter } from './reports/infrastructure/parent-reports-read.adapter';
+import { GetParentChildTaskSubmissionUseCase } from './tasks/application/get-parent-child-task-submission.use-case';
+import { GetParentChildTaskUseCase } from './tasks/application/get-parent-child-task.use-case';
+import { GetParentChildTasksSummaryUseCase } from './tasks/application/get-parent-child-tasks-summary.use-case';
+import { ListParentChildTaskSubmissionsUseCase } from './tasks/application/list-parent-child-task-submissions.use-case';
+import { ListParentChildTasksUseCase } from './tasks/application/list-parent-child-tasks.use-case';
+import { ParentTasksController } from './tasks/controller/parent-tasks.controller';
+import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read.adapter';
 
 @Module({
+  imports: [CommunicationModule],
   controllers: [
     ParentHomeController,
     ParentChildrenController,
@@ -41,6 +63,9 @@ import { ParentReportsReadAdapter } from './reports/infrastructure/parent-report
     ParentBehaviorController,
     ParentProgressController,
     ParentReportsController,
+    ParentTasksController,
+    ParentMessagesController,
+    ParentAnnouncementsController,
   ],
   providers: [
     ParentAppAccessService,
@@ -68,6 +93,23 @@ import { ParentReportsReadAdapter } from './reports/infrastructure/parent-report
     ParentReportsReadAdapter,
     ListParentChildReportsUseCase,
     GetParentChildReportsSummaryUseCase,
+    ParentTasksReadAdapter,
+    ListParentChildTasksUseCase,
+    GetParentChildTasksSummaryUseCase,
+    GetParentChildTaskUseCase,
+    ListParentChildTaskSubmissionsUseCase,
+    GetParentChildTaskSubmissionUseCase,
+    ParentMessagesReadAdapter,
+    ListParentMessageConversationsUseCase,
+    GetParentMessageConversationUseCase,
+    ListParentConversationMessagesUseCase,
+    SendParentConversationMessageUseCase,
+    MarkParentConversationReadUseCase,
+    ParentAnnouncementsReadAdapter,
+    ListParentAnnouncementsUseCase,
+    GetParentAnnouncementUseCase,
+    MarkParentAnnouncementReadUseCase,
+    ListParentAnnouncementAttachmentsUseCase,
   ],
   exports: [ParentAppAccessService],
 })
