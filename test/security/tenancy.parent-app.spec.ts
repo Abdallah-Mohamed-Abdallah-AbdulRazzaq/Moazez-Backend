@@ -1,6 +1,21 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AttendanceMode,
+  AttendanceScopeType,
+  AttendanceSessionStatus,
+  AttendanceStatus,
+  BehaviorPointLedgerEntryType,
+  BehaviorRecordStatus,
+  BehaviorRecordType,
+  GradeAnswerCorrectionStatus,
+  GradeAssessmentApprovalStatus,
+  GradeAssessmentDeliveryMode,
+  GradeAssessmentType,
+  GradeItemStatus,
+  GradeQuestionType,
+  GradeScopeType,
+  GradeSubmissionStatus,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
@@ -9,6 +24,7 @@ import {
   StudentStatus,
   UserStatus,
   UserType,
+  XpSourceType,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
 import request from 'supertest';
@@ -264,6 +280,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   let teacherEmail: string;
   let studentEmail: string;
   let parentUserId: string;
+  let teacherUserId: string;
   let guardianAId: string;
   let ownedStudentAId: string;
   let secondOwnedStudentAId: string;
@@ -271,6 +288,11 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   let crossSchoolLinkedStudentId: string;
   let ownedEnrollmentAId: string;
   let secondOwnedEnrollmentAId: string;
+  let subjectAId: string;
+  let ownedAssessmentAId: string;
+  let draftAssessmentAId: string;
+  let positiveBehaviorRecordAId: string;
+  let negativeBehaviorRecordAId: string;
 
   const testSuffix = `parent-app-security-${Date.now()}`;
   const createdUserIds: string[] = [];
@@ -278,6 +300,20 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   const createdStudentGuardianIds: string[] = [];
   const createdStudentIds: string[] = [];
   const createdEnrollmentIds: string[] = [];
+  const createdAttendanceSessionIds: string[] = [];
+  const createdAttendanceEntryIds: string[] = [];
+  const createdBehaviorCategoryIds: string[] = [];
+  const createdBehaviorRecordIds: string[] = [];
+  const createdBehaviorPointLedgerIds: string[] = [];
+  const createdGradeAssessmentIds: string[] = [];
+  const createdGradeItemIds: string[] = [];
+  const createdGradeQuestionIds: string[] = [];
+  const createdGradeQuestionOptionIds: string[] = [];
+  const createdGradeSubmissionIds: string[] = [];
+  const createdGradeSubmissionAnswerIds: string[] = [];
+  const createdXpLedgerIds: string[] = [];
+  const createdAllocationIds: string[] = [];
+  const createdSubjectIds: string[] = [];
   const createdClassroomIds: string[] = [];
   const createdSectionIds: string[] = [];
   const createdGradeIds: string[] = [];
@@ -374,7 +410,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       organizationId: organizationAId,
       schoolId: schoolAId,
     });
-    await createUserWithMembership({
+    teacherUserId = await createUserWithMembership({
       email: teacherEmail,
       userType: UserType.TEACHER,
       roleId: teacherRole.id,
@@ -454,6 +490,13 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       isPrimary: false,
     });
 
+    const featureFixture = await createParentAppFeatureFixture();
+    subjectAId = featureFixture.subjectId;
+    ownedAssessmentAId = featureFixture.assessmentId;
+    draftAssessmentAId = featureFixture.draftAssessmentId;
+    positiveBehaviorRecordAId = featureFixture.positiveBehaviorRecordId;
+    negativeBehaviorRecordAId = featureFixture.negativeBehaviorRecordId;
+
     const academicB = await createAcademicFixture({
       organizationId: organizationBId,
       schoolId: schoolBId,
@@ -507,6 +550,50 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       await prisma.session.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
+      await prisma.gradeSubmissionAnswerOption.deleteMany({
+        where: {
+          OR: [
+            { answerId: { in: createdGradeSubmissionAnswerIds } },
+            { optionId: { in: createdGradeQuestionOptionIds } },
+          ],
+        },
+      });
+      await prisma.gradeSubmissionAnswer.deleteMany({
+        where: { id: { in: createdGradeSubmissionAnswerIds } },
+      });
+      await prisma.gradeSubmission.deleteMany({
+        where: { id: { in: createdGradeSubmissionIds } },
+      });
+      await prisma.gradeItem.deleteMany({
+        where: { id: { in: createdGradeItemIds } },
+      });
+      await prisma.gradeAssessmentQuestionOption.deleteMany({
+        where: { id: { in: createdGradeQuestionOptionIds } },
+      });
+      await prisma.gradeAssessmentQuestion.deleteMany({
+        where: { id: { in: createdGradeQuestionIds } },
+      });
+      await prisma.gradeAssessment.deleteMany({
+        where: { id: { in: createdGradeAssessmentIds } },
+      });
+      await prisma.behaviorPointLedger.deleteMany({
+        where: { id: { in: createdBehaviorPointLedgerIds } },
+      });
+      await prisma.behaviorRecord.deleteMany({
+        where: { id: { in: createdBehaviorRecordIds } },
+      });
+      await prisma.behaviorCategory.deleteMany({
+        where: { id: { in: createdBehaviorCategoryIds } },
+      });
+      await prisma.attendanceEntry.deleteMany({
+        where: { id: { in: createdAttendanceEntryIds } },
+      });
+      await prisma.attendanceSession.deleteMany({
+        where: { id: { in: createdAttendanceSessionIds } },
+      });
+      await prisma.xpLedger.deleteMany({
+        where: { id: { in: createdXpLedgerIds } },
+      });
       await prisma.studentGuardian.deleteMany({
         where: { id: { in: createdStudentGuardianIds } },
       });
@@ -519,11 +606,17 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       await prisma.student.deleteMany({
         where: { id: { in: createdStudentIds } },
       });
+      await prisma.teacherSubjectAllocation.deleteMany({
+        where: { id: { in: createdAllocationIds } },
+      });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
       await prisma.user.deleteMany({
         where: { id: { in: createdUserIds } },
+      });
+      await prisma.subject.deleteMany({
+        where: { id: { in: createdSubjectIds } },
       });
       await prisma.classroom.deleteMany({
         where: { id: { in: createdClassroomIds } },
@@ -703,6 +796,235 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     assertNoForbiddenParentAppFields(profile.body);
   });
 
+  it('linked parent can read owned child grades and assessment grade detail', async () => {
+    const { accessToken } = await login(parentEmail);
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/grades`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(list.body.child).toMatchObject({
+      studentId: ownedStudentAId,
+      enrollmentId: ownedEnrollmentAId,
+    });
+    expect(list.body.assessments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          assessmentId: ownedAssessmentAId,
+          subjectId: subjectAId,
+          score: 8,
+          maxScore: 10,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(list.body)).not.toContain(draftAssessmentAId);
+    assertNoForbiddenParentAppFields(list.body);
+
+    const summary = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/grades/summary`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(summary.body.summary).toMatchObject({
+      totalEarned: 8,
+      totalMax: 10,
+      percentage: 80,
+    });
+    assertNoForbiddenParentAppFields(summary.body);
+
+    const detail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/grades/assessments/${ownedAssessmentAId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(detail.body.assessment).toMatchObject({
+      assessmentId: ownedAssessmentAId,
+      subject: { subjectId: subjectAId },
+      status: 'published',
+    });
+    expect(detail.body.grade).toMatchObject({
+      score: 8,
+      maxScore: 10,
+      percent: 80,
+    });
+    assertNoForbiddenParentAppFields(detail.body);
+    assertNoAnswerKeysOrCorrectAnswers(detail.body);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/grades/assessments/${draftAssessmentAId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
+
+  it('linked parent can read owned child behavior list, summary, and detail', async () => {
+    const { accessToken } = await login(parentEmail);
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/behavior`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(list.body.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: positiveBehaviorRecordAId,
+          type: 'positive',
+          points: 5,
+          status: 'approved',
+        }),
+        expect.objectContaining({
+          id: negativeBehaviorRecordAId,
+          type: 'negative',
+          points: -2,
+          status: 'approved',
+        }),
+      ]),
+    );
+    expect(list.body.summary).toMatchObject({
+      positiveCount: 1,
+      negativeCount: 1,
+      positivePoints: 5,
+      negativePoints: -2,
+      totalBehaviorPoints: 3,
+    });
+    expect(JSON.stringify(list.body.summary)).not.toContain('xp');
+    assertNoForbiddenParentAppFields(list.body);
+
+    const summary = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/behavior/summary`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(summary.body.summary).toMatchObject({
+      positivePoints: 5,
+      negativePoints: -2,
+      totalBehaviorPoints: 3,
+    });
+    assertNoForbiddenParentAppFields(summary.body);
+
+    const detail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/behavior/${positiveBehaviorRecordAId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(detail.body).toMatchObject({
+      id: positiveBehaviorRecordAId,
+      type: 'positive',
+      points: 5,
+      status: 'approved',
+    });
+    assertNoForbiddenParentAppFields(detail.body);
+  });
+
+  it('linked parent can read owned child progress overview, academic, behavior, and XP', async () => {
+    const { accessToken } = await login(parentEmail);
+
+    const overview = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/progress`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(overview.body.academic.summary).toMatchObject({
+      totalEarned: 8,
+      totalMax: 10,
+      percentage: 80,
+    });
+    expect(overview.body.behavior.summary).toMatchObject({
+      totalBehaviorPoints: 3,
+    });
+    expect(overview.body.xp).toMatchObject({
+      totalXp: 25,
+      currentLevel: null,
+      rank: null,
+      tier: null,
+    });
+    expect(overview.body.unsupported).toEqual({
+      rank: true,
+      tier: true,
+      level: true,
+    });
+    assertNoForbiddenParentAppFields(overview.body);
+
+    const academic = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/progress/academic`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(academic.body.summary.percentage).toBe(80);
+
+    const behavior = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/progress/behavior`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(behavior.body.summary.totalBehaviorPoints).toBe(3);
+    expect(JSON.stringify(behavior.body)).not.toContain('totalXp');
+    expect(JSON.stringify(behavior.body)).not.toContain('total_xp');
+
+    const xp = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/progress/xp`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(xp.body.totalXp).toBe(25);
+  });
+
+  it('linked parent can read owned child reports list and summary', async () => {
+    const { accessToken } = await login(parentEmail);
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/reports`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(list.body.reports).toEqual([
+      expect.objectContaining({
+        reportId: 'current-term-performance',
+        type: 'performance',
+        source: 'derived_current_school_data',
+      }),
+    ]);
+    expect(list.body.unavailable).toMatchObject({
+      reportEngine: { available: false },
+      pdfExport: { available: false },
+      templates: { available: false },
+      schedule: { available: false },
+      homework: { available: false },
+      pickup: { available: false },
+    });
+    assertNoForbiddenParentAppFields(list.body);
+
+    const summary = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/reports/summary`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(summary.body).toMatchObject({
+      academic: { percentage: 80 },
+      behavior: { totalBehaviorPoints: 3 },
+      xp: { totalXp: 25 },
+      unavailable: {
+        reportEngine: { available: false },
+        schedule: { available: false },
+        homework: { available: false },
+        pickup: { available: false },
+      },
+    });
+    assertNoForbiddenParentAppFields(summary.body);
+  });
+
   it('returns safe 404 for same-school unlinked and cross-school child details', async () => {
     const { accessToken } = await login(parentEmail);
 
@@ -715,6 +1037,31 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       .get(`${GLOBAL_PREFIX}/parent/children/${crossSchoolLinkedStudentId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
+
+    for (const childId of [
+      sameSchoolUnlinkedStudentId,
+      crossSchoolLinkedStudentId,
+    ]) {
+      for (const path of [
+        'grades',
+        'grades/summary',
+        `grades/assessments/${ownedAssessmentAId}`,
+        'behavior',
+        'behavior/summary',
+        `behavior/${positiveBehaviorRecordAId}`,
+        'progress',
+        'progress/academic',
+        'progress/behavior',
+        'progress/xp',
+        'reports',
+        'reports/summary',
+      ]) {
+        await request(app.getHttpServer())
+          .get(`${GLOBAL_PREFIX}/parent/children/${childId}/${path}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(404);
+      }
+    }
   });
 
   it('forbids school admin, teacher, and student actors on Parent App routes', async () => {
@@ -725,6 +1072,18 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         'home',
         'children',
         `children/${ownedStudentAId}`,
+        `children/${ownedStudentAId}/grades`,
+        `children/${ownedStudentAId}/grades/summary`,
+        `children/${ownedStudentAId}/grades/assessments/${ownedAssessmentAId}`,
+        `children/${ownedStudentAId}/behavior`,
+        `children/${ownedStudentAId}/behavior/summary`,
+        `children/${ownedStudentAId}/behavior/${positiveBehaviorRecordAId}`,
+        `children/${ownedStudentAId}/progress`,
+        `children/${ownedStudentAId}/progress/academic`,
+        `children/${ownedStudentAId}/progress/behavior`,
+        `children/${ownedStudentAId}/progress/xp`,
+        `children/${ownedStudentAId}/reports`,
+        `children/${ownedStudentAId}/reports/summary`,
         'profile',
       ]) {
         await request(app.getHttpServer())
@@ -763,6 +1122,21 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       .expect(404);
 
     for (const path of [
+      `children/${ownedStudentAId}/grades`,
+      `children/${ownedStudentAId}/behavior`,
+      `children/${ownedStudentAId}/progress`,
+      `children/${ownedStudentAId}/reports`,
+    ]) {
+      for (const method of ['post', 'put', 'patch', 'delete'] as const) {
+        await request(app.getHttpServer())
+          [method](`${GLOBAL_PREFIX}/parent/${path}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({})
+          .expect(404);
+      }
+    }
+
+    for (const path of [
       'schedule',
       'homework',
       'homeworks',
@@ -780,6 +1154,24 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     ]) {
       await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}/parent/${path}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+
+    for (const path of [
+      'schedule',
+      'homework',
+      'homeworks',
+      'pickup',
+      'messages',
+      'announcements',
+      'notifications',
+      'tasks',
+      'applicant-portal',
+      'add-child',
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/${path}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(404);
     }
@@ -1003,6 +1395,396 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     createdStudentGuardianIds.push(link.id);
   }
 
+  async function createParentAppFeatureFixture(): Promise<{
+    subjectId: string;
+    assessmentId: string;
+    draftAssessmentId: string;
+    positiveBehaviorRecordId: string;
+    negativeBehaviorRecordId: string;
+  }> {
+    const subject = await prisma.subject.create({
+      data: {
+        schoolId: schoolAId,
+        nameAr: `${testSuffix}-parent-subject-ar`,
+        nameEn: `${testSuffix} Parent Subject`,
+        code: `${testSuffix.toUpperCase()}-PARENT`,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    createdSubjectIds.push(subject.id);
+
+    const allocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId: schoolAId,
+        teacherUserId,
+        subjectId: subject.id,
+        classroomId: classroomAId,
+        termId: termAId,
+      },
+      select: { id: true },
+    });
+    createdAllocationIds.push(allocation.id);
+
+    const assessment = await prisma.gradeAssessment.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        subjectId: subject.id,
+        scopeType: GradeScopeType.CLASSROOM,
+        scopeKey: classroomAId,
+        classroomId: classroomAId,
+        titleEn: `${testSuffix} Parent Visible Quiz`,
+        type: GradeAssessmentType.QUIZ,
+        deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        date: new Date('2026-10-01T00:00:00.000Z'),
+        weight: 10,
+        maxScore: 10,
+        expectedTimeMinutes: 30,
+        approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+        publishedAt: new Date('2026-09-20T08:00:00.000Z'),
+        publishedById: teacherUserId,
+        createdById: teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdGradeAssessmentIds.push(assessment.id);
+
+    const draftAssessment = await prisma.gradeAssessment.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        subjectId: subject.id,
+        scopeType: GradeScopeType.CLASSROOM,
+        scopeKey: classroomAId,
+        classroomId: classroomAId,
+        titleEn: `${testSuffix} Parent Draft Quiz`,
+        type: GradeAssessmentType.QUIZ,
+        deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
+        date: new Date('2026-10-02T00:00:00.000Z'),
+        weight: 5,
+        maxScore: 10,
+        approvalStatus: GradeAssessmentApprovalStatus.DRAFT,
+        createdById: teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdGradeAssessmentIds.push(draftAssessment.id);
+
+    const gradeItem = await prisma.gradeItem.create({
+      data: {
+        schoolId: schoolAId,
+        termId: termAId,
+        assessmentId: assessment.id,
+        studentId: ownedStudentAId,
+        enrollmentId: ownedEnrollmentAId,
+        score: 8,
+        status: GradeItemStatus.ENTERED,
+        comment: 'Visible parent feedback',
+        enteredById: teacherUserId,
+        enteredAt: new Date('2026-10-04T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdGradeItemIds.push(gradeItem.id);
+
+    const question = await prisma.gradeAssessmentQuestion.create({
+      data: {
+        schoolId: schoolAId,
+        assessmentId: assessment.id,
+        type: GradeQuestionType.MCQ_SINGLE,
+        prompt: 'Parent visible prompt',
+        points: 10,
+        sortOrder: 1,
+        required: true,
+        answerKey: {
+          correctOption: 'hidden-option',
+          storageKey: 'hidden-question-key',
+        },
+      },
+      select: { id: true },
+    });
+    createdGradeQuestionIds.push(question.id);
+
+    const correctOption = await prisma.gradeAssessmentQuestionOption.create({
+      data: {
+        schoolId: schoolAId,
+        assessmentId: assessment.id,
+        questionId: question.id,
+        label: 'Correct visible label',
+        value: 'A',
+        isCorrect: true,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    createdGradeQuestionOptionIds.push(correctOption.id);
+
+    const submission = await prisma.gradeSubmission.create({
+      data: {
+        schoolId: schoolAId,
+        assessmentId: assessment.id,
+        termId: termAId,
+        studentId: ownedStudentAId,
+        enrollmentId: ownedEnrollmentAId,
+        status: GradeSubmissionStatus.SUBMITTED,
+        startedAt: new Date('2026-10-04T08:00:00.000Z'),
+        submittedAt: new Date('2026-10-04T08:30:00.000Z'),
+        correctedAt: new Date('2026-10-05T08:00:00.000Z'),
+        reviewedById: teacherUserId,
+        totalScore: 8,
+        maxScore: 10,
+        metadata: { private: 'hidden-submission-metadata' },
+      },
+      select: { id: true },
+    });
+    createdGradeSubmissionIds.push(submission.id);
+
+    const answer = await prisma.gradeSubmissionAnswer.create({
+      data: {
+        schoolId: schoolAId,
+        submissionId: submission.id,
+        assessmentId: assessment.id,
+        questionId: question.id,
+        studentId: ownedStudentAId,
+        answerText: 'A',
+        answerJson: {
+          selected: 'A',
+          answerKey: 'hidden-answer-key',
+          correctAnswer: 'A',
+          storageKey: 'raw-storage-key',
+          objectKey: 'raw-object-key',
+          bucket: 'raw-bucket',
+        },
+        correctionStatus: GradeAnswerCorrectionStatus.CORRECTED,
+        awardedPoints: 8,
+        maxPoints: 10,
+        reviewerComment: 'Visible review comment',
+        reviewedById: teacherUserId,
+        reviewedAt: new Date('2026-10-05T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdGradeSubmissionAnswerIds.push(answer.id);
+
+    await prisma.gradeSubmissionAnswerOption.create({
+      data: {
+        schoolId: schoolAId,
+        answerId: answer.id,
+        optionId: correctOption.id,
+      },
+    });
+
+    const positiveCategory = await prisma.behaviorCategory.create({
+      data: {
+        schoolId: schoolAId,
+        code: `${testSuffix}-positive`,
+        nameEn: 'Helpful',
+        type: BehaviorRecordType.POSITIVE,
+        defaultPoints: 5,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    createdBehaviorCategoryIds.push(positiveCategory.id);
+
+    const negativeCategory = await prisma.behaviorCategory.create({
+      data: {
+        schoolId: schoolAId,
+        code: `${testSuffix}-negative`,
+        nameEn: 'Needs support',
+        type: BehaviorRecordType.NEGATIVE,
+        defaultPoints: -2,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    createdBehaviorCategoryIds.push(negativeCategory.id);
+
+    const positiveRecord = await prisma.behaviorRecord.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        studentId: ownedStudentAId,
+        enrollmentId: ownedEnrollmentAId,
+        categoryId: positiveCategory.id,
+        type: BehaviorRecordType.POSITIVE,
+        status: BehaviorRecordStatus.APPROVED,
+        titleEn: `${testSuffix} Helpful`,
+        noteEn: 'Visible positive note',
+        points: 5,
+        occurredAt: new Date('2026-10-06T08:00:00.000Z'),
+        createdById: teacherUserId,
+        reviewedById: teacherUserId,
+        reviewedAt: new Date('2026-10-06T09:00:00.000Z'),
+        reviewNoteEn: 'Hidden review note',
+        metadata: { private: 'hidden-behavior-metadata' },
+      },
+      select: { id: true },
+    });
+    createdBehaviorRecordIds.push(positiveRecord.id);
+
+    const negativeRecord = await prisma.behaviorRecord.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        studentId: ownedStudentAId,
+        enrollmentId: ownedEnrollmentAId,
+        categoryId: negativeCategory.id,
+        type: BehaviorRecordType.NEGATIVE,
+        status: BehaviorRecordStatus.APPROVED,
+        titleEn: `${testSuffix} Needs Support`,
+        noteEn: 'Visible negative note',
+        points: -2,
+        occurredAt: new Date('2026-10-07T08:00:00.000Z'),
+        createdById: teacherUserId,
+        reviewedById: teacherUserId,
+        reviewedAt: new Date('2026-10-07T09:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdBehaviorRecordIds.push(negativeRecord.id);
+
+    const draftRecord = await prisma.behaviorRecord.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        studentId: ownedStudentAId,
+        enrollmentId: ownedEnrollmentAId,
+        categoryId: positiveCategory.id,
+        type: BehaviorRecordType.POSITIVE,
+        status: BehaviorRecordStatus.DRAFT,
+        titleEn: `${testSuffix} Draft Behavior`,
+        points: 4,
+        occurredAt: new Date('2026-10-08T08:00:00.000Z'),
+        createdById: teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdBehaviorRecordIds.push(draftRecord.id);
+
+    const positiveLedger = await prisma.behaviorPointLedger.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        studentId: ownedStudentAId,
+        enrollmentId: ownedEnrollmentAId,
+        recordId: positiveRecord.id,
+        categoryId: positiveCategory.id,
+        entryType: BehaviorPointLedgerEntryType.AWARD,
+        amount: 5,
+        reasonEn: 'Visible behavior points',
+        actorId: teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdBehaviorPointLedgerIds.push(positiveLedger.id);
+
+    const negativeLedger = await prisma.behaviorPointLedger.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        studentId: ownedStudentAId,
+        enrollmentId: ownedEnrollmentAId,
+        recordId: negativeRecord.id,
+        categoryId: negativeCategory.id,
+        entryType: BehaviorPointLedgerEntryType.PENALTY,
+        amount: -2,
+        reasonEn: 'Visible behavior penalty',
+        actorId: teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdBehaviorPointLedgerIds.push(negativeLedger.id);
+
+    await createAttendanceEntry({
+      date: new Date('2026-10-09T00:00:00.000Z'),
+      periodKey: 'daily-present',
+      status: AttendanceStatus.PRESENT,
+    });
+    await createAttendanceEntry({
+      date: new Date('2026-10-10T00:00:00.000Z'),
+      periodKey: 'daily-absent',
+      status: AttendanceStatus.ABSENT,
+    });
+    await createAttendanceEntry({
+      date: new Date('2026-10-11T00:00:00.000Z'),
+      periodKey: 'daily-late',
+      status: AttendanceStatus.LATE,
+    });
+
+    const xpLedger = await prisma.xpLedger.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        studentId: ownedStudentAId,
+        enrollmentId: ownedEnrollmentAId,
+        sourceType: XpSourceType.SYSTEM,
+        sourceId: `${testSuffix}-parent-xp`,
+        amount: 25,
+        reason: 'Parent App security XP fixture',
+      },
+      select: { id: true },
+    });
+    createdXpLedgerIds.push(xpLedger.id);
+
+    return {
+      subjectId: subject.id,
+      assessmentId: assessment.id,
+      draftAssessmentId: draftAssessment.id,
+      positiveBehaviorRecordId: positiveRecord.id,
+      negativeBehaviorRecordId: negativeRecord.id,
+    };
+  }
+
+  async function createAttendanceEntry(params: {
+    date: Date;
+    periodKey: string;
+    status: AttendanceStatus;
+  }): Promise<void> {
+    const session = await prisma.attendanceSession.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        date: params.date,
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: classroomAId,
+        classroomId: classroomAId,
+        mode: AttendanceMode.DAILY,
+        periodKey: params.periodKey,
+        periodLabelEn: params.periodKey,
+        status: AttendanceSessionStatus.SUBMITTED,
+        submittedAt: new Date(params.date.getTime() + 60 * 60 * 1000),
+        submittedById: teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdAttendanceSessionIds.push(session.id);
+
+    const entry = await prisma.attendanceEntry.create({
+      data: {
+        schoolId: schoolAId,
+        sessionId: session.id,
+        studentId: ownedStudentAId,
+        enrollmentId: ownedEnrollmentAId,
+        status: params.status,
+        markedById: teacherUserId,
+        markedAt: new Date(params.date.getTime() + 30 * 60 * 1000),
+      },
+      select: { id: true },
+    });
+    createdAttendanceEntryIds.push(entry.id);
+  }
+
   async function login(email: string): Promise<{ accessToken: string }> {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/auth/login`)
@@ -1033,6 +1815,24 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       'objectKey',
       'storageKey',
       'applicationId',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  }
+
+  function assertNoAnswerKeysOrCorrectAnswers(body: unknown): void {
+    const serialized = JSON.stringify(body);
+    for (const forbidden of [
+      'answerKey',
+      'correctAnswer',
+      'correctAnswers',
+      'isCorrect',
+      'hidden-option',
+      'hidden-question-key',
+      'hidden-answer-key',
+      'raw-storage-key',
+      'raw-object-key',
+      'raw-bucket',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
