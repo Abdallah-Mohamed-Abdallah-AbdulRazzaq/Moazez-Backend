@@ -260,6 +260,16 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `student_app.enrollment.not_found`        | 404  | Student App active enrollment was not found      |
 | `student_app.classroom.not_found`         | 404  | Student App classroom was not found              |
 
+### Parent App
+
+| Code                                      | HTTP | Message                                         |
+| ----------------------------------------- | ---- | ----------------------------------------------- |
+| `parent_app.actor.required_parent`        | 403  | Parent App requires an active parent membership |
+| `parent_app.guardian.not_found`           | 404  | Parent App guardian was not found               |
+| `parent_app.child.not_found`              | 404  | Parent App child was not found                  |
+| `parent_app.enrollment.not_found`         | 404  | Parent App active enrollment was not found      |
+| `parent_app.classroom.not_found`          | 404  | Parent App classroom was not found              |
+
 ### Cross-cutting
 
 | Code                  | HTTP | Message                                               |

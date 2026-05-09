@@ -20,6 +20,7 @@ import { FilesModule } from './modules/files/files.module';
 import { GradesModule } from './modules/grades/grades.module';
 import { HealthModule } from './modules/health/health.module';
 import { IamModule } from './modules/iam/iam.module';
+import { ParentAppModule } from './modules/parent-app/parent-app.module';
 import { ReinforcementModule } from './modules/reinforcement/reinforcement.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { StudentAppModule } from './modules/student-app/student-app.module';
@@ -49,6 +50,7 @@ import { TeacherAppModule } from './modules/teacher-app/teacher-app.module';
     CommunicationModule,
     TeacherAppModule,
     StudentAppModule,
+    ParentAppModule,
   ],
   controllers: [AppController],
   providers: [
