@@ -1202,6 +1202,69 @@ Deferred beyond Sprint 8F:
 - reward redemption
 - mission start/complete
 
+## Sprint 9F Parent App APIs Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Ensure SEED_DEMO_DATA=true
+
+npm run infra:up
+npm run verify:sprint9f
+```
+
+For a human demo against a running app:
+
+```bash
+npm run start:dev
+```
+
+Sprint 9F Parent App verification covers:
+
+- Ownership foundation
+- Home
+- Children
+- Profile
+- Child Grades
+- Child Behavior
+- Child Progress
+- Child Reports
+- Child Tasks read
+- Messages over existing conversations
+- Announcements read/read-marker/attachments
+
+Source of truth rules:
+
+- Parent App is a composition layer.
+- `ParentAppAccessService` owns parent -> guardian -> linked current-school children resolution.
+- Parent App is current-school only and does not aggregate across schools.
+- Students/Academics own children, enrollment, and classroom hierarchy.
+- Grades owns assessments, items, and submissions.
+- Behavior owns behavior records and points.
+- Reinforcement owns tasks, XP, and rewards.
+- Communication owns messages, conversations, and announcements.
+- Behavior points are not XP.
+
+Deferred beyond Sprint 9F:
+
+- Cross-school parent aggregation / global parent dashboard
+- Parent Schedule APIs
+- timetable/period/schedule occurrence/durable `scheduleId`
+- full Homework Core
+- Pickup / Smart Pickup
+- Notification Center
+- task submit/create/update/cancel/review
+- contact discovery / new conversation creation
+- message attachment/audio routes
+- announcement management
+- Add Child
+- Applicant Portal
+- profile mutation/avatar upload
+- XP grants
+- reward redemption
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -1236,6 +1299,7 @@ Deferred beyond Sprint 8F:
 | `npm run test:e2e:sprint7c`         | Run the Sprint 7C Teacher Classroom Operations closeout e2e flow                                                         |
 | `npm run test:e2e:sprint7d`         | Run the Sprint 7D Teacher App final closeout e2e flow                                                                    |
 | `npm run test:e2e:sprint8f`         | Run the Sprint 8F Student App final closeout e2e flow                                                                    |
+| `npm run test:e2e:sprint9f`         | Run the Sprint 9F Parent App final closeout e2e flow                                                                     |
 | `npm run test:security`             | Tenancy isolation tests                                                                                                  |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                                             |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                                                   |
@@ -1259,6 +1323,7 @@ Deferred beyond Sprint 8F:
 | `npm run verify:sprint7c`           | Run Sprint 7B verification coverage plus the Sprint 7C Teacher Classroom Operations e2e                                  |
 | `npm run verify:sprint7d`           | Run Sprint 7C verification coverage plus the Sprint 7D Teacher App final closeout e2e                                    |
 | `npm run verify:sprint8f`           | Run Sprint 7D verification coverage plus the Sprint 8F Student App final closeout e2e                                    |
+| `npm run verify:sprint9f`           | Run Sprint 8F verification coverage plus the Sprint 9F Parent App final closeout e2e                                     |
 | `npm run seed`                      | Re-run idempotent seeds                                                                                                  |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                                                    |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                                               |
