@@ -64,6 +64,7 @@
     "verify:sprint7d": "npm run verify:sprint7c && npm run test:e2e:sprint7d",
     "verify:sprint8f": "npm run verify:sprint7d && npm run test:e2e:sprint8f",
     "verify:sprint9f": "npm run verify:sprint8f && npm run test:e2e:sprint9f",
+    "verify:phase5": "npm run verify:sprint9f",
     "demo:sprint1c": "node scripts/demo-sprint1c.cjs",
     "demo:sprint2a": "node scripts/demo-sprint2a.cjs",
     "demo:sprint2b": "node scripts/demo-sprint2b.cjs"

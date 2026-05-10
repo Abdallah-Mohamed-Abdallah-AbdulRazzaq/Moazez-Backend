@@ -1265,6 +1265,49 @@ Deferred beyond Sprint 9F:
 - XP grants
 - reward redemption
 
+## Phase 5 Final Closeout
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Ensure SEED_DEMO_DATA=true
+
+npm run infra:up
+npm run verify:phase5
+```
+
+For a human demo against a running app:
+
+```bash
+npm run start:dev
+```
+
+`npm run verify:phase5` is the stable Phase 5 final verification entrypoint. It currently delegates to `npm run verify:sprint9f`, the latest full closed chain. Sprint 9F includes the Teacher App, Student App, and Parent App final closeouts through the Sprint 7D, Sprint 8F, and Sprint 9F e2e suites, plus the existing build, unit, security, migration, seed, and historical sprint verification coverage in that chain.
+
+Final closed app surfaces:
+
+- Teacher App
+- Student App
+- Parent App
+
+Deferred Phase 5 scope:
+
+- Schedule / Timetable / Period / `scheduleId`
+- Full Homework Core
+- Pickup / Smart Pickup
+- app-facing Notification Center policy
+- Add Child claim/approval
+- Applicant Portal identity ownership
+- contact discovery / new conversations
+- message attachment/audio routes
+- profile mutations / avatar / preferences / support / CMS
+- XP grants / reward redemption / mission mutations
+- cross-school Parent aggregation
+
+Deferred items require future core/product decisions and must not be backdoored through Teacher App, Student App, Parent App, or any other app-facing composition module. Core modules remain the source of truth; app-facing modules remain read/composition layers over approved core behavior.
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -1324,6 +1367,7 @@ Deferred beyond Sprint 9F:
 | `npm run verify:sprint7d`           | Run Sprint 7C verification coverage plus the Sprint 7D Teacher App final closeout e2e                                    |
 | `npm run verify:sprint8f`           | Run Sprint 7D verification coverage plus the Sprint 8F Student App final closeout e2e                                    |
 | `npm run verify:sprint9f`           | Run Sprint 8F verification coverage plus the Sprint 9F Parent App final closeout e2e                                     |
+| `npm run verify:phase5`             | Run the Phase 5 final verification entrypoint, currently delegating to `verify:sprint9f`                                  |
 | `npm run seed`                      | Re-run idempotent seeds                                                                                                  |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                                                    |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                                               |
