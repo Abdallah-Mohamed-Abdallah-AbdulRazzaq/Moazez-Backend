@@ -70,9 +70,13 @@ export class RefreshUseCase {
       user: {
         id: user.id,
         email: user.email,
+        username: user.username ?? null,
+        loginEmail: user.email,
+        contactEmail: user.contactEmail ?? null,
         firstName: user.firstName,
         lastName: user.lastName,
         userType: user.userType,
+        mustChangePassword: user.mustChangePassword,
       },
     };
   }

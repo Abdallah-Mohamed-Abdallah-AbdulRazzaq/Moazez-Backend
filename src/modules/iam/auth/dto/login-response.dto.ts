@@ -4,9 +4,13 @@ import { UserType } from '@prisma/client';
 export class AuthenticatedUserDto {
   @ApiProperty() id!: string;
   @ApiProperty() email!: string;
+  @ApiProperty({ nullable: true }) username!: string | null;
+  @ApiProperty() loginEmail!: string;
+  @ApiProperty({ nullable: true }) contactEmail!: string | null;
   @ApiProperty() firstName!: string;
   @ApiProperty() lastName!: string;
   @ApiProperty({ enum: UserType }) userType!: UserType;
+  @ApiProperty() mustChangePassword!: boolean;
 }
 
 export class LoginResponseDto {

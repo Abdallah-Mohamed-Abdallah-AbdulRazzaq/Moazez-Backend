@@ -64,7 +64,9 @@ const STUDENT_GUARDIAN_LINK_ARGS =
     },
   });
 
-export type GuardianRecord = Prisma.GuardianGetPayload<typeof GUARDIAN_RECORD_ARGS>;
+export type GuardianRecord = Prisma.GuardianGetPayload<
+  typeof GUARDIAN_RECORD_ARGS
+>;
 export type GuardianProfileRecord = Prisma.GuardianGetPayload<
   typeof GUARDIAN_PROFILE_ARGS
 >;
@@ -139,7 +141,11 @@ export class GuardiansRepository {
         ...(filters.relation ? { relation: filters.relation } : {}),
         ...buildGuardianSearchWhere(filters.search),
       },
-      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }, { createdAt: 'desc' }],
+      orderBy: [
+        { firstName: 'asc' },
+        { lastName: 'asc' },
+        { createdAt: 'desc' },
+      ],
       ...GUARDIAN_RECORD_ARGS,
     });
   }
@@ -147,6 +153,13 @@ export class GuardiansRepository {
   findGuardianById(guardianId: string): Promise<GuardianRecord | null> {
     return this.scopedPrisma.guardian.findFirst({
       where: { id: guardianId },
+      ...GUARDIAN_RECORD_ARGS,
+    });
+  }
+
+  findGuardianByUserId(userId: string): Promise<GuardianRecord | null> {
+    return this.scopedPrisma.guardian.findFirst({
+      where: { userId },
       ...GUARDIAN_RECORD_ARGS,
     });
   }
@@ -204,6 +217,25 @@ export class GuardiansRepository {
         deletedAt: null,
       },
       data,
+    });
+
+    if (result.count === 0) {
+      return null;
+    }
+
+    return this.findGuardianById(guardianId);
+  }
+
+  async linkGuardianAccount(
+    guardianId: string,
+    userId: string,
+  ): Promise<GuardianRecord | null> {
+    const result = await this.scopedPrisma.guardian.updateMany({
+      where: {
+        id: guardianId,
+        userId: null,
+      },
+      data: { userId },
     });
 
     if (result.count === 0) {
@@ -319,7 +351,10 @@ export class GuardiansRepository {
         return null;
       }
 
-      if (params.isPrimary === undefined || params.isPrimary === link.isPrimary) {
+      if (
+        params.isPrimary === undefined ||
+        params.isPrimary === link.isPrimary
+      ) {
         return link;
       }
 

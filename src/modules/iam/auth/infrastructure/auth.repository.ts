@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { AuditOutcome, MembershipStatus, Prisma, UserType } from '@prisma/client';
+import {
+  AuditOutcome,
+  MembershipStatus,
+  Prisma,
+  UserType,
+} from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 
 const USER_WITH_ACTIVE_MEMBERSHIP = {
@@ -77,6 +82,39 @@ export class AuthRepository {
     });
   }
 
+  revokeUserSessions(
+    userId: string,
+    options?: { exceptSessionId?: string | null },
+  ): Promise<unknown> {
+    return this.prisma.session.updateMany({
+      where: {
+        userId,
+        revokedAt: null,
+        ...(options?.exceptSessionId
+          ? { id: { not: options.exceptSessionId } }
+          : {}),
+      },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  updatePasswordCredential(data: {
+    userId: string;
+    passwordHash: string;
+    mustChangePassword: boolean;
+    passwordChangedAt: Date;
+  }): Promise<unknown> {
+    return this.prisma.user.update({
+      where: { id: data.userId },
+      data: {
+        passwordHash: data.passwordHash,
+        mustChangePassword: data.mustChangePassword,
+        passwordChangedAt: data.passwordChangedAt,
+        credentialVersion: { increment: 1 },
+      },
+    });
+  }
+
   updateUserLastLogin(userId: string): Promise<unknown> {
     return this.prisma.user.update({
       where: { id: userId },
@@ -115,9 +153,7 @@ export class AuthRepository {
         before: entry.before
           ? (entry.before as Prisma.InputJsonValue)
           : undefined,
-        after: entry.after
-          ? (entry.after as Prisma.InputJsonValue)
-          : undefined,
+        after: entry.after ? (entry.after as Prisma.InputJsonValue) : undefined,
       },
     });
   }

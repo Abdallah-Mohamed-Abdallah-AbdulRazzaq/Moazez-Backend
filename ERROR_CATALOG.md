@@ -76,6 +76,14 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `iam.user.not_invitable`         | 409  | User cannot be re-invited in the current state          |
 | `iam.permission.unknown`         | 400  | Unknown permission code                                 |
 | `iam.membership.teacher_conflict`| 409  | Teacher already has an active membership at another school |
+| `iam.credentials.password_policy_failed` | 422 | Password does not meet credential policy       |
+| `iam.credentials.missing_password` | 409 | User does not have a password credential                |
+| `iam.credentials.already_set`    | 409  | User credentials are already set                         |
+| `iam.credentials.bulk_too_large` | 422  | Credential bulk operation is too large                   |
+| `iam.credentials.no_eligible_users` | 422 | No eligible users matched the credential operation     |
+| `iam.credentials.current_password_invalid` | 401 | Current password is invalid                     |
+| `iam.credentials.user_not_manageable` | 409 | User credentials cannot be managed in the current state |
+| `iam.credentials.temporary_password_unavailable` | 409 | Temporary password is unavailable             |
 
 ### Settings
 
@@ -102,6 +110,12 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `students.enrollment.inactive_year`          | 422  | Academic year is not active                      |
 | `students.enrollment.already_withdrawn`      | 409  | Student is already withdrawn                     |
 | `students.guardian.primary_required`         | 422  | At least one primary guardian is required        |
+| `students.account.already_linked`            | 409  | Student account is already linked                |
+| `students.account.user_already_linked`       | 409  | User is already linked to another account        |
+| `students.account.user_type_mismatch`        | 422  | User type does not match the requested account link |
+| `students.account.student_role_missing`      | 422  | Student role is missing or invalid               |
+| `students.account.parent_role_missing`       | 422  | Parent role is missing or invalid                |
+| `students.guardian.account_already_linked`   | 409  | Guardian account is already linked               |
 
 ### Academics
 

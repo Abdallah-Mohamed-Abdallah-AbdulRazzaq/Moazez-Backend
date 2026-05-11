@@ -28,6 +28,10 @@ const DEMO_LOGIN_DOMAIN = 'settings-a.moazez.test';
 const TENANT_B_LOGIN_DOMAIN = 'settings-b.moazez.test';
 const DEMO_GENERATED_LOGIN_EMAIL = `taken.identity@${DEMO_LOGIN_DOMAIN}`;
 const TENANT_B_GENERATED_LOGIN_EMAIL = `taken.identity@${TENANT_B_LOGIN_DOMAIN}`;
+const CREDENTIAL_TARGET_EMAIL =
+  'credential-target@settings-tenancy.moazez.local';
+const CREDENTIAL_TARGET_PASSWORD = 'CredentialTarget123!';
+const CREDENTIAL_TARGET_NEW_PASSWORD = 'CredentialTarget456!';
 
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
@@ -43,6 +47,7 @@ describe('Settings tenancy isolation (security)', () => {
   let demoOrganizationId: string;
   let demoViewerRoleId: string;
   let demoViewerUserId: string;
+  let demoCredentialUserId: string;
   let tenantBSchoolId: string;
   let tenantBUserId: string;
   let tenantBRoleId: string;
@@ -187,6 +192,66 @@ describe('Settings tenancy isolation (security)', () => {
           organizationId: demoOrganizationId,
           schoolId: demoSchoolId,
           roleId: demoViewerRoleId,
+          userType: UserType.SCHOOL_USER,
+          status: MembershipStatus.ACTIVE,
+        },
+      });
+    }
+
+    const credentialTarget = await prisma.user.upsert({
+      where: { email: CREDENTIAL_TARGET_EMAIL },
+      update: {
+        firstName: 'Credential',
+        lastName: 'Target',
+        username: 'credential.target',
+        contactEmail: 'credential.contact@example.com',
+        userType: UserType.SCHOOL_USER,
+        status: UserStatus.ACTIVE,
+        passwordHash: null,
+        mustChangePassword: false,
+        passwordChangedAt: null,
+        passwordProvisionedAt: null,
+        credentialVersion: 0,
+      },
+      create: {
+        email: CREDENTIAL_TARGET_EMAIL,
+        firstName: 'Credential',
+        lastName: 'Target',
+        username: 'credential.target',
+        contactEmail: 'credential.contact@example.com',
+        userType: UserType.SCHOOL_USER,
+        status: UserStatus.ACTIVE,
+        passwordHash: null,
+      },
+    });
+    demoCredentialUserId = credentialTarget.id;
+
+    const existingCredentialMembership = await prisma.membership.findFirst({
+      where: {
+        userId: credentialTarget.id,
+        organizationId: demoOrganizationId,
+        schoolId: demoSchoolId,
+        roleId: schoolAdminRole.id,
+      },
+      select: { id: true },
+    });
+
+    if (existingCredentialMembership) {
+      await prisma.membership.update({
+        where: { id: existingCredentialMembership.id },
+        data: {
+          status: MembershipStatus.ACTIVE,
+          endedAt: null,
+          userType: UserType.SCHOOL_USER,
+        },
+      });
+    } else {
+      await prisma.membership.create({
+        data: {
+          userId: credentialTarget.id,
+          organizationId: demoOrganizationId,
+          schoolId: demoSchoolId,
+          roleId: schoolAdminRole.id,
           userType: UserType.SCHOOL_USER,
           status: MembershipStatus.ACTIVE,
         },
@@ -365,6 +430,10 @@ describe('Settings tenancy isolation (security)', () => {
         },
       });
       await prisma.membership.deleteMany({
+        where: { userId: demoCredentialUserId },
+      });
+      await prisma.user.deleteMany({ where: { id: demoCredentialUserId } });
+      await prisma.membership.deleteMany({
         where: { userId: demoViewerUserId },
       });
       await prisma.user.deleteMany({ where: { id: demoViewerUserId } });
@@ -392,13 +461,13 @@ describe('Settings tenancy isolation (security)', () => {
   async function login(
     email: string,
     password: string,
-  ): Promise<{ accessToken: string }> {
+  ): Promise<{ accessToken: string; body: Record<string, unknown> }> {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/auth/login`)
       .send({ email, password })
       .expect(200);
 
-    return { accessToken: response.body.accessToken };
+    return { accessToken: response.body.accessToken, body: response.body };
   }
 
   it('school A branding returns only school A data', async () => {
@@ -432,6 +501,12 @@ describe('Settings tenancy isolation (security)', () => {
   it('requires auth for school login identity settings', async () => {
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/settings/login-identity`)
+      .expect(401);
+  });
+
+  it('requires auth for credential status list', async () => {
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/users/credentials/status`)
       .expect(401);
   });
 
@@ -589,6 +664,142 @@ describe('Settings tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('auth.scope.missing');
   });
 
+  it('returns 403 when non-manage role tries to generate credentials', async () => {
+    const { accessToken } = await login(
+      DEMO_VIEWER_EMAIL,
+      DEMO_VIEWER_PASSWORD,
+    );
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/settings/users/${demoCredentialUserId}/credentials/generate`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('generates, sets, and regenerates current-school credentials safely', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const generated = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/settings/users/${demoCredentialUserId}/credentials/generate`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(generated.body.temporaryPassword).toMatch(/^MZ-/);
+    expect(generated.body.user).toEqual(
+      expect.objectContaining({
+        userId: demoCredentialUserId,
+        mustChangePassword: true,
+        status: 'temporary_or_must_change',
+      }),
+    );
+    expect(generated.body.user).not.toHaveProperty('passwordHash');
+    expect(generated.body.user).not.toHaveProperty('schoolId');
+    expect(generated.body.user).not.toHaveProperty('organizationId');
+
+    const set = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/settings/users/${demoCredentialUserId}/credentials/set`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        password: CREDENTIAL_TARGET_PASSWORD,
+        forceResetOnLogin: false,
+      })
+      .expect(201);
+
+    expect(set.body).not.toHaveProperty('temporaryPassword');
+    expect(set.body.mustChangePassword).toBe(false);
+    expect(set.body.user.status).toBe('set');
+
+    const regenerated = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/settings/users/${demoCredentialUserId}/credentials/regenerate`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(regenerated.body.temporaryPassword).toMatch(/^MZ-/);
+    expect(regenerated.body.user.mustChangePassword).toBe(true);
+
+    const auditEntries = await prisma.auditLog.findMany({
+      where: {
+        action: {
+          in: [
+            'iam.credentials.generate',
+            'iam.credentials.set',
+            'iam.credentials.regenerate',
+          ],
+        },
+        resourceId: demoCredentialUserId,
+      },
+      select: { after: true },
+    });
+    const auditPayload = JSON.stringify(auditEntries);
+
+    expect(auditPayload).not.toContain(CREDENTIAL_TARGET_PASSWORD);
+    expect(auditPayload).not.toContain(generated.body.temporaryPassword);
+    expect(auditPayload).not.toContain(regenerated.body.temporaryPassword);
+  });
+
+  it('lists credential status without hashes or tenant ids', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/users/credentials/status`)
+      .query({ search: 'credential.target' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body.items).toHaveLength(1);
+    expect(response.body.items[0]).toEqual(
+      expect.objectContaining({
+        userId: demoCredentialUserId,
+        username: 'credential.target',
+      }),
+    );
+    expect(response.body.items[0]).not.toHaveProperty('passwordHash');
+    expect(response.body.items[0]).not.toHaveProperty('schoolId');
+    expect(response.body.items[0]).not.toHaveProperty('organizationId');
+  });
+
+  it('bulk previews and generates only current-school selected users', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const preview = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/users/credentials/bulk-preview`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        scope: 'selected',
+        userIds: [demoCredentialUserId, tenantBUserId],
+        includeUsersWithPassword: true,
+      })
+      .expect(201);
+
+    expect(preview.body.totalMatched).toBe(1);
+    expect(preview.body.eligible).toBe(1);
+
+    const generated = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/users/credentials/bulk-generate`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        scope: 'selected',
+        userIds: [demoCredentialUserId, tenantBUserId],
+        includeUsersWithPassword: true,
+      })
+      .expect(201);
+
+    expect(generated.body.generated).toBe(1);
+    expect(generated.body.items).toHaveLength(1);
+    expect(generated.body.items[0].user.userId).toBe(demoCredentialUserId);
+    expect(generated.body.items[0].temporaryPassword).toMatch(/^MZ-/);
+  });
+
   it('returns 404 when school A tries to mutate a school B user by id', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
@@ -599,6 +810,83 @@ describe('Settings tenancy isolation (security)', () => {
       .expect(404);
 
     expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A tries to manage school B credentials', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/settings/users/${tenantBUserId}/credentials/generate`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('login response includes credential metadata and change-password clears the flag', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/settings/users/${demoCredentialUserId}/credentials/set`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        password: CREDENTIAL_TARGET_PASSWORD,
+        forceResetOnLogin: true,
+      })
+      .expect(201);
+
+    const targetLogin = await login(
+      CREDENTIAL_TARGET_EMAIL,
+      CREDENTIAL_TARGET_PASSWORD,
+    );
+
+    expect(targetLogin.body.user).toEqual(
+      expect.objectContaining({
+        id: demoCredentialUserId,
+        username: 'credential.target',
+        loginEmail: CREDENTIAL_TARGET_EMAIL,
+        contactEmail: 'credential.contact@example.com',
+        mustChangePassword: true,
+      }),
+    );
+
+    const rejected = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/auth/change-password`)
+      .set('Authorization', `Bearer ${targetLogin.accessToken}`)
+      .send({
+        currentPassword: 'WrongPassword123!',
+        newPassword: CREDENTIAL_TARGET_NEW_PASSWORD,
+      })
+      .expect(401);
+
+    expect(rejected.body?.error?.code).toBe(
+      'iam.credentials.current_password_invalid',
+    );
+
+    const changed = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/auth/change-password`)
+      .set('Authorization', `Bearer ${targetLogin.accessToken}`)
+      .send({
+        currentPassword: CREDENTIAL_TARGET_PASSWORD,
+        newPassword: CREDENTIAL_TARGET_NEW_PASSWORD,
+      })
+      .expect(200);
+
+    expect(changed.body).toEqual({
+      success: true,
+      mustChangePassword: false,
+    });
+
+    const stored = await prisma.user.findUniqueOrThrow({
+      where: { id: demoCredentialUserId },
+      select: { mustChangePassword: true, passwordChangedAt: true },
+    });
+    expect(stored.mustChangePassword).toBe(false);
+    expect(stored.passwordChangedAt).toBeInstanceOf(Date);
   });
 
   it('returns 404 when school A tries to mutate a school B role by id', async () => {

@@ -23,10 +23,14 @@ export class MeUseCase {
     return {
       id: user.id,
       email: user.email,
+      username: user.username ?? null,
+      loginEmail: user.email,
+      contactEmail: user.contactEmail ?? null,
       firstName: user.firstName,
       lastName: user.lastName,
       userType: user.userType,
       status: user.status,
+      mustChangePassword: user.mustChangePassword,
       activeMembership: pickActiveMembership(user),
     };
   }

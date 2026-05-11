@@ -13,10 +13,14 @@ export class ActiveMembershipDto {
 export class MeResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() email!: string;
+  @ApiPropertyOptional({ nullable: true }) username!: string | null;
+  @ApiProperty() loginEmail!: string;
+  @ApiPropertyOptional({ nullable: true }) contactEmail!: string | null;
   @ApiProperty() firstName!: string;
   @ApiProperty() lastName!: string;
   @ApiProperty({ enum: UserType }) userType!: UserType;
   @ApiProperty({ enum: UserStatus }) status!: UserStatus;
+  @ApiProperty() mustChangePassword!: boolean;
   @ApiPropertyOptional({ type: ActiveMembershipDto, nullable: true })
   activeMembership!: ActiveMembershipDto | null;
 }

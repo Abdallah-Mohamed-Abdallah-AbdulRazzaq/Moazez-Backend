@@ -964,6 +964,10 @@ model User {
   userType     UserType   @map("user_type")
   status       UserStatus @default(ACTIVE)
   lastLoginAt  DateTime?  @map("last_login_at")
+  mustChangePassword  Boolean   @default(false) @map("must_change_password")
+  passwordChangedAt   DateTime? @map("password_changed_at")
+  passwordProvisionedAt DateTime? @map("password_provisioned_at")
+  credentialVersion   Int       @default(0) @map("credential_version")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -1063,6 +1067,8 @@ model User {
   @@index([status])
   @@index([username])
   @@index([contactEmail])
+  @@index([mustChangePassword])
+  @@index([passwordProvisionedAt])
   @@index([deletedAt])
   @@map("users")
 }

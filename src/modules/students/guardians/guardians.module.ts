@@ -1,4 +1,7 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../../iam/auth/auth.module';
+import { UsersModule } from '../../settings/users/users.module';
+import { CreateOrLinkGuardianAccountUseCase } from './application/create-or-link-guardian-account.use-case';
 import { CreateGuardianUseCase } from './application/create-guardian.use-case';
 import { GetGuardianStudentsUseCase } from './application/get-guardian-students.use-case';
 import { GetGuardianUseCase } from './application/get-guardian.use-case';
@@ -9,16 +12,25 @@ import { ListStudentGuardiansUseCase } from './application/list-student-guardian
 import { UnlinkGuardianFromStudentUseCase } from './application/unlink-guardian-from-student.use-case';
 import { UpdateGuardianUseCase } from './application/update-guardian.use-case';
 import { UpdateStudentGuardianLinkUseCase } from './application/update-student-guardian-link.use-case';
-import { GuardiansController } from './controller/guardians.controller';
+import {
+  GuardianAccountsController,
+  GuardiansController,
+} from './controller/guardians.controller';
 import { StudentGuardiansController } from './controller/student-guardians.controller';
 import { GuardiansRepository } from './infrastructure/guardians.repository';
 
 @Module({
-  controllers: [GuardiansController, StudentGuardiansController],
+  imports: [AuthModule, UsersModule],
+  controllers: [
+    GuardiansController,
+    GuardianAccountsController,
+    StudentGuardiansController,
+  ],
   providers: [
     GuardiansRepository,
     ListGuardiansUseCase,
     CreateGuardianUseCase,
+    CreateOrLinkGuardianAccountUseCase,
     GetGuardianUseCase,
     UpdateGuardianUseCase,
     GetGuardianStudentsUseCase,

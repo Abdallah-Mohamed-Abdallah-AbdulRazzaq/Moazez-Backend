@@ -107,6 +107,37 @@ export class UsersRepository {
     );
   }
 
+  findAssignableRoleByKey(
+    schoolId: string,
+    roleKey: string,
+  ): Promise<Role | null> {
+    return platformBypassScope(async () => {
+      const schoolRole = await this.prisma.role.findFirst({
+        where: {
+          key: roleKey,
+          schoolId,
+          deletedAt: null,
+        },
+      });
+
+      if (schoolRole) {
+        return schoolRole;
+      }
+
+      return this.prisma.role.findFirst({
+        where: {
+          AND: [
+            { key: roleKey },
+            { key: { in: [...ASSIGNABLE_SYSTEM_ROLE_KEYS] } },
+          ],
+          schoolId: null,
+          isSystem: true,
+          deletedAt: null,
+        },
+      });
+    });
+  }
+
   createUserWithMembership(data: {
     email: string;
     username?: string | null;
@@ -119,6 +150,10 @@ export class UsersRepository {
     organizationId: string;
     roleId: string;
     passwordHash?: string | null;
+    mustChangePassword?: boolean;
+    passwordProvisionedAt?: Date | null;
+    passwordChangedAt?: Date | null;
+    credentialVersion?: number;
   }): Promise<ScopedMembershipRecord> {
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -131,6 +166,10 @@ export class UsersRepository {
           userType: data.userType,
           status: data.status,
           passwordHash: data.passwordHash ?? null,
+          mustChangePassword: data.mustChangePassword ?? false,
+          passwordProvisionedAt: data.passwordProvisionedAt ?? null,
+          passwordChangedAt: data.passwordChangedAt ?? null,
+          credentialVersion: data.credentialVersion ?? 0,
         },
       });
 

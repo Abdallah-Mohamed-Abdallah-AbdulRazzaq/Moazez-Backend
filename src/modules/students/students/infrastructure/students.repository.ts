@@ -8,6 +8,7 @@ const STUDENT_RECORD_ARGS = Prisma.validator<Prisma.StudentDefaultArgs>()({
     schoolId: true,
     organizationId: true,
     applicationId: true,
+    userId: true,
     firstName: true,
     lastName: true,
     birthDate: true,
@@ -18,7 +19,9 @@ const STUDENT_RECORD_ARGS = Prisma.validator<Prisma.StudentDefaultArgs>()({
   },
 });
 
-export type StudentRecord = Prisma.StudentGetPayload<typeof STUDENT_RECORD_ARGS>;
+export type StudentRecord = Prisma.StudentGetPayload<
+  typeof STUDENT_RECORD_ARGS
+>;
 
 function buildStudentSearchWhere(search?: string): Prisma.StudentWhereInput {
   const normalizedSearch = search?.trim();
@@ -72,7 +75,11 @@ export class StudentsRepository {
         ...(filters.status ? { status: filters.status } : {}),
         ...buildStudentSearchWhere(filters.search),
       },
-      orderBy: [{ createdAt: 'desc' }, { firstName: 'asc' }, { lastName: 'asc' }],
+      orderBy: [
+        { createdAt: 'desc' },
+        { firstName: 'asc' },
+        { lastName: 'asc' },
+      ],
       ...STUDENT_RECORD_ARGS,
     });
   }
@@ -80,6 +87,13 @@ export class StudentsRepository {
   findStudentById(studentId: string): Promise<StudentRecord | null> {
     return this.scopedPrisma.student.findFirst({
       where: { id: studentId },
+      ...STUDENT_RECORD_ARGS,
+    });
+  }
+
+  findStudentByUserId(userId: string): Promise<StudentRecord | null> {
+    return this.scopedPrisma.student.findFirst({
+      where: { userId },
       ...STUDENT_RECORD_ARGS,
     });
   }
@@ -103,6 +117,25 @@ export class StudentsRepository {
         deletedAt: null,
       },
       data,
+    });
+
+    if (result.count === 0) {
+      return null;
+    }
+
+    return this.findStudentById(studentId);
+  }
+
+  async linkStudentAccount(
+    studentId: string,
+    userId: string,
+  ): Promise<StudentRecord | null> {
+    const result = await this.scopedPrisma.student.updateMany({
+      where: {
+        id: studentId,
+        userId: null,
+      },
+      data: { userId },
     });
 
     if (result.count === 0) {

@@ -1195,6 +1195,78 @@ describe('Students tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('not_found');
   });
 
+  it('rejects linking a student account to a same-school non-student user', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}/account`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        mode: 'link',
+        userId: limitedUserId,
+      })
+      .expect(422);
+
+    expect(response.body?.error?.code).toBe(
+      'students.account.user_type_mismatch',
+    );
+  });
+
+  it('rejects linking a student account to a cross-school user', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}/account`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        mode: 'link',
+        userId: tenantBUserId,
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('rejects linking a guardian account to a same-school non-parent user', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/guardians/${demoGuardianId}/account`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        mode: 'link',
+        userId: limitedUserId,
+      })
+      .expect(422);
+
+    expect(response.body?.error?.code).toBe(
+      'students.account.user_type_mismatch',
+    );
+  });
+
+  it('rejects linking a guardian account to a cross-school user', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/guardians/${demoGuardianId}/account`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        mode: 'link',
+        userId: tenantBUserId,
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
   it('returns 403 when the same-school actor lacks the students manage permission', async () => {
     const { accessToken } = await login(
       LIMITED_USER_EMAIL,
@@ -1205,6 +1277,46 @@ describe('Students tenancy isolation (security)', () => {
       .patch(`${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ family_name_en: 'Viewer' })
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks student account manage permission', async () => {
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/students/${demoStudentId}/account`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        mode: 'link',
+        userId: limitedUserId,
+      })
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks guardian account manage permission', async () => {
+    const { accessToken } = await login(
+      LIMITED_USER_EMAIL,
+      LIMITED_USER_PASSWORD,
+    );
+
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/students-guardians/guardians/${demoGuardianId}/account`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        mode: 'link',
+        userId: limitedUserId,
+      })
       .expect(403);
 
     expect(response.body?.error?.code).toBe('auth.scope.missing');

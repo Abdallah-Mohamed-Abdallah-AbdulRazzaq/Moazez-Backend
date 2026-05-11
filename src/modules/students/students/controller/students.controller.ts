@@ -15,6 +15,11 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import {
+  AccountLinkingDto,
+  StudentAccountLinkResponseDto,
+} from '../../account/dto/account-linking.dto';
+import { CreateOrLinkStudentAccountUseCase } from '../application/create-or-link-student-account.use-case';
 import { CreateStudentUseCase } from '../application/create-student.use-case';
 import { GetStudentTimelineUseCase } from '../application/get-student-timeline.use-case';
 import { GetStudentUseCase } from '../application/get-student.use-case';
@@ -26,9 +31,7 @@ import {
   StudentResponseDto,
   UpdateStudentDto,
 } from '../dto/student.dto';
-import {
-  StudentTimelineEventResponseDto,
-} from '../dto/student-timeline.dto';
+import { StudentTimelineEventResponseDto } from '../dto/student-timeline.dto';
 
 @ApiTags('students-records')
 @ApiBearerAuth()
@@ -37,6 +40,7 @@ export class StudentsController {
   constructor(
     private readonly listStudentsUseCase: ListStudentsUseCase,
     private readonly createStudentUseCase: CreateStudentUseCase,
+    private readonly createOrLinkStudentAccountUseCase: CreateOrLinkStudentAccountUseCase,
     private readonly getStudentUseCase: GetStudentUseCase,
     private readonly updateStudentUseCase: UpdateStudentUseCase,
     private readonly getStudentTimelineUseCase: GetStudentTimelineUseCase,
@@ -54,9 +58,7 @@ export class StudentsController {
   @Post()
   @ApiCreatedResponse({ type: StudentResponseDto })
   @RequiredPermissions('students.records.manage')
-  createStudent(
-    @Body() dto: CreateStudentDto,
-  ): Promise<StudentResponseDto> {
+  createStudent(@Body() dto: CreateStudentDto): Promise<StudentResponseDto> {
     return this.createStudentUseCase.execute(dto);
   }
 
@@ -86,5 +88,15 @@ export class StudentsController {
     @Body() dto: UpdateStudentDto,
   ): Promise<StudentResponseDto> {
     return this.updateStudentUseCase.execute(studentId, dto);
+  }
+
+  @Post(':studentId/account')
+  @ApiOkResponse({ type: StudentAccountLinkResponseDto })
+  @RequiredPermissions('students.records.manage')
+  createOrLinkAccount(
+    @Param('studentId', new ParseUUIDPipe()) studentId: string,
+    @Body() dto: AccountLinkingDto,
+  ): Promise<StudentAccountLinkResponseDto> {
+    return this.createOrLinkStudentAccountUseCase.execute(studentId, dto);
   }
 }

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { ChangePasswordUseCase } from './application/change-password.use-case';
 import { LoginUseCase } from './application/login.use-case';
 import { LogoutUseCase } from './application/logout.use-case';
 import { MeUseCase } from './application/me.use-case';
@@ -16,6 +17,7 @@ import { AuthRepository } from './infrastructure/auth.repository';
     AuthRepository,
     PasswordService,
     TokenService,
+    ChangePasswordUseCase,
     LoginUseCase,
     RefreshUseCase,
     MeUseCase,
