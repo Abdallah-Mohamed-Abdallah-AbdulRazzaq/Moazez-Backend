@@ -1,6 +1,10 @@
 import { SCHOOL_SCOPED_MODELS } from '../school-scope.extension';
 
 describe('schoolScope communication registration', () => {
+  it('registers school login settings for school scope enforcement', () => {
+    expect(SCHOOL_SCOPED_MODELS.has('SchoolLoginSettings')).toBe(true);
+  });
+
   it('registers announcement models for school scope enforcement', () => {
     expect(SCHOOL_SCOPED_MODELS.has('CommunicationAnnouncement')).toBe(true);
     expect(SCHOOL_SCOPED_MODELS.has('CommunicationAnnouncementAudience')).toBe(

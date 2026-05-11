@@ -1,7 +1,10 @@
 export class UserResponseDto {
   id!: string;
   fullName!: string;
+  username!: string | null;
   email!: string;
+  loginEmail!: string;
+  contactEmail!: string | null;
   roleId!: string;
   roleName!: string;
   status!: 'active' | 'invited' | 'inactive';

@@ -62,6 +62,13 @@ enum UserStatus {
   @@map("user_status")
 }
 
+enum SchoolLoginSettingsStatus {
+  ACTIVE
+  DISABLED
+
+  @@map("school_login_settings_status")
+}
+
 enum AuditOutcome {
   SUCCESS
   FAILURE
@@ -847,6 +854,7 @@ model School {
   roles                                 Role[]
   schoolProfile                         SchoolProfile?
   securitySetting                       SecuritySetting?
+  schoolLoginSettings                   SchoolLoginSettings?
   notificationTemplates                 NotificationTemplate[]
   notificationTemplateChannelStates     NotificationTemplateChannelState[]
   integrationConnections                IntegrationConnection[]
@@ -947,6 +955,8 @@ model School {
 model User {
   id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email        String     @unique
+  username     String?
+  contactEmail String?    @map("contact_email")
   phone        String?    @unique
   passwordHash String?    @map("password_hash")
   firstName    String     @map("first_name")
@@ -1051,6 +1061,8 @@ model User {
 
   @@index([userType])
   @@index([status])
+  @@index([username])
+  @@index([contactEmail])
   @@index([deletedAt])
   @@map("users")
 }
@@ -1221,6 +1233,25 @@ model SecuritySetting {
 
   @@index([updatedById])
   @@map("settings_security_controls")
+}
+
+model SchoolLoginSettings {
+  id                String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String                    @unique @map("school_id") @db.Uuid
+  loginDomain       String                    @map("login_domain")
+  usernameMinLength Int                       @default(3) @map("username_min_length")
+  usernameMaxLength Int                       @default(40) @map("username_max_length")
+  allowedCharacters String?                   @map("allowed_characters")
+  reservedUsernames Json?                     @map("reserved_usernames")
+  status            SchoolLoginSettingsStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+
+  @@index([schoolId, status])
+  @@map("settings_school_login_settings")
 }
 
 model NotificationTemplate {

@@ -17,12 +17,14 @@ const ASSIGNABLE_SYSTEM_ROLE_KEYS = [
   'student',
 ] as const;
 
-const SCOPED_MEMBERSHIP_ARGS = Prisma.validator<Prisma.MembershipDefaultArgs>()({
-  include: {
-    user: true,
-    role: true,
+const SCOPED_MEMBERSHIP_ARGS = Prisma.validator<Prisma.MembershipDefaultArgs>()(
+  {
+    include: {
+      user: true,
+      role: true,
+    },
   },
-});
+);
 
 export type ScopedMembershipRecord = Prisma.MembershipGetPayload<
   typeof SCOPED_MEMBERSHIP_ARGS
@@ -49,7 +51,10 @@ export class UsersRepository {
     const [items, total] = await Promise.all([
       this.scopedPrisma.membership.findMany({
         where,
-        orderBy: [{ user: { firstName: 'asc' } }, { user: { lastName: 'asc' } }],
+        orderBy: [
+          { user: { firstName: 'asc' } },
+          { user: { lastName: 'asc' } },
+        ],
         skip,
         take: params.limit,
         ...SCOPED_MEMBERSHIP_ARGS,
@@ -60,7 +65,9 @@ export class UsersRepository {
     return { items, total };
   }
 
-  findScopedMembershipByUserId(userId: string): Promise<ScopedMembershipRecord | null> {
+  findScopedMembershipByUserId(
+    userId: string,
+  ): Promise<ScopedMembershipRecord | null> {
     return this.scopedPrisma.membership.findFirst({
       where: {
         userId,
@@ -78,7 +85,10 @@ export class UsersRepository {
     });
   }
 
-  findAssignableRoleById(schoolId: string, roleId: string): Promise<Role | null> {
+  findAssignableRoleById(
+    schoolId: string,
+    roleId: string,
+  ): Promise<Role | null> {
     return platformBypassScope(() =>
       this.prisma.role.findFirst({
         where: {
@@ -99,6 +109,8 @@ export class UsersRepository {
 
   createUserWithMembership(data: {
     email: string;
+    username?: string | null;
+    contactEmail?: string | null;
     firstName: string;
     lastName: string;
     status: UserStatus;
@@ -112,6 +124,8 @@ export class UsersRepository {
       const user = await tx.user.create({
         data: {
           email: data.email,
+          username: data.username ?? null,
+          contactEmail: data.contactEmail ?? null,
           firstName: data.firstName,
           lastName: data.lastName,
           userType: data.userType,
@@ -159,7 +173,9 @@ export class UsersRepository {
         await tx.user.update({
           where: { id: data.userId },
           data: {
-            ...(data.firstName !== undefined ? { firstName: data.firstName } : {}),
+            ...(data.firstName !== undefined
+              ? { firstName: data.firstName }
+              : {}),
             ...(data.lastName !== undefined ? { lastName: data.lastName } : {}),
             ...(data.status !== undefined ? { status: data.status } : {}),
             ...(data.userType !== undefined ? { userType: data.userType } : {}),
@@ -203,6 +219,8 @@ export class UsersRepository {
           ? {
               OR: [
                 { email: { contains: search, mode: 'insensitive' } },
+                { username: { contains: search, mode: 'insensitive' } },
+                { contactEmail: { contains: search, mode: 'insensitive' } },
                 { firstName: { contains: search, mode: 'insensitive' } },
                 { lastName: { contains: search, mode: 'insensitive' } },
               ],

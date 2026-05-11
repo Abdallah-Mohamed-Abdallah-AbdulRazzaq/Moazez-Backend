@@ -23,13 +23,17 @@ export function presentSettingsUserStatus(
 export function presentUser(
   membership: ScopedMembershipRecord,
 ): UserResponseDto {
-  const fullName = `${membership.user.firstName} ${membership.user.lastName}`.trim();
+  const fullName =
+    `${membership.user.firstName} ${membership.user.lastName}`.trim();
   const status = presentSettingsUserStatus(membership.user.status);
 
   return {
     id: membership.user.id,
     fullName,
+    username: membership.user.username ?? null,
     email: membership.user.email,
+    loginEmail: membership.user.email,
+    contactEmail: membership.user.contactEmail ?? null,
     roleId: membership.roleId,
     roleName: membership.role.name,
     status,

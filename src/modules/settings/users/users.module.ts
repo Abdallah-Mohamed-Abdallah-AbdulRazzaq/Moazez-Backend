@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../iam/auth/auth.module';
+import { LoginIdentityModule } from '../login-identity/login-identity.module';
 import { CreateUserUseCase } from './application/create-user.use-case';
 import { InviteUserUseCase } from './application/invite-user.use-case';
 import { ListUsersUseCase } from './application/list-users.use-case';
@@ -7,11 +8,12 @@ import { ResendInviteUseCase } from './application/resend-invite.use-case';
 import { ResetPasswordUseCase } from './application/reset-password.use-case';
 import { UpdateUserStatusUseCase } from './application/update-user-status.use-case';
 import { UpdateUserUseCase } from './application/update-user.use-case';
+import { UserLoginIdentityResolver } from './application/user-login-identity.resolver';
 import { UsersController } from './controller/users.controller';
 import { UsersRepository } from './infrastructure/users.repository';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, LoginIdentityModule],
   controllers: [UsersController],
   providers: [
     UsersRepository,
@@ -22,6 +24,7 @@ import { UsersRepository } from './infrastructure/users.repository';
     UpdateUserStatusUseCase,
     ResendInviteUseCase,
     ResetPasswordUseCase,
+    UserLoginIdentityResolver,
   ],
 })
 export class UsersModule {}

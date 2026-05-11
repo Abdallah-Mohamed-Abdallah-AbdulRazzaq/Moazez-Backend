@@ -25,6 +25,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'ImportJob',
   'SchoolProfile',
   'SecuritySetting',
+  'SchoolLoginSettings',
   'NotificationTemplate',
   'NotificationTemplateChannelState',
   'IntegrationConnection',
@@ -212,10 +213,7 @@ export const schoolScopeExtension = Prisma.defineExtension({
           SCHOOL_SCOPED_MODELS.has(model) &&
           !EXCLUDED_FROM_SCHOOL_SCOPE.has(model)
         ) {
-          nextArgs = injectSchoolScope(
-            nextArgs,
-            ctx.activeMembership.schoolId,
-          );
+          nextArgs = injectSchoolScope(nextArgs, ctx.activeMembership.schoolId);
         }
 
         // 2. soft-delete filter (opt-out via withSoftDeleted)

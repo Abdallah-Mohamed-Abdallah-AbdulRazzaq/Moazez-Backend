@@ -24,6 +24,10 @@ const TENANT_B_ORG_SLUG = 'settings-tenancy-org-b';
 const TENANT_B_SCHOOL_SLUG = 'settings-tenancy-school-b';
 const TENANT_B_ADMIN_EMAIL = 'admin-b@settings-tenancy.moazez.local';
 const TENANT_B_ADMIN_PASSWORD = 'SchoolB123!';
+const DEMO_LOGIN_DOMAIN = 'settings-a.moazez.test';
+const TENANT_B_LOGIN_DOMAIN = 'settings-b.moazez.test';
+const DEMO_GENERATED_LOGIN_EMAIL = `taken.identity@${DEMO_LOGIN_DOMAIN}`;
+const TENANT_B_GENERATED_LOGIN_EMAIL = `taken.identity@${TENANT_B_LOGIN_DOMAIN}`;
 
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
@@ -62,7 +66,9 @@ describe('Settings tenancy isolation (security)', () => {
       select: { id: true },
     });
     if (!schoolAdminRole) {
-      throw new Error('school_admin system role not found — run `npm run seed` first.');
+      throw new Error(
+        'school_admin system role not found — run `npm run seed` first.',
+      );
     }
 
     const demoAdmin = await prisma.user.findUnique({
@@ -114,7 +120,9 @@ describe('Settings tenancy isolation (security)', () => {
 
     if (viewerRole) {
       demoViewerRoleId = viewerRole.id;
-      await prisma.rolePermission.deleteMany({ where: { roleId: viewerRole.id } });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: viewerRole.id },
+      });
     } else {
       const createdViewerRole = await prisma.role.create({
         data: {
@@ -242,6 +250,23 @@ describe('Settings tenancy isolation (security)', () => {
       },
     });
 
+    await prisma.schoolLoginSettings.upsert({
+      where: { schoolId: tenantBSchoolId },
+      update: {
+        loginDomain: TENANT_B_LOGIN_DOMAIN,
+        usernameMinLength: 3,
+        usernameMaxLength: 40,
+        status: 'ACTIVE',
+      },
+      create: {
+        schoolId: tenantBSchoolId,
+        loginDomain: TENANT_B_LOGIN_DOMAIN,
+        usernameMinLength: 3,
+        usernameMaxLength: 40,
+        status: 'ACTIVE',
+      },
+    });
+
     const passwordHash = await argon2.hash(
       TENANT_B_ADMIN_PASSWORD,
       ARGON2_OPTIONS,
@@ -329,17 +354,37 @@ describe('Settings tenancy isolation (security)', () => {
   afterAll(async () => {
     if (app) await app.close();
     if (prisma) {
-      await prisma.membership.deleteMany({ where: { userId: demoViewerUserId } });
+      await prisma.schoolLoginSettings.deleteMany({
+        where: { schoolId: { in: [demoSchoolId, tenantBSchoolId] } },
+      });
+      await prisma.user.deleteMany({
+        where: {
+          email: {
+            in: [DEMO_GENERATED_LOGIN_EMAIL, TENANT_B_GENERATED_LOGIN_EMAIL],
+          },
+        },
+      });
+      await prisma.membership.deleteMany({
+        where: { userId: demoViewerUserId },
+      });
       await prisma.user.deleteMany({ where: { id: demoViewerUserId } });
-      await prisma.rolePermission.deleteMany({ where: { roleId: demoViewerRoleId } });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: demoViewerRoleId },
+      });
       await prisma.role.deleteMany({ where: { id: demoViewerRoleId } });
       await prisma.role.deleteMany({ where: { id: tenantBRoleId } });
-      await prisma.securitySetting.deleteMany({ where: { schoolId: tenantBSchoolId } });
-      await prisma.schoolProfile.deleteMany({ where: { schoolId: tenantBSchoolId } });
+      await prisma.securitySetting.deleteMany({
+        where: { schoolId: tenantBSchoolId },
+      });
+      await prisma.schoolProfile.deleteMany({
+        where: { schoolId: tenantBSchoolId },
+      });
       await prisma.membership.deleteMany({ where: { userId: tenantBUserId } });
       await prisma.user.deleteMany({ where: { id: tenantBUserId } });
       await prisma.school.deleteMany({ where: { id: tenantBSchoolId } });
-      await prisma.organization.deleteMany({ where: { slug: TENANT_B_ORG_SLUG } });
+      await prisma.organization.deleteMany({
+        where: { slug: TENANT_B_ORG_SLUG },
+      });
       await prisma.$disconnect();
     }
   });
@@ -384,6 +429,166 @@ describe('Settings tenancy isolation (security)', () => {
     );
   });
 
+  it('requires auth for school login identity settings', async () => {
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/login-identity`)
+      .expect(401);
+  });
+
+  it('school admin can configure own school login domain without tenant ids in response', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/settings/login-identity`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        loginDomain: DEMO_LOGIN_DOMAIN,
+        usernameMinLength: 3,
+        usernameMaxLength: 40,
+        reservedUsernames: ['registrar'],
+      })
+      .expect(200);
+
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        configured: true,
+        loginDomain: DEMO_LOGIN_DOMAIN,
+        usernameMinLength: 3,
+        usernameMaxLength: 40,
+        status: 'active',
+      }),
+    );
+    expect(response.body).not.toHaveProperty('schoolId');
+    expect(response.body).not.toHaveProperty('organizationId');
+  });
+
+  it('previews generated login email for the current school domain', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/settings/login-identity`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ loginDomain: DEMO_LOGIN_DOMAIN })
+      .expect(200);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/login-identity/preview`)
+      .query({ username: 'Ahmed.Ali' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      username: 'ahmed.ali',
+      loginEmail: `ahmed.ali@${DEMO_LOGIN_DOMAIN}`,
+    });
+  });
+
+  it('isolates school login identity settings by current school', async () => {
+    const { accessToken } = await login(
+      TENANT_B_ADMIN_EMAIL,
+      TENANT_B_ADMIN_PASSWORD,
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/login-identity`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body.loginDomain).toBe(TENANT_B_LOGIN_DOMAIN);
+    expect(response.body.loginDomain).not.toBe(DEMO_LOGIN_DOMAIN);
+    expect(response.body).not.toHaveProperty('schoolId');
+    expect(response.body).not.toHaveProperty('organizationId');
+  });
+
+  it('checks username availability against the current school generated domain', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/settings/login-identity`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ loginDomain: DEMO_LOGIN_DOMAIN })
+      .expect(200);
+
+    await prisma.user.upsert({
+      where: { email: TENANT_B_GENERATED_LOGIN_EMAIL },
+      update: {
+        firstName: 'Tenant',
+        lastName: 'Generated',
+        username: 'taken.identity',
+        userType: UserType.SCHOOL_USER,
+        status: UserStatus.ACTIVE,
+      },
+      create: {
+        email: TENANT_B_GENERATED_LOGIN_EMAIL,
+        firstName: 'Tenant',
+        lastName: 'Generated',
+        username: 'taken.identity',
+        userType: UserType.SCHOOL_USER,
+        status: UserStatus.ACTIVE,
+      },
+    });
+
+    const available = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/users/usernames/available`)
+      .query({ username: 'taken.identity' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(available.body).toEqual({
+      username: 'taken.identity',
+      loginEmail: DEMO_GENERATED_LOGIN_EMAIL,
+      available: true,
+      reason: null,
+    });
+
+    await prisma.user.upsert({
+      where: { email: DEMO_GENERATED_LOGIN_EMAIL },
+      update: {
+        firstName: 'Demo',
+        lastName: 'Generated',
+        username: 'taken.identity',
+        userType: UserType.SCHOOL_USER,
+        status: UserStatus.ACTIVE,
+      },
+      create: {
+        email: DEMO_GENERATED_LOGIN_EMAIL,
+        firstName: 'Demo',
+        lastName: 'Generated',
+        username: 'taken.identity',
+        userType: UserType.SCHOOL_USER,
+        status: UserStatus.ACTIVE,
+      },
+    });
+
+    const unavailable = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/users/usernames/available`)
+      .query({ username: 'taken.identity' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(unavailable.body).toEqual({
+      username: 'taken.identity',
+      loginEmail: DEMO_GENERATED_LOGIN_EMAIL,
+      available: false,
+      reason: 'login_email_taken',
+    });
+  });
+
+  it('returns 403 when non-admin role tries to manage login identity', async () => {
+    const { accessToken } = await login(
+      DEMO_VIEWER_EMAIL,
+      DEMO_VIEWER_PASSWORD,
+    );
+
+    const response = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/settings/login-identity`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ loginDomain: 'viewer.moazez.test' })
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
   it('returns 404 when school A tries to mutate a school B user by id', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
@@ -409,7 +614,10 @@ describe('Settings tenancy isolation (security)', () => {
   });
 
   it('returns 403 for a protected settings mutation when the permission is missing', async () => {
-    const { accessToken } = await login(DEMO_VIEWER_EMAIL, DEMO_VIEWER_PASSWORD);
+    const { accessToken } = await login(
+      DEMO_VIEWER_EMAIL,
+      DEMO_VIEWER_PASSWORD,
+    );
 
     const response = await request(app.getHttpServer())
       .patch(`${GLOBAL_PREFIX}/settings/security`)

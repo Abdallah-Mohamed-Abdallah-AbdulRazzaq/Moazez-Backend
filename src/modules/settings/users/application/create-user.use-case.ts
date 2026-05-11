@@ -4,39 +4,40 @@ import { NotFoundDomainException } from '../../../../common/exceptions/domain-ex
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireSettingsScope } from '../../settings-context';
 import { splitFullName } from '../domain/split-full-name';
-import { UserEmailTakenException } from '../domain/user.exceptions';
 import { userTypeFromRoleKey } from '../domain/user-type-from-role';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { UserResponseDto } from '../dto/user-response.dto';
 import { UsersRepository } from '../infrastructure/users.repository';
 import { presentUser } from '../presenters/users.presenter';
+import { UserLoginIdentityResolver } from './user-login-identity.resolver';
 
 @Injectable()
 export class CreateUserUseCase {
   constructor(
     private readonly usersRepository: UsersRepository,
     private readonly authRepository: AuthRepository,
+    private readonly loginIdentityResolver: UserLoginIdentityResolver,
   ) {}
 
   async execute(command: CreateUserDto): Promise<UserResponseDto> {
     const scope = requireSettingsScope();
-    const email = command.email.trim().toLowerCase();
-    const existingUser = await this.usersRepository.findUserByEmail(email);
-    if (existingUser) {
-      throw new UserEmailTakenException(email);
-    }
+    const identity = await this.loginIdentityResolver.resolve(command);
 
     const role = await this.usersRepository.findAssignableRoleById(
       scope.schoolId,
       command.roleId,
     );
     if (!role) {
-      throw new NotFoundDomainException('Role not found', { roleId: command.roleId });
+      throw new NotFoundDomainException('Role not found', {
+        roleId: command.roleId,
+      });
     }
 
     const names = splitFullName(command.fullName);
     const membership = await this.usersRepository.createUserWithMembership({
-      email,
+      email: identity.email,
+      username: identity.username,
+      contactEmail: identity.contactEmail,
       firstName: names.firstName,
       lastName: names.lastName,
       status: UserStatus.ACTIVE,
@@ -62,6 +63,7 @@ export class CreateUserUseCase {
         roleId: membership.roleId,
         roleName: membership.role.name,
         invited: false,
+        generatedLoginEmail: identity.generatedLoginEmail,
       },
     });
 

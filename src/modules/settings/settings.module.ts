@@ -5,6 +5,7 @@ import { PermissionsModule } from './permissions/permissions.module';
 import { UsersModule } from './users/users.module';
 import { SecurityModule } from './security/security.module';
 import { OverviewModule } from './overview/overview.module';
+import { LoginIdentityModule } from './login-identity/login-identity.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { OverviewModule } from './overview/overview.module';
     PermissionsModule,
     UsersModule,
     SecurityModule,
+    LoginIdentityModule,
     OverviewModule,
   ],
 })

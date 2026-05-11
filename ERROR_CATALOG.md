@@ -67,9 +67,22 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `iam.role.system_cannot_modify`  | 403  | System roles cannot be modified                         |
 | `iam.role.name_taken`            | 409  | A role with this name already exists in this school     |
 | `iam.user.email_taken`           | 409  | A user with this email already exists                   |
+| `iam.user.username_taken`        | 409  | Username is already taken                               |
+| `iam.user.username_invalid`      | 422  | Username is invalid                                     |
+| `iam.user.login_domain_missing`  | 422  | School login domain is not configured                   |
+| `iam.user.login_domain_invalid`  | 422  | Login domain is invalid                                 |
+| `iam.user.login_email_taken`     | 409  | Generated login email is already taken                  |
+| `iam.user.contact_email_invalid` | 400  | Contact email is invalid                                |
 | `iam.user.not_invitable`         | 409  | User cannot be re-invited in the current state          |
 | `iam.permission.unknown`         | 400  | Unknown permission code                                 |
 | `iam.membership.teacher_conflict`| 409  | Teacher already has an active membership at another school |
+
+### Settings
+
+| Code                                     | HTTP | Message                                           |
+| ---------------------------------------- | ---- | ------------------------------------------------- |
+| `settings.login_identity.not_configured` | 404  | School login identity settings are not configured |
+| `settings.login_identity.domain_invalid` | 422  | Login identity domain is invalid                  |
 
 ### Admissions
 
