@@ -319,6 +319,16 @@
           "icon": "📁"
         },
         {
+          "name": "phase-5-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-11a-identity-credentials-email-delivery-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
           "name": "sprint-6c-planning-audit.md",
           "type": "file",
           "icon": "📝"
@@ -549,6 +559,54 @@
             },
             {
               "name": "20260506120000_0017_student_user_identity_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260511120000_0018_username_login_identity_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260511130000_0019_account_credential_provisioning",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260511140000_0020_school_email_provider_templates",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260511150000_0021_email_delivery_campaigns",
               "type": "folder",
               "icon": "📁",
               "children": [
@@ -5703,6 +5761,11 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "change-password.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "login.use-case.ts",
                           "type": "file",
                           "icon": "📘"
@@ -5769,6 +5832,11 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "change-password.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "login-response.dto.ts",
                           "type": "file",
                           "icon": "📘"
@@ -5797,6 +5865,18 @@
                       "children": [
                         {
                           "name": "auth.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "change-password.use-case.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -8095,6 +8175,501 @@
                   ]
                 },
                 {
+                  "name": "email",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "activate-email-connection.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "disable-email-connection.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-email-connection.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-email-template.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-email-templates.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "preview-email-template.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "reset-email-template.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "test-email-connection.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-email-connection.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-email-template.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "email-connection.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "email-template.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "delivery",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "application",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "cancel-email-delivery.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "create-credential-delivery.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "create-email-campaign.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "delivery-read.use-cases.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "email-recipient-targeting.service.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "preview-campaign-recipients.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "preview-credential-delivery-recipients.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "preview-email-campaign.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "process-email-delivery-recipient.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "school-email-delivery-queue.service.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "school-email-renderer.service.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "controller",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "credential-delivery.controller.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "email-campaign.controller.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "email-delivery.controller.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "domain",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "email-delivery.constants.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "dto",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "email-delivery.dto.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "infrastructure",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "email-delivery.repository.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "school-email-delivery.worker.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "presenters",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "email-delivery.presenter.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "tests",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "email-delivery.use-cases.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "email-recipient-targeting.service.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "process-email-delivery-recipient.use-case.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "transport",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "email-transport.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "nodemailer-email.transport.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "default-email-templates.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "email-connection.policy.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "email-secret-crypto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "email-template-content.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "email-template-renderer.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "email.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "email-connection.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "email-template.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "email-settings.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "email-connection.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "email-template.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "email-connection.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "email-secret-crypto.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "email-template.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "email.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "login-identity",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "check-username-availability.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-login-identity-settings.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "preview-login-identity.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-login-identity-settings.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "login-identity.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "login-identity.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "login-identity.policy.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "login-identity.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "login-identity.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "login-identity.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "check-username-availability.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "login-identity.policy.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "login-identity.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
                   "name": "overview",
                   "type": "folder",
                   "icon": "📁",
@@ -8537,6 +9112,11 @@
                           "name": "update-user.use-case.ts",
                           "type": "file",
                           "icon": "📘"
+                        },
+                        {
+                          "name": "user-login-identity.resolver.ts",
+                          "type": "file",
+                          "icon": "📘"
                         }
                       ]
                     },
@@ -8549,6 +9129,132 @@
                           "name": "users.controller.ts",
                           "type": "file",
                           "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "credentials",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "application",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "bulk-credential-generate.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "bulk-credential-preview.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "credential-targeting.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "generate-user-credential.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "list-credential-status.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "set-user-credential.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "controller",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "user-credentials.controller.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "domain",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "credential-password.policy.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "credential.exceptions.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "dto",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "credential.dto.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "infrastructure",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "user-credentials.repository.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "presenters",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "credentials.presenter.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "tests",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "credential-password.policy.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "user-credentials.use-case.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
                         }
                       ]
                     },
@@ -8641,7 +9347,17 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "invite-user.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "update-user-status.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "user-login-identity.resolver.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -9856,6 +10572,49 @@
               "icon": "📁",
               "children": [
                 {
+                  "name": "account",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "account-linking.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "account-linking.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "account-linking.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
                   "name": "documents",
                   "type": "folder",
                   "icon": "📁",
@@ -10243,6 +11002,11 @@
                         },
                         {
                           "name": "create-guardian.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-or-link-guardian-account.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -10749,6 +11513,11 @@
                           "name": ".gitkeep",
                           "type": "file",
                           "icon": "📁"
+                        },
+                        {
+                          "name": "create-or-link-student-account.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
                         },
                         {
                           "name": "create-student.use-case.ts",
@@ -12467,6 +13236,11 @@
               "icon": "📘"
             },
             {
+              "name": "identity-credentials-email-final-closeout.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "parent-app-final-closeout.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -12742,6 +13516,11 @@
       "icon": "📝"
     },
     {
+      "name": "SPRINT_11_IDENTITY_CREDENTIALS_PLAN.md",
+      "type": "file",
+      "icon": "📝"
+    },
+    {
       "name": "SPRINT_1A_DAY_BY_DAY.md",
       "type": "file",
       "icon": "📝"
@@ -12802,13 +13581,38 @@
       "icon": "📘"
     },
     {
+      "name": "sprint11b-core-diff.txt",
+      "type": "file",
+      "icon": "📄"
+    },
+    {
+      "name": "sprint11b-tests-diff.txt",
+      "type": "file",
+      "icon": "📄"
+    },
+    {
+      "name": "sprint11e-core-diff.txt",
+      "type": "file",
+      "icon": "📄"
+    },
+    {
+      "name": "sprint11e-tests-diff.txt",
+      "type": "file",
+      "icon": "📄"
+    },
+    {
+      "name": "sprint11f-closeout-diff.txt",
+      "type": "file",
+      "icon": "📄"
+    },
+    {
       "name": "tsconfig.json",
       "type": "file",
       "icon": "⚙️"
     }
   ],
   "metadata": {
-    "generated": "2026-05-10T00:51:10.665Z",
+    "generated": "2026-05-12T04:51:03.699Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
