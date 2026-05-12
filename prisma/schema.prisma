@@ -69,6 +69,34 @@ enum SchoolLoginSettingsStatus {
   @@map("school_login_settings_status")
 }
 
+enum SchoolEmailProviderType {
+  SMTP
+  SENDGRID
+  MAILGUN
+  SES
+  CUSTOM
+
+  @@map("school_email_provider_type")
+}
+
+enum SchoolEmailConnectionStatus {
+  DRAFT
+  VERIFIED
+  ACTIVE
+  DISABLED
+  FAILED
+
+  @@map("school_email_connection_status")
+}
+
+enum SchoolEmailTemplateKey {
+  ACCOUNT_CREDENTIALS
+  PASSWORD_RESET
+  GENERAL_MESSAGE
+
+  @@map("school_email_template_key")
+}
+
 enum AuditOutcome {
   SUCCESS
   FAILURE
@@ -855,6 +883,8 @@ model School {
   schoolProfile                         SchoolProfile?
   securitySetting                       SecuritySetting?
   schoolLoginSettings                   SchoolLoginSettings?
+  schoolEmailConnection                 SchoolEmailConnection?
+  schoolEmailTemplates                  SchoolEmailTemplate[]
   notificationTemplates                 NotificationTemplate[]
   notificationTemplateChannelStates     NotificationTemplateChannelState[]
   integrationConnections                IntegrationConnection[]
@@ -953,21 +983,21 @@ model School {
 // ============================================================
 
 model User {
-  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String     @unique
-  username     String?
-  contactEmail String?    @map("contact_email")
-  phone        String?    @unique
-  passwordHash String?    @map("password_hash")
-  firstName    String     @map("first_name")
-  lastName     String     @map("last_name")
-  userType     UserType   @map("user_type")
-  status       UserStatus @default(ACTIVE)
-  lastLoginAt  DateTime?  @map("last_login_at")
-  mustChangePassword  Boolean   @default(false) @map("must_change_password")
-  passwordChangedAt   DateTime? @map("password_changed_at")
-  passwordProvisionedAt DateTime? @map("password_provisioned_at")
-  credentialVersion   Int       @default(0) @map("credential_version")
+  id                    String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                 String     @unique
+  username              String?
+  contactEmail          String?    @map("contact_email")
+  phone                 String?    @unique
+  passwordHash          String?    @map("password_hash")
+  firstName             String     @map("first_name")
+  lastName              String     @map("last_name")
+  userType              UserType   @map("user_type")
+  status                UserStatus @default(ACTIVE)
+  lastLoginAt           DateTime?  @map("last_login_at")
+  mustChangePassword    Boolean    @default(false) @map("must_change_password")
+  passwordChangedAt     DateTime?  @map("password_changed_at")
+  passwordProvisionedAt DateTime?  @map("password_provisioned_at")
+  credentialVersion     Int        @default(0) @map("credential_version")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -1258,6 +1288,60 @@ model SchoolLoginSettings {
 
   @@index([schoolId, status])
   @@map("settings_school_login_settings")
+}
+
+model SchoolEmailConnection {
+  id                String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String                      @unique @map("school_id") @db.Uuid
+  providerType      SchoolEmailProviderType     @default(SMTP) @map("provider_type")
+  fromName          String                      @map("from_name")
+  fromEmail         String                      @map("from_email")
+  replyToEmail      String?                     @map("reply_to_email")
+  host              String?
+  port              Int?
+  secure            Boolean                     @default(true)
+  username          String?
+  encryptedPassword String?                     @map("encrypted_password")
+  encryptedApiKey   String?                     @map("encrypted_api_key")
+  status            SchoolEmailConnectionStatus @default(DRAFT)
+  lastTestedAt      DateTime?                   @map("last_tested_at")
+  verifiedAt        DateTime?                   @map("verified_at")
+  failureReason     String?                     @map("failure_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+
+  @@index([schoolId, status])
+  @@map("settings_school_email_connections")
+}
+
+model SchoolEmailTemplate {
+  id           String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId     String                 @map("school_id") @db.Uuid
+  key          SchoolEmailTemplateKey
+  subject      String
+  preheader    String?
+  title        String?
+  subtitle     String?
+  bodyHtml     String                 @map("body_html")
+  bodyText     String?                @map("body_text")
+  footerHtml   String?                @map("footer_html")
+  logoFileId   String?                @map("logo_file_id") @db.Uuid
+  supportEmail String?                @map("support_email")
+  supportPhone String?                @map("support_phone")
+  socialLinks  Json?                  @map("social_links")
+  isActive     Boolean                @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+
+  @@unique([schoolId, key])
+  @@index([schoolId, isActive])
+  @@map("settings_school_email_templates")
 }
 
 model NotificationTemplate {

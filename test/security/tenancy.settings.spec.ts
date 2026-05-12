@@ -4,6 +4,9 @@ import {
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
+  SchoolEmailConnectionStatus,
+  SchoolEmailProviderType,
+  SchoolEmailTemplateKey,
   SchoolStatus,
   UserStatus,
   UserType,
@@ -332,6 +335,53 @@ describe('Settings tenancy isolation (security)', () => {
       },
     });
 
+    await prisma.schoolEmailConnection.upsert({
+      where: { schoolId: tenantBSchoolId },
+      update: {
+        providerType: SchoolEmailProviderType.SMTP,
+        fromName: 'Tenant B Mail',
+        fromEmail: 'mail-b@settings-tenancy.moazez.local',
+        host: 'smtp-b.settings-tenancy.moazez.local',
+        port: 465,
+        secure: true,
+        username: 'mail-b@settings-tenancy.moazez.local',
+        encryptedPassword: 'redacted-tenant-b-secret',
+        status: SchoolEmailConnectionStatus.ACTIVE,
+        failureReason: null,
+      },
+      create: {
+        schoolId: tenantBSchoolId,
+        providerType: SchoolEmailProviderType.SMTP,
+        fromName: 'Tenant B Mail',
+        fromEmail: 'mail-b@settings-tenancy.moazez.local',
+        host: 'smtp-b.settings-tenancy.moazez.local',
+        port: 465,
+        secure: true,
+        username: 'mail-b@settings-tenancy.moazez.local',
+        encryptedPassword: 'redacted-tenant-b-secret',
+        status: SchoolEmailConnectionStatus.ACTIVE,
+      },
+    });
+
+    await prisma.schoolEmailTemplate.upsert({
+      where: {
+        schoolId_key: {
+          schoolId: tenantBSchoolId,
+          key: SchoolEmailTemplateKey.GENERAL_MESSAGE,
+        },
+      },
+      update: {
+        subject: 'Tenant B private subject',
+        bodyHtml: '<p>Tenant B private body</p>',
+      },
+      create: {
+        schoolId: tenantBSchoolId,
+        key: SchoolEmailTemplateKey.GENERAL_MESSAGE,
+        subject: 'Tenant B private subject',
+        bodyHtml: '<p>Tenant B private body</p>',
+      },
+    });
+
     const passwordHash = await argon2.hash(
       TENANT_B_ADMIN_PASSWORD,
       ARGON2_OPTIONS,
@@ -419,6 +469,12 @@ describe('Settings tenancy isolation (security)', () => {
   afterAll(async () => {
     if (app) await app.close();
     if (prisma) {
+      await prisma.schoolEmailTemplate.deleteMany({
+        where: { schoolId: { in: [demoSchoolId, tenantBSchoolId] } },
+      });
+      await prisma.schoolEmailConnection.deleteMany({
+        where: { schoolId: { in: [demoSchoolId, tenantBSchoolId] } },
+      });
       await prisma.schoolLoginSettings.deleteMany({
         where: { schoolId: { in: [demoSchoolId, tenantBSchoolId] } },
       });
@@ -573,6 +629,255 @@ describe('Settings tenancy isolation (security)', () => {
     expect(response.body.loginDomain).not.toBe(DEMO_LOGIN_DOMAIN);
     expect(response.body).not.toHaveProperty('schoolId');
     expect(response.body).not.toHaveProperty('organizationId');
+  });
+
+  it('requires auth for settings email routes', async () => {
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/connection`)
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/templates`)
+      .expect(401);
+  });
+
+  it('school admin can configure test activate and disable own school email connection without exposing secrets', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const updated = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/settings/email/connection`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        providerType: 'SMTP',
+        fromName: 'Demo School Mail',
+        fromEmail: 'mail-a@settings-tenancy.moazez.local',
+        replyToEmail: 'reply-a@settings-tenancy.moazez.local',
+        host: 'smtp-a.settings-tenancy.moazez.local',
+        port: 587,
+        secure: false,
+        username: 'mail-a@settings-tenancy.moazez.local',
+        password: 'smtp-secret-11d',
+      })
+      .expect(200);
+
+    expect(updated.body).toEqual(
+      expect.objectContaining({
+        configured: true,
+        providerType: 'SMTP',
+        status: 'DRAFT',
+        hasPassword: true,
+      }),
+    );
+    expect(JSON.stringify(updated.body)).not.toContain('smtp-secret-11d');
+    expect(updated.body).not.toHaveProperty('encryptedPassword');
+    expect(updated.body).not.toHaveProperty('encryptedApiKey');
+    expect(updated.body).not.toHaveProperty('schoolId');
+    expect(updated.body).not.toHaveProperty('organizationId');
+
+    const tested = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/connection/test`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ toEmail: 'test-recipient@example.com' })
+      .expect(201);
+
+    expect(tested.body).toEqual(
+      expect.objectContaining({
+        status: 'VERIFIED',
+        testRecipient: 'test-recipient@example.com',
+        deliveryMode: 'configuration_validation',
+      }),
+    );
+
+    const activated = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/connection/activate`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(activated.body.status).toBe('ACTIVE');
+
+    const disabled = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/connection/disable`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(disabled.body.status).toBe('DISABLED');
+
+    const auditEntries = await prisma.auditLog.findMany({
+      where: {
+        schoolId: demoSchoolId,
+        action: {
+          in: [
+            'settings.email.connection.create',
+            'settings.email.connection.test',
+            'settings.email.connection.activate',
+            'settings.email.connection.disable',
+          ],
+        },
+      },
+      select: { before: true, after: true },
+    });
+
+    expect(JSON.stringify(auditEntries)).not.toContain('smtp-secret-11d');
+  });
+
+  it('isolates school email connection settings by current school', async () => {
+    const demoAdmin = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const tenantBAdmin = await login(
+      TENANT_B_ADMIN_EMAIL,
+      TENANT_B_ADMIN_PASSWORD,
+    );
+
+    const schoolA = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/connection`)
+      .set('Authorization', `Bearer ${demoAdmin.accessToken}`)
+      .expect(200);
+    const schoolB = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/connection`)
+      .set('Authorization', `Bearer ${tenantBAdmin.accessToken}`)
+      .expect(200);
+
+    expect(schoolB.body.host).toBe('smtp-b.settings-tenancy.moazez.local');
+    expect(schoolB.body.host).not.toBe(schoolA.body.host);
+    expect(JSON.stringify(schoolB.body)).not.toContain('schoolId');
+    expect(JSON.stringify(schoolB.body)).not.toContain('encryptedPassword');
+  });
+
+  it('rejects bulk-recipient payloads on the bounded email connection test route', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/connection/test`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ recipients: ['one@example.com', 'two@example.com'] })
+      .expect(400);
+
+    expect(response.body?.error?.code).toBe('validation.failed');
+  });
+
+  it('returns default school email templates and isolates customized tenant templates', async () => {
+    const demoAdmin = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const tenantBAdmin = await login(
+      TENANT_B_ADMIN_EMAIL,
+      TENANT_B_ADMIN_PASSWORD,
+    );
+
+    const defaults = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/templates/ACCOUNT_CREDENTIALS`)
+      .set('Authorization', `Bearer ${demoAdmin.accessToken}`)
+      .expect(200);
+
+    expect(defaults.body.customized).toBe(false);
+    expect(defaults.body.allowedVariables).toEqual(
+      expect.arrayContaining([
+        'credential.activationUrl',
+        'credential.temporaryPassword',
+      ]),
+    );
+    expect(defaults.body).not.toHaveProperty('schoolId');
+    expect(defaults.body).not.toHaveProperty('organizationId');
+
+    const tenantTemplate = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/templates/GENERAL_MESSAGE`)
+      .set('Authorization', `Bearer ${tenantBAdmin.accessToken}`)
+      .expect(200);
+
+    expect(tenantTemplate.body.subject).toBe('Tenant B private subject');
+    expect(tenantTemplate.body.subject).not.toBe(defaults.body.subject);
+  });
+
+  it('updates previews and resets school email templates without persisting preview output', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const updated = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/settings/email/templates/GENERAL_MESSAGE`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        subject: 'Hello {{user.fullName}}',
+        title: '{{school.name}} notice',
+        bodyHtml: '<p>Login email: {{user.loginEmail}}</p>',
+        bodyText: 'Login email: {{user.loginEmail}}',
+        supportEmail: 'support-a@settings-tenancy.moazez.local',
+        socialLinks: { website: 'https://school-a.example' },
+      })
+      .expect(200);
+
+    expect(updated.body.customized).toBe(true);
+    expect(updated.body.socialLinks).toEqual({
+      website: 'https://school-a.example',
+    });
+
+    const beforeCount = await prisma.schoolEmailTemplate.count({
+      where: { schoolId: demoSchoolId },
+    });
+
+    const preview = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/templates/GENERAL_MESSAGE/preview`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        subject: 'Hello {{user.fullName}} {{system.secret}}',
+        bodyHtml: '<p>{{user.loginEmail}}</p><p>{{support.phone}}</p>',
+        previewData: {
+          user: { fullName: 'Preview Admin', loginEmail: 'admin@example.com' },
+          support: { phone: null },
+        },
+      })
+      .expect(201);
+
+    expect(preview.body.subject).toContain('Preview Admin');
+    expect(preview.body.unknownVariables).toContain('system.secret');
+    expect(preview.body.missingVariables).toContain('support.phone');
+
+    await expect(
+      prisma.schoolEmailTemplate.count({ where: { schoolId: demoSchoolId } }),
+    ).resolves.toBe(beforeCount);
+
+    const reset = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/settings/email/templates/GENERAL_MESSAGE/reset-default`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(reset.body.customized).toBe(false);
+  });
+
+  it('returns 403 when a role without manage permission updates settings email resources', async () => {
+    const { accessToken } = await login(
+      DEMO_VIEWER_EMAIL,
+      DEMO_VIEWER_PASSWORD,
+    );
+
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/settings/email/connection`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        fromName: 'Viewer',
+        fromEmail: 'viewer@example.com',
+        host: 'smtp.example.com',
+        port: 587,
+        username: 'viewer@example.com',
+      })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/settings/email/templates/GENERAL_MESSAGE`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ subject: 'Nope', bodyHtml: '<p>Nope</p>' })
+      .expect(403);
+  });
+
+  it('does not add credential delivery or campaign routes in Sprint 11D', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/account-delivery/preview-recipients`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/campaigns`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
   });
 
   it('checks username availability against the current school generated domain', async () => {

@@ -5,6 +5,11 @@ describe('schoolScope communication registration', () => {
     expect(SCHOOL_SCOPED_MODELS.has('SchoolLoginSettings')).toBe(true);
   });
 
+  it('registers school email settings for school scope enforcement', () => {
+    expect(SCHOOL_SCOPED_MODELS.has('SchoolEmailConnection')).toBe(true);
+    expect(SCHOOL_SCOPED_MODELS.has('SchoolEmailTemplate')).toBe(true);
+  });
+
   it('registers announcement models for school scope enforcement', () => {
     expect(SCHOOL_SCOPED_MODELS.has('CommunicationAnnouncement')).toBe(true);
     expect(SCHOOL_SCOPED_MODELS.has('CommunicationAnnouncementAudience')).toBe(

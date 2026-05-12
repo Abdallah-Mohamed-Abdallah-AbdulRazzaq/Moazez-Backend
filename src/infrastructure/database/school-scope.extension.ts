@@ -26,6 +26,8 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'SchoolProfile',
   'SecuritySetting',
   'SchoolLoginSettings',
+  'SchoolEmailConnection',
+  'SchoolEmailTemplate',
   'NotificationTemplate',
   'NotificationTemplateChannelState',
   'IntegrationConnection',

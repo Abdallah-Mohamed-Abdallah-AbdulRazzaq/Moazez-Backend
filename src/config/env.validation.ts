@@ -26,6 +26,9 @@ export const envSchema = z.object({
   STORAGE_BUCKET: z.string().min(1),
   STORAGE_PUBLIC_BUCKET: z.string().min(1),
 
+  // 32 decoded bytes. Supported formats: base64:<value> or hex:<value>.
+  SETTINGS_SECRET_ENCRYPTION_KEY: z.string().optional(),
+
   SEED_DEMO_DATA: booleanFromString.default('false'),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])

@@ -91,6 +91,11 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | ---------------------------------------- | ---- | ------------------------------------------------- |
 | `settings.login_identity.not_configured` | 404  | School login identity settings are not configured |
 | `settings.login_identity.domain_invalid` | 422  | Login identity domain is invalid                  |
+| `settings.email.connection_missing`      | 404  | School email connection is not configured         |
+| `settings.email.connection_not_verified` | 409  | School email connection must be verified first    |
+| `settings.email.connection_test_failed`  | 422  | School email connection test failed               |
+| `settings.email.secret_encryption_failed`| 500  | School email secret encryption failed             |
+| `settings.email.template_invalid`        | 422  | School email template is invalid                  |
 
 ### Admissions
 
