@@ -5,5 +5,4 @@ dist/
 coverage/
 *.log
 .DS_Store
-storage/
 .claude/

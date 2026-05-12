@@ -1062,6 +1062,38 @@
                   "icon": "📘"
                 }
               ]
+            },
+            {
+              "name": "storage",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": ".gitkeep",
+                  "type": "file",
+                  "icon": "📁"
+                },
+                {
+                  "name": "minio.adapter.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "signed-url.service.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "storage.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "storage.service.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
             }
           ]
         },
@@ -13606,13 +13638,18 @@
       "icon": "📄"
     },
     {
+      "name": "sprint11g-swagger-diff.txt",
+      "type": "file",
+      "icon": "📄"
+    },
+    {
       "name": "tsconfig.json",
       "type": "file",
       "icon": "⚙️"
     }
   ],
   "metadata": {
-    "generated": "2026-05-12T04:51:03.699Z",
+    "generated": "2026-05-12T06:13:13.364Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
