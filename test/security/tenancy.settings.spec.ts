@@ -5,6 +5,10 @@ import {
   OrganizationStatus,
   PrismaClient,
   SchoolEmailConnectionStatus,
+  SchoolEmailDeliveryBatchStatus,
+  SchoolEmailDeliveryKind,
+  SchoolEmailDeliveryRecipientStatus,
+  SchoolEmailDeliveryRecipientType,
   SchoolEmailProviderType,
   SchoolEmailTemplateKey,
   SchoolStatus,
@@ -42,6 +46,8 @@ const ARGON2_OPTIONS: argon2.Options = {
   timeCost: 2,
   parallelism: 1,
 };
+
+jest.setTimeout(60_000);
 
 describe('Settings tenancy isolation (security)', () => {
   let app: INestApplication<App>;
@@ -439,16 +445,41 @@ describe('Settings tenancy isolation (security)', () => {
       });
     }
 
-    const roleB = await prisma.role.create({
-      data: {
-        schoolId: schoolB.id,
-        key: 'settings_tenancy_role_b',
-        name: 'Settings Tenancy Role B',
-        description: 'Tenant B scoped custom role',
-        isSystem: false,
+    const existingRoleB = await prisma.role.findUnique({
+      where: {
+        schoolId_key: {
+          schoolId: schoolB.id,
+          key: 'settings_tenancy_role_b',
+        },
       },
+      select: { id: true },
     });
-    tenantBRoleId = roleB.id;
+
+    if (existingRoleB) {
+      tenantBRoleId = existingRoleB.id;
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: existingRoleB.id },
+      });
+      await prisma.role.update({
+        where: { id: existingRoleB.id },
+        data: {
+          name: 'Settings Tenancy Role B',
+          description: 'Tenant B scoped custom role',
+          isSystem: false,
+        },
+      });
+    } else {
+      const roleB = await prisma.role.create({
+        data: {
+          schoolId: schoolB.id,
+          key: 'settings_tenancy_role_b',
+          name: 'Settings Tenancy Role B',
+          description: 'Tenant B scoped custom role',
+          isSystem: false,
+        },
+      });
+      tenantBRoleId = roleB.id;
+    }
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -469,15 +500,27 @@ describe('Settings tenancy isolation (security)', () => {
   afterAll(async () => {
     if (app) await app.close();
     if (prisma) {
-      await prisma.schoolEmailTemplate.deleteMany({
-        where: { schoolId: { in: [demoSchoolId, tenantBSchoolId] } },
-      });
-      await prisma.schoolEmailConnection.deleteMany({
-        where: { schoolId: { in: [demoSchoolId, tenantBSchoolId] } },
-      });
-      await prisma.schoolLoginSettings.deleteMany({
-        where: { schoolId: { in: [demoSchoolId, tenantBSchoolId] } },
-      });
+      const cleanupSchoolIds = [demoSchoolId, tenantBSchoolId].filter(
+        (schoolId): schoolId is string => Boolean(schoolId),
+      );
+
+      if (cleanupSchoolIds.length > 0) {
+        await prisma.schoolEmailDeliveryRecipient.deleteMany({
+          where: { schoolId: { in: cleanupSchoolIds } },
+        });
+        await prisma.schoolEmailDeliveryBatch.deleteMany({
+          where: { schoolId: { in: cleanupSchoolIds } },
+        });
+        await prisma.schoolEmailTemplate.deleteMany({
+          where: { schoolId: { in: cleanupSchoolIds } },
+        });
+        await prisma.schoolEmailConnection.deleteMany({
+          where: { schoolId: { in: cleanupSchoolIds } },
+        });
+        await prisma.schoolLoginSettings.deleteMany({
+          where: { schoolId: { in: cleanupSchoolIds } },
+        });
+      }
       await prisma.user.deleteMany({
         where: {
           email: {
@@ -485,28 +528,47 @@ describe('Settings tenancy isolation (security)', () => {
           },
         },
       });
-      await prisma.membership.deleteMany({
-        where: { userId: demoCredentialUserId },
-      });
-      await prisma.user.deleteMany({ where: { id: demoCredentialUserId } });
-      await prisma.membership.deleteMany({
-        where: { userId: demoViewerUserId },
-      });
-      await prisma.user.deleteMany({ where: { id: demoViewerUserId } });
-      await prisma.rolePermission.deleteMany({
-        where: { roleId: demoViewerRoleId },
-      });
-      await prisma.role.deleteMany({ where: { id: demoViewerRoleId } });
-      await prisma.role.deleteMany({ where: { id: tenantBRoleId } });
-      await prisma.securitySetting.deleteMany({
-        where: { schoolId: tenantBSchoolId },
-      });
-      await prisma.schoolProfile.deleteMany({
-        where: { schoolId: tenantBSchoolId },
-      });
-      await prisma.membership.deleteMany({ where: { userId: tenantBUserId } });
-      await prisma.user.deleteMany({ where: { id: tenantBUserId } });
-      await prisma.school.deleteMany({ where: { id: tenantBSchoolId } });
+      if (demoCredentialUserId) {
+        await prisma.membership.deleteMany({
+          where: { userId: demoCredentialUserId },
+        });
+        await prisma.user.deleteMany({ where: { id: demoCredentialUserId } });
+      }
+      if (demoViewerUserId) {
+        await prisma.membership.deleteMany({
+          where: { userId: demoViewerUserId },
+        });
+        await prisma.user.deleteMany({ where: { id: demoViewerUserId } });
+      }
+      if (demoViewerRoleId) {
+        await prisma.rolePermission.deleteMany({
+          where: { roleId: demoViewerRoleId },
+        });
+        await prisma.role.deleteMany({ where: { id: demoViewerRoleId } });
+      }
+      if (tenantBRoleId) {
+        await prisma.rolePermission.deleteMany({
+          where: { roleId: tenantBRoleId },
+        });
+        await prisma.role.deleteMany({ where: { id: tenantBRoleId } });
+      }
+      if (tenantBSchoolId) {
+        await prisma.securitySetting.deleteMany({
+          where: { schoolId: tenantBSchoolId },
+        });
+        await prisma.schoolProfile.deleteMany({
+          where: { schoolId: tenantBSchoolId },
+        });
+      }
+      if (tenantBUserId) {
+        await prisma.membership.deleteMany({
+          where: { userId: tenantBUserId },
+        });
+        await prisma.user.deleteMany({ where: { id: tenantBUserId } });
+      }
+      if (tenantBSchoolId) {
+        await prisma.school.deleteMany({ where: { id: tenantBSchoolId } });
+      }
       await prisma.organization.deleteMany({
         where: { slug: TENANT_B_ORG_SLUG },
       });
@@ -866,18 +928,326 @@ describe('Settings tenancy isolation (security)', () => {
       .expect(403);
   });
 
-  it('does not add credential delivery or campaign routes in Sprint 11D', async () => {
-    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+  it('requires auth for credential delivery and campaign routes', async () => {
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/settings/email/credential-deliveries/preview-recipients`,
+      )
+      .expect(401);
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/settings/account-delivery/preview-recipients`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
+      .get(`${GLOBAL_PREFIX}/settings/email/deliveries`)
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/campaigns/preview-recipients`)
+      .expect(401);
 
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/settings/email/campaigns`)
+      .expect(401);
+  });
+
+  it('previews credential delivery recipients with safe contact-email targeting', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const missingContact = await prisma.user.create({
+      data: {
+        email: 'missing-contact@settings-tenancy.moazez.local',
+        firstName: 'Missing',
+        lastName: 'Contact',
+        username: 'missing.contact',
+        contactEmail: null,
+        userType: UserType.SCHOOL_USER,
+        status: UserStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    await prisma.membership.create({
+      data: {
+        userId: missingContact.id,
+        organizationId: demoOrganizationId,
+        schoolId: demoSchoolId,
+        roleId: demoViewerRoleId,
+        userType: UserType.SCHOOL_USER,
+        status: MembershipStatus.ACTIVE,
+      },
+    });
+
+    const preview = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/settings/email/credential-deliveries/preview-recipients`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        scope: 'selected',
+        userIds: [demoCredentialUserId, missingContact.id, tenantBUserId],
+        includeUsersWithPassword: true,
+        requireContactEmail: true,
+      })
+      .expect(201);
+
+    expect(preview.body.totalMatched).toBe(2);
+    expect(preview.body.eligible).toBe(1);
+    expect(preview.body.skippedReasons).toEqual({ missing_contact_email: 1 });
+    expect(JSON.stringify(preview.body)).not.toContain('passwordHash');
+    expect(JSON.stringify(preview.body)).not.toContain('schoolId');
+    expect(JSON.stringify(preview.body)).not.toContain('organizationId');
+
+    await prisma.membership.deleteMany({
+      where: { userId: missingContact.id },
+    });
+    await prisma.user.delete({ where: { id: missingContact.id } });
+  });
+
+  it('queues credential delivery and general campaigns without communication side effects', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    await prisma.schoolEmailConnection.upsert({
+      where: { schoolId: demoSchoolId },
+      update: {
+        providerType: SchoolEmailProviderType.SMTP,
+        fromName: 'Demo Mail',
+        fromEmail: 'mail-a@settings-tenancy.moazez.local',
+        host: 'smtp-a.settings-tenancy.moazez.local',
+        port: 587,
+        secure: false,
+        username: 'mail-a@settings-tenancy.moazez.local',
+        encryptedPassword: 'redacted-demo-secret',
+        status: SchoolEmailConnectionStatus.ACTIVE,
+        failureReason: null,
+      },
+      create: {
+        schoolId: demoSchoolId,
+        providerType: SchoolEmailProviderType.SMTP,
+        fromName: 'Demo Mail',
+        fromEmail: 'mail-a@settings-tenancy.moazez.local',
+        host: 'smtp-a.settings-tenancy.moazez.local',
+        port: 587,
+        secure: false,
+        username: 'mail-a@settings-tenancy.moazez.local',
+        encryptedPassword: 'redacted-demo-secret',
+        status: SchoolEmailConnectionStatus.ACTIVE,
+      },
+    });
+
+    const announcementCountBefore =
+      await prisma.communicationAnnouncement.count({
+        where: { schoolId: demoSchoolId },
+      });
+    const notificationCountBefore =
+      await prisma.communicationNotification.count({
+        where: { schoolId: demoSchoolId },
+      });
+
+    const credential = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/credential-deliveries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        scope: 'selected',
+        userIds: [demoCredentialUserId],
+        includeUsersWithPassword: true,
+        credentialMode: 'LOGIN_INFO_ONLY',
+      })
+      .expect(201);
+
+    expect(credential.body).toEqual(
+      expect.objectContaining({
+        kind: SchoolEmailDeliveryKind.CREDENTIAL_DELIVERY,
+        status: SchoolEmailDeliveryBatchStatus.QUEUED,
+        totalRecipients: 1,
+        queuedCount: 1,
+        deliveryMode: 'queued',
+      }),
+    );
+    expect(JSON.stringify(credential.body)).not.toContain('passwordHash');
+    expect(JSON.stringify(credential.body)).not.toMatch(/MZ-/);
+    expect(credential.body).not.toHaveProperty('schoolId');
+    expect(credential.body).not.toHaveProperty('organizationId');
+
+    const campaign = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/campaigns`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        recipientScope: { scope: 'selected', userIds: [demoCredentialUserId] },
+        subject: 'Security update',
+        bodyHtml: '<p>Hello {{user.fullName}}</p>',
+      })
+      .expect(201);
+
+    expect(campaign.body.kind).toBe(SchoolEmailDeliveryKind.GENERAL_CAMPAIGN);
+    expect(campaign.body.deliveryMode).toBe('queued');
+
+    await expect(
+      prisma.communicationAnnouncement.count({
+        where: { schoolId: demoSchoolId },
+      }),
+    ).resolves.toBe(announcementCountBefore);
+    await expect(
+      prisma.communicationNotification.count({
+        where: { schoolId: demoSchoolId },
+      }),
+    ).resolves.toBe(notificationCountBefore);
+  });
+
+  it('rejects credential variables in general email campaigns', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/campaigns/preview`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        subject: 'Forbidden',
+        bodyHtml: '<p>{{credential.temporaryPassword}}</p>',
+      })
+      .expect(422);
+
+    expect(response.body?.error?.code).toBe(
+      'settings.email.campaign_credential_variables_forbidden',
+    );
+  });
+
+  it('lists reads and cancels delivery batches with tenant-scoped sanitized responses', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const batchA = await prisma.schoolEmailDeliveryBatch.create({
+      data: {
+        schoolId: demoSchoolId,
+        kind: SchoolEmailDeliveryKind.GENERAL_CAMPAIGN,
+        status: SchoolEmailDeliveryBatchStatus.QUEUED,
+        templateKey: SchoolEmailTemplateKey.GENERAL_MESSAGE,
+        subjectSnapshot: 'Batch A',
+        totalRecipients: 1,
+        queuedCount: 1,
+      },
+    });
+    await prisma.schoolEmailDeliveryRecipient.create({
+      data: {
+        schoolId: demoSchoolId,
+        batchId: batchA.id,
+        recipientType: SchoolEmailDeliveryRecipientType.USER,
+        userId: demoCredentialUserId,
+        toEmail: 'credential.contact@example.com',
+        displayName: 'Credential Target',
+        status: SchoolEmailDeliveryRecipientStatus.QUEUED,
+      },
+    });
+
+    const batchB = await prisma.schoolEmailDeliveryBatch.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        kind: SchoolEmailDeliveryKind.GENERAL_CAMPAIGN,
+        status: SchoolEmailDeliveryBatchStatus.QUEUED,
+        templateKey: SchoolEmailTemplateKey.GENERAL_MESSAGE,
+        subjectSnapshot: 'Tenant B Private',
+        totalRecipients: 1,
+        queuedCount: 1,
+      },
+    });
+    const credentialBatch = await prisma.schoolEmailDeliveryBatch.create({
+      data: {
+        schoolId: demoSchoolId,
+        kind: SchoolEmailDeliveryKind.CREDENTIAL_DELIVERY,
+        status: SchoolEmailDeliveryBatchStatus.QUEUED,
+        templateKey: SchoolEmailTemplateKey.ACCOUNT_CREDENTIALS,
+        subjectSnapshot: 'Credential Delivery',
+        totalRecipients: 1,
+        queuedCount: 1,
+      },
+    });
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/deliveries`)
+      .query({ kind: SchoolEmailDeliveryKind.GENERAL_CAMPAIGN })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(JSON.stringify(list.body)).toContain(batchA.id);
+    expect(JSON.stringify(list.body)).not.toContain(batchB.id);
+    expect(JSON.stringify(list.body)).not.toContain('schoolId');
+    expect(JSON.stringify(list.body)).not.toContain('organizationId');
+
+    const campaignDetail = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/campaigns/${batchA.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(campaignDetail.body.kind).toBe(
+      SchoolEmailDeliveryKind.GENERAL_CAMPAIGN,
+    );
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/deliveries/${credentialBatch.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const wrongKind = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/campaigns/${credentialBatch.id}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
+
+    expect(wrongKind.body?.error?.code).toBe(
+      'settings.email.delivery_batch_not_found',
+    );
+
+    const recipients = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/deliveries/${batchA.id}/recipients`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(recipients.body.items[0]).toEqual(
+      expect.objectContaining({
+        userId: demoCredentialUserId,
+        toEmail: 'credential.contact@example.com',
+        status: SchoolEmailDeliveryRecipientStatus.QUEUED,
+      }),
+    );
+    expect(JSON.stringify(recipients.body)).not.toContain('passwordHash');
+
+    const cancelled = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/deliveries/${batchA.id}/cancel`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(cancelled.body.status).toBe(
+      SchoolEmailDeliveryBatchStatus.CANCELLED,
+    );
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/deliveries/${batchB.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
+
+  it('returns 403 when a role without manage permission creates or cancels email delivery', async () => {
+    const { accessToken } = await login(
+      DEMO_VIEWER_EMAIL,
+      DEMO_VIEWER_PASSWORD,
+    );
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/credential-deliveries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        scope: 'selected',
+        userIds: [demoCredentialUserId],
+        credentialMode: 'LOGIN_INFO_ONLY',
+      })
+      .expect(403);
+
+    const batch = await prisma.schoolEmailDeliveryBatch.create({
+      data: {
+        schoolId: demoSchoolId,
+        kind: SchoolEmailDeliveryKind.GENERAL_CAMPAIGN,
+        status: SchoolEmailDeliveryBatchStatus.QUEUED,
+        totalRecipients: 0,
+      },
+    });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/deliveries/${batch.id}/cancel`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
   });
 
   it('checks username availability against the current school generated domain', async () => {

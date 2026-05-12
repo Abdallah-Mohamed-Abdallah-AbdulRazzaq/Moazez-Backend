@@ -96,6 +96,16 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `settings.email.connection_test_failed`  | 422  | School email connection test failed               |
 | `settings.email.secret_encryption_failed`| 500  | School email secret encryption failed             |
 | `settings.email.template_invalid`        | 422  | School email template is invalid                  |
+| `settings.email.delivery_connection_inactive` | 409 | School email delivery connection is not active |
+| `settings.email.delivery_template_missing` | 404 | School email delivery template is missing or inactive |
+| `settings.email.delivery_no_recipients`  | 422  | No eligible email delivery recipients were found  |
+| `settings.email.delivery_batch_not_found`| 404  | Email delivery batch was not found                |
+| `settings.email.delivery_batch_not_cancelable` | 409 | Email delivery batch cannot be cancelled in its current state |
+| `settings.email.delivery_too_many_recipients` | 422 | Email delivery recipient limit exceeded      |
+| `settings.email.delivery_recipient_invalid` | 422 | Email delivery recipient is invalid            |
+| `settings.email.delivery_send_failed`    | 422  | Email delivery send failed                        |
+| `settings.email.campaign_invalid`        | 422  | School email campaign is invalid                  |
+| `settings.email.campaign_credential_variables_forbidden` | 422 | Credential variables are not allowed in general email campaigns |
 
 ### Admissions
 

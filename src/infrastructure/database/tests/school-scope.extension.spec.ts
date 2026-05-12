@@ -8,6 +8,8 @@ describe('schoolScope communication registration', () => {
   it('registers school email settings for school scope enforcement', () => {
     expect(SCHOOL_SCOPED_MODELS.has('SchoolEmailConnection')).toBe(true);
     expect(SCHOOL_SCOPED_MODELS.has('SchoolEmailTemplate')).toBe(true);
+    expect(SCHOOL_SCOPED_MODELS.has('SchoolEmailDeliveryBatch')).toBe(true);
+    expect(SCHOOL_SCOPED_MODELS.has('SchoolEmailDeliveryRecipient')).toBe(true);
   });
 
   it('registers announcement models for school scope enforcement', () => {

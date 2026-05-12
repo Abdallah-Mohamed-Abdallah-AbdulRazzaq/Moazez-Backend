@@ -97,6 +97,44 @@ enum SchoolEmailTemplateKey {
   @@map("school_email_template_key")
 }
 
+enum SchoolEmailDeliveryKind {
+  CREDENTIAL_DELIVERY
+  GENERAL_CAMPAIGN
+
+  @@map("school_email_delivery_kind")
+}
+
+enum SchoolEmailDeliveryBatchStatus {
+  DRAFT
+  QUEUED
+  PROCESSING
+  SUCCEEDED
+  PARTIAL_FAILED
+  FAILED
+  CANCELLED
+
+  @@map("school_email_delivery_batch_status")
+}
+
+enum SchoolEmailDeliveryRecipientStatus {
+  PENDING
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+  SKIPPED
+  CANCELLED
+
+  @@map("school_email_delivery_recipient_status")
+}
+
+enum SchoolEmailDeliveryRecipientType {
+  USER
+  CUSTOM_EMAIL
+
+  @@map("school_email_delivery_recipient_type")
+}
+
 enum AuditOutcome {
   SUCCESS
   FAILURE
@@ -885,6 +923,8 @@ model School {
   schoolLoginSettings                   SchoolLoginSettings?
   schoolEmailConnection                 SchoolEmailConnection?
   schoolEmailTemplates                  SchoolEmailTemplate[]
+  schoolEmailDeliveryBatches            SchoolEmailDeliveryBatch[]
+  schoolEmailDeliveryRecipients         SchoolEmailDeliveryRecipient[]
   notificationTemplates                 NotificationTemplate[]
   notificationTemplateChannelStates     NotificationTemplateChannelState[]
   integrationConnections                IntegrationConnection[]
@@ -1092,6 +1132,7 @@ model User {
   communicationAnnouncementAttachmentsCreated    CommunicationAnnouncementAttachment[]  @relation("CommunicationAnnouncementAttachmentsCreatedByUser")
   communicationNotificationsReceived             CommunicationNotification[]            @relation("CommunicationNotificationsRecipientUser")
   communicationNotificationsActed                CommunicationNotification[]            @relation("CommunicationNotificationsActorUser")
+  schoolEmailDeliveryRecipients                  SchoolEmailDeliveryRecipient[]          @relation("SchoolEmailDeliveryRecipientsUser")
 
   @@index([userType])
   @@index([status])
@@ -1342,6 +1383,68 @@ model SchoolEmailTemplate {
   @@unique([schoolId, key])
   @@index([schoolId, isActive])
   @@map("settings_school_email_templates")
+}
+
+model SchoolEmailDeliveryBatch {
+  id              String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                         @map("school_id") @db.Uuid
+  kind            SchoolEmailDeliveryKind
+  status          SchoolEmailDeliveryBatchStatus @default(DRAFT)
+  templateKey     SchoolEmailTemplateKey?        @map("template_key")
+  subjectSnapshot String?                        @map("subject_snapshot")
+  createdByUserId String?                        @map("created_by_user_id") @db.Uuid
+  recipientScope  Json?                          @map("recipient_scope")
+  previewData     Json?                          @map("preview_data")
+  campaignContent Json?                          @map("campaign_content")
+  totalRecipients Int                            @default(0) @map("total_recipients")
+  queuedCount     Int                            @default(0) @map("queued_count")
+  sentCount       Int                            @default(0) @map("sent_count")
+  failedCount     Int                            @default(0) @map("failed_count")
+  skippedCount    Int                            @default(0) @map("skipped_count")
+  startedAt       DateTime?                      @map("started_at")
+  completedAt     DateTime?                      @map("completed_at")
+  cancelledAt     DateTime?                      @map("cancelled_at")
+  failureReason   String?                        @map("failure_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school     School                         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  recipients SchoolEmailDeliveryRecipient[]
+
+  @@index([schoolId, status, kind])
+  @@index([schoolId, createdAt])
+  @@map("settings_school_email_delivery_batches")
+}
+
+model SchoolEmailDeliveryRecipient {
+  id             String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                             @map("school_id") @db.Uuid
+  batchId        String                             @map("batch_id") @db.Uuid
+  recipientType  SchoolEmailDeliveryRecipientType   @map("recipient_type")
+  userId         String?                            @map("user_id") @db.Uuid
+  toEmail        String                             @map("to_email")
+  displayName    String?                            @map("display_name")
+  status         SchoolEmailDeliveryRecipientStatus @default(PENDING)
+  attempts       Int                                @default(0)
+  lastAttemptAt  DateTime?                          @map("last_attempt_at")
+  sentAt         DateTime?                          @map("sent_at")
+  failureReason  String?                            @map("failure_reason")
+  skippedReason  String?                            @map("skipped_reason")
+  metadata       Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school School                   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  batch  SchoolEmailDeliveryBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  user   User?                    @relation("SchoolEmailDeliveryRecipientsUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, batchId, status])
+  @@index([schoolId, status])
+  @@index([batchId])
+  @@index([userId])
+  @@map("settings_school_email_delivery_recipients")
 }
 
 model NotificationTemplate {

@@ -28,6 +28,8 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'SchoolLoginSettings',
   'SchoolEmailConnection',
   'SchoolEmailTemplate',
+  'SchoolEmailDeliveryBatch',
+  'SchoolEmailDeliveryRecipient',
   'NotificationTemplate',
   'NotificationTemplateChannelState',
   'IntegrationConnection',
