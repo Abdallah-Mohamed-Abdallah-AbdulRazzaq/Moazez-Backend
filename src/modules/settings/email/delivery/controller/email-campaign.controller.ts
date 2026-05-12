@@ -7,7 +7,18 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+  ApiUnprocessableEntityResponse,
+} from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../../common/decorators/required-permissions.decorator';
 import { CreateEmailCampaignUseCase } from '../application/create-email-campaign.use-case';
 import {
@@ -41,6 +52,19 @@ export class EmailCampaignController {
 
   @Post('preview-recipients')
   @RequiredPermissions('settings.security.view')
+  @ApiOperation({
+    summary: 'Preview recipients for a general email campaign',
+    description:
+      'Resolves the selected school-scoped audience and optional custom emails without creating a delivery batch.',
+  })
+  @ApiCreatedResponse({ type: DeliveryRecipientPreviewResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnprocessableEntityResponse({
+    description: 'settings.email.delivery_no_recipients',
+  })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.security.view in the current school scope.',
+  })
   previewRecipients(
     @Body() dto: CampaignPreviewRecipientsDto,
   ): Promise<DeliveryRecipientPreviewResponseDto> {
@@ -49,6 +73,20 @@ export class EmailCampaignController {
 
   @Post('preview')
   @RequiredPermissions('settings.security.view')
+  @ApiOperation({
+    summary: 'Preview a general email campaign',
+    description:
+      'Renders campaign HTML/text and reports template variable issues without sending email.',
+  })
+  @ApiCreatedResponse({ type: CampaignPreviewResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'settings.email.campaign_invalid | settings.email.campaign_credential_variables_forbidden',
+  })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.security.view in the current school scope.',
+  })
   previewCampaign(
     @Body() dto: CampaignPreviewDto,
   ): Promise<CampaignPreviewResponseDto> {
@@ -57,6 +95,21 @@ export class EmailCampaignController {
 
   @Post()
   @RequiredPermissions('settings.security.manage')
+  @ApiOperation({
+    summary: 'Create a queued general email campaign',
+    description:
+      'Creates a queue-backed external email campaign separate from in-app communication announcements.',
+  })
+  @ApiCreatedResponse({ type: DeliveryBatchSummaryDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'settings.email.delivery_no_recipients | settings.email.delivery_too_many_recipients | settings.email.campaign_invalid',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Requires settings.security.manage in the current school scope.',
+  })
   createCampaign(
     @Body() dto: CreateCampaignDto,
   ): Promise<DeliveryBatchSummaryDto> {
@@ -65,6 +118,12 @@ export class EmailCampaignController {
 
   @Get()
   @RequiredPermissions('settings.security.view')
+  @ApiOperation({ summary: 'List general email campaign batches' })
+  @ApiOkResponse({ type: DeliveryBatchListResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.security.view in the current school scope.',
+  })
   listCampaigns(
     @Query() query: DeliveryListQueryDto,
   ): Promise<DeliveryBatchListResponseDto> {
@@ -76,6 +135,19 @@ export class EmailCampaignController {
 
   @Get(':batchId')
   @RequiredPermissions('settings.security.view')
+  @ApiOperation({ summary: 'Get one general email campaign batch' })
+  @ApiParam({
+    name: 'batchId',
+    description: 'Campaign batch id',
+    format: 'uuid',
+  })
+  @ApiOkResponse({ type: DeliveryBatchSummaryDto })
+  @ApiNotFoundResponse({
+    description: 'settings.email.delivery_batch_not_found',
+  })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.security.view in the current school scope.',
+  })
   getCampaign(
     @Param('batchId', new ParseUUIDPipe()) batchId: string,
   ): Promise<DeliveryBatchSummaryDto> {

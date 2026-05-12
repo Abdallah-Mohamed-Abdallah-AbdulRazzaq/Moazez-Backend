@@ -1,5 +1,12 @@
 import { Body, Controller, Get, Put, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiForbiddenResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { CheckUsernameAvailabilityUseCase } from '../application/check-username-availability.use-case';
 import { GetLoginIdentitySettingsUseCase } from '../application/get-login-identity-settings.use-case';
@@ -26,12 +33,31 @@ export class LoginIdentityController {
 
   @Get()
   @RequiredPermissions('settings.users.view')
+  @ApiOperation({
+    summary: 'Get school login identity settings',
+    description:
+      'Returns the school-scoped login domain and username policy used to generate login emails.',
+  })
+  @ApiOkResponse({ type: LoginIdentitySettingsResponseDto })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.users.view in the current school scope.',
+  })
   getSettings(): Promise<LoginIdentitySettingsResponseDto> {
     return this.getSettingsUseCase.execute();
   }
 
   @Put()
   @RequiredPermissions('settings.users.manage')
+  @ApiOperation({
+    summary: 'Update school login identity settings',
+    description:
+      'Configures the school-owned login email domain and username policy.',
+  })
+  @ApiOkResponse({ type: LoginIdentitySettingsResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.users.manage in the current school scope.',
+  })
   updateSettings(
     @Body() dto: UpdateLoginIdentitySettingsDto,
   ): Promise<LoginIdentitySettingsResponseDto> {
@@ -40,6 +66,16 @@ export class LoginIdentityController {
 
   @Get('preview')
   @RequiredPermissions('settings.users.view')
+  @ApiOperation({
+    summary: 'Preview a generated login email',
+    description:
+      'Normalizes a username candidate and combines it with the current school login domain without creating a user.',
+  })
+  @ApiOkResponse({ type: LoginIdentityPreviewResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.users.view in the current school scope.',
+  })
   preview(
     @Query() query: LoginIdentityPreviewQueryDto,
   ): Promise<LoginIdentityPreviewResponseDto> {
@@ -57,6 +93,16 @@ export class UsernameAvailabilityController {
 
   @Get('available')
   @RequiredPermissions('settings.users.view')
+  @ApiOperation({
+    summary: 'Check username availability',
+    description:
+      'Validates a username candidate and reports whether the generated login email can be assigned in the current school.',
+  })
+  @ApiOkResponse({ type: UsernameAvailabilityResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.users.view in the current school scope.',
+  })
   available(
     @Query() query: UsernameAvailabilityQueryDto,
   ): Promise<UsernameAvailabilityResponseDto> {

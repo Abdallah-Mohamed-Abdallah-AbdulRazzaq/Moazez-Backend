@@ -8,12 +8,15 @@ import {
   Req,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
+  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { PublicRoute } from '../../../../common/decorators/public-route.decorator';
@@ -51,8 +54,9 @@ export class AuthController {
     summary: 'Exchange credentials for an access/refresh token pair',
   })
   @ApiOkResponse({ type: LoginResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
   @ApiUnauthorizedResponse({
-    description: 'auth.credentials.invalid — wrong email or password',
+    description: 'auth.credentials.invalid - wrong email or password',
   })
   login(@Body() dto: LoginDto, @Req() req: Request): Promise<LoginResponseDto> {
     return this.loginUseCase.execute({
@@ -70,6 +74,7 @@ export class AuthController {
     summary: 'Rotate a refresh token for a new access/refresh pair',
   })
   @ApiOkResponse({ type: LoginResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
   @ApiUnauthorizedResponse({
     description: 'auth.token.invalid | auth.refresh.rotated',
   })
@@ -117,6 +122,16 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Change the authenticated user password' })
   @ApiOkResponse({ type: ChangePasswordResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnauthorizedResponse({
+    description: 'auth.token.invalid | auth.session.revoked',
+  })
+  @ApiForbiddenResponse({
+    description: 'iam.credentials.current_password_invalid',
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'iam.credentials.password_policy_failed',
+  })
   changePassword(
     @Body() dto: ChangePasswordDto,
     @Req() req: AuthedRequest,

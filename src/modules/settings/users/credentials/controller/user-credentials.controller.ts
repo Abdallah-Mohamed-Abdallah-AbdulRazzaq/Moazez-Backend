@@ -7,7 +7,19 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+  ApiUnprocessableEntityResponse,
+} from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../../common/decorators/required-permissions.decorator';
 import { BulkCredentialGenerateUseCase } from '../application/bulk-credential-generate.use-case';
 import { BulkCredentialPreviewUseCase } from '../application/bulk-credential-preview.use-case';
@@ -37,6 +49,16 @@ export class UserCredentialsCollectionController {
 
   @Get('status')
   @RequiredPermissions('settings.users.view')
+  @ApiOperation({
+    summary: 'List user credential status',
+    description:
+      'Returns school-scoped users with password provisioning and must-change-password state.',
+  })
+  @ApiOkResponse({ type: CredentialStatusListResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.users.view in the current school scope.',
+  })
   status(
     @Query() query: CredentialStatusQueryDto,
   ): Promise<CredentialStatusListResponseDto> {
@@ -45,6 +67,16 @@ export class UserCredentialsCollectionController {
 
   @Post('bulk-preview')
   @RequiredPermissions('settings.users.view')
+  @ApiOperation({
+    summary: 'Preview a bulk credential generation audience',
+    description:
+      'Resolves the selected users and reports eligible/skipped counts without changing credentials.',
+  })
+  @ApiCreatedResponse({ type: BulkCredentialPreviewResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.users.view in the current school scope.',
+  })
   bulkPreview(
     @Body() dto: BulkCredentialSelectionDto,
   ): Promise<BulkCredentialPreviewResponseDto> {
@@ -53,6 +85,20 @@ export class UserCredentialsCollectionController {
 
   @Post('bulk-generate')
   @RequiredPermissions('settings.users.manage')
+  @ApiOperation({
+    summary: 'Generate temporary passwords for a bulk audience',
+    description:
+      'Generates one-time temporary passwords, stores only hashes, requires password change on login, and revokes existing sessions.',
+  })
+  @ApiCreatedResponse({ type: BulkGenerateCredentialsResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'iam.credentials.no_eligible_users | iam.credentials.bulk_too_large',
+  })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.users.manage in the current school scope.',
+  })
   bulkGenerate(
     @Body() dto: BulkCredentialSelectionDto,
   ): Promise<BulkGenerateCredentialsResponseDto> {
@@ -71,6 +117,20 @@ export class UserCredentialsMemberController {
 
   @Post('generate')
   @RequiredPermissions('settings.users.manage')
+  @ApiOperation({
+    summary: 'Generate a temporary password for one user',
+    description:
+      'Returns a one-time temporary password while storing only the hash and requiring password change on next login.',
+  })
+  @ApiParam({ name: 'userId', description: 'User id', format: 'uuid' })
+  @ApiCreatedResponse({ type: GeneratedCredentialResponseDto })
+  @ApiNotFoundResponse({
+    description: 'User not found in current school scope.',
+  })
+  @ApiConflictResponse({ description: 'iam.credentials.user_not_manageable' })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.users.manage in the current school scope.',
+  })
   generate(
     @Param('userId', new ParseUUIDPipe()) userId: string,
   ): Promise<GeneratedCredentialResponseDto> {
@@ -79,6 +139,24 @@ export class UserCredentialsMemberController {
 
   @Post('set')
   @RequiredPermissions('settings.users.manage')
+  @ApiOperation({
+    summary: 'Set a user password',
+    description:
+      'Hashes an admin-provided password, optionally requires password change on login, and revokes existing sessions.',
+  })
+  @ApiParam({ name: 'userId', description: 'User id', format: 'uuid' })
+  @ApiCreatedResponse({ type: SetCredentialResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiNotFoundResponse({
+    description: 'User not found in current school scope.',
+  })
+  @ApiConflictResponse({ description: 'iam.credentials.user_not_manageable' })
+  @ApiUnprocessableEntityResponse({
+    description: 'iam.credentials.password_policy_failed',
+  })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.users.manage in the current school scope.',
+  })
   set(
     @Param('userId', new ParseUUIDPipe()) userId: string,
     @Body() dto: SetCredentialPasswordDto,
@@ -88,6 +166,20 @@ export class UserCredentialsMemberController {
 
   @Post('regenerate')
   @RequiredPermissions('settings.users.manage')
+  @ApiOperation({
+    summary: 'Regenerate a temporary password for one user',
+    description:
+      'Replaces the previous credential hash, returns a new one-time temporary password, and revokes existing sessions.',
+  })
+  @ApiParam({ name: 'userId', description: 'User id', format: 'uuid' })
+  @ApiCreatedResponse({ type: GeneratedCredentialResponseDto })
+  @ApiNotFoundResponse({
+    description: 'User not found in current school scope.',
+  })
+  @ApiConflictResponse({ description: 'iam.credentials.user_not_manageable' })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.users.manage in the current school scope.',
+  })
   regenerate(
     @Param('userId', new ParseUUIDPipe()) userId: string,
   ): Promise<GeneratedCredentialResponseDto> {

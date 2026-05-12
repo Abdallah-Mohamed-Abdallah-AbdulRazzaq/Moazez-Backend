@@ -7,7 +7,17 @@ import {
   Post,
   Put,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+  ApiUnprocessableEntityResponse,
+} from '@nestjs/swagger';
 import { SchoolEmailTemplateKey } from '@prisma/client';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetEmailTemplateUseCase } from '../application/get-email-template.use-case';
@@ -37,12 +47,31 @@ export class EmailTemplateController {
 
   @Get()
   @RequiredPermissions('settings.security.view')
+  @ApiOperation({
+    summary: 'List school email templates',
+    description:
+      'Returns customized templates when present and default template content otherwise.',
+  })
+  @ApiOkResponse({ type: EmailTemplateListResponseDto })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.security.view in the current school scope.',
+  })
   listTemplates(): Promise<EmailTemplateListResponseDto> {
     return this.listEmailTemplatesUseCase.execute();
   }
 
   @Get(':key')
   @RequiredPermissions('settings.security.view')
+  @ApiOperation({ summary: 'Get one school email template' })
+  @ApiParam({
+    name: 'key',
+    enum: SchoolEmailTemplateKey,
+    description: 'School email template key',
+  })
+  @ApiOkResponse({ type: EmailTemplateResponseDto })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.security.view in the current school scope.',
+  })
   getTemplate(
     @Param('key', new ParseEnumPipe(SchoolEmailTemplateKey))
     key: SchoolEmailTemplateKey,
@@ -52,6 +81,25 @@ export class EmailTemplateController {
 
   @Put(':key')
   @RequiredPermissions('settings.security.manage')
+  @ApiOperation({
+    summary: 'Update one school email template',
+    description:
+      'Updates school-branded template content and validates variables without exposing credential secrets.',
+  })
+  @ApiParam({
+    name: 'key',
+    enum: SchoolEmailTemplateKey,
+    description: 'School email template key',
+  })
+  @ApiOkResponse({ type: EmailTemplateResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnprocessableEntityResponse({
+    description: 'settings.email.template_invalid',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Requires settings.security.manage in the current school scope.',
+  })
   updateTemplate(
     @Param('key', new ParseEnumPipe(SchoolEmailTemplateKey))
     key: SchoolEmailTemplateKey,
@@ -62,6 +110,24 @@ export class EmailTemplateController {
 
   @Post(':key/preview')
   @RequiredPermissions('settings.security.view')
+  @ApiOperation({
+    summary: 'Preview a school email template',
+    description:
+      'Renders an unsaved template preview and reports missing or unknown variables.',
+  })
+  @ApiParam({
+    name: 'key',
+    enum: SchoolEmailTemplateKey,
+    description: 'School email template key',
+  })
+  @ApiCreatedResponse({ type: EmailTemplatePreviewResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnprocessableEntityResponse({
+    description: 'settings.email.template_invalid',
+  })
+  @ApiForbiddenResponse({
+    description: 'Requires settings.security.view in the current school scope.',
+  })
   previewTemplate(
     @Param('key', new ParseEnumPipe(SchoolEmailTemplateKey))
     key: SchoolEmailTemplateKey,
@@ -72,6 +138,19 @@ export class EmailTemplateController {
 
   @Post(':key/reset-default')
   @RequiredPermissions('settings.security.manage')
+  @ApiOperation({
+    summary: 'Reset a school email template to the default content',
+  })
+  @ApiParam({
+    name: 'key',
+    enum: SchoolEmailTemplateKey,
+    description: 'School email template key',
+  })
+  @ApiCreatedResponse({ type: EmailTemplateResponseDto })
+  @ApiForbiddenResponse({
+    description:
+      'Requires settings.security.manage in the current school scope.',
+  })
   resetTemplate(
     @Param('key', new ParseEnumPipe(SchoolEmailTemplateKey))
     key: SchoolEmailTemplateKey,

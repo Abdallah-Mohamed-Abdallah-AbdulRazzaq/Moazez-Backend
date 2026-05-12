@@ -28,9 +28,29 @@ async function bootstrap(): Promise<void> {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Moazez API')
-    .setDescription('Moazez backend HTTP API')
+    .setDescription(
+      'Moazez backend HTTP API. All routes are served under /api/v1.',
+    )
     .setVersion('0.1.0')
     .addBearerAuth()
+    .addTag('auth', 'Authentication, sessions, and current actor identity')
+    .addTag('settings-users', 'School user identity management')
+    .addTag(
+      'settings-login-identity',
+      'School login domains, username policy, and generated login emails',
+    )
+    .addTag('settings-user-credentials', 'Password credential provisioning')
+    .addTag(
+      'settings-email-connection',
+      'School outbound email provider connection',
+    )
+    .addTag('settings-email-templates', 'School email templates and previews')
+    .addTag(
+      'settings-email-credential-deliveries',
+      'Queue-backed credential email delivery',
+    )
+    .addTag('settings-email-deliveries', 'Email delivery batch monitoring')
+    .addTag('settings-email-campaigns', 'General school email campaigns')
     .build();
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup(`${GLOBAL_PREFIX}/docs`, app, swaggerDocument);
@@ -44,7 +64,8 @@ async function bootstrap(): Promise<void> {
 }
 
 function logRegisteredRoutes(server: Express, logger: Logger): void {
-  const router = (server as unknown as { _router?: { stack: unknown[] } })._router;
+  const router = (server as unknown as { _router?: { stack: unknown[] } })
+    ._router;
   if (!router) return;
 
   const routes: string[] = [];
