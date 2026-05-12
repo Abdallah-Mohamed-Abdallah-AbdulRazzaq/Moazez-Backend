@@ -1308,6 +1308,68 @@ Deferred Phase 5 scope:
 
 Deferred items require future core/product decisions and must not be backdoored through Teacher App, Student App, Parent App, or any other app-facing composition module. Core modules remain the source of truth; app-facing modules remain read/composition layers over approved core behavior.
 
+## Sprint 11F Identity, Credentials, And Email Closeout Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+# Set SETTINGS_SECRET_ENCRYPTION_KEY for non-test/local environments when needed
+
+npm run infra:up
+npm run verify:sprint11f
+```
+
+For a human demo against a running app:
+
+```bash
+npm run start:dev
+```
+
+Sprint 11F closeout verification covers:
+
+- Login identity settings
+- Username-generated login email
+- Contact email separation
+- Credential provisioning
+- Change password
+- Student and guardian account linking
+- School email connection
+- School email templates
+- Credential delivery
+- General email campaigns
+- Delivery batches and recipients
+
+Source of truth rules:
+
+- Settings/IAM owns login identity and credentials.
+- Students/Guardians own student and guardian records and links.
+- Settings Email owns external school email delivery.
+- Communication Announcements are separate from external email campaigns.
+- Notification Center remains deferred.
+
+Safety rules:
+
+- Raw passwords are never stored.
+- Temporary passwords are one-time response values only.
+- SMTP/API secrets are encrypted and never returned.
+- Delivery is queue-backed.
+
+Deferred beyond Sprint 11F:
+
+- Schedule / Timetable
+- Homework
+- Pickup / Smart Pickup
+- Notification Center
+- Applicant Portal
+- Add Child
+- contact discovery / new conversations
+- message attachment/audio app routes
+- XP grants / reward redemption
+- profile/avatar/preferences
+- cross-school parent aggregation
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -1343,6 +1405,7 @@ Deferred items require future core/product decisions and must not be backdoored 
 | `npm run test:e2e:sprint7d`         | Run the Sprint 7D Teacher App final closeout e2e flow                                                                    |
 | `npm run test:e2e:sprint8f`         | Run the Sprint 8F Student App final closeout e2e flow                                                                    |
 | `npm run test:e2e:sprint9f`         | Run the Sprint 9F Parent App final closeout e2e flow                                                                     |
+| `npm run test:e2e:sprint11f`        | Run the Sprint 11F Identity, Credentials, and Email final closeout e2e flow                                               |
 | `npm run test:security`             | Tenancy isolation tests                                                                                                  |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                                             |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                                                   |
@@ -1368,6 +1431,7 @@ Deferred items require future core/product decisions and must not be backdoored 
 | `npm run verify:sprint8f`           | Run Sprint 7D verification coverage plus the Sprint 8F Student App final closeout e2e                                    |
 | `npm run verify:sprint9f`           | Run Sprint 8F verification coverage plus the Sprint 9F Parent App final closeout e2e                                     |
 | `npm run verify:phase5`             | Run the Phase 5 final verification entrypoint, currently delegating to `verify:sprint9f`                                  |
+| `npm run verify:sprint11f`          | Run the Phase 5 verification entrypoint plus the Sprint 11F Identity, Credentials, and Email closeout e2e                 |
 | `npm run seed`                      | Re-run idempotent seeds                                                                                                  |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                                                    |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                                               |
