@@ -121,6 +121,7 @@ export class TimetableConflictResponseDto {
   periodId!: string | null;
   entryId!: string | null;
   relatedEntryId!: string | null;
+  entryIds!: string[];
   teacherUserId!: string | null;
   roomId!: string | null;
   message!: string;
@@ -136,4 +137,39 @@ export class TimetablePreviewResponseDto {
   activeDays!: number[];
   entries!: TimetablePreviewEntryDto[];
   conflicts!: TimetableConflictResponseDto[];
+  publishReadiness!: TimetablePublishReadinessResponseDto;
+}
+
+export class TimetablePublishBlockingReasonResponseDto {
+  code!: string;
+  message!: string;
+  details?: Record<string, unknown>;
+}
+
+export class TimetablePublishReadinessResponseDto {
+  canPublish!: boolean;
+  blockingReasons!: TimetablePublishBlockingReasonResponseDto[];
+  warnings!: TimetablePublishBlockingReasonResponseDto[];
+}
+
+export class TimetablePublicationSummaryResponseDto {
+  periodsCount!: number;
+  instructionalPeriodsCount!: number;
+  entriesCount!: number;
+  conflictsCount!: number;
+  activeDays!: number[];
+  scopeType!: string;
+  academicYearId!: string;
+  termId!: string;
+}
+
+export class TimetablePublicationResponseDto {
+  timetableConfigId!: string;
+  status!: string;
+  revision!: number;
+  publishedAt!: string | null;
+  publishedByUserId!: string | null;
+  canPublish!: boolean;
+  blockingReasons!: TimetablePublishBlockingReasonResponseDto[];
+  summary!: TimetablePublicationSummaryResponseDto;
 }

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { TimetableEntryStatus } from '@prisma/client';
+import { assertConfigMutable } from '../domain/timetable-policy';
 import {
   TimetableConfigNotFoundException,
   TimetableEntryNotMutableException,
@@ -23,12 +24,6 @@ export class UpdateTimetableEntryUseCase {
     if (!existing) {
       throw new TimetableEntryNotFoundException({ entryId });
     }
-    if (existing.status !== TimetableEntryStatus.DRAFT) {
-      throw new TimetableEntryNotMutableException({
-        entryId,
-        status: existing.status,
-      });
-    }
 
     const existingConfig = await this.timetableRepository.findConfigById(
       existing.timetableConfigId,
@@ -36,6 +31,14 @@ export class UpdateTimetableEntryUseCase {
     if (!existingConfig) {
       throw new TimetableConfigNotFoundException({
         timetableConfigId: existing.timetableConfigId,
+      });
+    }
+    assertConfigMutable(existingConfig);
+
+    if (existing.status !== TimetableEntryStatus.DRAFT) {
+      throw new TimetableEntryNotMutableException({
+        entryId,
+        status: existing.status,
       });
     }
 

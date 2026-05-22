@@ -1,21 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { TimetableConfigNotFoundException } from '../domain/timetable.exceptions';
 import { TimetableConfigIdQueryDto } from '../dto/timetable.dto';
-import { TimetablePreviewResponseDto } from '../dto/timetable-response.dto';
+import { TimetablePublicationResponseDto } from '../dto/timetable-response.dto';
 import { TimetableRepository } from '../infrastructure/timetable.repository';
-import { presentTimetablePreview } from '../presenters/timetable.presenter';
+import { presentTimetablePublication } from '../presenters/timetable.presenter';
 import {
   buildTimetablePublishReadiness,
   loadTimetablePublicationDataset,
 } from './timetable-publication-readiness';
 
 @Injectable()
-export class GetTimetablePreviewUseCase {
+export class GetTimetablePublicationUseCase {
   constructor(private readonly timetableRepository: TimetableRepository) {}
 
   async execute(
     query: TimetableConfigIdQueryDto,
-  ): Promise<TimetablePreviewResponseDto> {
+  ): Promise<TimetablePublicationResponseDto> {
     const config = await this.timetableRepository.findConfigById(
       query.timetableConfigId,
     );
@@ -25,21 +25,19 @@ export class GetTimetablePreviewUseCase {
       });
     }
 
-    const dataset = await loadTimetablePublicationDataset(
-      this.timetableRepository,
-      config,
-    );
-    const publishReadiness = await buildTimetablePublishReadiness(
+    const [publication, dataset] = await Promise.all([
+      this.timetableRepository.findLatestPublicationByConfigId(config.id),
+      loadTimetablePublicationDataset(this.timetableRepository, config),
+    ]);
+    const readiness = await buildTimetablePublishReadiness(
       this.timetableRepository,
       dataset,
     );
 
-    return presentTimetablePreview({
+    return presentTimetablePublication({
       config,
-      periods: dataset.periods,
-      entries: dataset.entries,
-      conflicts: dataset.conflicts,
-      publishReadiness,
+      publication,
+      readiness,
     });
   }
 }

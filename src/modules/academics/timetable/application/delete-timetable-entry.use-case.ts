@@ -21,12 +21,6 @@ export class DeleteTimetableEntryUseCase {
     if (!entry) {
       throw new TimetableEntryNotFoundException({ entryId });
     }
-    if (entry.status !== TimetableEntryStatus.DRAFT) {
-      throw new TimetableEntryNotMutableException({
-        entryId,
-        status: entry.status,
-      });
-    }
 
     const config = await this.timetableRepository.findConfigById(
       entry.timetableConfigId,
@@ -37,6 +31,13 @@ export class DeleteTimetableEntryUseCase {
       });
     }
     assertConfigMutable(config);
+
+    if (entry.status !== TimetableEntryStatus.DRAFT) {
+      throw new TimetableEntryNotMutableException({
+        entryId,
+        status: entry.status,
+      });
+    }
 
     const term = await this.timetableRepository.findTermById(config.termId);
     if (term) assertTermWritable(term);

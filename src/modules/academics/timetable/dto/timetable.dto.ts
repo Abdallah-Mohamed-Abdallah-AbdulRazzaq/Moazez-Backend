@@ -81,6 +81,11 @@ export class TimetableConfigIdQueryDto {
   timetableConfigId!: string;
 }
 
+export class PublishTimetableDto {
+  @IsUUID()
+  timetableConfigId!: string;
+}
+
 export class CreateTimetablePeriodDto {
   @IsUUID()
   timetableConfigId!: string;

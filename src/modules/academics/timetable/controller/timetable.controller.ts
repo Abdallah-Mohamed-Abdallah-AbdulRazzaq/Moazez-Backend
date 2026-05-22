@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -26,9 +28,11 @@ import { DeleteTimetablePeriodUseCase } from '../application/delete-timetable-pe
 import { GetTimetableConfigUseCase } from '../application/get-timetable-config.use-case';
 import { GetTimetableEntryUseCase } from '../application/get-timetable-entry.use-case';
 import { GetTimetablePreviewUseCase } from '../application/get-timetable-preview.use-case';
+import { GetTimetablePublicationUseCase } from '../application/get-timetable-publication.use-case';
 import { ListTimetableConflictsUseCase } from '../application/list-timetable-conflicts.use-case';
 import { ListTimetableEntriesUseCase } from '../application/list-timetable-entries.use-case';
 import { ListTimetablePeriodsUseCase } from '../application/list-timetable-periods.use-case';
+import { PublishTimetableUseCase } from '../application/publish-timetable.use-case';
 import { UpdateTimetableEntryUseCase } from '../application/update-timetable-entry.use-case';
 import { UpdateTimetablePeriodUseCase } from '../application/update-timetable-period.use-case';
 import { UpsertTimetableConfigUseCase } from '../application/upsert-timetable-config.use-case';
@@ -37,6 +41,7 @@ import {
   CreateTimetablePeriodDto,
   GetTimetableConfigQueryDto,
   ListTimetableEntriesQueryDto,
+  PublishTimetableDto,
   TimetableConfigIdQueryDto,
   UpdateTimetableEntryDto,
   UpdateTimetablePeriodDto,
@@ -51,6 +56,7 @@ import {
   TimetableEntryResponseDto,
   TimetablePeriodResponseDto,
   TimetablePeriodsListResponseDto,
+  TimetablePublicationResponseDto,
   TimetablePreviewResponseDto,
 } from '../dto/timetable-response.dto';
 
@@ -72,6 +78,8 @@ export class TimetableController {
     private readonly deleteEntryUseCase: DeleteTimetableEntryUseCase,
     private readonly getPreviewUseCase: GetTimetablePreviewUseCase,
     private readonly listConflictsUseCase: ListTimetableConflictsUseCase,
+    private readonly getPublicationUseCase: GetTimetablePublicationUseCase,
+    private readonly publishTimetableUseCase: PublishTimetableUseCase,
   ) {}
 
   @Get('config')
@@ -214,5 +222,27 @@ export class TimetableController {
     @Query() query: TimetableConfigIdQueryDto,
   ): Promise<TimetableConflictsListResponseDto> {
     return this.listConflictsUseCase.execute(query);
+  }
+
+  @Get('publication')
+  @RequiredPermissions('academics.structure.view')
+  @ApiOperation({ summary: 'Get timetable publication state and readiness' })
+  @ApiOkResponse({ type: TimetablePublicationResponseDto })
+  publication(
+    @Query() query: TimetableConfigIdQueryDto,
+  ): Promise<TimetablePublicationResponseDto> {
+    return this.getPublicationUseCase.execute(query);
+  }
+
+  @Post('publish')
+  @HttpCode(HttpStatus.OK)
+  @RequiredPermissions('academics.structure.manage')
+  @ApiOperation({ summary: 'Publish a draft timetable config' })
+  @ApiBody({ type: PublishTimetableDto })
+  @ApiOkResponse({ type: TimetablePublicationResponseDto })
+  publish(
+    @Body() dto: PublishTimetableDto,
+  ): Promise<TimetablePublicationResponseDto> {
+    return this.publishTimetableUseCase.execute(dto);
   }
 }

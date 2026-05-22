@@ -1,10 +1,18 @@
 import {
+  TimetableConfigStatus,
+  TimetableConflictType,
+  TimetablePublicationStatus,
+} from '@prisma/client';
+import type {
   TimetableConfigRecord,
   TimetableConflictRecord,
   TimetableEntryRecord,
   TimetablePeriodRecord,
+  TimetablePublicationRecord,
 } from '../infrastructure/timetable.repository';
-import {
+import type {
+  TimetablePublicationResponseDto,
+  TimetablePublishReadinessResponseDto,
   TimetableConfigResponseDto,
   TimetableConflictResponseDto,
   TimetableConflictsListResponseDto,
@@ -15,7 +23,8 @@ import {
   TimetablePreviewEntryDto,
   TimetablePreviewResponseDto,
 } from '../dto/timetable-response.dto';
-import { ComputedTimetableConflict } from '../domain/timetable-conflicts';
+import type { ComputedTimetableConflict } from '../domain/timetable-conflicts';
+import type { TimetablePublishReadiness } from '../application/timetable-publication-readiness';
 
 export function presentTimetableConfig(
   config: TimetableConfigRecord,
@@ -144,13 +153,14 @@ export function presentTimetableConflict(
 ): TimetableConflictResponseDto {
   return {
     id: conflict.id,
-    type: conflict.conflictType.toLowerCase(),
+    type: presentTimetableConflictType(conflict.conflictType),
     severity: conflict.severity.toLowerCase(),
     status: conflict.status.toLowerCase(),
     dayOfWeek: conflict.dayOfWeek ?? null,
     periodId: conflict.periodId ?? null,
     entryId: conflict.entryId ?? null,
     relatedEntryId: conflict.relatedEntryId ?? null,
+    entryIds: presentTimetableConflictEntryIds(conflict),
     teacherUserId: conflict.teacherUserId ?? null,
     roomId: conflict.roomId ?? null,
     message: conflict.message,
@@ -170,6 +180,7 @@ export function presentTimetablePreview(input: {
   periods: TimetablePeriodRecord[];
   entries: TimetableEntryRecord[];
   conflicts: Array<TimetableConflictRecord | ComputedTimetableConflict>;
+  publishReadiness: TimetablePublishReadiness;
 }): TimetablePreviewResponseDto {
   return {
     config: presentTimetableConfig(input.config),
@@ -179,5 +190,68 @@ export function presentTimetablePreview(input: {
     conflicts: input.conflicts.map((conflict) =>
       presentTimetableConflict(conflict),
     ),
+    publishReadiness: presentTimetablePublishReadiness(input.publishReadiness),
   };
+}
+
+export function presentTimetablePublishReadiness(
+  readiness: TimetablePublishReadiness,
+): TimetablePublishReadinessResponseDto {
+  return {
+    canPublish: readiness.canPublish,
+    blockingReasons: readiness.blockingReasons,
+    warnings: readiness.warnings,
+  };
+}
+
+export function presentTimetablePublication(input: {
+  config: TimetableConfigRecord;
+  publication: TimetablePublicationRecord | null;
+  readiness: TimetablePublishReadiness;
+}): TimetablePublicationResponseDto {
+  return {
+    timetableConfigId: input.config.id,
+    status: (
+      input.publication?.status ??
+      (input.config.status === TimetableConfigStatus.ACTIVE
+        ? TimetablePublicationStatus.PUBLISHED
+        : TimetablePublicationStatus.DRAFT)
+    ).toLowerCase(),
+    revision: input.publication?.revision ?? 0,
+    publishedAt: input.publication?.publishedAt?.toISOString() ?? null,
+    publishedByUserId: input.publication?.publishedByUserId ?? null,
+    canPublish: input.readiness.canPublish,
+    blockingReasons: input.readiness.blockingReasons,
+    summary: {
+      periodsCount: input.readiness.summary.periodsCount,
+      instructionalPeriodsCount:
+        input.readiness.summary.instructionalPeriodsCount,
+      entriesCount: input.readiness.summary.entriesCount,
+      conflictsCount: input.readiness.summary.conflictsCount,
+      activeDays: input.readiness.summary.activeDays,
+      scopeType: input.readiness.summary.scopeType.toLowerCase(),
+      academicYearId: input.readiness.summary.academicYearId,
+      termId: input.readiness.summary.termId,
+    },
+  };
+}
+
+function presentTimetableConflictType(type: TimetableConflictType): string {
+  if (type === TimetableConflictType.CLASSROOM_SLOT) {
+    return 'CLASSROOM';
+  }
+
+  return type;
+}
+
+function presentTimetableConflictEntryIds(
+  conflict: TimetableConflictRecord | ComputedTimetableConflict,
+): string[] {
+  if ('entryIds' in conflict) {
+    return conflict.entryIds;
+  }
+
+  return [conflict.entryId, conflict.relatedEntryId].filter(
+    (entryId): entryId is string => Boolean(entryId),
+  );
 }

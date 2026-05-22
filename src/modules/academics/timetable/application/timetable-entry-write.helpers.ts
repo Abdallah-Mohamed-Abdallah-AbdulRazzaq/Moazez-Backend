@@ -1,7 +1,8 @@
-import { TimetableEntryStatus, TimetableScopeType } from '@prisma/client';
+import { TimetableEntryStatus } from '@prisma/client';
 import {
   assertConfigMutable,
   assertTermWritable,
+  classroomMatchesTimetableConfigScope,
 } from '../domain/timetable-policy';
 import {
   TimetableAllocationNotFoundException,
@@ -156,19 +157,7 @@ function assertClassroomMatchesConfigScope(
   config: TimetableConfigRecord,
   classroom: TimetableClassroomRecord,
 ): void {
-  if (config.scopeType === TimetableScopeType.TERM) {
-    return;
-  }
-
-  const matchesScope =
-    (config.scopeType === TimetableScopeType.GRADE &&
-      classroom.section.gradeId === config.gradeId) ||
-    (config.scopeType === TimetableScopeType.SECTION &&
-      classroom.sectionId === config.sectionId) ||
-    (config.scopeType === TimetableScopeType.CLASSROOM &&
-      classroom.id === config.classroomId);
-
-  if (!matchesScope) {
+  if (!classroomMatchesTimetableConfigScope(config, classroom)) {
     throw new TimetableClassroomScopeMismatchException({
       timetableConfigId: config.id,
       classroomId: classroom.id,

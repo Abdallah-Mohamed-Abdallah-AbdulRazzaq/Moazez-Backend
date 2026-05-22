@@ -188,6 +188,61 @@ export class TimetablePublishedLockedException extends DomainException {
   }
 }
 
+export class TimetablePublishBlockedException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.publish_blocked',
+      message: 'Timetable publish is blocked by validation failures',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class TimetableNoPeriodsException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.no_periods',
+      message: 'Timetable config must include at least one instructional period',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class TimetableNoEntriesException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.no_entries',
+      message: 'Timetable config must include at least one timetable entry',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class TimetableNotDraftException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.not_draft',
+      message: 'Only draft timetable configs can be published',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class TimetablePublicationNotFoundException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.publication_not_found',
+      message: 'Timetable publication was not found or is outside scope',
+      httpStatus: HttpStatus.NOT_FOUND,
+      details,
+    });
+  }
+}
+
 export class TimetableEntryConflictException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({

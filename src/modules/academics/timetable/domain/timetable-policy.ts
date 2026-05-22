@@ -54,3 +54,32 @@ export function assertConfigMutable(config: {
     });
   }
 }
+
+export function classroomMatchesTimetableConfigScope(
+  config: {
+    scopeType: TimetableScopeType;
+    gradeId: string | null;
+    sectionId: string | null;
+    classroomId: string | null;
+  },
+  classroom: {
+    id: string;
+    sectionId: string;
+    section: {
+      gradeId: string;
+    };
+  },
+): boolean {
+  if (config.scopeType === TimetableScopeType.TERM) {
+    return true;
+  }
+
+  return (
+    (config.scopeType === TimetableScopeType.GRADE &&
+      classroom.section.gradeId === config.gradeId) ||
+    (config.scopeType === TimetableScopeType.SECTION &&
+      classroom.sectionId === config.sectionId) ||
+    (config.scopeType === TimetableScopeType.CLASSROOM &&
+      classroom.id === config.classroomId)
+  );
+}

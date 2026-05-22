@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import {
   Prisma,
+  TimetableConfigStatus,
   TimetableEntryStatus,
+  TimetablePublicationStatus,
   TimetableScopeType,
 } from '@prisma/client';
 import { getRequestContext } from '../../../../common/context/request-context';
@@ -202,6 +204,23 @@ const TIMETABLE_CONFLICT_ARGS =
     },
   });
 
+const TIMETABLE_PUBLICATION_ARGS =
+  Prisma.validator<Prisma.TimetablePublicationDefaultArgs>()({
+    select: {
+      id: true,
+      schoolId: true,
+      academicYearId: true,
+      termId: true,
+      timetableConfigId: true,
+      status: true,
+      publishedAt: true,
+      publishedByUserId: true,
+      revision: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
 export type TimetableAcademicYearRecord = Prisma.AcademicYearGetPayload<
   typeof ACADEMIC_YEAR_ARGS
 >;
@@ -227,6 +246,9 @@ export type TimetableEntryRecord = Prisma.TimetableEntryGetPayload<
 >;
 export type TimetableConflictRecord = Prisma.TimetableConflictGetPayload<
   typeof TIMETABLE_CONFLICT_ARGS
+>;
+export type TimetablePublicationRecord = Prisma.TimetablePublicationGetPayload<
+  typeof TIMETABLE_PUBLICATION_ARGS
 >;
 
 export type DeleteTimetablePeriodResult =
@@ -541,5 +563,61 @@ export class TimetableRepository {
       orderBy: [{ detectedAt: 'desc' }],
       ...TIMETABLE_CONFLICT_ARGS,
     });
+  }
+
+  findLatestPublicationByConfigId(
+    timetableConfigId: string,
+  ): Promise<TimetablePublicationRecord | null> {
+    return this.scopedPrisma.timetablePublication.findFirst({
+      where: { timetableConfigId },
+      orderBy: [{ revision: 'desc' }, { createdAt: 'desc' }],
+      ...TIMETABLE_PUBLICATION_ARGS,
+    });
+  }
+
+  async publishConfig(input: {
+    config: TimetableConfigRecord;
+    revision: number;
+    publishedAt: Date;
+    publishedByUserId: string | null;
+  }): Promise<{
+    config: TimetableConfigRecord;
+    publication: TimetablePublicationRecord;
+    activatedEntriesCount: number;
+  }> {
+    const [publication, config, activatedEntries] =
+      await this.scopedPrisma.$transaction([
+        this.scopedPrisma.timetablePublication.create({
+          data: {
+            schoolId: input.config.schoolId,
+            academicYearId: input.config.academicYearId,
+            termId: input.config.termId,
+            timetableConfigId: input.config.id,
+            status: TimetablePublicationStatus.PUBLISHED,
+            publishedAt: input.publishedAt,
+            publishedByUserId: input.publishedByUserId,
+            revision: input.revision,
+          },
+          ...TIMETABLE_PUBLICATION_ARGS,
+        }),
+        this.scopedPrisma.timetableConfig.update({
+          where: { id: input.config.id },
+          data: { status: TimetableConfigStatus.ACTIVE },
+          ...TIMETABLE_CONFIG_ARGS,
+        }),
+        this.scopedPrisma.timetableEntry.updateMany({
+          where: {
+            timetableConfigId: input.config.id,
+            status: TimetableEntryStatus.DRAFT,
+          },
+          data: { status: TimetableEntryStatus.ACTIVE },
+        }),
+      ]);
+
+    return {
+      publication,
+      config,
+      activatedEntriesCount: activatedEntries.count,
+    };
   }
 }

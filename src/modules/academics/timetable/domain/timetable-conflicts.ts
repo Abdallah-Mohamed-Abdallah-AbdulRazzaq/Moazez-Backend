@@ -15,6 +15,7 @@ export interface ComputedTimetableConflict {
   periodId: string | null;
   entryId: string | null;
   relatedEntryId: string | null;
+  entryIds: string[];
   teacherUserId: string | null;
   roomId: string | null;
   message: string;
@@ -90,6 +91,7 @@ function buildConflict(
     periodId: first.periodId,
     entryId: first.id,
     relatedEntryId: second.id,
+    entryIds: [first.id, second.id],
     teacherUserId: kind === 'teacher' ? first.teacherUserId : null,
     roomId: kind === 'room' ? first.roomId : null,
     message: messageFor(kind),

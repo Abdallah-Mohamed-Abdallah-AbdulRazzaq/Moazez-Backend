@@ -7,9 +7,12 @@ import { DeleteTimetablePeriodUseCase } from './application/delete-timetable-per
 import { GetTimetableConfigUseCase } from './application/get-timetable-config.use-case';
 import { GetTimetableEntryUseCase } from './application/get-timetable-entry.use-case';
 import { GetTimetablePreviewUseCase } from './application/get-timetable-preview.use-case';
+import { GetTimetablePublicationUseCase } from './application/get-timetable-publication.use-case';
 import { ListTimetableConflictsUseCase } from './application/list-timetable-conflicts.use-case';
 import { ListTimetableEntriesUseCase } from './application/list-timetable-entries.use-case';
 import { ListTimetablePeriodsUseCase } from './application/list-timetable-periods.use-case';
+import { PublishTimetableUseCase } from './application/publish-timetable.use-case';
+import { TimetableAttendanceCompatibilityService } from './application/timetable-attendance-compatibility.service';
 import { UpdateTimetableEntryUseCase } from './application/update-timetable-entry.use-case';
 import { UpdateTimetablePeriodUseCase } from './application/update-timetable-period.use-case';
 import { UpsertTimetableConfigUseCase } from './application/upsert-timetable-config.use-case';
@@ -34,7 +37,10 @@ import { TimetableRepository } from './infrastructure/timetable.repository';
     DeleteTimetableEntryUseCase,
     GetTimetablePreviewUseCase,
     ListTimetableConflictsUseCase,
+    GetTimetablePublicationUseCase,
+    PublishTimetableUseCase,
+    TimetableAttendanceCompatibilityService,
   ],
-  exports: [TimetableRepository],
+  exports: [TimetableRepository, TimetableAttendanceCompatibilityService],
 })
 export class TimetableModule {}

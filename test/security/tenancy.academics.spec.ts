@@ -1275,6 +1275,13 @@ describe('Academics tenancy isolation (security)', () => {
     expect(previewResponse.body.config.id).toBe(demoTimetableConfigId);
     expect(previewResponse.body.entries).toEqual([]);
     expect(previewResponse.body.conflicts).toEqual([]);
+    expect(previewResponse.body.publishReadiness).toMatchObject({
+      canPublish: false,
+      blockingReasons: expect.arrayContaining([
+        expect.objectContaining({ code: 'no_entries' }),
+      ]),
+    });
+    expectNoTenantIds(previewResponse.body);
 
     const conflictsResponse = await request(app.getHttpServer())
       .get(
@@ -1284,6 +1291,26 @@ describe('Academics tenancy isolation (security)', () => {
       .expect(200);
 
     expect(conflictsResponse.body.items).toEqual([]);
+    expectNoTenantIds(conflictsResponse.body);
+
+    const publicationResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/publication?timetableConfigId=${demoTimetableConfigId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(publicationResponse.body).toMatchObject({
+      timetableConfigId: demoTimetableConfigId,
+      status: 'draft',
+      revision: 0,
+      canPublish: false,
+      summary: {
+        periodsCount: 1,
+        entriesCount: 0,
+      },
+    });
+    expectNoTenantIds(publicationResponse.body);
   });
 
   it('school A admin can create/list/detail/update/delete own timetable entries without tenant ids', async () => {
@@ -1426,6 +1453,31 @@ describe('Academics tenancy isolation (security)', () => {
         `${GLOBAL_PREFIX}/academics/timetable/periods?timetableConfigId=${tenantBTimetableConfigId}`,
       )
       .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.config_not_found',
+        );
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/publication?timetableConfigId=${tenantBTimetableConfigId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.config_not_found',
+        );
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/publish`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ timetableConfigId: tenantBTimetableConfigId })
       .expect(404)
       .expect((response) => {
         expect(response.body?.error?.code).toBe(
@@ -1658,6 +1710,39 @@ describe('Academics tenancy isolation (security)', () => {
         expect(response.body.id).toBe(demoTimetableEntryId);
       });
 
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/publication?timetableConfigId=${demoTimetableConfigId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.timetableConfigId).toBe(demoTimetableConfigId);
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/preview?timetableConfigId=${demoTimetableConfigId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.config.id).toBe(demoTimetableConfigId);
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/conflicts?timetableConfigId=${demoTimetableConfigId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(Array.isArray(response.body.items)).toBe(true);
+        expectNoTenantIds(response.body);
+      });
+
     const response = await request(app.getHttpServer())
       .put(`${GLOBAL_PREFIX}/academics/timetable/config`)
       .set('Authorization', `Bearer ${accessToken}`)
@@ -1698,9 +1783,140 @@ describe('Academics tenancy isolation (security)', () => {
       )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(403);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/publish`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ timetableConfigId: demoTimetableConfigId })
+      .expect(403);
   });
 
-  it('does not register app-facing schedule routes in Sprint 12C', async () => {
+  it('school admin can publish own timetable and published configs are locked', async () => {
+    if (
+      !demoTimetableConfigId ||
+      !demoTimetablePeriodId ||
+      !demoTimetableEntryId
+    ) {
+      throw new Error('Demo timetable entry must be created first.');
+    }
+
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const attendanceSessionCountBefore = await prisma.attendanceSession.count({
+      where: { schoolId: demoSchoolId },
+    });
+
+    const publishResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/publish`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ timetableConfigId: demoTimetableConfigId })
+      .expect(200);
+
+    expect(publishResponse.body).toMatchObject({
+      timetableConfigId: demoTimetableConfigId,
+      status: 'published',
+      revision: 1,
+      publishedByUserId: expect.any(String),
+      summary: {
+        periodsCount: 1,
+        entriesCount: 1,
+        conflictsCount: 0,
+      },
+    });
+    expectNoTenantIds(publishResponse.body);
+
+    const [config, entry, publication, attendanceSessionCountAfter] =
+      await Promise.all([
+        prisma.timetableConfig.findUnique({
+          where: { id: demoTimetableConfigId },
+          select: { status: true },
+        }),
+        prisma.timetableEntry.findUnique({
+          where: { id: demoTimetableEntryId },
+          select: { status: true },
+        }),
+        prisma.timetablePublication.findFirst({
+          where: { timetableConfigId: demoTimetableConfigId },
+          select: {
+            status: true,
+            revision: true,
+            publishedAt: true,
+            publishedByUserId: true,
+          },
+        }),
+        prisma.attendanceSession.count({ where: { schoolId: demoSchoolId } }),
+      ]);
+
+    expect(config?.status).toBe(TimetableConfigStatus.ACTIVE);
+    expect(entry?.status).toBe(TimetableEntryStatus.ACTIVE);
+    expect(publication).toMatchObject({
+      status: 'PUBLISHED',
+      revision: 1,
+      publishedByUserId: expect.any(String),
+    });
+    expect(publication?.publishedAt).toBeTruthy();
+    expect(attendanceSessionCountAfter).toBe(attendanceSessionCountBefore);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/publication?timetableConfigId=${demoTimetableConfigId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.status).toBe('published');
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/academics/timetable/config`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        name: 'Should Not Mutate Published Timetable',
+      })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.published_locked',
+        );
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/periods`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        timetableConfigId: demoTimetableConfigId,
+        index: 2,
+        label: 'Should Not Mutate',
+        startTime: '09:00',
+        endTime: '09:45',
+      })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.published_locked',
+        );
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${demoTimetableEntryId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ notes: 'Should Not Mutate Published Entry' })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.published_locked',
+        );
+        expectNoTenantIds(response.body);
+      });
+  });
+
+  it('does not register app-facing schedule routes in Sprint 12D', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     await request(app.getHttpServer())

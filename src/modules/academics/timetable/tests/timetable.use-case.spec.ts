@@ -5,6 +5,7 @@ import {
   TimetableConflictStatus,
   TimetableEntryStatus,
   TimetablePeriodType,
+  TimetablePublicationStatus,
   TimetableScopeType,
   UserType,
 } from '@prisma/client';
@@ -21,9 +22,13 @@ import { DeleteTimetableEntryUseCase } from '../application/delete-timetable-ent
 import { DeleteTimetablePeriodUseCase } from '../application/delete-timetable-period.use-case';
 import { GetTimetableConfigUseCase } from '../application/get-timetable-config.use-case';
 import { GetTimetableEntryUseCase } from '../application/get-timetable-entry.use-case';
+import { GetTimetablePreviewUseCase } from '../application/get-timetable-preview.use-case';
+import { GetTimetablePublicationUseCase } from '../application/get-timetable-publication.use-case';
 import { ListTimetableConflictsUseCase } from '../application/list-timetable-conflicts.use-case';
 import { ListTimetableEntriesUseCase } from '../application/list-timetable-entries.use-case';
 import { ListTimetablePeriodsUseCase } from '../application/list-timetable-periods.use-case';
+import { PublishTimetableUseCase } from '../application/publish-timetable.use-case';
+import { deriveTimetableAttendanceCompatibilityKey } from '../application/timetable-attendance-compatibility.service';
 import { UpdateTimetableEntryUseCase } from '../application/update-timetable-entry.use-case';
 import { UpdateTimetablePeriodUseCase } from '../application/update-timetable-period.use-case';
 import { UpsertTimetableConfigUseCase } from '../application/upsert-timetable-config.use-case';
@@ -39,6 +44,9 @@ type PeriodRecord = Awaited<
 type EntryRecord = Awaited<
   ReturnType<TimetableRepository['listEntriesForConfig']>
 >[number];
+type PublicationRecord = NonNullable<
+  Awaited<ReturnType<TimetableRepository['findLatestPublicationByConfigId']>>
+>;
 type ClassroomRecord = NonNullable<
   Awaited<ReturnType<TimetableRepository['findClassroomById']>>
 >;
@@ -69,6 +77,7 @@ describe('Timetable use cases', () => {
     configs?: NonNullable<ConfigRecord>[];
     periods?: NonNullable<PeriodRecord>[];
     entries?: EntryRecord[];
+    publications?: PublicationRecord[];
     classrooms?: ClassroomRecord[];
     rooms?: RoomRecord[];
     allocations?: AllocationRecord[];
@@ -77,6 +86,7 @@ describe('Timetable use cases', () => {
     const configs = [...(seed?.configs ?? [])];
     const periods = [...(seed?.periods ?? [])];
     const entries = [...(seed?.entries ?? [])];
+    const publications = [...(seed?.publications ?? [])];
     const classrooms = seed?.classrooms ?? [seedClassroom()];
     const rooms = seed?.rooms ?? [seedRoom()];
     const allocations = seed?.allocations ?? [seedAllocation()];
@@ -407,6 +417,54 @@ describe('Timetable use cases', () => {
         return { status: 'deleted' as const };
       }),
       listPersistedConflicts: jest.fn().mockResolvedValue(conflicts),
+      findLatestPublicationByConfigId: jest
+        .fn()
+        .mockImplementation(async (configId: string) => {
+          const matches = publications
+            .filter(
+              (publication) => publication.timetableConfigId === configId,
+            )
+            .sort((left, right) => right.revision - left.revision);
+
+          return matches[0] ?? null;
+        }),
+      publishConfig: jest.fn().mockImplementation(async (input) => {
+        const config = configs.find((item) => item.id === input.config.id);
+        if (!config) throw new Error('missing config');
+        config.status = TimetableConfigStatus.ACTIVE;
+        config.updatedAt = input.publishedAt;
+
+        const activatedEntries = entries.filter(
+          (entry) =>
+            entry.timetableConfigId === config.id &&
+            entry.status === TimetableEntryStatus.DRAFT,
+        );
+        for (const entry of activatedEntries) {
+          entry.status = TimetableEntryStatus.ACTIVE;
+          entry.updatedAt = input.publishedAt;
+        }
+
+        const publication: PublicationRecord = {
+          id: `publication-${publications.length + 1}`,
+          schoolId: config.schoolId,
+          academicYearId: config.academicYearId,
+          termId: config.termId,
+          timetableConfigId: config.id,
+          status: TimetablePublicationStatus.PUBLISHED,
+          publishedAt: input.publishedAt,
+          publishedByUserId: input.publishedByUserId,
+          revision: input.revision,
+          createdAt: input.publishedAt,
+          updatedAt: input.publishedAt,
+        };
+        publications.push(publication);
+
+        return {
+          config,
+          publication,
+          activatedEntriesCount: activatedEntries.length,
+        };
+      }),
     } as unknown as TimetableRepository;
   }
 
@@ -529,6 +587,25 @@ describe('Timetable use cases', () => {
         lastName: 'One',
       },
       room: null,
+      createdAt: new Date('2026-05-22T10:00:00.000Z'),
+      updatedAt: new Date('2026-05-22T10:00:00.000Z'),
+      ...overrides,
+    };
+  }
+
+  function seedPublication(
+    overrides: Partial<PublicationRecord> = {},
+  ): PublicationRecord {
+    return {
+      id: 'publication-1',
+      schoolId: 'school-1',
+      academicYearId: 'year-1',
+      termId: 'term-1',
+      timetableConfigId: 'config-1',
+      status: TimetablePublicationStatus.PUBLISHED,
+      publishedAt: new Date('2026-05-22T10:00:00.000Z'),
+      publishedByUserId: 'user-1',
+      revision: 1,
       createdAt: new Date('2026-05-22T10:00:00.000Z'),
       updatedAt: new Date('2026-05-22T10:00:00.000Z'),
       ...overrides,
@@ -1155,7 +1232,8 @@ describe('Timetable use cases', () => {
       });
       expect(response.items).toHaveLength(1);
       expect(response.items[0]).toMatchObject({
-        type: 'teacher',
+        type: 'TEACHER',
+        entryIds: ['entry-1', 'entry-2'],
         severity: TimetableConflictSeverity.BLOCKING.toLowerCase(),
         status: TimetableConflictStatus.OPEN.toLowerCase(),
         teacherUserId: 'teacher-1',
@@ -1183,6 +1261,290 @@ describe('Timetable use cases', () => {
     ];
 
     expect(computeTimetableConflicts(entries)).toEqual([]);
+  });
+
+  it('publishes a valid draft timetable and marks config and entries active', async () => {
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      entries: [seedEntry()],
+    });
+    const publish = new PublishTimetableUseCase(repository);
+    const publication = new GetTimetablePublicationUseCase(repository);
+
+    await withScope(async () => {
+      const result = await publish.execute({ timetableConfigId: 'config-1' });
+
+      expect(result).toMatchObject({
+        timetableConfigId: 'config-1',
+        status: 'published',
+        revision: 1,
+        publishedByUserId: 'user-1',
+        canPublish: false,
+        summary: {
+          periodsCount: 1,
+          instructionalPeriodsCount: 1,
+          entriesCount: 1,
+          conflictsCount: 0,
+          scopeType: 'term',
+          academicYearId: 'year-1',
+          termId: 'term-1',
+        },
+      });
+      expect(result.publishedAt).toBeTruthy();
+      expect(result).not.toHaveProperty('schoolId');
+      expect(result).not.toHaveProperty('organizationId');
+      expect(repository.publishConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({ id: 'config-1' }),
+          revision: 1,
+          publishedByUserId: 'user-1',
+        }),
+      );
+
+      await expect(
+        publication.execute({ timetableConfigId: 'config-1' }),
+      ).resolves.toMatchObject({
+        status: 'published',
+        revision: 1,
+        canPublish: false,
+      });
+    });
+  });
+
+  it('blocks publish when there are no instructional periods', async () => {
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [
+        seedPeriod({
+          type: TimetablePeriodType.BREAK,
+          isInstructional: false,
+        }),
+      ],
+      entries: [seedEntry()],
+    });
+    const publish = new PublishTimetableUseCase(repository);
+
+    await withScope(async () => {
+      await expect(
+        publish.execute({ timetableConfigId: 'config-1' }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.no_periods',
+      });
+      expect(repository.publishConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  it('blocks publish when there are no schedulable entries', async () => {
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      entries: [seedEntry({ status: TimetableEntryStatus.CANCELLED })],
+    });
+    const publish = new PublishTimetableUseCase(repository);
+
+    await withScope(async () => {
+      await expect(
+        publish.execute({ timetableConfigId: 'config-1' }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.no_entries',
+      });
+      expect(repository.publishConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  it('blocks publish when current computed conflicts exist', async () => {
+    const period = seedPeriod();
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [period],
+      classrooms: [
+        seedClassroom(),
+        seedClassroom({
+          id: 'classroom-2',
+          sectionId: 'section-2',
+          section: { id: 'section-2', gradeId: 'grade-1' },
+        }),
+      ],
+      allocations: [
+        seedAllocation(),
+        seedAllocation({
+          id: 'allocation-2',
+          teacherUserId: 'teacher-1',
+          subjectId: 'subject-2',
+          classroomId: 'classroom-2',
+        }),
+      ],
+      entries: [
+        seedEntry({ id: 'entry-1', period }),
+        seedEntry({
+          id: 'entry-2',
+          period,
+          sectionId: 'section-2',
+          classroomId: 'classroom-2',
+          subjectId: 'subject-2',
+          teacherUserId: 'teacher-1',
+          teacherSubjectAllocationId: 'allocation-2',
+        }),
+      ],
+    });
+    const publish = new PublishTimetableUseCase(repository);
+
+    await withScope(async () => {
+      await expect(
+        publish.execute({ timetableConfigId: 'config-1' }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.publish_blocked',
+        details: {
+          blockingReasons: expect.arrayContaining([
+            expect.objectContaining({ code: 'conflicts' }),
+          ]),
+        },
+      });
+      expect(repository.publishConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  it('rejects publish for already active timetable configs', async () => {
+    const repository = createRepository({
+      configs: [seedConfig({ status: TimetableConfigStatus.ACTIVE })],
+      periods: [seedPeriod()],
+      entries: [seedEntry({ status: TimetableEntryStatus.ACTIVE })],
+      publications: [seedPublication()],
+    });
+    const publish = new PublishTimetableUseCase(repository);
+
+    await withScope(async () => {
+      await expect(
+        publish.execute({ timetableConfigId: 'config-1' }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.not_draft',
+      });
+      expect(repository.publishConfig).not.toHaveBeenCalled();
+    });
+  });
+
+  it('returns preview publish readiness and ignores cancelled entries in conflicts', async () => {
+    const period = seedPeriod();
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [period],
+      entries: [
+        seedEntry({ id: 'entry-1', period }),
+        seedEntry({
+          id: 'entry-2',
+          period,
+          status: TimetableEntryStatus.CANCELLED,
+        }),
+      ],
+    });
+    const preview = new GetTimetablePreviewUseCase(repository);
+    const conflicts = new ListTimetableConflictsUseCase(repository);
+
+    await withScope(async () => {
+      await expect(
+        conflicts.execute({ timetableConfigId: 'config-1' }),
+      ).resolves.toEqual({ items: [] });
+
+      const response = await preview.execute({ timetableConfigId: 'config-1' });
+      expect(response.publishReadiness).toMatchObject({
+        canPublish: true,
+        blockingReasons: [],
+        warnings: [],
+      });
+      expect(response.conflicts).toEqual([]);
+      expect(response).not.toHaveProperty('schoolId');
+      expect(response).not.toHaveProperty('organizationId');
+    });
+  });
+
+  it('blocks config period and entry mutations after publish', async () => {
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      entries: [seedEntry()],
+    });
+    const publish = new PublishTimetableUseCase(repository);
+    const upsertConfig = new UpsertTimetableConfigUseCase(repository);
+    const createPeriod = new CreateTimetablePeriodUseCase(repository);
+    const updatePeriod = new UpdateTimetablePeriodUseCase(repository);
+    const removePeriod = new DeleteTimetablePeriodUseCase(repository);
+    const createEntry = new CreateTimetableEntryUseCase(repository);
+    const updateEntry = new UpdateTimetableEntryUseCase(repository);
+    const removeEntry = new DeleteTimetableEntryUseCase(repository);
+
+    await withScope(async () => {
+      await publish.execute({ timetableConfigId: 'config-1' });
+
+      await expect(
+        upsertConfig.execute({
+          academicYearId: 'year-1',
+          termId: 'term-1',
+          name: 'Locked',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.published_locked',
+      });
+      await expect(
+        createPeriod.execute({
+          timetableConfigId: 'config-1',
+          index: 2,
+          label: 'Period 2',
+          startTime: '09:00',
+          endTime: '09:45',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.published_locked',
+      });
+      await expect(
+        updatePeriod.execute('period-1', { label: 'Locked' }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.published_locked',
+      });
+      await expect(removePeriod.execute('period-1')).rejects.toMatchObject({
+        code: 'academics.timetable.published_locked',
+      });
+      await expect(
+        createEntry.execute({
+          timetableConfigId: 'config-1',
+          periodId: 'period-1',
+          dayOfWeek: 1,
+          classroomId: 'classroom-1',
+          teacherSubjectAllocationId: 'allocation-1',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.published_locked',
+      });
+      await expect(
+        updateEntry.execute('entry-1', { notes: 'Locked' }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.published_locked',
+      });
+      await expect(removeEntry.execute('entry-1')).rejects.toMatchObject({
+        code: 'academics.timetable.published_locked',
+      });
+    });
+  });
+
+  it('derives a stable internal attendance compatibility key from a timetable entry', () => {
+    const key = deriveTimetableAttendanceCompatibilityKey(
+      seedEntry(),
+      '2026-09-15',
+    );
+
+    expect(key).toEqual({
+      timetableEntryId: 'entry-1',
+      date: '2026-09-15',
+      academicYearId: 'year-1',
+      termId: 'term-1',
+      classroomId: 'classroom-1',
+      periodId: 'period-1',
+      periodKey: 'timetable-entry:entry-1',
+      periodLabel: 'Period 1',
+      periodStartTime: '08:00',
+      periodEndTime: '08:45',
+      teacherSubjectAllocationId: 'allocation-1',
+    });
   });
 
   it('keeps timetable repository reads and updates on scoped Prisma', async () => {

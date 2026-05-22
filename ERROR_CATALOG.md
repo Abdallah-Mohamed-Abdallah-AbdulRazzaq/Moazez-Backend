@@ -157,6 +157,11 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `academics.timetable.period_in_use` | 409 | Timetable period is used by timetable entries   |
 | `academics.timetable.closed_term` | 409 | Term is closed for timetable changes             |
 | `academics.timetable.published_locked` | 409 | Published timetable config cannot be changed directly |
+| `academics.timetable.publish_blocked` | 409 | Timetable publish is blocked by validation failures |
+| `academics.timetable.no_periods` | 409 | Timetable config must include at least one instructional period |
+| `academics.timetable.no_entries` | 409 | Timetable config must include at least one timetable entry |
+| `academics.timetable.not_draft` | 409 | Only draft timetable configs can be published |
+| `academics.timetable.publication_not_found` | 404 | Timetable publication was not found or is outside scope |
 | `academics.timetable.entry_conflict` | 409 | Timetable entry has a scheduling conflict       |
 | `academics.timetable.teacher_conflict` | 409 | Teacher is already scheduled in this period   |
 | `academics.timetable.room_conflict` | 409 | Room is already scheduled in this period       |
