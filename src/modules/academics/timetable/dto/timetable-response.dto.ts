@@ -41,6 +41,63 @@ export class DeleteTimetablePeriodResponseDto {
   ok!: boolean;
 }
 
+export class TimetableEntryPeriodSummaryDto {
+  id!: string;
+  index!: number;
+  label!: string;
+  startTime!: string;
+  endTime!: string;
+}
+
+export class TimetableEntryClassroomSummaryDto {
+  id!: string;
+  nameAr!: string;
+  nameEn!: string;
+}
+
+export class TimetableEntrySubjectSummaryDto {
+  id!: string;
+  nameAr!: string;
+  nameEn!: string;
+  code!: string | null;
+}
+
+export class TimetableEntryTeacherSummaryDto {
+  userId!: string;
+  fullName!: string;
+}
+
+export class TimetableEntryRoomSummaryDto {
+  id!: string;
+  nameAr!: string;
+  nameEn!: string;
+}
+
+export class TimetableEntryResponseDto {
+  id!: string;
+  timetableConfigId!: string;
+  periodId!: string;
+  dayOfWeek!: number;
+  period!: TimetableEntryPeriodSummaryDto;
+  classroom!: TimetableEntryClassroomSummaryDto;
+  subject!: TimetableEntrySubjectSummaryDto;
+  teacher!: TimetableEntryTeacherSummaryDto;
+  room!: TimetableEntryRoomSummaryDto | null;
+  teacherSubjectAllocationId!: string;
+  notes!: string | null;
+  status!: string;
+  createdAt!: string;
+  updatedAt!: string;
+}
+
+export class TimetableEntriesListResponseDto {
+  items!: TimetableEntryResponseDto[];
+}
+
+export class DeleteTimetableEntryResponseDto {
+  ok!: boolean;
+}
+
 export class TimetablePreviewEntryDto {
   id!: string;
   dayOfWeek!: number;

@@ -16,6 +16,7 @@ import {
 } from 'class-validator';
 import {
   TimetableConfigStatus,
+  TimetableEntryStatus,
   TimetablePeriodType,
   TimetableScopeType,
 } from '@prisma/client';
@@ -139,4 +140,109 @@ export class UpdateTimetablePeriodDto {
   @IsOptional()
   @IsBoolean()
   isInstructional?: boolean;
+}
+
+export class TimetableEntryIdParamDto {
+  @IsUUID()
+  entryId!: string;
+}
+
+export class ListTimetableEntriesQueryDto extends TimetableConfigIdQueryDto {
+  @IsOptional()
+  @IsUUID()
+  classroomId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  teacherUserId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  subjectId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  roomId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  dayOfWeek?: number;
+
+  @IsOptional()
+  @IsEnum(TimetableEntryStatus)
+  status?: TimetableEntryStatus;
+}
+
+export class CreateTimetableEntryDto {
+  @IsUUID()
+  timetableConfigId!: string;
+
+  @IsUUID()
+  periodId!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  dayOfWeek!: number;
+
+  @IsUUID()
+  classroomId!: string;
+
+  // The use-case derives subjectId from teacherSubjectAllocationId and validates
+  // this optional value when callers send it for compatibility.
+  @IsOptional()
+  @IsUUID()
+  subjectId?: string;
+
+  @IsUUID()
+  teacherSubjectAllocationId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  roomId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string | null;
+}
+
+export class UpdateTimetableEntryDto {
+  @IsOptional()
+  @IsUUID()
+  periodId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  dayOfWeek?: number;
+
+  @IsOptional()
+  @IsUUID()
+  classroomId?: string;
+
+  // The use-case derives subjectId from teacherSubjectAllocationId and validates
+  // this optional value when callers send it for compatibility.
+  @IsOptional()
+  @IsUUID()
+  subjectId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  teacherSubjectAllocationId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  roomId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string | null;
 }

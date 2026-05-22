@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, TimetableScopeType } from '@prisma/client';
+import {
+  Prisma,
+  TimetableEntryStatus,
+  TimetableScopeType,
+} from '@prisma/client';
 import { getRequestContext } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 
@@ -40,6 +44,8 @@ const CLASSROOM_ARGS = Prisma.validator<Prisma.ClassroomDefaultArgs>()({
     id: true,
     schoolId: true,
     sectionId: true,
+    nameAr: true,
+    nameEn: true,
     section: {
       select: {
         id: true,
@@ -48,6 +54,27 @@ const CLASSROOM_ARGS = Prisma.validator<Prisma.ClassroomDefaultArgs>()({
     },
   },
 });
+
+const ROOM_ARGS = Prisma.validator<Prisma.RoomDefaultArgs>()({
+  select: {
+    id: true,
+    schoolId: true,
+    nameAr: true,
+    nameEn: true,
+  },
+});
+
+const TEACHER_ALLOCATION_ARGS =
+  Prisma.validator<Prisma.TeacherSubjectAllocationDefaultArgs>()({
+    select: {
+      id: true,
+      schoolId: true,
+      teacherUserId: true,
+      subjectId: true,
+      classroomId: true,
+      termId: true,
+    },
+  });
 
 const TIMETABLE_CONFIG_ARGS =
   Prisma.validator<Prisma.TimetableConfigDefaultArgs>()({
@@ -115,6 +142,37 @@ const TIMETABLE_ENTRY_ARGS =
           endTime: true,
         },
       },
+      classroom: {
+        select: {
+          id: true,
+          nameAr: true,
+          nameEn: true,
+        },
+      },
+      subject: {
+        select: {
+          id: true,
+          nameAr: true,
+          nameEn: true,
+          code: true,
+        },
+      },
+      teacherUser: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
+      room: {
+        select: {
+          id: true,
+          nameAr: true,
+          nameEn: true,
+        },
+      },
+      createdAt: true,
+      updatedAt: true,
     },
   });
 
@@ -149,11 +207,15 @@ export type TimetableAcademicYearRecord = Prisma.AcademicYearGetPayload<
 >;
 export type TimetableTermRecord = Prisma.TermGetPayload<typeof TERM_ARGS>;
 export type TimetableGradeRecord = Prisma.GradeGetPayload<typeof GRADE_ARGS>;
-export type TimetableSectionRecord =
-  Prisma.SectionGetPayload<typeof SECTION_ARGS>;
+export type TimetableSectionRecord = Prisma.SectionGetPayload<
+  typeof SECTION_ARGS
+>;
 export type TimetableClassroomRecord = Prisma.ClassroomGetPayload<
   typeof CLASSROOM_ARGS
 >;
+export type TimetableRoomRecord = Prisma.RoomGetPayload<typeof ROOM_ARGS>;
+export type TimetableTeacherAllocationRecord =
+  Prisma.TeacherSubjectAllocationGetPayload<typeof TEACHER_ALLOCATION_ARGS>;
 export type TimetableConfigRecord = Prisma.TimetableConfigGetPayload<
   typeof TIMETABLE_CONFIG_ARGS
 >;
@@ -172,6 +234,20 @@ export type DeleteTimetablePeriodResult =
   | { status: 'not_found' }
   | { status: 'in_use'; entryCount: number };
 
+export type DeleteTimetableEntryResult =
+  | { status: 'deleted' }
+  | { status: 'not_found' };
+
+export interface ListTimetableEntriesFilters {
+  timetableConfigId: string;
+  classroomId?: string;
+  teacherUserId?: string;
+  subjectId?: string;
+  roomId?: string;
+  dayOfWeek?: number;
+  status?: TimetableEntryStatus;
+}
+
 @Injectable()
 export class TimetableRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -183,7 +259,9 @@ export class TimetableRepository {
   private getCurrentSchoolId(): string {
     const schoolId = getRequestContext()?.activeMembership?.schoolId;
     if (!schoolId) {
-      throw new Error('TimetableRepository requires an active school membership');
+      throw new Error(
+        'TimetableRepository requires an active school membership',
+      );
     }
 
     return schoolId;
@@ -228,6 +306,22 @@ export class TimetableRepository {
     });
   }
 
+  findRoomById(roomId: string): Promise<TimetableRoomRecord | null> {
+    return this.scopedPrisma.room.findFirst({
+      where: { id: roomId },
+      ...ROOM_ARGS,
+    });
+  }
+
+  findTeacherAllocationById(
+    allocationId: string,
+  ): Promise<TimetableTeacherAllocationRecord | null> {
+    return this.scopedPrisma.teacherSubjectAllocation.findFirst({
+      where: { id: allocationId },
+      ...TEACHER_ALLOCATION_ARGS,
+    });
+  }
+
   findConfigByScope(input: {
     academicYearId: string;
     termId: string;
@@ -268,12 +362,7 @@ export class TimetableRepository {
     data: Prisma.TimetableConfigUncheckedUpdateInput,
   ): Promise<TimetableConfigRecord> {
     return this.scopedPrisma.timetableConfig.update({
-      where: {
-        id_schoolId: {
-          id: timetableConfigId,
-          schoolId: this.getCurrentSchoolId(),
-        },
-      },
+      where: { id: timetableConfigId },
       data,
       ...TIMETABLE_CONFIG_ARGS,
     });
@@ -287,9 +376,7 @@ export class TimetableRepository {
     });
   }
 
-  findPeriodById(
-    periodId: string,
-  ): Promise<TimetablePeriodRecord | null> {
+  findPeriodById(periodId: string): Promise<TimetablePeriodRecord | null> {
     return this.scopedPrisma.timetablePeriod.findFirst({
       where: { id: periodId },
       ...TIMETABLE_PERIOD_ARGS,
@@ -323,12 +410,7 @@ export class TimetableRepository {
     data: Prisma.TimetablePeriodUncheckedUpdateInput,
   ): Promise<TimetablePeriodRecord> {
     return this.scopedPrisma.timetablePeriod.update({
-      where: {
-        id_schoolId: {
-          id: periodId,
-          schoolId: this.getCurrentSchoolId(),
-        },
-      },
+      where: { id: periodId },
       data,
       ...TIMETABLE_PERIOD_ARGS,
     });
@@ -369,11 +451,86 @@ export class TimetableRepository {
   listEntriesForConfig(
     timetableConfigId: string,
   ): Promise<TimetableEntryRecord[]> {
+    return this.listEntries({ timetableConfigId });
+  }
+
+  listEntries(
+    filters: ListTimetableEntriesFilters,
+  ): Promise<TimetableEntryRecord[]> {
     return this.scopedPrisma.timetableEntry.findMany({
-      where: { timetableConfigId },
-      orderBy: [{ dayOfWeek: 'asc' }, { period: { periodIndex: 'asc' } }],
+      where: {
+        timetableConfigId: filters.timetableConfigId,
+        ...(filters.classroomId ? { classroomId: filters.classroomId } : {}),
+        ...(filters.teacherUserId
+          ? { teacherUserId: filters.teacherUserId }
+          : {}),
+        ...(filters.subjectId ? { subjectId: filters.subjectId } : {}),
+        ...(filters.roomId ? { roomId: filters.roomId } : {}),
+        ...(filters.dayOfWeek !== undefined
+          ? { dayOfWeek: filters.dayOfWeek }
+          : {}),
+        ...(filters.status ? { status: filters.status } : {}),
+      },
+      orderBy: [
+        { dayOfWeek: 'asc' },
+        { period: { periodIndex: 'asc' } },
+        { createdAt: 'asc' },
+      ],
       ...TIMETABLE_ENTRY_ARGS,
     });
+  }
+
+  findEntryById(entryId: string): Promise<TimetableEntryRecord | null> {
+    return this.scopedPrisma.timetableEntry.findFirst({
+      where: { id: entryId },
+      ...TIMETABLE_ENTRY_ARGS,
+    });
+  }
+
+  listEntriesForConflictWindow(input: {
+    timetableConfigId: string;
+    periodId: string;
+    dayOfWeek: number;
+    excludeEntryId?: string;
+  }): Promise<TimetableEntryRecord[]> {
+    return this.scopedPrisma.timetableEntry.findMany({
+      where: {
+        timetableConfigId: input.timetableConfigId,
+        periodId: input.periodId,
+        dayOfWeek: input.dayOfWeek,
+        status: { not: TimetableEntryStatus.CANCELLED },
+        ...(input.excludeEntryId ? { NOT: { id: input.excludeEntryId } } : {}),
+      },
+      ...TIMETABLE_ENTRY_ARGS,
+    });
+  }
+
+  createEntry(
+    data: Prisma.TimetableEntryUncheckedCreateInput,
+  ): Promise<TimetableEntryRecord> {
+    return this.scopedPrisma.timetableEntry.create({
+      data,
+      ...TIMETABLE_ENTRY_ARGS,
+    });
+  }
+
+  updateEntry(
+    entryId: string,
+    data: Prisma.TimetableEntryUncheckedUpdateInput,
+  ): Promise<TimetableEntryRecord> {
+    return this.scopedPrisma.timetableEntry.update({
+      where: { id: entryId },
+      data,
+      ...TIMETABLE_ENTRY_ARGS,
+    });
+  }
+
+  async deleteEntry(entryId: string): Promise<DeleteTimetableEntryResult> {
+    const result = await this.scopedPrisma.timetableEntry.deleteMany({
+      where: { id: entryId },
+    });
+
+    return result.count > 0 ? { status: 'deleted' } : { status: 'not_found' };
   }
 
   listPersistedConflicts(

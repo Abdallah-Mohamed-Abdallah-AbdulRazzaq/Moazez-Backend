@@ -6,6 +6,7 @@ import {
   PrismaClient,
   SchoolStatus,
   TimetableConfigStatus,
+  TimetableEntryStatus,
   TimetablePeriodType,
   TimetableScopeType,
   UserStatus,
@@ -20,6 +21,7 @@ const GLOBAL_PREFIX = '/api/v1';
 
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
 const DEMO_ADMIN_PASSWORD = 'School123!';
+const DEMO_TEACHER_EMAIL = 'teacher-a@academics-tenancy.moazez.local';
 
 const TENANT_B_ORG_SLUG = 'academics-tenancy-org-b';
 const TENANT_B_SCHOOL_SLUG = 'academics-tenancy-school-b';
@@ -38,6 +40,12 @@ const ARGON2_OPTIONS: argon2.Options = {
 };
 
 jest.setTimeout(30000);
+
+function expectNoTenantIds(body: unknown): void {
+  const serialized = JSON.stringify(body);
+  expect(serialized).not.toContain('schoolId');
+  expect(serialized).not.toContain('organizationId');
+}
 
 describe('Academics tenancy isolation (security)', () => {
   let app: INestApplication<App>;
@@ -59,13 +67,24 @@ describe('Academics tenancy isolation (security)', () => {
   let tenantBAllocationId: string;
   let tenantBTimetableConfigId: string;
   let tenantBTimetablePeriodId: string;
+  let tenantBTimetableEntryId: string;
 
   let demoViewerRoleId: string;
   let demoViewerUserId: string;
   let demoYearId: string;
   let demoTermId: string;
+  let demoStageId: string;
+  let demoGradeId: string;
+  let demoSectionId: string;
+  let demoClassroomId: string;
+  let demoSubjectId: string;
+  let demoMismatchSubjectId: string;
+  let demoRoomId: string;
+  let demoTeacherUserId: string;
+  let demoAllocationId: string;
   let demoTimetableConfigId: string | undefined;
   let demoTimetablePeriodId: string | undefined;
+  let demoTimetableEntryId: string | undefined;
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -81,23 +100,26 @@ describe('Academics tenancy isolation (security)', () => {
     demoSchoolId = demoSchool.id;
     demoOrganizationId = demoSchool.organizationId;
 
-    const [schoolAdminRole, teacherRole, structureViewPermission] = await Promise.all([
-      prisma.role.findFirst({
-        where: { key: 'school_admin', schoolId: null, isSystem: true },
-        select: { id: true },
-      }),
-      prisma.role.findFirst({
-        where: { key: 'teacher', schoolId: null, isSystem: true },
-        select: { id: true },
-      }),
-      prisma.permission.findUnique({
-        where: { code: 'academics.structure.view' },
-        select: { id: true },
-      }),
-    ]);
+    const [schoolAdminRole, teacherRole, structureViewPermission] =
+      await Promise.all([
+        prisma.role.findFirst({
+          where: { key: 'school_admin', schoolId: null, isSystem: true },
+          select: { id: true },
+        }),
+        prisma.role.findFirst({
+          where: { key: 'teacher', schoolId: null, isSystem: true },
+          select: { id: true },
+        }),
+        prisma.permission.findUnique({
+          where: { code: 'academics.structure.view' },
+          select: { id: true },
+        }),
+      ]);
 
     if (!schoolAdminRole || !teacherRole || !structureViewPermission) {
-      throw new Error('Required roles or permissions missing — run `npm run seed` first.');
+      throw new Error(
+        'Required roles or permissions missing — run `npm run seed` first.',
+      );
     }
 
     const demoAdmin = await prisma.user.findUnique({
@@ -172,6 +194,240 @@ describe('Academics tenancy isolation (security)', () => {
         },
       });
       demoTermId = createdTerm.id;
+    }
+
+    const demoStage = await prisma.stage.findFirst({
+      where: {
+        schoolId: demoSchoolId,
+        nameEn: 'Academics Scope A Timetable Stage',
+      },
+      select: { id: true },
+    });
+    if (demoStage) {
+      demoStageId = demoStage.id;
+    } else {
+      const createdStage = await prisma.stage.create({
+        data: {
+          schoolId: demoSchoolId,
+          nameAr: 'Academics Scope A Timetable Stage',
+          nameEn: 'Academics Scope A Timetable Stage',
+          sortOrder: 1,
+        },
+      });
+      demoStageId = createdStage.id;
+    }
+
+    const demoGrade = await prisma.grade.findFirst({
+      where: {
+        schoolId: demoSchoolId,
+        stageId: demoStageId,
+        nameEn: 'Academics Scope A Timetable Grade',
+      },
+      select: { id: true },
+    });
+    if (demoGrade) {
+      demoGradeId = demoGrade.id;
+    } else {
+      const createdGrade = await prisma.grade.create({
+        data: {
+          schoolId: demoSchoolId,
+          stageId: demoStageId,
+          nameAr: 'Academics Scope A Timetable Grade',
+          nameEn: 'Academics Scope A Timetable Grade',
+          sortOrder: 1,
+          capacity: 24,
+        },
+      });
+      demoGradeId = createdGrade.id;
+    }
+
+    const demoSection = await prisma.section.findFirst({
+      where: {
+        schoolId: demoSchoolId,
+        gradeId: demoGradeId,
+        nameEn: 'Academics Scope A Timetable Section',
+      },
+      select: { id: true },
+    });
+    if (demoSection) {
+      demoSectionId = demoSection.id;
+    } else {
+      const createdSection = await prisma.section.create({
+        data: {
+          schoolId: demoSchoolId,
+          gradeId: demoGradeId,
+          nameAr: 'Academics Scope A Timetable Section',
+          nameEn: 'Academics Scope A Timetable Section',
+          sortOrder: 1,
+          capacity: 24,
+        },
+      });
+      demoSectionId = createdSection.id;
+    }
+
+    const demoRoom = await prisma.room.findFirst({
+      where: {
+        schoolId: demoSchoolId,
+        nameEn: 'Academics Scope A Timetable Room',
+      },
+      select: { id: true },
+    });
+    if (demoRoom) {
+      demoRoomId = demoRoom.id;
+    } else {
+      const createdRoom = await prisma.room.create({
+        data: {
+          schoolId: demoSchoolId,
+          nameAr: 'Academics Scope A Timetable Room',
+          nameEn: 'Academics Scope A Timetable Room',
+          building: 'Block A',
+          floor: '1',
+          isActive: true,
+        },
+      });
+      demoRoomId = createdRoom.id;
+    }
+
+    const demoClassroom = await prisma.classroom.findFirst({
+      where: {
+        schoolId: demoSchoolId,
+        sectionId: demoSectionId,
+        nameEn: 'Academics Scope A Timetable Classroom',
+      },
+      select: { id: true },
+    });
+    if (demoClassroom) {
+      demoClassroomId = demoClassroom.id;
+    } else {
+      const createdClassroom = await prisma.classroom.create({
+        data: {
+          schoolId: demoSchoolId,
+          sectionId: demoSectionId,
+          nameAr: 'Academics Scope A Timetable Classroom',
+          nameEn: 'Academics Scope A Timetable Classroom',
+          sortOrder: 1,
+          capacity: 24,
+        },
+      });
+      demoClassroomId = createdClassroom.id;
+    }
+
+    const demoSubject = await prisma.subject.findFirst({
+      where: {
+        schoolId: demoSchoolId,
+        nameEn: 'Academics Scope A Timetable Subject',
+      },
+      select: { id: true },
+    });
+    if (demoSubject) {
+      demoSubjectId = demoSubject.id;
+    } else {
+      const createdSubject = await prisma.subject.create({
+        data: {
+          schoolId: demoSchoolId,
+          nameAr: 'Academics Scope A Timetable Subject',
+          nameEn: 'Academics Scope A Timetable Subject',
+          code: 'ACAD-A-TT',
+          isActive: true,
+        },
+      });
+      demoSubjectId = createdSubject.id;
+    }
+
+    const demoMismatchSubject = await prisma.subject.findFirst({
+      where: {
+        schoolId: demoSchoolId,
+        nameEn: 'Academics Scope A Timetable Mismatch Subject',
+      },
+      select: { id: true },
+    });
+    if (demoMismatchSubject) {
+      demoMismatchSubjectId = demoMismatchSubject.id;
+    } else {
+      const createdSubject = await prisma.subject.create({
+        data: {
+          schoolId: demoSchoolId,
+          nameAr: 'Academics Scope A Timetable Mismatch Subject',
+          nameEn: 'Academics Scope A Timetable Mismatch Subject',
+          code: 'ACAD-A-TT-MISMATCH',
+          isActive: true,
+        },
+      });
+      demoMismatchSubjectId = createdSubject.id;
+    }
+
+    const demoTeacher = await prisma.user.upsert({
+      where: { email: DEMO_TEACHER_EMAIL },
+      update: {
+        firstName: 'Demo',
+        lastName: 'Teacher A',
+        userType: UserType.TEACHER,
+        status: UserStatus.ACTIVE,
+      },
+      create: {
+        email: DEMO_TEACHER_EMAIL,
+        firstName: 'Demo',
+        lastName: 'Teacher A',
+        userType: UserType.TEACHER,
+        status: UserStatus.ACTIVE,
+      },
+    });
+    demoTeacherUserId = demoTeacher.id;
+
+    const existingDemoTeacherMembership = await prisma.membership.findFirst({
+      where: {
+        userId: demoTeacher.id,
+        organizationId: demoOrganizationId,
+        schoolId: demoSchoolId,
+        roleId: teacherRole.id,
+      },
+      select: { id: true },
+    });
+    if (existingDemoTeacherMembership) {
+      await prisma.membership.update({
+        where: { id: existingDemoTeacherMembership.id },
+        data: {
+          status: MembershipStatus.ACTIVE,
+          endedAt: null,
+          userType: UserType.TEACHER,
+        },
+      });
+    } else {
+      await prisma.membership.create({
+        data: {
+          userId: demoTeacher.id,
+          organizationId: demoOrganizationId,
+          schoolId: demoSchoolId,
+          roleId: teacherRole.id,
+          userType: UserType.TEACHER,
+          status: MembershipStatus.ACTIVE,
+        },
+      });
+    }
+
+    const demoAllocation = await prisma.teacherSubjectAllocation.findFirst({
+      where: {
+        schoolId: demoSchoolId,
+        teacherUserId: demoTeacher.id,
+        subjectId: demoSubjectId,
+        classroomId: demoClassroomId,
+        termId: demoTermId,
+      },
+      select: { id: true },
+    });
+    if (demoAllocation) {
+      demoAllocationId = demoAllocation.id;
+    } else {
+      const createdAllocation = await prisma.teacherSubjectAllocation.create({
+        data: {
+          schoolId: demoSchoolId,
+          teacherUserId: demoTeacher.id,
+          subjectId: demoSubjectId,
+          classroomId: demoClassroomId,
+          termId: demoTermId,
+        },
+      });
+      demoAllocationId = createdAllocation.id;
     }
 
     const orgB = await prisma.organization.upsert({
@@ -573,6 +829,41 @@ describe('Academics tenancy isolation (security)', () => {
       tenantBTimetablePeriodId = createdPeriod.id;
     }
 
+    const timetableEntryB = await prisma.timetableEntry.findFirst({
+      where: {
+        schoolId: schoolB.id,
+        timetableConfigId: tenantBTimetableConfigId,
+        periodId: tenantBTimetablePeriodId,
+        dayOfWeek: 0,
+        classroomId: tenantBClassroomId,
+      },
+      select: { id: true },
+    });
+    if (timetableEntryB) {
+      tenantBTimetableEntryId = timetableEntryB.id;
+    } else {
+      const createdEntry = await prisma.timetableEntry.create({
+        data: {
+          schoolId: schoolB.id,
+          academicYearId: tenantBYearId,
+          termId: tenantBTermId,
+          timetableConfigId: tenantBTimetableConfigId,
+          periodId: tenantBTimetablePeriodId,
+          dayOfWeek: 0,
+          gradeId: tenantBGradeId,
+          sectionId: tenantBSectionId,
+          classroomId: tenantBClassroomId,
+          subjectId: tenantBSubjectId,
+          teacherUserId: tenantBTeacherUserId,
+          teacherSubjectAllocationId: tenantBAllocationId,
+          roomId: tenantBRoomId,
+          notes: 'Tenant B timetable entry',
+          status: TimetableEntryStatus.DRAFT,
+        },
+      });
+      tenantBTimetableEntryId = createdEntry.id;
+    }
+
     const viewerRole = await prisma.role.findFirst({
       where: {
         schoolId: demoSchoolId,
@@ -583,7 +874,9 @@ describe('Academics tenancy isolation (security)', () => {
 
     if (viewerRole) {
       demoViewerRoleId = viewerRole.id;
-      await prisma.rolePermission.deleteMany({ where: { roleId: viewerRole.id } });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: viewerRole.id },
+      });
     } else {
       const createdRole = await prisma.role.create({
         data: {
@@ -690,6 +983,16 @@ describe('Academics tenancy isolation (security)', () => {
         });
       }
       await prisma.teacherSubjectAllocation.deleteMany({
+        where: { id: demoAllocationId },
+      });
+      await prisma.classroom.deleteMany({ where: { id: demoClassroomId } });
+      await prisma.section.deleteMany({ where: { id: demoSectionId } });
+      await prisma.grade.deleteMany({ where: { id: demoGradeId } });
+      await prisma.subject.deleteMany({ where: { id: demoSubjectId } });
+      await prisma.subject.deleteMany({ where: { id: demoMismatchSubjectId } });
+      await prisma.room.deleteMany({ where: { id: demoRoomId } });
+      await prisma.stage.deleteMany({ where: { id: demoStageId } });
+      await prisma.teacherSubjectAllocation.deleteMany({
         where: { id: tenantBAllocationId },
       });
       await prisma.classroom.deleteMany({ where: { id: tenantBClassroomId } });
@@ -704,16 +1007,28 @@ describe('Academics tenancy isolation (security)', () => {
           id: tenantBYearId,
         },
       });
-      await prisma.membership.deleteMany({ where: { userId: demoViewerUserId } });
+      await prisma.membership.deleteMany({
+        where: { userId: demoViewerUserId },
+      });
       await prisma.user.deleteMany({ where: { id: demoViewerUserId } });
-      await prisma.rolePermission.deleteMany({ where: { roleId: demoViewerRoleId } });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: demoViewerRoleId },
+      });
       await prisma.role.deleteMany({ where: { id: demoViewerRoleId } });
-      await prisma.membership.deleteMany({ where: { userId: tenantBTeacherUserId } });
+      await prisma.membership.deleteMany({
+        where: { userId: demoTeacherUserId },
+      });
+      await prisma.user.deleteMany({ where: { id: demoTeacherUserId } });
+      await prisma.membership.deleteMany({
+        where: { userId: tenantBTeacherUserId },
+      });
       await prisma.user.deleteMany({ where: { id: tenantBTeacherUserId } });
       await prisma.membership.deleteMany({ where: { userId: tenantBUserId } });
       await prisma.user.deleteMany({ where: { id: tenantBUserId } });
       await prisma.school.deleteMany({ where: { id: tenantBSchoolId } });
-      await prisma.organization.deleteMany({ where: { slug: TENANT_B_ORG_SLUG } });
+      await prisma.organization.deleteMany({
+        where: { slug: TENANT_B_ORG_SLUG },
+      });
       await prisma.term.deleteMany({
         where: {
           schoolId: demoSchoolId,
@@ -752,7 +1067,9 @@ describe('Academics tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
-    const names = response.body.items.map((item: { nameEn: string }) => item.nameEn);
+    const names = response.body.items.map(
+      (item: { nameEn: string }) => item.nameEn,
+    );
     expect(names).toContain('Academics Scope A 2026/2027');
     expect(names).not.toContain('Academics Scope B 2026/2027');
   });
@@ -969,6 +1286,138 @@ describe('Academics tenancy isolation (security)', () => {
     expect(conflictsResponse.body.items).toEqual([]);
   });
 
+  it('school A admin can create/list/detail/update/delete own timetable entries without tenant ids', async () => {
+    if (!demoTimetableConfigId || !demoTimetablePeriodId) {
+      throw new Error(
+        'Demo timetable config and period must be created first.',
+      );
+    }
+
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        timetableConfigId: demoTimetableConfigId,
+        periodId: demoTimetablePeriodId,
+        dayOfWeek: 0,
+        classroomId: demoClassroomId,
+        teacherSubjectAllocationId: demoAllocationId,
+        roomId: demoRoomId,
+        notes: 'Entry from security test',
+      })
+      .expect(201);
+
+    demoTimetableEntryId = createResponse.body.id;
+    expect(createResponse.body.subject.id).toBe(demoSubjectId);
+    expect(createResponse.body.teacher.userId).toBe(demoTeacherUserId);
+    expect(createResponse.body.classroom.id).toBe(demoClassroomId);
+    expect(createResponse.body.room.id).toBe(demoRoomId);
+    expect(JSON.stringify(createResponse.body)).not.toContain('schoolId');
+    expect(JSON.stringify(createResponse.body)).not.toContain('organizationId');
+
+    const listResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/entries?timetableConfigId=${demoTimetableConfigId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(
+      listResponse.body.items.map((item: { id: string }) => item.id),
+    ).toContain(demoTimetableEntryId);
+    expect(JSON.stringify(listResponse.body)).not.toContain('schoolId');
+    expect(JSON.stringify(listResponse.body)).not.toContain('organizationId');
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${demoTimetableEntryId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.id).toBe(demoTimetableEntryId);
+        expect(JSON.stringify(response.body)).not.toContain('schoolId');
+        expect(JSON.stringify(response.body)).not.toContain('organizationId');
+      });
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${demoTimetableEntryId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ notes: 'Updated security test entry', roomId: null })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.notes).toBe('Updated security test entry');
+        expect(response.body.room).toBeNull();
+      });
+
+    await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${demoTimetableEntryId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toEqual({ ok: true });
+      });
+
+    const readableEntryResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        timetableConfigId: demoTimetableConfigId,
+        periodId: demoTimetablePeriodId,
+        dayOfWeek: 0,
+        classroomId: demoClassroomId,
+        teacherSubjectAllocationId: demoAllocationId,
+        notes: 'Readable timetable entry',
+      })
+      .expect(201);
+    demoTimetableEntryId = readableEntryResponse.body.id;
+  });
+
+  it('rejects update and delete for non-draft timetable entries without tenant ids', async () => {
+    if (!demoTimetableEntryId) {
+      throw new Error('Demo timetable entry must be created first.');
+    }
+
+    await prisma.timetableEntry.update({
+      where: { id: demoTimetableEntryId },
+      data: { status: TimetableEntryStatus.ACTIVE },
+    });
+
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${demoTimetableEntryId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ notes: 'Should Not Mutate Active Entry' })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.entry_not_mutable',
+        );
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${demoTimetableEntryId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(409)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.entry_not_mutable',
+        );
+        expectNoTenantIds(response.body);
+      });
+  });
+
   it('returns safe 404 for cross-school timetable config and period ids', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
@@ -982,10 +1431,13 @@ describe('Academics tenancy isolation (security)', () => {
         expect(response.body?.error?.code).toBe(
           'academics.timetable.config_not_found',
         );
+        expectNoTenantIds(response.body);
       });
 
     await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/academics/timetable/periods/${tenantBTimetablePeriodId}`)
+      .patch(
+        `${GLOBAL_PREFIX}/academics/timetable/periods/${tenantBTimetablePeriodId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ label: 'Should Not Work' })
       .expect(404)
@@ -993,6 +1445,167 @@ describe('Academics tenancy isolation (security)', () => {
         expect(response.body?.error?.code).toBe(
           'academics.timetable.period_not_found',
         );
+        expectNoTenantIds(response.body);
+      });
+  });
+
+  it('returns safe errors for cross-school timetable entry and related ids', async () => {
+    if (!demoTimetableConfigId || !demoTimetablePeriodId) {
+      throw new Error(
+        'Demo timetable config and period must be created first.',
+      );
+    }
+
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${tenantBTimetableEntryId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.entry_not_found',
+        );
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${tenantBTimetableEntryId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ notes: 'Should Not Work' })
+      .expect(404)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.entry_not_found',
+        );
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${tenantBTimetableEntryId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.entry_not_found',
+        );
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        timetableConfigId: tenantBTimetableConfigId,
+        periodId: demoTimetablePeriodId,
+        dayOfWeek: 1,
+        classroomId: demoClassroomId,
+        teacherSubjectAllocationId: demoAllocationId,
+      })
+      .expect(404)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.config_not_found',
+        );
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        timetableConfigId: demoTimetableConfigId,
+        periodId: tenantBTimetablePeriodId,
+        dayOfWeek: 1,
+        classroomId: demoClassroomId,
+        teacherSubjectAllocationId: demoAllocationId,
+      })
+      .expect(404)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.period_not_found',
+        );
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        timetableConfigId: demoTimetableConfigId,
+        periodId: demoTimetablePeriodId,
+        dayOfWeek: 1,
+        classroomId: tenantBClassroomId,
+        teacherSubjectAllocationId: demoAllocationId,
+      })
+      .expect(404)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.classroom_not_found',
+        );
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        timetableConfigId: demoTimetableConfigId,
+        periodId: demoTimetablePeriodId,
+        dayOfWeek: 1,
+        classroomId: demoClassroomId,
+        subjectId: demoMismatchSubjectId,
+        teacherSubjectAllocationId: demoAllocationId,
+      })
+      .expect(422)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.allocation_mismatch',
+        );
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        timetableConfigId: demoTimetableConfigId,
+        periodId: demoTimetablePeriodId,
+        dayOfWeek: 1,
+        classroomId: demoClassroomId,
+        teacherSubjectAllocationId: tenantBAllocationId,
+      })
+      .expect(404)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.allocation_not_found',
+        );
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        timetableConfigId: demoTimetableConfigId,
+        periodId: demoTimetablePeriodId,
+        dayOfWeek: 1,
+        classroomId: demoClassroomId,
+        teacherSubjectAllocationId: demoAllocationId,
+        roomId: tenantBRoomId,
+      })
+      .expect(404)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.room_not_found',
+        );
+        expectNoTenantIds(response.body);
       });
   });
 
@@ -1002,10 +1615,48 @@ describe('Academics tenancy isolation (security)', () => {
         `${GLOBAL_PREFIX}/academics/timetable/periods?timetableConfigId=${tenantBTimetableConfigId}`,
       )
       .expect(401);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/entries?timetableConfigId=${tenantBTimetableConfigId}`,
+      )
+      .expect(401);
   });
 
-  it('returns 403 when a view-only user attempts timetable mutations', async () => {
+  it('view-only user can read timetable entries but cannot mutate them', async () => {
+    if (
+      !demoTimetableConfigId ||
+      !demoTimetablePeriodId ||
+      !demoTimetableEntryId
+    ) {
+      throw new Error('Demo timetable entry must be created first.');
+    }
+
     const { accessToken } = await login(VIEWER_EMAIL, VIEWER_PASSWORD);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/entries?timetableConfigId=${demoTimetableConfigId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(
+          response.body.items.map((item: { id: string }) => item.id),
+        ).toContain(demoTimetableEntryId);
+        expect(JSON.stringify(response.body)).not.toContain('schoolId');
+        expect(JSON.stringify(response.body)).not.toContain('organizationId');
+      });
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${demoTimetableEntryId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.id).toBe(demoTimetableEntryId);
+      });
 
     const response = await request(app.getHttpServer())
       .put(`${GLOBAL_PREFIX}/academics/timetable/config`)
@@ -1020,9 +1671,36 @@ describe('Academics tenancy isolation (security)', () => {
       .expect(403);
 
     expect(response.body?.error?.code).toBe('auth.scope.missing');
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/entries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        timetableConfigId: demoTimetableConfigId,
+        periodId: demoTimetablePeriodId,
+        dayOfWeek: 2,
+        classroomId: demoClassroomId,
+        teacherSubjectAllocationId: demoAllocationId,
+      })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${demoTimetableEntryId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ notes: 'Viewer cannot update' })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .delete(
+        `${GLOBAL_PREFIX}/academics/timetable/entries/${demoTimetableEntryId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
   });
 
-  it('does not register app-facing schedule routes in Sprint 12B', async () => {
+  it('does not register app-facing schedule routes in Sprint 12C', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     await request(app.getHttpServer())

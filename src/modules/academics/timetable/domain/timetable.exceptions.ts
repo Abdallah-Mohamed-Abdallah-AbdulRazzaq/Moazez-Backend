@@ -23,6 +23,105 @@ export class TimetablePeriodNotFoundException extends DomainException {
   }
 }
 
+export class TimetableEntryNotFoundException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.entry_not_found',
+      message: 'Timetable entry was not found',
+      httpStatus: HttpStatus.NOT_FOUND,
+      details,
+    });
+  }
+}
+
+export class TimetableInvalidDayException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.invalid_day',
+      message: 'Timetable entry day is not active for this config',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class TimetablePeriodNotInConfigException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.period_not_in_config',
+      message: 'Timetable period does not belong to this config',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class TimetableClassroomScopeMismatchException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.classroom_scope_mismatch',
+      message: 'Classroom is outside this timetable config scope',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class TimetableClassroomNotFoundException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.classroom_not_found',
+      message: 'Timetable classroom was not found or is outside scope',
+      httpStatus: HttpStatus.NOT_FOUND,
+      details,
+    });
+  }
+}
+
+export class TimetableAllocationMismatchException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.allocation_mismatch',
+      message: 'Teacher allocation does not match this timetable entry',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class TimetableAllocationNotFoundException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.allocation_not_found',
+      message: 'Timetable teacher allocation was not found or is outside scope',
+      httpStatus: HttpStatus.NOT_FOUND,
+      details,
+    });
+  }
+}
+
+export class TimetableRoomNotFoundException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.room_not_found',
+      message: 'Timetable room was not found',
+      httpStatus: HttpStatus.NOT_FOUND,
+      details,
+    });
+  }
+}
+
+export class TimetableEntryNotMutableException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.entry_not_mutable',
+      message: 'Timetable entry cannot be changed in its current state',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
 export class TimetableInvalidTimeRangeException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({

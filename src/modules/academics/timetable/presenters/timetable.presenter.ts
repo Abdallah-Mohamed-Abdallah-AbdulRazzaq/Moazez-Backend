@@ -8,6 +8,8 @@ import {
   TimetableConfigResponseDto,
   TimetableConflictResponseDto,
   TimetableConflictsListResponseDto,
+  TimetableEntriesListResponseDto,
+  TimetableEntryResponseDto,
   TimetablePeriodResponseDto,
   TimetablePeriodsListResponseDto,
   TimetablePreviewEntryDto,
@@ -77,6 +79,63 @@ export function presentPreviewEntry(
     roomId: entry.roomId ?? null,
     notes: entry.notes ?? null,
     status: entry.status.toLowerCase(),
+  };
+}
+
+export function presentTimetableEntry(
+  entry: TimetableEntryRecord,
+): TimetableEntryResponseDto {
+  const teacherName = [entry.teacherUser.firstName, entry.teacherUser.lastName]
+    .filter((part) => part.trim().length > 0)
+    .join(' ');
+
+  return {
+    id: entry.id,
+    timetableConfigId: entry.timetableConfigId,
+    periodId: entry.periodId,
+    dayOfWeek: entry.dayOfWeek,
+    period: {
+      id: entry.period.id,
+      index: entry.period.periodIndex,
+      label: entry.period.label,
+      startTime: entry.period.startTime,
+      endTime: entry.period.endTime,
+    },
+    classroom: {
+      id: entry.classroom.id,
+      nameAr: entry.classroom.nameAr,
+      nameEn: entry.classroom.nameEn,
+    },
+    subject: {
+      id: entry.subject.id,
+      nameAr: entry.subject.nameAr,
+      nameEn: entry.subject.nameEn,
+      code: entry.subject.code ?? null,
+    },
+    teacher: {
+      userId: entry.teacherUser.id,
+      fullName: teacherName,
+    },
+    room: entry.room
+      ? {
+          id: entry.room.id,
+          nameAr: entry.room.nameAr,
+          nameEn: entry.room.nameEn,
+        }
+      : null,
+    teacherSubjectAllocationId: entry.teacherSubjectAllocationId,
+    notes: entry.notes ?? null,
+    status: entry.status.toLowerCase(),
+    createdAt: entry.createdAt.toISOString(),
+    updatedAt: entry.updatedAt.toISOString(),
+  };
+}
+
+export function presentTimetableEntries(
+  entries: TimetableEntryRecord[],
+): TimetableEntriesListResponseDto {
+  return {
+    items: entries.map((entry) => presentTimetableEntry(entry)),
   };
 }
 

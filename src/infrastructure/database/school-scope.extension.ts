@@ -185,6 +185,10 @@ type AnyArgs = { where?: AnyWhere; [key: string]: unknown };
 
 function mergeWhere(base: AnyWhere | undefined, add: AnyWhere): AnyWhere {
   if (!base || Object.keys(base).length === 0) return add;
+  const hasKeyCollision = Object.keys(add).some((key) =>
+    Object.prototype.hasOwnProperty.call(base, key),
+  );
+  if (!hasKeyCollision) return { ...base, ...add };
   return { AND: [base, add] };
 }
 

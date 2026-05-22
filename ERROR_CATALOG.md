@@ -142,6 +142,15 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `academics.section.capacity_invalid`| 422| Invalid section capacity                         |
 | `academics.timetable.config_not_found` | 404 | Timetable config was not found or is outside scope |
 | `academics.timetable.period_not_found` | 404 | Timetable period was not found or is outside scope |
+| `academics.timetable.entry_not_found` | 404 | Timetable entry was not found or is outside scope |
+| `academics.timetable.invalid_day` | 422 | Timetable entry day is not active for this config |
+| `academics.timetable.period_not_in_config` | 422 | Timetable period does not belong to this config |
+| `academics.timetable.classroom_not_found` | 404 | Timetable classroom was not found or is outside scope |
+| `academics.timetable.classroom_scope_mismatch` | 422 | Classroom is outside this timetable config scope |
+| `academics.timetable.allocation_not_found` | 404 | Timetable teacher allocation was not found or is outside scope |
+| `academics.timetable.allocation_mismatch` | 422 | Teacher allocation does not match this timetable entry |
+| `academics.timetable.room_not_found` | 404 | Timetable room was not found or is outside scope |
+| `academics.timetable.entry_not_mutable` | 409 | Timetable entry cannot be changed in its current state |
 | `academics.timetable.invalid_time_range` | 422 | Timetable period time range is invalid         |
 | `academics.timetable.period_overlap` | 409 | Timetable period overlaps another period        |
 | `academics.timetable.period_index_taken` | 409 | Timetable period index is already taken      |

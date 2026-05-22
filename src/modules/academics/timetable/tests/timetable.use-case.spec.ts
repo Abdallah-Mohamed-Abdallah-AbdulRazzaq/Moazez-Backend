@@ -15,11 +15,16 @@ import {
   setActor,
 } from '../../../../common/context/request-context';
 import { DomainException } from '../../../../common/exceptions/domain-exception';
+import { CreateTimetableEntryUseCase } from '../application/create-timetable-entry.use-case';
 import { CreateTimetablePeriodUseCase } from '../application/create-timetable-period.use-case';
+import { DeleteTimetableEntryUseCase } from '../application/delete-timetable-entry.use-case';
 import { DeleteTimetablePeriodUseCase } from '../application/delete-timetable-period.use-case';
 import { GetTimetableConfigUseCase } from '../application/get-timetable-config.use-case';
+import { GetTimetableEntryUseCase } from '../application/get-timetable-entry.use-case';
 import { ListTimetableConflictsUseCase } from '../application/list-timetable-conflicts.use-case';
+import { ListTimetableEntriesUseCase } from '../application/list-timetable-entries.use-case';
 import { ListTimetablePeriodsUseCase } from '../application/list-timetable-periods.use-case';
+import { UpdateTimetableEntryUseCase } from '../application/update-timetable-entry.use-case';
 import { UpdateTimetablePeriodUseCase } from '../application/update-timetable-period.use-case';
 import { UpsertTimetableConfigUseCase } from '../application/upsert-timetable-config.use-case';
 import { computeTimetableConflicts } from '../domain/timetable-conflicts';
@@ -34,6 +39,15 @@ type PeriodRecord = Awaited<
 type EntryRecord = Awaited<
   ReturnType<TimetableRepository['listEntriesForConfig']>
 >[number];
+type ClassroomRecord = NonNullable<
+  Awaited<ReturnType<TimetableRepository['findClassroomById']>>
+>;
+type RoomRecord = NonNullable<
+  Awaited<ReturnType<TimetableRepository['findRoomById']>>
+>;
+type AllocationRecord = NonNullable<
+  Awaited<ReturnType<TimetableRepository['findTeacherAllocationById']>>
+>;
 
 describe('Timetable use cases', () => {
   async function withScope(testFn: () => Promise<void>): Promise<void> {
@@ -55,20 +69,95 @@ describe('Timetable use cases', () => {
     configs?: NonNullable<ConfigRecord>[];
     periods?: NonNullable<PeriodRecord>[];
     entries?: EntryRecord[];
+    classrooms?: ClassroomRecord[];
+    rooms?: RoomRecord[];
+    allocations?: AllocationRecord[];
     termActive?: boolean;
   }): TimetableRepository {
     const configs = [...(seed?.configs ?? [])];
     const periods = [...(seed?.periods ?? [])];
     const entries = [...(seed?.entries ?? [])];
+    const classrooms = seed?.classrooms ?? [seedClassroom()];
+    const rooms = seed?.rooms ?? [seedRoom()];
+    const allocations = seed?.allocations ?? [seedAllocation()];
+    const subjects = [
+      { id: 'subject-1', nameAr: 'Math', nameEn: 'Math', code: 'MATH' },
+      { id: 'subject-2', nameAr: 'Science', nameEn: 'Science', code: 'SCI' },
+    ];
     const conflicts: never[] = [];
     const now = new Date('2026-05-22T10:00:00.000Z');
 
+    function periodSummary(periodId: string): EntryRecord['period'] {
+      const period =
+        periods.find((item) => item.id === periodId) ?? seedPeriod();
+      return {
+        id: period.id,
+        periodIndex: period.periodIndex,
+        label: period.label,
+        startTime: period.startTime,
+        endTime: period.endTime,
+      };
+    }
+
+    function classroomSummary(classroomId: string): EntryRecord['classroom'] {
+      const classroom =
+        classrooms.find((item) => item.id === classroomId) ?? seedClassroom();
+      return {
+        id: classroom.id,
+        nameAr: classroom.nameAr,
+        nameEn: classroom.nameEn,
+      };
+    }
+
+    function subjectSummary(subjectId: string): EntryRecord['subject'] {
+      return (
+        subjects.find((item) => item.id === subjectId) ?? {
+          id: subjectId,
+          nameAr: 'Subject',
+          nameEn: 'Subject',
+          code: null,
+        }
+      );
+    }
+
+    function roomSummary(roomId: string | null): EntryRecord['room'] {
+      if (!roomId) return null;
+      const room = rooms.find((item) => item.id === roomId) ?? seedRoom();
+      return {
+        id: room.id,
+        nameAr: room.nameAr,
+        nameEn: room.nameEn,
+      };
+    }
+
+    function buildEntry(
+      data: Omit<
+        EntryRecord,
+        'period' | 'classroom' | 'subject' | 'teacherUser' | 'room'
+      >,
+    ): EntryRecord {
+      return {
+        ...data,
+        period: periodSummary(data.periodId),
+        classroom: classroomSummary(data.classroomId),
+        subject: subjectSummary(data.subjectId),
+        teacherUser: {
+          id: data.teacherUserId,
+          firstName: 'Teacher',
+          lastName: data.teacherUserId.endsWith('2') ? 'Two' : 'One',
+        },
+        room: roomSummary(data.roomId),
+      };
+    }
+
     return {
-      findAcademicYearById: jest.fn().mockImplementation(async (id: string) =>
-        id === 'year-1'
-          ? { id: 'year-1', schoolId: 'school-1', isActive: true }
-          : null,
-      ),
+      findAcademicYearById: jest
+        .fn()
+        .mockImplementation(async (id: string) =>
+          id === 'year-1'
+            ? { id: 'year-1', schoolId: 'school-1', isActive: true }
+            : null,
+        ),
       findTermById: jest.fn().mockImplementation(async (id: string) =>
         id === 'term-1'
           ? {
@@ -81,19 +170,41 @@ describe('Timetable use cases', () => {
       ),
       findGradeById: jest.fn().mockResolvedValue(null),
       findSectionById: jest.fn().mockResolvedValue(null),
-      findClassroomById: jest.fn().mockResolvedValue(null),
-      findConfigByScope: jest.fn().mockImplementation(async (input) =>
-        configs.find(
-          (config) =>
-            config.academicYearId === input.academicYearId &&
-            config.termId === input.termId &&
-            config.scopeType === input.scopeType &&
-            config.scopeKey === input.scopeKey,
-        ) ?? null,
-      ),
-      findConfigById: jest.fn().mockImplementation(async (id: string) =>
-        configs.find((config) => config.id === id) ?? null,
-      ),
+      findClassroomById: jest
+        .fn()
+        .mockImplementation(
+          async (id: string) =>
+            classrooms.find((classroom) => classroom.id === id) ?? null,
+        ),
+      findRoomById: jest
+        .fn()
+        .mockImplementation(
+          async (id: string) => rooms.find((room) => room.id === id) ?? null,
+        ),
+      findTeacherAllocationById: jest
+        .fn()
+        .mockImplementation(
+          async (id: string) =>
+            allocations.find((allocation) => allocation.id === id) ?? null,
+        ),
+      findConfigByScope: jest
+        .fn()
+        .mockImplementation(
+          async (input) =>
+            configs.find(
+              (config) =>
+                config.academicYearId === input.academicYearId &&
+                config.termId === input.termId &&
+                config.scopeType === input.scopeType &&
+                config.scopeKey === input.scopeKey,
+            ) ?? null,
+        ),
+      findConfigById: jest
+        .fn()
+        .mockImplementation(
+          async (id: string) =>
+            configs.find((config) => config.id === id) ?? null,
+        ),
       createConfig: jest.fn().mockImplementation(async (data) => {
         const config: NonNullable<ConfigRecord> = {
           id: `config-${configs.length + 1}`,
@@ -121,21 +232,29 @@ describe('Timetable use cases', () => {
         Object.assign(config, data, { updatedAt: now });
         return config;
       }),
-      listPeriods: jest.fn().mockImplementation(async (configId: string) =>
-        periods
-          .filter((period) => period.timetableConfigId === configId)
-          .sort((left, right) => left.periodIndex - right.periodIndex),
-      ),
-      findPeriodById: jest.fn().mockImplementation(async (id: string) =>
-        periods.find((period) => period.id === id) ?? null,
-      ),
-      findPeriodByIndex: jest.fn().mockImplementation(async (input) =>
-        periods.find(
-          (period) =>
-            period.timetableConfigId === input.timetableConfigId &&
-            period.periodIndex === input.periodIndex,
-        ) ?? null,
-      ),
+      listPeriods: jest
+        .fn()
+        .mockImplementation(async (configId: string) =>
+          periods
+            .filter((period) => period.timetableConfigId === configId)
+            .sort((left, right) => left.periodIndex - right.periodIndex),
+        ),
+      findPeriodById: jest
+        .fn()
+        .mockImplementation(
+          async (id: string) =>
+            periods.find((period) => period.id === id) ?? null,
+        ),
+      findPeriodByIndex: jest
+        .fn()
+        .mockImplementation(
+          async (input) =>
+            periods.find(
+              (period) =>
+                period.timetableConfigId === input.timetableConfigId &&
+                period.periodIndex === input.periodIndex,
+            ) ?? null,
+        ),
       createPeriod: jest.fn().mockImplementation(async (data) => {
         const period: NonNullable<PeriodRecord> = {
           id: `period-${periods.length + 1}`,
@@ -168,14 +287,132 @@ describe('Timetable use cases', () => {
         periods.splice(index, 1);
         return { status: 'deleted' as const };
       }),
-      listEntriesForConfig: jest.fn().mockImplementation(async (configId: string) =>
-        entries.filter((entry) => entry.timetableConfigId === configId),
+      listEntriesForConfig: jest
+        .fn()
+        .mockImplementation(async (configId: string) =>
+          entries.filter((entry) => entry.timetableConfigId === configId),
+        ),
+      listEntries: jest.fn().mockImplementation(async (filters) =>
+        entries
+          .filter(
+            (entry) => entry.timetableConfigId === filters.timetableConfigId,
+          )
+          .filter((entry) =>
+            filters.classroomId
+              ? entry.classroomId === filters.classroomId
+              : true,
+          )
+          .filter((entry) =>
+            filters.teacherUserId
+              ? entry.teacherUserId === filters.teacherUserId
+              : true,
+          )
+          .filter((entry) =>
+            filters.subjectId ? entry.subjectId === filters.subjectId : true,
+          )
+          .filter((entry) =>
+            filters.roomId ? entry.roomId === filters.roomId : true,
+          )
+          .filter((entry) =>
+            filters.dayOfWeek !== undefined
+              ? entry.dayOfWeek === filters.dayOfWeek
+              : true,
+          )
+          .filter((entry) =>
+            filters.status ? entry.status === filters.status : true,
+          ),
       ),
+      findEntryById: jest
+        .fn()
+        .mockImplementation(
+          async (id: string) =>
+            entries.find((entry) => entry.id === id) ?? null,
+        ),
+      listEntriesForConflictWindow: jest
+        .fn()
+        .mockImplementation(async (input) =>
+          entries.filter(
+            (entry) =>
+              entry.timetableConfigId === input.timetableConfigId &&
+              entry.periodId === input.periodId &&
+              entry.dayOfWeek === input.dayOfWeek &&
+              entry.status !== TimetableEntryStatus.CANCELLED &&
+              entry.id !== input.excludeEntryId,
+          ),
+        ),
+      createEntry: jest.fn().mockImplementation(async (data) => {
+        const entry = buildEntry({
+          id: `entry-${entries.length + 1}`,
+          schoolId: String(data.schoolId),
+          academicYearId: String(data.academicYearId),
+          termId: String(data.termId),
+          timetableConfigId: String(data.timetableConfigId),
+          periodId: String(data.periodId),
+          dayOfWeek: Number(data.dayOfWeek),
+          gradeId: String(data.gradeId),
+          sectionId: String(data.sectionId),
+          classroomId: String(data.classroomId),
+          subjectId: String(data.subjectId),
+          teacherUserId: String(data.teacherUserId),
+          teacherSubjectAllocationId: String(data.teacherSubjectAllocationId),
+          roomId: (data.roomId as string | null | undefined) ?? null,
+          notes: (data.notes as string | null | undefined) ?? null,
+          status: data.status as TimetableEntryStatus,
+          createdAt: now,
+          updatedAt: now,
+        });
+        entries.push(entry);
+        return entry;
+      }),
+      updateEntry: jest.fn().mockImplementation(async (id: string, data) => {
+        const index = entries.findIndex((entry) => entry.id === id);
+        if (index === -1) throw new Error('missing entry');
+        const current = entries[index];
+        const updated = buildEntry({
+          id: current.id,
+          schoolId: current.schoolId,
+          academicYearId:
+            (data.academicYearId as string) ?? current.academicYearId,
+          termId: (data.termId as string) ?? current.termId,
+          timetableConfigId:
+            (data.timetableConfigId as string) ?? current.timetableConfigId,
+          periodId: (data.periodId as string) ?? current.periodId,
+          dayOfWeek: (data.dayOfWeek as number) ?? current.dayOfWeek,
+          gradeId: (data.gradeId as string) ?? current.gradeId,
+          sectionId: (data.sectionId as string) ?? current.sectionId,
+          classroomId: (data.classroomId as string) ?? current.classroomId,
+          subjectId: (data.subjectId as string) ?? current.subjectId,
+          teacherUserId:
+            (data.teacherUserId as string) ?? current.teacherUserId,
+          teacherSubjectAllocationId:
+            (data.teacherSubjectAllocationId as string) ??
+            current.teacherSubjectAllocationId,
+          roomId: Object.prototype.hasOwnProperty.call(data, 'roomId')
+            ? (data.roomId as string | null)
+            : current.roomId,
+          notes: Object.prototype.hasOwnProperty.call(data, 'notes')
+            ? (data.notes as string | null)
+            : current.notes,
+          status: current.status,
+          createdAt: current.createdAt,
+          updatedAt: now,
+        });
+        entries[index] = updated;
+        return updated;
+      }),
+      deleteEntry: jest.fn().mockImplementation(async (id: string) => {
+        const index = entries.findIndex((entry) => entry.id === id);
+        if (index === -1) return { status: 'not_found' as const };
+        entries.splice(index, 1);
+        return { status: 'deleted' as const };
+      }),
       listPersistedConflicts: jest.fn().mockResolvedValue(conflicts),
     } as unknown as TimetableRepository;
   }
 
-  function seedConfig(): NonNullable<ConfigRecord> {
+  function seedConfig(
+    overrides: Partial<NonNullable<ConfigRecord>> = {},
+  ): NonNullable<ConfigRecord> {
     return {
       id: 'config-1',
       schoolId: 'school-1',
@@ -192,10 +429,13 @@ describe('Timetable use cases', () => {
       status: TimetableConfigStatus.DRAFT,
       createdAt: new Date('2026-05-22T10:00:00.000Z'),
       updatedAt: new Date('2026-05-22T10:00:00.000Z'),
+      ...overrides,
     };
   }
 
-  function seedPeriod(): NonNullable<PeriodRecord> {
+  function seedPeriod(
+    overrides: Partial<NonNullable<PeriodRecord>> = {},
+  ): NonNullable<PeriodRecord> {
     return {
       id: 'period-1',
       schoolId: 'school-1',
@@ -208,6 +448,48 @@ describe('Timetable use cases', () => {
       isInstructional: true,
       createdAt: new Date('2026-05-22T10:00:00.000Z'),
       updatedAt: new Date('2026-05-22T10:00:00.000Z'),
+      ...overrides,
+    };
+  }
+
+  function seedClassroom(
+    overrides: Partial<ClassroomRecord> = {},
+  ): ClassroomRecord {
+    return {
+      id: 'classroom-1',
+      schoolId: 'school-1',
+      sectionId: 'section-1',
+      nameAr: 'Classroom 1',
+      nameEn: 'Classroom 1',
+      section: {
+        id: 'section-1',
+        gradeId: 'grade-1',
+      },
+      ...overrides,
+    };
+  }
+
+  function seedRoom(overrides: Partial<RoomRecord> = {}): RoomRecord {
+    return {
+      id: 'room-1',
+      schoolId: 'school-1',
+      nameAr: 'Room 1',
+      nameEn: 'Room 1',
+      ...overrides,
+    };
+  }
+
+  function seedAllocation(
+    overrides: Partial<AllocationRecord> = {},
+  ): AllocationRecord {
+    return {
+      id: 'allocation-1',
+      schoolId: 'school-1',
+      teacherUserId: 'teacher-1',
+      subjectId: 'subject-1',
+      classroomId: 'classroom-1',
+      termId: 'term-1',
+      ...overrides,
     };
   }
 
@@ -230,6 +512,25 @@ describe('Timetable use cases', () => {
       notes: null,
       status: TimetableEntryStatus.DRAFT,
       period: seedPeriod(),
+      classroom: {
+        id: 'classroom-1',
+        nameAr: 'Classroom 1',
+        nameEn: 'Classroom 1',
+      },
+      subject: {
+        id: 'subject-1',
+        nameAr: 'Math',
+        nameEn: 'Math',
+        code: 'MATH',
+      },
+      teacherUser: {
+        id: 'teacher-1',
+        firstName: 'Teacher',
+        lastName: 'One',
+      },
+      room: null,
+      createdAt: new Date('2026-05-22T10:00:00.000Z'),
+      updatedAt: new Date('2026-05-22T10:00:00.000Z'),
       ...overrides,
     };
   }
@@ -381,7 +682,9 @@ describe('Timetable use cases', () => {
       expect(updated.endTime).toBe('08:50');
 
       await expect(remove.execute(created.id)).resolves.toEqual({ ok: true });
-      await expect(list.execute({ timetableConfigId: 'config-1' })).resolves.toEqual({
+      await expect(
+        list.execute({ timetableConfigId: 'config-1' }),
+      ).resolves.toEqual({
         items: [],
       });
     });
@@ -433,6 +736,395 @@ describe('Timetable use cases', () => {
     });
   });
 
+  it('creates, lists, gets, updates, and deletes timetable entries with derived fields', async () => {
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+    });
+    const create = new CreateTimetableEntryUseCase(repository);
+    const list = new ListTimetableEntriesUseCase(repository);
+    const get = new GetTimetableEntryUseCase(repository);
+    const update = new UpdateTimetableEntryUseCase(repository);
+    const remove = new DeleteTimetableEntryUseCase(repository);
+
+    await withScope(async () => {
+      const created = await create.execute({
+        timetableConfigId: 'config-1',
+        periodId: 'period-1',
+        dayOfWeek: 0,
+        classroomId: 'classroom-1',
+        teacherSubjectAllocationId: 'allocation-1',
+        roomId: 'room-1',
+        notes: ' Math lab ',
+      });
+
+      expect(created).toMatchObject({
+        timetableConfigId: 'config-1',
+        periodId: 'period-1',
+        dayOfWeek: 0,
+        teacherSubjectAllocationId: 'allocation-1',
+        notes: 'Math lab',
+        status: 'draft',
+        classroom: { id: 'classroom-1' },
+        subject: { id: 'subject-1' },
+        teacher: { userId: 'teacher-1', fullName: 'Teacher One' },
+        room: { id: 'room-1' },
+      });
+      expect(created).not.toHaveProperty('schoolId');
+      expect(created).not.toHaveProperty('organizationId');
+      expect(repository.createEntry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          academicYearId: 'year-1',
+          termId: 'term-1',
+          gradeId: 'grade-1',
+          sectionId: 'section-1',
+          subjectId: 'subject-1',
+          teacherUserId: 'teacher-1',
+          status: TimetableEntryStatus.DRAFT,
+        }),
+      );
+
+      await expect(
+        list.execute({ timetableConfigId: 'config-1' }),
+      ).resolves.toEqual({
+        items: [created],
+      });
+      await expect(get.execute(created.id)).resolves.toMatchObject({
+        id: created.id,
+      });
+
+      const updated = await update.execute(created.id, {
+        notes: 'Updated note',
+        roomId: null,
+      });
+      expect(updated.notes).toBe('Updated note');
+      expect(updated.room).toBeNull();
+
+      await expect(remove.execute(created.id)).resolves.toEqual({ ok: true });
+      await expect(
+        list.execute({ timetableConfigId: 'config-1' }),
+      ).resolves.toEqual({
+        items: [],
+      });
+    });
+  });
+
+  it('rejects timetable entry update and delete when entry is not draft', async () => {
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      entries: [seedEntry({ status: TimetableEntryStatus.ACTIVE })],
+    });
+    const update = new UpdateTimetableEntryUseCase(repository);
+    const remove = new DeleteTimetableEntryUseCase(repository);
+
+    await withScope(async () => {
+      await expect(
+        update.execute('entry-1', { notes: 'Cannot change active entry' }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.entry_not_mutable',
+      });
+      await expect(remove.execute('entry-1')).rejects.toMatchObject({
+        code: 'academics.timetable.entry_not_mutable',
+      });
+      expect(repository.updateEntry).not.toHaveBeenCalled();
+      expect(repository.deleteEntry).not.toHaveBeenCalled();
+    });
+  });
+
+  it('rejects timetable entry writes for missing configs, foreign periods, and inactive days', async () => {
+    const createMissingConfig = new CreateTimetableEntryUseCase(
+      createRepository(),
+    );
+    const createBadPeriod = new CreateTimetableEntryUseCase(
+      createRepository({
+        configs: [seedConfig()],
+        periods: [
+          seedPeriod({
+            id: 'period-foreign',
+            timetableConfigId: 'config-foreign',
+          }),
+        ],
+      }),
+    );
+    const createInactiveDay = new CreateTimetableEntryUseCase(
+      createRepository({
+        configs: [seedConfig({ activeDays: [1, 2] })],
+        periods: [seedPeriod()],
+      }),
+    );
+
+    await withScope(async () => {
+      const command = {
+        timetableConfigId: 'config-1',
+        periodId: 'period-1',
+        dayOfWeek: 0,
+        classroomId: 'classroom-1',
+        teacherSubjectAllocationId: 'allocation-1',
+      };
+
+      await expect(createMissingConfig.execute(command)).rejects.toMatchObject({
+        code: 'academics.timetable.config_not_found',
+      });
+      await expect(
+        createBadPeriod.execute({ ...command, periodId: 'period-foreign' }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.period_not_in_config',
+      });
+      await expect(createInactiveDay.execute(command)).rejects.toMatchObject({
+        code: 'academics.timetable.invalid_day',
+      });
+    });
+  });
+
+  it('separates missing timetable entry related ids from semantic mismatches', async () => {
+    const scopedConfig = {
+      ...seedConfig(),
+      scopeType: TimetableScopeType.GRADE,
+      scopeKey: 'grade:grade-2',
+      gradeId: 'grade-2',
+    };
+    const createMissingClassroom = new CreateTimetableEntryUseCase(
+      createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+        classrooms: [],
+      }),
+    );
+    const createOutsideScope = new CreateTimetableEntryUseCase(
+      createRepository({
+        configs: [scopedConfig],
+        periods: [seedPeriod()],
+      }),
+    );
+    const createMissingAllocation = new CreateTimetableEntryUseCase(
+      createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+        allocations: [],
+      }),
+    );
+    const createSubjectMismatch = new CreateTimetableEntryUseCase(
+      createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+      }),
+    );
+    const createTermMismatch = new CreateTimetableEntryUseCase(
+      createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+        allocations: [
+          seedAllocation({
+            id: 'allocation-term-2',
+            termId: 'term-2',
+          }),
+        ],
+      }),
+    );
+    const createClassroomMismatch = new CreateTimetableEntryUseCase(
+      createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+        allocations: [
+          seedAllocation({
+            id: 'allocation-classroom-2',
+            classroomId: 'classroom-2',
+          }),
+        ],
+      }),
+    );
+
+    await withScope(async () => {
+      const command = {
+        timetableConfigId: 'config-1',
+        periodId: 'period-1',
+        dayOfWeek: 0,
+        classroomId: 'classroom-1',
+        teacherSubjectAllocationId: 'allocation-1',
+      };
+
+      await expect(
+        createMissingClassroom.execute({
+          ...command,
+          classroomId: 'classroom-missing',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.classroom_not_found',
+      });
+      await expect(createOutsideScope.execute(command)).rejects.toMatchObject({
+        code: 'academics.timetable.classroom_scope_mismatch',
+      });
+      await expect(
+        createMissingAllocation.execute({
+          ...command,
+          teacherSubjectAllocationId: 'allocation-missing',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.allocation_not_found',
+      });
+      await expect(
+        createSubjectMismatch.execute({
+          ...command,
+          subjectId: 'subject-2',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.allocation_mismatch',
+      });
+      await expect(
+        createTermMismatch.execute({
+          ...command,
+          teacherSubjectAllocationId: 'allocation-term-2',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.allocation_mismatch',
+      });
+      await expect(
+        createClassroomMismatch.execute({
+          ...command,
+          teacherSubjectAllocationId: 'allocation-classroom-2',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.allocation_mismatch',
+      });
+    });
+  });
+
+  it('rejects missing rooms and blocking classroom teacher and room conflicts', async () => {
+    await withScope(async () => {
+      const missingRoomRepository = createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+      });
+      await expect(
+        new CreateTimetableEntryUseCase(missingRoomRepository).execute({
+          timetableConfigId: 'config-1',
+          periodId: 'period-1',
+          dayOfWeek: 0,
+          classroomId: 'classroom-1',
+          teacherSubjectAllocationId: 'allocation-1',
+          roomId: 'room-missing',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.room_not_found',
+      });
+
+      const classroomConflictRepository = createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+        entries: [seedEntry()],
+      });
+      await expect(
+        new CreateTimetableEntryUseCase(classroomConflictRepository).execute({
+          timetableConfigId: 'config-1',
+          periodId: 'period-1',
+          dayOfWeek: 0,
+          classroomId: 'classroom-1',
+          teacherSubjectAllocationId: 'allocation-1',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.entry_conflict',
+      });
+
+      const teacherConflictRepository = createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+        classrooms: [
+          seedClassroom(),
+          seedClassroom({
+            id: 'classroom-2',
+            sectionId: 'section-2',
+            section: { id: 'section-2', gradeId: 'grade-1' },
+          }),
+        ],
+        entries: [
+          seedEntry({
+            id: 'entry-teacher-conflict',
+            classroomId: 'classroom-2',
+            teacherSubjectAllocationId: 'allocation-2',
+          }),
+        ],
+      });
+      await expect(
+        new CreateTimetableEntryUseCase(teacherConflictRepository).execute({
+          timetableConfigId: 'config-1',
+          periodId: 'period-1',
+          dayOfWeek: 0,
+          classroomId: 'classroom-1',
+          teacherSubjectAllocationId: 'allocation-1',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.teacher_conflict',
+      });
+
+      const roomConflictRepository = createRepository({
+        configs: [seedConfig()],
+        periods: [seedPeriod()],
+        classrooms: [
+          seedClassroom(),
+          seedClassroom({
+            id: 'classroom-2',
+            sectionId: 'section-2',
+            section: { id: 'section-2', gradeId: 'grade-1' },
+          }),
+        ],
+        entries: [
+          seedEntry({
+            id: 'entry-room-conflict',
+            classroomId: 'classroom-2',
+            teacherUserId: 'teacher-2',
+            teacherSubjectAllocationId: 'allocation-2',
+            roomId: 'room-1',
+            room: { id: 'room-1', nameAr: 'Room 1', nameEn: 'Room 1' },
+          }),
+        ],
+      });
+      await expect(
+        new CreateTimetableEntryUseCase(roomConflictRepository).execute({
+          timetableConfigId: 'config-1',
+          periodId: 'period-1',
+          dayOfWeek: 0,
+          classroomId: 'classroom-1',
+          teacherSubjectAllocationId: 'allocation-1',
+          roomId: 'room-1',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.timetable.room_conflict',
+      });
+    });
+  });
+
+  it('ignores cancelled timetable entries when blocking new entries', async () => {
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+      entries: [
+        seedEntry({
+          status: TimetableEntryStatus.CANCELLED,
+          roomId: 'room-1',
+          room: { id: 'room-1', nameAr: 'Room 1', nameEn: 'Room 1' },
+        }),
+      ],
+    });
+    const create = new CreateTimetableEntryUseCase(repository);
+
+    await withScope(async () => {
+      await expect(
+        create.execute({
+          timetableConfigId: 'config-1',
+          periodId: 'period-1',
+          dayOfWeek: 0,
+          classroomId: 'classroom-1',
+          teacherSubjectAllocationId: 'allocation-1',
+          roomId: 'room-1',
+        }),
+      ).resolves.toMatchObject({
+        classroom: { id: 'classroom-1' },
+        room: { id: 'room-1' },
+      });
+    });
+  });
+
   it('returns computed conflicts for duplicate teacher slots', async () => {
     const period = seedPeriod();
     const entries: EntryRecord[] = [
@@ -458,7 +1150,9 @@ describe('Timetable use cases', () => {
     const conflicts = new ListTimetableConflictsUseCase(repository);
 
     await withScope(async () => {
-      const response = await conflicts.execute({ timetableConfigId: 'config-1' });
+      const response = await conflicts.execute({
+        timetableConfigId: 'config-1',
+      });
       expect(response.items).toHaveLength(1);
       expect(response.items[0]).toMatchObject({
         type: 'teacher',
@@ -491,11 +1185,16 @@ describe('Timetable use cases', () => {
     expect(computeTimetableConflicts(entries)).toEqual([]);
   });
 
-  it('keeps timetable repository reads on scoped Prisma and avoids platform bypass', async () => {
+  it('keeps timetable repository reads and updates on scoped Prisma', async () => {
     const findFirst = jest.fn().mockResolvedValue(null);
+    const updateConfig = jest.fn().mockResolvedValue({});
+    const updatePeriod = jest.fn().mockResolvedValue({});
+    const updateEntry = jest.fn().mockResolvedValue({});
     const prisma = {
       scoped: {
-        timetableConfig: { findFirst },
+        timetableConfig: { findFirst, update: updateConfig },
+        timetablePeriod: { update: updatePeriod },
+        timetableEntry: { update: updateEntry },
       },
     };
     const repository = new TimetableRepository(prisma as never);
@@ -506,7 +1205,23 @@ describe('Timetable use cases', () => {
       expect.objectContaining({ where: { id: 'config-1' } }),
     );
 
-    const source = readFileSync(__dirname + '/../infrastructure/timetable.repository.ts', 'utf8');
+    await withScope(async () => {
+      await repository.updateConfig('config-1', { name: 'Updated' });
+      await repository.updatePeriod('period-1', { label: 'Updated' });
+      await repository.updateEntry('entry-1', { notes: 'Updated' });
+    });
+
+    expect(updateConfig).toHaveBeenCalled();
+    expect(updatePeriod).toHaveBeenCalled();
+    expect(updateEntry).toHaveBeenCalled();
+
+    const source = readFileSync(
+      __dirname + '/../infrastructure/timetable.repository.ts',
+      'utf8',
+    );
+    expect(source).not.toContain('return this.prisma.timetableConfig.update');
+    expect(source).not.toContain('return this.prisma.timetablePeriod.update');
+    expect(source).not.toContain('return this.prisma.timetableEntry.update');
     expect(source).not.toContain('platformBypass');
     expect(source).not.toContain('withBypassSchoolScope');
   });
