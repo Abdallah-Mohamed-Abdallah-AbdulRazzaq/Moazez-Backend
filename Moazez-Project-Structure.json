@@ -13613,43 +13613,13 @@
       "icon": "📘"
     },
     {
-      "name": "sprint11b-core-diff.txt",
-      "type": "file",
-      "icon": "📄"
-    },
-    {
-      "name": "sprint11b-tests-diff.txt",
-      "type": "file",
-      "icon": "📄"
-    },
-    {
-      "name": "sprint11e-core-diff.txt",
-      "type": "file",
-      "icon": "📄"
-    },
-    {
-      "name": "sprint11e-tests-diff.txt",
-      "type": "file",
-      "icon": "📄"
-    },
-    {
-      "name": "sprint11f-closeout-diff.txt",
-      "type": "file",
-      "icon": "📄"
-    },
-    {
-      "name": "sprint11g-swagger-diff.txt",
-      "type": "file",
-      "icon": "📄"
-    },
-    {
       "name": "tsconfig.json",
       "type": "file",
       "icon": "⚙️"
     }
   ],
   "metadata": {
-    "generated": "2026-05-12T06:13:13.364Z",
+    "generated": "2026-05-22T07:59:32.949Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
