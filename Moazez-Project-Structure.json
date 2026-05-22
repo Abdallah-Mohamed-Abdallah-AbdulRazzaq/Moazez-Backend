@@ -329,6 +329,11 @@
           "icon": "📝"
         },
         {
+          "name": "sprint-12a-schedule-timetable-core-contract-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
           "name": "sprint-6c-planning-audit.md",
           "type": "file",
           "icon": "📝"
@@ -13619,7 +13624,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-05-22T07:59:32.949Z",
+    "generated": "2026-05-22T09:17:08.000Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
