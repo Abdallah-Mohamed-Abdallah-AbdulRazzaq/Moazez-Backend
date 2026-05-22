@@ -5,6 +5,9 @@ import {
   OrganizationStatus,
   PrismaClient,
   SchoolStatus,
+  TimetableConfigStatus,
+  TimetablePeriodType,
+  TimetableScopeType,
   UserStatus,
   UserType,
 } from '@prisma/client';
@@ -54,10 +57,15 @@ describe('Academics tenancy isolation (security)', () => {
   let tenantBSubjectId: string;
   let tenantBRoomId: string;
   let tenantBAllocationId: string;
+  let tenantBTimetableConfigId: string;
+  let tenantBTimetablePeriodId: string;
 
   let demoViewerRoleId: string;
   let demoViewerUserId: string;
   let demoYearId: string;
+  let demoTermId: string;
+  let demoTimetableConfigId: string | undefined;
+  let demoTimetablePeriodId: string | undefined;
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -135,6 +143,35 @@ describe('Academics tenancy isolation (security)', () => {
         },
       });
       demoYearId = createdYear.id;
+    }
+
+    const demoTerm = await prisma.term.findFirst({
+      where: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        nameEn: 'Academics Scope A Timetable Term 1',
+      },
+      select: { id: true },
+    });
+    if (demoTerm) {
+      demoTermId = demoTerm.id;
+      await prisma.term.update({
+        where: { id: demoTerm.id },
+        data: { isActive: true },
+      });
+    } else {
+      const createdTerm = await prisma.term.create({
+        data: {
+          schoolId: demoSchoolId,
+          academicYearId: demoYearId,
+          nameAr: 'Academics Scope A Timetable Term 1',
+          nameEn: 'Academics Scope A Timetable Term 1',
+          startDate: new Date('2026-09-01'),
+          endDate: new Date('2026-12-31'),
+          isActive: true,
+        },
+      });
+      demoTermId = createdTerm.id;
     }
 
     const orgB = await prisma.organization.upsert({
@@ -482,6 +519,60 @@ describe('Academics tenancy isolation (security)', () => {
       tenantBAllocationId = createdAllocation.id;
     }
 
+    const timetableConfigB = await prisma.timetableConfig.findFirst({
+      where: {
+        schoolId: schoolB.id,
+        termId: tenantBTermId,
+        scopeType: TimetableScopeType.TERM,
+        scopeKey: `term:${tenantBTermId}`,
+      },
+      select: { id: true },
+    });
+    if (timetableConfigB) {
+      tenantBTimetableConfigId = timetableConfigB.id;
+    } else {
+      const createdConfig = await prisma.timetableConfig.create({
+        data: {
+          schoolId: schoolB.id,
+          academicYearId: tenantBYearId,
+          termId: tenantBTermId,
+          name: 'Academics Scope B Timetable',
+          weekStartDay: 0,
+          activeDays: [0, 1, 2, 3, 4],
+          scopeType: TimetableScopeType.TERM,
+          scopeKey: `term:${tenantBTermId}`,
+          status: TimetableConfigStatus.DRAFT,
+        },
+      });
+      tenantBTimetableConfigId = createdConfig.id;
+    }
+
+    const timetablePeriodB = await prisma.timetablePeriod.findFirst({
+      where: {
+        schoolId: schoolB.id,
+        timetableConfigId: tenantBTimetableConfigId,
+        periodIndex: 1,
+      },
+      select: { id: true },
+    });
+    if (timetablePeriodB) {
+      tenantBTimetablePeriodId = timetablePeriodB.id;
+    } else {
+      const createdPeriod = await prisma.timetablePeriod.create({
+        data: {
+          schoolId: schoolB.id,
+          timetableConfigId: tenantBTimetableConfigId,
+          periodIndex: 1,
+          label: 'Tenant B Period 1',
+          startTime: '08:00',
+          endTime: '08:45',
+          type: TimetablePeriodType.CLASS,
+          isInstructional: true,
+        },
+      });
+      tenantBTimetablePeriodId = createdPeriod.id;
+    }
+
     const viewerRole = await prisma.role.findFirst({
       where: {
         schoolId: demoSchoolId,
@@ -588,6 +679,16 @@ describe('Academics tenancy isolation (security)', () => {
   afterAll(async () => {
     if (app) await app.close();
     if (prisma) {
+      if (demoTimetableConfigId) {
+        await prisma.timetableConfig.deleteMany({
+          where: { id: demoTimetableConfigId },
+        });
+      }
+      if (tenantBTimetableConfigId) {
+        await prisma.timetableConfig.deleteMany({
+          where: { id: tenantBTimetableConfigId },
+        });
+      }
       await prisma.teacherSubjectAllocation.deleteMany({
         where: { id: tenantBAllocationId },
       });
@@ -613,6 +714,13 @@ describe('Academics tenancy isolation (security)', () => {
       await prisma.user.deleteMany({ where: { id: tenantBUserId } });
       await prisma.school.deleteMany({ where: { id: tenantBSchoolId } });
       await prisma.organization.deleteMany({ where: { slug: TENANT_B_ORG_SLUG } });
+      await prisma.term.deleteMany({
+        where: {
+          schoolId: demoSchoolId,
+          nameEn: 'Academics Scope A Timetable Term 1',
+          id: demoTermId,
+        },
+      });
       await prisma.academicYear.deleteMany({
         where: {
           schoolId: demoSchoolId,
@@ -791,5 +899,164 @@ describe('Academics tenancy isolation (security)', () => {
       .expect(403);
 
     expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('school A admin can manage own timetable config and periods without tenant ids in responses', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const configResponse = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/academics/timetable/config`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        name: 'Academics Scope A Timetable',
+        weekStartDay: 0,
+        activeDays: [0, 1, 2, 3, 4],
+      })
+      .expect(200);
+
+    demoTimetableConfigId = configResponse.body.data.id;
+    expect(configResponse.body.data.status).toBe('draft');
+    expect(JSON.stringify(configResponse.body)).not.toContain('schoolId');
+    expect(JSON.stringify(configResponse.body)).not.toContain('organizationId');
+
+    const periodResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/timetable/periods`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        timetableConfigId: demoTimetableConfigId,
+        index: 1,
+        label: 'Period 1',
+        startTime: '08:00',
+        endTime: '08:45',
+      })
+      .expect(201);
+
+    demoTimetablePeriodId = periodResponse.body.id;
+    expect(periodResponse.body.timeRange).toBe('08:00 - 08:45');
+    expect(JSON.stringify(periodResponse.body)).not.toContain('schoolId');
+    expect(JSON.stringify(periodResponse.body)).not.toContain('organizationId');
+
+    const periodsResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/periods?timetableConfigId=${demoTimetableConfigId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(periodsResponse.body.items).toHaveLength(1);
+    expect(periodsResponse.body.items[0].id).toBe(demoTimetablePeriodId);
+
+    const previewResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/preview?timetableConfigId=${demoTimetableConfigId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(previewResponse.body.config.id).toBe(demoTimetableConfigId);
+    expect(previewResponse.body.entries).toEqual([]);
+    expect(previewResponse.body.conflicts).toEqual([]);
+
+    const conflictsResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/conflicts?timetableConfigId=${demoTimetableConfigId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(conflictsResponse.body.items).toEqual([]);
+  });
+
+  it('returns safe 404 for cross-school timetable config and period ids', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/periods?timetableConfigId=${tenantBTimetableConfigId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.config_not_found',
+        );
+      });
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/academics/timetable/periods/${tenantBTimetablePeriodId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ label: 'Should Not Work' })
+      .expect(404)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe(
+          'academics.timetable.period_not_found',
+        );
+      });
+  });
+
+  it('returns 401 for unauthenticated timetable reads', async () => {
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/academics/timetable/periods?timetableConfigId=${tenantBTimetableConfigId}`,
+      )
+      .expect(401);
+  });
+
+  it('returns 403 when a view-only user attempts timetable mutations', async () => {
+    const { accessToken } = await login(VIEWER_EMAIL, VIEWER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/academics/timetable/config`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        name: 'Viewer Forbidden Timetable',
+        weekStartDay: 0,
+        activeDays: [0, 1, 2, 3, 4],
+      })
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('does not register app-facing schedule routes in Sprint 12B', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/schedule`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/schedule`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${tenantBUserId}/schedule/today`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
+
+  it('does not add Homework, Pickup, or app notification routes from timetable work', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/homeworks`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/pickup`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${tenantBUserId}/pickup`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/notifications`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
   });
 });

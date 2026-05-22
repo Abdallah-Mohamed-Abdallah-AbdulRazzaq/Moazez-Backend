@@ -31,4 +31,12 @@ describe('schoolScope communication registration', () => {
       true,
     );
   });
+
+  it('registers timetable core models for school scope enforcement', () => {
+    expect(SCHOOL_SCOPED_MODELS.has('TimetableConfig')).toBe(true);
+    expect(SCHOOL_SCOPED_MODELS.has('TimetablePeriod')).toBe(true);
+    expect(SCHOOL_SCOPED_MODELS.has('TimetableEntry')).toBe(true);
+    expect(SCHOOL_SCOPED_MODELS.has('TimetablePublication')).toBe(true);
+    expect(SCHOOL_SCOPED_MODELS.has('TimetableConflict')).toBe(true);
+  });
 });

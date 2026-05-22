@@ -140,6 +140,17 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `academics.year.has_enrollments`  | 409  | Cannot delete year with active enrollments       |
 | `academics.structure.child_exists`| 409  | Cannot delete a structure node with children     |
 | `academics.section.capacity_invalid`| 422| Invalid section capacity                         |
+| `academics.timetable.config_not_found` | 404 | Timetable config was not found or is outside scope |
+| `academics.timetable.period_not_found` | 404 | Timetable period was not found or is outside scope |
+| `academics.timetable.invalid_time_range` | 422 | Timetable period time range is invalid         |
+| `academics.timetable.period_overlap` | 409 | Timetable period overlaps another period        |
+| `academics.timetable.period_index_taken` | 409 | Timetable period index is already taken      |
+| `academics.timetable.period_in_use` | 409 | Timetable period is used by timetable entries   |
+| `academics.timetable.closed_term` | 409 | Term is closed for timetable changes             |
+| `academics.timetable.published_locked` | 409 | Published timetable config cannot be changed directly |
+| `academics.timetable.entry_conflict` | 409 | Timetable entry has a scheduling conflict       |
+| `academics.timetable.teacher_conflict` | 409 | Teacher is already scheduled in this period   |
+| `academics.timetable.room_conflict` | 409 | Room is already scheduled in this period       |
 
 ### Attendance
 

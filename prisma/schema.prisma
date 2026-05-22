@@ -879,6 +879,73 @@ enum CommunicationNotificationDeliveryStatus {
   @@map("communication_notification_delivery_status")
 }
 
+enum TimetableScopeType {
+  TERM
+  GRADE
+  SECTION
+  CLASSROOM
+
+  @@map("timetable_scope_type")
+}
+
+enum TimetableConfigStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+
+  @@map("timetable_config_status")
+}
+
+enum TimetablePeriodType {
+  CLASS
+  BREAK
+  ASSEMBLY
+  ACTIVITY
+
+  @@map("timetable_period_type")
+}
+
+enum TimetableEntryStatus {
+  DRAFT
+  ACTIVE
+  CANCELLED
+
+  @@map("timetable_entry_status")
+}
+
+enum TimetablePublicationStatus {
+  DRAFT
+  PUBLISHED
+  SUPERSEDED
+  ARCHIVED
+
+  @@map("timetable_publication_status")
+}
+
+enum TimetableConflictType {
+  TEACHER
+  ROOM
+  CLASSROOM_SLOT
+  PERIOD_OVERLAP
+
+  @@map("timetable_conflict_type")
+}
+
+enum TimetableConflictSeverity {
+  BLOCKING
+  WARNING
+
+  @@map("timetable_conflict_severity")
+}
+
+enum TimetableConflictStatus {
+  OPEN
+  RESOLVED
+  IGNORED
+
+  @@map("timetable_conflict_status")
+}
+
 model Organization {
   id     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name   String
@@ -938,6 +1005,11 @@ model School {
   subjects                              Subject[]
   teacherSubjectAllocations             TeacherSubjectAllocation[]
   rooms                                 Room[]
+  timetableConfigs                      TimetableConfig[]
+  timetablePeriods                      TimetablePeriod[]
+  timetableEntries                      TimetableEntry[]
+  timetablePublications                 TimetablePublication[]
+  timetableConflicts                    TimetableConflict[]
   attachments                           Attachment[]
   importJobs                            ImportJob[]
   auditLogs                             AuditLog[]
@@ -1058,6 +1130,8 @@ model User {
   teacherSubjectAllocations                      TeacherSubjectAllocation[]             @relation("TeacherSubjectAllocationTeacher")
   guardianProfiles                               Guardian[]                             @relation("GuardianUser")
   studentProfile                                 Student?                               @relation("StudentUser")
+  timetableEntries                               TimetableEntry[]                       @relation("TimetableEntryTeacher")
+  timetablePublicationsPublished                 TimetablePublication[]                 @relation("TimetablePublicationPublishedBy")
   studentNotesAuthored                           StudentNote[]                          @relation("StudentNoteAuthor")
   attendanceSessionsSubmitted                    AttendanceSession[]                    @relation("AttendanceSessionSubmittedBy")
   attendanceEntriesMarked                        AttendanceEntry[]                      @relation("AttendanceEntryMarkedBy")
@@ -1132,7 +1206,7 @@ model User {
   communicationAnnouncementAttachmentsCreated    CommunicationAnnouncementAttachment[]  @relation("CommunicationAnnouncementAttachmentsCreatedByUser")
   communicationNotificationsReceived             CommunicationNotification[]            @relation("CommunicationNotificationsRecipientUser")
   communicationNotificationsActed                CommunicationNotification[]            @relation("CommunicationNotificationsActorUser")
-  schoolEmailDeliveryRecipients                  SchoolEmailDeliveryRecipient[]          @relation("SchoolEmailDeliveryRecipientsUser")
+  schoolEmailDeliveryRecipients                  SchoolEmailDeliveryRecipient[]         @relation("SchoolEmailDeliveryRecipientsUser")
 
   @@index([userType])
   @@index([status])
@@ -1418,20 +1492,20 @@ model SchoolEmailDeliveryBatch {
 }
 
 model SchoolEmailDeliveryRecipient {
-  id             String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId       String                             @map("school_id") @db.Uuid
-  batchId        String                             @map("batch_id") @db.Uuid
-  recipientType  SchoolEmailDeliveryRecipientType   @map("recipient_type")
-  userId         String?                            @map("user_id") @db.Uuid
-  toEmail        String                             @map("to_email")
-  displayName    String?                            @map("display_name")
-  status         SchoolEmailDeliveryRecipientStatus @default(PENDING)
-  attempts       Int                                @default(0)
-  lastAttemptAt  DateTime?                          @map("last_attempt_at")
-  sentAt         DateTime?                          @map("sent_at")
-  failureReason  String?                            @map("failure_reason")
-  skippedReason  String?                            @map("skipped_reason")
-  metadata       Json?
+  id            String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId      String                             @map("school_id") @db.Uuid
+  batchId       String                             @map("batch_id") @db.Uuid
+  recipientType SchoolEmailDeliveryRecipientType   @map("recipient_type")
+  userId        String?                            @map("user_id") @db.Uuid
+  toEmail       String                             @map("to_email")
+  displayName   String?                            @map("display_name")
+  status        SchoolEmailDeliveryRecipientStatus @default(PENDING)
+  attempts      Int                                @default(0)
+  lastAttemptAt DateTime?                          @map("last_attempt_at")
+  sentAt        DateTime?                          @map("sent_at")
+  failureReason String?                            @map("failure_reason")
+  skippedReason String?                            @map("skipped_reason")
+  metadata      Json?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1791,6 +1865,10 @@ model AcademicYear {
   behaviorRecords            BehaviorRecord[]
   behaviorPointLedgerEntries BehaviorPointLedger[]
   communicationConversations CommunicationConversation[]
+  timetableConfigs           TimetableConfig[]
+  timetableEntries           TimetableEntry[]
+  timetablePublications      TimetablePublication[]
+  timetableConflicts         TimetableConflict[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -1838,6 +1916,10 @@ model Term {
   behaviorRecords            BehaviorRecord[]
   behaviorPointLedgerEntries BehaviorPointLedger[]
   communicationConversations CommunicationConversation[]
+  timetableConfigs           TimetableConfig[]
+  timetableEntries           TimetableEntry[]
+  timetablePublications      TimetablePublication[]
+  timetableConflicts         TimetableConflict[]
 
   @@unique([id, schoolId])
   @@unique([academicYearId, nameAr])
@@ -1902,6 +1984,8 @@ model Grade {
   reinforcementTaskTargets           ReinforcementTaskTarget[]
   communicationConversations         CommunicationConversation[]
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
+  timetableConfigs                   TimetableConfig[]
+  timetableEntries                   TimetableEntry[]
 
   @@unique([id, schoolId])
   @@unique([stageId, nameAr])
@@ -1934,6 +2018,8 @@ model Section {
   reinforcementTaskTargets           ReinforcementTaskTarget[]
   communicationConversations         CommunicationConversation[]
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
+  timetableConfigs                   TimetableConfig[]
+  timetableEntries                   TimetableEntry[]
 
   @@unique([id, schoolId])
   @@unique([gradeId, nameAr])
@@ -1969,6 +2055,8 @@ model Classroom {
   reinforcementTaskTargets           ReinforcementTaskTarget[]
   communicationConversations         CommunicationConversation[]
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
+  timetableConfigs                   TimetableConfig[]
+  timetableEntries                   TimetableEntry[]
 
   @@unique([id, schoolId])
   @@unique([sectionId, nameAr])
@@ -2000,6 +2088,7 @@ model Subject {
   reinforcementTasks         ReinforcementTask[]
   heroMissions               HeroMission[]
   communicationConversations CommunicationConversation[]
+  timetableEntries           TimetableEntry[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, code])
@@ -2020,12 +2109,14 @@ model TeacherSubjectAllocation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  school      School    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  teacherUser User      @relation("TeacherSubjectAllocationTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
-  subject     Subject   @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classroom   Classroom @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term        Term      @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  school           School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  teacherUser      User             @relation("TeacherSubjectAllocationTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
+  subject          Subject          @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom        Classroom        @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term             Term             @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  timetableEntries TimetableEntry[]
 
+  @@unique([id, schoolId])
   @@unique([teacherUserId, subjectId, classroomId, termId])
   @@index([schoolId])
   @@index([teacherUserId])
@@ -2050,14 +2141,219 @@ model Room {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school     School      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  classrooms Classroom[]
+  school             School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  classrooms         Classroom[]
+  timetableEntries   TimetableEntry[]
+  timetableConflicts TimetableConflict[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
   @@index([schoolId, isActive])
   @@index([deletedAt])
   @@map("rooms")
+}
+
+model TimetableConfig {
+  id             String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                @map("school_id") @db.Uuid
+  academicYearId String                @map("academic_year_id") @db.Uuid
+  termId         String                @map("term_id") @db.Uuid
+  name           String
+  weekStartDay   Int                   @default(0) @map("week_start_day")
+  activeDays     Int[]                 @default([]) @map("active_days")
+  scopeType      TimetableScopeType    @default(TERM) @map("scope_type")
+  scopeKey       String                @map("scope_key")
+  gradeId        String?               @map("grade_id") @db.Uuid
+  sectionId      String?               @map("section_id") @db.Uuid
+  classroomId    String?               @map("classroom_id") @db.Uuid
+  status         TimetableConfigStatus @default(DRAFT)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school       School                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear           @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term                   @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade        Grade?                 @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  section      Section?               @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom    Classroom?             @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  periods      TimetablePeriod[]
+  entries      TimetableEntry[]
+  publications TimetablePublication[]
+  conflicts    TimetableConflict[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, termId, scopeType, scopeKey], map: "timetable_configs_school_term_scope_key")
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([gradeId])
+  @@index([sectionId])
+  @@index([classroomId])
+  @@index([schoolId, academicYearId, termId, status])
+  @@index([schoolId, termId, scopeType, scopeKey])
+  @@map("timetable_configs")
+}
+
+model TimetablePeriod {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String              @map("school_id") @db.Uuid
+  timetableConfigId String              @map("timetable_config_id") @db.Uuid
+  periodIndex       Int                 @map("period_index")
+  label             String
+  startTime         String              @map("start_time")
+  endTime           String              @map("end_time")
+  type              TimetablePeriodType @default(CLASS)
+  isInstructional   Boolean             @default(true) @map("is_instructional")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school          School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  timetableConfig TimetableConfig     @relation(fields: [timetableConfigId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  entries         TimetableEntry[]
+  conflicts       TimetableConflict[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, timetableConfigId, periodIndex], map: "timetable_periods_config_index_key")
+  @@index([schoolId])
+  @@index([timetableConfigId])
+  @@index([schoolId, timetableConfigId])
+  @@map("timetable_periods")
+}
+
+model TimetableEntry {
+  id                         String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                   String               @map("school_id") @db.Uuid
+  academicYearId             String               @map("academic_year_id") @db.Uuid
+  termId                     String               @map("term_id") @db.Uuid
+  timetableConfigId          String               @map("timetable_config_id") @db.Uuid
+  periodId                   String               @map("period_id") @db.Uuid
+  dayOfWeek                  Int                  @map("day_of_week")
+  gradeId                    String               @map("grade_id") @db.Uuid
+  sectionId                  String               @map("section_id") @db.Uuid
+  classroomId                String               @map("classroom_id") @db.Uuid
+  subjectId                  String               @map("subject_id") @db.Uuid
+  teacherUserId              String               @map("teacher_user_id") @db.Uuid
+  teacherSubjectAllocationId String               @map("teacher_subject_allocation_id") @db.Uuid
+  roomId                     String?              @map("room_id") @db.Uuid
+  notes                      String?
+  status                     TimetableEntryStatus @default(DRAFT)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school                   School                   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear             AcademicYear             @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                     Term                     @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  timetableConfig          TimetableConfig          @relation(fields: [timetableConfigId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  period                   TimetablePeriod          @relation(fields: [periodId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade                    Grade                    @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  section                  Section                  @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom                Classroom                @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject                  Subject                  @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  teacherUser              User                     @relation("TimetableEntryTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
+  teacherSubjectAllocation TeacherSubjectAllocation @relation(fields: [teacherSubjectAllocationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  room                     Room?                    @relation(fields: [roomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  conflicts                TimetableConflict[]      @relation("TimetableConflictEntry")
+  relatedConflicts         TimetableConflict[]      @relation("TimetableConflictRelatedEntry")
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([timetableConfigId])
+  @@index([periodId])
+  @@index([gradeId])
+  @@index([sectionId])
+  @@index([classroomId])
+  @@index([subjectId])
+  @@index([teacherUserId])
+  @@index([teacherSubjectAllocationId])
+  @@index([roomId])
+  @@index([schoolId, termId, classroomId, dayOfWeek, periodId])
+  @@index([schoolId, termId, teacherUserId, dayOfWeek, periodId])
+  @@index([schoolId, termId, roomId, dayOfWeek, periodId])
+  @@map("timetable_entries")
+}
+
+model TimetablePublication {
+  id                String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String                     @map("school_id") @db.Uuid
+  academicYearId    String                     @map("academic_year_id") @db.Uuid
+  termId            String                     @map("term_id") @db.Uuid
+  timetableConfigId String                     @map("timetable_config_id") @db.Uuid
+  status            TimetablePublicationStatus @default(DRAFT)
+  publishedAt       DateTime?                  @map("published_at")
+  publishedByUserId String?                    @map("published_by_user_id") @db.Uuid
+  revision          Int                        @default(1)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear    AcademicYear    @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term            Term            @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  timetableConfig TimetableConfig @relation(fields: [timetableConfigId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  publishedByUser User?           @relation("TimetablePublicationPublishedBy", fields: [publishedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, timetableConfigId, revision], map: "timetable_publications_config_revision_key")
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([timetableConfigId])
+  @@index([publishedByUserId])
+  @@index([schoolId, termId, status])
+  @@map("timetable_publications")
+}
+
+model TimetableConflict {
+  id                String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String                    @map("school_id") @db.Uuid
+  academicYearId    String                    @map("academic_year_id") @db.Uuid
+  termId            String                    @map("term_id") @db.Uuid
+  timetableConfigId String                    @map("timetable_config_id") @db.Uuid
+  entryId           String?                   @map("entry_id") @db.Uuid
+  relatedEntryId    String?                   @map("related_entry_id") @db.Uuid
+  conflictType      TimetableConflictType     @map("conflict_type")
+  severity          TimetableConflictSeverity @default(BLOCKING)
+  status            TimetableConflictStatus   @default(OPEN)
+  dayOfWeek         Int?                      @map("day_of_week")
+  periodId          String?                   @map("period_id") @db.Uuid
+  teacherUserId     String?                   @map("teacher_user_id") @db.Uuid
+  roomId            String?                   @map("room_id") @db.Uuid
+  message           String
+  fingerprint       String
+  detectedAt        DateTime                  @default(now()) @map("detected_at")
+  resolvedAt        DateTime?                 @map("resolved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school          School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear    AcademicYear     @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term            Term             @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  timetableConfig TimetableConfig  @relation(fields: [timetableConfigId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  entry           TimetableEntry?  @relation("TimetableConflictEntry", fields: [entryId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  relatedEntry    TimetableEntry?  @relation("TimetableConflictRelatedEntry", fields: [relatedEntryId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  period          TimetablePeriod? @relation(fields: [periodId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  room            Room?            @relation(fields: [roomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, fingerprint], map: "timetable_conflicts_school_fingerprint_key")
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([timetableConfigId])
+  @@index([entryId])
+  @@index([relatedEntryId])
+  @@index([periodId])
+  @@index([teacherUserId])
+  @@index([roomId])
+  @@index([schoolId, termId, status])
+  @@index([schoolId, timetableConfigId, conflictType, status])
+  @@map("timetable_conflicts")
 }
 
 // ============================================================
