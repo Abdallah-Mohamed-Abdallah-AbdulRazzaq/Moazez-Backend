@@ -48,6 +48,10 @@ import { GetTeacherEmploymentProfileUseCase } from './profile/application/get-te
 import { GetTeacherProfileUseCase } from './profile/application/get-teacher-profile.use-case';
 import { TeacherProfileController } from './profile/controller/teacher-profile.controller';
 import { TeacherProfileReadAdapter } from './profile/infrastructure/teacher-profile-read.adapter';
+import { GetTeacherDailyScheduleUseCase } from './schedule/application/get-teacher-daily-schedule.use-case';
+import { GetTeacherWeeklyScheduleUseCase } from './schedule/application/get-teacher-weekly-schedule.use-case';
+import { TeacherScheduleController } from './schedule/controller/teacher-schedule.controller';
+import { TeacherScheduleReadAdapter } from './schedule/infrastructure/teacher-schedule-read.adapter';
 import { GetTeacherSettingsAboutUseCase } from './settings/application/get-teacher-settings-about.use-case';
 import { GetTeacherSettingsContactUseCase } from './settings/application/get-teacher-settings-contact.use-case';
 import { TeacherSettingsController } from './settings/controller/teacher-settings.controller';
@@ -95,6 +99,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     TeacherMessagesController,
     TeacherProfileController,
     TeacherSettingsController,
+    TeacherScheduleController,
   ],
   providers: [
     TeacherAppAccessService,
@@ -152,6 +157,9 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     TeacherSettingsReadAdapter,
     GetTeacherSettingsAboutUseCase,
     GetTeacherSettingsContactUseCase,
+    TeacherScheduleReadAdapter,
+    GetTeacherDailyScheduleUseCase,
+    GetTeacherWeeklyScheduleUseCase,
   ],
   exports: [TeacherAppAccessService],
 })

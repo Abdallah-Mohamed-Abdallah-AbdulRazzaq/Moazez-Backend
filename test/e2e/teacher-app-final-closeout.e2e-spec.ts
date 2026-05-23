@@ -454,6 +454,8 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       'GET /api/v1/teacher/my-classes/:classId',
       'GET /api/v1/teacher/profile',
       'GET /api/v1/teacher/profile/employment',
+      'GET /api/v1/teacher/schedule',
+      'GET /api/v1/teacher/schedule/week',
       'GET /api/v1/teacher/settings/about',
       'GET /api/v1/teacher/settings/contact',
       'GET /api/v1/teacher/tasks',
@@ -481,8 +483,6 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     ]);
 
     for (const absentRoute of [
-      'GET /api/v1/teacher/schedule',
-      'GET /api/v1/teacher/schedule/week',
       'GET /api/v1/teacher/homeworks',
       'POST /api/v1/teacher/xp/bonus',
       'GET /api/v1/teacher/messages/contacts',
@@ -503,8 +503,6 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
 
     const { accessToken } = await login(teacherAEmail);
     for (const route of [
-      '/teacher/schedule',
-      '/teacher/schedule/week',
       '/teacher/homeworks',
       `/teacher/homeworks/classes/${ownFixture.allocationId}/assignments`,
       '/teacher/messages/contacts',

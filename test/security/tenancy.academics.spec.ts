@@ -1916,19 +1916,25 @@ describe('Academics tenancy isolation (security)', () => {
       });
   });
 
-  it('does not register app-facing schedule routes in Sprint 12D', async () => {
+  it('keeps student and parent app-facing schedule routes deferred in Sprint 12E Task 1', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/schedule`)
+      .get(`${GLOBAL_PREFIX}/student/schedule`)
+      .query({ date: '2026-09-14' })
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/schedule`)
+      .get(`${GLOBAL_PREFIX}/student/schedule/week`)
+      .query({ date: '2026-09-14' })
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/parent/children/${tenantBUserId}/schedule/today`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${tenantBUserId}/schedule/weekly`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
   });

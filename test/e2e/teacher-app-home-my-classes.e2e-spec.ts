@@ -319,6 +319,8 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
       'GET /api/v1/teacher/my-classes/:classId',
       'GET /api/v1/teacher/profile',
       'GET /api/v1/teacher/profile/employment',
+      'GET /api/v1/teacher/schedule',
+      'GET /api/v1/teacher/schedule/week',
       'GET /api/v1/teacher/settings/about',
       'GET /api/v1/teacher/settings/contact',
       'GET /api/v1/teacher/tasks',
@@ -485,8 +487,6 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
     }
 
     for (const deferredRoute of [
-      '/teacher/schedule',
-      '/teacher/schedule/week',
       '/teacher/classes',
       '/teacher/classroom',
       `/teacher/classroom/${ownFixture.allocationId}/attendance`,

@@ -28,6 +28,11 @@ import {
   SchoolStatus,
   StudentEnrollmentStatus,
   StudentStatus,
+  TimetableConfigStatus,
+  TimetableEntryStatus,
+  TimetablePeriodType,
+  TimetablePublicationStatus,
+  TimetableScopeType,
   UserStatus,
   UserType,
   XpSourceType,
@@ -92,6 +97,9 @@ describe('Teacher App tenancy isolation (security)', () => {
   let ownTaskSubmissionId: string;
   let otherTeacherTaskSubmissionId: string;
   let crossSchoolTaskSubmissionId: string;
+  let ownScheduleEntryId: string;
+  let otherTeacherScheduleEntryId: string;
+  let crossSchoolScheduleEntryId: string;
   let ownConversationId: string;
   let otherTeacherConversationId: string;
   let crossSchoolConversationId: string;
@@ -132,6 +140,10 @@ describe('Teacher App tenancy isolation (security)', () => {
   const createdReinforcementTargetIds: string[] = [];
   const createdReinforcementTaskIds: string[] = [];
   const createdFileIds: string[] = [];
+  const createdTimetablePublicationIds: string[] = [];
+  const createdTimetableEntryIds: string[] = [];
+  const createdTimetablePeriodIds: string[] = [];
+  const createdTimetableConfigIds: string[] = [];
   const createdAllocationIds: string[] = [];
   const createdSubjectIds: string[] = [];
   const createdClassroomIds: string[] = [];
@@ -287,6 +299,28 @@ describe('Teacher App tenancy isolation (security)', () => {
     });
     crossSchoolAllocationId = crossSchoolFixture.allocationId;
     crossSchoolStudentIds = crossSchoolFixture.studentIds;
+
+    ownScheduleEntryId = await createPublishedTimetableFixture({
+      schoolId: schoolAId,
+      fixture: ownFixture,
+      teacherUserId: teacherAId,
+      marker: 'own-schedule',
+      dayOfWeek: 1,
+    });
+    otherTeacherScheduleEntryId = await createPublishedTimetableFixture({
+      schoolId: schoolAId,
+      fixture: otherTeacherFixture,
+      teacherUserId: teacherBId,
+      marker: 'other-teacher-schedule',
+      dayOfWeek: 1,
+    });
+    crossSchoolScheduleEntryId = await createPublishedTimetableFixture({
+      schoolId: schoolBId,
+      fixture: crossSchoolFixture,
+      teacherUserId: teacherCrossSchoolId,
+      marker: 'cross-school-schedule',
+      dayOfWeek: 1,
+    });
 
     await createPrivateStudentData({
       organizationId: organizationAId,
@@ -713,6 +747,18 @@ describe('Teacher App tenancy isolation (security)', () => {
       });
       await prisma.student.deleteMany({
         where: { id: { in: createdStudentIds } },
+      });
+      await prisma.timetablePublication.deleteMany({
+        where: { id: { in: createdTimetablePublicationIds } },
+      });
+      await prisma.timetableEntry.deleteMany({
+        where: { id: { in: createdTimetableEntryIds } },
+      });
+      await prisma.timetablePeriod.deleteMany({
+        where: { id: { in: createdTimetablePeriodIds } },
+      });
+      await prisma.timetableConfig.deleteMany({
+        where: { id: { in: createdTimetableConfigIds } },
       });
       await prisma.teacherSubjectAllocation.deleteMany({
         where: { id: { in: createdAllocationIds } },
@@ -1171,6 +1217,126 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(json).not.toContain(crossSchoolAllocationId);
     expect(json).not.toContain('schoolId');
     expect(json).not.toContain('scheduleId');
+  });
+
+  it('teacher can read own daily schedule from published timetable only', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/schedule`)
+      .query({ date: '2026-09-14' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      date: '2026-09-14',
+      dayOfWeek: 1,
+      items: [
+        expect.objectContaining({
+          scheduleId: `timetable-entry:${ownScheduleEntryId}:2026-09-14`,
+          timetableEntryId: ownScheduleEntryId,
+          teacherSubjectAllocationId: ownAllocationId,
+          classId: ownAllocationId,
+          status: 'scheduled',
+          needsAttendance: true,
+          isPrepared: null,
+          hasHomework: null,
+        }),
+      ],
+    });
+    expect(JSON.stringify(response.body)).not.toContain(
+      otherTeacherScheduleEntryId,
+    );
+    expect(JSON.stringify(response.body)).not.toContain(
+      crossSchoolScheduleEntryId,
+    );
+    expectSafeTeacherSchedulePayload(response.body);
+  });
+
+  it('teacher daily schedule returns empty outside the published term without leaking entries', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/schedule`)
+      .query({ date: '2027-01-04' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      date: '2027-01-04',
+      dayOfWeek: 1,
+      items: [],
+    });
+    const json = JSON.stringify(response.body);
+    expect(json).not.toContain(ownScheduleEntryId);
+    expect(json).not.toContain(otherTeacherScheduleEntryId);
+    expect(json).not.toContain(crossSchoolScheduleEntryId);
+    expectSafeTeacherSchedulePayload(response.body);
+  });
+
+  it('teacher can read own weekly schedule grouped by timetable week start', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/schedule/week`)
+      .query({ date: '2026-09-16' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body.weekStartDate).toBe('2026-09-13');
+    expect(response.body.weekEndDate).toBe('2026-09-19');
+    expect(response.body.days).toHaveLength(7);
+
+    const monday = response.body.days.find(
+      (day: { date: string }) => day.date === '2026-09-14',
+    );
+    expect(monday).toMatchObject({
+      date: '2026-09-14',
+      dayOfWeek: 1,
+      items: [
+        expect.objectContaining({
+          scheduleId: `timetable-entry:${ownScheduleEntryId}:2026-09-14`,
+          timetableEntryId: ownScheduleEntryId,
+          classId: ownAllocationId,
+        }),
+      ],
+    });
+    expect(JSON.stringify(response.body)).not.toContain(
+      otherTeacherScheduleEntryId,
+    );
+    expect(JSON.stringify(response.body)).not.toContain(
+      crossSchoolScheduleEntryId,
+    );
+    expectSafeTeacherSchedulePayload(response.body);
+  });
+
+  it('teacher from another school cannot see this school schedule entries', async () => {
+    const { accessToken } = await login(teacherCrossSchoolEmail);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/schedule`)
+      .query({ date: '2026-09-14' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const json = JSON.stringify(response.body);
+    expect(json).toContain(crossSchoolScheduleEntryId);
+    expect(json).not.toContain(ownScheduleEntryId);
+    expect(json).not.toContain(otherTeacherScheduleEntryId);
+    expectSafeTeacherSchedulePayload(response.body);
+  });
+
+  it('rejects invalid teacher schedule dates', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/schedule`)
+      .query({ date: '2026-02-31' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(400)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe('validation.failed');
+      });
   });
 
   it('classroom roster does not expose guardian, medical, document, or private data', async () => {
@@ -2533,6 +2699,16 @@ describe('Teacher App tenancy isolation (security)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
       await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/schedule`)
+        .query({ date: '2026-09-14' })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/schedule/week`)
+        .query({ date: '2026-09-14' })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}/teacher/my-classes`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
@@ -2914,19 +3090,35 @@ describe('Teacher App tenancy isolation (security)', () => {
       .expect(404);
   });
 
-  it('does not register deferred Teacher App routes', async () => {
+  it('does not register deferred app schedule and Teacher App routes', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/schedule`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/teacher/classes`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/teacher/classrooms/${ownAllocationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/schedule`)
+      .query({ date: '2026-09-14' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/schedule/week`)
+      .query({ date: '2026-09-14' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownStudentIds[0]}/schedule/today`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownStudentIds[0]}/schedule/weekly`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
   });
@@ -3012,6 +3204,8 @@ describe('Teacher App tenancy isolation (security)', () => {
     allocationId: string;
     academicYearId: string;
     termId: string;
+    gradeId: string;
+    sectionId: string;
     classroomId: string;
     subjectId: string;
     studentIds: string[];
@@ -3152,11 +3346,98 @@ describe('Teacher App tenancy isolation (security)', () => {
       allocationId: allocation.id,
       academicYearId: year.id,
       termId: term.id,
+      gradeId: grade.id,
+      sectionId: section.id,
       classroomId: classroom.id,
       subjectId: subject.id,
       studentIds,
       enrollmentIds,
     };
+  }
+
+  async function createPublishedTimetableFixture(params: {
+    schoolId: string;
+    fixture: {
+      academicYearId: string;
+      termId: string;
+      gradeId: string;
+      sectionId: string;
+      classroomId: string;
+      subjectId: string;
+      allocationId: string;
+    };
+    teacherUserId: string;
+    marker: string;
+    dayOfWeek: number;
+  }): Promise<string> {
+    const config = await prisma.timetableConfig.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.fixture.academicYearId,
+        termId: params.fixture.termId,
+        name: `${testSuffix}-${params.marker}-config`,
+        weekStartDay: 0,
+        activeDays: [0, 1, 2, 3, 4],
+        scopeType: TimetableScopeType.TERM,
+        scopeKey: `term:${params.fixture.termId}`,
+        status: TimetableConfigStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    createdTimetableConfigIds.push(config.id);
+
+    const period = await prisma.timetablePeriod.create({
+      data: {
+        schoolId: params.schoolId,
+        timetableConfigId: config.id,
+        periodIndex: 1,
+        label: `${testSuffix}-${params.marker}-period`,
+        startTime: '08:00',
+        endTime: '08:45',
+        type: TimetablePeriodType.CLASS,
+        isInstructional: true,
+      },
+      select: { id: true },
+    });
+    createdTimetablePeriodIds.push(period.id);
+
+    const publication = await prisma.timetablePublication.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.fixture.academicYearId,
+        termId: params.fixture.termId,
+        timetableConfigId: config.id,
+        status: TimetablePublicationStatus.PUBLISHED,
+        publishedAt: new Date('2026-09-10T08:00:00.000Z'),
+        publishedByUserId: params.teacherUserId,
+        revision: 1,
+      },
+      select: { id: true },
+    });
+    createdTimetablePublicationIds.push(publication.id);
+
+    const entry = await prisma.timetableEntry.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.fixture.academicYearId,
+        termId: params.fixture.termId,
+        timetableConfigId: config.id,
+        periodId: period.id,
+        dayOfWeek: params.dayOfWeek,
+        gradeId: params.fixture.gradeId,
+        sectionId: params.fixture.sectionId,
+        classroomId: params.fixture.classroomId,
+        subjectId: params.fixture.subjectId,
+        teacherUserId: params.teacherUserId,
+        teacherSubjectAllocationId: params.fixture.allocationId,
+        notes: `${testSuffix}-${params.marker}-safe-note`,
+        status: TimetableEntryStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    createdTimetableEntryIds.push(entry.id);
+
+    return entry.id;
   }
 
   async function createGradeAssessmentFixture(params: {
@@ -3755,6 +4036,30 @@ describe('Teacher App tenancy isolation (security)', () => {
       'sessionId',
       'refreshToken',
       'raw-storage-logo-should-not-be-returned',
+    ]) {
+      expect(json).not.toContain(forbidden);
+    }
+  }
+
+  function expectSafeTeacherSchedulePayload(value: unknown): void {
+    const json = JSON.stringify(value);
+
+    for (const forbidden of [
+      'schoolId',
+      'organizationId',
+      'password',
+      'passwordHash',
+      'sessionId',
+      'refreshToken',
+      'raw-storage-logo-should-not-be-returned',
+      'bucket',
+      'objectKey',
+      'raw-storage-key',
+      'private-bucket',
+      'actorUserId',
+      'metadata',
+      'BehaviorPointLedger',
+      'behaviorPoint',
     ]) {
       expect(json).not.toContain(forbidden);
     }

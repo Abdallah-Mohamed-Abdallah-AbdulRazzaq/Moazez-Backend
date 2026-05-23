@@ -481,6 +481,8 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
       'GET /api/v1/teacher/my-classes/:classId',
       'GET /api/v1/teacher/profile',
       'GET /api/v1/teacher/profile/employment',
+      'GET /api/v1/teacher/schedule',
+      'GET /api/v1/teacher/schedule/week',
       'GET /api/v1/teacher/settings/about',
       'GET /api/v1/teacher/settings/contact',
       'GET /api/v1/teacher/tasks',
@@ -509,8 +511,6 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
 
     const teacher = await login(teacherAEmail);
     for (const deferredRoute of [
-      '/teacher/schedule',
-      '/teacher/schedule/week',
       `/teacher/classroom/${ownFixture.allocationId}/schedule`,
       `/teacher/classroom/${ownFixture.allocationId}/timetable`,
       `/teacher/classroom/${ownFixture.allocationId}/attendance/scheduleId`,
