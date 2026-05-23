@@ -49,6 +49,10 @@ import { GetStudentProgressUseCase } from './progress/application/get-student-pr
 import { GetStudentXpProgressUseCase } from './progress/application/get-student-xp-progress.use-case';
 import { StudentProgressController } from './progress/controller/student-progress.controller';
 import { StudentProgressReadAdapter } from './progress/infrastructure/student-progress-read.adapter';
+import { GetStudentDailyScheduleUseCase } from './schedule/application/get-student-daily-schedule.use-case';
+import { GetStudentWeeklyScheduleUseCase } from './schedule/application/get-student-weekly-schedule.use-case';
+import { StudentScheduleController } from './schedule/controller/student-schedule.controller';
+import { StudentScheduleReadAdapter } from './schedule/infrastructure/student-schedule-read.adapter';
 import { GetStudentSubjectUseCase } from './subjects/application/get-student-subject.use-case';
 import { ListStudentSubjectsUseCase } from './subjects/application/list-student-subjects.use-case';
 import { StudentSubjectsController } from './subjects/controller/student-subjects.controller';
@@ -72,6 +76,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentBehaviorController,
     StudentProgressController,
     StudentHeroController,
+    StudentScheduleController,
     StudentTasksController,
     StudentMessagesController,
     StudentAnnouncementsController,
@@ -103,6 +108,9 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     GetStudentAcademicProgressUseCase,
     GetStudentBehaviorProgressUseCase,
     GetStudentXpProgressUseCase,
+    StudentScheduleReadAdapter,
+    GetStudentDailyScheduleUseCase,
+    GetStudentWeeklyScheduleUseCase,
     StudentHeroReadAdapter,
     GetStudentHeroOverviewUseCase,
     GetStudentHeroProgressUseCase,

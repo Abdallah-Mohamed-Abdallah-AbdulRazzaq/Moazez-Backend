@@ -764,6 +764,8 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'GET /api/v1/student/progress/academic',
       'GET /api/v1/student/progress/behavior',
       'GET /api/v1/student/progress/xp',
+      'GET /api/v1/student/schedule',
+      'GET /api/v1/student/schedule/week',
       'GET /api/v1/student/subjects',
       'GET /api/v1/student/subjects/:subjectId',
       'GET /api/v1/student/tasks',
@@ -777,8 +779,6 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
     ]);
 
     for (const absentRoute of [
-      'GET /api/v1/student/schedule',
-      'GET /api/v1/student/schedule/week',
       'GET /api/v1/student/timetable',
       'GET /api/v1/student/homeworks',
       'GET /api/v1/student/homework',
@@ -1779,7 +1779,6 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
     const { accessToken } = await login(linkedStudentEmail);
 
     for (const path of [
-      'schedule',
       'homework',
       'homeworks',
       'pickup',

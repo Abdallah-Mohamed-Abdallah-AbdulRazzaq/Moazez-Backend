@@ -293,11 +293,12 @@ describe('Sprint 11F Identity/Credentials/Email final closeout (e2e)', () => {
         'GET /api/v1/settings/email/campaigns/:batchId',
         'GET /api/v1/teacher/schedule',
         'GET /api/v1/teacher/schedule/week',
+        'GET /api/v1/student/schedule',
+        'GET /api/v1/student/schedule/week',
       ]),
     );
 
     for (const absentRoute of [
-      'GET /api/v1/student/schedule',
       'GET /api/v1/parent/schedule',
       'GET /api/v1/teacher/homeworks',
       'GET /api/v1/student/homeworks',

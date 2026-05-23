@@ -3090,7 +3090,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       .expect(404);
   });
 
-  it('does not register deferred app schedule and Teacher App routes', async () => {
+  it('does not register deferred parent app schedule and Teacher App routes', async () => {
     const { accessToken } = await login(teacherAEmail);
 
     await request(app.getHttpServer())
@@ -3099,16 +3099,6 @@ describe('Teacher App tenancy isolation (security)', () => {
       .expect(404);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/teacher/classrooms/${ownAllocationId}`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/schedule`)
-      .query({ date: '2026-09-14' })
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/schedule/week`)
-      .query({ date: '2026-09-14' })
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     await request(app.getHttpServer())

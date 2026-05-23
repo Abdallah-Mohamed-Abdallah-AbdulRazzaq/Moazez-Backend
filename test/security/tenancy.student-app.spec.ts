@@ -43,6 +43,11 @@ import {
   SchoolStatus,
   StudentEnrollmentStatus,
   StudentStatus,
+  TimetableConfigStatus,
+  TimetableEntryStatus,
+  TimetablePeriodType,
+  TimetablePublicationStatus,
+  TimetableScopeType,
   UserStatus,
   UserType,
   XpSourceType,
@@ -261,8 +266,12 @@ describe('Student App Home/Profile routes (security)', () => {
   let tenantBAnnouncementId: string;
   let otherClassroomSubjectId: string;
   let otherClassroomAssessmentId: string;
+  let ownScheduleEntryId: string;
+  let otherClassroomScheduleEntryId: string;
+  let tenantBScheduleEntryId: string;
   let tenantBSubjectId: string;
   let tenantBAssessmentId: string;
+  let tenantBLinkedStudentEmail: string;
   let linkedStudentUserId: string;
   let linkedStudentId: string;
   let linkedEnrollmentId: string;
@@ -276,6 +285,9 @@ describe('Student App Home/Profile routes (security)', () => {
   let adminEmail: string;
   let teacherEmail: string;
   let parentEmail: string;
+  let gradeId: string;
+  let sectionId: string;
+  let ownSubjectAllocationId: string;
 
   const testSuffix = `student-app-security-${Date.now()}`;
   const createdUserIds: string[] = [];
@@ -314,6 +326,10 @@ describe('Student App Home/Profile routes (security)', () => {
   const createdGradeSubmissionIds: string[] = [];
   const createdGradeSubmissionAnswerIds: string[] = [];
   const createdTaskIds: string[] = [];
+  const createdTimetablePublicationIds: string[] = [];
+  const createdTimetableEntryIds: string[] = [];
+  const createdTimetablePeriodIds: string[] = [];
+  const createdTimetableConfigIds: string[] = [];
   const createdAllocationIds: string[] = [];
   const createdSubjectIds: string[] = [];
   const createdClassroomIds: string[] = [];
@@ -417,7 +433,10 @@ describe('Student App Home/Profile routes (security)', () => {
     termId = academic.termId;
     stageId = academic.stageId;
     classroomId = academic.classroomId;
+    gradeId = academic.gradeId;
+    sectionId = academic.sectionId;
     subjectId = academic.subjectId;
+    ownSubjectAllocationId = academic.allocationId;
 
     const linkedStudent = await prisma.student.create({
       data: {
@@ -461,6 +480,20 @@ describe('Student App Home/Profile routes (security)', () => {
     linkedEnrollmentId = enrollment.id;
     createdEnrollmentIds.push(enrollment.id);
 
+    ownScheduleEntryId = await createStudentScheduleFixture({
+      schoolId,
+      academicYearId,
+      termId,
+      gradeId,
+      sectionId,
+      classroomId,
+      subjectId,
+      teacherUserId,
+      allocationId: ownSubjectAllocationId,
+      marker: 'own-student-schedule',
+      dayOfWeek: 1,
+    });
+
     const otherStudentFixture = await createOtherStudentFixture({
       userId: sameSchoolOtherStudentUserId,
     });
@@ -497,10 +530,28 @@ describe('Student App Home/Profile routes (security)', () => {
     );
     otherClassroomSubjectId = otherClassroomFixture.subjectId;
     otherClassroomAssessmentId = otherClassroomFixture.assessmentId;
+    otherClassroomScheduleEntryId = await createStudentScheduleFixture({
+      schoolId,
+      academicYearId,
+      termId,
+      gradeId,
+      sectionId,
+      classroomId: otherClassroomFixture.classroomId,
+      subjectId: otherClassroomFixture.subjectId,
+      teacherUserId,
+      allocationId: otherClassroomFixture.allocationId,
+      marker: 'other-classroom-student-schedule',
+      dayOfWeek: 1,
+    });
 
-    const tenantBFixture = await createTenantBAssessmentFixture(teacherUserId);
+    const tenantBFixture = await createTenantBAssessmentFixture({
+      teacherUserId,
+      studentRoleId: studentRole.id,
+    });
     tenantBSubjectId = tenantBFixture.subjectId;
     tenantBAssessmentId = tenantBFixture.assessmentId;
+    tenantBLinkedStudentEmail = tenantBFixture.studentEmail;
+    tenantBScheduleEntryId = tenantBFixture.scheduleEntryId;
     tenantBBehaviorRecordId = tenantBFixture.behaviorRecordId;
     tenantBHeroMissionId = tenantBFixture.heroMissionId;
     tenantBTaskId = tenantBFixture.taskId;
@@ -673,6 +724,18 @@ describe('Student App Home/Profile routes (security)', () => {
       await prisma.file.deleteMany({
         where: { id: { in: createdFileIds } },
       });
+      await prisma.timetablePublication.deleteMany({
+        where: { id: { in: createdTimetablePublicationIds } },
+      });
+      await prisma.timetableEntry.deleteMany({
+        where: { id: { in: createdTimetableEntryIds } },
+      });
+      await prisma.timetablePeriod.deleteMany({
+        where: { id: { in: createdTimetablePeriodIds } },
+      });
+      await prisma.timetableConfig.deleteMany({
+        where: { id: { in: createdTimetableConfigIds } },
+      });
       await prisma.teacherSubjectAllocation.deleteMany({
         where: { id: { in: createdAllocationIds } },
       });
@@ -775,6 +838,125 @@ describe('Student App Home/Profile routes (security)', () => {
       seatNumber: true,
     });
     assertNoForbiddenStudentAppFields(profile.body);
+  });
+
+  it('allows a linked student to read own daily and weekly schedule only', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+
+    const daily = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/schedule`)
+      .query({ date: '2026-09-14' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(daily.body).toMatchObject({
+      date: '2026-09-14',
+      dayOfWeek: 1,
+      items: [
+        expect.objectContaining({
+          scheduleId: `timetable-entry:${ownScheduleEntryId}:2026-09-14`,
+          timetableEntryId: ownScheduleEntryId,
+          status: 'scheduled',
+          needsAttendance: true,
+          hasHomework: null,
+          isExam: null,
+          isBreak: false,
+        }),
+      ],
+    });
+    expect(JSON.stringify(daily.body)).not.toContain(
+      otherClassroomScheduleEntryId,
+    );
+    expect(JSON.stringify(daily.body)).not.toContain(tenantBScheduleEntryId);
+    expectSafeStudentSchedulePayload(daily.body);
+
+    const weekly = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/schedule/week`)
+      .query({ date: '2026-09-16' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(weekly.body.weekStartDate).toBe('2026-09-14');
+    expect(weekly.body.weekEndDate).toBe('2026-09-20');
+    expect(weekly.body.days).toHaveLength(7);
+    expect(
+      weekly.body.days.find(
+        (day: { date: string }) => day.date === '2026-09-14',
+      ),
+    ).toMatchObject({
+      date: '2026-09-14',
+      dayOfWeek: 1,
+      items: [
+        expect.objectContaining({
+          scheduleId: `timetable-entry:${ownScheduleEntryId}:2026-09-14`,
+          timetableEntryId: ownScheduleEntryId,
+        }),
+      ],
+    });
+    expect(JSON.stringify(weekly.body)).not.toContain(
+      otherClassroomScheduleEntryId,
+    );
+    expect(JSON.stringify(weekly.body)).not.toContain(tenantBScheduleEntryId);
+    expectSafeStudentSchedulePayload(weekly.body);
+  });
+
+  it('student schedule returns empty outside the published term without leaking entries', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/schedule`)
+      .query({ date: '2027-01-04' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      date: '2027-01-04',
+      dayOfWeek: 1,
+      items: [],
+    });
+    const json = JSON.stringify(response.body);
+    expect(json).not.toContain(ownScheduleEntryId);
+    expect(json).not.toContain(otherClassroomScheduleEntryId);
+    expect(json).not.toContain(tenantBScheduleEntryId);
+    expectSafeStudentSchedulePayload(response.body);
+  });
+
+  it('student from another school cannot see this school schedule entries', async () => {
+    const { accessToken } = await login(tenantBLinkedStudentEmail);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/schedule`)
+      .query({ date: '2026-09-14' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const json = JSON.stringify(response.body);
+    expect(json).toContain(tenantBScheduleEntryId);
+    expect(json).not.toContain(ownScheduleEntryId);
+    expect(json).not.toContain(otherClassroomScheduleEntryId);
+    expectSafeStudentSchedulePayload(response.body);
+  });
+
+  it('keeps student actors out of teacher and parent schedule routes', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/schedule`)
+      .query({ date: '2026-09-14' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${linkedStudentId}/schedule/today`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${linkedStudentId}/schedule/weekly`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
   });
 
   it('allows a linked student to read own subjects, grades, and exams', async () => {
@@ -1520,6 +1702,8 @@ describe('Student App Home/Profile routes (security)', () => {
         'profile',
         'subjects',
         `subjects/${subjectId}`,
+        'schedule?date=2026-09-14',
+        'schedule/week?date=2026-09-14',
         'grades',
         'grades/summary',
         `grades/assessments/${ownAssessmentId}`,
@@ -1636,6 +1820,8 @@ describe('Student App Home/Profile routes (security)', () => {
         `hero/missions/${heroMissionId}`,
         'tasks',
         'tasks/summary',
+        'schedule',
+        'schedule/week',
         `tasks/${ownTaskId}`,
         `tasks/${ownTaskId}/submissions`,
         `tasks/${ownTaskId}/submissions/${ownTaskSubmissionId}`,
@@ -1701,7 +1887,6 @@ describe('Student App Home/Profile routes (security)', () => {
     const { accessToken } = await login(linkedStudentEmail);
 
     for (const path of [
-      'schedule',
       'homework',
       'homeworks',
       'pickup',
@@ -1737,6 +1922,20 @@ describe('Student App Home/Profile routes (security)', () => {
     userType: UserType;
     roleId: string;
   }): Promise<string> {
+    return createUserWithScopedMembership({
+      ...params,
+      organizationId,
+      schoolId,
+    });
+  }
+
+  async function createUserWithScopedMembership(params: {
+    email: string;
+    userType: UserType;
+    roleId: string;
+    organizationId: string;
+    schoolId: string;
+  }): Promise<string> {
     const user = await prisma.user.create({
       data: {
         email: params.email,
@@ -1753,8 +1952,8 @@ describe('Student App Home/Profile routes (security)', () => {
     await prisma.membership.create({
       data: {
         userId: user.id,
-        organizationId,
-        schoolId,
+        organizationId: params.organizationId,
+        schoolId: params.schoolId,
         roleId: params.roleId,
         userType: params.userType,
         status: MembershipStatus.ACTIVE,
@@ -1768,9 +1967,11 @@ describe('Student App Home/Profile routes (security)', () => {
     academicYearId: string;
     termId: string;
     stageId: string;
+    gradeId: string;
     classroomId: string;
     sectionId: string;
     subjectId: string;
+    allocationId: string;
   }> {
     const year = await prisma.academicYear.create({
       data: {
@@ -1874,9 +2075,11 @@ describe('Student App Home/Profile routes (security)', () => {
       academicYearId: year.id,
       termId: term.id,
       stageId: stage.id,
+      gradeId: grade.id,
       classroomId: classroom.id,
       sectionId: section.id,
       subjectId: subject.id,
+      allocationId: allocation.id,
     };
   }
 
@@ -2861,7 +3064,12 @@ describe('Student App Home/Profile routes (security)', () => {
   async function createOtherClassroomAssessmentFixture(
     teacherUserId: string,
     sectionId: string,
-  ): Promise<{ subjectId: string; assessmentId: string }> {
+  ): Promise<{
+    classroomId: string;
+    subjectId: string;
+    allocationId: string;
+    assessmentId: string;
+  }> {
     const classroom = await prisma.classroom.create({
       data: {
         schoolId,
@@ -2922,14 +3130,106 @@ describe('Student App Home/Profile routes (security)', () => {
     });
     createdGradeAssessmentIds.push(assessment.id);
 
-    return { subjectId: subject.id, assessmentId: assessment.id };
+    return {
+      classroomId: classroom.id,
+      subjectId: subject.id,
+      allocationId: allocation.id,
+      assessmentId: assessment.id,
+    };
   }
 
-  async function createTenantBAssessmentFixture(
-    teacherUserId: string,
-  ): Promise<{
+  async function createStudentScheduleFixture(params: {
+    schoolId: string;
+    academicYearId: string;
+    termId: string;
+    gradeId: string;
+    sectionId: string;
+    classroomId: string;
+    subjectId: string;
+    teacherUserId: string;
+    allocationId: string;
+    marker: string;
+    dayOfWeek: number;
+  }): Promise<string> {
+    const config = await prisma.timetableConfig.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        name: `${testSuffix}-${params.marker}-config`,
+        weekStartDay: 1,
+        activeDays: [1, 2, 3, 4, 5],
+        scopeType: TimetableScopeType.CLASSROOM,
+        scopeKey: params.classroomId,
+        classroomId: params.classroomId,
+        status: TimetableConfigStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    createdTimetableConfigIds.push(config.id);
+
+    const period = await prisma.timetablePeriod.create({
+      data: {
+        schoolId: params.schoolId,
+        timetableConfigId: config.id,
+        periodIndex: 1,
+        label: `${testSuffix}-${params.marker}-period`,
+        startTime: '08:00',
+        endTime: '08:45',
+        type: TimetablePeriodType.CLASS,
+        isInstructional: true,
+      },
+      select: { id: true },
+    });
+    createdTimetablePeriodIds.push(period.id);
+
+    const publication = await prisma.timetablePublication.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        timetableConfigId: config.id,
+        status: TimetablePublicationStatus.PUBLISHED,
+        publishedAt: new Date('2026-09-10T08:00:00.000Z'),
+        publishedByUserId: params.teacherUserId,
+        revision: 1,
+      },
+      select: { id: true },
+    });
+    createdTimetablePublicationIds.push(publication.id);
+
+    const entry = await prisma.timetableEntry.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        timetableConfigId: config.id,
+        periodId: period.id,
+        dayOfWeek: params.dayOfWeek,
+        gradeId: params.gradeId,
+        sectionId: params.sectionId,
+        classroomId: params.classroomId,
+        subjectId: params.subjectId,
+        teacherUserId: params.teacherUserId,
+        teacherSubjectAllocationId: params.allocationId,
+        notes: `${testSuffix}-${params.marker}-safe-note`,
+        status: TimetableEntryStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    createdTimetableEntryIds.push(entry.id);
+
+    return entry.id;
+  }
+
+  async function createTenantBAssessmentFixture(params: {
+    teacherUserId: string;
+    studentRoleId: string;
+  }): Promise<{
     subjectId: string;
     assessmentId: string;
+    studentEmail: string;
+    scheduleEntryId: string;
     behaviorRecordId: string;
     heroMissionId: string;
     taskId: string;
@@ -2957,6 +3257,15 @@ describe('Student App Home/Profile routes (security)', () => {
       select: { id: true },
     });
     createdSchoolIds.push(school.id);
+
+    const studentEmail = `${testSuffix}-tenant-b-student@example.test`;
+    const studentUserId = await createUserWithScopedMembership({
+      email: studentEmail,
+      userType: UserType.STUDENT,
+      roleId: params.studentRoleId,
+      organizationId: organization.id,
+      schoolId: school.id,
+    });
 
     const year = await prisma.academicYear.create({
       data: {
@@ -3047,7 +3356,7 @@ describe('Student App Home/Profile routes (security)', () => {
     const allocation = await prisma.teacherSubjectAllocation.create({
       data: {
         schoolId: school.id,
-        teacherUserId,
+        teacherUserId: params.teacherUserId,
         subjectId: subject.id,
         classroomId: classroom.id,
         termId: term.id,
@@ -3084,6 +3393,7 @@ describe('Student App Home/Profile routes (security)', () => {
       data: {
         schoolId: school.id,
         organizationId: organization.id,
+        userId: studentUserId,
         firstName: 'Tenant',
         lastName: 'Student',
         status: StudentStatus.ACTIVE,
@@ -3105,6 +3415,20 @@ describe('Student App Home/Profile routes (security)', () => {
       select: { id: true },
     });
     createdEnrollmentIds.push(enrollment.id);
+
+    const scheduleEntryId = await createStudentScheduleFixture({
+      schoolId: school.id,
+      academicYearId: year.id,
+      termId: term.id,
+      gradeId: grade.id,
+      sectionId: section.id,
+      classroomId: classroom.id,
+      subjectId: subject.id,
+      teacherUserId: params.teacherUserId,
+      allocationId: allocation.id,
+      marker: 'tenant-b-student-schedule',
+      dayOfWeek: 1,
+    });
 
     const behaviorRecord = await prisma.behaviorRecord.create({
       data: {
@@ -3154,8 +3478,8 @@ describe('Student App Home/Profile routes (security)', () => {
         titleEn: `${testSuffix} Tenant B Task`,
         source: ReinforcementSource.TEACHER,
         status: ReinforcementTaskStatus.NOT_COMPLETED,
-        assignedById: teacherUserId,
-        createdById: teacherUserId,
+        assignedById: params.teacherUserId,
+        createdById: params.teacherUserId,
       },
       select: { id: true },
     });
@@ -3208,7 +3532,7 @@ describe('Student App Home/Profile routes (security)', () => {
         type: CommunicationConversationType.DIRECT,
         status: CommunicationConversationStatus.ACTIVE,
         titleEn: `${testSuffix} Tenant B Conversation`,
-        createdById: teacherUserId,
+        createdById: params.teacherUserId,
       },
       select: { id: true },
     });
@@ -3224,8 +3548,8 @@ describe('Student App Home/Profile routes (security)', () => {
         audienceType: CommunicationAnnouncementAudienceType.SCHOOL,
         category: 'school',
         publishedAt: new Date('2026-01-10T08:00:00.000Z'),
-        createdById: teacherUserId,
-        publishedById: teacherUserId,
+        createdById: params.teacherUserId,
+        publishedById: params.teacherUserId,
       },
       select: { id: true },
     });
@@ -3234,6 +3558,8 @@ describe('Student App Home/Profile routes (security)', () => {
     return {
       subjectId: subject.id,
       assessmentId: assessment.id,
+      studentEmail,
+      scheduleEntryId,
       behaviorRecordId: behaviorRecord.id,
       heroMissionId: heroMission.id,
       taskId: task.id,
@@ -3274,6 +3600,22 @@ describe('Student App Home/Profile routes (security)', () => {
       'directUrl',
       'signedUrl',
       'fileUrl',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  }
+
+  function expectSafeStudentSchedulePayload(body: unknown): void {
+    const serialized = JSON.stringify(body);
+    for (const forbidden of [
+      'schoolId',
+      'organizationId',
+      'academicYearId',
+      'termId',
+      'teacherSubjectAllocationId',
+      'password',
+      'session',
+      'token',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
