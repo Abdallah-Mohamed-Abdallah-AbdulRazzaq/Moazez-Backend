@@ -40,6 +40,7 @@
     "test:e2e:sprint8f": "jest --config ./test/jest-e2e.json --runInBand test/e2e/student-app-final-closeout.e2e-spec.ts",
     "test:e2e:sprint9f": "jest --config ./test/jest-e2e.json --runInBand test/e2e/parent-app-final-closeout.e2e-spec.ts",
     "test:e2e:sprint11f": "jest --config ./test/jest-e2e.json --runInBand test/e2e/identity-credentials-email-final-closeout.e2e-spec.ts",
+    "test:e2e:sprint12f": "jest --config ./test/jest-e2e.json --runInBand test/e2e/schedule-timetable-final-closeout.e2e-spec.ts",
     "test:security": "jest --config ./test/jest-e2e.json test/security",
     "seed": "prisma db seed",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",
@@ -67,6 +68,7 @@
     "verify:sprint9f": "npm run verify:sprint8f && npm run test:e2e:sprint9f",
     "verify:phase5": "npm run verify:sprint9f",
     "verify:sprint11f": "npm run verify:phase5 && npm run test:e2e:sprint11f",
+    "verify:sprint12f": "npm run verify:sprint11f && npm run test:e2e:sprint12f",
     "demo:sprint1c": "node scripts/demo-sprint1c.cjs",
     "demo:sprint2a": "node scripts/demo-sprint2a.cjs",
     "demo:sprint2b": "node scripts/demo-sprint2b.cjs"

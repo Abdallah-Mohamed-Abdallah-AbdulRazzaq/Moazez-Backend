@@ -1370,6 +1370,62 @@ Deferred beyond Sprint 11F:
 - profile/avatar/preferences
 - cross-school parent aggregation
 
+## Sprint 12F Schedule/Timetable Final Closeout Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+# Update JWT_ACCESS_SECRET and JWT_REFRESH_SECRET to 16+ characters
+
+npm run infra:up
+npm run verify:sprint12f
+```
+
+For a human demo against a running app:
+
+```bash
+npm run start:dev
+```
+
+Sprint 12F closeout verification covers:
+
+- Academics Timetable Config
+- Periods
+- Entries
+- Conflicts
+- Preview Readiness
+- Publication
+- post-publish locking
+- Teacher schedule reads
+- Student schedule reads
+- Parent child schedule reads
+
+Source of truth rules:
+
+- Academics Timetable Core owns timetable state.
+- Teacher, Student, and Parent schedules are read-only composition layers.
+- `scheduleId` in app responses is a computed V1 read identity, not a persisted ScheduleOccurrence.
+- Attendance compatibility is read-only; Attendance remains its own source of truth.
+
+Safety rules:
+
+- App schedule APIs return published active timetable data only; drafts stay hidden.
+- App schedule responses do not expose tenant ids.
+- Parent schedule is current-school only and does not aggregate across schools.
+
+Deferred beyond Sprint 12F:
+
+- ScheduleOccurrence persistence
+- Homework Core
+- Pickup / Smart Pickup
+- app Notification Center
+- schedule mutations from Teacher, Student, or Parent apps
+- cross-school Parent schedule aggregation
+- advanced recurrence, exceptions, and substitutions
+- timetable import/export
+- attendance timetable binding
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -1405,7 +1461,8 @@ Deferred beyond Sprint 11F:
 | `npm run test:e2e:sprint7d`         | Run the Sprint 7D Teacher App final closeout e2e flow                                                                    |
 | `npm run test:e2e:sprint8f`         | Run the Sprint 8F Student App final closeout e2e flow                                                                    |
 | `npm run test:e2e:sprint9f`         | Run the Sprint 9F Parent App final closeout e2e flow                                                                     |
-| `npm run test:e2e:sprint11f`        | Run the Sprint 11F Identity, Credentials, and Email final closeout e2e flow                                               |
+| `npm run test:e2e:sprint11f`        | Run the Sprint 11F Identity, Credentials, and Email final closeout e2e flow                                              |
+| `npm run test:e2e:sprint12f`        | Run the Sprint 12F Schedule/Timetable final closeout e2e flow                                                            |
 | `npm run test:security`             | Tenancy isolation tests                                                                                                  |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                                             |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                                                   |
@@ -1430,8 +1487,9 @@ Deferred beyond Sprint 11F:
 | `npm run verify:sprint7d`           | Run Sprint 7C verification coverage plus the Sprint 7D Teacher App final closeout e2e                                    |
 | `npm run verify:sprint8f`           | Run Sprint 7D verification coverage plus the Sprint 8F Student App final closeout e2e                                    |
 | `npm run verify:sprint9f`           | Run Sprint 8F verification coverage plus the Sprint 9F Parent App final closeout e2e                                     |
-| `npm run verify:phase5`             | Run the Phase 5 final verification entrypoint, currently delegating to `verify:sprint9f`                                  |
-| `npm run verify:sprint11f`          | Run the Phase 5 verification entrypoint plus the Sprint 11F Identity, Credentials, and Email closeout e2e                 |
+| `npm run verify:phase5`             | Run the Phase 5 final verification entrypoint, currently delegating to `verify:sprint9f`                                 |
+| `npm run verify:sprint11f`          | Run the Phase 5 verification entrypoint plus the Sprint 11F Identity, Credentials, and Email closeout e2e                |
+| `npm run verify:sprint12f`          | Run the Sprint 11F verification chain plus the Sprint 12F Schedule/Timetable final closeout e2e                          |
 | `npm run seed`                      | Re-run idempotent seeds                                                                                                  |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                                                    |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                                               |
