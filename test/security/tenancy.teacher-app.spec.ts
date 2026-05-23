@@ -961,7 +961,9 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(conversationsJson).not.toContain(`${testSuffix}-message-object-key`);
 
     const detail = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}`)
+      .get(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
     const detailJson = JSON.stringify(detail.body);
@@ -2737,7 +2739,9 @@ describe('Teacher App tenancy isolation (security)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
       await request(app.getHttpServer())
-        .get(`${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}`)
+        .get(
+          `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}`,
+        )
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
       await request(app.getHttpServer())
@@ -3090,7 +3094,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       .expect(404);
   });
 
-  it('does not register deferred parent app schedule and Teacher App routes', async () => {
+  it('does not register deferred Teacher App aliases and denies Parent App schedule routes', async () => {
     const { accessToken } = await login(teacherAEmail);
 
     await request(app.getHttpServer())
@@ -3102,15 +3106,17 @@ describe('Teacher App tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/parent/children/${ownStudentIds[0]}/schedule/today`)
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownStudentIds[0]}/schedule/today`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
+      .expect(403);
     await request(app.getHttpServer())
       .get(
         `${GLOBAL_PREFIX}/parent/children/${ownStudentIds[0]}/schedule/weekly`,
       )
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
+      .expect(403);
   });
 
   it('does not register Teacher Message contact discovery, creation, attachment, or audio routes', async () => {
@@ -3801,20 +3807,22 @@ describe('Teacher App tenancy isolation (security)', () => {
     createdCommunicationConversationIds.push(conversation.id);
 
     for (const userId of params.participantUserIds) {
-      const participant = await prisma.communicationConversationParticipant.create({
-        data: {
-          schoolId: params.schoolId,
-          conversationId: conversation.id,
-          userId,
-          role: CommunicationParticipantRole.MEMBER,
-          status: CommunicationParticipantStatus.ACTIVE,
-        },
-        select: { id: true },
-      });
+      const participant =
+        await prisma.communicationConversationParticipant.create({
+          data: {
+            schoolId: params.schoolId,
+            conversationId: conversation.id,
+            userId,
+            role: CommunicationParticipantRole.MEMBER,
+            status: CommunicationParticipantStatus.ACTIVE,
+          },
+          select: { id: true },
+        });
       createdCommunicationParticipantIds.push(participant.id);
     }
 
-    const senderUserId = params.participantUserIds[1] ?? params.participantUserIds[0];
+    const senderUserId =
+      params.participantUserIds[1] ?? params.participantUserIds[0];
 
     const visibleMessage = await prisma.communicationMessage.create({
       data: {

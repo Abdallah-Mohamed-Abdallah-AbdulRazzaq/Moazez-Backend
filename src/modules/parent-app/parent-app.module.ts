@@ -45,6 +45,11 @@ import { GetParentChildReportsSummaryUseCase } from './reports/application/get-p
 import { ListParentChildReportsUseCase } from './reports/application/list-parent-child-reports.use-case';
 import { ParentReportsController } from './reports/controller/parent-reports.controller';
 import { ParentReportsReadAdapter } from './reports/infrastructure/parent-reports-read.adapter';
+import { GetParentChildTodayScheduleUseCase } from './schedule/application/get-parent-child-today-schedule.use-case';
+import { GetParentChildWeeklyScheduleUseCase } from './schedule/application/get-parent-child-weekly-schedule.use-case';
+import { ParentScheduleClock } from './schedule/application/parent-schedule-date';
+import { ParentScheduleController } from './schedule/controller/parent-schedule.controller';
+import { ParentScheduleReadAdapter } from './schedule/infrastructure/parent-schedule-read.adapter';
 import { GetParentChildTaskSubmissionUseCase } from './tasks/application/get-parent-child-task-submission.use-case';
 import { GetParentChildTaskUseCase } from './tasks/application/get-parent-child-task.use-case';
 import { GetParentChildTasksSummaryUseCase } from './tasks/application/get-parent-child-tasks-summary.use-case';
@@ -63,6 +68,7 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ParentBehaviorController,
     ParentProgressController,
     ParentReportsController,
+    ParentScheduleController,
     ParentTasksController,
     ParentMessagesController,
     ParentAnnouncementsController,
@@ -93,6 +99,10 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ParentReportsReadAdapter,
     ListParentChildReportsUseCase,
     GetParentChildReportsSummaryUseCase,
+    ParentScheduleClock,
+    ParentScheduleReadAdapter,
+    GetParentChildTodayScheduleUseCase,
+    GetParentChildWeeklyScheduleUseCase,
     ParentTasksReadAdapter,
     ListParentChildTasksUseCase,
     GetParentChildTasksSummaryUseCase,

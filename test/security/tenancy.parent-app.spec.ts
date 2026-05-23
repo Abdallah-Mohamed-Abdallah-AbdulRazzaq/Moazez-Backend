@@ -32,6 +32,11 @@ import {
   SchoolStatus,
   StudentEnrollmentStatus,
   StudentStatus,
+  TimetableConfigStatus,
+  TimetableEntryStatus,
+  TimetablePeriodType,
+  TimetablePublicationStatus,
+  TimetableScopeType,
   UserStatus,
   UserType,
   ReinforcementProofType,
@@ -54,6 +59,10 @@ import {
 import { AppModule } from '../../src/app.module';
 import { ParentAppAccessService } from '../../src/modules/parent-app/access/parent-app-access.service';
 import { ParentAppGuardianReadAdapter } from '../../src/modules/parent-app/access/parent-app-guardian-read.adapter';
+import {
+  ParentScheduleClock,
+  parseParentScheduleDate,
+} from '../../src/modules/parent-app/schedule/application/parent-schedule-date';
 import type {
   ParentAppEnrollmentRecord,
   ParentAppGuardianRecord,
@@ -290,7 +299,10 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   let schoolBId: string;
   let academicYearAId: string;
   let termAId: string;
+  let gradeAId: string;
+  let sectionAId: string;
   let classroomAId: string;
+  let secondClassroomAId: string;
   let parentEmail: string;
   let adminEmail: string;
   let teacherEmail: string;
@@ -309,6 +321,9 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   let ownedEnrollmentAId: string;
   let secondOwnedEnrollmentAId: string;
   let subjectAId: string;
+  let ownedScheduleEntryAId: string;
+  let secondChildScheduleEntryAId: string;
+  let crossSchoolScheduleEntryId: string;
   let ownedAssessmentAId: string;
   let draftAssessmentAId: string;
   let positiveBehaviorRecordAId: string;
@@ -359,6 +374,10 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   const createdCommunicationParticipantIds: string[] = [];
   const createdCommunicationConversationIds: string[] = [];
   const createdFileIds: string[] = [];
+  const createdTimetablePublicationIds: string[] = [];
+  const createdTimetableEntryIds: string[] = [];
+  const createdTimetablePeriodIds: string[] = [];
+  const createdTimetableConfigIds: string[] = [];
   const createdAllocationIds: string[] = [];
   const createdSubjectIds: string[] = [];
   const createdClassroomIds: string[] = [];
@@ -479,7 +498,15 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     });
     academicYearAId = academicA.academicYearId;
     termAId = academicA.termId;
+    gradeAId = academicA.gradeId;
+    sectionAId = academicA.sectionId;
     classroomAId = academicA.classroomId;
+    secondClassroomAId = await createClassroom({
+      schoolId: schoolAId,
+      sectionId: sectionAId,
+      marker: 'second-child',
+      sortOrder: 2,
+    });
 
     const firstChild = await createStudentWithEnrollment({
       organizationId: organizationAId,
@@ -498,7 +525,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       schoolId: schoolAId,
       academicYearId: academicYearAId,
       termId: termAId,
-      classroomId: classroomAId,
+      classroomId: secondClassroomAId,
       firstName: 'Omar',
       lastName: 'Child',
     });
@@ -544,6 +571,44 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     draftAssessmentAId = featureFixture.draftAssessmentId;
     positiveBehaviorRecordAId = featureFixture.positiveBehaviorRecordId;
     negativeBehaviorRecordAId = featureFixture.negativeBehaviorRecordId;
+    ownedScheduleEntryAId = await createParentScheduleFixture({
+      schoolId: schoolAId,
+      academicYearId: academicYearAId,
+      termId: termAId,
+      gradeId: gradeAId,
+      sectionId: sectionAId,
+      classroomId: classroomAId,
+      subjectId: subjectAId,
+      teacherUserId,
+      allocationId: featureFixture.allocationId,
+      marker: 'owned-child',
+      dayOfWeek: 1,
+    });
+
+    const secondChildAllocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId: schoolAId,
+        teacherUserId,
+        subjectId: subjectAId,
+        classroomId: secondClassroomAId,
+        termId: termAId,
+      },
+      select: { id: true },
+    });
+    createdAllocationIds.push(secondChildAllocation.id);
+    secondChildScheduleEntryAId = await createParentScheduleFixture({
+      schoolId: schoolAId,
+      academicYearId: academicYearAId,
+      termId: termAId,
+      gradeId: gradeAId,
+      sectionId: sectionAId,
+      classroomId: secondClassroomAId,
+      subjectId: subjectAId,
+      teacherUserId,
+      allocationId: secondChildAllocation.id,
+      marker: 'second-child',
+      dayOfWeek: 1,
+    });
 
     const academicB = await createAcademicFixture({
       organizationId: organizationBId,
@@ -576,6 +641,13 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       guardianId: guardianBId,
       isPrimary: true,
     });
+    crossSchoolScheduleEntryId = await createCrossSchoolParentScheduleFixture({
+      academicYearId: academicB.academicYearId,
+      termId: academicB.termId,
+      gradeId: academicB.gradeId,
+      sectionId: academicB.sectionId,
+      classroomId: academicB.classroomId,
+    });
 
     const sprint9EFixture = await createParentAppSprint9EFixture({
       crossSchoolAcademicYearId: academicB.academicYearId,
@@ -601,7 +673,12 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(ParentScheduleClock)
+      .useValue({
+        currentDate: () => parseParentScheduleDate('2026-09-14'),
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -729,6 +806,18 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       });
       await prisma.file.deleteMany({
         where: { id: { in: createdFileIds } },
+      });
+      await prisma.timetableEntry.deleteMany({
+        where: { id: { in: createdTimetableEntryIds } },
+      });
+      await prisma.timetablePublication.deleteMany({
+        where: { id: { in: createdTimetablePublicationIds } },
+      });
+      await prisma.timetablePeriod.deleteMany({
+        where: { id: { in: createdTimetablePeriodIds } },
+      });
+      await prisma.timetableConfig.deleteMany({
+        where: { id: { in: createdTimetableConfigIds } },
       });
       await prisma.studentGuardian.deleteMany({
         where: { id: { in: createdStudentGuardianIds } },
@@ -883,6 +972,136 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       pickup: true,
     });
     assertNoForbiddenParentAppFields(detail.body);
+  });
+
+  it('linked parent can read owned child today and weekly schedule only', async () => {
+    const { accessToken } = await login(parentEmail);
+
+    const today = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/schedule/today`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(today.body).toMatchObject({
+      date: '2026-09-14',
+      dayOfWeek: 1,
+      child: {
+        id: ownedStudentAId,
+        displayName: 'Sara Child',
+      },
+      items: [
+        expect.objectContaining({
+          scheduleId: `timetable-entry:${ownedScheduleEntryAId}:2026-09-14`,
+          timetableEntryId: ownedScheduleEntryAId,
+          status: 'scheduled',
+          needsAttendance: true,
+          hasHomework: null,
+          isExam: null,
+          isBreak: false,
+        }),
+      ],
+    });
+    expect(JSON.stringify(today.body)).not.toContain(
+      secondChildScheduleEntryAId,
+    );
+    expect(JSON.stringify(today.body)).not.toContain(
+      crossSchoolScheduleEntryId,
+    );
+    expectSafeParentSchedulePayload(today.body);
+
+    const weekly = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/schedule/weekly`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(weekly.body.weekStartDate).toBe('2026-09-14');
+    expect(weekly.body.weekEndDate).toBe('2026-09-20');
+    expect(weekly.body.child).toEqual({
+      id: ownedStudentAId,
+      displayName: 'Sara Child',
+    });
+    expect(weekly.body.days).toHaveLength(7);
+    expect(
+      weekly.body.days.find(
+        (day: { date: string }) => day.date === '2026-09-14',
+      ),
+    ).toMatchObject({
+      date: '2026-09-14',
+      dayOfWeek: 1,
+      items: [
+        expect.objectContaining({
+          scheduleId: `timetable-entry:${ownedScheduleEntryAId}:2026-09-14`,
+          timetableEntryId: ownedScheduleEntryAId,
+        }),
+      ],
+    });
+    expect(JSON.stringify(weekly.body)).not.toContain(
+      secondChildScheduleEntryAId,
+    );
+    expect(JSON.stringify(weekly.body)).not.toContain(
+      crossSchoolScheduleEntryId,
+    );
+    expectSafeParentSchedulePayload(weekly.body);
+
+    const secondChildToday = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${secondOwnedStudentAId}/schedule/today`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(JSON.stringify(secondChildToday.body)).toContain(
+      secondChildScheduleEntryAId,
+    );
+    expect(JSON.stringify(secondChildToday.body)).not.toContain(
+      ownedScheduleEntryAId,
+    );
+    expectSafeParentSchedulePayload(secondChildToday.body);
+  });
+
+  it('parent child schedule hides same-school unlinked and cross-school children', async () => {
+    const { accessToken } = await login(parentEmail);
+
+    for (const childId of [
+      sameSchoolUnlinkedStudentId,
+      crossSchoolLinkedStudentId,
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/parent/children/${childId}/schedule/today`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/parent/children/${childId}/schedule/weekly`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+  });
+
+  it('parent actors are denied Teacher and Student schedule routes', async () => {
+    const { accessToken } = await login(parentEmail);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/schedule`)
+      .query({ date: '2026-09-14' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/schedule/week`)
+      .query({ date: '2026-09-14' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/schedule`)
+      .query({ date: '2026-09-14' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/schedule/week`)
+      .query({ date: '2026-09-14' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
   });
 
   it('linked parent can read own profile with guardian and current-school child summaries', async () => {
@@ -1544,6 +1763,8 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         'progress/xp',
         'reports',
         'reports/summary',
+        'schedule/today',
+        'schedule/weekly',
         'tasks',
         'tasks/summary',
         `tasks/${ownedTaskAId}`,
@@ -1578,6 +1799,8 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         `children/${ownedStudentAId}/progress/xp`,
         `children/${ownedStudentAId}/reports`,
         `children/${ownedStudentAId}/reports/summary`,
+        `children/${ownedStudentAId}/schedule/today`,
+        `children/${ownedStudentAId}/schedule/weekly`,
         `children/${ownedStudentAId}/tasks`,
         `children/${ownedStudentAId}/tasks/summary`,
         `children/${ownedStudentAId}/tasks/${ownedTaskAId}`,
@@ -2268,6 +2491,8 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   }): Promise<{
     academicYearId: string;
     termId: string;
+    gradeId: string;
+    sectionId: string;
     classroomId: string;
   }> {
     const year = await prisma.academicYear.create({
@@ -2347,8 +2572,31 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     return {
       academicYearId: year.id,
       termId: term.id,
+      gradeId: grade.id,
+      sectionId: section.id,
       classroomId: classroom.id,
     };
+  }
+
+  async function createClassroom(params: {
+    schoolId: string;
+    sectionId: string;
+    marker: string;
+    sortOrder: number;
+  }): Promise<string> {
+    const classroom = await prisma.classroom.create({
+      data: {
+        schoolId: params.schoolId,
+        sectionId: params.sectionId,
+        nameAr: `${testSuffix}-classroom-${params.marker}-ar`,
+        nameEn: `${testSuffix}-classroom-${params.marker}`,
+        sortOrder: params.sortOrder,
+      },
+      select: { id: true },
+    });
+    createdClassroomIds.push(classroom.id);
+
+    return classroom.id;
   }
 
   async function createStudentWithEnrollment(params: {
@@ -2436,6 +2684,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
 
   async function createParentAppFeatureFixture(): Promise<{
     subjectId: string;
+    allocationId: string;
     assessmentId: string;
     draftAssessmentId: string;
     positiveBehaviorRecordId: string;
@@ -2777,11 +3026,142 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
 
     return {
       subjectId: subject.id,
+      allocationId: allocation.id,
       assessmentId: assessment.id,
       draftAssessmentId: draftAssessment.id,
       positiveBehaviorRecordId: positiveRecord.id,
       negativeBehaviorRecordId: negativeRecord.id,
     };
+  }
+
+  async function createParentScheduleFixture(params: {
+    schoolId: string;
+    academicYearId: string;
+    termId: string;
+    gradeId: string;
+    sectionId: string;
+    classroomId: string;
+    subjectId: string;
+    teacherUserId: string;
+    allocationId: string;
+    marker: string;
+    dayOfWeek: number;
+  }): Promise<string> {
+    const config = await prisma.timetableConfig.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        name: `${testSuffix}-${params.marker}-parent-schedule-config`,
+        weekStartDay: 1,
+        activeDays: [1, 2, 3, 4, 5],
+        scopeType: TimetableScopeType.CLASSROOM,
+        scopeKey: params.classroomId,
+        classroomId: params.classroomId,
+        status: TimetableConfigStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    createdTimetableConfigIds.push(config.id);
+
+    const period = await prisma.timetablePeriod.create({
+      data: {
+        schoolId: params.schoolId,
+        timetableConfigId: config.id,
+        periodIndex: 1,
+        label: `${testSuffix}-${params.marker}-period`,
+        startTime: '08:00',
+        endTime: '08:45',
+        type: TimetablePeriodType.CLASS,
+        isInstructional: true,
+      },
+      select: { id: true },
+    });
+    createdTimetablePeriodIds.push(period.id);
+
+    const publication = await prisma.timetablePublication.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        timetableConfigId: config.id,
+        status: TimetablePublicationStatus.PUBLISHED,
+        publishedAt: new Date('2026-09-10T08:00:00.000Z'),
+        publishedByUserId: params.teacherUserId,
+        revision: 1,
+      },
+      select: { id: true },
+    });
+    createdTimetablePublicationIds.push(publication.id);
+
+    const entry = await prisma.timetableEntry.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        timetableConfigId: config.id,
+        periodId: period.id,
+        dayOfWeek: params.dayOfWeek,
+        gradeId: params.gradeId,
+        sectionId: params.sectionId,
+        classroomId: params.classroomId,
+        subjectId: params.subjectId,
+        teacherUserId: params.teacherUserId,
+        teacherSubjectAllocationId: params.allocationId,
+        notes: `${testSuffix}-${params.marker}-safe-note`,
+        status: TimetableEntryStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    createdTimetableEntryIds.push(entry.id);
+
+    return entry.id;
+  }
+
+  async function createCrossSchoolParentScheduleFixture(params: {
+    academicYearId: string;
+    termId: string;
+    gradeId: string;
+    sectionId: string;
+    classroomId: string;
+  }): Promise<string> {
+    const subject = await prisma.subject.create({
+      data: {
+        schoolId: schoolBId,
+        nameAr: `${testSuffix}-cross-school-schedule-subject-ar`,
+        nameEn: `${testSuffix} Cross School Schedule Subject`,
+        code: `${testSuffix.toUpperCase()}-CROSS-SCHEDULE`,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    createdSubjectIds.push(subject.id);
+
+    const allocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId: schoolBId,
+        teacherUserId,
+        subjectId: subject.id,
+        classroomId: params.classroomId,
+        termId: params.termId,
+      },
+      select: { id: true },
+    });
+    createdAllocationIds.push(allocation.id);
+
+    return createParentScheduleFixture({
+      schoolId: schoolBId,
+      academicYearId: params.academicYearId,
+      termId: params.termId,
+      gradeId: params.gradeId,
+      sectionId: params.sectionId,
+      classroomId: params.classroomId,
+      subjectId: subject.id,
+      teacherUserId,
+      allocationId: allocation.id,
+      marker: 'cross-school',
+      dayOfWeek: 1,
+    });
   }
 
   async function createAttendanceEntry(params: {
@@ -2846,6 +3226,27 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       'medication',
       'document',
       'internalNote',
+      'password',
+      'passwordHash',
+      'session',
+      'refreshToken',
+      'bucket',
+      'objectKey',
+      'storageKey',
+      'applicationId',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  }
+
+  function expectSafeParentSchedulePayload(body: unknown): void {
+    const serialized = JSON.stringify(body);
+    for (const forbidden of [
+      'schoolId',
+      'organizationId',
+      'academicYearId',
+      'termId',
+      'teacherSubjectAllocationId',
       'password',
       'passwordHash',
       'session',

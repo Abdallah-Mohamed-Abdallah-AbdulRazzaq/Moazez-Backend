@@ -1916,17 +1916,17 @@ describe('Academics tenancy isolation (security)', () => {
       });
   });
 
-  it('keeps parent app-facing schedule routes deferred in Sprint 12E Task 2', async () => {
+  it('keeps school admin actors out of Parent App schedule routes', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/parent/children/${tenantBUserId}/schedule/today`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
+      .expect(403);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/parent/children/${tenantBUserId}/schedule/weekly`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
+      .expect(403);
   });
 
   it('does not add Homework, Pickup, or app notification routes from timetable work', async () => {

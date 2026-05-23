@@ -575,8 +575,7 @@ describe('Student App Home/Profile routes (security)', () => {
       tenantBAnnouncementId: tenantBFixture.announcementId,
     });
     ownConversationId = communicationFixture.conversationId;
-    sameSchoolOtherConversationId =
-      communicationFixture.otherConversationId;
+    sameSchoolOtherConversationId = communicationFixture.otherConversationId;
     tenantBConversationId = communicationFixture.tenantBConversationId;
     ownAnnouncementId = communicationFixture.schoolAnnouncementId;
     customAnnouncementId = communicationFixture.customAnnouncementId;
@@ -949,14 +948,14 @@ describe('Student App Home/Profile routes (security)', () => {
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/parent/children/${linkedStudentId}/schedule/today`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
+      .expect(403);
 
     await request(app.getHttpServer())
       .get(
         `${GLOBAL_PREFIX}/parent/children/${linkedStudentId}/schedule/weekly`,
       )
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
+      .expect(403);
   });
 
   it('allows a linked student to read own subjects, grades, and exams', async () => {
@@ -1504,7 +1503,9 @@ describe('Student App Home/Profile routes (security)', () => {
     assertNoForbiddenStudentAppFields(conversations.body);
 
     const conversation = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}`)
+      .get(
+        `${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
@@ -1585,7 +1586,9 @@ describe('Student App Home/Profile routes (security)', () => {
       sameSchoolOtherStudentEmail,
     );
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}`)
+      .get(
+        `${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}`,
+      )
       .set('Authorization', `Bearer ${otherStudentToken}`)
       .expect(404);
   });
@@ -2448,8 +2451,8 @@ describe('Student App Home/Profile routes (security)', () => {
         select: { id: true },
       });
     createdAnnouncementIds.push(outOfAudienceAnnouncement.id);
-    const outOfAudience =
-      await prisma.communicationAnnouncementAudience.create({
+    const outOfAudience = await prisma.communicationAnnouncementAudience.create(
+      {
         data: {
           schoolId,
           announcementId: outOfAudienceAnnouncement.id,
@@ -2458,7 +2461,8 @@ describe('Student App Home/Profile routes (security)', () => {
           userId: params.otherStudentUserId,
         },
         select: { id: true },
-      });
+      },
+    );
     createdAnnouncementAudienceIds.push(outOfAudience.id);
 
     const attachmentFile = await prisma.file.create({
@@ -2477,17 +2481,16 @@ describe('Student App Home/Profile routes (security)', () => {
     });
     createdFileIds.push(attachmentFile.id);
 
-    const attachment =
-      await prisma.communicationAnnouncementAttachment.create({
-        data: {
-          schoolId,
-          announcementId: schoolAnnouncement.id,
-          fileId: attachmentFile.id,
-          createdById: params.teacherUserId,
-          sortOrder: 1,
-        },
-        select: { id: true },
-      });
+    const attachment = await prisma.communicationAnnouncementAttachment.create({
+      data: {
+        schoolId,
+        announcementId: schoolAnnouncement.id,
+        fileId: attachmentFile.id,
+        createdById: params.teacherUserId,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
     createdAnnouncementAttachmentIds.push(attachment.id);
 
     return {

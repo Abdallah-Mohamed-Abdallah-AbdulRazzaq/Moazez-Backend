@@ -818,6 +818,8 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'GET /api/v1/parent/children/:studentId/progress/xp',
       'GET /api/v1/parent/children/:studentId/reports',
       'GET /api/v1/parent/children/:studentId/reports/summary',
+      'GET /api/v1/parent/children/:studentId/schedule/today',
+      'GET /api/v1/parent/children/:studentId/schedule/weekly',
       'GET /api/v1/parent/children/:studentId/tasks',
       'GET /api/v1/parent/children/:studentId/tasks/:taskId',
       'GET /api/v1/parent/children/:studentId/tasks/:taskId/submissions',
@@ -836,8 +838,6 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     for (const absentRoute of [
       'GET /api/v1/parent/schedule',
       'GET /api/v1/parent/children/:studentId/schedule',
-      'GET /api/v1/parent/children/:studentId/schedule/today',
-      'GET /api/v1/parent/children/:studentId/schedule/weekly',
       'GET /api/v1/parent/children/:studentId/timetable',
       'GET /api/v1/parent/children/:studentId/homeworks',
       'GET /api/v1/parent/homeworks',
@@ -1860,9 +1860,9 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
         .expect(404);
     }
 
-    expect(await prisma.xpLedger.count({ where: { schoolId: schoolAId } })).toBe(
-      initialXpLedgerCount,
-    );
+    expect(
+      await prisma.xpLedger.count({ where: { schoolId: schoolAId } }),
+    ).toBe(initialXpLedgerCount);
     expect(
       await prisma.rewardRedemption.count({ where: { schoolId: schoolAId } }),
     ).toBe(initialRewardRedemptionCount);

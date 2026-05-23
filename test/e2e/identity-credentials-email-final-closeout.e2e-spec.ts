@@ -295,6 +295,8 @@ describe('Sprint 11F Identity/Credentials/Email final closeout (e2e)', () => {
         'GET /api/v1/teacher/schedule/week',
         'GET /api/v1/student/schedule',
         'GET /api/v1/student/schedule/week',
+        'GET /api/v1/parent/children/:studentId/schedule/today',
+        'GET /api/v1/parent/children/:studentId/schedule/weekly',
       ]),
     );
 
