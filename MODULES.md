@@ -75,6 +75,10 @@
 - rules
 - submissions
 
+## Homework
+- assignments
+- targets
+
 ## Reinforcement
 - overview
 - tasks
@@ -157,6 +161,7 @@ Core business truth belongs to:
 - students
 - attendance
 - grades
+- homework
 - reinforcement
 - behavior
 - communication

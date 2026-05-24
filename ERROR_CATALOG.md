@@ -207,6 +207,24 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `grades.review.already_finalized`  | 409  | Review is already finalized                    |
 | `grades.review.pending_answers`    | 409  | Review still has pending answers               |
 
+### Homework
+
+| Code                                      | HTTP | Message                                      |
+| ----------------------------------------- | ---- | -------------------------------------------- |
+| `homework.assignment.not_found`           | 404  | Homework assignment was not found            |
+| `homework.assignment.not_mutable`         | 409  | Homework assignment cannot be changed        |
+| `homework.assignment.not_publishable`     | 422  | Homework assignment cannot be published      |
+| `homework.assignment.already_published`   | 409  | Homework assignment is already published     |
+| `homework.assignment.already_closed`      | 409  | Homework assignment is already closed        |
+| `homework.assignment.cancelled`           | 409  | Homework assignment is cancelled             |
+| `homework.assignment.schedule_mismatch`   | 422  | Homework schedule context is invalid         |
+| `homework.assignment.allocation_mismatch` | 422  | Homework allocation context is invalid       |
+| `homework.assignment.due_date_invalid`    | 422  | Homework due date is invalid                 |
+| `homework.assignment.target_required`     | 422  | Homework target selection is required        |
+| `homework.assignment.no_eligible_targets` | 422  | Homework has no eligible targets             |
+| `homework.assignment.target_conflict`     | 409  | Homework target selection is invalid         |
+| `homework.assignment.validation_failed`   | 422  | Homework assignment validation failed        |
+
 ### Reinforcement
 
 | Code                                 | HTTP | Message                                    |

@@ -458,6 +458,46 @@ enum GradeRoundingMode {
   @@map("grade_rounding_mode")
 }
 
+enum HomeworkAssignmentMode {
+  HOMEWORK
+  WORKSHEET
+  WRITING_TASK
+  QUIZ
+  READING
+  PROJECT
+
+  @@map("homework_assignment_mode")
+}
+
+enum HomeworkAssignmentStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  CANCELLED
+  ARCHIVED
+
+  @@map("homework_assignment_status")
+}
+
+enum HomeworkTargetMode {
+  CLASSROOM
+  SELECTED_STUDENTS
+
+  @@map("homework_target_mode")
+}
+
+enum HomeworkTargetStatus {
+  ASSIGNED
+  VIEWED
+  SUBMITTED
+  LATE
+  MISSING
+  REVIEWED
+  EXCUSED
+
+  @@map("homework_target_status")
+}
+
 enum ReinforcementSource {
   TEACHER
   PARENT
@@ -1040,6 +1080,8 @@ model School {
   gradeSubmissionAnswerOptions          GradeSubmissionAnswerOption[]
   gradeItems                            GradeItem[]
   gradeRules                            GradeRule[]
+  homeworkAssignments                    HomeworkAssignment[]
+  homeworkTargets                        HomeworkTarget[]
   reinforcementTasks                    ReinforcementTask[]
   reinforcementTaskTargets              ReinforcementTaskTarget[]
   reinforcementTaskStages               ReinforcementTaskStage[]
@@ -1144,6 +1186,9 @@ model User {
   gradeItemsEntered                              GradeItem[]                            @relation("GradeItemEnteredBy")
   gradeSubmissionsReviewed                       GradeSubmission[]                      @relation("GradeSubmissionReviewedBy")
   gradeSubmissionAnswersReviewed                 GradeSubmissionAnswer[]                @relation("GradeSubmissionAnswerReviewedBy")
+  homeworkAssignmentsTaught                       HomeworkAssignment[]                   @relation("HomeworkAssignmentTeacher")
+  homeworkAssignmentsCreated                      HomeworkAssignment[]                   @relation("HomeworkAssignmentCreatedBy")
+  homeworkAssignmentsPublished                    HomeworkAssignment[]                   @relation("HomeworkAssignmentPublishedBy")
   reinforcementTasksAssigned                     ReinforcementTask[]                    @relation("ReinforcementTaskAssignedBy")
   reinforcementTasksCreated                      ReinforcementTask[]                    @relation("ReinforcementTaskCreatedBy")
   reinforcementTasksCancelled                    ReinforcementTask[]                    @relation("ReinforcementTaskCancelledBy")
@@ -1853,6 +1898,7 @@ model AcademicYear {
   attendanceExcuseRequests   AttendanceExcuseRequest[]
   gradeAssessments           GradeAssessment[]
   gradeRules                 GradeRule[]
+  homeworkAssignments        HomeworkAssignment[]
   reinforcementTasks         ReinforcementTask[]
   reinforcementAssignments   ReinforcementAssignment[]
   reinforcementTaskTemplates ReinforcementTaskTemplate[]
@@ -1904,6 +1950,7 @@ model Term {
   gradeSubmissions           GradeSubmission[]
   gradeItems                 GradeItem[]
   gradeRules                 GradeRule[]
+  homeworkAssignments        HomeworkAssignment[]
   reinforcementTasks         ReinforcementTask[]
   reinforcementAssignments   ReinforcementAssignment[]
   reinforcementTaskTemplates ReinforcementTaskTemplate[]
@@ -2052,6 +2099,7 @@ model Classroom {
   attendancePolicies                 AttendancePolicy[]
   attendanceSessions                 AttendanceSession[]
   gradeAssessments                   GradeAssessment[]
+  homeworkAssignments                HomeworkAssignment[]
   reinforcementTaskTargets           ReinforcementTaskTarget[]
   communicationConversations         CommunicationConversation[]
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
@@ -2085,6 +2133,7 @@ model Subject {
   teacherSubjectAllocations  TeacherSubjectAllocation[]
   placementTests             PlacementTest[]
   gradeAssessments           GradeAssessment[]
+  homeworkAssignments        HomeworkAssignment[]
   reinforcementTasks         ReinforcementTask[]
   heroMissions               HeroMission[]
   communicationConversations CommunicationConversation[]
@@ -2114,7 +2163,8 @@ model TeacherSubjectAllocation {
   subject          Subject          @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
   classroom        Classroom        @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
   term             Term             @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  timetableEntries TimetableEntry[]
+  timetableEntries     TimetableEntry[]
+  homeworkAssignments  HomeworkAssignment[]
 
   @@unique([id, schoolId])
   @@unique([teacherUserId, subjectId, classroomId, termId])
@@ -2257,6 +2307,7 @@ model TimetableEntry {
   room                     Room?                    @relation(fields: [roomId, schoolId], references: [id, schoolId], onDelete: Restrict)
   conflicts                TimetableConflict[]      @relation("TimetableConflictEntry")
   relatedConflicts         TimetableConflict[]      @relation("TimetableConflictRelatedEntry")
+  homeworkAssignments      HomeworkAssignment[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -2405,6 +2456,7 @@ model Student {
   behaviorRecords                    BehaviorRecord[]
   behaviorPointLedgerEntries         BehaviorPointLedger[]
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
+  homeworkTargets                    HomeworkTarget[]
 
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
@@ -2501,6 +2553,7 @@ model Enrollment {
   rewardRedemptions          RewardRedemption[]
   behaviorRecords            BehaviorRecord[]
   behaviorPointLedgerEntries BehaviorPointLedger[]
+  homeworkTargets            HomeworkTarget[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -2849,9 +2902,10 @@ model GradeAssessment {
   questionOptions   GradeAssessmentQuestionOption[]
   submissions       GradeSubmission[]
   submissionAnswers GradeSubmissionAnswer[]
-  items             GradeItem[]
-  heroMissions      HeroMission[]
-  heroObjectives    HeroMissionObjective[]
+  items               GradeItem[]
+  homeworkAssignments HomeworkAssignment[]
+  heroMissions        HeroMission[]
+  heroObjectives      HeroMissionObjective[]
 
   @@unique([id, schoolId], map: "grade_assessments_id_school_id_unique")
   @@index([schoolId])
@@ -3096,6 +3150,112 @@ model GradeRule {
   @@index([schoolId, termId, scopeType, scopeKey])
   @@index([gradeId])
   @@map("grade_rules")
+}
+
+// ============================================================
+// HOMEWORK - core assignments and targets
+// ============================================================
+
+model HomeworkAssignment {
+  id                         String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                   String                   @map("school_id") @db.Uuid
+  academicYearId             String                   @map("academic_year_id") @db.Uuid
+  termId                     String                   @map("term_id") @db.Uuid
+  classroomId                String                   @map("classroom_id") @db.Uuid
+  subjectId                  String                   @map("subject_id") @db.Uuid
+  teacherUserId              String                   @map("teacher_user_id") @db.Uuid
+  teacherSubjectAllocationId String                   @map("teacher_subject_allocation_id") @db.Uuid
+  timetableEntryId           String?                  @map("timetable_entry_id") @db.Uuid
+  scheduleDate               DateTime?                @map("schedule_date") @db.Date
+  title                      String
+  description                String?
+  mode                       HomeworkAssignmentMode   @default(HOMEWORK)
+  status                     HomeworkAssignmentStatus @default(DRAFT)
+  targetMode                 HomeworkTargetMode       @default(CLASSROOM) @map("target_mode")
+  publishAt                  DateTime?                @map("publish_at")
+  publishedAt                DateTime?                @map("published_at")
+  dueAt                      DateTime                 @map("due_at")
+  closedAt                   DateTime?                @map("closed_at")
+  estimatedMinutes           Int?                     @map("estimated_minutes")
+  totalMarks                 Decimal?                 @map("total_marks") @db.Decimal(7, 2)
+  isGraded                   Boolean                  @default(false) @map("is_graded")
+  gradeAssessmentId          String?                  @map("grade_assessment_id") @db.Uuid
+  createdByUserId            String                   @map("created_by_user_id") @db.Uuid
+  publishedByUserId          String?                  @map("published_by_user_id") @db.Uuid
+  cancelledAt                DateTime?                @map("cancelled_at")
+  archivedAt                 DateTime?                @map("archived_at")
+  deletedAt                  DateTime?                @map("deleted_at")
+  createdAt                  DateTime                 @default(now()) @map("created_at")
+  updatedAt                  DateTime                 @updatedAt @map("updated_at")
+
+  school                   School                   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear             AcademicYear             @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                     Term                     @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom                Classroom                @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject                  Subject                  @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  teacherUser              User                     @relation("HomeworkAssignmentTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
+  teacherSubjectAllocation TeacherSubjectAllocation @relation(fields: [teacherSubjectAllocationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  timetableEntry           TimetableEntry?          @relation(fields: [timetableEntryId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  gradeAssessment          GradeAssessment?         @relation(fields: [gradeAssessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy                User                     @relation("HomeworkAssignmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  publishedBy              User?                    @relation("HomeworkAssignmentPublishedBy", fields: [publishedByUserId], references: [id], onDelete: SetNull)
+  targets                  HomeworkTarget[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([classroomId])
+  @@index([subjectId])
+  @@index([teacherUserId])
+  @@index([teacherSubjectAllocationId])
+  @@index([timetableEntryId])
+  @@index([gradeAssessmentId])
+  @@index([createdByUserId])
+  @@index([publishedByUserId])
+  @@index([schoolId, academicYearId, termId])
+  @@index([schoolId, classroomId, termId])
+  @@index([schoolId, teacherUserId, termId])
+  @@index([schoolId, teacherSubjectAllocationId])
+  @@index([schoolId, status])
+  @@index([schoolId, dueAt])
+  @@index([schoolId, timetableEntryId])
+  @@index([schoolId, gradeAssessmentId])
+  @@index([deletedAt])
+  @@map("homework_assignments")
+}
+
+model HomeworkTarget {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String               @map("school_id") @db.Uuid
+  homeworkAssignmentId String               @map("homework_assignment_id") @db.Uuid
+  studentId            String               @map("student_id") @db.Uuid
+  enrollmentId         String               @map("enrollment_id") @db.Uuid
+  status               HomeworkTargetStatus @default(ASSIGNED)
+  assignedAt           DateTime             @default(now()) @map("assigned_at")
+  viewedAt             DateTime?            @map("viewed_at")
+  submittedAt          DateTime?            @map("submitted_at")
+  reviewedAt           DateTime?            @map("reviewed_at")
+  excusedAt            DateTime?            @map("excused_at")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+
+  school             School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  homeworkAssignment HomeworkAssignment @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  student            Student            @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment         Enrollment         @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, homeworkAssignmentId, studentId])
+  @@index([schoolId])
+  @@index([homeworkAssignmentId])
+  @@index([studentId])
+  @@index([enrollmentId])
+  @@index([schoolId, homeworkAssignmentId])
+  @@index([schoolId, studentId])
+  @@index([schoolId, enrollmentId])
+  @@index([schoolId, status])
+  @@map("homework_targets")
 }
 
 // ============================================================

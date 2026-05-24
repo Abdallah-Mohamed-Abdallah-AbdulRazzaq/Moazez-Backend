@@ -19,6 +19,7 @@ import { CommunicationModule } from './modules/communication/communication.modul
 import { FilesModule } from './modules/files/files.module';
 import { GradesModule } from './modules/grades/grades.module';
 import { HealthModule } from './modules/health/health.module';
+import { HomeworkModule } from './modules/homework/homework.module';
 import { IamModule } from './modules/iam/iam.module';
 import { ParentAppModule } from './modules/parent-app/parent-app.module';
 import { ReinforcementModule } from './modules/reinforcement/reinforcement.module';
@@ -45,6 +46,7 @@ import { TeacherAppModule } from './modules/teacher-app/teacher-app.module';
     StudentsModule,
     AttendanceModule,
     GradesModule,
+    HomeworkModule,
     ReinforcementModule,
     BehaviorModule,
     CommunicationModule,

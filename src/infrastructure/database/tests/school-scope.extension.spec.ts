@@ -39,4 +39,9 @@ describe('schoolScope communication registration', () => {
     expect(SCHOOL_SCOPED_MODELS.has('TimetablePublication')).toBe(true);
     expect(SCHOOL_SCOPED_MODELS.has('TimetableConflict')).toBe(true);
   });
+
+  it('registers homework core models for school scope enforcement', () => {
+    expect(SCHOOL_SCOPED_MODELS.has('HomeworkAssignment')).toBe(true);
+    expect(SCHOOL_SCOPED_MODELS.has('HomeworkTarget')).toBe(true);
+  });
 });
