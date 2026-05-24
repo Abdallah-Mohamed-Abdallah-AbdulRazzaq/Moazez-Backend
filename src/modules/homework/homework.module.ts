@@ -29,5 +29,17 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     ListHomeworkTargetsUseCase,
     ResolveHomeworkTargetsUseCase,
   ],
+  exports: [
+    HomeworkRepository,
+    ListHomeworkAssignmentsUseCase,
+    GetHomeworkAssignmentUseCase,
+    CreateHomeworkAssignmentUseCase,
+    UpdateHomeworkAssignmentUseCase,
+    PublishHomeworkAssignmentUseCase,
+    CloseHomeworkAssignmentUseCase,
+    CancelHomeworkAssignmentUseCase,
+    ListHomeworkTargetsUseCase,
+    ResolveHomeworkTargetsUseCase,
+  ],
 })
 export class HomeworkModule {}

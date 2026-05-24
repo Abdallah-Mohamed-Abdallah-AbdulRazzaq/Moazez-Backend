@@ -70,6 +70,8 @@ describe('Homework tenancy isolation (security)', () => {
   let tenantBAllocationId: string;
   let tenantBStudentId: string;
   let tenantBHomeworkId: string;
+  let otherTeacherAllocationId: string;
+  let otherTeacherHomeworkId: string;
 
   let viewOnlyEmail: string;
   let manageOnlyEmail: string;
@@ -241,6 +243,21 @@ describe('Homework tenancy isolation (security)', () => {
     demoStudentTwoId = demoFixture.studentTwoId;
     demoEnrollmentId = demoFixture.enrollmentId;
     demoHomeworkId = demoFixture.homeworkId;
+
+    const otherTeacherId = await createUserWithMembership({
+      email: `other-teacher@${suffix}.moazez.local`,
+      password: 'HomeworkOtherTeacher123!',
+      roleId: teacherRole.id,
+      userType: UserType.TEACHER,
+    });
+    const otherTeacherFixture = await createSchoolFixture({
+      schoolId: demoSchoolId,
+      organizationId: demoOrganizationId,
+      teacherUserId: otherTeacherId,
+      prefix: `${suffix}-other`,
+    });
+    otherTeacherAllocationId = otherTeacherFixture.allocationId;
+    otherTeacherHomeworkId = otherTeacherFixture.homeworkId;
 
     const tenantBTeacherId = await createTenantBUser({
       email: `teacher-b@${suffix}.moazez.local`,
@@ -707,6 +724,15 @@ describe('Homework tenancy isolation (security)', () => {
     };
   }
 
+  function teacherHomeworkCreatePayload(overrides?: Record<string, unknown>) {
+    return {
+      title: `${suffix} teacher app homework`,
+      targetMode: HomeworkTargetMode.CLASSROOM,
+      dueAt: '2027-02-01T10:00:00.000Z',
+      ...overrides,
+    };
+  }
+
   it('requires authentication', async () => {
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/homework/assignments`)
@@ -866,18 +892,239 @@ describe('Homework tenancy isolation (security)', () => {
         .send(homeworkCreatePayload())
         .expect(403);
     }
+
+    const teacher = await login(teacherEmail, 'HomeworkTeacher123!');
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/homework/assignments`)
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .expect(403);
   });
 
-  it('keeps teacher, student, parent, submission, question, and attachment homework routes unregistered', async () => {
+  it('allows school admin to continue managing homework through Core APIs', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/homework/assignments`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        homeworkCreatePayload({
+          title: `${suffix} core admin homework`,
+          timetableEntryId: null,
+          scheduleDate: null,
+        }),
+      )
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/homework/assignments/${createResponse.body.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ title: `${suffix} core admin homework updated` })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/homework/assignments/${createResponse.body.id}/publish`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+  });
+
+  it('lets teachers manage owned homework through Teacher App routes only', async () => {
+    const { accessToken } = await login(teacherEmail, 'HomeworkTeacher123!');
+
+    const dashboard = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/homeworks/dashboard`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(
+      dashboard.body.classes.map((item: { classId: string }) => item.classId),
+    ).toContain(demoAllocationId);
+    expectNoTenantIds(dashboard.body);
+
+    const createResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${demoAllocationId}/assignments`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        teacherHomeworkCreatePayload({
+          title: `${suffix} teacher app owned homework`,
+          timetableEntryId: demoTimetableEntryId,
+          scheduleDate: '2026-09-14',
+          estimatedMinutes: 25,
+        }),
+      )
+      .expect(201);
+
+    expect(createResponse.body).toMatchObject({
+      title: `${suffix} teacher app owned homework`,
+      classId: demoAllocationId,
+      timetableEntryId: demoTimetableEntryId,
+      scheduleDate: '2026-09-14',
+    });
+    expect(createResponse.body).not.toHaveProperty(
+      'teacherSubjectAllocationId',
+    );
+    expectNoTenantIds(createResponse.body);
+
+    const listResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${demoAllocationId}/assignments?search=teacher app owned`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(
+      listResponse.body.items.map((item: { id: string }) => item.id),
+    ).toContain(createResponse.body.id);
+    expectNoTenantIds(listResponse.body);
+
+    const publishResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${demoAllocationId}/assignments/${createResponse.body.id}/publish`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(publishResponse.body.status).toBe('published');
+
+    const targetsResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${demoAllocationId}/assignments/${createResponse.body.id}/targets`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(targetsResponse.body.items.length).toBeGreaterThan(0);
+    expect(targetsResponse.body.items[0]).toEqual(
+      expect.objectContaining({
+        studentId: expect.any(String),
+        enrollmentId: expect.any(String),
+      }),
+    );
+    expect(JSON.stringify(targetsResponse.body)).not.toContain('guardian');
+    expectNoTenantIds(targetsResponse.body);
+
+    const closeResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${demoAllocationId}/assignments/${createResponse.body.id}/close`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(closeResponse.body.status).toBe('closed');
+  });
+
+  it('supports teacher draft update, selected-student targets, resolve, and cancel without side effects', async () => {
+    const { accessToken } = await login(teacherEmail, 'HomeworkTeacher123!');
+
+    const createResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${demoAllocationId}/assignments`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(
+        teacherHomeworkCreatePayload({
+          title: `${suffix} teacher selected homework`,
+          targetMode: HomeworkTargetMode.SELECTED_STUDENTS,
+          studentIds: [demoStudentTwoId],
+        }),
+      )
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${demoAllocationId}/assignments/${createResponse.body.id}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ title: `${suffix} teacher selected homework updated` })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${demoAllocationId}/assignments/${createResponse.body.id}/targets/resolve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const targets = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${demoAllocationId}/assignments/${createResponse.body.id}/targets`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(
+      targets.body.items.map((item: { studentId: string }) => item.studentId),
+    ).toEqual([demoStudentTwoId]);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${demoAllocationId}/assignments/${createResponse.body.id}/cancel`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+  });
+
+  it('blocks Teacher App access to another teacher and cross-school homework', async () => {
+    const { accessToken } = await login(teacherEmail, 'HomeworkTeacher123!');
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${otherTeacherAllocationId}/assignments`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${demoAllocationId}/assignments/${otherTeacherHomeworkId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${tenantBAllocationId}/assignments`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${demoAllocationId}/assignments/${tenantBHomeworkId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
+
+  it('blocks student and parent actors from Teacher Homework routes', async () => {
+    for (const [email, password] of [
+      [studentEmail, 'HomeworkStudent123!'],
+      [parentEmail, 'HomeworkParent123!'],
+    ]) {
+      const { accessToken } = await login(email, password);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/teacher/homeworks/dashboard`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/teacher/homeworks/classes/${demoAllocationId}/assignments`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(teacherHomeworkCreatePayload())
+        .expect(403);
+    }
+  });
+
+  it('keeps student, parent, submission, question, and attachment homework routes unregistered', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     for (const route of [
-      '/teacher/homeworks',
       '/student/homeworks',
       `/parent/children/${demoStudentTwoId}/homeworks`,
       '/homework/submissions',
       '/homework/questions',
       '/homework/attachments',
+      `/teacher/homeworks/classes/${demoAllocationId}/assignments/${demoHomeworkId}/submissions`,
+      `/teacher/homeworks/classes/${demoAllocationId}/assignments/${demoHomeworkId}/questions`,
+      `/teacher/homeworks/classes/${demoAllocationId}/assignments/${demoHomeworkId}/attachments`,
     ]) {
       await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}${route}`)

@@ -400,7 +400,6 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
       'POST /api/v1/parent/children/:studentId/schedule',
       'PATCH /api/v1/parent/children/:studentId/schedule/:scheduleId',
       'DELETE /api/v1/parent/children/:studentId/schedule/:scheduleId',
-      'GET /api/v1/teacher/homeworks',
       'GET /api/v1/student/homeworks',
       'GET /api/v1/parent/homeworks',
       'GET /api/v1/student/pickup',
@@ -880,7 +879,6 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
       .expect(404);
 
     for (const route of [
-      `${GLOBAL_PREFIX}/teacher/homeworks`,
       `${GLOBAL_PREFIX}/student/homeworks`,
       `${GLOBAL_PREFIX}/parent/homeworks`,
       `${GLOBAL_PREFIX}/student/pickup`,

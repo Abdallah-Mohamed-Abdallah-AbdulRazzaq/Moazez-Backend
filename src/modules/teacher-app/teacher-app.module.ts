@@ -34,6 +34,7 @@ import { TeacherClassroomGradesReadAdapter } from './classroom/grades/infrastruc
 import { TeacherClassroomReadAdapter } from './classroom/infrastructure/teacher-classroom-read.adapter';
 import { GetTeacherHomeUseCase } from './home/application/get-teacher-home.use-case';
 import { TeacherHomeController } from './home/controller/teacher-home.controller';
+import { TeacherHomeworksModule } from './homeworks/teacher-homeworks.module';
 import { GetTeacherMessageConversationUseCase } from './messages/application/get-teacher-message-conversation.use-case';
 import { ListTeacherConversationMessagesUseCase } from './messages/application/list-teacher-conversation-messages.use-case';
 import { ListTeacherMessageConversationsUseCase } from './messages/application/list-teacher-message-conversations.use-case';
@@ -84,6 +85,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     TasksModule,
     ReviewsModule,
     CommunicationModule,
+    TeacherHomeworksModule,
   ],
   controllers: [
     TeacherHomeController,

@@ -447,6 +447,10 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       'GET /api/v1/teacher/classroom/:classId/grades/gradebook',
       'GET /api/v1/teacher/classroom/:classId/roster',
       'GET /api/v1/teacher/home',
+      'GET /api/v1/teacher/homeworks/classes/:classId/assignments',
+      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId',
+      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/targets',
+      'GET /api/v1/teacher/homeworks/dashboard',
       'GET /api/v1/teacher/messages/conversations',
       'GET /api/v1/teacher/messages/conversations/:conversationId',
       'GET /api/v1/teacher/messages/conversations/:conversationId/messages',
@@ -469,10 +473,16 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       'GET /api/v1/teacher/xp/students/:studentId',
       'GET /api/v1/teacher/xp/students/:studentId/history',
       'PATCH /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/answers/:answerId/review',
+      'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId',
       'POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/review/finalize',
       'POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/sync-grade-item',
       'POST /api/v1/teacher/classroom/:classId/attendance/session/resolve',
       'POST /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/submit',
+      'POST /api/v1/teacher/homeworks/classes/:classId/assignments',
+      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/cancel',
+      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/close',
+      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/publish',
+      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/targets/resolve',
       'POST /api/v1/teacher/messages/conversations/:conversationId/messages',
       'POST /api/v1/teacher/messages/conversations/:conversationId/read',
       'POST /api/v1/teacher/tasks',
@@ -483,7 +493,6 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     ]);
 
     for (const absentRoute of [
-      'GET /api/v1/teacher/homeworks',
       'POST /api/v1/teacher/xp/bonus',
       'GET /api/v1/teacher/messages/contacts',
       'POST /api/v1/teacher/messages/conversations',
@@ -503,8 +512,6 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
 
     const { accessToken } = await login(teacherAEmail);
     for (const route of [
-      '/teacher/homeworks',
-      `/teacher/homeworks/classes/${ownFixture.allocationId}/assignments`,
       '/teacher/messages/contacts',
       '/teacher/settings/privacy',
       '/teacher/announcements',
@@ -633,9 +640,11 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         studentsCount: 2,
       }),
     ]);
-    expect(selectors.body.students.map((student: { studentId: string }) => student.studentId)).toEqual(
-      ownFixture.studentIds,
-    );
+    expect(
+      selectors.body.students.map(
+        (student: { studentId: string }) => student.studentId,
+      ),
+    ).toEqual(ownFixture.studentIds);
     expect(selectors.body.rewardTypes).toEqual(['moral', 'financial']);
     expectSafeTeacherPayload(selectors.body);
 
@@ -648,10 +657,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       (task: { taskId: string }) => task.taskId,
     );
     expect(listedTaskIds).toEqual(
-      expect.arrayContaining([
-        ownReviewApprove.taskId,
-        ownReviewReject.taskId,
-      ]),
+      expect.arrayContaining([ownReviewApprove.taskId, ownReviewReject.taskId]),
     );
     expect(listedTaskIds).not.toContain(otherTeacherTask.taskId);
     expect(listedTaskIds).not.toContain(crossSchoolTask.taskId);
@@ -840,11 +846,13 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     });
     expectSafeTeacherPayload(rejected.body);
 
-    expect(await prisma.xpLedger.count({ where: { schoolId: schoolAId } })).toBe(
-      beforeReviewXpCount,
-    );
     expect(
-      await prisma.behaviorPointLedger.count({ where: { schoolId: schoolAId } }),
+      await prisma.xpLedger.count({ where: { schoolId: schoolAId } }),
+    ).toBe(beforeReviewXpCount);
+    expect(
+      await prisma.behaviorPointLedger.count({
+        where: { schoolId: schoolAId },
+      }),
     ).toBe(beforeReviewBehaviorPointCount);
 
     for (const submissionId of [
@@ -995,9 +1003,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       .send({ studentId: ownFixture.studentIds[0], xpValue: 10 })
       .expect(404);
 
-    expect(await prisma.xpLedger.count({ where: { schoolId: schoolAId } })).toBe(
-      beforeLedgerCount,
-    );
+    expect(
+      await prisma.xpLedger.count({ where: { schoolId: schoolAId } }),
+    ).toBe(beforeLedgerCount);
   });
 
   it('covers Teacher Profile, Settings, and Messages without mutations or discovery routes', async () => {
@@ -1106,15 +1114,14 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
     const conversationIds = conversations.body.conversations.map(
-      (conversation: { conversationId: string }) =>
-        conversation.conversationId,
+      (conversation: { conversationId: string }) => conversation.conversationId,
     );
     expect(conversationIds).toContain(ownConversationId);
     expect(conversationIds).not.toContain(otherTeacherConversationId);
     expect(conversationIds).not.toContain(crossSchoolConversationId);
-    expect(conversations.body.summary.unreadMessagesCount).toBeGreaterThanOrEqual(
-      1,
-    );
+    expect(
+      conversations.body.summary.unreadMessagesCount,
+    ).toBeGreaterThanOrEqual(1);
     expectSafeTeacherPayload(conversations.body);
 
     const conversation = await request(app.getHttpServer())
@@ -1164,9 +1171,10 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     });
     expectSafeTeacherPayload(messages.body);
 
-    const messageCountBeforeAudioAttempt = await prisma.communicationMessage.count({
-      where: { conversationId: ownConversationId },
-    });
+    const messageCountBeforeAudioAttempt =
+      await prisma.communicationMessage.count({
+        where: { conversationId: ownConversationId },
+      });
     const sent = await request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
@@ -1801,8 +1809,10 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     ]);
 
     pushUnique(createdReinforcementTaskIds, taskId);
-    for (const target of targets) pushUnique(createdReinforcementTargetIds, target.id);
-    for (const stage of stages) pushUnique(createdReinforcementStageIds, stage.id);
+    for (const target of targets)
+      pushUnique(createdReinforcementTargetIds, target.id);
+    for (const stage of stages)
+      pushUnique(createdReinforcementStageIds, stage.id);
     for (const assignment of assignments) {
       pushUnique(createdReinforcementAssignmentIds, assignment.id);
     }
@@ -1816,11 +1826,13 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     behaviorPointLedgerCount: number;
     behaviorRecordCount: number;
   }): Promise<void> {
-    expect(await prisma.xpLedger.count({ where: { schoolId: schoolAId } })).toBe(
-      expected.xpLedgerCount,
-    );
     expect(
-      await prisma.behaviorPointLedger.count({ where: { schoolId: schoolAId } }),
+      await prisma.xpLedger.count({ where: { schoolId: schoolAId } }),
+    ).toBe(expected.xpLedgerCount);
+    expect(
+      await prisma.behaviorPointLedger.count({
+        where: { schoolId: schoolAId },
+      }),
     ).toBe(expected.behaviorPointLedgerCount);
     expect(
       await prisma.behaviorRecord.count({ where: { schoolId: schoolAId } }),
