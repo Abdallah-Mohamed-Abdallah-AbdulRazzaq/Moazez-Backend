@@ -8,13 +8,26 @@ import {
   ParentHomeworkListItemDto,
   ParentHomeworkMode,
   ParentHomeworkResponseDto,
+  ParentHomeworkSubmissionDto,
   ParentHomeworksListResponseDto,
   ParentHomeworkStatus,
 } from '../dto/parent-homeworks.dto';
 import type {
+  ParentHomeworkTargetDetailReadModel,
   ParentHomeworksListReadModel,
   ParentHomeworkTargetReadModel,
 } from '../infrastructure/parent-homeworks-read.adapter';
+
+interface ParentHomeworkSubmissionPresenterModel {
+  id: string;
+  status: string;
+  bodyText: string | null;
+  submittedAt: Date | null;
+  reviewedAt: Date | null;
+  reviewNote: string | null;
+  awardedMarks: Prisma.Decimal | number | string | null;
+  updatedAt: Date;
+}
 
 export class ParentHomeworksPresenter {
   static presentList(
@@ -31,7 +44,7 @@ export class ParentHomeworksPresenter {
   }
 
   static presentDetail(
-    target: ParentHomeworkTargetReadModel,
+    target: ParentHomeworkTargetDetailReadModel,
   ): ParentHomeworkResponseDto {
     return {
       homework: presentDetail(target),
@@ -131,7 +144,7 @@ function presentListItem(
 }
 
 function presentDetail(
-  target: ParentHomeworkTargetReadModel,
+  target: ParentHomeworkTargetDetailReadModel,
 ): ParentHomeworkDetailDto {
   const assignment = target.homeworkAssignment;
 
@@ -141,7 +154,29 @@ function presentDetail(
     closedAt: presentDateTime(assignment.closedAt),
     questions: [],
     attachments: [],
-    submission: null,
+    submission: target.submissions[0]
+      ? presentParentHomeworkSubmission(target.submissions[0], {
+          totalMarks: assignment.totalMarks,
+        })
+      : null,
+  };
+}
+
+export function presentParentHomeworkSubmission(
+  submission: ParentHomeworkSubmissionPresenterModel,
+  assignment: { totalMarks: Prisma.Decimal | number | string | null },
+): ParentHomeworkSubmissionDto {
+  return {
+    id: submission.id,
+    status:
+      submission.status.toLowerCase() as ParentHomeworkSubmissionDto['status'],
+    bodyText: submission.bodyText,
+    submittedAt: presentDateTime(submission.submittedAt),
+    reviewedAt: presentDateTime(submission.reviewedAt),
+    reviewNote: submission.reviewNote,
+    awardedMarks: presentDecimal(submission.awardedMarks),
+    totalMarks: presentDecimal(assignment.totalMarks),
+    updatedAt: submission.updatedAt.toISOString(),
   };
 }
 

@@ -16,7 +16,7 @@ import type {
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 
-const PARENT_HOMEWORK_TARGET_ARGS =
+const PARENT_HOMEWORK_TARGET_LIST_ARGS =
   Prisma.validator<Prisma.HomeworkTargetDefaultArgs>()({
     select: {
       id: true,
@@ -117,9 +117,33 @@ const PARENT_HOMEWORK_TARGET_ARGS =
     },
   });
 
+const PARENT_HOMEWORK_TARGET_DETAIL_ARGS =
+  Prisma.validator<Prisma.HomeworkTargetDefaultArgs>()({
+    select: {
+      ...PARENT_HOMEWORK_TARGET_LIST_ARGS.select,
+      submissions: {
+        take: 1,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          status: true,
+          bodyText: true,
+          submittedAt: true,
+          reviewedAt: true,
+          reviewNote: true,
+          awardedMarks: true,
+          updatedAt: true,
+        },
+      },
+    },
+  });
+
 export type ParentHomeworkTargetReadModel = Prisma.HomeworkTargetGetPayload<
-  typeof PARENT_HOMEWORK_TARGET_ARGS
+  typeof PARENT_HOMEWORK_TARGET_LIST_ARGS
 >;
+
+export type ParentHomeworkTargetDetailReadModel =
+  Prisma.HomeworkTargetGetPayload<typeof PARENT_HOMEWORK_TARGET_DETAIL_ARGS>;
 
 export interface ParentHomeworksListReadModel {
   items: ParentHomeworkTargetReadModel[];
@@ -158,7 +182,7 @@ export class ParentHomeworksReadAdapter {
         ],
         skip: (page - 1) * limit,
         take: limit,
-        ...PARENT_HOMEWORK_TARGET_ARGS,
+        ...PARENT_HOMEWORK_TARGET_LIST_ARGS,
       }),
       this.scopedPrisma.homeworkTarget.count({ where }),
     ]);
@@ -169,7 +193,7 @@ export class ParentHomeworksReadAdapter {
   findHomework(params: {
     child: ParentAppAccessibleChild;
     homeworkId: string;
-  }): Promise<ParentHomeworkTargetReadModel | null> {
+  }): Promise<ParentHomeworkTargetDetailReadModel | null> {
     return this.scopedPrisma.homeworkTarget.findFirst({
       where: {
         ...buildTargetWhere({
@@ -178,7 +202,7 @@ export class ParentHomeworksReadAdapter {
         }),
         homeworkAssignmentId: params.homeworkId,
       },
-      ...PARENT_HOMEWORK_TARGET_ARGS,
+      ...PARENT_HOMEWORK_TARGET_DETAIL_ARGS,
     });
   }
 }

@@ -71,6 +71,7 @@ describe('Homework tenancy isolation (security)', () => {
 
   let tenantBAllocationId: string;
   let tenantBStudentId: string;
+  let tenantBEnrollmentId: string;
   let tenantBHomeworkId: string;
   let otherTeacherAllocationId: string;
   let otherTeacherHomeworkId: string;
@@ -304,6 +305,7 @@ describe('Homework tenancy isolation (security)', () => {
     });
     tenantBAllocationId = tenantBFixture.allocationId;
     tenantBStudentId = tenantBFixture.studentId;
+    tenantBEnrollmentId = tenantBFixture.enrollmentId;
     tenantBHomeworkId = tenantBFixture.homeworkId;
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -841,9 +843,32 @@ describe('Homework tenancy isolation (security)', () => {
     enrollmentId?: string;
     assignmentStatus?: HomeworkAssignmentStatus;
     targetStatus?: HomeworkTargetStatus;
+    submissionStatus?: HomeworkSubmissionStatus;
+    bodyText?: string;
+    reviewNote?: string | null;
+    awardedMarks?: number | null;
+    totalMarks?: number | null;
+    isGraded?: boolean;
     dueAt?: Date;
     deletedAt?: Date | null;
   }): Promise<string> {
+    const submissionStatus = input.submissionStatus;
+    const targetStatus =
+      input.targetStatus ??
+      (submissionStatus
+        ? targetStatusForSubmission(submissionStatus)
+        : HomeworkTargetStatus.ASSIGNED);
+    const submittedAt =
+      targetStatus === HomeworkTargetStatus.SUBMITTED ||
+      targetStatus === HomeworkTargetStatus.LATE ||
+      targetStatus === HomeworkTargetStatus.REVIEWED
+        ? new Date('2026-09-11T08:00:00.000Z')
+        : null;
+    const reviewedAt =
+      targetStatus === HomeworkTargetStatus.REVIEWED
+        ? new Date('2026-09-12T08:00:00.000Z')
+        : null;
+
     const homework = await prisma.homeworkAssignment.create({
       data: {
         schoolId: demoSchoolId,
@@ -863,6 +888,8 @@ describe('Homework tenancy isolation (security)', () => {
             ? null
             : new Date('2026-09-10T08:00:00.000Z'),
         dueAt: input.dueAt ?? new Date('2027-03-01T10:00:00.000Z'),
+        totalMarks: input.totalMarks ?? null,
+        isGraded: input.isGraded ?? false,
         createdByUserId: demoTeacherId,
         publishedByUserId:
           input.assignmentStatus === HomeworkAssignmentStatus.DRAFT
@@ -872,26 +899,100 @@ describe('Homework tenancy isolation (security)', () => {
       },
     });
 
-    await prisma.homeworkTarget.create({
+    const target = await prisma.homeworkTarget.create({
       data: {
         schoolId: demoSchoolId,
         homeworkAssignmentId: homework.id,
         studentId: input.studentId ?? demoStudentId,
         enrollmentId: input.enrollmentId ?? demoEnrollmentId,
-        status: input.targetStatus ?? HomeworkTargetStatus.ASSIGNED,
-        submittedAt:
-          input.targetStatus === HomeworkTargetStatus.SUBMITTED ||
-          input.targetStatus === HomeworkTargetStatus.LATE
-            ? new Date('2026-09-11T08:00:00.000Z')
+        status: targetStatus,
+        submittedAt,
+        reviewedAt,
+      },
+      select: { id: true },
+    });
+
+    if (submissionStatus) {
+      await prisma.homeworkSubmission.create({
+        data: {
+          schoolId: demoSchoolId,
+          homeworkAssignmentId: homework.id,
+          homeworkTargetId: target.id,
+          studentId: input.studentId ?? demoStudentId,
+          enrollmentId: input.enrollmentId ?? demoEnrollmentId,
+          status: submissionStatus,
+          bodyText: input.bodyText ?? `${input.title} answer`,
+          submittedAt,
+          reviewedAt,
+          reviewedByUserId: reviewedAt ? demoTeacherId : null,
+          reviewNote: reviewedAt
+            ? (input.reviewNote ?? 'Reviewed by teacher')
             : null,
-        reviewedAt:
-          input.targetStatus === HomeworkTargetStatus.REVIEWED
-            ? new Date('2026-09-12T08:00:00.000Z')
-            : null,
+          awardedMarks:
+            reviewedAt && input.awardedMarks !== undefined
+              ? input.awardedMarks
+              : null,
+        },
+      });
+    }
+
+    return homework.id;
+  }
+
+  async function createSubmissionForExistingHomework(input: {
+    schoolId: string;
+    homeworkId: string;
+    studentId: string;
+    enrollmentId: string;
+    status: HomeworkSubmissionStatus;
+    bodyText: string;
+  }): Promise<string> {
+    const submittedAt =
+      input.status === HomeworkSubmissionStatus.DRAFT
+        ? null
+        : new Date('2026-09-11T08:00:00.000Z');
+    const reviewedAt =
+      input.status === HomeworkSubmissionStatus.REVIEWED
+        ? new Date('2026-09-12T08:00:00.000Z')
+        : null;
+    const target = await prisma.homeworkTarget.findFirstOrThrow({
+      where: {
+        schoolId: input.schoolId,
+        homeworkAssignmentId: input.homeworkId,
+        studentId: input.studentId,
+        enrollmentId: input.enrollmentId,
+      },
+      select: { id: true },
+    });
+
+    await prisma.homeworkTarget.update({
+      where: { id: target.id },
+      data: {
+        status: targetStatusForSubmission(input.status),
+        submittedAt,
+        reviewedAt,
       },
     });
 
-    return homework.id;
+    const submission = await prisma.homeworkSubmission.create({
+      data: {
+        schoolId: input.schoolId,
+        homeworkAssignmentId: input.homeworkId,
+        homeworkTargetId: target.id,
+        studentId: input.studentId,
+        enrollmentId: input.enrollmentId,
+        status: input.status,
+        bodyText: input.bodyText,
+        submittedAt,
+        reviewedAt,
+        reviewedByUserId: reviewedAt ? demoTeacherId : null,
+        reviewNote: reviewedAt ? 'Reviewed by teacher' : null,
+        awardedMarks: reviewedAt ? 8 : null,
+      },
+      select: { id: true },
+    });
+
+    return submission.id;
   }
 
   async function createTeacherReviewSubmission(input: {
@@ -947,8 +1048,7 @@ describe('Homework tenancy isolation (security)', () => {
           assignmentStatus === HomeworkAssignmentStatus.ARCHIVED
             ? new Date('2026-09-12T08:45:00.000Z')
             : null,
-        totalMarks:
-          input.totalMarks === undefined ? 10 : input.totalMarks,
+        totalMarks: input.totalMarks === undefined ? 10 : input.totalMarks,
         isGraded: input.isGraded ?? true,
       },
     });
@@ -992,34 +1092,43 @@ describe('Homework tenancy isolation (security)', () => {
   async function countSubmissionSideEffects(): Promise<Record<string, number>> {
     const [
       gradeAssessments,
+      gradeQuestions,
       gradeSubmissions,
+      gradeSubmissionAnswers,
       gradeItems,
       notifications,
       xpLedgers,
       rewardRedemptions,
       files,
+      attachments,
       emailBatches,
       emailRecipients,
     ] = await Promise.all([
       prisma.gradeAssessment.count(),
+      prisma.gradeAssessmentQuestion.count(),
       prisma.gradeSubmission.count(),
+      prisma.gradeSubmissionAnswer.count(),
       prisma.gradeItem.count(),
       prisma.communicationNotification.count(),
       prisma.xpLedger.count(),
       prisma.rewardRedemption.count(),
       prisma.file.count(),
+      prisma.attachment.count(),
       prisma.schoolEmailDeliveryBatch.count(),
       prisma.schoolEmailDeliveryRecipient.count(),
     ]);
 
     return {
       gradeAssessments,
+      gradeQuestions,
       gradeSubmissions,
+      gradeSubmissionAnswers,
       gradeItems,
       notifications,
       xpLedgers,
       rewardRedemptions,
       files,
+      attachments,
       emailBatches,
       emailRecipients,
     };
@@ -1917,7 +2026,9 @@ describe('Homework tenancy isolation (security)', () => {
     });
 
     const listResponse = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/homeworks?status=completed&search=student submit own`)
+      .get(
+        `${GLOBAL_PREFIX}/student/homeworks?status=completed&search=student submit own`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
     expect(
@@ -2115,6 +2226,158 @@ describe('Homework tenancy isolation (security)', () => {
       .expect(404);
   });
 
+  it('lets parents read owned child homework submission summaries only', async () => {
+    const { accessToken } = await login(parentEmail, 'HomeworkParent123!');
+    const submittedHomeworkId = await createParentReadHomework({
+      title: `${suffix} parent submission submitted`,
+      submissionStatus: HomeworkSubmissionStatus.SUBMITTED,
+      bodyText: 'Submitted parent-visible answer',
+      totalMarks: 10,
+      isGraded: true,
+    });
+    const lateHomeworkId = await createParentReadHomework({
+      title: `${suffix} parent submission late`,
+      submissionStatus: HomeworkSubmissionStatus.LATE,
+      bodyText: 'Late parent-visible answer',
+      dueAt: new Date('2026-01-01T10:00:00.000Z'),
+      totalMarks: 10,
+      isGraded: true,
+    });
+    const reviewedHomeworkId = await createParentReadHomework({
+      title: `${suffix} parent submission reviewed`,
+      submissionStatus: HomeworkSubmissionStatus.REVIEWED,
+      bodyText: 'Reviewed parent-visible answer',
+      reviewNote: 'Strong explanation.',
+      awardedMarks: 8.5,
+      totalMarks: 10,
+      isGraded: true,
+    });
+    const sameSchoolUnlinkedHomeworkId = await createParentReadHomework({
+      title: `${suffix} parent submission unlinked`,
+      studentId: demoStudentTwoId,
+      enrollmentId: demoEnrollmentTwoId,
+      submissionStatus: HomeworkSubmissionStatus.SUBMITTED,
+      bodyText: 'Unlinked child answer',
+      totalMarks: 10,
+      isGraded: true,
+    });
+    await prisma.homeworkAssignment.update({
+      where: { id: tenantBHomeworkId },
+      data: {
+        status: HomeworkAssignmentStatus.PUBLISHED,
+        publishedAt: new Date('2026-09-10T08:00:00.000Z'),
+        dueAt: new Date('2027-03-01T10:00:00.000Z'),
+      },
+    });
+    await createSubmissionForExistingHomework({
+      schoolId: tenantBSchoolId,
+      homeworkId: tenantBHomeworkId,
+      studentId: tenantBStudentId,
+      enrollmentId: tenantBEnrollmentId,
+      status: HomeworkSubmissionStatus.SUBMITTED,
+      bodyText: 'Cross-school child answer',
+    });
+
+    const sideEffectsBefore = await countSubmissionSideEffects();
+
+    const submitted = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${demoStudentId}/homeworks/${submittedHomeworkId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(submitted.body.homework.submission).toMatchObject({
+      status: 'submitted',
+      bodyText: 'Submitted parent-visible answer',
+      submittedAt: expect.any(String),
+      reviewedAt: null,
+      reviewNote: null,
+      awardedMarks: null,
+      totalMarks: 10,
+    });
+
+    const late = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${demoStudentId}/homeworks/${lateHomeworkId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(late.body.homework.submission).toMatchObject({
+      status: 'late',
+      bodyText: 'Late parent-visible answer',
+      submittedAt: expect.any(String),
+      reviewedAt: null,
+      totalMarks: 10,
+    });
+
+    const reviewed = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${demoStudentId}/homeworks/${reviewedHomeworkId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(reviewed.body.homework).toMatchObject({
+      status: 'completed',
+      targetStatus: 'reviewed',
+      submission: expect.objectContaining({
+        status: 'reviewed',
+        bodyText: 'Reviewed parent-visible answer',
+        submittedAt: expect.any(String),
+        reviewedAt: expect.any(String),
+        reviewNote: 'Strong explanation.',
+        awardedMarks: 8.5,
+        totalMarks: 10,
+      }),
+      questions: [],
+      attachments: [],
+      questionCount: 0,
+      attachmentsCount: 0,
+    });
+
+    for (const body of [submitted.body, late.body, reviewed.body]) {
+      expectNoTenantIds(body);
+      const serialized = JSON.stringify(body);
+      for (const forbidden of [
+        'reviewedByUserId',
+        'schoolId',
+        'organizationId',
+        'enrollmentId',
+        'deletedAt',
+        'gradeAssessmentId',
+        'gradeItem',
+        'submittedByUserId',
+      ]) {
+        expect(serialized).not.toContain(forbidden);
+      }
+    }
+
+    for (const homeworkId of [
+      sameSchoolUnlinkedHomeworkId,
+      tenantBHomeworkId,
+    ]) {
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/parent/children/${demoStudentId}/homeworks/${homeworkId}`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${demoStudentTwoId}/homeworks/${sameSchoolUnlinkedHomeworkId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${tenantBStudentId}/homeworks/${tenantBHomeworkId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(await countSubmissionSideEffects()).toEqual(sideEffectsBefore);
+  });
+
   it('maps Parent App homework statuses without submission side effects', async () => {
     const { accessToken } = await login(parentEmail, 'HomeworkParent123!');
     const waitingHomeworkId = await createParentReadHomework({
@@ -2125,6 +2388,11 @@ describe('Homework tenancy isolation (security)', () => {
       title: `${suffix} parent status completed`,
       targetStatus: HomeworkTargetStatus.REVIEWED,
       dueAt: new Date('2027-03-03T10:00:00.000Z'),
+    });
+    const submittedCompletedHomeworkId = await createParentReadHomework({
+      title: `${suffix} parent status submitted completed`,
+      targetStatus: HomeworkTargetStatus.SUBMITTED,
+      dueAt: new Date('2027-03-04T10:00:00.000Z'),
     });
     const lateCompletedHomeworkId = await createParentReadHomework({
       title: `${suffix} parent status late completed`,
@@ -2139,7 +2407,14 @@ describe('Homework tenancy isolation (security)', () => {
 
     for (const [status, expectedIds] of [
       ['waiting', [waitingHomeworkId]],
-      ['completed', [completedHomeworkId, lateCompletedHomeworkId]],
+      [
+        'completed',
+        [
+          completedHomeworkId,
+          submittedCompletedHomeworkId,
+          lateCompletedHomeworkId,
+        ],
+      ],
       ['not_completed', [notCompletedHomeworkId]],
     ] as const) {
       const response = await request(app.getHttpServer())
@@ -2176,12 +2451,14 @@ describe('Homework tenancy isolation (security)', () => {
 
       if (status === 'not_completed') {
         expect(ids).not.toContain(lateCompletedHomeworkId);
+        expect(ids).not.toContain(submittedCompletedHomeworkId);
+        expect(ids).not.toContain(completedHomeworkId);
       }
       expectNoTenantIds(response.body);
     }
   });
 
-  it('blocks teacher and student actors from Parent Homework routes', async () => {
+  it('blocks teacher, student, and school admin actors from Parent Homework routes', async () => {
     const ownHomeworkId = await createParentReadHomework({
       title: `${suffix} parent actor boundary`,
     });
@@ -2189,6 +2466,7 @@ describe('Homework tenancy isolation (security)', () => {
     for (const [email, password] of [
       [teacherEmail, 'HomeworkTeacher123!'],
       [studentEmail, 'HomeworkStudent123!'],
+      [DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD],
     ]) {
       const { accessToken } = await login(email, password);
       await request(app.getHttpServer())

@@ -43,6 +43,7 @@ describe('ParentHomeworksReadAdapter', () => {
       },
     });
     expect(query.where).not.toHaveProperty('schoolId');
+    expect(query.select).not.toHaveProperty('submissions');
   });
 
   it('filters completed, waiting, and not-completed through submitted target status plus assignment visibility', async () => {
@@ -142,6 +143,20 @@ describe('ParentHomeworksReadAdapter', () => {
         }),
       ]),
     );
+    expect(query.select.submissions).toMatchObject({
+      take: 1,
+      orderBy: { createdAt: 'desc' },
+      select: expect.objectContaining({
+        id: true,
+        status: true,
+        bodyText: true,
+        submittedAt: true,
+        reviewedAt: true,
+        reviewNote: true,
+        awardedMarks: true,
+        updatedAt: true,
+      }),
+    });
   });
 
   it('performs no mutations or platform bypass calls', async () => {

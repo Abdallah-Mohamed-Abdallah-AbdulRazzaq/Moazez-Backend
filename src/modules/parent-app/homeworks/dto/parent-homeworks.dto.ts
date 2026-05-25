@@ -29,6 +29,16 @@ export const PARENT_HOMEWORK_MODES = [
 
 export type ParentHomeworkMode = (typeof PARENT_HOMEWORK_MODES)[number];
 
+export const PARENT_HOMEWORK_SUBMISSION_STATUSES = [
+  'draft',
+  'submitted',
+  'late',
+  'reviewed',
+] as const;
+
+export type ParentHomeworkSubmissionStatus =
+  (typeof PARENT_HOMEWORK_SUBMISSION_STATUSES)[number];
+
 function toLowerOptionalString(value: unknown): unknown {
   if (value === undefined || value === null || value === '') return undefined;
   return typeof value === 'string' ? value.trim().toLowerCase() : value;
@@ -132,12 +142,24 @@ export class ParentHomeworkQuestionDto {}
 
 export class ParentHomeworkAttachmentDto {}
 
+export class ParentHomeworkSubmissionDto {
+  id!: string;
+  status!: ParentHomeworkSubmissionStatus;
+  bodyText!: string | null;
+  submittedAt!: string | null;
+  reviewedAt!: string | null;
+  reviewNote!: string | null;
+  awardedMarks!: number | null;
+  totalMarks!: number | null;
+  updatedAt!: string;
+}
+
 export class ParentHomeworkDetailDto extends ParentHomeworkListItemDto {
   publishAt!: string | null;
   closedAt!: string | null;
   questions!: ParentHomeworkQuestionDto[];
   attachments!: ParentHomeworkAttachmentDto[];
-  submission!: null;
+  submission!: ParentHomeworkSubmissionDto | null;
 }
 
 export class ParentHomeworksPaginationDto {

@@ -1,6 +1,7 @@
 import {
   HomeworkAssignmentMode,
   HomeworkAssignmentStatus,
+  HomeworkSubmissionStatus,
   HomeworkTargetStatus,
 } from '@prisma/client';
 import {
@@ -51,6 +52,95 @@ describe('ParentHomeworksPresenter', () => {
     expect(serialized).not.toContain('phone');
     expect(serialized).not.toContain('email');
     expect(serialized).not.toContain('medical');
+  });
+
+  it('presents submitted, late, and reviewed submission summaries for detail only', () => {
+    const submitted = ParentHomeworksPresenter.presentDetail(
+      homeworkTargetFixture({
+        targetStatus: HomeworkTargetStatus.SUBMITTED,
+        submission: {
+          id: 'submission-submitted',
+          status: HomeworkSubmissionStatus.SUBMITTED,
+          bodyText: 'Submitted answer',
+          submittedAt: new Date('2026-09-10T09:00:00.000Z'),
+          reviewedAt: null,
+          reviewNote: null,
+          awardedMarks: null,
+          updatedAt: new Date('2026-09-10T09:01:00.000Z'),
+        },
+      }) as any,
+    );
+
+    expect(submitted.homework.submission).toEqual({
+      id: 'submission-submitted',
+      status: 'submitted',
+      bodyText: 'Submitted answer',
+      submittedAt: '2026-09-10T09:00:00.000Z',
+      reviewedAt: null,
+      reviewNote: null,
+      awardedMarks: null,
+      totalMarks: 10,
+      updatedAt: '2026-09-10T09:01:00.000Z',
+    });
+
+    const late = ParentHomeworksPresenter.presentDetail(
+      homeworkTargetFixture({
+        targetStatus: HomeworkTargetStatus.LATE,
+        submission: {
+          id: 'submission-late',
+          status: HomeworkSubmissionStatus.LATE,
+          bodyText: 'Late answer',
+          submittedAt: new Date('2026-09-12T09:00:00.000Z'),
+          reviewedAt: null,
+          reviewNote: null,
+          awardedMarks: null,
+          updatedAt: new Date('2026-09-12T09:01:00.000Z'),
+        },
+      }) as any,
+    );
+    expect(late.homework.submission).toMatchObject({
+      id: 'submission-late',
+      status: 'late',
+      bodyText: 'Late answer',
+      submittedAt: '2026-09-12T09:00:00.000Z',
+      reviewedAt: null,
+      awardedMarks: null,
+      totalMarks: 10,
+    });
+
+    const reviewed = ParentHomeworksPresenter.presentDetail(
+      homeworkTargetFixture({
+        targetStatus: HomeworkTargetStatus.REVIEWED,
+        submission: {
+          id: 'submission-reviewed',
+          status: HomeworkSubmissionStatus.REVIEWED,
+          bodyText: 'Reviewed answer',
+          submittedAt: new Date('2026-09-10T09:00:00.000Z'),
+          reviewedAt: new Date('2026-09-13T09:00:00.000Z'),
+          reviewNote: 'Good work.',
+          awardedMarks: { toNumber: () => 8.5 },
+          updatedAt: new Date('2026-09-13T09:01:00.000Z'),
+        },
+      }) as any,
+    );
+    const serialized = JSON.stringify(reviewed);
+
+    expect(reviewed.homework.submission).toEqual({
+      id: 'submission-reviewed',
+      status: 'reviewed',
+      bodyText: 'Reviewed answer',
+      submittedAt: '2026-09-10T09:00:00.000Z',
+      reviewedAt: '2026-09-13T09:00:00.000Z',
+      reviewNote: 'Good work.',
+      awardedMarks: 8.5,
+      totalMarks: 10,
+      updatedAt: '2026-09-13T09:01:00.000Z',
+    });
+    expect(serialized).not.toContain('reviewedByUserId');
+    expect(serialized).not.toContain('schoolId');
+    expect(serialized).not.toContain('organizationId');
+    expect(serialized).not.toContain('enrollmentId');
+    expect(serialized).not.toContain('deletedAt');
   });
 
   it('maps target and assignment state to stable Parent App statuses', () => {
@@ -118,6 +208,16 @@ function homeworkTargetFixture(overrides?: {
   targetStatus?: HomeworkTargetStatus;
   assignmentStatus?: HomeworkAssignmentStatus;
   dueAt?: Date;
+  submission?: {
+    id: string;
+    status: HomeworkSubmissionStatus;
+    bodyText: string | null;
+    submittedAt: Date | null;
+    reviewedAt: Date | null;
+    reviewNote: string | null;
+    awardedMarks: { toNumber(): number } | number | null;
+    updatedAt: Date;
+  };
 }) {
   return {
     id: 'target-1',
@@ -131,6 +231,7 @@ function homeworkTargetFixture(overrides?: {
     excusedAt: null,
     createdAt: new Date('2026-09-10T08:00:00.000Z'),
     updatedAt: new Date('2026-09-10T08:00:00.000Z'),
+    submissions: overrides?.submission ? [overrides.submission] : [],
     student: {
       id: 'student-1',
       firstName: 'Sara',
