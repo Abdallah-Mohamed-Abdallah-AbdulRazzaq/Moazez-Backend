@@ -65,6 +65,7 @@ describe('Homework tenancy isolation (security)', () => {
   let demoStudentId: string;
   let demoStudentTwoId: string;
   let demoEnrollmentId: string;
+  let demoEnrollmentTwoId: string;
   let demoHomeworkId: string;
 
   let tenantBAllocationId: string;
@@ -78,6 +79,7 @@ describe('Homework tenancy isolation (security)', () => {
   let teacherEmail: string;
   let studentEmail: string;
   let parentEmail: string;
+  let studentUserId: string;
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -210,7 +212,7 @@ describe('Homework tenancy isolation (security)', () => {
       roleId: teacherRole.id,
       userType: UserType.TEACHER,
     });
-    await createUserWithMembership({
+    studentUserId = await createUserWithMembership({
       email: studentEmail,
       password: 'HomeworkStudent123!',
       roleId: studentRole.id,
@@ -242,7 +244,12 @@ describe('Homework tenancy isolation (security)', () => {
     demoStudentId = demoFixture.studentId;
     demoStudentTwoId = demoFixture.studentTwoId;
     demoEnrollmentId = demoFixture.enrollmentId;
+    demoEnrollmentTwoId = demoFixture.enrollmentTwoId;
     demoHomeworkId = demoFixture.homeworkId;
+    await prisma.student.update({
+      where: { id: demoStudentId },
+      data: { userId: studentUserId },
+    });
 
     const otherTeacherId = await createUserWithMembership({
       email: `other-teacher@${suffix}.moazez.local`,
@@ -733,6 +740,62 @@ describe('Homework tenancy isolation (security)', () => {
     };
   }
 
+  async function createStudentReadHomework(input: {
+    title: string;
+    studentId?: string;
+    enrollmentId?: string;
+    assignmentStatus?: HomeworkAssignmentStatus;
+    targetStatus?: HomeworkTargetStatus;
+    dueAt?: Date;
+  }): Promise<string> {
+    const homework = await prisma.homeworkAssignment.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        classroomId: demoClassroomId,
+        subjectId: demoSubjectId,
+        teacherUserId: demoTeacherId,
+        teacherSubjectAllocationId: demoAllocationId,
+        title: input.title,
+        description: 'Student read security fixture',
+        mode: HomeworkAssignmentMode.HOMEWORK,
+        status: input.assignmentStatus ?? HomeworkAssignmentStatus.PUBLISHED,
+        targetMode: HomeworkTargetMode.SELECTED_STUDENTS,
+        publishedAt:
+          input.assignmentStatus === HomeworkAssignmentStatus.DRAFT
+            ? null
+            : new Date('2026-09-10T08:00:00.000Z'),
+        dueAt: input.dueAt ?? new Date('2027-03-01T10:00:00.000Z'),
+        createdByUserId: demoTeacherId,
+        publishedByUserId:
+          input.assignmentStatus === HomeworkAssignmentStatus.DRAFT
+            ? null
+            : demoTeacherId,
+      },
+    });
+
+    await prisma.homeworkTarget.create({
+      data: {
+        schoolId: demoSchoolId,
+        homeworkAssignmentId: homework.id,
+        studentId: input.studentId ?? demoStudentId,
+        enrollmentId: input.enrollmentId ?? demoEnrollmentId,
+        status: input.targetStatus ?? HomeworkTargetStatus.ASSIGNED,
+        submittedAt:
+          input.targetStatus === HomeworkTargetStatus.SUBMITTED
+            ? new Date('2026-09-11T08:00:00.000Z')
+            : null,
+        reviewedAt:
+          input.targetStatus === HomeworkTargetStatus.REVIEWED
+            ? new Date('2026-09-12T08:00:00.000Z')
+            : null,
+      },
+    });
+
+    return homework.id;
+  }
+
   it('requires authentication', async () => {
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/homework/assignments`)
@@ -1113,15 +1176,148 @@ describe('Homework tenancy isolation (security)', () => {
     }
   });
 
-  it('keeps student, parent, submission, question, and attachment homework routes unregistered', async () => {
+  it('lets students read only their own assigned visible homework', async () => {
+    const { accessToken } = await login(studentEmail, 'HomeworkStudent123!');
+    const ownHomeworkId = await createStudentReadHomework({
+      title: `${suffix} student read own`,
+    });
+    const sameSchoolOtherHomeworkId = await createStudentReadHomework({
+      title: `${suffix} student read other`,
+      studentId: demoStudentTwoId,
+      enrollmentId: demoEnrollmentTwoId,
+    });
+    const draftHomeworkId = await createStudentReadHomework({
+      title: `${suffix} student read draft`,
+      assignmentStatus: HomeworkAssignmentStatus.DRAFT,
+    });
+    const cancelledHomeworkId = await createStudentReadHomework({
+      title: `${suffix} student read cancelled`,
+      assignmentStatus: HomeworkAssignmentStatus.CANCELLED,
+    });
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/homeworks?limit=100&search=student read`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const returnedIds = listResponse.body.homeworks.map(
+      (item: { homeworkId: string }) => item.homeworkId,
+    );
+    expect(returnedIds).toContain(ownHomeworkId);
+    expect(returnedIds).not.toContain(sameSchoolOtherHomeworkId);
+    expect(returnedIds).not.toContain(draftHomeworkId);
+    expect(returnedIds).not.toContain(cancelledHomeworkId);
+    expect(listResponse.body.homeworks[0]).toEqual(
+      expect.objectContaining({
+        status: 'waiting',
+        questionCount: 0,
+        attachmentsCount: 0,
+      }),
+    );
+    expectNoTenantIds(listResponse.body);
+
+    const detailResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/homeworks/${ownHomeworkId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(detailResponse.body.homework).toMatchObject({
+      homeworkId: ownHomeworkId,
+      questions: [],
+      attachments: [],
+      submission: null,
+    });
+    expectNoTenantIds(detailResponse.body);
+
+    for (const homeworkId of [
+      sameSchoolOtherHomeworkId,
+      draftHomeworkId,
+      cancelledHomeworkId,
+      tenantBHomeworkId,
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/homeworks/${homeworkId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+  });
+
+  it('maps Student App homework statuses without submission side effects', async () => {
+    const { accessToken } = await login(studentEmail, 'HomeworkStudent123!');
+    const waitingHomeworkId = await createStudentReadHomework({
+      title: `${suffix} student status waiting`,
+      dueAt: new Date('2027-03-02T10:00:00.000Z'),
+    });
+    const completedHomeworkId = await createStudentReadHomework({
+      title: `${suffix} student status completed`,
+      targetStatus: HomeworkTargetStatus.SUBMITTED,
+      dueAt: new Date('2027-03-03T10:00:00.000Z'),
+    });
+    const notCompletedHomeworkId = await createStudentReadHomework({
+      title: `${suffix} student status not completed`,
+      targetStatus: HomeworkTargetStatus.MISSING,
+      dueAt: new Date('2026-01-03T10:00:00.000Z'),
+    });
+
+    for (const [status, expectedId] of [
+      ['waiting', waitingHomeworkId],
+      ['completed', completedHomeworkId],
+      ['not_completed', notCompletedHomeworkId],
+    ] as const) {
+      const response = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/student/homeworks?status=${status}&search=student status`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      const ids = response.body.homeworks.map(
+        (item: { homeworkId: string }) => item.homeworkId,
+      );
+      expect(ids).toContain(expectedId);
+      expect(
+        response.body.homeworks.find(
+          (item: { homeworkId: string }) => item.homeworkId === expectedId,
+        ),
+      ).toMatchObject({ status });
+      expectNoTenantIds(response.body);
+    }
+  });
+
+  it('blocks teacher and parent actors from Student Homework routes', async () => {
+    const ownHomeworkId = await createStudentReadHomework({
+      title: `${suffix} student actor boundary`,
+    });
+
+    for (const [email, password] of [
+      [teacherEmail, 'HomeworkTeacher123!'],
+      [parentEmail, 'HomeworkParent123!'],
+    ]) {
+      const { accessToken } = await login(email, password);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/homeworks`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/homeworks/${ownHomeworkId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+    }
+  });
+
+  it('keeps parent, submission, question, and attachment homework routes unregistered', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     for (const route of [
-      '/student/homeworks',
       `/parent/children/${demoStudentTwoId}/homeworks`,
       '/homework/submissions',
       '/homework/questions',
       '/homework/attachments',
+      `/student/homeworks/${demoHomeworkId}/submission/resolve`,
+      `/student/homeworks/${demoHomeworkId}/submission/submit`,
+      `/student/homeworks/${demoHomeworkId}/submission/answers`,
+      `/student/homeworks/${demoHomeworkId}/submission/answers/${demoHomeworkId}`,
+      `/student/homeworks/${demoHomeworkId}/attachments`,
+      `/student/homeworks/${demoHomeworkId}/files`,
       `/teacher/homeworks/classes/${demoAllocationId}/assignments/${demoHomeworkId}/submissions`,
       `/teacher/homeworks/classes/${demoAllocationId}/assignments/${demoHomeworkId}/questions`,
       `/teacher/homeworks/classes/${demoAllocationId}/assignments/${demoHomeworkId}/attachments`,

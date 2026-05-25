@@ -534,8 +534,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       tenantBAnnouncementId: tenantBFixture.announcementId,
     });
     ownConversationId = communicationFixture.conversationId;
-    sameSchoolOtherConversationId =
-      communicationFixture.otherConversationId;
+    sameSchoolOtherConversationId = communicationFixture.otherConversationId;
     tenantBConversationId = communicationFixture.tenantBConversationId;
     ownAnnouncementId = communicationFixture.schoolAnnouncementId;
     customAnnouncementId = communicationFixture.customAnnouncementId;
@@ -756,6 +755,8 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'GET /api/v1/student/hero/missions/:missionId',
       'GET /api/v1/student/hero/progress',
       'GET /api/v1/student/home',
+      'GET /api/v1/student/homeworks',
+      'GET /api/v1/student/homeworks/:homeworkId',
       'GET /api/v1/student/messages/conversations',
       'GET /api/v1/student/messages/conversations/:conversationId',
       'GET /api/v1/student/messages/conversations/:conversationId/messages',
@@ -780,11 +781,16 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
 
     for (const absentRoute of [
       'GET /api/v1/student/timetable',
-      'GET /api/v1/student/homeworks',
       'GET /api/v1/student/homework',
+      'GET /api/v1/student/homeworks/:homeworkId/attachments',
+      'GET /api/v1/student/homeworks/:homeworkId/questions',
       'GET /api/v1/student/pickup',
       'GET /api/v1/student/notifications',
       'GET /api/v1/student/messages/contacts',
+      'POST /api/v1/student/homeworks/:homeworkId/submission/resolve',
+      'POST /api/v1/student/homeworks/:homeworkId/submission/submit',
+      'PUT /api/v1/student/homeworks/:homeworkId/submission/answers',
+      'PUT /api/v1/student/homeworks/:homeworkId/submission/answers/:questionId',
       'POST /api/v1/student/messages/conversations',
       'POST /api/v1/student/messages/conversations/:conversationId/attachments',
       'POST /api/v1/student/messages/conversations/:conversationId/audio',
@@ -1400,7 +1406,9 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
     assertNoForbiddenStudentAppFields(conversations.body);
 
     const conversation = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}`)
+      .get(
+        `${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
@@ -1481,7 +1489,9 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       sameSchoolOtherStudentEmail,
     );
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}`)
+      .get(
+        `${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}`,
+      )
       .set('Authorization', `Bearer ${otherStudentToken}`)
       .expect(404);
   });
@@ -1780,7 +1790,10 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
 
     for (const path of [
       'homework',
-      'homeworks',
+      `homeworks/${ownTaskId}/submission/resolve`,
+      `homeworks/${ownTaskId}/submission/submit`,
+      `homeworks/${ownTaskId}/questions`,
+      `homeworks/${ownTaskId}/attachments`,
       'pickup',
       'notifications',
       'messages/contacts',
@@ -2322,8 +2335,8 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
         select: { id: true },
       });
     createdAnnouncementIds.push(outOfAudienceAnnouncement.id);
-    const outOfAudience =
-      await prisma.communicationAnnouncementAudience.create({
+    const outOfAudience = await prisma.communicationAnnouncementAudience.create(
+      {
         data: {
           schoolId,
           announcementId: outOfAudienceAnnouncement.id,
@@ -2332,7 +2345,8 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
           userId: params.otherStudentUserId,
         },
         select: { id: true },
-      });
+      },
+    );
     createdAnnouncementAudienceIds.push(outOfAudience.id);
 
     const attachmentFile = await prisma.file.create({
@@ -2351,17 +2365,16 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
     });
     createdFileIds.push(attachmentFile.id);
 
-    const attachment =
-      await prisma.communicationAnnouncementAttachment.create({
-        data: {
-          schoolId,
-          announcementId: schoolAnnouncement.id,
-          fileId: attachmentFile.id,
-          createdById: params.teacherUserId,
-          sortOrder: 1,
-        },
-        select: { id: true },
-      });
+    const attachment = await prisma.communicationAnnouncementAttachment.create({
+      data: {
+        schoolId,
+        announcementId: schoolAnnouncement.id,
+        fileId: attachmentFile.id,
+        createdById: params.teacherUserId,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
     createdAnnouncementAttachmentIds.push(attachment.id);
 
     return {

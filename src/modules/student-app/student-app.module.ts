@@ -30,6 +30,7 @@ import { ListStudentHeroBadgesUseCase } from './hero/application/list-student-he
 import { ListStudentHeroMissionsUseCase } from './hero/application/list-student-hero-missions.use-case';
 import { StudentHeroController } from './hero/controller/student-hero.controller';
 import { StudentHeroReadAdapter } from './hero/infrastructure/student-hero-read.adapter';
+import { StudentHomeworksModule } from './homeworks/student-homeworks.module';
 import { GetStudentHomeUseCase } from './home/application/get-student-home.use-case';
 import { StudentHomeController } from './home/controller/student-home.controller';
 import { StudentHomeReadAdapter } from './home/infrastructure/student-home-read.adapter';
@@ -66,7 +67,7 @@ import { StudentTasksController } from './tasks/controller/student-tasks.control
 import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-read.adapter';
 
 @Module({
-  imports: [CommunicationModule],
+  imports: [CommunicationModule, StudentHomeworksModule],
   controllers: [
     StudentHomeController,
     StudentProfileController,

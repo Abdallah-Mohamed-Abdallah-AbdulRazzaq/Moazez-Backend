@@ -1891,7 +1891,10 @@ describe('Student App Home/Profile routes (security)', () => {
 
     for (const path of [
       'homework',
-      'homeworks',
+      `homeworks/${ownTaskId}/submission/resolve`,
+      `homeworks/${ownTaskId}/submission/submit`,
+      `homeworks/${ownTaskId}/questions`,
+      `homeworks/${ownTaskId}/attachments`,
       'pickup',
       'notifications',
       'messages/contacts',
