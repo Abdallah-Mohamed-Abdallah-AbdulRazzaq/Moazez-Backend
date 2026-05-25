@@ -26,6 +26,10 @@ import {
   GradeQuestionType,
   GradeScopeType,
   GradeSubmissionStatus,
+  HomeworkAssignmentMode,
+  HomeworkAssignmentStatus,
+  HomeworkTargetMode,
+  HomeworkTargetStatus,
   HeroMissionObjectiveType,
   HeroMissionProgressStatus,
   HeroMissionStatus,
@@ -288,6 +292,7 @@ describe('Student App Home/Profile routes (security)', () => {
   let gradeId: string;
   let sectionId: string;
   let ownSubjectAllocationId: string;
+  let teacherUserId: string;
 
   const testSuffix = `student-app-security-${Date.now()}`;
   const createdUserIds: string[] = [];
@@ -325,6 +330,8 @@ describe('Student App Home/Profile routes (security)', () => {
   const createdGradeQuestionOptionIds: string[] = [];
   const createdGradeSubmissionIds: string[] = [];
   const createdGradeSubmissionAnswerIds: string[] = [];
+  const createdHomeworkAssignmentIds: string[] = [];
+  const createdHomeworkSubmissionIds: string[] = [];
   const createdTaskIds: string[] = [];
   const createdTimetablePublicationIds: string[] = [];
   const createdTimetableEntryIds: string[] = [];
@@ -397,7 +404,7 @@ describe('Student App Home/Profile routes (security)', () => {
       userType: UserType.SCHOOL_USER,
       roleId: schoolAdminRole.id,
     });
-    const teacherUserId = await createUserWithMembership({
+    teacherUserId = await createUserWithMembership({
       email: teacherEmail,
       userType: UserType.TEACHER,
       roleId: teacherRole.id,
@@ -722,6 +729,20 @@ describe('Student App Home/Profile routes (security)', () => {
       });
       await prisma.file.deleteMany({
         where: { id: { in: createdFileIds } },
+      });
+      await prisma.homeworkSubmission.deleteMany({
+        where: {
+          OR: [
+            { id: { in: createdHomeworkSubmissionIds } },
+            { homeworkAssignmentId: { in: createdHomeworkAssignmentIds } },
+          ],
+        },
+      });
+      await prisma.homeworkTarget.deleteMany({
+        where: { homeworkAssignmentId: { in: createdHomeworkAssignmentIds } },
+      });
+      await prisma.homeworkAssignment.deleteMany({
+        where: { id: { in: createdHomeworkAssignmentIds } },
       });
       await prisma.timetablePublication.deleteMany({
         where: { id: { in: createdTimetablePublicationIds } },
@@ -1886,6 +1907,70 @@ describe('Student App Home/Profile routes (security)', () => {
     }
   });
 
+  it('allows a linked student to save and submit own homework text only', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+    const homeworkId = await createStudentHomeworkFixture();
+
+    const draft = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/student/homeworks/${homeworkId}/submission`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ bodyText: 'Student App draft' })
+      .expect(200);
+
+    createdHomeworkSubmissionIds.push(draft.body.submission.id);
+    expect(draft.body.submission).toMatchObject({
+      homeworkId,
+      status: 'draft',
+      bodyText: 'Student App draft',
+      submittedAt: null,
+    });
+    assertNoForbiddenStudentAppFields(draft.body);
+
+    const currentSubmission = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/homeworks/${homeworkId}/submission`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(currentSubmission.body.submission).toMatchObject({
+      id: draft.body.submission.id,
+      status: 'draft',
+      bodyText: 'Student App draft',
+    });
+    assertNoForbiddenStudentAppFields(currentSubmission.body);
+
+    const submitted = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/homeworks/${homeworkId}/submit`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(200);
+
+    expect(submitted.body.submission).toMatchObject({
+      id: draft.body.submission.id,
+      status: 'submitted',
+      bodyText: 'Student App draft',
+    });
+    expect(submitted.body.submission.submittedAt).toEqual(expect.any(String));
+    assertNoForbiddenStudentAppFields(submitted.body);
+
+    const detail = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/homeworks/${homeworkId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(detail.body.homework).toMatchObject({
+      homeworkId,
+      status: 'completed',
+      targetStatus: 'submitted',
+      submission: expect.objectContaining({
+        status: 'submitted',
+        bodyText: 'Student App draft',
+      }),
+      questions: [],
+      attachments: [],
+    });
+    assertNoForbiddenStudentAppFields(detail.body);
+  });
+
   it('does not expose out-of-scope Student App routes', async () => {
     const { accessToken } = await login(linkedStudentEmail);
 
@@ -1893,6 +1978,7 @@ describe('Student App Home/Profile routes (security)', () => {
       'homework',
       `homeworks/${ownTaskId}/submission/resolve`,
       `homeworks/${ownTaskId}/submission/submit`,
+      `homeworks/${ownTaskId}/submission/history`,
       `homeworks/${ownTaskId}/questions`,
       `homeworks/${ownTaskId}/attachments`,
       'pickup',
@@ -1913,6 +1999,43 @@ describe('Student App Home/Profile routes (security)', () => {
         .expect(404);
     }
   });
+
+  async function createStudentHomeworkFixture(): Promise<string> {
+    const homework = await prisma.homeworkAssignment.create({
+      data: {
+        schoolId,
+        academicYearId,
+        termId,
+        classroomId,
+        subjectId,
+        teacherUserId,
+        teacherSubjectAllocationId: ownSubjectAllocationId,
+        title: `${testSuffix} Student App Homework`,
+        description: 'Student App homework submission fixture',
+        mode: HomeworkAssignmentMode.HOMEWORK,
+        status: HomeworkAssignmentStatus.PUBLISHED,
+        targetMode: HomeworkTargetMode.SELECTED_STUDENTS,
+        publishedAt: new Date('2026-09-10T08:00:00.000Z'),
+        dueAt: new Date('2027-03-15T10:00:00.000Z'),
+        createdByUserId: teacherUserId,
+        publishedByUserId: teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdHomeworkAssignmentIds.push(homework.id);
+
+    await prisma.homeworkTarget.create({
+      data: {
+        schoolId,
+        homeworkAssignmentId: homework.id,
+        studentId: linkedStudentId,
+        enrollmentId: linkedEnrollmentId,
+        status: HomeworkTargetStatus.ASSIGNED,
+      },
+    });
+
+    return homework.id;
+  }
 
   async function findSystemRole(key: string): Promise<{ id: string }> {
     const role = await prisma.role.findFirst({

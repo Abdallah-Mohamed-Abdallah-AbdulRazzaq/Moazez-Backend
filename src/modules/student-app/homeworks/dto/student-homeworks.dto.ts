@@ -3,6 +3,7 @@ import {
   IsDateString,
   IsIn,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Max,
@@ -28,6 +29,17 @@ export const STUDENT_HOMEWORK_MODES = [
 ] as const;
 
 export type StudentHomeworkMode = (typeof STUDENT_HOMEWORK_MODES)[number];
+
+export const STUDENT_HOMEWORK_SUBMISSION_STATUSES = [
+  'draft',
+  'submitted',
+  'late',
+] as const;
+
+export type StudentHomeworkSubmissionStatus =
+  (typeof STUDENT_HOMEWORK_SUBMISSION_STATUSES)[number];
+
+export const STUDENT_HOMEWORK_SUBMISSION_BODY_TEXT_MAX_LENGTH = 20_000;
 
 function toLowerOptionalString(value: unknown): unknown {
   if (value === undefined || value === null || value === '') return undefined;
@@ -126,12 +138,21 @@ export class StudentHomeworkQuestionDto {}
 
 export class StudentHomeworkAttachmentDto {}
 
+export class StudentHomeworkSubmissionDto {
+  id!: string;
+  homeworkId!: string;
+  status!: StudentHomeworkSubmissionStatus;
+  bodyText!: string | null;
+  submittedAt!: string | null;
+  updatedAt!: string;
+}
+
 export class StudentHomeworkDetailDto extends StudentHomeworkListItemDto {
   publishAt!: string | null;
   closedAt!: string | null;
   questions!: StudentHomeworkQuestionDto[];
   attachments!: StudentHomeworkAttachmentDto[];
-  submission!: null;
+  submission!: StudentHomeworkSubmissionDto | null;
 }
 
 export class StudentHomeworksPaginationDto {
@@ -147,4 +168,25 @@ export class StudentHomeworksListResponseDto {
 
 export class StudentHomeworkResponseDto {
   homework!: StudentHomeworkDetailDto;
+}
+
+export class StudentHomeworkSubmissionBodyDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(STUDENT_HOMEWORK_SUBMISSION_BODY_TEXT_MAX_LENGTH)
+  bodyText!: string;
+}
+
+export class StudentHomeworkSubmitBodyDto {
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(STUDENT_HOMEWORK_SUBMISSION_BODY_TEXT_MAX_LENGTH)
+  bodyText?: string;
+}
+
+export class StudentHomeworkSubmissionResponseDto {
+  submission!: StudentHomeworkSubmissionDto | null;
 }

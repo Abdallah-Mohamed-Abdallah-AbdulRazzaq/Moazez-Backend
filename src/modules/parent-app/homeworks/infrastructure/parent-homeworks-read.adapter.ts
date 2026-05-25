@@ -297,7 +297,11 @@ function applyStatusWhere(input: {
       return {
         ...input.baseWhere,
         status: {
-          in: [HomeworkTargetStatus.SUBMITTED, HomeworkTargetStatus.REVIEWED],
+          in: [
+            HomeworkTargetStatus.SUBMITTED,
+            HomeworkTargetStatus.LATE,
+            HomeworkTargetStatus.REVIEWED,
+          ],
         },
         ...withAssignmentAnd(input.assignmentAnd),
       };
@@ -325,7 +329,6 @@ function applyStatusWhere(input: {
                 HomeworkTargetStatus.ASSIGNED,
                 HomeworkTargetStatus.VIEWED,
                 HomeworkTargetStatus.MISSING,
-                HomeworkTargetStatus.LATE,
               ],
             },
             ...withAssignmentAnd([
@@ -340,6 +343,7 @@ function applyStatusWhere(input: {
             status: {
               notIn: [
                 HomeworkTargetStatus.SUBMITTED,
+                HomeworkTargetStatus.LATE,
                 HomeworkTargetStatus.REVIEWED,
               ],
             },

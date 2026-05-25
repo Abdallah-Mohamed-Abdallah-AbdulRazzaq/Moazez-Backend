@@ -11,6 +11,11 @@ import {
   ResolveHomeworkTargetsUseCase,
   UpdateHomeworkAssignmentUseCase,
 } from './application/homework-assignments.use-cases';
+import {
+  GetHomeworkSubmissionUseCase,
+  SaveHomeworkSubmissionDraftUseCase,
+  SubmitHomeworkSubmissionUseCase,
+} from './application/homework-submissions.use-cases';
 import { HomeworkAssignmentsController } from './controller/homework-assignments.controller';
 import { HomeworkRepository } from './infrastructure/homework.repository';
 
@@ -28,6 +33,9 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     CancelHomeworkAssignmentUseCase,
     ListHomeworkTargetsUseCase,
     ResolveHomeworkTargetsUseCase,
+    GetHomeworkSubmissionUseCase,
+    SaveHomeworkSubmissionDraftUseCase,
+    SubmitHomeworkSubmissionUseCase,
   ],
   exports: [
     HomeworkRepository,
@@ -40,6 +48,9 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     CancelHomeworkAssignmentUseCase,
     ListHomeworkTargetsUseCase,
     ResolveHomeworkTargetsUseCase,
+    GetHomeworkSubmissionUseCase,
+    SaveHomeworkSubmissionDraftUseCase,
+    SubmitHomeworkSubmissionUseCase,
   ],
 })
 export class HomeworkModule {}

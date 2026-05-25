@@ -68,6 +68,9 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
         'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/targets/resolve',
         'GET /api/v1/student/homeworks',
         'GET /api/v1/student/homeworks/:homeworkId',
+        'GET /api/v1/student/homeworks/:homeworkId/submission',
+        'PUT /api/v1/student/homeworks/:homeworkId/submission',
+        'POST /api/v1/student/homeworks/:homeworkId/submit',
         'GET /api/v1/parent/children/:studentId/homeworks',
         'GET /api/v1/parent/children/:studentId/homeworks/:homeworkId',
       ]),
@@ -86,6 +89,7 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
       'POST /api/v1/homework/attachments',
       'POST /api/v1/student/homeworks/:homeworkId/submission/submit',
       'PUT /api/v1/student/homeworks/:homeworkId/submission/answers',
+      'GET /api/v1/student/homeworks/:homeworkId/submission/history',
       'GET /api/v1/student/homeworks/:homeworkId/questions',
       'GET /api/v1/student/homeworks/:homeworkId/attachments',
       'POST /api/v1/parent/children/:studentId/homeworks/:homeworkId/submit',
@@ -111,7 +115,7 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
         /^.+ \/api\/v1\/homework\/.*(submission|question|answer|attachment|proof|upload|xp|reward|grade-sync)/,
       );
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/student\/homeworks\/.*(submission|question|answer|attachment|proof|upload)/,
+        /^.+ \/api\/v1\/student\/homeworks\/.*(question|answer|attachment|proof|upload|grade-sync|xp|reward)/,
       );
       expect(route).not.toMatch(
         /^.+ \/api\/v1\/parent\/children\/:studentId\/homeworks\/.*(submit|submission|question|answer|attachment|proof|upload)/,

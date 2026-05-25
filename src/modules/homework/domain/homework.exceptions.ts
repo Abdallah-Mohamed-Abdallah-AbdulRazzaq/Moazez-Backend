@@ -143,3 +143,36 @@ export class HomeworkAssignmentValidationException extends DomainException {
     });
   }
 }
+
+export class HomeworkSubmissionTargetNotFoundException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'homework.submission.target_not_found',
+      message: 'Homework submission target was not found',
+      httpStatus: HttpStatus.NOT_FOUND,
+      details,
+    });
+  }
+}
+
+export class HomeworkSubmissionNotSubmittableException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'homework.submission.not_submittable',
+      message: 'Homework submission is not allowed in the current state',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class HomeworkSubmissionAlreadySubmittedException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'homework.submission.already_submitted',
+      message: 'Homework submission is already submitted',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}

@@ -1,4 +1,5 @@
 import {
+  HomeworkSubmissionStatus,
   StudentEnrollmentStatus,
   StudentStatus,
   UserStatus,
@@ -13,7 +14,10 @@ import type {
 } from '../../shared/student-app.types';
 import {
   GetStudentHomeworkUseCase,
+  GetStudentHomeworkSubmissionUseCase,
   ListStudentHomeworksUseCase,
+  SaveStudentHomeworkSubmissionUseCase,
+  SubmitStudentHomeworkSubmissionUseCase,
 } from '../application/student-homeworks.use-cases';
 import { StudentHomeworksReadAdapter } from '../infrastructure/student-homeworks-read.adapter';
 
@@ -55,6 +59,73 @@ describe('Student Homeworks use-cases', () => {
       NotFoundDomainException,
     );
   });
+
+  it('returns the current homework submission for the current student context', async () => {
+    const { getSubmissionUseCase, getSubmissionCoreUseCase } =
+      createUseCasesWithValidAccess();
+    getSubmissionCoreUseCase.execute.mockResolvedValue(submissionFixture());
+
+    const response = await getSubmissionUseCase.execute('homework-1');
+
+    expect(getSubmissionCoreUseCase.execute).toHaveBeenCalledWith({
+      homeworkId: 'homework-1',
+      studentId: 'student-1',
+      enrollmentId: 'enrollment-1',
+    });
+    expect(response.submission).toEqual(
+      expect.objectContaining({
+        id: 'submission-1',
+        homeworkId: 'homework-1',
+        status: 'draft',
+        bodyText: 'Draft answer',
+      }),
+    );
+    expect(JSON.stringify(response)).not.toContain('schoolId');
+    expect(JSON.stringify(response)).not.toContain('enrollmentId');
+  });
+
+  it('saves a student homework submission draft through Homework Core', async () => {
+    const { saveSubmissionUseCase, saveSubmissionCoreUseCase } =
+      createUseCasesWithValidAccess();
+    saveSubmissionCoreUseCase.execute.mockResolvedValue(submissionFixture());
+
+    await saveSubmissionUseCase.execute('homework-1', {
+      bodyText: 'Draft answer',
+    });
+
+    expect(saveSubmissionCoreUseCase.execute).toHaveBeenCalledWith({
+      homeworkId: 'homework-1',
+      studentId: 'student-1',
+      enrollmentId: 'enrollment-1',
+      bodyText: 'Draft answer',
+    });
+  });
+
+  it('submits student homework through Homework Core', async () => {
+    const { submitSubmissionUseCase, submitSubmissionCoreUseCase } =
+      createUseCasesWithValidAccess();
+    submitSubmissionCoreUseCase.execute.mockResolvedValue(
+      submissionFixture({
+        status: HomeworkSubmissionStatus.SUBMITTED,
+        submittedAt: new Date('2026-05-25T09:00:00.000Z'),
+      }),
+    );
+
+    const response = await submitSubmissionUseCase.execute('homework-1', {
+      bodyText: 'Final answer',
+    });
+
+    expect(submitSubmissionCoreUseCase.execute).toHaveBeenCalledWith({
+      homeworkId: 'homework-1',
+      studentId: 'student-1',
+      enrollmentId: 'enrollment-1',
+      bodyText: 'Final answer',
+    });
+    expect(response.submission).toMatchObject({
+      status: 'submitted',
+      submittedAt: '2026-05-25T09:00:00.000Z',
+    });
+  });
 });
 
 function createUseCases(): {
@@ -62,6 +133,12 @@ function createUseCases(): {
   getUseCase: GetStudentHomeworkUseCase;
   accessService: jest.Mocked<StudentAppAccessService>;
   readAdapter: jest.Mocked<StudentHomeworksReadAdapter>;
+  getSubmissionCoreUseCase: { execute: jest.Mock };
+  saveSubmissionCoreUseCase: { execute: jest.Mock };
+  submitSubmissionCoreUseCase: { execute: jest.Mock };
+  getSubmissionUseCase: GetStudentHomeworkSubmissionUseCase;
+  saveSubmissionUseCase: SaveStudentHomeworkSubmissionUseCase;
+  submitSubmissionUseCase: SubmitStudentHomeworkSubmissionUseCase;
 } {
   const accessService = {
     getCurrentStudentWithEnrollment: jest.fn(),
@@ -70,12 +147,30 @@ function createUseCases(): {
     listHomeworks: jest.fn(),
     findHomework: jest.fn(),
   } as unknown as jest.Mocked<StudentHomeworksReadAdapter>;
+  const getSubmissionCoreUseCase = { execute: jest.fn() };
+  const saveSubmissionCoreUseCase = { execute: jest.fn() };
+  const submitSubmissionCoreUseCase = { execute: jest.fn() };
 
   return {
     listUseCase: new ListStudentHomeworksUseCase(accessService, readAdapter),
     getUseCase: new GetStudentHomeworkUseCase(accessService, readAdapter),
+    getSubmissionUseCase: new GetStudentHomeworkSubmissionUseCase(
+      accessService,
+      getSubmissionCoreUseCase as any,
+    ),
+    saveSubmissionUseCase: new SaveStudentHomeworkSubmissionUseCase(
+      accessService,
+      saveSubmissionCoreUseCase as any,
+    ),
+    submitSubmissionUseCase: new SubmitStudentHomeworkSubmissionUseCase(
+      accessService,
+      submitSubmissionCoreUseCase as any,
+    ),
     accessService,
     readAdapter,
+    getSubmissionCoreUseCase,
+    saveSubmissionCoreUseCase,
+    submitSubmissionCoreUseCase,
   };
 }
 
@@ -132,5 +227,22 @@ function contextFixture(): StudentAppContext {
     requestedAcademicYearId: 'year-1',
     requestedTermId: 'term-1',
     termId: 'term-1',
+  };
+}
+
+function submissionFixture(overrides?: Record<string, unknown>): any {
+  return {
+    id: 'submission-1',
+    schoolId: 'school-1',
+    homeworkAssignmentId: 'homework-1',
+    homeworkTargetId: 'target-1',
+    studentId: 'student-1',
+    enrollmentId: 'enrollment-1',
+    status: HomeworkSubmissionStatus.DRAFT,
+    bodyText: 'Draft answer',
+    submittedAt: null,
+    createdAt: new Date('2026-05-25T08:00:00.000Z'),
+    updatedAt: new Date('2026-05-25T08:05:00.000Z'),
+    ...overrides,
   };
 }

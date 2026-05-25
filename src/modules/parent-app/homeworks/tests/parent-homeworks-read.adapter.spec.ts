@@ -45,17 +45,31 @@ describe('ParentHomeworksReadAdapter', () => {
     expect(query.where).not.toHaveProperty('schoolId');
   });
 
-  it('filters waiting and not-completed through target status plus assignment visibility', async () => {
+  it('filters completed, waiting, and not-completed through submitted target status plus assignment visibility', async () => {
     const { adapter, targetMocks } = createAdapter();
     targetMocks.findMany.mockResolvedValue([]);
     targetMocks.count.mockResolvedValue(0);
 
     await adapter.listHomeworks({
       child: childFixture(),
+      query: { status: 'completed' },
+    });
+
+    const completedWhere = targetMocks.findMany.mock.calls[0][0].where;
+    expect(completedWhere.status).toEqual({
+      in: [
+        HomeworkTargetStatus.SUBMITTED,
+        HomeworkTargetStatus.LATE,
+        HomeworkTargetStatus.REVIEWED,
+      ],
+    });
+
+    await adapter.listHomeworks({
+      child: childFixture(),
       query: { status: 'waiting' },
     });
 
-    const waitingWhere = targetMocks.findMany.mock.calls[0][0].where;
+    const waitingWhere = targetMocks.findMany.mock.calls[1][0].where;
     expect(waitingWhere.status).toEqual({
       in: [HomeworkTargetStatus.ASSIGNED, HomeworkTargetStatus.VIEWED],
     });
@@ -81,8 +95,22 @@ describe('ParentHomeworksReadAdapter', () => {
       query: { status: 'not_completed' },
     });
 
-    const notCompletedWhere = targetMocks.findMany.mock.calls[1][0].where;
+    const notCompletedWhere = targetMocks.findMany.mock.calls[2][0].where;
     expect(notCompletedWhere.OR).toHaveLength(2);
+    expect(notCompletedWhere.OR[0].status).toEqual({
+      in: [
+        HomeworkTargetStatus.ASSIGNED,
+        HomeworkTargetStatus.VIEWED,
+        HomeworkTargetStatus.MISSING,
+      ],
+    });
+    expect(notCompletedWhere.OR[1].status).toEqual({
+      notIn: [
+        HomeworkTargetStatus.SUBMITTED,
+        HomeworkTargetStatus.LATE,
+        HomeworkTargetStatus.REVIEWED,
+      ],
+    });
     expect(JSON.stringify(notCompletedWhere.OR)).toContain('PUBLISHED');
     expect(JSON.stringify(notCompletedWhere.OR)).toContain('CLOSED');
   });

@@ -76,6 +76,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'GradeRule',
   'HomeworkAssignment',
   'HomeworkTarget',
+  'HomeworkSubmission',
   'ReinforcementTask',
   'ReinforcementTaskTarget',
   'ReinforcementAssignment',

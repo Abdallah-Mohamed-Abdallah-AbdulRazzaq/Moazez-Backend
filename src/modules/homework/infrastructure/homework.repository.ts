@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   HomeworkAssignmentMode,
   HomeworkAssignmentStatus,
+  HomeworkSubmissionStatus,
   HomeworkTargetStatus,
   Prisma,
   StudentEnrollmentStatus,
@@ -230,6 +231,49 @@ const HOMEWORK_TARGET_ARGS =
     },
   });
 
+const HOMEWORK_SUBMISSION_ARGS =
+  Prisma.validator<Prisma.HomeworkSubmissionDefaultArgs>()({
+    select: {
+      id: true,
+      schoolId: true,
+      homeworkAssignmentId: true,
+      homeworkTargetId: true,
+      studentId: true,
+      enrollmentId: true,
+      status: true,
+      bodyText: true,
+      submittedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+const HOMEWORK_TARGET_FOR_SUBMISSION_ARGS =
+  Prisma.validator<Prisma.HomeworkTargetDefaultArgs>()({
+    select: {
+      id: true,
+      schoolId: true,
+      homeworkAssignmentId: true,
+      studentId: true,
+      enrollmentId: true,
+      status: true,
+      submittedAt: true,
+      homeworkAssignment: {
+        select: {
+          id: true,
+          status: true,
+          dueAt: true,
+          deletedAt: true,
+        },
+      },
+      submissions: {
+        take: 1,
+        orderBy: { createdAt: 'desc' },
+        ...HOMEWORK_SUBMISSION_ARGS,
+      },
+    },
+  });
+
 export type HomeworkAssignmentRecord = Prisma.HomeworkAssignmentGetPayload<
   typeof HOMEWORK_ASSIGNMENT_ARGS
 >;
@@ -244,6 +288,11 @@ export type HomeworkEnrollmentTargetRecord = Prisma.EnrollmentGetPayload<
 export type HomeworkTargetRecord = Prisma.HomeworkTargetGetPayload<
   typeof HOMEWORK_TARGET_ARGS
 >;
+export type HomeworkSubmissionRecord = Prisma.HomeworkSubmissionGetPayload<
+  typeof HOMEWORK_SUBMISSION_ARGS
+>;
+export type HomeworkTargetForSubmissionRecord =
+  Prisma.HomeworkTargetGetPayload<typeof HOMEWORK_TARGET_FOR_SUBMISSION_ARGS>;
 
 export type HomeworkStatusCounters = Record<HomeworkTargetStatus, number> & {
   totalTargets: number;
@@ -281,6 +330,12 @@ export type UpdateHomeworkAssignmentData =
   Prisma.HomeworkAssignmentUncheckedUpdateInput;
 export type CreateHomeworkTargetData =
   Prisma.HomeworkTargetUncheckedCreateInput;
+export type SaveHomeworkSubmissionDraftResult =
+  | { outcome: 'saved'; submission: HomeworkSubmissionRecord }
+  | { outcome: 'already_submitted'; submission: HomeworkSubmissionRecord };
+export type SubmitHomeworkSubmissionResult =
+  | { outcome: 'submitted'; submission: HomeworkSubmissionRecord }
+  | { outcome: 'already_submitted'; submission: HomeworkSubmissionRecord };
 
 @Injectable()
 export class HomeworkRepository {
@@ -439,6 +494,146 @@ export class HomeworkRepository {
       where: { homeworkAssignmentId: homeworkId },
       orderBy: [{ assignedAt: 'asc' }, { id: 'asc' }],
       ...HOMEWORK_TARGET_ARGS,
+    });
+  }
+
+  findStudentTargetForSubmission(input: {
+    homeworkId: string;
+    studentId: string;
+    enrollmentId: string;
+  }): Promise<HomeworkTargetForSubmissionRecord | null> {
+    return this.scopedPrisma.homeworkTarget.findFirst({
+      where: {
+        homeworkAssignmentId: input.homeworkId,
+        studentId: input.studentId,
+        enrollmentId: input.enrollmentId,
+        homeworkAssignment: {
+          is: {
+            deletedAt: null,
+            status: {
+              in: [
+                HomeworkAssignmentStatus.PUBLISHED,
+                HomeworkAssignmentStatus.CLOSED,
+              ],
+            },
+          },
+        },
+      },
+      ...HOMEWORK_TARGET_FOR_SUBMISSION_ARGS,
+    });
+  }
+
+  async saveDraftSubmission(input: {
+    schoolId: string;
+    homeworkAssignmentId: string;
+    homeworkTargetId: string;
+    studentId: string;
+    enrollmentId: string;
+    bodyText: string;
+  }): Promise<SaveHomeworkSubmissionDraftResult> {
+    return this.scopedPrisma.$transaction(async (tx) => {
+      const existing = await tx.homeworkSubmission.findUnique({
+        where: {
+          schoolId_homeworkTargetId: {
+            schoolId: input.schoolId,
+            homeworkTargetId: input.homeworkTargetId,
+          },
+        },
+        ...HOMEWORK_SUBMISSION_ARGS,
+      });
+
+      if (existing && existing.status !== HomeworkSubmissionStatus.DRAFT) {
+        return { outcome: 'already_submitted', submission: existing };
+      }
+
+      const submission = existing
+        ? await tx.homeworkSubmission.update({
+            where: { id: existing.id },
+            data: { bodyText: input.bodyText },
+            ...HOMEWORK_SUBMISSION_ARGS,
+          })
+        : await tx.homeworkSubmission.create({
+            data: {
+              schoolId: input.schoolId,
+              homeworkAssignmentId: input.homeworkAssignmentId,
+              homeworkTargetId: input.homeworkTargetId,
+              studentId: input.studentId,
+              enrollmentId: input.enrollmentId,
+              status: HomeworkSubmissionStatus.DRAFT,
+              bodyText: input.bodyText,
+            },
+            ...HOMEWORK_SUBMISSION_ARGS,
+          });
+
+      return { outcome: 'saved', submission };
+    });
+  }
+
+  async submitSubmission(input: {
+    schoolId: string;
+    homeworkAssignmentId: string;
+    homeworkTargetId: string;
+    studentId: string;
+    enrollmentId: string;
+    bodyText: string;
+    submissionStatus: HomeworkSubmissionStatus;
+    targetStatus: HomeworkTargetStatus;
+    submittedAt: Date;
+  }): Promise<SubmitHomeworkSubmissionResult> {
+    return this.scopedPrisma.$transaction(async (tx) => {
+      const existing = await tx.homeworkSubmission.findUnique({
+        where: {
+          schoolId_homeworkTargetId: {
+            schoolId: input.schoolId,
+            homeworkTargetId: input.homeworkTargetId,
+          },
+        },
+        ...HOMEWORK_SUBMISSION_ARGS,
+      });
+
+      if (existing && existing.status !== HomeworkSubmissionStatus.DRAFT) {
+        return { outcome: 'already_submitted', submission: existing };
+      }
+
+      const submission = existing
+        ? await tx.homeworkSubmission.update({
+            where: { id: existing.id },
+            data: {
+              status: input.submissionStatus,
+              bodyText: input.bodyText,
+              submittedAt: input.submittedAt,
+            },
+            ...HOMEWORK_SUBMISSION_ARGS,
+          })
+        : await tx.homeworkSubmission.create({
+            data: {
+              schoolId: input.schoolId,
+              homeworkAssignmentId: input.homeworkAssignmentId,
+              homeworkTargetId: input.homeworkTargetId,
+              studentId: input.studentId,
+              enrollmentId: input.enrollmentId,
+              status: input.submissionStatus,
+              bodyText: input.bodyText,
+              submittedAt: input.submittedAt,
+            },
+            ...HOMEWORK_SUBMISSION_ARGS,
+          });
+
+      await tx.homeworkTarget.updateMany({
+        where: {
+          schoolId: input.schoolId,
+          id: input.homeworkTargetId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          studentId: input.studentId,
+          enrollmentId: input.enrollmentId,
+        },
+        data: {
+          status: input.targetStatus,
+          submittedAt: input.submittedAt,
+        },
+      });
+
+      return { outcome: 'submitted', submission };
     });
   }
 

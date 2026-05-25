@@ -1,6 +1,7 @@
 import {
   HomeworkAssignmentMode,
   HomeworkAssignmentStatus,
+  HomeworkSubmissionStatus,
   HomeworkTargetStatus,
 } from '@prisma/client';
 import {
@@ -81,6 +82,15 @@ describe('StudentHomeworksPresenter', () => {
     expect(
       deriveStudentHomeworkStatus(
         homeworkTargetFixture({
+          targetStatus: HomeworkTargetStatus.LATE,
+          dueAt: new Date('2026-09-09T10:00:00.000Z'),
+        }) as any,
+        now,
+      ),
+    ).toBe('completed');
+    expect(
+      deriveStudentHomeworkStatus(
+        homeworkTargetFixture({
           targetStatus: HomeworkTargetStatus.REVIEWED,
           assignmentStatus: HomeworkAssignmentStatus.CLOSED,
         }) as any,
@@ -97,12 +107,46 @@ describe('StudentHomeworksPresenter', () => {
       ),
     ).toBe('not_completed');
   });
+
+  it('presents sanitized submission detail when one exists', () => {
+    const detail = StudentHomeworksPresenter.presentDetail(
+      homeworkTargetFixture({
+        targetStatus: HomeworkTargetStatus.SUBMITTED,
+        submissions: [
+          {
+            id: 'submission-1',
+            schoolId: 'school-1',
+            homeworkAssignmentId: 'homework-1',
+            homeworkTargetId: 'target-1',
+            studentId: 'student-1',
+            enrollmentId: 'enrollment-1',
+            status: HomeworkSubmissionStatus.SUBMITTED,
+            bodyText: 'Submitted text',
+            submittedAt: new Date('2026-09-10T09:00:00.000Z'),
+            updatedAt: new Date('2026-09-10T09:00:00.000Z'),
+          },
+        ],
+      }) as any,
+    );
+
+    expect(detail.homework.submission).toEqual({
+      id: 'submission-1',
+      homeworkId: 'homework-1',
+      status: 'submitted',
+      bodyText: 'Submitted text',
+      submittedAt: '2026-09-10T09:00:00.000Z',
+      updatedAt: '2026-09-10T09:00:00.000Z',
+    });
+    expect(JSON.stringify(detail)).not.toContain('schoolId');
+    expect(JSON.stringify(detail)).not.toContain('enrollmentId');
+  });
 });
 
 function homeworkTargetFixture(overrides?: {
   targetStatus?: HomeworkTargetStatus;
   assignmentStatus?: HomeworkAssignmentStatus;
   dueAt?: Date;
+  submissions?: unknown[];
 }) {
   return {
     id: 'target-1',
@@ -116,6 +160,7 @@ function homeworkTargetFixture(overrides?: {
     excusedAt: null,
     createdAt: new Date('2026-09-10T08:00:00.000Z'),
     updatedAt: new Date('2026-09-10T08:00:00.000Z'),
+    submissions: overrides?.submissions ?? [],
     homeworkAssignment: {
       id: 'homework-1',
       academicYearId: 'year-1',

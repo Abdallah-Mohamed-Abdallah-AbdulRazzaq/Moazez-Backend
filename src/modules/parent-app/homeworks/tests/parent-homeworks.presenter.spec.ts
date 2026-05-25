@@ -86,6 +86,16 @@ describe('ParentHomeworksPresenter', () => {
     expect(
       deriveParentHomeworkStatus(
         homeworkTargetFixture({
+          targetStatus: HomeworkTargetStatus.LATE,
+          assignmentStatus: HomeworkAssignmentStatus.CLOSED,
+          dueAt: new Date('2026-09-09T10:00:00.000Z'),
+        }) as any,
+        now,
+      ),
+    ).toBe('completed');
+    expect(
+      deriveParentHomeworkStatus(
+        homeworkTargetFixture({
           targetStatus: HomeworkTargetStatus.REVIEWED,
           assignmentStatus: HomeworkAssignmentStatus.CLOSED,
         }) as any,

@@ -50,6 +50,7 @@ export function deriveParentHomeworkStatus(
 ): ParentHomeworkStatus {
   if (
     target.status === HomeworkTargetStatus.SUBMITTED ||
+    target.status === HomeworkTargetStatus.LATE ||
     target.status === HomeworkTargetStatus.REVIEWED
   ) {
     return 'completed';
@@ -59,10 +60,7 @@ export function deriveParentHomeworkStatus(
     return 'not_completed';
   }
 
-  if (
-    target.status === HomeworkTargetStatus.MISSING ||
-    target.status === HomeworkTargetStatus.LATE
-  ) {
+  if (target.status === HomeworkTargetStatus.MISSING) {
     return 'not_completed';
   }
 

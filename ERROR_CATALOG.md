@@ -224,6 +224,9 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `homework.assignment.no_eligible_targets` | 422  | Homework has no eligible targets             |
 | `homework.assignment.target_conflict`     | 409  | Homework target selection is invalid         |
 | `homework.assignment.validation_failed`   | 422  | Homework assignment validation failed        |
+| `homework.submission.target_not_found`    | 404  | Homework submission target was not found     |
+| `homework.submission.not_submittable`     | 409  | Homework submission is not allowed in the current state |
+| `homework.submission.already_submitted`   | 409  | Homework submission is already submitted     |
 
 ### Reinforcement
 

@@ -8,6 +8,7 @@ import {
   StudentHomeworkListItemDto,
   StudentHomeworkMode,
   StudentHomeworkResponseDto,
+  StudentHomeworkSubmissionDto,
   StudentHomeworksListResponseDto,
   StudentHomeworkStatus,
 } from '../dto/student-homeworks.dto';
@@ -15,6 +16,15 @@ import type {
   StudentHomeworksListReadModel,
   StudentHomeworkTargetReadModel,
 } from '../infrastructure/student-homeworks-read.adapter';
+
+interface StudentHomeworkSubmissionPresenterModel {
+  id: string;
+  homeworkAssignmentId: string;
+  status: string;
+  bodyText: string | null;
+  submittedAt: Date | null;
+  updatedAt: Date;
+}
 
 export class StudentHomeworksPresenter {
   static presentList(
@@ -50,6 +60,7 @@ export function deriveStudentHomeworkStatus(
 ): StudentHomeworkStatus {
   if (
     target.status === HomeworkTargetStatus.SUBMITTED ||
+    target.status === HomeworkTargetStatus.LATE ||
     target.status === HomeworkTargetStatus.REVIEWED
   ) {
     return 'completed';
@@ -60,8 +71,7 @@ export function deriveStudentHomeworkStatus(
   }
 
   if (
-    target.status === HomeworkTargetStatus.MISSING ||
-    target.status === HomeworkTargetStatus.LATE
+    target.status === HomeworkTargetStatus.MISSING
   ) {
     return 'not_completed';
   }
@@ -139,7 +149,22 @@ function presentDetail(
     closedAt: presentDateTime(assignment.closedAt),
     questions: [],
     attachments: [],
-    submission: null,
+    submission: target.submissions[0]
+      ? presentStudentHomeworkSubmission(target.submissions[0])
+      : null,
+  };
+}
+
+export function presentStudentHomeworkSubmission(
+  submission: StudentHomeworkSubmissionPresenterModel,
+): StudentHomeworkSubmissionDto {
+  return {
+    id: submission.id,
+    homeworkId: submission.homeworkAssignmentId,
+    status: submission.status.toLowerCase() as StudentHomeworkSubmissionDto['status'],
+    bodyText: submission.bodyText,
+    submittedAt: presentDateTime(submission.submittedAt),
+    updatedAt: submission.updatedAt.toISOString(),
   };
 }
 

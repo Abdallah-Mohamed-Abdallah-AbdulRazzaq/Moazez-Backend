@@ -498,6 +498,14 @@ enum HomeworkTargetStatus {
   @@map("homework_target_status")
 }
 
+enum HomeworkSubmissionStatus {
+  DRAFT
+  SUBMITTED
+  LATE
+
+  @@map("homework_submission_status")
+}
+
 enum ReinforcementSource {
   TEACHER
   PARENT
@@ -1082,6 +1090,7 @@ model School {
   gradeRules                            GradeRule[]
   homeworkAssignments                    HomeworkAssignment[]
   homeworkTargets                        HomeworkTarget[]
+  homeworkSubmissions                    HomeworkSubmission[]
   reinforcementTasks                    ReinforcementTask[]
   reinforcementTaskTargets              ReinforcementTaskTarget[]
   reinforcementTaskStages               ReinforcementTaskStage[]
@@ -2457,6 +2466,7 @@ model Student {
   behaviorPointLedgerEntries         BehaviorPointLedger[]
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
   homeworkTargets                    HomeworkTarget[]
+  homeworkSubmissions                HomeworkSubmission[]
 
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
@@ -2554,6 +2564,7 @@ model Enrollment {
   behaviorRecords            BehaviorRecord[]
   behaviorPointLedgerEntries BehaviorPointLedger[]
   homeworkTargets            HomeworkTarget[]
+  homeworkSubmissions        HomeworkSubmission[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -3200,6 +3211,7 @@ model HomeworkAssignment {
   createdBy                User                     @relation("HomeworkAssignmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   publishedBy              User?                    @relation("HomeworkAssignmentPublishedBy", fields: [publishedByUserId], references: [id], onDelete: SetNull)
   targets                  HomeworkTarget[]
+  submissions              HomeworkSubmission[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -3244,6 +3256,7 @@ model HomeworkTarget {
   homeworkAssignment HomeworkAssignment @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Cascade)
   student            Student            @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
   enrollment         Enrollment         @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  submissions        HomeworkSubmission[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, homeworkAssignmentId, studentId])
@@ -3256,6 +3269,43 @@ model HomeworkTarget {
   @@index([schoolId, enrollmentId])
   @@index([schoolId, status])
   @@map("homework_targets")
+}
+
+model HomeworkSubmission {
+  id                   String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String                   @map("school_id") @db.Uuid
+  homeworkAssignmentId String                   @map("homework_assignment_id") @db.Uuid
+  homeworkTargetId     String                   @map("homework_target_id") @db.Uuid
+  studentId            String                   @map("student_id") @db.Uuid
+  enrollmentId         String                   @map("enrollment_id") @db.Uuid
+  status               HomeworkSubmissionStatus @default(DRAFT)
+  bodyText             String?                  @map("body_text") @db.Text
+  submittedAt          DateTime?                @map("submitted_at")
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+
+  school             School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  homeworkAssignment HomeworkAssignment @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  homeworkTarget     HomeworkTarget     @relation(fields: [homeworkTargetId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  student            Student            @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment         Enrollment         @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, homeworkTargetId])
+  @@index([schoolId])
+  @@index([homeworkAssignmentId])
+  @@index([homeworkTargetId])
+  @@index([studentId])
+  @@index([enrollmentId])
+  @@index([schoolId, homeworkAssignmentId])
+  @@index([schoolId, homeworkTargetId])
+  @@index([schoolId, studentId])
+  @@index([schoolId, enrollmentId])
+  @@index([schoolId, status])
+  @@index([schoolId, homeworkAssignmentId, status])
+  @@index([schoolId, studentId, status])
+  @@index([schoolId, submittedAt])
+  @@map("homework_submissions")
 }
 
 // ============================================================

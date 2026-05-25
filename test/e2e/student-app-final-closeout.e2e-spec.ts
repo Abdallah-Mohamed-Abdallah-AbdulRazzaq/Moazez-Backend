@@ -757,6 +757,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'GET /api/v1/student/home',
       'GET /api/v1/student/homeworks',
       'GET /api/v1/student/homeworks/:homeworkId',
+      'GET /api/v1/student/homeworks/:homeworkId/submission',
       'GET /api/v1/student/messages/conversations',
       'GET /api/v1/student/messages/conversations/:conversationId',
       'GET /api/v1/student/messages/conversations/:conversationId/messages',
@@ -775,8 +776,10 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'GET /api/v1/student/tasks/:taskId/submissions/:submissionId',
       'GET /api/v1/student/tasks/summary',
       'POST /api/v1/student/announcements/:announcementId/read',
+      'POST /api/v1/student/homeworks/:homeworkId/submit',
       'POST /api/v1/student/messages/conversations/:conversationId/messages',
       'POST /api/v1/student/messages/conversations/:conversationId/read',
+      'PUT /api/v1/student/homeworks/:homeworkId/submission',
     ]);
 
     for (const absentRoute of [
