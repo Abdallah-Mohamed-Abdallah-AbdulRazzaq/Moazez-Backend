@@ -14212,6 +14212,11 @@
               "icon": "📘"
             },
             {
+              "name": "homework-submissions-final-closeout.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "identity-credentials-email-final-closeout.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -14567,23 +14572,13 @@
       "icon": "📘"
     },
     {
-      "name": "sprint14b-student-homework-submissions-diff.txt",
-      "type": "file",
-      "icon": "📄"
-    },
-    {
-      "name": "sprint14c-teacher-homework-review-diff.txt",
-      "type": "file",
-      "icon": "📄"
-    },
-    {
       "name": "tsconfig.json",
       "type": "file",
       "icon": "⚙️"
     }
   ],
   "metadata": {
-    "generated": "2026-05-25T08:43:15.220Z",
+    "generated": "2026-05-25T11:02:17.608Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
