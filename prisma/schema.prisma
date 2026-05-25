@@ -928,6 +928,14 @@ enum CommunicationNotificationDeliveryStatus {
   @@map("communication_notification_delivery_status")
 }
 
+enum CurriculumStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+
+  @@map("curriculum_status")
+}
+
 enum TimetableScopeType {
   TERM
   GRADE
@@ -1054,6 +1062,9 @@ model School {
   subjects                              Subject[]
   teacherSubjectAllocations             TeacherSubjectAllocation[]
   rooms                                 Room[]
+  curricula                             Curriculum[]
+  curriculumUnits                       CurriculumUnit[]
+  curriculumLessons                     CurriculumLesson[]
   timetableConfigs                      TimetableConfig[]
   timetablePeriods                      TimetablePeriod[]
   timetableEntries                      TimetableEntry[]
@@ -1180,6 +1191,8 @@ model User {
   admissionInterviews                            Interview[]                            @relation("AdmissionInterviewInterviewer")
   admissionDecisionsCreated                      AdmissionDecision[]                    @relation("AdmissionDecisionDecidedBy")
   teacherSubjectAllocations                      TeacherSubjectAllocation[]             @relation("TeacherSubjectAllocationTeacher")
+  curriculaCreated                              Curriculum[]                           @relation("CurriculumCreatedBy")
+  curriculaUpdated                              Curriculum[]                           @relation("CurriculumUpdatedBy")
   guardianProfiles                               Guardian[]                             @relation("GuardianUser")
   studentProfile                                 Student?                               @relation("StudentUser")
   timetableEntries                               TimetableEntry[]                       @relation("TimetableEntryTeacher")
@@ -1884,7 +1897,7 @@ model AdmissionDecision {
 }
 
 // ============================================================
-// ACADEMICS - years, terms, structure, subjects, rooms, allocations
+// ACADEMICS - years, terms, structure, subjects, rooms, allocations, curriculum
 // ============================================================
 
 model AcademicYear {
@@ -1910,6 +1923,7 @@ model AcademicYear {
   gradeAssessments           GradeAssessment[]
   gradeRules                 GradeRule[]
   homeworkAssignments        HomeworkAssignment[]
+  curricula                  Curriculum[]
   reinforcementTasks         ReinforcementTask[]
   reinforcementAssignments   ReinforcementAssignment[]
   reinforcementTaskTemplates ReinforcementTaskTemplate[]
@@ -1962,6 +1976,7 @@ model Term {
   gradeItems                 GradeItem[]
   gradeRules                 GradeRule[]
   homeworkAssignments        HomeworkAssignment[]
+  curricula                  Curriculum[]
   reinforcementTasks         ReinforcementTask[]
   reinforcementAssignments   ReinforcementAssignment[]
   reinforcementTaskTemplates ReinforcementTaskTemplate[]
@@ -2039,6 +2054,7 @@ model Grade {
   attendanceSessions                 AttendanceSession[]
   gradeAssessments                   GradeAssessment[]
   gradeRules                         GradeRule[]
+  curricula                          Curriculum[]
   reinforcementTaskTargets           ReinforcementTaskTarget[]
   communicationConversations         CommunicationConversation[]
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
@@ -2145,6 +2161,7 @@ model Subject {
   placementTests             PlacementTest[]
   gradeAssessments           GradeAssessment[]
   homeworkAssignments        HomeworkAssignment[]
+  curricula                  Curriculum[]
   reinforcementTasks         ReinforcementTask[]
   heroMissions               HeroMission[]
   communicationConversations CommunicationConversation[]
@@ -2212,6 +2229,99 @@ model Room {
   @@index([schoolId, isActive])
   @@index([deletedAt])
   @@map("rooms")
+}
+
+model Curriculum {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String           @map("school_id") @db.Uuid
+  academicYearId String           @map("academic_year_id") @db.Uuid
+  termId         String           @map("term_id") @db.Uuid
+  gradeId        String           @map("grade_id") @db.Uuid
+  subjectId      String           @map("subject_id") @db.Uuid
+  title          String
+  description    String?
+  status         CurriculumStatus @default(DRAFT)
+  createdByUserId String          @map("created_by_user_id") @db.Uuid
+  updatedByUserId String?         @map("updated_by_user_id") @db.Uuid
+  publishedAt    DateTime?        @map("published_at")
+  archivedAt     DateTime?        @map("archived_at")
+  deletedAt      DateTime?        @map("deleted_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  school       School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear     @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term             @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade        Grade            @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject      Subject          @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy    User             @relation("CurriculumCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy    User?            @relation("CurriculumUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  units        CurriculumUnit[]
+  lessons      CurriculumLesson[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, academicYearId])
+  @@index([schoolId, termId])
+  @@index([schoolId, gradeId])
+  @@index([schoolId, subjectId])
+  @@index([schoolId, status])
+  @@index([schoolId, academicYearId, termId, gradeId, subjectId])
+  @@index([createdByUserId])
+  @@index([updatedByUserId])
+  @@index([deletedAt])
+  @@map("curricula")
+}
+
+model CurriculumUnit {
+  id               String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId         String  @map("school_id") @db.Uuid
+  curriculumId     String  @map("curriculum_id") @db.Uuid
+  title            String
+  description      String?
+  sortOrder        Int     @default(0) @map("sort_order")
+  estimatedLessons Int?    @map("estimated_lessons")
+  deletedAt        DateTime? @map("deleted_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  school     School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  curriculum Curriculum         @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  lessons    CurriculumLesson[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, curriculumId])
+  @@index([schoolId, curriculumId, sortOrder])
+  @@index([deletedAt])
+  @@map("curriculum_units")
+}
+
+model CurriculumLesson {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId         String   @map("school_id") @db.Uuid
+  curriculumId     String   @map("curriculum_id") @db.Uuid
+  unitId           String   @map("unit_id") @db.Uuid
+  title            String
+  description      String?
+  objectives       Json?
+  sortOrder        Int      @default(0) @map("sort_order")
+  estimatedMinutes Int?     @map("estimated_minutes")
+  deletedAt        DateTime? @map("deleted_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  school     School         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  curriculum Curriculum     @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  unit       CurriculumUnit @relation(fields: [unitId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, curriculumId])
+  @@index([schoolId, unitId])
+  @@index([schoolId, unitId, sortOrder])
+  @@index([deletedAt])
+  @@map("curriculum_lessons")
 }
 
 model TimetableConfig {

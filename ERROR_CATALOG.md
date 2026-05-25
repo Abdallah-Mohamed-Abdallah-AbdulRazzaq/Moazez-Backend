@@ -165,6 +165,14 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `academics.timetable.entry_conflict` | 409 | Timetable entry has a scheduling conflict       |
 | `academics.timetable.teacher_conflict` | 409 | Teacher is already scheduled in this period   |
 | `academics.timetable.room_conflict` | 409 | Room is already scheduled in this period       |
+| `academics.curriculum.not_found` | 404 | Curriculum was not found or is outside scope |
+| `academics.curriculum.duplicate` | 409 | Curriculum already exists for this academic scope |
+| `academics.curriculum.invalid_scope` | 422 | Curriculum academic scope is invalid |
+| `academics.curriculum.read_only` | 409 | Curriculum is read-only in its current state |
+| `academics.curriculum.activation_incomplete` | 409 | Curriculum must include at least one unit and lesson before activation |
+| `academics.curriculum.unit_not_found` | 404 | Curriculum unit was not found or is outside scope |
+| `academics.curriculum.lesson_not_found` | 404 | Curriculum lesson was not found or is outside scope |
+| `academics.curriculum.invalid_reorder` | 422 | Curriculum reorder target is invalid |
 
 ### Attendance
 
