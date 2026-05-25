@@ -657,6 +657,18 @@
               ]
             },
             {
+              "name": "20260525120000_0024_homework_student_submission_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -6036,6 +6048,11 @@
                       "name": "homework-assignments.use-cases.ts",
                       "type": "file",
                       "icon": "📘"
+                    },
+                    {
+                      "name": "homework-submissions.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
                     }
                   ]
                 },
@@ -6111,6 +6128,11 @@
                   "children": [
                     {
                       "name": "homework-assignments.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-submissions.use-case.spec.ts",
                       "type": "file",
                       "icon": "📘"
                     }
@@ -14533,13 +14555,18 @@
       "icon": "📘"
     },
     {
+      "name": "sprint14b-student-homework-submissions-diff.txt",
+      "type": "file",
+      "icon": "📄"
+    },
+    {
       "name": "tsconfig.json",
       "type": "file",
       "icon": "⚙️"
     }
   ],
   "metadata": {
-    "generated": "2026-05-25T03:10:27.607Z",
+    "generated": "2026-05-25T05:38:15.023Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
