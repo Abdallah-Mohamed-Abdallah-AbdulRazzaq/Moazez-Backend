@@ -42,6 +42,7 @@
     "test:e2e:sprint11f": "jest --config ./test/jest-e2e.json --runInBand test/e2e/identity-credentials-email-final-closeout.e2e-spec.ts",
     "test:e2e:sprint12f": "jest --config ./test/jest-e2e.json --runInBand test/e2e/schedule-timetable-final-closeout.e2e-spec.ts",
     "test:e2e:sprint13f": "jest --config ./test/jest-e2e.json --runInBand test/e2e/homework-final-closeout.e2e-spec.ts",
+    "test:e2e:sprint14e": "jest --config ./test/jest-e2e.json --runInBand test/e2e/homework-submissions-final-closeout.e2e-spec.ts",
     "test:security": "jest --config ./test/jest-e2e.json test/security",
     "seed": "prisma db seed",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",
@@ -71,6 +72,7 @@
     "verify:sprint11f": "npm run verify:phase5 && npm run test:e2e:sprint11f",
     "verify:sprint12f": "npm run verify:sprint11f && npm run test:e2e:sprint12f",
     "verify:sprint13f": "npm run verify:sprint12f && npm run test:e2e:sprint13f",
+    "verify:sprint14e": "npm run verify:sprint13f && npx prisma validate && npx prisma generate && npm run build && npm run test -- homework --runInBand && npm run test -- student-app --runInBand && npm run test -- teacher-app --runInBand && npm run test -- parent-app --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint14e",
     "demo:sprint1c": "node scripts/demo-sprint1c.cjs",
     "demo:sprint2a": "node scripts/demo-sprint2a.cjs",
     "demo:sprint2b": "node scripts/demo-sprint2b.cjs"

@@ -1473,6 +1473,51 @@ Deferred beyond Sprint 13F:
 - GradeAssessment bridge runtime
 - Homework final docs/Postman if not done in this sprint
 
+## Sprint 14E Homework Submissions Final Closeout Runbook
+
+Purpose: close out Homework Submissions across Student, Teacher, and Parent App surfaces without changing runtime behavior.
+
+Setup requirements:
+
+- Start from a clean working tree.
+- Configure `.env` from `.env.example`.
+- Run `npm run infra:up` so PostgreSQL, Redis, and MinIO are reachable.
+- Apply migrations and seed data through the verification chain.
+
+Commands:
+
+```bash
+npm run test:e2e:sprint14e
+npm run verify:sprint14e
+```
+
+Covered areas:
+
+- Student text submission draft/save/submit
+- Teacher submission list/detail/review
+- Parent read-only submission visibility
+- Review summary visibility
+- Status mapping submitted/late/reviewed
+- Tenant sanitization
+- Deferred route absence
+- No side effects: grades, notifications, XP, rewards, files/questions/answers
+
+Source of truth:
+
+- Homework Core owns assignments, targets, submissions, and review metadata.
+- Student, Teacher, and Parent Apps are composition/read-model layers.
+
+Deferred scope:
+
+- files/proof uploads
+- questions/answers
+- auto grading
+- grade sync
+- notifications/email/realtime
+- XP/rewards
+- parent submit
+- dashboard/core public submission review
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -1511,6 +1556,7 @@ Deferred beyond Sprint 13F:
 | `npm run test:e2e:sprint11f`        | Run the Sprint 11F Identity, Credentials, and Email final closeout e2e flow                                              |
 | `npm run test:e2e:sprint12f`        | Run the Sprint 12F Schedule/Timetable final closeout e2e flow                                                            |
 | `npm run test:e2e:sprint13f`        | Run the Sprint 13F Homework final closeout route inventory e2e flow                                                      |
+| `npm run test:e2e:sprint14e`        | Run the Sprint 14E Homework Submissions final closeout e2e flow                                                          |
 | `npm run test:security`             | Tenancy isolation tests                                                                                                  |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                                             |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                                                   |
@@ -1539,6 +1585,7 @@ Deferred beyond Sprint 13F:
 | `npm run verify:sprint11f`          | Run the Phase 5 verification entrypoint plus the Sprint 11F Identity, Credentials, and Email closeout e2e                |
 | `npm run verify:sprint12f`          | Run the Sprint 11F verification chain plus the Sprint 12F Schedule/Timetable final closeout e2e                          |
 | `npm run verify:sprint13f`          | Run the Sprint 12F verification chain plus the Sprint 13F Homework final closeout e2e                                    |
+| `npm run verify:sprint14e`          | Run the Sprint 13F verification chain plus Homework Submission focused validation, build, tests, security, and e2e       |
 | `npm run seed`                      | Re-run idempotent seeds                                                                                                  |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                                                    |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                                               |
