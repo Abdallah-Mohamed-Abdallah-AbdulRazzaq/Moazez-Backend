@@ -25,6 +25,7 @@ import { ParentGradesReadAdapter } from './grades/infrastructure/parent-grades-r
 import { GetParentHomeUseCase } from './home/application/get-parent-home.use-case';
 import { ParentHomeController } from './home/controller/parent-home.controller';
 import { ParentHomeReadAdapter } from './home/infrastructure/parent-home-read.adapter';
+import { ParentHomeworksModule } from './homeworks/parent-homeworks.module';
 import { GetParentMessageConversationUseCase } from './messages/application/get-parent-message-conversation.use-case';
 import { ListParentConversationMessagesUseCase } from './messages/application/list-parent-conversation-messages.use-case';
 import { ListParentMessageConversationsUseCase } from './messages/application/list-parent-message-conversations.use-case';
@@ -59,7 +60,7 @@ import { ParentTasksController } from './tasks/controller/parent-tasks.controlle
 import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read.adapter';
 
 @Module({
-  imports: [CommunicationModule],
+  imports: [CommunicationModule, ParentHomeworksModule],
   controllers: [
     ParentHomeController,
     ParentChildrenController,

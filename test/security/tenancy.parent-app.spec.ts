@@ -1909,7 +1909,6 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     for (const path of [
       'schedule',
       'homework',
-      'homeworks',
       'pickup',
       'messages',
       'notifications',
