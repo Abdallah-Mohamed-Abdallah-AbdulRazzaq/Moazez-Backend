@@ -1426,6 +1426,53 @@ Deferred beyond Sprint 12F:
 - timetable import/export
 - attendance timetable binding
 
+## Sprint 13F Homework Final Closeout Runbook
+
+From a clean local setup:
+
+```bash
+cp .env.example .env
+npm run infra:up
+npm run verify:sprint13f
+```
+
+Sprint 13F closeout verification covers:
+
+- Homework Core assignments
+- Homework Core targets
+- Teacher Homework management
+- Student Homework reads
+- Parent child Homework reads
+- Deferred route absence for submissions, questions, attachments, notifications, pickup, XP, rewards, and grade sync
+
+Source of truth rules:
+
+- Homework Core owns assignment lifecycle and targets.
+- School dashboard can manage Homework via Core APIs.
+- Teacher App composes Core for owned allocations/classes only.
+- Student App reads assigned HomeworkTarget rows only.
+- Parent App reads owned child HomeworkTarget rows only.
+- Files, Grades, Notifications, and Reinforcement remain separate cores.
+
+Safety rules:
+
+- App responses must not expose tenant ids.
+- Draft, cancelled, archived, and deleted assignments remain hidden from Student/Parent reads.
+- Teacher cannot manage other-teacher homework.
+- Parent cannot access unlinked or cross-school child homework.
+- Homework actions must not create Notification, Email, XP, Reward, Pickup, or Grade side effects.
+
+Deferred beyond Sprint 13F:
+
+- Homework submissions
+- Homework questions and answers
+- Attachments/proof uploads
+- Parent submit
+- Notification/email delivery
+- XP/reward integration
+- GradeAssessment bridge runtime
+- Homework final docs/Postman if not done in this sprint
+
 ### Seed credentials
 
 | Role         | Email                      | Password     |
@@ -1463,6 +1510,7 @@ Deferred beyond Sprint 12F:
 | `npm run test:e2e:sprint9f`         | Run the Sprint 9F Parent App final closeout e2e flow                                                                     |
 | `npm run test:e2e:sprint11f`        | Run the Sprint 11F Identity, Credentials, and Email final closeout e2e flow                                              |
 | `npm run test:e2e:sprint12f`        | Run the Sprint 12F Schedule/Timetable final closeout e2e flow                                                            |
+| `npm run test:e2e:sprint13f`        | Run the Sprint 13F Homework final closeout route inventory e2e flow                                                      |
 | `npm run test:security`             | Tenancy isolation tests                                                                                                  |
 | `npm run verify:sprint1b:preflight` | Fail fast if `.env` or required local services are not ready                                                             |
 | `npm run verify:sprint1b`           | Run preflight, migrations, seed, build, unit tests, and security tests                                                   |
@@ -1490,6 +1538,7 @@ Deferred beyond Sprint 12F:
 | `npm run verify:phase5`             | Run the Phase 5 final verification entrypoint, currently delegating to `verify:sprint9f`                                 |
 | `npm run verify:sprint11f`          | Run the Phase 5 verification entrypoint plus the Sprint 11F Identity, Credentials, and Email closeout e2e                |
 | `npm run verify:sprint12f`          | Run the Sprint 11F verification chain plus the Sprint 12F Schedule/Timetable final closeout e2e                          |
+| `npm run verify:sprint13f`          | Run the Sprint 12F verification chain plus the Sprint 13F Homework final closeout e2e                                    |
 | `npm run seed`                      | Re-run idempotent seeds                                                                                                  |
 | `bash scripts/demo.sh`              | End-to-end smoke test                                                                                                    |
 | `npm run demo:sprint1c`             | Run the Sprint 1C Files demo flow against a running server                                                               |
