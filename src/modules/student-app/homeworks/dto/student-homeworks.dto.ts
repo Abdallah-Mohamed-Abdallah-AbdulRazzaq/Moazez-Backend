@@ -34,6 +34,7 @@ export const STUDENT_HOMEWORK_SUBMISSION_STATUSES = [
   'draft',
   'submitted',
   'late',
+  'reviewed',
 ] as const;
 
 export type StudentHomeworkSubmissionStatus =
@@ -144,6 +145,9 @@ export class StudentHomeworkSubmissionDto {
   status!: StudentHomeworkSubmissionStatus;
   bodyText!: string | null;
   submittedAt!: string | null;
+  reviewedAt!: string | null;
+  reviewNote!: string | null;
+  awardedMarks!: number | null;
   updatedAt!: string;
 }
 

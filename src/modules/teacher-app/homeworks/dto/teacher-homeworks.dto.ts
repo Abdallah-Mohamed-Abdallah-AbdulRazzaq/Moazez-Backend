@@ -6,8 +6,10 @@ import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsIn,
   IsEnum,
   IsInt,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -29,6 +31,11 @@ function toUpperEnumValue(value: unknown): unknown {
   return typeof value === 'string' ? value.trim().toUpperCase() : value;
 }
 
+function toLowerOptionalString(value: unknown): unknown {
+  if (value === undefined || value === null || value === '') return undefined;
+  return typeof value === 'string' ? value.trim().toLowerCase() : value;
+}
+
 function trimText(value: unknown): unknown {
   return typeof value === 'string' ? value.trim() : value;
 }
@@ -42,6 +49,21 @@ export class TeacherHomeworkAssignmentParamsDto extends TeacherHomeworkClassPara
   @IsUUID()
   homeworkId!: string;
 }
+
+export class TeacherHomeworkSubmissionParamsDto extends TeacherHomeworkAssignmentParamsDto {
+  @IsUUID()
+  submissionId!: string;
+}
+
+export const TEACHER_HOMEWORK_SUBMISSION_STATUSES = [
+  'submitted',
+  'late',
+  'reviewed',
+  'pending_review',
+] as const;
+
+export type TeacherHomeworkSubmissionStatus =
+  (typeof TEACHER_HOMEWORK_SUBMISSION_STATUSES)[number];
 
 export class ListTeacherHomeworkAssignmentsQueryDto {
   @IsOptional()
@@ -80,6 +102,47 @@ export class ListTeacherHomeworkAssignmentsQueryDto {
   @Min(1)
   @Max(100)
   limit?: number;
+}
+
+export class ListTeacherHomeworkSubmissionsQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => toLowerOptionalString(value))
+  @IsIn(TEACHER_HOMEWORK_SUBMISSION_STATUSES)
+  status?: TeacherHomeworkSubmissionStatus;
+
+  @IsOptional()
+  @Transform(({ value }) => trimText(value))
+  @IsString()
+  @MaxLength(200)
+  search?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+export class TeacherHomeworkSubmissionReviewDto {
+  @IsOptional()
+  @Transform(({ value }) => trimText(value))
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
+  reviewNote?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ allowInfinity: false, allowNaN: false, maxDecimalPlaces: 2 })
+  @Min(0)
+  awardedMarks?: number | null;
 }
 
 export class TeacherHomeworkCreateDto {
@@ -300,6 +363,44 @@ export class TeacherHomeworkTargetDto {
 
 export class TeacherHomeworkTargetsListResponseDto {
   items!: TeacherHomeworkTargetDto[];
+}
+
+export class TeacherHomeworkSubmissionStudentDto {
+  id!: string;
+  displayName!: string;
+  studentNumber!: string | null;
+}
+
+export class TeacherHomeworkSubmissionDto {
+  id!: string;
+  homeworkId!: string;
+  targetId!: string;
+  student!: TeacherHomeworkSubmissionStudentDto;
+  status!: string;
+  bodyText!: string | null;
+  submittedAt!: string | null;
+  reviewedAt!: string | null;
+  reviewNote!: string | null;
+  awardedMarks!: number | null;
+  totalMarks!: number | null;
+  isLate!: boolean;
+  createdAt!: string;
+  updatedAt!: string;
+}
+
+export class TeacherHomeworkSubmissionsPaginationDto {
+  page!: number;
+  limit!: number;
+  total!: number;
+}
+
+export class TeacherHomeworkSubmissionsListResponseDto {
+  submissions!: TeacherHomeworkSubmissionDto[];
+  pagination!: TeacherHomeworkSubmissionsPaginationDto;
+}
+
+export class TeacherHomeworkSubmissionResponseDto {
+  submission!: TeacherHomeworkSubmissionDto;
 }
 
 export class TeacherHomeworkClassCountersDto extends TeacherHomeworkCountersDto {

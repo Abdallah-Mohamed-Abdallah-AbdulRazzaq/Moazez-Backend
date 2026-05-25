@@ -1,4 +1,8 @@
-import { HomeworkAssignmentMode, HomeworkTargetMode } from '@prisma/client';
+import {
+  HomeworkAssignmentMode,
+  HomeworkSubmissionStatus,
+  HomeworkTargetMode,
+} from '@prisma/client';
 import {
   HomeworkAssignmentNotMutableException,
   HomeworkAssignmentScheduleMismatchException,
@@ -7,8 +11,11 @@ import { HomeworkAssignmentResponseDto } from '../../../homework/dto/homework-as
 import { TeacherAppAllocationRecord } from '../../shared/teacher-app.types';
 import {
   CreateTeacherHomeworkAssignmentUseCase,
+  GetTeacherHomeworkSubmissionUseCase,
   ListTeacherHomeworkAssignmentsUseCase,
+  ListTeacherHomeworkSubmissionsUseCase,
   PublishTeacherHomeworkAssignmentUseCase,
+  ReviewTeacherHomeworkSubmissionUseCase,
   ResolveTeacherHomeworkTargetsUseCase,
   UpdateTeacherHomeworkAssignmentUseCase,
 } from '../application/teacher-homeworks.use-cases';
@@ -176,6 +183,132 @@ describe('Teacher Homeworks use cases', () => {
     expect(coreResolve.execute).toHaveBeenCalledWith('homework-1');
   });
 
+  it('lists submitted homework submissions for an owned assignment through Core review filters', async () => {
+    const ownership = ownershipMock();
+    const coreList = {
+      execute: jest.fn().mockResolvedValue({
+        items: [reviewSubmissionRecord()],
+        page: 1,
+        limit: 25,
+        total: 1,
+      }),
+    };
+    const useCase = new ListTeacherHomeworkSubmissionsUseCase(
+      ownership as never,
+      coreList as never,
+    );
+
+    const result = await useCase.execute('allocation-1', 'homework-1', {
+      status: 'pending_review',
+      search: 'learner',
+      page: 1,
+      limit: 25,
+    });
+
+    expect(ownership.resolveOwnedHomework).toHaveBeenCalledWith({
+      classId: 'allocation-1',
+      homeworkId: 'homework-1',
+    });
+    expect(coreList.execute).toHaveBeenCalledWith({
+      homeworkId: 'homework-1',
+      statuses: [
+        HomeworkSubmissionStatus.SUBMITTED,
+        HomeworkSubmissionStatus.LATE,
+      ],
+      search: 'learner',
+      page: 1,
+      limit: 25,
+    });
+    expect(result.submissions).toEqual([
+      expect.objectContaining({
+        id: 'submission-1',
+        homeworkId: 'homework-1',
+        status: 'submitted',
+        bodyText: 'Submitted answer',
+      }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain('schoolId');
+    expect(JSON.stringify(result)).not.toContain('enrollmentId');
+  });
+
+  it('gets a submitted homework submission only after owned assignment resolution', async () => {
+    const ownership = ownershipMock();
+    const coreGet = {
+      execute: jest.fn().mockResolvedValue(reviewSubmissionRecord()),
+    };
+    const useCase = new GetTeacherHomeworkSubmissionUseCase(
+      ownership as never,
+      coreGet as never,
+    );
+
+    const result = await useCase.execute(
+      'allocation-1',
+      'homework-1',
+      'submission-1',
+    );
+
+    expect(ownership.resolveOwnedHomework).toHaveBeenCalledWith({
+      classId: 'allocation-1',
+      homeworkId: 'homework-1',
+    });
+    expect(coreGet.execute).toHaveBeenCalledWith({
+      homeworkId: 'homework-1',
+      submissionId: 'submission-1',
+    });
+    expect(result.submission).toMatchObject({
+      id: 'submission-1',
+      homeworkId: 'homework-1',
+      targetId: 'target-1',
+      student: {
+        id: 'student-1',
+        displayName: 'Learner One',
+      },
+    });
+  });
+
+  it('reviews an owned submitted homework submission as the current teacher', async () => {
+    const ownership = ownershipMock();
+    const coreReview = {
+      execute: jest.fn().mockResolvedValue(
+        reviewSubmissionRecord({
+          status: HomeworkSubmissionStatus.REVIEWED,
+          reviewedAt: new Date('2026-09-10T11:00:00.000Z'),
+          reviewNote: 'Good work',
+          awardedMarks: { toNumber: () => 8.5 },
+        }),
+      ),
+    };
+    const useCase = new ReviewTeacherHomeworkSubmissionUseCase(
+      ownership as never,
+      coreReview as never,
+    );
+
+    const result = await useCase.execute(
+      'allocation-1',
+      'homework-1',
+      'submission-1',
+      { reviewNote: 'Good work', awardedMarks: 8.5 },
+    );
+
+    expect(ownership.resolveOwnedHomework).toHaveBeenCalledWith({
+      classId: 'allocation-1',
+      homeworkId: 'homework-1',
+    });
+    expect(coreReview.execute).toHaveBeenCalledWith({
+      homeworkId: 'homework-1',
+      submissionId: 'submission-1',
+      reviewedByUserId: 'teacher-1',
+      reviewNote: 'Good work',
+      awardedMarks: 8.5,
+    });
+    expect(result.submission).toMatchObject({
+      status: 'reviewed',
+      reviewedAt: '2026-09-10T11:00:00.000Z',
+      reviewNote: 'Good work',
+      awardedMarks: 8.5,
+    });
+  });
+
   it('propagates Core timetable linkage validation failures', async () => {
     const ownership = ownershipMock();
     const coreCreate = {
@@ -304,5 +437,45 @@ function pagination() {
     limit: 10,
     total: 0,
     totalPages: 0,
+  };
+}
+
+function reviewSubmissionRecord(overrides?: Record<string, unknown>): any {
+  return {
+    id: 'submission-1',
+    schoolId: 'school-1',
+    homeworkAssignmentId: 'homework-1',
+    homeworkTargetId: 'target-1',
+    studentId: 'student-1',
+    enrollmentId: 'enrollment-1',
+    status: HomeworkSubmissionStatus.SUBMITTED,
+    bodyText: 'Submitted answer',
+    submittedAt: new Date('2026-09-10T10:00:00.000Z'),
+    reviewedAt: null,
+    reviewedByUserId: null,
+    reviewNote: null,
+    awardedMarks: null,
+    createdAt: new Date('2026-09-10T09:00:00.000Z'),
+    updatedAt: new Date('2026-09-10T10:00:00.000Z'),
+    student: {
+      id: 'student-1',
+      firstName: 'Learner',
+      lastName: 'One',
+    },
+    homeworkAssignment: {
+      id: 'homework-1',
+      status: 'PUBLISHED',
+      dueAt: new Date('2026-09-11T10:00:00.000Z'),
+      totalMarks: { toNumber: () => 10 },
+      isGraded: true,
+      deletedAt: null,
+    },
+    homeworkTarget: {
+      id: 'target-1',
+      status: 'SUBMITTED',
+      submittedAt: new Date('2026-09-10T10:00:00.000Z'),
+      reviewedAt: null,
+    },
+    ...overrides,
   };
 }

@@ -13,6 +13,21 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 
+const REVIEWABLE_SUBMISSION_STATUSES: HomeworkSubmissionStatus[] = [
+  HomeworkSubmissionStatus.SUBMITTED,
+  HomeworkSubmissionStatus.LATE,
+];
+
+const REVIEW_VISIBLE_SUBMISSION_STATUSES: HomeworkSubmissionStatus[] = [
+  ...REVIEWABLE_SUBMISSION_STATUSES,
+  HomeworkSubmissionStatus.REVIEWED,
+];
+
+const REVIEW_VISIBLE_ASSIGNMENT_STATUSES: HomeworkAssignmentStatus[] = [
+  HomeworkAssignmentStatus.PUBLISHED,
+  HomeworkAssignmentStatus.CLOSED,
+];
+
 const NAMED_REFERENCE_SELECT = {
   id: true,
   nameAr: true,
@@ -243,8 +258,58 @@ const HOMEWORK_SUBMISSION_ARGS =
       status: true,
       bodyText: true,
       submittedAt: true,
+      reviewedAt: true,
+      reviewedByUserId: true,
+      reviewNote: true,
+      awardedMarks: true,
       createdAt: true,
       updatedAt: true,
+    },
+  });
+
+const HOMEWORK_REVIEW_SUBMISSION_ARGS =
+  Prisma.validator<Prisma.HomeworkSubmissionDefaultArgs>()({
+    select: {
+      id: true,
+      schoolId: true,
+      homeworkAssignmentId: true,
+      homeworkTargetId: true,
+      studentId: true,
+      enrollmentId: true,
+      status: true,
+      bodyText: true,
+      submittedAt: true,
+      reviewedAt: true,
+      reviewedByUserId: true,
+      reviewNote: true,
+      awardedMarks: true,
+      createdAt: true,
+      updatedAt: true,
+      student: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
+      homeworkAssignment: {
+        select: {
+          id: true,
+          status: true,
+          dueAt: true,
+          totalMarks: true,
+          isGraded: true,
+          deletedAt: true,
+        },
+      },
+      homeworkTarget: {
+        select: {
+          id: true,
+          status: true,
+          submittedAt: true,
+          reviewedAt: true,
+        },
+      },
     },
   });
 
@@ -291,6 +356,8 @@ export type HomeworkTargetRecord = Prisma.HomeworkTargetGetPayload<
 export type HomeworkSubmissionRecord = Prisma.HomeworkSubmissionGetPayload<
   typeof HOMEWORK_SUBMISSION_ARGS
 >;
+export type HomeworkReviewSubmissionRecord =
+  Prisma.HomeworkSubmissionGetPayload<typeof HOMEWORK_REVIEW_SUBMISSION_ARGS>;
 export type HomeworkTargetForSubmissionRecord =
   Prisma.HomeworkTargetGetPayload<typeof HOMEWORK_TARGET_FOR_SUBMISSION_ARGS>;
 
@@ -324,6 +391,21 @@ export interface ListHomeworkAssignmentsResult {
   limit: number;
 }
 
+export interface ListHomeworkReviewSubmissionsFilters {
+  homeworkAssignmentId: string;
+  statuses?: HomeworkSubmissionStatus[];
+  search?: string;
+  page: number;
+  limit: number;
+}
+
+export interface ListHomeworkReviewSubmissionsResult {
+  items: HomeworkReviewSubmissionRecord[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export type CreateHomeworkAssignmentData =
   Prisma.HomeworkAssignmentUncheckedCreateInput;
 export type UpdateHomeworkAssignmentData =
@@ -336,6 +418,11 @@ export type SaveHomeworkSubmissionDraftResult =
 export type SubmitHomeworkSubmissionResult =
   | { outcome: 'submitted'; submission: HomeworkSubmissionRecord }
   | { outcome: 'already_submitted'; submission: HomeworkSubmissionRecord };
+export type ReviewHomeworkSubmissionResult =
+  | { outcome: 'reviewed'; submission: HomeworkReviewSubmissionRecord }
+  | { outcome: 'not_found' }
+  | { outcome: 'already_reviewed'; submission: HomeworkReviewSubmissionRecord }
+  | { outcome: 'not_reviewable'; submission: HomeworkReviewSubmissionRecord };
 
 @Injectable()
 export class HomeworkRepository {
@@ -497,6 +584,43 @@ export class HomeworkRepository {
     });
   }
 
+  async listReviewableSubmissions(
+    filters: ListHomeworkReviewSubmissionsFilters,
+  ): Promise<ListHomeworkReviewSubmissionsResult> {
+    const where = buildReviewSubmissionWhere(filters);
+    const [items, total] = await Promise.all([
+      this.scopedPrisma.homeworkSubmission.findMany({
+        where,
+        orderBy: [
+          { submittedAt: 'asc' },
+          { createdAt: 'asc' },
+          { id: 'asc' },
+        ],
+        skip: (filters.page - 1) * filters.limit,
+        take: filters.limit,
+        ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
+      }),
+      this.scopedPrisma.homeworkSubmission.count({ where }),
+    ]);
+
+    return { items, total, page: filters.page, limit: filters.limit };
+  }
+
+  findReviewableSubmission(input: {
+    homeworkAssignmentId: string;
+    submissionId: string;
+  }): Promise<HomeworkReviewSubmissionRecord | null> {
+    return this.scopedPrisma.homeworkSubmission.findFirst({
+      where: {
+        id: input.submissionId,
+        homeworkAssignmentId: input.homeworkAssignmentId,
+        status: { in: REVIEW_VISIBLE_SUBMISSION_STATUSES },
+        homeworkAssignment: { is: reviewVisibleAssignmentWhere() },
+      },
+      ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
+    });
+  }
+
   findStudentTargetForSubmission(input: {
     homeworkId: string;
     studentId: string;
@@ -634,6 +758,93 @@ export class HomeworkRepository {
       });
 
       return { outcome: 'submitted', submission };
+    });
+  }
+
+  async reviewSubmission(input: {
+    schoolId: string;
+    homeworkAssignmentId: string;
+    submissionId: string;
+    homeworkTargetId: string;
+    studentId: string;
+    enrollmentId: string;
+    reviewedByUserId: string;
+    reviewedAt: Date;
+    reviewNote: string | null;
+    awardedMarks: number | null;
+  }): Promise<ReviewHomeworkSubmissionResult> {
+    return this.scopedPrisma.$transaction(async (tx) => {
+      const existing = await tx.homeworkSubmission.findFirst({
+        where: {
+          schoolId: input.schoolId,
+          id: input.submissionId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          homeworkTargetId: input.homeworkTargetId,
+          studentId: input.studentId,
+          enrollmentId: input.enrollmentId,
+        },
+        ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
+      });
+
+      if (!existing) {
+        return { outcome: 'not_found' };
+      }
+
+      if (existing.status === HomeworkSubmissionStatus.REVIEWED) {
+        return { outcome: 'already_reviewed', submission: existing };
+      }
+
+      if (!REVIEWABLE_SUBMISSION_STATUSES.includes(existing.status)) {
+        return { outcome: 'not_reviewable', submission: existing };
+      }
+
+      await tx.homeworkSubmission.updateMany({
+        where: {
+          schoolId: input.schoolId,
+          id: input.submissionId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          homeworkTargetId: input.homeworkTargetId,
+          studentId: input.studentId,
+          enrollmentId: input.enrollmentId,
+        },
+        data: {
+          status: HomeworkSubmissionStatus.REVIEWED,
+          reviewedAt: input.reviewedAt,
+          reviewedByUserId: input.reviewedByUserId,
+          reviewNote: input.reviewNote,
+          awardedMarks: input.awardedMarks,
+        },
+      });
+
+      await tx.homeworkTarget.updateMany({
+        where: {
+          schoolId: input.schoolId,
+          id: input.homeworkTargetId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          studentId: input.studentId,
+          enrollmentId: input.enrollmentId,
+        },
+        data: {
+          status: HomeworkTargetStatus.REVIEWED,
+          reviewedAt: input.reviewedAt,
+        },
+      });
+
+      const submission = await tx.homeworkSubmission.findFirst({
+        where: {
+          schoolId: input.schoolId,
+          id: input.submissionId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          homeworkTargetId: input.homeworkTargetId,
+          studentId: input.studentId,
+          enrollmentId: input.enrollmentId,
+        },
+        ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
+      });
+
+      return submission
+        ? { outcome: 'reviewed', submission }
+        : { outcome: 'not_found' };
     });
   }
 
@@ -804,4 +1015,57 @@ function createEmptyCounters(): HomeworkStatusCounters {
     [HomeworkTargetStatus.REVIEWED]: 0,
     [HomeworkTargetStatus.EXCUSED]: 0,
   };
+}
+
+function buildReviewSubmissionWhere(
+  filters: ListHomeworkReviewSubmissionsFilters,
+): Prisma.HomeworkSubmissionWhereInput {
+  const and: Prisma.HomeworkSubmissionWhereInput[] = [
+    {
+      homeworkAssignmentId: filters.homeworkAssignmentId,
+      status: {
+        in: reviewVisibleSubmissionStatuses(filters.statuses),
+      },
+      homeworkAssignment: {
+        is: reviewVisibleAssignmentWhere(),
+      },
+    },
+  ];
+
+  const search = filters.search?.trim();
+  if (search) {
+    const stringFilter = {
+      contains: search,
+      mode: Prisma.QueryMode.insensitive,
+    };
+    and.push({
+      student: {
+        is: {
+          OR: [{ firstName: stringFilter }, { lastName: stringFilter }],
+          deletedAt: null,
+        },
+      },
+    });
+  }
+
+  return and.length === 1 ? and[0] : { AND: and };
+}
+
+function reviewVisibleAssignmentWhere(): Prisma.HomeworkAssignmentWhereInput {
+  return {
+    deletedAt: null,
+    status: { in: REVIEW_VISIBLE_ASSIGNMENT_STATUSES },
+  };
+}
+
+function reviewVisibleSubmissionStatuses(
+  statuses?: HomeworkSubmissionStatus[],
+): HomeworkSubmissionStatus[] {
+  if (!statuses || statuses.length === 0) {
+    return REVIEW_VISIBLE_SUBMISSION_STATUSES;
+  }
+
+  return statuses.filter((status) =>
+    REVIEW_VISIBLE_SUBMISSION_STATUSES.includes(status),
+  );
 }

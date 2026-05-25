@@ -23,6 +23,9 @@ interface StudentHomeworkSubmissionPresenterModel {
   status: string;
   bodyText: string | null;
   submittedAt: Date | null;
+  reviewedAt: Date | null;
+  reviewNote: string | null;
+  awardedMarks: Prisma.Decimal | number | string | null;
   updatedAt: Date;
 }
 
@@ -164,6 +167,9 @@ export function presentStudentHomeworkSubmission(
     status: submission.status.toLowerCase() as StudentHomeworkSubmissionDto['status'],
     bodyText: submission.bodyText,
     submittedAt: presentDateTime(submission.submittedAt),
+    reviewedAt: presentDateTime(submission.reviewedAt),
+    reviewNote: submission.reviewNote,
+    awardedMarks: presentDecimal(submission.awardedMarks),
     updatedAt: submission.updatedAt.toISOString(),
   };
 }

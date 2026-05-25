@@ -502,6 +502,7 @@ enum HomeworkSubmissionStatus {
   DRAFT
   SUBMITTED
   LATE
+  REVIEWED
 
   @@map("homework_submission_status")
 }
@@ -1198,6 +1199,7 @@ model User {
   homeworkAssignmentsTaught                       HomeworkAssignment[]                   @relation("HomeworkAssignmentTeacher")
   homeworkAssignmentsCreated                      HomeworkAssignment[]                   @relation("HomeworkAssignmentCreatedBy")
   homeworkAssignmentsPublished                    HomeworkAssignment[]                   @relation("HomeworkAssignmentPublishedBy")
+  homeworkSubmissionsReviewed                     HomeworkSubmission[]                   @relation("HomeworkSubmissionReviewedBy")
   reinforcementTasksAssigned                     ReinforcementTask[]                    @relation("ReinforcementTaskAssignedBy")
   reinforcementTasksCreated                      ReinforcementTask[]                    @relation("ReinforcementTaskCreatedBy")
   reinforcementTasksCancelled                    ReinforcementTask[]                    @relation("ReinforcementTaskCancelledBy")
@@ -3281,6 +3283,10 @@ model HomeworkSubmission {
   status               HomeworkSubmissionStatus @default(DRAFT)
   bodyText             String?                  @map("body_text") @db.Text
   submittedAt          DateTime?                @map("submitted_at")
+  reviewedAt           DateTime?                @map("reviewed_at")
+  reviewedByUserId     String?                  @map("reviewed_by_user_id") @db.Uuid
+  reviewNote           String?                  @map("review_note")
+  awardedMarks         Decimal?                 @map("awarded_marks") @db.Decimal(10, 2)
   createdAt            DateTime                 @default(now()) @map("created_at")
   updatedAt            DateTime                 @updatedAt @map("updated_at")
 
@@ -3289,6 +3295,7 @@ model HomeworkSubmission {
   homeworkTarget     HomeworkTarget     @relation(fields: [homeworkTargetId, schoolId], references: [id, schoolId], onDelete: Cascade)
   student            Student            @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
   enrollment         Enrollment         @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  reviewedByUser     User?              @relation("HomeworkSubmissionReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([id, schoolId])
   @@unique([schoolId, homeworkTargetId])
@@ -3305,6 +3312,8 @@ model HomeworkSubmission {
   @@index([schoolId, homeworkAssignmentId, status])
   @@index([schoolId, studentId, status])
   @@index([schoolId, submittedAt])
+  @@index([reviewedByUserId])
+  @@index([schoolId, reviewedAt])
   @@map("homework_submissions")
 }
 

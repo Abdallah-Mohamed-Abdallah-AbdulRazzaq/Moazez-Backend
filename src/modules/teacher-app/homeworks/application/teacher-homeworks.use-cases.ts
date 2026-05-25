@@ -11,21 +11,32 @@ import {
   UpdateHomeworkAssignmentUseCase,
 } from '../../../homework/application/homework-assignments.use-cases';
 import {
+  GetHomeworkSubmissionForReviewUseCase,
+  ListHomeworkSubmissionsForReviewUseCase,
+  ReviewHomeworkSubmissionUseCase as CoreReviewHomeworkSubmissionUseCase,
+} from '../../../homework/application/homework-submissions.use-cases';
+import {
   CreateHomeworkAssignmentDto,
   ListHomeworkAssignmentsQueryDto,
   UpdateHomeworkAssignmentDto,
 } from '../../../homework/dto/homework-assignment.dto';
+import { HomeworkSubmissionStatus } from '@prisma/client';
 import { TeacherAppAllocationReadAdapter } from '../../access/teacher-app-allocation-read.adapter';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
 import { TeacherAppAllocationNotFoundException } from '../../shared/teacher-app.errors';
 import { TeacherAppAllocationRecord } from '../../shared/teacher-app.types';
 import {
   ListTeacherHomeworkAssignmentsQueryDto,
+  ListTeacherHomeworkSubmissionsQueryDto,
   TeacherHomeworkAssignmentDto,
   TeacherHomeworkAssignmentsListResponseDto,
   TeacherHomeworkCreateDto,
   TeacherHomeworkDashboardResponseDto,
+  TeacherHomeworkSubmissionResponseDto,
+  TeacherHomeworkSubmissionReviewDto,
+  TeacherHomeworkSubmissionsListResponseDto,
   TeacherHomeworkTargetsListResponseDto,
+  TeacherHomeworkSubmissionStatus,
   TeacherHomeworkUpdateDto,
 } from '../dto/teacher-homeworks.dto';
 import { TeacherHomeworksReadAdapter } from '../infrastructure/teacher-homeworks-read.adapter';
@@ -296,6 +307,82 @@ export class ResolveTeacherHomeworkTargetsUseCase {
   }
 }
 
+@Injectable()
+export class ListTeacherHomeworkSubmissionsUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly listHomeworkSubmissionsForReviewUseCase: ListHomeworkSubmissionsForReviewUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    query: ListTeacherHomeworkSubmissionsQueryDto,
+  ): Promise<TeacherHomeworkSubmissionsListResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    const result = await this.listHomeworkSubmissionsForReviewUseCase.execute({
+      homeworkId,
+      statuses: mapSubmissionStatusFilter(query.status),
+      search: query.search,
+      page: query.page,
+      limit: query.limit,
+    });
+
+    return TeacherHomeworksPresenter.presentSubmissionsList(result);
+  }
+}
+
+@Injectable()
+export class GetTeacherHomeworkSubmissionUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly getHomeworkSubmissionForReviewUseCase: GetHomeworkSubmissionForReviewUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    submissionId: string,
+  ): Promise<TeacherHomeworkSubmissionResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    const submission = await this.getHomeworkSubmissionForReviewUseCase.execute({
+      homeworkId,
+      submissionId,
+    });
+
+    return TeacherHomeworksPresenter.presentSubmissionDetail(submission);
+  }
+}
+
+@Injectable()
+export class ReviewTeacherHomeworkSubmissionUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly reviewHomeworkSubmissionUseCase: CoreReviewHomeworkSubmissionUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    submissionId: string,
+    dto: TeacherHomeworkSubmissionReviewDto,
+  ): Promise<TeacherHomeworkSubmissionResponseDto> {
+    const context = await this.ownershipService.resolveOwnedHomework({
+      classId,
+      homeworkId,
+    });
+    const submission = await this.reviewHomeworkSubmissionUseCase.execute({
+      homeworkId,
+      submissionId,
+      reviewedByUserId: context.teacherUserId,
+      reviewNote: dto.reviewNote,
+      awardedMarks: dto.awardedMarks,
+    });
+
+    return TeacherHomeworksPresenter.presentSubmissionDetail(submission);
+  }
+}
+
 function mapCreateCommand(input: {
   dto: TeacherHomeworkCreateDto;
   allocation: TeacherAppAllocationRecord;
@@ -365,5 +452,22 @@ function copyDefined(
   const value = source[key];
   if (value !== undefined) {
     (target as Record<string, unknown>)[key] = value;
+  }
+}
+
+function mapSubmissionStatusFilter(
+  status?: TeacherHomeworkSubmissionStatus,
+): HomeworkSubmissionStatus[] | undefined {
+  switch (status) {
+    case undefined:
+      return undefined;
+    case 'submitted':
+      return [HomeworkSubmissionStatus.SUBMITTED];
+    case 'late':
+      return [HomeworkSubmissionStatus.LATE];
+    case 'reviewed':
+      return [HomeworkSubmissionStatus.REVIEWED];
+    case 'pending_review':
+      return [HomeworkSubmissionStatus.SUBMITTED, HomeworkSubmissionStatus.LATE];
   }
 }

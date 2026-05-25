@@ -155,12 +155,56 @@ export class HomeworkSubmissionTargetNotFoundException extends DomainException {
   }
 }
 
+export class HomeworkSubmissionNotFoundException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'homework.submission.not_found',
+      message: 'Homework submission was not found',
+      httpStatus: HttpStatus.NOT_FOUND,
+      details,
+    });
+  }
+}
+
 export class HomeworkSubmissionNotSubmittableException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({
       code: 'homework.submission.not_submittable',
       message: 'Homework submission is not allowed in the current state',
       httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class HomeworkSubmissionNotReviewableException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'homework.submission.not_reviewable',
+      message: 'Homework submission cannot be reviewed in the current state',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class HomeworkSubmissionAlreadyReviewedException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'homework.submission.already_reviewed',
+      message: 'Homework submission is already reviewed',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class HomeworkSubmissionReviewInvalidException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'homework.submission.review_invalid',
+      message: 'Homework submission review is invalid',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
       details,
     });
   }

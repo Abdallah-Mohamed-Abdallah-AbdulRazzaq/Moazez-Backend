@@ -123,6 +123,9 @@ describe('StudentHomeworksPresenter', () => {
             status: HomeworkSubmissionStatus.SUBMITTED,
             bodyText: 'Submitted text',
             submittedAt: new Date('2026-09-10T09:00:00.000Z'),
+            reviewedAt: null,
+            reviewNote: null,
+            awardedMarks: null,
             updatedAt: new Date('2026-09-10T09:00:00.000Z'),
           },
         ],
@@ -135,10 +138,55 @@ describe('StudentHomeworksPresenter', () => {
       status: 'submitted',
       bodyText: 'Submitted text',
       submittedAt: '2026-09-10T09:00:00.000Z',
+      reviewedAt: null,
+      reviewNote: null,
+      awardedMarks: null,
       updatedAt: '2026-09-10T09:00:00.000Z',
     });
     expect(JSON.stringify(detail)).not.toContain('schoolId');
     expect(JSON.stringify(detail)).not.toContain('enrollmentId');
+  });
+
+  it('presents sanitized review fields for a reviewed submission detail', () => {
+    const detail = StudentHomeworksPresenter.presentDetail(
+      homeworkTargetFixture({
+        targetStatus: HomeworkTargetStatus.REVIEWED,
+        submissions: [
+          {
+            id: 'submission-1',
+            schoolId: 'school-1',
+            homeworkAssignmentId: 'homework-1',
+            homeworkTargetId: 'target-1',
+            studentId: 'student-1',
+            enrollmentId: 'enrollment-1',
+            status: HomeworkSubmissionStatus.REVIEWED,
+            bodyText: 'Submitted text',
+            submittedAt: new Date('2026-09-10T09:00:00.000Z'),
+            reviewedAt: new Date('2026-09-10T11:00:00.000Z'),
+            reviewedByUserId: 'teacher-1',
+            reviewNote: 'Good work',
+            awardedMarks: { toNumber: () => 8.5 },
+            updatedAt: new Date('2026-09-10T11:00:00.000Z'),
+          },
+        ],
+      }) as any,
+    );
+
+    expect(detail.homework).toMatchObject({
+      status: 'completed',
+      targetStatus: 'reviewed',
+      submission: {
+        id: 'submission-1',
+        homeworkId: 'homework-1',
+        status: 'reviewed',
+        reviewedAt: '2026-09-10T11:00:00.000Z',
+        reviewNote: 'Good work',
+        awardedMarks: 8.5,
+      },
+    });
+    expect(JSON.stringify(detail)).not.toContain('schoolId');
+    expect(JSON.stringify(detail)).not.toContain('enrollmentId');
+    expect(JSON.stringify(detail)).not.toContain('reviewedByUserId');
   });
 });
 

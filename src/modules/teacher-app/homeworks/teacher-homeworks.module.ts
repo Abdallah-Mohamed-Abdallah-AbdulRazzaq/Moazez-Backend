@@ -8,10 +8,13 @@ import {
   CloseTeacherHomeworkAssignmentUseCase,
   CreateTeacherHomeworkAssignmentUseCase,
   GetTeacherHomeworkAssignmentUseCase,
+  GetTeacherHomeworkSubmissionUseCase,
   GetTeacherHomeworksDashboardUseCase,
   ListTeacherHomeworkAssignmentsUseCase,
+  ListTeacherHomeworkSubmissionsUseCase,
   ListTeacherHomeworkTargetsUseCase,
   PublishTeacherHomeworkAssignmentUseCase,
+  ReviewTeacherHomeworkSubmissionUseCase,
   ResolveTeacherHomeworkTargetsUseCase,
   UpdateTeacherHomeworkAssignmentUseCase,
 } from './application/teacher-homeworks.use-cases';
@@ -36,6 +39,9 @@ import { TeacherHomeworksReadAdapter } from './infrastructure/teacher-homeworks-
     CancelTeacherHomeworkAssignmentUseCase,
     ListTeacherHomeworkTargetsUseCase,
     ResolveTeacherHomeworkTargetsUseCase,
+    ListTeacherHomeworkSubmissionsUseCase,
+    GetTeacherHomeworkSubmissionUseCase,
+    ReviewTeacherHomeworkSubmissionUseCase,
   ],
 })
 export class TeacherHomeworksModule {}

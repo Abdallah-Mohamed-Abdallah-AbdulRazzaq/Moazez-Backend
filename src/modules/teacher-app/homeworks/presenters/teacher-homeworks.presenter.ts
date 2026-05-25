@@ -1,9 +1,18 @@
-import { HomeworkAssignmentStatus, HomeworkTargetStatus } from '@prisma/client';
+import {
+  HomeworkAssignmentStatus,
+  HomeworkSubmissionStatus,
+  HomeworkTargetStatus,
+  Prisma,
+} from '@prisma/client';
 import {
   HomeworkAssignmentResponseDto,
   HomeworkAssignmentsListResponseDto,
   HomeworkTargetsListResponseDto,
 } from '../../../homework/dto/homework-assignment-response.dto';
+import {
+  HomeworkReviewSubmissionRecord,
+  ListHomeworkReviewSubmissionsResult,
+} from '../../../homework/infrastructure/homework.repository';
 import type { TeacherAppAllocationRecord } from '../../shared/teacher-app.types';
 import {
   TeacherHomeworkAssignmentDto,
@@ -13,6 +22,9 @@ import {
   TeacherHomeworkDashboardResponseDto,
   TeacherHomeworkDashboardTotalsDto,
   TeacherHomeworkNamedReferenceDto,
+  TeacherHomeworkSubmissionDto,
+  TeacherHomeworkSubmissionResponseDto,
+  TeacherHomeworkSubmissionsListResponseDto,
   TeacherHomeworkTargetsListResponseDto,
 } from '../dto/teacher-homeworks.dto';
 import {
@@ -95,6 +107,29 @@ export class TeacherHomeworksPresenter {
     };
   }
 
+  static presentSubmissionsList(
+    result: ListHomeworkReviewSubmissionsResult,
+  ): TeacherHomeworkSubmissionsListResponseDto {
+    return {
+      submissions: result.items.map((submission) =>
+        presentSubmission(submission),
+      ),
+      pagination: {
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+      },
+    };
+  }
+
+  static presentSubmissionDetail(
+    submission: HomeworkReviewSubmissionRecord,
+  ): TeacherHomeworkSubmissionResponseDto {
+    return {
+      submission: presentSubmission(submission),
+    };
+  }
+
   static presentDashboard(
     input: DashboardInput,
   ): TeacherHomeworkDashboardResponseDto {
@@ -118,6 +153,31 @@ export class TeacherHomeworksPresenter {
       classes,
     };
   }
+}
+
+function presentSubmission(
+  submission: HomeworkReviewSubmissionRecord,
+): TeacherHomeworkSubmissionDto {
+  return {
+    id: submission.id,
+    homeworkId: submission.homeworkAssignmentId,
+    targetId: submission.homeworkTargetId,
+    student: {
+      id: submission.student.id,
+      displayName: fullName(submission.student),
+      studentNumber: null,
+    },
+    status: submission.status.toLowerCase(),
+    bodyText: submission.bodyText,
+    submittedAt: presentDateTime(submission.submittedAt),
+    reviewedAt: presentDateTime(submission.reviewedAt),
+    reviewNote: submission.reviewNote,
+    awardedMarks: presentDecimal(submission.awardedMarks),
+    totalMarks: presentDecimal(submission.homeworkAssignment.totalMarks),
+    isLate: isLateSubmission(submission),
+    createdAt: submission.createdAt.toISOString(),
+    updatedAt: submission.updatedAt.toISOString(),
+  };
 }
 
 function presentDashboardClass(input: {
@@ -297,4 +357,37 @@ function localizedName(
   value: { nameEn?: string | null; nameAr?: string | null } | null | undefined,
 ): string {
   return value?.nameEn ?? value?.nameAr ?? '';
+}
+
+function fullName(user: {
+  firstName?: string | null;
+  lastName?: string | null;
+}): string {
+  return [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+}
+
+function presentDateTime(date: Date | null): string | null {
+  return date ? date.toISOString() : null;
+}
+
+function presentDecimal(
+  value: Prisma.Decimal | number | string | null | undefined,
+): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'object' && 'toNumber' in value) {
+    return value.toNumber();
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isLateSubmission(submission: HomeworkReviewSubmissionRecord): boolean {
+  if (submission.status === HomeworkSubmissionStatus.LATE) return true;
+  if (!submission.submittedAt) return false;
+
+  return (
+    submission.submittedAt.getTime() >
+    submission.homeworkAssignment.dueAt.getTime()
+  );
 }

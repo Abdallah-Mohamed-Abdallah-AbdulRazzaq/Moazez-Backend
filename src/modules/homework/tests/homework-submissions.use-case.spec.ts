@@ -13,14 +13,33 @@ import {
 import { DomainException } from '../../../common/exceptions/domain-exception';
 import {
   GetHomeworkSubmissionUseCase,
+  GetHomeworkSubmissionForReviewUseCase,
+  ListHomeworkSubmissionsForReviewUseCase,
+  ReviewHomeworkSubmissionUseCase,
   SaveHomeworkSubmissionDraftUseCase,
   SubmitHomeworkSubmissionUseCase,
 } from '../application/homework-submissions.use-cases';
+import { HomeworkRepository } from '../infrastructure/homework.repository';
 
 describe('Homework submission use cases', () => {
   async function withStudentScope<T>(testFn: () => Promise<T>): Promise<T> {
     return runWithRequestContext(createRequestContext(), async () => {
       setActor({ id: 'student-user-1', userType: UserType.STUDENT });
+      setActiveMembership({
+        membershipId: 'membership-1',
+        organizationId: 'org-1',
+        schoolId: 'school-1',
+        roleId: 'role-1',
+        permissions: [],
+      });
+
+      return testFn();
+    });
+  }
+
+  async function withTeacherScope<T>(testFn: () => Promise<T>): Promise<T> {
+    return runWithRequestContext(createRequestContext(), async () => {
+      setActor({ id: 'teacher-1', userType: UserType.TEACHER });
       setActiveMembership({
         membershipId: 'membership-1',
         organizationId: 'org-1',
@@ -49,6 +68,27 @@ describe('Homework submission use cases', () => {
           bodyText: input.bodyText,
           status: input.submissionStatus,
           submittedAt: input.submittedAt,
+        }),
+      })),
+      listReviewableSubmissions: jest.fn().mockResolvedValue({
+        items: [seedReviewSubmission()],
+        total: 1,
+        page: 1,
+        limit: 25,
+      }),
+      findReviewableSubmission: jest.fn().mockResolvedValue(
+        seedReviewSubmission({
+          status: HomeworkSubmissionStatus.SUBMITTED,
+        }),
+      ),
+      reviewSubmission: jest.fn().mockImplementation(async (input) => ({
+        outcome: 'reviewed',
+        submission: seedReviewSubmission({
+          status: HomeworkSubmissionStatus.REVIEWED,
+          reviewedAt: input.reviewedAt,
+          reviewedByUserId: input.reviewedByUserId,
+          reviewNote: input.reviewNote,
+          awardedMarks: input.awardedMarks,
         }),
       })),
       ...overrides,
@@ -333,6 +373,449 @@ describe('Homework submission use cases', () => {
     expect((repository as any).createNotification).toBeUndefined();
     expect((repository as any).grantXp).toBeUndefined();
   });
+
+  it('lists teacher-reviewable submissions through submitted, late, or reviewed status only', async () => {
+    const repository = createRepository();
+    const useCase = new ListHomeworkSubmissionsForReviewUseCase(repository);
+
+    await withTeacherScope(() =>
+      useCase.execute({
+        homeworkId: 'homework-1',
+        page: 2,
+        limit: 10,
+        search: 'learner',
+      }),
+    );
+
+    expect(repository.listReviewableSubmissions).toHaveBeenCalledWith({
+      homeworkAssignmentId: 'homework-1',
+      statuses: undefined,
+      search: 'learner',
+      page: 2,
+      limit: 10,
+    });
+  });
+
+  it('gets a single teacher-visible submitted submission', async () => {
+    const repository = createRepository();
+    const useCase = new GetHomeworkSubmissionForReviewUseCase(repository);
+
+    const submission = await withTeacherScope(() =>
+      useCase.execute({
+        homeworkId: 'homework-1',
+        submissionId: 'submission-1',
+      }),
+    );
+
+    expect(repository.findReviewableSubmission).toHaveBeenCalledWith({
+      homeworkAssignmentId: 'homework-1',
+      submissionId: 'submission-1',
+    });
+    expect(submission.status).toBe(HomeworkSubmissionStatus.SUBMITTED);
+  });
+
+  it('reviews a submitted submission and records target review metadata', async () => {
+    const repository = createRepository();
+    const authRepository = createAuthRepository();
+    const useCase = new ReviewHomeworkSubmissionUseCase(
+      repository,
+      authRepository,
+    );
+
+    const submission = await withTeacherScope(() =>
+      useCase.execute({
+        homeworkId: 'homework-1',
+        submissionId: 'submission-1',
+        reviewedByUserId: 'teacher-1',
+        reviewNote: '  Good work  ',
+        awardedMarks: 8.5,
+      }),
+    );
+
+    expect(repository.reviewSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schoolId: 'school-1',
+        homeworkAssignmentId: 'homework-1',
+        submissionId: 'submission-1',
+        homeworkTargetId: 'target-1',
+        studentId: 'student-1',
+        enrollmentId: 'enrollment-1',
+        reviewedByUserId: 'teacher-1',
+        reviewNote: 'Good work',
+        awardedMarks: 8.5,
+        reviewedAt: expect.any(Date),
+      }),
+    );
+    expect(submission.status).toBe(HomeworkSubmissionStatus.REVIEWED);
+    expect(authRepository.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'homework.submission.review' }),
+    );
+  });
+
+  it('reviews a late submission with the same reviewed target lifecycle', async () => {
+    const repository = createRepository({
+      findReviewableSubmission: jest.fn().mockResolvedValue(
+        seedReviewSubmission({
+          status: HomeworkSubmissionStatus.LATE,
+          submittedAt: new Date('2026-09-11T08:00:00.000Z'),
+        }),
+      ),
+    });
+    const useCase = new ReviewHomeworkSubmissionUseCase(
+      repository,
+      createAuthRepository(),
+    );
+
+    await withTeacherScope(() =>
+      useCase.execute({
+        homeworkId: 'homework-1',
+        submissionId: 'submission-1',
+        reviewedByUserId: 'teacher-1',
+      }),
+    );
+
+    expect(repository.reviewSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewNote: null,
+        awardedMarks: null,
+      }),
+    );
+  });
+
+  it('rejects awarded marks for ungraded or over-max homework', async () => {
+    const repository = createRepository({
+      findReviewableSubmission: jest
+        .fn()
+        .mockResolvedValue(seedReviewSubmission({ isGraded: false })),
+    });
+    const useCase = new ReviewHomeworkSubmissionUseCase(
+      repository,
+      createAuthRepository(),
+    );
+
+    await expect(
+      withTeacherScope(() =>
+        useCase.execute({
+          homeworkId: 'homework-1',
+          submissionId: 'submission-1',
+          reviewedByUserId: 'teacher-1',
+          awardedMarks: 1,
+        }),
+      ),
+    ).rejects.toMatchObject<Partial<DomainException>>({
+      code: 'homework.submission.review_invalid',
+    });
+    expect(repository.reviewSubmission).not.toHaveBeenCalled();
+
+    repository.findReviewableSubmission.mockResolvedValue(
+      seedReviewSubmission({ totalMarks: 10, isGraded: true }),
+    );
+
+    await expect(
+      withTeacherScope(() =>
+        useCase.execute({
+          homeworkId: 'homework-1',
+          submissionId: 'submission-1',
+          reviewedByUserId: 'teacher-1',
+          awardedMarks: 11,
+        }),
+      ),
+    ).rejects.toMatchObject<Partial<DomainException>>({
+      code: 'homework.submission.review_invalid',
+    });
+  });
+
+  it('rejects duplicate review attempts', async () => {
+    const repository = createRepository({
+      findReviewableSubmission: jest
+        .fn()
+        .mockResolvedValue(
+          seedReviewSubmission({ status: HomeworkSubmissionStatus.REVIEWED }),
+        ),
+    });
+    const useCase = new ReviewHomeworkSubmissionUseCase(
+      repository,
+      createAuthRepository(),
+    );
+
+    await expect(
+      withTeacherScope(() =>
+        useCase.execute({
+          homeworkId: 'homework-1',
+          submissionId: 'submission-1',
+          reviewedByUserId: 'teacher-1',
+        }),
+      ),
+    ).rejects.toMatchObject<Partial<DomainException>>({
+      code: 'homework.submission.already_reviewed',
+    });
+    expect(repository.reviewSubmission).not.toHaveBeenCalled();
+  });
+
+  it('performs no grade notification xp or reward side effects during review', async () => {
+    const repository = createRepository();
+    const useCase = new ReviewHomeworkSubmissionUseCase(
+      repository,
+      createAuthRepository(),
+    );
+
+    await withTeacherScope(() =>
+      useCase.execute({
+        homeworkId: 'homework-1',
+        submissionId: 'submission-1',
+        reviewedByUserId: 'teacher-1',
+      }),
+    );
+
+    expect((repository as any).createGradeItem).toBeUndefined();
+    expect((repository as any).createNotification).toBeUndefined();
+    expect((repository as any).grantXp).toBeUndefined();
+    expect((repository as any).createRewardRedemption).toBeUndefined();
+  });
+});
+
+describe('HomeworkRepository submission review methods', () => {
+  it('builds teacher review list filters that exclude draft submissions', async () => {
+    const { repository, prismaMocks } = createPrismaBackedRepository();
+    prismaMocks.homeworkSubmission.findMany.mockResolvedValue([]);
+    prismaMocks.homeworkSubmission.count.mockResolvedValue(0);
+
+    await repository.listReviewableSubmissions({
+      homeworkAssignmentId: 'homework-1',
+      page: 1,
+      limit: 25,
+    });
+
+    const where = prismaMocks.homeworkSubmission.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({
+      homeworkAssignmentId: 'homework-1',
+      status: {
+        in: [
+          HomeworkSubmissionStatus.SUBMITTED,
+          HomeworkSubmissionStatus.LATE,
+          HomeworkSubmissionStatus.REVIEWED,
+        ],
+      },
+      homeworkAssignment: {
+        is: {
+          deletedAt: null,
+          status: {
+            in: [
+              HomeworkAssignmentStatus.PUBLISHED,
+              HomeworkAssignmentStatus.CLOSED,
+            ],
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(where)).not.toContain(HomeworkSubmissionStatus.DRAFT);
+  });
+
+  it('keeps draft submissions hidden even when explicit review statuses are provided', async () => {
+    const { repository, prismaMocks } = createPrismaBackedRepository();
+    prismaMocks.homeworkSubmission.findMany.mockResolvedValue([]);
+    prismaMocks.homeworkSubmission.count.mockResolvedValue(0);
+
+    await repository.listReviewableSubmissions({
+      homeworkAssignmentId: 'homework-1',
+      statuses: [
+        HomeworkSubmissionStatus.DRAFT,
+        HomeworkSubmissionStatus.SUBMITTED,
+        HomeworkSubmissionStatus.REVIEWED,
+      ],
+      page: 1,
+      limit: 25,
+    });
+
+    const where = prismaMocks.homeworkSubmission.findMany.mock.calls[0][0].where;
+    expect(where.status.in).toEqual([
+      HomeworkSubmissionStatus.SUBMITTED,
+      HomeworkSubmissionStatus.REVIEWED,
+    ]);
+    expect(where.status.in).not.toContain(HomeworkSubmissionStatus.DRAFT);
+  });
+
+  it.each([
+    HomeworkAssignmentStatus.DRAFT,
+    HomeworkAssignmentStatus.CANCELLED,
+    HomeworkAssignmentStatus.ARCHIVED,
+  ])(
+    'builds teacher review list filters that exclude %s assignments',
+    async (hiddenStatus) => {
+      const { repository, prismaMocks } = createPrismaBackedRepository();
+      prismaMocks.homeworkSubmission.findMany.mockResolvedValue([]);
+      prismaMocks.homeworkSubmission.count.mockResolvedValue(0);
+
+      await repository.listReviewableSubmissions({
+        homeworkAssignmentId: 'homework-1',
+        page: 1,
+        limit: 25,
+      });
+
+      const where =
+        prismaMocks.homeworkSubmission.findMany.mock.calls[0][0].where;
+      const visibleStatuses = where.homeworkAssignment.is.status.in;
+      expect(visibleStatuses).toEqual([
+        HomeworkAssignmentStatus.PUBLISHED,
+        HomeworkAssignmentStatus.CLOSED,
+      ]);
+      expect(visibleStatuses).not.toContain(hiddenStatus);
+    },
+  );
+
+  it('finds one visible review submission without exposing drafts', async () => {
+    const { repository, prismaMocks } = createPrismaBackedRepository();
+    prismaMocks.homeworkSubmission.findFirst.mockResolvedValue(null);
+
+    await repository.findReviewableSubmission({
+      homeworkAssignmentId: 'homework-1',
+      submissionId: 'submission-1',
+    });
+
+    const where =
+      prismaMocks.homeworkSubmission.findFirst.mock.calls[0][0].where;
+    expect(where).toMatchObject({
+      id: 'submission-1',
+      homeworkAssignmentId: 'homework-1',
+      status: {
+        in: [
+          HomeworkSubmissionStatus.SUBMITTED,
+          HomeworkSubmissionStatus.LATE,
+          HomeworkSubmissionStatus.REVIEWED,
+        ],
+      },
+      homeworkAssignment: {
+        is: {
+          deletedAt: null,
+          status: {
+            in: [
+              HomeworkAssignmentStatus.PUBLISHED,
+              HomeworkAssignmentStatus.CLOSED,
+            ],
+          },
+        },
+      },
+    });
+  });
+
+  it.each([
+    HomeworkAssignmentStatus.CANCELLED,
+    HomeworkAssignmentStatus.ARCHIVED,
+  ])(
+    'builds detail filters that return not found for %s assignment submissions',
+    async (hiddenStatus) => {
+      const { repository, prismaMocks } = createPrismaBackedRepository();
+      prismaMocks.homeworkSubmission.findFirst.mockResolvedValue(null);
+
+      const submission = await repository.findReviewableSubmission({
+        homeworkAssignmentId: 'homework-1',
+        submissionId: 'submission-1',
+      });
+
+      const where =
+        prismaMocks.homeworkSubmission.findFirst.mock.calls[0][0].where;
+      const visibleStatuses = where.homeworkAssignment.is.status.in;
+      expect(submission).toBeNull();
+      expect(visibleStatuses).toEqual([
+        HomeworkAssignmentStatus.PUBLISHED,
+        HomeworkAssignmentStatus.CLOSED,
+      ]);
+      expect(visibleStatuses).not.toContain(hiddenStatus);
+    },
+  );
+
+  it.each([
+    HomeworkAssignmentStatus.PUBLISHED,
+    HomeworkAssignmentStatus.CLOSED,
+  ])(
+    'keeps %s assignment submitted late and reviewed submissions visible',
+    async (visibleAssignmentStatus) => {
+      const { repository, prismaMocks } = createPrismaBackedRepository();
+      prismaMocks.homeworkSubmission.findFirst.mockResolvedValue(
+        seedReviewSubmission({
+          assignmentStatus: visibleAssignmentStatus,
+          status: HomeworkSubmissionStatus.REVIEWED,
+        }),
+      );
+
+      const submission = await repository.findReviewableSubmission({
+        homeworkAssignmentId: 'homework-1',
+        submissionId: 'submission-1',
+      });
+
+      const where =
+        prismaMocks.homeworkSubmission.findFirst.mock.calls[0][0].where;
+      expect(where.status.in).toEqual([
+        HomeworkSubmissionStatus.SUBMITTED,
+        HomeworkSubmissionStatus.LATE,
+        HomeworkSubmissionStatus.REVIEWED,
+      ]);
+      expect(where.homeworkAssignment.is.status.in).toContain(
+        visibleAssignmentStatus,
+      );
+      expect(submission?.status).toBe(HomeworkSubmissionStatus.REVIEWED);
+    },
+  );
+
+  it('updates submission and target together with school-safe transaction bounds', async () => {
+    const { repository, prismaMocks, txMocks } = createPrismaBackedRepository();
+    txMocks.homeworkSubmission.findFirst
+      .mockResolvedValueOnce(
+        seedReviewSubmission({ status: HomeworkSubmissionStatus.SUBMITTED }),
+      )
+      .mockResolvedValueOnce(
+        seedReviewSubmission({ status: HomeworkSubmissionStatus.REVIEWED }),
+      );
+
+    const result = await repository.reviewSubmission({
+      schoolId: 'school-1',
+      homeworkAssignmentId: 'homework-1',
+      submissionId: 'submission-1',
+      homeworkTargetId: 'target-1',
+      studentId: 'student-1',
+      enrollmentId: 'enrollment-1',
+      reviewedByUserId: 'teacher-1',
+      reviewedAt: new Date('2026-05-25T08:30:00.000Z'),
+      reviewNote: 'Done',
+      awardedMarks: 8,
+    });
+
+    expect(prismaMocks.$transaction).toHaveBeenCalled();
+    expect(txMocks.homeworkSubmission.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          schoolId: 'school-1',
+          id: 'submission-1',
+          homeworkAssignmentId: 'homework-1',
+          homeworkTargetId: 'target-1',
+          studentId: 'student-1',
+          enrollmentId: 'enrollment-1',
+        },
+        data: expect.objectContaining({
+          status: HomeworkSubmissionStatus.REVIEWED,
+          reviewedByUserId: 'teacher-1',
+          reviewNote: 'Done',
+          awardedMarks: 8,
+        }),
+      }),
+    );
+    expect(txMocks.homeworkTarget.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          schoolId: 'school-1',
+          id: 'target-1',
+          homeworkAssignmentId: 'homework-1',
+          studentId: 'student-1',
+          enrollmentId: 'enrollment-1',
+        },
+        data: expect.objectContaining({
+          status: HomeworkTargetStatus.REVIEWED,
+          reviewedAt: expect.any(Date),
+        }),
+      }),
+    );
+    expect(result.outcome).toBe('reviewed');
+  });
 });
 
 function seedTarget(overrides?: {
@@ -372,8 +855,84 @@ function seedSubmission(overrides?: Record<string, unknown>): any {
     status: HomeworkSubmissionStatus.DRAFT,
     bodyText: 'Draft answer',
     submittedAt: null,
+    reviewedAt: null,
+    reviewedByUserId: null,
+    reviewNote: null,
+    awardedMarks: null,
     createdAt: new Date('2026-05-25T08:00:00.000Z'),
     updatedAt: new Date('2026-05-25T08:05:00.000Z'),
     ...overrides,
+  };
+}
+
+function seedReviewSubmission(overrides?: Record<string, unknown>): any {
+  const submittedAt =
+    (overrides?.submittedAt as Date | undefined) ??
+    new Date('2026-09-10T08:00:00.000Z');
+  const totalMarks = overrides?.totalMarks ?? { toNumber: () => 10 };
+  const isGraded = overrides?.isGraded ?? true;
+  const assignmentStatus =
+    overrides?.assignmentStatus ?? HomeworkAssignmentStatus.PUBLISHED;
+
+  return {
+    ...seedSubmission({
+      status: HomeworkSubmissionStatus.SUBMITTED,
+      bodyText: 'Submitted answer',
+      submittedAt,
+      ...overrides,
+    }),
+    student: {
+      id: 'student-1',
+      firstName: 'Student',
+      lastName: 'One',
+    },
+    homeworkAssignment: {
+      id: 'homework-1',
+      status: assignmentStatus,
+      dueAt: new Date('2026-09-10T10:00:00.000Z'),
+      totalMarks,
+      isGraded,
+      deletedAt: null,
+    },
+    homeworkTarget: {
+      id: 'target-1',
+      status: HomeworkTargetStatus.SUBMITTED,
+      submittedAt,
+      reviewedAt: null,
+    },
+  };
+}
+
+function modelMocks() {
+  return {
+    findFirst: jest.fn(),
+    findMany: jest.fn(),
+    count: jest.fn(),
+    updateMany: jest.fn(),
+  };
+}
+
+function createPrismaBackedRepository(): {
+  repository: HomeworkRepository;
+  prismaMocks: any;
+  txMocks: any;
+} {
+  const txMocks = {
+    homeworkSubmission: modelMocks(),
+    homeworkTarget: modelMocks(),
+  };
+  const prismaMocks = {
+    homeworkSubmission: modelMocks(),
+    homeworkTarget: modelMocks(),
+    $transaction: jest.fn(async (callback) => callback(txMocks)),
+  };
+  const prisma = {
+    scoped: prismaMocks,
+  };
+
+  return {
+    repository: new HomeworkRepository(prisma as any),
+    prismaMocks,
+    txMocks,
   };
 }

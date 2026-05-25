@@ -13,6 +13,9 @@ import {
 } from './application/homework-assignments.use-cases';
 import {
   GetHomeworkSubmissionUseCase,
+  GetHomeworkSubmissionForReviewUseCase,
+  ListHomeworkSubmissionsForReviewUseCase,
+  ReviewHomeworkSubmissionUseCase,
   SaveHomeworkSubmissionDraftUseCase,
   SubmitHomeworkSubmissionUseCase,
 } from './application/homework-submissions.use-cases';
@@ -34,6 +37,9 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     ListHomeworkTargetsUseCase,
     ResolveHomeworkTargetsUseCase,
     GetHomeworkSubmissionUseCase,
+    ListHomeworkSubmissionsForReviewUseCase,
+    GetHomeworkSubmissionForReviewUseCase,
+    ReviewHomeworkSubmissionUseCase,
     SaveHomeworkSubmissionDraftUseCase,
     SubmitHomeworkSubmissionUseCase,
   ],
@@ -49,6 +55,9 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     ListHomeworkTargetsUseCase,
     ResolveHomeworkTargetsUseCase,
     GetHomeworkSubmissionUseCase,
+    ListHomeworkSubmissionsForReviewUseCase,
+    GetHomeworkSubmissionForReviewUseCase,
+    ReviewHomeworkSubmissionUseCase,
     SaveHomeworkSubmissionDraftUseCase,
     SubmitHomeworkSubmissionUseCase,
   ],
