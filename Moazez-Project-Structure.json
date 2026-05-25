@@ -339,6 +339,11 @@
           "icon": "📝"
         },
         {
+          "name": "sprint-14a-homework-submissions-contract-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
           "name": "sprint-6c-planning-audit.md",
           "type": "file",
           "icon": "📝"
@@ -14534,7 +14539,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-05-25T02:10:55.995Z",
+    "generated": "2026-05-25T03:10:27.607Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
