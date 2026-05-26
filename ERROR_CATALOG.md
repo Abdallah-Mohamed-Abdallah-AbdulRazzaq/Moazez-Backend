@@ -257,6 +257,16 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `homework.attachment.file_not_found`      | 404  | Homework attachment file was not found       |
 | `homework.attachment.read_only`           | 409  | Homework attachment cannot be changed for this assignment |
 | `homework.attachment.invalid_reorder`     | 422  | Homework attachment reorder target is invalid |
+| `homework.answer.not_found`               | 404  | Homework answer was not found                |
+| `homework.answer.invalid_payload`         | 422  | Homework answer payload is invalid           |
+| `homework.answer.invalid_option`          | 422  | Homework answer option is invalid            |
+| `homework.answer.missing_required`        | 422  | Required homework answer is missing          |
+| `homework.answer.read_only`               | 409  | Homework answer cannot be changed in this submission state |
+| `homework.answer.invalid_submission_scope` | 404 | Homework answer submission scope was not found |
+| `homework.submission_attachment.not_found` | 404 | Homework submission attachment was not found |
+| `homework.submission_attachment.file_not_found` | 404 | Homework submission attachment file was not found |
+| `homework.submission_attachment.read_only` | 409 | Homework submission attachment cannot be changed in this submission state |
+| `homework.submission_attachment.invalid_reorder` | 422 | Homework submission attachment reorder target is invalid |
 | `homework.submission.target_not_found`    | 404  | Homework submission target was not found     |
 | `homework.submission.not_found`           | 404  | Homework submission was not found            |
 | `homework.submission.not_submittable`     | 409  | Homework submission is not allowed in the current state |

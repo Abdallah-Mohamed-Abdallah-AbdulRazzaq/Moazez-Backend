@@ -737,6 +737,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
     const routes = listRegisteredStudentRoutes();
 
     expect(routes).toEqual([
+      'DELETE /api/v1/student/homeworks/:homeworkId/submission/attachments/:attachmentId',
       'GET /api/v1/student/announcements',
       'GET /api/v1/student/announcements/:announcementId',
       'GET /api/v1/student/announcements/:announcementId/attachments',
@@ -758,6 +759,8 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'GET /api/v1/student/homeworks',
       'GET /api/v1/student/homeworks/:homeworkId',
       'GET /api/v1/student/homeworks/:homeworkId/submission',
+      'GET /api/v1/student/homeworks/:homeworkId/submission/answers',
+      'GET /api/v1/student/homeworks/:homeworkId/submission/attachments',
       'GET /api/v1/student/messages/conversations',
       'GET /api/v1/student/messages/conversations/:conversationId',
       'GET /api/v1/student/messages/conversations/:conversationId/messages',
@@ -775,11 +778,18 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'GET /api/v1/student/tasks/:taskId/submissions',
       'GET /api/v1/student/tasks/:taskId/submissions/:submissionId',
       'GET /api/v1/student/tasks/summary',
+      'PATCH /api/v1/student/homeworks/:homeworkId/submission/answers/:questionId',
+      'PATCH /api/v1/student/homeworks/:homeworkId/submission/attachments/:attachmentId',
+      'PATCH /api/v1/student/homeworks/:homeworkId/submission/attachments/:attachmentId/reorder',
       'POST /api/v1/student/announcements/:announcementId/read',
+      'POST /api/v1/student/homeworks/:homeworkId/submission/attachments',
+      'POST /api/v1/student/homeworks/:homeworkId/submission/draft',
+      'POST /api/v1/student/homeworks/:homeworkId/submission/submit',
       'POST /api/v1/student/homeworks/:homeworkId/submit',
       'POST /api/v1/student/messages/conversations/:conversationId/messages',
       'POST /api/v1/student/messages/conversations/:conversationId/read',
       'PUT /api/v1/student/homeworks/:homeworkId/submission',
+      'PUT /api/v1/student/homeworks/:homeworkId/submission/answers',
     ]);
 
     for (const absentRoute of [
@@ -791,8 +801,6 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'GET /api/v1/student/notifications',
       'GET /api/v1/student/messages/contacts',
       'POST /api/v1/student/homeworks/:homeworkId/submission/resolve',
-      'POST /api/v1/student/homeworks/:homeworkId/submission/submit',
-      'PUT /api/v1/student/homeworks/:homeworkId/submission/answers',
       'PUT /api/v1/student/homeworks/:homeworkId/submission/answers/:questionId',
       'POST /api/v1/student/messages/conversations',
       'POST /api/v1/student/messages/conversations/:conversationId/attachments',

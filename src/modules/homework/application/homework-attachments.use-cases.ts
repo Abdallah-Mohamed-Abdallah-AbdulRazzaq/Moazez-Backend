@@ -38,9 +38,8 @@ export class ListHomeworkAttachmentsUseCase {
   ): Promise<HomeworkAttachmentsListResponseDto> {
     requireHomeworkScope();
     await findAssignmentOrThrow(this.homeworkRepository, homeworkId);
-    const attachments = await this.homeworkRepository.listAttachments(
-      homeworkId,
-    );
+    const attachments =
+      await this.homeworkRepository.listAttachments(homeworkId);
     return presentHomeworkAttachments(attachments);
   }
 }
@@ -261,7 +260,9 @@ function assertAttachmentsMutable(
   });
 }
 
-function normalizeNullableText(value: string | null | undefined): string | null {
+function normalizeNullableText(
+  value: string | null | undefined,
+): string | null {
   if (value === undefined || value === null) return null;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;

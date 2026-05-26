@@ -1,5 +1,6 @@
 import {
   HomeworkAssignmentStatus,
+  HomeworkSubmissionStatus,
   HomeworkTargetStatus,
   Prisma,
 } from '@prisma/client';
@@ -19,6 +20,14 @@ import type {
   ParentHomeworksListReadModel,
   ParentHomeworkTargetReadModel,
 } from '../infrastructure/parent-homeworks-read.adapter';
+import {
+  HomeworkAnswerPresenterModel,
+  presentHomeworkAnswerParent,
+} from '../../../homework/presenters/homework-answer.presenter';
+import {
+  HomeworkSubmissionAttachmentPresenterModel,
+  presentHomeworkSubmissionAttachment,
+} from '../../../homework/presenters/homework-submission-attachment.presenter';
 
 interface ParentHomeworkSubmissionPresenterModel {
   id: string;
@@ -29,6 +38,8 @@ interface ParentHomeworkSubmissionPresenterModel {
   reviewNote: string | null;
   awardedMarks: Prisma.Decimal | number | string | null;
   updatedAt: Date;
+  answers?: HomeworkAnswerPresenterModel[];
+  attachments?: HomeworkSubmissionAttachmentPresenterModel[];
 }
 
 export class ParentHomeworksPresenter {
@@ -216,6 +227,16 @@ export function presentParentHomeworkSubmission(
     status:
       submission.status.toLowerCase() as ParentHomeworkSubmissionDto['status'],
     bodyText: submission.bodyText,
+    answers: isSubmittedSubmission(submission)
+      ? (submission.answers ?? []).map((answer) =>
+          presentHomeworkAnswerParent(answer),
+        )
+      : [],
+    attachments: isSubmittedSubmission(submission)
+      ? (submission.attachments ?? []).map((attachment) =>
+          presentHomeworkSubmissionAttachment(attachment),
+        )
+      : [],
     submittedAt: presentDateTime(submission.submittedAt),
     reviewedAt: presentDateTime(submission.reviewedAt),
     reviewNote: submission.reviewNote,
@@ -223,6 +244,16 @@ export function presentParentHomeworkSubmission(
     totalMarks: presentDecimal(assignment.totalMarks),
     updatedAt: submission.updatedAt.toISOString(),
   };
+}
+
+function isSubmittedSubmission(
+  submission: Pick<ParentHomeworkSubmissionPresenterModel, 'status'>,
+): boolean {
+  return (
+    submission.status === HomeworkSubmissionStatus.SUBMITTED ||
+    submission.status === HomeworkSubmissionStatus.LATE ||
+    submission.status === HomeworkSubmissionStatus.REVIEWED
+  );
 }
 
 function presentNamedReference(entity: {

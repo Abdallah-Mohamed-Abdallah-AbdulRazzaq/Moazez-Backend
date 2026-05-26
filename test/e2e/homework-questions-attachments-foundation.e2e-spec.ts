@@ -81,12 +81,11 @@ describe('Sprint 15E Homework questions and attachments foundation (e2e)', () =>
     );
   });
 
-  it('keeps answer persistence, submission uploads, grade sync, XP, and parent submit deferred', () => {
+  it('keeps uploads, grade sync, XP, and parent submit deferred', () => {
     const routes = listRegisteredRoutes();
 
     for (const absentRoute of [
       'POST /api/v1/student/homeworks/:homeworkId/answers',
-      'PUT /api/v1/student/homeworks/:homeworkId/submission/answers/:questionId',
       'POST /api/v1/student/homeworks/:homeworkId/attachments',
       'POST /api/v1/student/homeworks/:homeworkId/proof',
       'GET /api/v1/student/homeworks/:homeworkId/questions',
@@ -107,16 +106,16 @@ describe('Sprint 15E Homework questions and attachments foundation (e2e)', () =>
 
     for (const route of routes) {
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/student\/homeworks\/.*(answer|proof|upload|grade-sync|sync-grade|xp|reward)/,
+        /^.+ \/api\/v1\/student\/homeworks\/.*(proof|upload|grade-sync|sync-grade|xp|reward)/,
       );
       expect(route).not.toMatch(
         /^.+ \/api\/v1\/parent\/children\/:studentId\/homeworks\/.*(submit|answer|proof|upload|grade-sync|sync-grade|xp|reward)/,
       );
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/homework\/.*(answer|proof|upload|grade-sync|sync-grade|notification|xp|reward)/,
+        /^.+ \/api\/v1\/homework\/.*(proof|upload|grade-sync|sync-grade|notification|xp|reward)/,
       );
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/teacher\/homeworks\/.*(answer|proof|upload|grade-sync|sync-grade|notification|xp|reward)/,
+        /^.+ \/api\/v1\/teacher\/homeworks\/.*(proof|upload|grade-sync|sync-grade|notification|xp|reward)/,
       );
     }
   });

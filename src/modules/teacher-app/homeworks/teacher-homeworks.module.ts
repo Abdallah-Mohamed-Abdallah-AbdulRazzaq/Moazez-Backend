@@ -20,6 +20,8 @@ import {
   ListTeacherHomeworkAttachmentsUseCase,
   ListTeacherHomeworkAssignmentsUseCase,
   ListTeacherHomeworkQuestionsUseCase,
+  ListTeacherHomeworkSubmissionAnswersUseCase,
+  ListTeacherHomeworkSubmissionAttachmentsUseCase,
   ListTeacherHomeworkSubmissionsUseCase,
   ListTeacherHomeworkTargetsUseCase,
   PublishTeacherHomeworkAssignmentUseCase,
@@ -71,6 +73,8 @@ import { TeacherHomeworksReadAdapter } from './infrastructure/teacher-homeworks-
     DeleteTeacherHomeworkAttachmentUseCase,
     ListTeacherHomeworkSubmissionsUseCase,
     GetTeacherHomeworkSubmissionUseCase,
+    ListTeacherHomeworkSubmissionAnswersUseCase,
+    ListTeacherHomeworkSubmissionAttachmentsUseCase,
     ReviewTeacherHomeworkSubmissionUseCase,
   ],
 })

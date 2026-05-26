@@ -322,6 +322,8 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
       'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId',
       'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions',
       'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId',
+      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers',
+      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/attachments',
       'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/targets',
       'GET /api/v1/teacher/homeworks/dashboard',
       'GET /api/v1/teacher/messages/conversations',

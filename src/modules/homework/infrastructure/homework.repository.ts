@@ -95,6 +95,53 @@ const HOMEWORK_ATTACHMENT_SELECT = {
   },
 } satisfies Prisma.HomeworkAssignmentAttachmentSelect;
 
+const HOMEWORK_SUBMISSION_ANSWER_SELECT = {
+  id: true,
+  schoolId: true,
+  homeworkSubmissionId: true,
+  homeworkAssignmentId: true,
+  homeworkTargetId: true,
+  homeworkQuestionId: true,
+  textAnswer: true,
+  selectedOptionIds: true,
+  isDraft: true,
+  teacherComment: true,
+  awardedPoints: true,
+  reviewedAt: true,
+  reviewedByUserId: true,
+  deletedAt: true,
+  createdAt: true,
+  updatedAt: true,
+  homeworkQuestion: {
+    select: HOMEWORK_QUESTION_SELECT,
+  },
+} satisfies Prisma.HomeworkSubmissionAnswerSelect;
+
+const HOMEWORK_SUBMISSION_ATTACHMENT_SELECT = {
+  id: true,
+  schoolId: true,
+  homeworkSubmissionId: true,
+  homeworkAssignmentId: true,
+  homeworkTargetId: true,
+  fileId: true,
+  title: true,
+  description: true,
+  sortOrder: true,
+  createdByUserId: true,
+  deletedAt: true,
+  createdAt: true,
+  updatedAt: true,
+  file: {
+    select: {
+      id: true,
+      originalName: true,
+      mimeType: true,
+      sizeBytes: true,
+      deletedAt: true,
+    },
+  },
+} satisfies Prisma.HomeworkSubmissionAttachmentSelect;
+
 const HOMEWORK_ASSIGNMENT_ARGS =
   Prisma.validator<Prisma.HomeworkAssignmentDefaultArgs>()({
     select: {
@@ -335,6 +382,16 @@ const HOMEWORK_SUBMISSION_ARGS =
       awardedMarks: true,
       createdAt: true,
       updatedAt: true,
+      answers: {
+        where: { deletedAt: null },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: HOMEWORK_SUBMISSION_ANSWER_SELECT,
+      },
+      attachments: {
+        where: { deletedAt: null },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+        select: HOMEWORK_SUBMISSION_ATTACHMENT_SELECT,
+      },
     },
   });
 
@@ -356,6 +413,16 @@ const HOMEWORK_REVIEW_SUBMISSION_ARGS =
       awardedMarks: true,
       createdAt: true,
       updatedAt: true,
+      answers: {
+        where: { deletedAt: null },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: HOMEWORK_SUBMISSION_ANSWER_SELECT,
+      },
+      attachments: {
+        where: { deletedAt: null },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+        select: HOMEWORK_SUBMISSION_ATTACHMENT_SELECT,
+      },
       student: {
         select: {
           id: true,
@@ -400,6 +467,15 @@ const HOMEWORK_TARGET_FOR_SUBMISSION_ARGS =
           status: true,
           dueAt: true,
           deletedAt: true,
+          questions: {
+            where: { deletedAt: null },
+            orderBy: [
+              { sortOrder: 'asc' },
+              { createdAt: 'asc' },
+              { id: 'asc' },
+            ],
+            select: HOMEWORK_QUESTION_SELECT,
+          },
         },
       },
       submissions: {
@@ -438,10 +514,19 @@ export type HomeworkAttachmentRecord =
   Prisma.HomeworkAssignmentAttachmentGetPayload<{
     select: typeof HOMEWORK_ATTACHMENT_SELECT;
   }>;
+export type HomeworkSubmissionAnswerRecord =
+  Prisma.HomeworkSubmissionAnswerGetPayload<{
+    select: typeof HOMEWORK_SUBMISSION_ANSWER_SELECT;
+  }>;
+export type HomeworkSubmissionAttachmentRecord =
+  Prisma.HomeworkSubmissionAttachmentGetPayload<{
+    select: typeof HOMEWORK_SUBMISSION_ATTACHMENT_SELECT;
+  }>;
 export type HomeworkReviewSubmissionRecord =
   Prisma.HomeworkSubmissionGetPayload<typeof HOMEWORK_REVIEW_SUBMISSION_ARGS>;
-export type HomeworkTargetForSubmissionRecord =
-  Prisma.HomeworkTargetGetPayload<typeof HOMEWORK_TARGET_FOR_SUBMISSION_ARGS>;
+export type HomeworkTargetForSubmissionRecord = Prisma.HomeworkTargetGetPayload<
+  typeof HOMEWORK_TARGET_FOR_SUBMISSION_ARGS
+>;
 
 export type HomeworkStatusCounters = Record<HomeworkTargetStatus, number> & {
   totalTargets: number;
@@ -506,6 +591,14 @@ export type CreateHomeworkAttachmentData =
   Prisma.HomeworkAssignmentAttachmentUncheckedCreateInput;
 export type UpdateHomeworkAttachmentData =
   Prisma.HomeworkAssignmentAttachmentUncheckedUpdateInput;
+export type CreateHomeworkSubmissionAnswerData =
+  Prisma.HomeworkSubmissionAnswerUncheckedCreateInput;
+export type UpdateHomeworkSubmissionAnswerData =
+  Prisma.HomeworkSubmissionAnswerUncheckedUpdateInput;
+export type CreateHomeworkSubmissionAttachmentData =
+  Prisma.HomeworkSubmissionAttachmentUncheckedCreateInput;
+export type UpdateHomeworkSubmissionAttachmentData =
+  Prisma.HomeworkSubmissionAttachmentUncheckedUpdateInput;
 export type SaveHomeworkSubmissionDraftResult =
   | { outcome: 'saved'; submission: HomeworkSubmissionRecord }
   | { outcome: 'already_submitted'; submission: HomeworkSubmissionRecord };
@@ -888,23 +981,23 @@ export class HomeworkRepository {
   async findAttachmentFile(fileId: string): Promise<{
     id: string;
     schoolId: string | null;
+    uploaderId: string | null;
     deletedAt: Date | null;
   } | null> {
     return this.scopedPrisma.file.findFirst({
       where: { id: fileId, deletedAt: null },
-      select: { id: true, schoolId: true, deletedAt: true },
+      select: { id: true, schoolId: true, uploaderId: true, deletedAt: true },
     });
   }
 
   async createAttachment(
     data: CreateHomeworkAttachmentData,
   ): Promise<HomeworkAttachmentRecord> {
-    const attachment = await this.scopedPrisma.homeworkAssignmentAttachment.create(
-      {
+    const attachment =
+      await this.scopedPrisma.homeworkAssignmentAttachment.create({
         data,
         select: HOMEWORK_ATTACHMENT_SELECT,
-      },
-    );
+      });
 
     return attachment;
   }
@@ -940,6 +1033,227 @@ export class HomeworkRepository {
     });
   }
 
+  findSubmissionById(input: {
+    homeworkAssignmentId: string;
+    submissionId: string;
+  }): Promise<HomeworkSubmissionRecord | null> {
+    return this.scopedPrisma.homeworkSubmission.findFirst({
+      where: {
+        id: input.submissionId,
+        homeworkAssignmentId: input.homeworkAssignmentId,
+      },
+      ...HOMEWORK_SUBMISSION_ARGS,
+    });
+  }
+
+  listSubmissionAnswers(input: {
+    homeworkAssignmentId: string;
+    submissionId: string;
+  }): Promise<HomeworkSubmissionAnswerRecord[]> {
+    return this.scopedPrisma.homeworkSubmissionAnswer.findMany({
+      where: {
+        homeworkAssignmentId: input.homeworkAssignmentId,
+        homeworkSubmissionId: input.submissionId,
+        deletedAt: null,
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: HOMEWORK_SUBMISSION_ANSWER_SELECT,
+    });
+  }
+
+  findSubmissionAnswerById(input: {
+    homeworkAssignmentId: string;
+    submissionId: string;
+    answerId: string;
+  }): Promise<HomeworkSubmissionAnswerRecord | null> {
+    return this.scopedPrisma.homeworkSubmissionAnswer.findFirst({
+      where: {
+        id: input.answerId,
+        homeworkAssignmentId: input.homeworkAssignmentId,
+        homeworkSubmissionId: input.submissionId,
+        deletedAt: null,
+      },
+      select: HOMEWORK_SUBMISSION_ANSWER_SELECT,
+    });
+  }
+
+  async resolveDraftSubmission(input: {
+    schoolId: string;
+    homeworkAssignmentId: string;
+    homeworkTargetId: string;
+    studentId: string;
+    enrollmentId: string;
+    bodyText?: string | null;
+  }): Promise<SaveHomeworkSubmissionDraftResult> {
+    return this.scopedPrisma.$transaction(async (tx) => {
+      const existing = await tx.homeworkSubmission.findUnique({
+        where: {
+          schoolId_homeworkTargetId: {
+            schoolId: input.schoolId,
+            homeworkTargetId: input.homeworkTargetId,
+          },
+        },
+        ...HOMEWORK_SUBMISSION_ARGS,
+      });
+
+      if (existing && existing.status !== HomeworkSubmissionStatus.DRAFT) {
+        return { outcome: 'already_submitted', submission: existing };
+      }
+
+      if (existing) {
+        if (input.bodyText === undefined) {
+          return { outcome: 'saved', submission: existing };
+        }
+
+        const submission = await tx.homeworkSubmission.update({
+          where: { id: existing.id },
+          data: { bodyText: input.bodyText },
+          ...HOMEWORK_SUBMISSION_ARGS,
+        });
+
+        return { outcome: 'saved', submission };
+      }
+
+      const submission = await tx.homeworkSubmission.create({
+        data: {
+          schoolId: input.schoolId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          homeworkTargetId: input.homeworkTargetId,
+          studentId: input.studentId,
+          enrollmentId: input.enrollmentId,
+          status: HomeworkSubmissionStatus.DRAFT,
+          bodyText: input.bodyText ?? null,
+        },
+        ...HOMEWORK_SUBMISSION_ARGS,
+      });
+
+      return { outcome: 'saved', submission };
+    });
+  }
+
+  async upsertSubmissionAnswer(input: {
+    data: CreateHomeworkSubmissionAnswerData;
+    update: UpdateHomeworkSubmissionAnswerData;
+  }): Promise<HomeworkSubmissionAnswerRecord> {
+    const answer = await this.scopedPrisma.$transaction(async (tx) => {
+      const existing = await tx.homeworkSubmissionAnswer.findFirst({
+        where: {
+          homeworkSubmissionId: String(input.data.homeworkSubmissionId),
+          homeworkQuestionId: String(input.data.homeworkQuestionId),
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+
+      if (existing) {
+        return tx.homeworkSubmissionAnswer.update({
+          where: { id: existing.id },
+          data: input.update,
+          select: HOMEWORK_SUBMISSION_ANSWER_SELECT,
+        });
+      }
+
+      return tx.homeworkSubmissionAnswer.create({
+        data: input.data,
+        select: HOMEWORK_SUBMISSION_ANSWER_SELECT,
+      });
+    });
+
+    return answer;
+  }
+
+  listSubmissionAttachments(input: {
+    homeworkAssignmentId: string;
+    submissionId: string;
+  }): Promise<HomeworkSubmissionAttachmentRecord[]> {
+    return this.scopedPrisma.homeworkSubmissionAttachment.findMany({
+      where: {
+        homeworkAssignmentId: input.homeworkAssignmentId,
+        homeworkSubmissionId: input.submissionId,
+        deletedAt: null,
+      },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      select: HOMEWORK_SUBMISSION_ATTACHMENT_SELECT,
+    });
+  }
+
+  findSubmissionAttachmentById(input: {
+    homeworkAssignmentId: string;
+    submissionId: string;
+    attachmentId: string;
+  }): Promise<HomeworkSubmissionAttachmentRecord | null> {
+    return this.scopedPrisma.homeworkSubmissionAttachment.findFirst({
+      where: {
+        id: input.attachmentId,
+        homeworkAssignmentId: input.homeworkAssignmentId,
+        homeworkSubmissionId: input.submissionId,
+        deletedAt: null,
+      },
+      select: HOMEWORK_SUBMISSION_ATTACHMENT_SELECT,
+    });
+  }
+
+  async getNextSubmissionAttachmentSortOrder(
+    submissionId: string,
+  ): Promise<number> {
+    const result =
+      await this.scopedPrisma.homeworkSubmissionAttachment.aggregate({
+        where: { homeworkSubmissionId: submissionId, deletedAt: null },
+        _max: { sortOrder: true },
+      });
+
+    return (result._max.sortOrder ?? -1) + 1;
+  }
+
+  createSubmissionAttachment(
+    data: CreateHomeworkSubmissionAttachmentData,
+  ): Promise<HomeworkSubmissionAttachmentRecord> {
+    return this.scopedPrisma.homeworkSubmissionAttachment.create({
+      data,
+      select: HOMEWORK_SUBMISSION_ATTACHMENT_SELECT,
+    });
+  }
+
+  async updateSubmissionAttachment(input: {
+    homeworkAssignmentId: string;
+    submissionId: string;
+    attachmentId: string;
+    data: UpdateHomeworkSubmissionAttachmentData;
+  }): Promise<HomeworkSubmissionAttachmentRecord> {
+    await this.scopedPrisma.homeworkSubmissionAttachment.updateMany({
+      where: {
+        id: input.attachmentId,
+        homeworkAssignmentId: input.homeworkAssignmentId,
+        homeworkSubmissionId: input.submissionId,
+        deletedAt: null,
+      },
+      data: input.data as Prisma.HomeworkSubmissionAttachmentUncheckedUpdateManyInput,
+    });
+
+    const attachment = await this.findSubmissionAttachmentById(input);
+    if (!attachment) {
+      throw new Error('Updated homework submission attachment was not found');
+    }
+
+    return attachment;
+  }
+
+  async softDeleteSubmissionAttachment(input: {
+    homeworkAssignmentId: string;
+    submissionId: string;
+    attachmentId: string;
+  }): Promise<void> {
+    await this.scopedPrisma.homeworkSubmissionAttachment.updateMany({
+      where: {
+        id: input.attachmentId,
+        homeworkAssignmentId: input.homeworkAssignmentId,
+        homeworkSubmissionId: input.submissionId,
+        deletedAt: null,
+      },
+      data: { deletedAt: new Date() },
+    });
+  }
+
   async listReviewableSubmissions(
     filters: ListHomeworkReviewSubmissionsFilters,
   ): Promise<ListHomeworkReviewSubmissionsResult> {
@@ -947,11 +1261,7 @@ export class HomeworkRepository {
     const [items, total] = await Promise.all([
       this.scopedPrisma.homeworkSubmission.findMany({
         where,
-        orderBy: [
-          { submittedAt: 'asc' },
-          { createdAt: 'asc' },
-          { id: 'asc' },
-        ],
+        orderBy: [{ submittedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         skip: (filters.page - 1) * filters.limit,
         take: filters.limit,
         ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
@@ -1009,7 +1319,7 @@ export class HomeworkRepository {
     homeworkTargetId: string;
     studentId: string;
     enrollmentId: string;
-    bodyText: string;
+    bodyText: string | null;
   }): Promise<SaveHomeworkSubmissionDraftResult> {
     return this.scopedPrisma.$transaction(async (tx) => {
       const existing = await tx.homeworkSubmission.findUnique({
@@ -1055,7 +1365,7 @@ export class HomeworkRepository {
     homeworkTargetId: string;
     studentId: string;
     enrollmentId: string;
-    bodyText: string;
+    bodyText: string | null;
     submissionStatus: HomeworkSubmissionStatus;
     targetStatus: HomeworkTargetStatus;
     submittedAt: Date;
@@ -1113,7 +1423,24 @@ export class HomeworkRepository {
         },
       });
 
-      return { outcome: 'submitted', submission };
+      await tx.homeworkSubmissionAnswer.updateMany({
+        where: {
+          schoolId: input.schoolId,
+          homeworkSubmissionId: submission.id,
+          deletedAt: null,
+        },
+        data: { isDraft: false },
+      });
+
+      const finalized = await tx.homeworkSubmission.findFirst({
+        where: {
+          schoolId: input.schoolId,
+          id: submission.id,
+        },
+        ...HOMEWORK_SUBMISSION_ARGS,
+      });
+
+      return { outcome: 'submitted', submission: finalized ?? submission };
     });
   }
 

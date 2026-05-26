@@ -1,25 +1,18 @@
 import { Transform, Type } from 'class-transformer';
-import {
-  IsInt,
-  IsOptional,
-  IsString,
-  IsUUID,
-  MaxLength,
-  Min,
-} from 'class-validator';
+import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 function trimText(value: unknown): unknown {
   return typeof value === 'string' ? value.trim() : value;
 }
 
-export class CreateHomeworkAttachmentDto {
-  @IsUUID()
+export class CreateHomeworkSubmissionAttachmentDto {
+  @IsString()
   fileId!: string;
 
   @IsOptional()
   @Transform(({ value }) => trimText(value))
   @IsString()
-  @MaxLength(180)
+  @MaxLength(500)
   title?: string | null;
 
   @IsOptional()
@@ -35,11 +28,11 @@ export class CreateHomeworkAttachmentDto {
   sortOrder?: number | null;
 }
 
-export class UpdateHomeworkAttachmentDto {
+export class UpdateHomeworkSubmissionAttachmentDto {
   @IsOptional()
   @Transform(({ value }) => trimText(value))
   @IsString()
-  @MaxLength(180)
+  @MaxLength(500)
   title?: string | null;
 
   @IsOptional()
@@ -49,7 +42,7 @@ export class UpdateHomeworkAttachmentDto {
   description?: string | null;
 }
 
-export class ReorderHomeworkAttachmentDto {
+export class ReorderHomeworkSubmissionAttachmentDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)

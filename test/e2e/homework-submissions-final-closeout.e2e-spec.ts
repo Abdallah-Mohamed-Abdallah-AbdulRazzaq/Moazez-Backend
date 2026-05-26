@@ -226,7 +226,11 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
       expect.arrayContaining([
         'GET /api/v1/student/homeworks/:homeworkId/submission',
         'PUT /api/v1/student/homeworks/:homeworkId/submission',
+        'GET /api/v1/student/homeworks/:homeworkId/submission/answers',
+        'PUT /api/v1/student/homeworks/:homeworkId/submission/answers',
+        'GET /api/v1/student/homeworks/:homeworkId/submission/attachments',
         'POST /api/v1/student/homeworks/:homeworkId/submit',
+        'POST /api/v1/student/homeworks/:homeworkId/submission/submit',
         'GET /api/v1/homework/assignments/:homeworkId/questions',
         'POST /api/v1/homework/assignments/:homeworkId/questions',
         'GET /api/v1/homework/assignments/:homeworkId/attachments',
@@ -237,6 +241,8 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
         'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments',
         'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions',
         'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId',
+        'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers',
+        'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/attachments',
         'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/review',
         'GET /api/v1/parent/children/:studentId/homeworks/:homeworkId',
       ]),
@@ -271,16 +277,16 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
 
     for (const route of routes) {
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/homework\/.*(answer|file|proof|upload|grade-sync|sync-grade|notification|xp|reward)/,
+        /^.+ \/api\/v1\/homework\/.*(file|proof|upload|grade-sync|sync-grade|notification|xp|reward)/,
       );
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/student\/homeworks\/.*(question|answer|attachment|file|proof|upload|grade-sync|sync-grade|notification|xp|reward|pickup|smart-pickup)/,
+        /^.+ \/api\/v1\/student\/homeworks\/.*(file|proof|upload|grade-sync|sync-grade|notification|xp|reward|pickup|smart-pickup)/,
       );
       expect(route).not.toMatch(
         /^.+ \/api\/v1\/parent\/children\/:studentId\/homeworks\/.*(submit|submission\/submit|question|answer|attachment|file|proof|upload|grade-sync|sync-grade|notification|xp|reward|pickup|smart-pickup)/,
       );
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/teacher\/homeworks\/.*(answer|file|proof|upload|grade-sync|sync-grade|notification|xp|reward|pickup|smart-pickup)/,
+        /^.+ \/api\/v1\/teacher\/homeworks\/.*(file|proof|upload|grade-sync|sync-grade|notification|xp|reward|pickup|smart-pickup)/,
       );
     }
   });

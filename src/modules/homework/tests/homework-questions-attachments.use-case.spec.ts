@@ -118,7 +118,11 @@ describe('Homework questions and attachments use cases', () => {
       publishAssignmentWithTargets: jest
         .fn()
         .mockImplementation(async (id, data) =>
-          seedAssignment({ id, ...data, status: HomeworkAssignmentStatus.PUBLISHED }),
+          seedAssignment({
+            id,
+            ...data,
+            status: HomeworkAssignmentStatus.PUBLISHED,
+          }),
         ),
       isPublishedTimetableEntry: jest.fn().mockReturnValue(true),
     };

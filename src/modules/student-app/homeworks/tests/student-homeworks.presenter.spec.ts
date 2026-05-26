@@ -137,6 +137,8 @@ describe('StudentHomeworksPresenter', () => {
       homeworkId: 'homework-1',
       status: 'submitted',
       bodyText: 'Submitted text',
+      answers: [],
+      attachments: [],
       submittedAt: '2026-09-10T09:00:00.000Z',
       reviewedAt: null,
       reviewNote: null,
@@ -187,6 +189,54 @@ describe('StudentHomeworksPresenter', () => {
     expect(JSON.stringify(detail)).not.toContain('schoolId');
     expect(JSON.stringify(detail)).not.toContain('enrollmentId');
     expect(JSON.stringify(detail)).not.toContain('reviewedByUserId');
+  });
+
+  it('presents safe student submission answers and attachments', () => {
+    const detail = StudentHomeworksPresenter.presentDetail(
+      homeworkTargetFixture({
+        targetStatus: HomeworkTargetStatus.SUBMITTED,
+        submissions: [
+          {
+            id: 'submission-1',
+            schoolId: 'school-1',
+            homeworkAssignmentId: 'homework-1',
+            homeworkTargetId: 'target-1',
+            studentId: 'student-1',
+            enrollmentId: 'enrollment-1',
+            status: HomeworkSubmissionStatus.SUBMITTED,
+            bodyText: null,
+            submittedAt: new Date('2026-09-10T09:00:00.000Z'),
+            reviewedAt: null,
+            reviewedByUserId: null,
+            reviewNote: null,
+            awardedMarks: null,
+            answers: [answerFixture()],
+            attachments: [submissionAttachmentFixture()],
+            updatedAt: new Date('2026-09-10T09:00:00.000Z'),
+          },
+        ],
+      }) as any,
+    );
+    const serialized = JSON.stringify(detail);
+
+    expect(detail.homework.submission?.answers[0]).toMatchObject({
+      answerId: 'answer-1',
+      homeworkId: 'homework-1',
+      submissionId: 'submission-1',
+      questionId: 'question-1',
+      selectedOptionIds: ['option-1'],
+    });
+    expect(detail.homework.submission?.attachments[0]).toMatchObject({
+      attachmentId: 'submission-attachment-1',
+      homeworkId: 'homework-1',
+      submissionId: 'submission-1',
+      fileId: 'file-1',
+    });
+    expect(serialized).not.toContain('isCorrect');
+    expect(serialized).not.toContain('expectedAnswer');
+    expect(serialized).not.toContain('schoolId');
+    expect(serialized).not.toContain('organizationId');
+    expect(serialized).not.toContain('storage-key');
   });
 });
 
@@ -271,6 +321,69 @@ function homeworkTargetFixture(overrides?: {
       },
       questions: [],
       attachments: [],
+    },
+  };
+}
+
+function answerFixture() {
+  const now = new Date('2026-09-10T09:00:00.000Z');
+  return {
+    id: 'answer-1',
+    schoolId: 'school-1',
+    homeworkSubmissionId: 'submission-1',
+    homeworkAssignmentId: 'homework-1',
+    homeworkTargetId: 'target-1',
+    homeworkQuestionId: 'question-1',
+    textAnswer: null,
+    selectedOptionIds: ['option-1'],
+    isDraft: false,
+    teacherComment: 'Teacher-only comment',
+    awardedPoints: { toNumber: () => 1 },
+    reviewedAt: null,
+    reviewedByUserId: null,
+    deletedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    homeworkQuestion: {
+      id: 'question-1',
+      type: 'SINGLE_CHOICE',
+      prompt: 'Choose one',
+      points: { toNumber: () => 1 },
+      isRequired: true,
+      expectedAnswer: 'Hidden',
+      options: [
+        {
+          id: 'option-1',
+          homeworkQuestionId: 'question-1',
+          text: 'A',
+          isCorrect: true,
+          sortOrder: 0,
+        },
+      ],
+    },
+  };
+}
+
+function submissionAttachmentFixture() {
+  const now = new Date('2026-09-10T09:00:00.000Z');
+  return {
+    id: 'submission-attachment-1',
+    schoolId: 'school-1',
+    organizationId: 'org-1',
+    homeworkSubmissionId: 'submission-1',
+    homeworkAssignmentId: 'homework-1',
+    homeworkTargetId: 'target-1',
+    fileId: 'file-1',
+    title: null,
+    description: null,
+    sortOrder: 0,
+    createdAt: now,
+    updatedAt: now,
+    file: {
+      originalName: 'proof.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: BigInt(4096),
+      objectKey: 'storage-key',
     },
   };
 }

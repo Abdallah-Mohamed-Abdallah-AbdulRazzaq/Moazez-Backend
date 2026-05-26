@@ -1,5 +1,6 @@
 import {
   HomeworkAssignmentStatus,
+  HomeworkQuestionType,
   HomeworkSubmissionStatus,
   HomeworkTargetStatus,
   UserType,
@@ -148,19 +149,17 @@ describe('Homework submission use cases', () => {
 
   it('updates an existing draft submission', async () => {
     const repository = createRepository({
-      findStudentTargetForSubmission: jest
-        .fn()
-        .mockResolvedValue(
-          seedTarget({
-            submissions: [
-              seedSubmission({
-                id: 'submission-1',
-                bodyText: 'Old draft',
-                status: HomeworkSubmissionStatus.DRAFT,
-              }),
-            ],
-          }),
-        ),
+      findStudentTargetForSubmission: jest.fn().mockResolvedValue(
+        seedTarget({
+          submissions: [
+            seedSubmission({
+              id: 'submission-1',
+              bodyText: 'Old draft',
+              status: HomeworkSubmissionStatus.DRAFT,
+            }),
+          ],
+        }),
+      ),
     });
     const useCase = new SaveHomeworkSubmissionDraftUseCase(repository);
 
@@ -372,6 +371,119 @@ describe('Homework submission use cases', () => {
     expect((repository as any).createGradeItem).toBeUndefined();
     expect((repository as any).createNotification).toBeUndefined();
     expect((repository as any).grantXp).toBeUndefined();
+  });
+
+  it('submits required-question homework from saved answers without body text', async () => {
+    const repository = createRepository({
+      findStudentTargetForSubmission: jest.fn().mockResolvedValue(
+        seedTarget({
+          questions: [
+            seedQuestion({
+              type: HomeworkQuestionType.SHORT_TEXT,
+              options: [],
+            }),
+          ],
+          submissions: [
+            seedSubmission({
+              bodyText: null,
+              answers: [
+                seedAnswer({
+                  homeworkQuestionId: 'question-1',
+                  textAnswer: 'Saved answer',
+                  selectedOptionIds: null,
+                }),
+              ],
+            }),
+          ],
+        }),
+      ),
+    });
+    const useCase = new SubmitHomeworkSubmissionUseCase(
+      repository,
+      createAuthRepository(),
+    );
+
+    const submission = await withStudentScope(() =>
+      useCase.execute({
+        homeworkId: 'homework-1',
+        studentId: 'student-1',
+        enrollmentId: 'enrollment-1',
+      }),
+    );
+
+    expect(repository.submitSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bodyText: null,
+        submissionStatus: HomeworkSubmissionStatus.SUBMITTED,
+      }),
+    );
+    expect(submission.status).toBe(HomeworkSubmissionStatus.SUBMITTED);
+  });
+
+  it('rejects final submit when a required homework question is unanswered', async () => {
+    const repository = createRepository({
+      findStudentTargetForSubmission: jest.fn().mockResolvedValue(
+        seedTarget({
+          questions: [
+            seedQuestion({
+              type: HomeworkQuestionType.SHORT_TEXT,
+              options: [],
+            }),
+          ],
+          submissions: [seedSubmission({ bodyText: null, answers: [] })],
+        }),
+      ),
+    });
+    const useCase = new SubmitHomeworkSubmissionUseCase(
+      repository,
+      createAuthRepository(),
+    );
+
+    await expect(
+      withStudentScope(() =>
+        useCase.execute({
+          homeworkId: 'homework-1',
+          studentId: 'student-1',
+          enrollmentId: 'enrollment-1',
+        }),
+      ),
+    ).rejects.toMatchObject<Partial<DomainException>>({
+      code: 'homework.answer.missing_required',
+    });
+    expect(repository.submitSubmission).not.toHaveBeenCalled();
+  });
+
+  it('allows final submit when only optional homework questions are unanswered', async () => {
+    const repository = createRepository({
+      findStudentTargetForSubmission: jest.fn().mockResolvedValue(
+        seedTarget({
+          questions: [
+            seedQuestion({
+              type: HomeworkQuestionType.LONG_TEXT,
+              isRequired: false,
+              options: [],
+            }),
+          ],
+          submissions: [seedSubmission({ bodyText: null, answers: [] })],
+        }),
+      ),
+    });
+    const useCase = new SubmitHomeworkSubmissionUseCase(
+      repository,
+      createAuthRepository(),
+    );
+
+    await withStudentScope(() =>
+      useCase.execute({
+        homeworkId: 'homework-1',
+        studentId: 'student-1',
+        enrollmentId: 'enrollment-1',
+      }),
+    );
+
+    expect(repository.submitSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({ bodyText: null }),
+    );
   });
 
   it('lists teacher-reviewable submissions through submitted, late, or reviewed status only', async () => {
@@ -586,7 +698,8 @@ describe('HomeworkRepository submission review methods', () => {
       limit: 25,
     });
 
-    const where = prismaMocks.homeworkSubmission.findMany.mock.calls[0][0].where;
+    const where =
+      prismaMocks.homeworkSubmission.findMany.mock.calls[0][0].where;
     expect(where).toMatchObject({
       homeworkAssignmentId: 'homework-1',
       status: {
@@ -627,7 +740,8 @@ describe('HomeworkRepository submission review methods', () => {
       limit: 25,
     });
 
-    const where = prismaMocks.homeworkSubmission.findMany.mock.calls[0][0].where;
+    const where =
+      prismaMocks.homeworkSubmission.findMany.mock.calls[0][0].where;
     expect(where.status.in).toEqual([
       HomeworkSubmissionStatus.SUBMITTED,
       HomeworkSubmissionStatus.REVIEWED,
@@ -824,6 +938,7 @@ function seedTarget(overrides?: {
   dueAt?: Date;
   submittedAt?: Date | null;
   submissions?: any[];
+  questions?: any[];
 }): any {
   return {
     id: 'target-1',
@@ -836,9 +951,9 @@ function seedTarget(overrides?: {
     homeworkAssignment: {
       id: 'homework-1',
       status: overrides?.assignmentStatus ?? HomeworkAssignmentStatus.PUBLISHED,
-      dueAt:
-        overrides?.dueAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000),
+      dueAt: overrides?.dueAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000),
       deletedAt: null,
+      questions: overrides?.questions ?? [],
     },
     submissions: overrides?.submissions ?? [],
   };
@@ -861,6 +976,53 @@ function seedSubmission(overrides?: Record<string, unknown>): any {
     awardedMarks: null,
     createdAt: new Date('2026-05-25T08:00:00.000Z'),
     updatedAt: new Date('2026-05-25T08:05:00.000Z'),
+    answers: [],
+    attachments: [],
+    ...overrides,
+  };
+}
+
+function seedQuestion(overrides?: Record<string, unknown>): any {
+  return {
+    id: 'question-1',
+    schoolId: 'school-1',
+    homeworkAssignmentId: 'homework-1',
+    type: HomeworkQuestionType.SHORT_TEXT,
+    prompt: 'Explain',
+    instructions: null,
+    points: { toNumber: () => 1 },
+    sortOrder: 0,
+    isRequired: true,
+    expectedAnswer: null,
+    metadata: null,
+    createdByUserId: 'teacher-1',
+    updatedByUserId: null,
+    deletedAt: null,
+    createdAt: new Date('2026-05-25T08:00:00.000Z'),
+    updatedAt: new Date('2026-05-25T08:00:00.000Z'),
+    options: [],
+    ...overrides,
+  };
+}
+
+function seedAnswer(overrides?: Record<string, unknown>): any {
+  return {
+    id: 'answer-1',
+    schoolId: 'school-1',
+    homeworkSubmissionId: 'submission-1',
+    homeworkAssignmentId: 'homework-1',
+    homeworkTargetId: 'target-1',
+    homeworkQuestionId: 'question-1',
+    textAnswer: 'Saved answer',
+    selectedOptionIds: null,
+    isDraft: false,
+    teacherComment: null,
+    awardedPoints: null,
+    reviewedAt: null,
+    reviewedByUserId: null,
+    deletedAt: null,
+    createdAt: new Date('2026-05-25T08:00:00.000Z'),
+    updatedAt: new Date('2026-05-25T08:00:00.000Z'),
     ...overrides,
   };
 }

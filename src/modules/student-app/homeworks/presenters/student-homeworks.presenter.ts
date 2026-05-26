@@ -18,6 +18,14 @@ import type {
   StudentHomeworksListReadModel,
   StudentHomeworkTargetReadModel,
 } from '../infrastructure/student-homeworks-read.adapter';
+import {
+  HomeworkAnswerPresenterModel,
+  presentHomeworkAnswerStudent,
+} from '../../../homework/presenters/homework-answer.presenter';
+import {
+  HomeworkSubmissionAttachmentPresenterModel,
+  presentHomeworkSubmissionAttachment,
+} from '../../../homework/presenters/homework-submission-attachment.presenter';
 
 interface StudentHomeworkSubmissionPresenterModel {
   id: string;
@@ -29,6 +37,8 @@ interface StudentHomeworkSubmissionPresenterModel {
   reviewNote: string | null;
   awardedMarks: Prisma.Decimal | number | string | null;
   updatedAt: Date;
+  answers?: HomeworkAnswerPresenterModel[];
+  attachments?: HomeworkSubmissionAttachmentPresenterModel[];
 }
 
 export class StudentHomeworksPresenter {
@@ -75,9 +85,7 @@ export function deriveStudentHomeworkStatus(
     return 'not_completed';
   }
 
-  if (
-    target.status === HomeworkTargetStatus.MISSING
-  ) {
+  if (target.status === HomeworkTargetStatus.MISSING) {
     return 'not_completed';
   }
 
@@ -209,8 +217,15 @@ export function presentStudentHomeworkSubmission(
   return {
     id: submission.id,
     homeworkId: submission.homeworkAssignmentId,
-    status: submission.status.toLowerCase() as StudentHomeworkSubmissionDto['status'],
+    status:
+      submission.status.toLowerCase() as StudentHomeworkSubmissionDto['status'],
     bodyText: submission.bodyText,
+    answers: (submission.answers ?? []).map((answer) =>
+      presentHomeworkAnswerStudent(answer),
+    ),
+    attachments: (submission.attachments ?? []).map((attachment) =>
+      presentHomeworkSubmissionAttachment(attachment),
+    ),
     submittedAt: presentDateTime(submission.submittedAt),
     reviewedAt: presentDateTime(submission.reviewedAt),
     reviewNote: submission.reviewNote,

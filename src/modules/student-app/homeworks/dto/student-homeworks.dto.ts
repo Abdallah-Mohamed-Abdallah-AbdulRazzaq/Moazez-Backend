@@ -1,6 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import {
   IsDateString,
+  IsArray,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -9,7 +10,9 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { HomeworkAnswerInputDto } from '../../../homework/dto/homework-answer.dto';
 
 export const STUDENT_HOMEWORK_STATUSES = [
   'waiting',
@@ -175,10 +178,46 @@ export class StudentHomeworkSubmissionDto {
   homeworkId!: string;
   status!: StudentHomeworkSubmissionStatus;
   bodyText!: string | null;
+  answers!: StudentHomeworkAnswerDto[];
+  attachments!: StudentHomeworkSubmissionAttachmentDto[];
   submittedAt!: string | null;
   reviewedAt!: string | null;
   reviewNote!: string | null;
   awardedMarks!: number | null;
+  updatedAt!: string;
+}
+
+export class StudentHomeworkAnswerSelectedOptionDto {
+  optionId!: string;
+  questionId!: string;
+  text!: string;
+  sortOrder!: number;
+}
+
+export class StudentHomeworkAnswerDto {
+  answerId!: string;
+  homeworkId!: string;
+  submissionId!: string;
+  questionId!: string;
+  type!: string;
+  textAnswer!: string | null;
+  selectedOptionIds!: string[];
+  selectedOptions!: StudentHomeworkAnswerSelectedOptionDto[];
+  isDraft!: boolean;
+  createdAt!: string;
+  updatedAt!: string;
+}
+
+export class StudentHomeworkSubmissionAttachmentDto {
+  attachmentId!: string;
+  homeworkId!: string;
+  submissionId!: string;
+  fileId!: string;
+  title!: string | null;
+  description!: string | null;
+  sortOrder!: number;
+  file!: StudentHomeworkAttachmentFileDto;
+  createdAt!: string;
   updatedAt!: string;
 }
 
@@ -211,6 +250,12 @@ export class StudentHomeworkSubmissionBodyDto {
   @IsNotEmpty()
   @MaxLength(STUDENT_HOMEWORK_SUBMISSION_BODY_TEXT_MAX_LENGTH)
   bodyText!: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => HomeworkAnswerInputDto)
+  answers?: HomeworkAnswerInputDto[];
 }
 
 export class StudentHomeworkSubmitBodyDto {
@@ -220,6 +265,12 @@ export class StudentHomeworkSubmitBodyDto {
   @IsNotEmpty()
   @MaxLength(STUDENT_HOMEWORK_SUBMISSION_BODY_TEXT_MAX_LENGTH)
   bodyText?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => HomeworkAnswerInputDto)
+  answers?: HomeworkAnswerInputDto[];
 }
 
 export class StudentHomeworkSubmissionResponseDto {

@@ -177,11 +177,47 @@ export class ParentHomeworkSubmissionDto {
   id!: string;
   status!: ParentHomeworkSubmissionStatus;
   bodyText!: string | null;
+  answers!: ParentHomeworkAnswerDto[];
+  attachments!: ParentHomeworkSubmissionAttachmentDto[];
   submittedAt!: string | null;
   reviewedAt!: string | null;
   reviewNote!: string | null;
   awardedMarks!: number | null;
   totalMarks!: number | null;
+  updatedAt!: string;
+}
+
+export class ParentHomeworkAnswerSelectedOptionDto {
+  optionId!: string;
+  questionId!: string;
+  text!: string;
+  sortOrder!: number;
+}
+
+export class ParentHomeworkAnswerDto {
+  answerId!: string;
+  homeworkId!: string;
+  submissionId!: string;
+  questionId!: string;
+  type!: string;
+  textAnswer!: string | null;
+  selectedOptionIds!: string[];
+  selectedOptions!: ParentHomeworkAnswerSelectedOptionDto[];
+  isDraft!: boolean;
+  createdAt!: string;
+  updatedAt!: string;
+}
+
+export class ParentHomeworkSubmissionAttachmentDto {
+  attachmentId!: string;
+  homeworkId!: string;
+  submissionId!: string;
+  fileId!: string;
+  title!: string | null;
+  description!: string | null;
+  sortOrder!: number;
+  file!: ParentHomeworkAttachmentFileDto;
+  createdAt!: string;
   updatedAt!: string;
 }
 

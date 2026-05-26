@@ -24,6 +24,12 @@ import {
   HomeworkTargetForSubmissionRecord,
   ListHomeworkReviewSubmissionsResult,
 } from '../infrastructure/homework.repository';
+import { HomeworkAnswerInput } from '../domain/homework-answer-inputs';
+import {
+  saveStudentAnswersAsDraft,
+  saveStudentAnswersForSubmit,
+  validateRequiredHomeworkAnswers,
+} from './homework-answers.use-cases';
 
 export const HOMEWORK_SUBMISSION_BODY_TEXT_MAX_LENGTH = 20_000;
 export const HOMEWORK_SUBMISSION_REVIEW_NOTE_MAX_LENGTH = 2_000;
@@ -34,14 +40,14 @@ export interface StudentHomeworkSubmissionCommand {
   enrollmentId: string;
 }
 
-export interface SaveStudentHomeworkSubmissionDraftCommand
-  extends StudentHomeworkSubmissionCommand {
+export interface SaveStudentHomeworkSubmissionDraftCommand extends StudentHomeworkSubmissionCommand {
   bodyText: string;
+  answers?: HomeworkAnswerInput[];
 }
 
-export interface SubmitStudentHomeworkSubmissionCommand
-  extends StudentHomeworkSubmissionCommand {
+export interface SubmitStudentHomeworkSubmissionCommand extends StudentHomeworkSubmissionCommand {
   bodyText?: string | null;
+  answers?: HomeworkAnswerInput[];
 }
 
 export interface ListHomeworkSubmissionsForReviewCommand {
@@ -57,8 +63,7 @@ export interface HomeworkSubmissionForReviewCommand {
   submissionId: string;
 }
 
-export interface ReviewHomeworkSubmissionCommand
-  extends HomeworkSubmissionForReviewCommand {
+export interface ReviewHomeworkSubmissionCommand extends HomeworkSubmissionForReviewCommand {
   reviewedByUserId: string;
   reviewNote?: string | null;
   awardedMarks?: number | null;
@@ -112,6 +117,15 @@ export class SaveHomeworkSubmissionDraftUseCase {
       });
     }
 
+    if (command.answers && command.answers.length > 0) {
+      const submissionWithAnswers = await saveStudentAnswersAsDraft({
+        repository: this.homeworkRepository,
+        target,
+        answers: command.answers,
+      });
+      return submissionWithAnswers ?? result.submission;
+    }
+
     return result.submission;
   }
 }
@@ -133,12 +147,39 @@ export class SubmitHomeworkSubmissionUseCase {
     );
     assertSubmissionIsEditable(target);
 
-    const bodyText = normalizeRequiredBodyText(
-      command.bodyText ?? target.submissions[0]?.bodyText ?? null,
-    );
+    const answerSubmission = await saveStudentAnswersForSubmit({
+      repository: this.homeworkRepository,
+      target,
+      answers: command.answers,
+    });
+    const refreshedTarget =
+      answerSubmission && command.answers && command.answers.length > 0
+        ? await findStudentSubmissionTargetOrThrow(
+            this.homeworkRepository,
+            command,
+          )
+        : target;
+    const currentSubmission =
+      refreshedTarget.submissions[0] ?? answerSubmission ?? null;
+    const questions = refreshedTarget.homeworkAssignment.questions;
+    const bodyText =
+      questions.length === 0
+        ? normalizeRequiredBodyText(
+            command.bodyText ?? currentSubmission?.bodyText ?? null,
+          )
+        : normalizeOptionalBodyText(
+            command.bodyText ?? currentSubmission?.bodyText ?? null,
+          );
+
+    validateRequiredHomeworkAnswers({
+      questions,
+      answers: currentSubmission?.answers ?? [],
+    });
+
     const submittedAt = new Date();
     const isLate =
-      target.homeworkAssignment.dueAt.getTime() < submittedAt.getTime();
+      refreshedTarget.homeworkAssignment.dueAt.getTime() <
+      submittedAt.getTime();
     const submissionStatus = isLate
       ? HomeworkSubmissionStatus.LATE
       : HomeworkSubmissionStatus.SUBMITTED;
@@ -147,11 +188,11 @@ export class SubmitHomeworkSubmissionUseCase {
       : HomeworkTargetStatus.SUBMITTED;
 
     const result = await this.homeworkRepository.submitSubmission({
-      schoolId: target.schoolId,
-      homeworkAssignmentId: target.homeworkAssignmentId,
-      homeworkTargetId: target.id,
-      studentId: target.studentId,
-      enrollmentId: target.enrollmentId,
+      schoolId: refreshedTarget.schoolId,
+      homeworkAssignmentId: refreshedTarget.homeworkAssignmentId,
+      homeworkTargetId: refreshedTarget.id,
+      studentId: refreshedTarget.studentId,
+      enrollmentId: refreshedTarget.enrollmentId,
       bodyText,
       submissionStatus,
       targetStatus,
@@ -368,7 +409,9 @@ function assertSubmissionIsReviewable(
     });
   }
 
-  if (submission.homeworkAssignment.status === HomeworkAssignmentStatus.CANCELLED) {
+  if (
+    submission.homeworkAssignment.status === HomeworkAssignmentStatus.CANCELLED
+  ) {
     throw new HomeworkSubmissionNotReviewableException({
       homeworkId: submission.homeworkAssignmentId,
       submissionId: submission.id,
@@ -376,7 +419,9 @@ function assertSubmissionIsReviewable(
     });
   }
 
-  if (submission.homeworkAssignment.status === HomeworkAssignmentStatus.ARCHIVED) {
+  if (
+    submission.homeworkAssignment.status === HomeworkAssignmentStatus.ARCHIVED
+  ) {
     throw new HomeworkSubmissionNotReviewableException({
       homeworkId: submission.homeworkAssignmentId,
       submissionId: submission.id,
@@ -405,17 +450,44 @@ function assertSubmissionIsReviewable(
 
 function normalizeRequiredBodyText(value: string | null | undefined): string {
   if (typeof value !== 'string') {
-    throw new ValidationDomainException('Homework submission body is required', {
-      bodyText: 'required',
-    });
+    throw new ValidationDomainException(
+      'Homework submission body is required',
+      {
+        bodyText: 'required',
+      },
+    );
   }
 
   const normalized = value.trim();
   if (!normalized) {
-    throw new ValidationDomainException('Homework submission body is required', {
-      bodyText: 'required',
-    });
+    throw new ValidationDomainException(
+      'Homework submission body is required',
+      {
+        bodyText: 'required',
+      },
+    );
   }
+
+  if (normalized.length > HOMEWORK_SUBMISSION_BODY_TEXT_MAX_LENGTH) {
+    throw new ValidationDomainException(
+      'Homework submission body is too long',
+      {
+        bodyText: 'max_length',
+        maxLength: HOMEWORK_SUBMISSION_BODY_TEXT_MAX_LENGTH,
+      },
+    );
+  }
+
+  return normalized;
+}
+
+function normalizeOptionalBodyText(
+  value: string | null | undefined,
+): string | null {
+  if (value === null || value === undefined) return null;
+
+  const normalized = value.trim();
+  if (!normalized) return null;
 
   if (normalized.length > HOMEWORK_SUBMISSION_BODY_TEXT_MAX_LENGTH) {
     throw new ValidationDomainException(
@@ -493,7 +565,9 @@ function normalizeBoundedLimit(value: number | undefined): number {
   return Math.min(normalizePositiveInteger(value, 25), 100);
 }
 
-function toNumber(value: { toNumber(): number } | number | string | null): number | null {
+function toNumber(
+  value: { toNumber(): number } | number | string | null,
+): number | null {
   if (value === null) return null;
   if (typeof value === 'object') return value.toNumber();
 

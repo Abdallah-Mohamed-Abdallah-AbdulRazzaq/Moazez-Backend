@@ -101,9 +101,8 @@ export class CreateHomeworkQuestionUseCase {
       homeworkId,
       command,
     });
-    const question = await this.homeworkRepository.createQuestionWithOptions(
-      normalized,
-    );
+    const question =
+      await this.homeworkRepository.createQuestionWithOptions(normalized);
 
     await this.auditQuestionMutation({
       scope,
@@ -119,9 +118,7 @@ export class CreateHomeworkQuestionUseCase {
     action: string;
     question: HomeworkQuestionRecord;
   }): Promise<unknown> {
-    return this.authRepository.createAuditLog(
-      buildQuestionAuditEntry(input),
-    );
+    return this.authRepository.createAuditLog(buildQuestionAuditEntry(input));
   }
 }
 
@@ -236,7 +233,10 @@ export class DeleteHomeworkQuestionUseCase {
       questionId,
     });
 
-    await this.homeworkRepository.softDeleteQuestion({ homeworkId, questionId });
+    await this.homeworkRepository.softDeleteQuestion({
+      homeworkId,
+      questionId,
+    });
     await this.authRepository.createAuditLog(
       buildQuestionAuditEntry({
         scope,
@@ -455,13 +455,12 @@ export class DeleteHomeworkQuestionOptionUseCase {
       });
     }
 
-    const updatedQuestion = await this.homeworkRepository.softDeleteQuestionOption(
-      {
+    const updatedQuestion =
+      await this.homeworkRepository.softDeleteQuestionOption({
         homeworkId,
         questionId,
         optionId,
-      },
-    );
+      });
 
     await this.authRepository.createAuditLog(
       buildQuestionAuditEntry({
@@ -712,7 +711,9 @@ async function findQuestionOrThrow(
   return question;
 }
 
-function assertQuestionsMutable(assignment: HomeworkAssignmentWithCounters): void {
+function assertQuestionsMutable(
+  assignment: HomeworkAssignmentWithCounters,
+): void {
   if (assignment.status === HomeworkAssignmentStatus.DRAFT) return;
   throw new HomeworkQuestionReadOnlyException({
     homeworkId: assignment.id,
@@ -738,7 +739,9 @@ function normalizeRequiredText(value: string, field: string): string {
   return normalized;
 }
 
-function normalizeNullableText(value: string | null | undefined): string | null {
+function normalizeNullableText(
+  value: string | null | undefined,
+): string | null {
   if (value === undefined || value === null) return null;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;

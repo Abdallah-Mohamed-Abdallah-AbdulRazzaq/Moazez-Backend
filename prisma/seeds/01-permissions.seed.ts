@@ -81,6 +81,7 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'homework.assignments.manage', module: 'homework', resource: 'assignments', action: 'manage', description: 'Create, update, publish, close, and cancel core homework assignments' },
   { code: 'homework.targets.view', module: 'homework', resource: 'targets', action: 'view', description: 'View core homework assignment targets' },
   { code: 'homework.targets.manage', module: 'homework', resource: 'targets', action: 'manage', description: 'Resolve draft core homework assignment targets' },
+  { code: 'homework.submissions.view', module: 'homework', resource: 'submissions', action: 'view', description: 'View core homework submission answers and attachments' },
 
   // reinforcement
   { code: 'reinforcement.overview.view', module: 'reinforcement', resource: 'overview', action: 'view', description: 'View reinforcement overview metrics' },

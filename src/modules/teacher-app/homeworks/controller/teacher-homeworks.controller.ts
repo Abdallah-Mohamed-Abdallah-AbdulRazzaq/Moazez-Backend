@@ -36,6 +36,8 @@ import {
   ListTeacherHomeworkAttachmentsUseCase,
   ListTeacherHomeworkAssignmentsUseCase,
   ListTeacherHomeworkQuestionsUseCase,
+  ListTeacherHomeworkSubmissionAnswersUseCase,
+  ListTeacherHomeworkSubmissionAttachmentsUseCase,
   ListTeacherHomeworkSubmissionsUseCase,
   ListTeacherHomeworkTargetsUseCase,
   PublishTeacherHomeworkAssignmentUseCase,
@@ -70,6 +72,8 @@ import {
   HomeworkQuestionDetailResponseDto,
   HomeworkQuestionsListResponseDto,
 } from '../../../homework/dto/homework-question-response.dto';
+import { HomeworkAnswersListResponseDto } from '../../../homework/dto/homework-answer-response.dto';
+import { HomeworkSubmissionAttachmentsListResponseDto } from '../../../homework/dto/homework-submission-attachment-response.dto';
 import {
   ListTeacherHomeworkAssignmentsQueryDto,
   ListTeacherHomeworkSubmissionsQueryDto,
@@ -122,6 +126,8 @@ export class TeacherHomeworksController {
     private readonly deleteAttachmentUseCase: DeleteTeacherHomeworkAttachmentUseCase,
     private readonly listSubmissionsUseCase: ListTeacherHomeworkSubmissionsUseCase,
     private readonly getSubmissionUseCase: GetTeacherHomeworkSubmissionUseCase,
+    private readonly listSubmissionAnswersUseCase: ListTeacherHomeworkSubmissionAnswersUseCase,
+    private readonly listSubmissionAttachmentsUseCase: ListTeacherHomeworkSubmissionAttachmentsUseCase,
     private readonly reviewSubmissionUseCase: ReviewTeacherHomeworkSubmissionUseCase,
   ) {}
 
@@ -281,7 +287,9 @@ export class TeacherHomeworksController {
   }
 
   @Post('classes/:classId/assignments/:homeworkId/questions')
-  @ApiOperation({ summary: 'Create a question for an owned homework assignment' })
+  @ApiOperation({
+    summary: 'Create a question for an owned homework assignment',
+  })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
   @ApiBody({ type: CreateHomeworkQuestionDto })
@@ -298,7 +306,9 @@ export class TeacherHomeworksController {
   }
 
   @Get('classes/:classId/assignments/:homeworkId/questions/:questionId')
-  @ApiOperation({ summary: 'Get one question for an owned homework assignment' })
+  @ApiOperation({
+    summary: 'Get one question for an owned homework assignment',
+  })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
   @ApiParam({ name: 'questionId', format: 'uuid' })
@@ -314,7 +324,9 @@ export class TeacherHomeworksController {
   }
 
   @Patch('classes/:classId/assignments/:homeworkId/questions/:questionId')
-  @ApiOperation({ summary: 'Update a question for an owned homework assignment' })
+  @ApiOperation({
+    summary: 'Update a question for an owned homework assignment',
+  })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
   @ApiParam({ name: 'questionId', format: 'uuid' })
@@ -332,8 +344,12 @@ export class TeacherHomeworksController {
     );
   }
 
-  @Patch('classes/:classId/assignments/:homeworkId/questions/:questionId/reorder')
-  @ApiOperation({ summary: 'Reorder a question for an owned homework assignment' })
+  @Patch(
+    'classes/:classId/assignments/:homeworkId/questions/:questionId/reorder',
+  )
+  @ApiOperation({
+    summary: 'Reorder a question for an owned homework assignment',
+  })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
   @ApiParam({ name: 'questionId', format: 'uuid' })
@@ -353,7 +369,9 @@ export class TeacherHomeworksController {
 
   @Delete('classes/:classId/assignments/:homeworkId/questions/:questionId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Soft delete a question for an owned homework assignment' })
+  @ApiOperation({
+    summary: 'Soft delete a question for an owned homework assignment',
+  })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
   @ApiParam({ name: 'questionId', format: 'uuid' })
@@ -367,7 +385,9 @@ export class TeacherHomeworksController {
     );
   }
 
-  @Post('classes/:classId/assignments/:homeworkId/questions/:questionId/options')
+  @Post(
+    'classes/:classId/assignments/:homeworkId/questions/:questionId/options',
+  )
   @ApiOperation({ summary: 'Create an option for an owned homework question' })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
@@ -436,7 +456,9 @@ export class TeacherHomeworksController {
     'classes/:classId/assignments/:homeworkId/questions/:questionId/options/:optionId',
   )
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Soft delete an option for an owned homework question' })
+  @ApiOperation({
+    summary: 'Soft delete an option for an owned homework question',
+  })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
   @ApiParam({ name: 'questionId', format: 'uuid' })
@@ -453,7 +475,9 @@ export class TeacherHomeworksController {
   }
 
   @Get('classes/:classId/assignments/:homeworkId/attachments')
-  @ApiOperation({ summary: 'List attachments for an owned homework assignment' })
+  @ApiOperation({
+    summary: 'List attachments for an owned homework assignment',
+  })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
   @ApiOkResponse({ type: HomeworkAttachmentsListResponseDto })
@@ -484,7 +508,9 @@ export class TeacherHomeworksController {
   }
 
   @Patch('classes/:classId/assignments/:homeworkId/attachments/:attachmentId')
-  @ApiOperation({ summary: 'Update an attachment for an owned homework assignment' })
+  @ApiOperation({
+    summary: 'Update an attachment for an owned homework assignment',
+  })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
   @ApiParam({ name: 'attachmentId', format: 'uuid' })
@@ -505,7 +531,9 @@ export class TeacherHomeworksController {
   @Patch(
     'classes/:classId/assignments/:homeworkId/attachments/:attachmentId/reorder',
   )
-  @ApiOperation({ summary: 'Reorder an attachment for an owned homework assignment' })
+  @ApiOperation({
+    summary: 'Reorder an attachment for an owned homework assignment',
+  })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
   @ApiParam({ name: 'attachmentId', format: 'uuid' })
@@ -525,7 +553,9 @@ export class TeacherHomeworksController {
 
   @Delete('classes/:classId/assignments/:homeworkId/attachments/:attachmentId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Soft delete an attachment for an owned homework assignment' })
+  @ApiOperation({
+    summary: 'Soft delete an attachment for an owned homework assignment',
+  })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
   @ApiParam({ name: 'attachmentId', format: 'uuid' })
@@ -573,6 +603,46 @@ export class TeacherHomeworksController {
     @Param() params: TeacherHomeworkSubmissionParamsDto,
   ): Promise<TeacherHomeworkSubmissionResponseDto> {
     return this.getSubmissionUseCase.execute(
+      params.classId,
+      params.homeworkId,
+      params.submissionId,
+    );
+  }
+
+  @Get(
+    'classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers',
+  )
+  @ApiOperation({
+    summary: 'List submitted homework answers for an owned assignment',
+  })
+  @ApiParam({ name: 'classId', format: 'uuid' })
+  @ApiParam({ name: 'homeworkId', format: 'uuid' })
+  @ApiParam({ name: 'submissionId', format: 'uuid' })
+  @ApiOkResponse({ type: HomeworkAnswersListResponseDto })
+  listSubmissionAnswers(
+    @Param() params: TeacherHomeworkSubmissionParamsDto,
+  ): Promise<HomeworkAnswersListResponseDto> {
+    return this.listSubmissionAnswersUseCase.execute(
+      params.classId,
+      params.homeworkId,
+      params.submissionId,
+    );
+  }
+
+  @Get(
+    'classes/:classId/assignments/:homeworkId/submissions/:submissionId/attachments',
+  )
+  @ApiOperation({
+    summary: 'List submitted homework attachments for an owned assignment',
+  })
+  @ApiParam({ name: 'classId', format: 'uuid' })
+  @ApiParam({ name: 'homeworkId', format: 'uuid' })
+  @ApiParam({ name: 'submissionId', format: 'uuid' })
+  @ApiOkResponse({ type: HomeworkSubmissionAttachmentsListResponseDto })
+  listSubmissionAttachments(
+    @Param() params: TeacherHomeworkSubmissionParamsDto,
+  ): Promise<HomeworkSubmissionAttachmentsListResponseDto> {
+    return this.listSubmissionAttachmentsUseCase.execute(
       params.classId,
       params.homeworkId,
       params.submissionId,

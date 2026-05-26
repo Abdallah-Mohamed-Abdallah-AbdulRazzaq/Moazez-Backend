@@ -75,6 +75,8 @@ describe('ParentHomeworksPresenter', () => {
       id: 'submission-submitted',
       status: 'submitted',
       bodyText: 'Submitted answer',
+      answers: [],
+      attachments: [],
       submittedAt: '2026-09-10T09:00:00.000Z',
       reviewedAt: null,
       reviewNote: null,
@@ -129,6 +131,8 @@ describe('ParentHomeworksPresenter', () => {
       id: 'submission-reviewed',
       status: 'reviewed',
       bodyText: 'Reviewed answer',
+      answers: [],
+      attachments: [],
       submittedAt: '2026-09-10T09:00:00.000Z',
       reviewedAt: '2026-09-13T09:00:00.000Z',
       reviewNote: 'Good work.',
@@ -141,6 +145,52 @@ describe('ParentHomeworksPresenter', () => {
     expect(serialized).not.toContain('organizationId');
     expect(serialized).not.toContain('enrollmentId');
     expect(serialized).not.toContain('deletedAt');
+  });
+
+  it('shows child submitted answers and submission attachments without correct answers', () => {
+    const detail = ParentHomeworksPresenter.presentDetail(
+      homeworkTargetFixture({
+        targetStatus: HomeworkTargetStatus.SUBMITTED,
+        submission: {
+          id: 'submission-submitted',
+          status: HomeworkSubmissionStatus.SUBMITTED,
+          bodyText: null,
+          submittedAt: new Date('2026-09-10T09:00:00.000Z'),
+          reviewedAt: null,
+          reviewNote: null,
+          awardedMarks: null,
+          updatedAt: new Date('2026-09-10T09:01:00.000Z'),
+          answers: [answerFixture()],
+          attachments: [submissionAttachmentFixture()],
+        },
+      }) as any,
+    );
+    const serialized = JSON.stringify(detail);
+
+    expect(detail.homework.submission?.answers[0]).toMatchObject({
+      answerId: 'answer-1',
+      questionId: 'question-1',
+      selectedOptionIds: ['option-1'],
+      selectedOptions: [
+        expect.objectContaining({
+          optionId: 'option-1',
+          text: 'A',
+        }),
+      ],
+    });
+    expect(detail.homework.submission?.attachments[0]).toMatchObject({
+      attachmentId: 'submission-attachment-1',
+      fileId: 'file-1',
+      file: {
+        filename: 'proof.pdf',
+        mimeType: 'application/pdf',
+      },
+    });
+    expect(serialized).not.toContain('isCorrect');
+    expect(serialized).not.toContain('expectedAnswer');
+    expect(serialized).not.toContain('schoolId');
+    expect(serialized).not.toContain('organizationId');
+    expect(serialized).not.toContain('storage-key');
   });
 
   it('maps target and assignment state to stable Parent App statuses', () => {
@@ -217,6 +267,8 @@ function homeworkTargetFixture(overrides?: {
     reviewNote: string | null;
     awardedMarks: { toNumber(): number } | number | null;
     updatedAt: Date;
+    answers?: unknown[];
+    attachments?: unknown[];
   };
 }) {
   return {
@@ -299,6 +351,69 @@ function homeworkTargetFixture(overrides?: {
       },
       questions: [],
       attachments: [],
+    },
+  };
+}
+
+function answerFixture() {
+  const now = new Date('2026-09-10T09:00:00.000Z');
+  return {
+    id: 'answer-1',
+    schoolId: 'school-1',
+    homeworkSubmissionId: 'submission-submitted',
+    homeworkAssignmentId: 'homework-1',
+    homeworkTargetId: 'target-1',
+    homeworkQuestionId: 'question-1',
+    textAnswer: null,
+    selectedOptionIds: ['option-1'],
+    isDraft: false,
+    teacherComment: 'Teacher-only comment',
+    awardedPoints: { toNumber: () => 1 },
+    reviewedAt: null,
+    reviewedByUserId: null,
+    deletedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    homeworkQuestion: {
+      id: 'question-1',
+      type: 'SINGLE_CHOICE',
+      prompt: 'Choose one',
+      points: { toNumber: () => 1 },
+      isRequired: true,
+      expectedAnswer: 'Hidden',
+      options: [
+        {
+          id: 'option-1',
+          homeworkQuestionId: 'question-1',
+          text: 'A',
+          isCorrect: true,
+          sortOrder: 0,
+        },
+      ],
+    },
+  };
+}
+
+function submissionAttachmentFixture() {
+  const now = new Date('2026-09-10T09:00:00.000Z');
+  return {
+    id: 'submission-attachment-1',
+    schoolId: 'school-1',
+    organizationId: 'org-1',
+    homeworkSubmissionId: 'submission-submitted',
+    homeworkAssignmentId: 'homework-1',
+    homeworkTargetId: 'target-1',
+    fileId: 'file-1',
+    title: null,
+    description: null,
+    sortOrder: 0,
+    createdAt: now,
+    updatedAt: now,
+    file: {
+      originalName: 'proof.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: BigInt(4096),
+      objectKey: 'storage-key',
     },
   };
 }

@@ -1144,6 +1144,8 @@ model School {
   homeworkAssignments                   HomeworkAssignment[]
   homeworkTargets                       HomeworkTarget[]
   homeworkSubmissions                   HomeworkSubmission[]
+  homeworkSubmissionAnswers             HomeworkSubmissionAnswer[]
+  homeworkSubmissionAttachments         HomeworkSubmissionAttachment[]
   homeworkQuestions                     HomeworkQuestion[]
   homeworkQuestionOptions               HomeworkQuestionOption[]
   homeworkAssignmentAttachments         HomeworkAssignmentAttachment[]
@@ -1264,6 +1266,8 @@ model User {
   homeworkAssignmentsCreated                     HomeworkAssignment[]                   @relation("HomeworkAssignmentCreatedBy")
   homeworkAssignmentsPublished                   HomeworkAssignment[]                   @relation("HomeworkAssignmentPublishedBy")
   homeworkSubmissionsReviewed                    HomeworkSubmission[]                   @relation("HomeworkSubmissionReviewedBy")
+  homeworkSubmissionAnswersReviewed              HomeworkSubmissionAnswer[]             @relation("HomeworkSubmissionAnswerReviewedBy")
+  homeworkSubmissionAttachmentsCreated           HomeworkSubmissionAttachment[]         @relation("HomeworkSubmissionAttachmentCreatedBy")
   homeworkQuestionsCreated                       HomeworkQuestion[]                     @relation("HomeworkQuestionCreatedBy")
   homeworkQuestionsUpdated                       HomeworkQuestion[]                     @relation("HomeworkQuestionUpdatedBy")
   homeworkAssignmentAttachmentsCreated           HomeworkAssignmentAttachment[]         @relation("HomeworkAssignmentAttachmentCreatedBy")
@@ -3541,6 +3545,8 @@ model HomeworkAssignment {
   publishedBy              User?                    @relation("HomeworkAssignmentPublishedBy", fields: [publishedByUserId], references: [id], onDelete: SetNull)
   targets                  HomeworkTarget[]
   submissions              HomeworkSubmission[]
+  submissionAnswers        HomeworkSubmissionAnswer[]
+  submissionAttachments    HomeworkSubmissionAttachment[]
   questions                HomeworkQuestion[]
   attachments              HomeworkAssignmentAttachment[]
 
@@ -3588,6 +3594,8 @@ model HomeworkTarget {
   student            Student              @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
   enrollment         Enrollment           @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
   submissions        HomeworkSubmission[]
+  submissionAnswers  HomeworkSubmissionAnswer[]
+  submissionAttachments HomeworkSubmissionAttachment[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, homeworkAssignmentId, studentId])
@@ -3625,6 +3633,8 @@ model HomeworkSubmission {
   student            Student            @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
   enrollment         Enrollment         @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
   reviewedByUser     User?              @relation("HomeworkSubmissionReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  answers            HomeworkSubmissionAnswer[]
+  attachments        HomeworkSubmissionAttachment[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, homeworkTargetId])
@@ -3669,6 +3679,7 @@ model HomeworkQuestion {
   createdBy          User                       @relation("HomeworkQuestionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   updatedBy          User?                      @relation("HomeworkQuestionUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   options            HomeworkQuestionOption[]
+  submissionAnswers  HomeworkSubmissionAnswer[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -3679,6 +3690,76 @@ model HomeworkQuestion {
   @@index([updatedByUserId])
   @@index([deletedAt])
   @@map("homework_questions")
+}
+
+model HomeworkSubmissionAnswer {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String    @map("school_id") @db.Uuid
+  homeworkSubmissionId String    @map("homework_submission_id") @db.Uuid
+  homeworkAssignmentId String    @map("homework_assignment_id") @db.Uuid
+  homeworkTargetId     String    @map("homework_target_id") @db.Uuid
+  homeworkQuestionId   String    @map("homework_question_id") @db.Uuid
+  textAnswer           String?   @map("text_answer") @db.Text
+  selectedOptionIds    Json?     @map("selected_option_ids")
+  isDraft              Boolean   @default(true) @map("is_draft")
+  teacherComment       String?   @map("teacher_comment") @db.Text
+  awardedPoints        Decimal?  @map("awarded_points") @db.Decimal(7, 2)
+  reviewedAt           DateTime? @map("reviewed_at")
+  reviewedByUserId     String?   @map("reviewed_by_user_id") @db.Uuid
+  deletedAt            DateTime? @map("deleted_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  school             School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  homeworkSubmission HomeworkSubmission @relation(fields: [homeworkSubmissionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  homeworkAssignment HomeworkAssignment @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  homeworkTarget     HomeworkTarget     @relation(fields: [homeworkTargetId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  homeworkQuestion   HomeworkQuestion   @relation(fields: [homeworkQuestionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  reviewedByUser     User?              @relation("HomeworkSubmissionAnswerReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, homeworkSubmissionId])
+  @@index([schoolId, homeworkAssignmentId])
+  @@index([schoolId, homeworkTargetId])
+  @@index([schoolId, homeworkQuestionId])
+  @@index([reviewedByUserId])
+  @@index([deletedAt])
+  @@map("homework_submission_answers")
+}
+
+model HomeworkSubmissionAttachment {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String    @map("school_id") @db.Uuid
+  homeworkSubmissionId String    @map("homework_submission_id") @db.Uuid
+  homeworkAssignmentId String    @map("homework_assignment_id") @db.Uuid
+  homeworkTargetId     String    @map("homework_target_id") @db.Uuid
+  fileId               String    @map("file_id") @db.Uuid
+  title                String?
+  description          String?   @db.Text
+  sortOrder            Int       @default(0) @map("sort_order")
+  createdByUserId      String    @map("created_by_user_id") @db.Uuid
+  deletedAt            DateTime? @map("deleted_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  school             School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  homeworkSubmission HomeworkSubmission @relation(fields: [homeworkSubmissionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  homeworkAssignment HomeworkAssignment @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  homeworkTarget     HomeworkTarget     @relation(fields: [homeworkTargetId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  file               File               @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  createdBy          User               @relation("HomeworkSubmissionAttachmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, homeworkSubmissionId])
+  @@index([schoolId, homeworkAssignmentId])
+  @@index([schoolId, homeworkTargetId])
+  @@index([schoolId, homeworkSubmissionId, sortOrder], map: "hw_submission_attach_school_submission_sort_idx")
+  @@index([fileId])
+  @@index([createdByUserId])
+  @@index([deletedAt])
+  @@map("homework_submission_attachments")
 }
 
 model HomeworkQuestionOption {
@@ -5428,6 +5509,7 @@ model File {
   attachments                          Attachment[]
   lessonContentItems                   LessonContentItem[]
   homeworkAssignmentAttachments         HomeworkAssignmentAttachment[]
+  homeworkSubmissionAttachments         HomeworkSubmissionAttachment[]
   reinforcementProofSubmissions        ReinforcementSubmission[]             @relation("ReinforcementSubmissionProofFile")
   applicationDocuments                 ApplicationDocument[]
   studentDocuments                     StudentDocument[]

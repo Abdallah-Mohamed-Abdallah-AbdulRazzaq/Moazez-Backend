@@ -303,7 +303,6 @@ describe('Sprint 11F Identity/Credentials/Email final closeout (e2e)', () => {
     for (const absentRoute of [
       'GET /api/v1/parent/schedule',
       'GET /api/v1/parent/homeworks',
-      'POST /api/v1/student/homeworks/:homeworkId/submission/submit',
       'GET /api/v1/student/pickup',
       'POST /api/v1/parent/pickup/requests',
       'GET /api/v1/teacher/notifications',

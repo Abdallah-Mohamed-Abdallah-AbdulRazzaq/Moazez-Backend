@@ -15,7 +15,11 @@ import type {
 import {
   GetStudentHomeworkUseCase,
   GetStudentHomeworkSubmissionUseCase,
+  CreateStudentHomeworkSubmissionAttachmentUseCase,
+  ListStudentHomeworkSubmissionAttachmentsUseCase,
   ListStudentHomeworksUseCase,
+  SaveStudentHomeworkSubmissionAnswerUseCase,
+  SaveStudentHomeworkSubmissionAnswersUseCase,
   SaveStudentHomeworkSubmissionUseCase,
   SubmitStudentHomeworkSubmissionUseCase,
 } from '../application/student-homeworks.use-cases';
@@ -98,6 +102,7 @@ describe('Student Homeworks use-cases', () => {
       studentId: 'student-1',
       enrollmentId: 'enrollment-1',
       bodyText: 'Draft answer',
+      answers: undefined,
     });
   });
 
@@ -120,11 +125,80 @@ describe('Student Homeworks use-cases', () => {
       studentId: 'student-1',
       enrollmentId: 'enrollment-1',
       bodyText: 'Final answer',
+      answers: undefined,
     });
     expect(response.submission).toMatchObject({
       status: 'submitted',
       submittedAt: '2026-05-25T09:00:00.000Z',
     });
+  });
+
+  it('saves student homework answers through Homework Core with current student context', async () => {
+    const {
+      saveAnswersUseCase,
+      saveAnswersCoreUseCase,
+      saveAnswerUseCase,
+      saveAnswerCoreUseCase,
+    } = createUseCasesWithValidAccess();
+    saveAnswersCoreUseCase.execute.mockResolvedValue({ items: [] });
+    saveAnswerCoreUseCase.execute.mockResolvedValue({
+      answer: { answerId: 'answer-1' },
+    });
+
+    await saveAnswersUseCase.execute('homework-1', {
+      answers: [{ questionId: 'question-1', textAnswer: 'Draft answer' }],
+    });
+    await saveAnswerUseCase.execute('homework-1', 'question-1', {
+      textAnswer: 'One answer',
+    });
+
+    expect(saveAnswersCoreUseCase.execute).toHaveBeenCalledWith({
+      homeworkId: 'homework-1',
+      studentId: 'student-1',
+      enrollmentId: 'enrollment-1',
+      answers: [{ questionId: 'question-1', textAnswer: 'Draft answer' }],
+    });
+    expect(saveAnswerCoreUseCase.execute).toHaveBeenCalledWith({
+      homeworkId: 'homework-1',
+      studentId: 'student-1',
+      enrollmentId: 'enrollment-1',
+      questionId: 'question-1',
+      answer: { questionId: 'question-1', textAnswer: 'One answer' },
+      isDraft: undefined,
+    });
+  });
+
+  it('delegates student submission attachment reads and creates to Homework Core', async () => {
+    const {
+      listAttachmentsUseCase,
+      listAttachmentsCoreUseCase,
+      createAttachmentUseCase,
+      createAttachmentCoreUseCase,
+    } = createUseCasesWithValidAccess();
+    listAttachmentsCoreUseCase.execute.mockResolvedValue({ items: [] });
+    createAttachmentCoreUseCase.execute.mockResolvedValue({
+      attachment: { attachmentId: 'attachment-1' },
+    });
+
+    await listAttachmentsUseCase.execute('homework-1');
+    await createAttachmentUseCase.execute('homework-1', {
+      fileId: 'file-1',
+      title: 'Proof',
+    });
+
+    expect(listAttachmentsCoreUseCase.execute).toHaveBeenCalledWith({
+      homeworkId: 'homework-1',
+      studentId: 'student-1',
+      enrollmentId: 'enrollment-1',
+    });
+    expect(createAttachmentCoreUseCase.execute).toHaveBeenCalledWith(
+      {
+        homeworkId: 'homework-1',
+        studentId: 'student-1',
+        enrollmentId: 'enrollment-1',
+      },
+      { fileId: 'file-1', title: 'Proof' },
+    );
   });
 });
 
@@ -136,9 +210,17 @@ function createUseCases(): {
   getSubmissionCoreUseCase: { execute: jest.Mock };
   saveSubmissionCoreUseCase: { execute: jest.Mock };
   submitSubmissionCoreUseCase: { execute: jest.Mock };
+  saveAnswersCoreUseCase: { execute: jest.Mock };
+  saveAnswerCoreUseCase: { execute: jest.Mock };
+  listAttachmentsCoreUseCase: { execute: jest.Mock };
+  createAttachmentCoreUseCase: { execute: jest.Mock };
   getSubmissionUseCase: GetStudentHomeworkSubmissionUseCase;
   saveSubmissionUseCase: SaveStudentHomeworkSubmissionUseCase;
   submitSubmissionUseCase: SubmitStudentHomeworkSubmissionUseCase;
+  saveAnswersUseCase: SaveStudentHomeworkSubmissionAnswersUseCase;
+  saveAnswerUseCase: SaveStudentHomeworkSubmissionAnswerUseCase;
+  listAttachmentsUseCase: ListStudentHomeworkSubmissionAttachmentsUseCase;
+  createAttachmentUseCase: CreateStudentHomeworkSubmissionAttachmentUseCase;
 } {
   const accessService = {
     getCurrentStudentWithEnrollment: jest.fn(),
@@ -150,6 +232,10 @@ function createUseCases(): {
   const getSubmissionCoreUseCase = { execute: jest.fn() };
   const saveSubmissionCoreUseCase = { execute: jest.fn() };
   const submitSubmissionCoreUseCase = { execute: jest.fn() };
+  const saveAnswersCoreUseCase = { execute: jest.fn() };
+  const saveAnswerCoreUseCase = { execute: jest.fn() };
+  const listAttachmentsCoreUseCase = { execute: jest.fn() };
+  const createAttachmentCoreUseCase = { execute: jest.fn() };
 
   return {
     listUseCase: new ListStudentHomeworksUseCase(accessService, readAdapter),
@@ -166,11 +252,32 @@ function createUseCases(): {
       accessService,
       submitSubmissionCoreUseCase as any,
     ),
+    saveAnswersUseCase: new SaveStudentHomeworkSubmissionAnswersUseCase(
+      accessService,
+      saveAnswersCoreUseCase as any,
+    ),
+    saveAnswerUseCase: new SaveStudentHomeworkSubmissionAnswerUseCase(
+      accessService,
+      saveAnswerCoreUseCase as any,
+    ),
+    listAttachmentsUseCase: new ListStudentHomeworkSubmissionAttachmentsUseCase(
+      accessService,
+      listAttachmentsCoreUseCase as any,
+    ),
+    createAttachmentUseCase:
+      new CreateStudentHomeworkSubmissionAttachmentUseCase(
+        accessService,
+        createAttachmentCoreUseCase as any,
+      ),
     accessService,
     readAdapter,
     getSubmissionCoreUseCase,
     saveSubmissionCoreUseCase,
     submitSubmissionCoreUseCase,
+    saveAnswersCoreUseCase,
+    saveAnswerCoreUseCase,
+    listAttachmentsCoreUseCase,
+    createAttachmentCoreUseCase,
   };
 }
 

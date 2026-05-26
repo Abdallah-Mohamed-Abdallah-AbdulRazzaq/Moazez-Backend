@@ -12,6 +12,8 @@ import { TeacherAppAllocationRecord } from '../../shared/teacher-app.types';
 import {
   CreateTeacherHomeworkAssignmentUseCase,
   GetTeacherHomeworkSubmissionUseCase,
+  ListTeacherHomeworkSubmissionAnswersUseCase,
+  ListTeacherHomeworkSubmissionAttachmentsUseCase,
   ListTeacherHomeworkAssignmentsUseCase,
   ListTeacherHomeworkSubmissionsUseCase,
   PublishTeacherHomeworkAssignmentUseCase,
@@ -307,6 +309,65 @@ describe('Teacher Homeworks use cases', () => {
       reviewNote: 'Good work',
       awardedMarks: 8.5,
     });
+  });
+
+  it('reads answers and attachments only after owned assignment resolution', async () => {
+    const ownership = ownershipMock();
+    const coreAnswers = {
+      execute: jest
+        .fn()
+        .mockResolvedValue({ items: [{ answerId: 'answer-1' }] }),
+    };
+    const coreAttachments = {
+      execute: jest
+        .fn()
+        .mockResolvedValue({ items: [{ attachmentId: 'attachment-1' }] }),
+    };
+    const answersUseCase = new ListTeacherHomeworkSubmissionAnswersUseCase(
+      ownership as never,
+      coreAnswers as never,
+    );
+    const attachmentsUseCase =
+      new ListTeacherHomeworkSubmissionAttachmentsUseCase(
+        ownership as never,
+        coreAttachments as never,
+      );
+
+    await answersUseCase.execute('allocation-1', 'homework-1', 'submission-1');
+    await attachmentsUseCase.execute(
+      'allocation-1',
+      'homework-1',
+      'submission-1',
+    );
+
+    expect(ownership.resolveOwnedHomework).toHaveBeenCalledWith({
+      classId: 'allocation-1',
+      homeworkId: 'homework-1',
+    });
+    expect(coreAnswers.execute).toHaveBeenCalledWith({
+      homeworkId: 'homework-1',
+      submissionId: 'submission-1',
+    });
+    expect(coreAttachments.execute).toHaveBeenCalledWith({
+      homeworkId: 'homework-1',
+      submissionId: 'submission-1',
+    });
+  });
+
+  it('does not read answers for an unowned teacher homework submission', async () => {
+    const ownership = ownershipMock();
+    const error = new Error('unowned');
+    ownership.resolveOwnedHomework.mockRejectedValue(error);
+    const coreAnswers = { execute: jest.fn() };
+    const useCase = new ListTeacherHomeworkSubmissionAnswersUseCase(
+      ownership as never,
+      coreAnswers as never,
+    );
+
+    await expect(
+      useCase.execute('allocation-other', 'homework-1', 'submission-1'),
+    ).rejects.toThrow(error);
+    expect(coreAnswers.execute).not.toHaveBeenCalled();
   });
 
   it('propagates Core timetable linkage validation failures', async () => {

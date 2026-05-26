@@ -15,6 +15,8 @@ import {
   ListHomeworkSubmissionsForReviewUseCase,
   ReviewHomeworkSubmissionUseCase as CoreReviewHomeworkSubmissionUseCase,
 } from '../../../homework/application/homework-submissions.use-cases';
+import { ListHomeworkSubmissionAnswersUseCase } from '../../../homework/application/homework-answers.use-cases';
+import { ListHomeworkSubmissionAttachmentsUseCase } from '../../../homework/application/homework-submission-attachments.use-cases';
 import {
   CreateHomeworkAttachmentUseCase,
   DeleteHomeworkAttachmentUseCase,
@@ -60,6 +62,8 @@ import {
   HomeworkQuestionDetailResponseDto,
   HomeworkQuestionsListResponseDto,
 } from '../../../homework/dto/homework-question-response.dto';
+import { HomeworkAnswersListResponseDto } from '../../../homework/dto/homework-answer-response.dto';
+import { HomeworkSubmissionAttachmentsListResponseDto } from '../../../homework/dto/homework-submission-attachment-response.dto';
 import { HomeworkSubmissionStatus } from '@prisma/client';
 import { TeacherAppAllocationReadAdapter } from '../../access/teacher-app-allocation-read.adapter';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
@@ -685,12 +689,54 @@ export class GetTeacherHomeworkSubmissionUseCase {
     submissionId: string,
   ): Promise<TeacherHomeworkSubmissionResponseDto> {
     await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
-    const submission = await this.getHomeworkSubmissionForReviewUseCase.execute({
+    const submission = await this.getHomeworkSubmissionForReviewUseCase.execute(
+      {
+        homeworkId,
+        submissionId,
+      },
+    );
+
+    return TeacherHomeworksPresenter.presentSubmissionDetail(submission);
+  }
+}
+
+@Injectable()
+export class ListTeacherHomeworkSubmissionAnswersUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly listHomeworkSubmissionAnswersUseCase: ListHomeworkSubmissionAnswersUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    submissionId: string,
+  ): Promise<HomeworkAnswersListResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.listHomeworkSubmissionAnswersUseCase.execute({
       homeworkId,
       submissionId,
     });
+  }
+}
 
-    return TeacherHomeworksPresenter.presentSubmissionDetail(submission);
+@Injectable()
+export class ListTeacherHomeworkSubmissionAttachmentsUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly listHomeworkSubmissionAttachmentsUseCase: ListHomeworkSubmissionAttachmentsUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    submissionId: string,
+  ): Promise<HomeworkSubmissionAttachmentsListResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.listHomeworkSubmissionAttachmentsUseCase.execute({
+      homeworkId,
+      submissionId,
+    });
   }
 }
 
@@ -808,6 +854,9 @@ function mapSubmissionStatusFilter(
     case 'reviewed':
       return [HomeworkSubmissionStatus.REVIEWED];
     case 'pending_review':
-      return [HomeworkSubmissionStatus.SUBMITTED, HomeworkSubmissionStatus.LATE];
+      return [
+        HomeworkSubmissionStatus.SUBMITTED,
+        HomeworkSubmissionStatus.LATE,
+      ];
   }
 }
