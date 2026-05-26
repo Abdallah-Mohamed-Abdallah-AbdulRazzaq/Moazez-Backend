@@ -173,6 +173,12 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `academics.curriculum.unit_not_found` | 404 | Curriculum unit was not found or is outside scope |
 | `academics.curriculum.lesson_not_found` | 404 | Curriculum lesson was not found or is outside scope |
 | `academics.curriculum.invalid_reorder` | 422 | Curriculum reorder target is invalid |
+| `academics.lesson_content.not_found` | 404 | Lesson content item was not found or is outside scope |
+| `academics.lesson_content.invalid_scope` | 422 | Lesson content scope is invalid |
+| `academics.lesson_content.invalid_type_payload` | 422 | Lesson content payload does not match its type |
+| `academics.lesson_content.invalid_url` | 422 | Lesson content URL is invalid or unsafe |
+| `academics.lesson_content.file_not_found` | 404 | Lesson content file was not found or is outside scope |
+| `academics.lesson_content.read_only` | 409 | Lesson content cannot be changed for an archived curriculum |
 
 ### Attendance
 

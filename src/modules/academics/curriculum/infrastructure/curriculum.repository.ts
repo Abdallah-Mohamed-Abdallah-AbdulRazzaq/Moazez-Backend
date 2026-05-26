@@ -369,6 +369,10 @@ export class CurriculumRepository {
         return { status: 'not_found' };
       }
 
+      await tx.lessonContentItem.updateMany({
+        where: { curriculumId, schoolId, deletedAt: null },
+        data: { deletedAt },
+      });
       await tx.curriculumLesson.updateMany({
         where: { curriculumId, schoolId, deletedAt: null },
         data: { deletedAt },
@@ -456,6 +460,15 @@ export class CurriculumRepository {
         return { status: 'not_found' };
       }
 
+      await tx.lessonContentItem.updateMany({
+        where: {
+          unitId: input.unitId,
+          curriculumId: input.curriculumId,
+          schoolId,
+          deletedAt: null,
+        },
+        data: { deletedAt },
+      });
       await tx.curriculumLesson.updateMany({
         where: {
           unitId: input.unitId,
@@ -553,6 +566,17 @@ export class CurriculumRepository {
         return { status: 'not_found' };
       }
 
+      const deletedAt = new Date();
+      await tx.lessonContentItem.updateMany({
+        where: {
+          lessonId: input.lessonId,
+          unitId: input.unitId,
+          curriculumId: input.curriculumId,
+          schoolId,
+          deletedAt: null,
+        },
+        data: { deletedAt },
+      });
       const lesson = await tx.curriculumLesson.update({
         where: {
           id_schoolId: {
@@ -560,7 +584,7 @@ export class CurriculumRepository {
             schoolId,
           },
         },
-        data: { deletedAt: new Date() },
+        data: { deletedAt },
         ...CURRICULUM_LESSON_ARGS,
       });
 

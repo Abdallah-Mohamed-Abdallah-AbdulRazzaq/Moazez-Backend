@@ -936,6 +936,15 @@ enum CurriculumStatus {
   @@map("curriculum_status")
 }
 
+enum LessonContentItemType {
+  TEXT
+  FILE
+  VIDEO_LINK
+  EXTERNAL_LINK
+
+  @@map("lesson_content_item_type")
+}
+
 enum TimetableScopeType {
   TERM
   GRADE
@@ -1065,6 +1074,7 @@ model School {
   curricula                             Curriculum[]
   curriculumUnits                       CurriculumUnit[]
   curriculumLessons                     CurriculumLesson[]
+  lessonContentItems                    LessonContentItem[]
   timetableConfigs                      TimetableConfig[]
   timetablePeriods                      TimetablePeriod[]
   timetableEntries                      TimetableEntry[]
@@ -1100,9 +1110,9 @@ model School {
   gradeSubmissionAnswerOptions          GradeSubmissionAnswerOption[]
   gradeItems                            GradeItem[]
   gradeRules                            GradeRule[]
-  homeworkAssignments                    HomeworkAssignment[]
-  homeworkTargets                        HomeworkTarget[]
-  homeworkSubmissions                    HomeworkSubmission[]
+  homeworkAssignments                   HomeworkAssignment[]
+  homeworkTargets                       HomeworkTarget[]
+  homeworkSubmissions                   HomeworkSubmission[]
   reinforcementTasks                    ReinforcementTask[]
   reinforcementTaskTargets              ReinforcementTaskTarget[]
   reinforcementTaskStages               ReinforcementTaskStage[]
@@ -1191,8 +1201,10 @@ model User {
   admissionInterviews                            Interview[]                            @relation("AdmissionInterviewInterviewer")
   admissionDecisionsCreated                      AdmissionDecision[]                    @relation("AdmissionDecisionDecidedBy")
   teacherSubjectAllocations                      TeacherSubjectAllocation[]             @relation("TeacherSubjectAllocationTeacher")
-  curriculaCreated                              Curriculum[]                           @relation("CurriculumCreatedBy")
-  curriculaUpdated                              Curriculum[]                           @relation("CurriculumUpdatedBy")
+  curriculaCreated                               Curriculum[]                           @relation("CurriculumCreatedBy")
+  curriculaUpdated                               Curriculum[]                           @relation("CurriculumUpdatedBy")
+  lessonContentItemsCreated                      LessonContentItem[]                    @relation("LessonContentItemCreatedBy")
+  lessonContentItemsUpdated                      LessonContentItem[]                    @relation("LessonContentItemUpdatedBy")
   guardianProfiles                               Guardian[]                             @relation("GuardianUser")
   studentProfile                                 Student?                               @relation("StudentUser")
   timetableEntries                               TimetableEntry[]                       @relation("TimetableEntryTeacher")
@@ -1209,10 +1221,10 @@ model User {
   gradeItemsEntered                              GradeItem[]                            @relation("GradeItemEnteredBy")
   gradeSubmissionsReviewed                       GradeSubmission[]                      @relation("GradeSubmissionReviewedBy")
   gradeSubmissionAnswersReviewed                 GradeSubmissionAnswer[]                @relation("GradeSubmissionAnswerReviewedBy")
-  homeworkAssignmentsTaught                       HomeworkAssignment[]                   @relation("HomeworkAssignmentTeacher")
-  homeworkAssignmentsCreated                      HomeworkAssignment[]                   @relation("HomeworkAssignmentCreatedBy")
-  homeworkAssignmentsPublished                    HomeworkAssignment[]                   @relation("HomeworkAssignmentPublishedBy")
-  homeworkSubmissionsReviewed                     HomeworkSubmission[]                   @relation("HomeworkSubmissionReviewedBy")
+  homeworkAssignmentsTaught                      HomeworkAssignment[]                   @relation("HomeworkAssignmentTeacher")
+  homeworkAssignmentsCreated                     HomeworkAssignment[]                   @relation("HomeworkAssignmentCreatedBy")
+  homeworkAssignmentsPublished                   HomeworkAssignment[]                   @relation("HomeworkAssignmentPublishedBy")
+  homeworkSubmissionsReviewed                    HomeworkSubmission[]                   @relation("HomeworkSubmissionReviewedBy")
   reinforcementTasksAssigned                     ReinforcementTask[]                    @relation("ReinforcementTaskAssignedBy")
   reinforcementTasksCreated                      ReinforcementTask[]                    @relation("ReinforcementTaskCreatedBy")
   reinforcementTasksCancelled                    ReinforcementTask[]                    @relation("ReinforcementTaskCancelledBy")
@@ -2186,13 +2198,13 @@ model TeacherSubjectAllocation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  school           School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  teacherUser      User             @relation("TeacherSubjectAllocationTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
-  subject          Subject          @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classroom        Classroom        @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term             Term             @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  timetableEntries     TimetableEntry[]
-  homeworkAssignments  HomeworkAssignment[]
+  school              School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  teacherUser         User                 @relation("TeacherSubjectAllocationTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
+  subject             Subject              @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom           Classroom            @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                Term                 @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  timetableEntries    TimetableEntry[]
+  homeworkAssignments HomeworkAssignment[]
 
   @@unique([id, schoolId])
   @@unique([teacherUserId, subjectId, classroomId, termId])
@@ -2232,32 +2244,33 @@ model Room {
 }
 
 model Curriculum {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId       String           @map("school_id") @db.Uuid
-  academicYearId String           @map("academic_year_id") @db.Uuid
-  termId         String           @map("term_id") @db.Uuid
-  gradeId        String           @map("grade_id") @db.Uuid
-  subjectId      String           @map("subject_id") @db.Uuid
-  title          String
-  description    String?
-  status         CurriculumStatus @default(DRAFT)
-  createdByUserId String          @map("created_by_user_id") @db.Uuid
-  updatedByUserId String?         @map("updated_by_user_id") @db.Uuid
-  publishedAt    DateTime?        @map("published_at")
-  archivedAt     DateTime?        @map("archived_at")
-  deletedAt      DateTime?        @map("deleted_at")
-  createdAt      DateTime         @default(now()) @map("created_at")
-  updatedAt      DateTime         @updatedAt @map("updated_at")
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String           @map("school_id") @db.Uuid
+  academicYearId  String           @map("academic_year_id") @db.Uuid
+  termId          String           @map("term_id") @db.Uuid
+  gradeId         String           @map("grade_id") @db.Uuid
+  subjectId       String           @map("subject_id") @db.Uuid
+  title           String
+  description     String?
+  status          CurriculumStatus @default(DRAFT)
+  createdByUserId String           @map("created_by_user_id") @db.Uuid
+  updatedByUserId String?          @map("updated_by_user_id") @db.Uuid
+  publishedAt     DateTime?        @map("published_at")
+  archivedAt      DateTime?        @map("archived_at")
+  deletedAt       DateTime?        @map("deleted_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
 
-  school       School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicYear AcademicYear     @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term         Term             @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  grade        Grade            @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  subject      Subject          @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  createdBy    User             @relation("CurriculumCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy    User?            @relation("CurriculumUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  school       School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear        @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term                @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade        Grade               @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject      Subject             @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy    User                @relation("CurriculumCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy    User?               @relation("CurriculumUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   units        CurriculumUnit[]
   lessons      CurriculumLesson[]
+  contentItems LessonContentItem[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -2274,20 +2287,21 @@ model Curriculum {
 }
 
 model CurriculumUnit {
-  id               String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId         String  @map("school_id") @db.Uuid
-  curriculumId     String  @map("curriculum_id") @db.Uuid
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId         String    @map("school_id") @db.Uuid
+  curriculumId     String    @map("curriculum_id") @db.Uuid
   title            String
   description      String?
-  sortOrder        Int     @default(0) @map("sort_order")
-  estimatedLessons Int?    @map("estimated_lessons")
+  sortOrder        Int       @default(0) @map("sort_order")
+  estimatedLessons Int?      @map("estimated_lessons")
   deletedAt        DateTime? @map("deleted_at")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  school     School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  curriculum Curriculum         @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  lessons    CurriculumLesson[]
+  school       School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  curriculum   Curriculum          @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  lessons      CurriculumLesson[]
+  contentItems LessonContentItem[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -2298,22 +2312,23 @@ model CurriculumUnit {
 }
 
 model CurriculumLesson {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId         String   @map("school_id") @db.Uuid
-  curriculumId     String   @map("curriculum_id") @db.Uuid
-  unitId           String   @map("unit_id") @db.Uuid
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId         String    @map("school_id") @db.Uuid
+  curriculumId     String    @map("curriculum_id") @db.Uuid
+  unitId           String    @map("unit_id") @db.Uuid
   title            String
   description      String?
   objectives       Json?
-  sortOrder        Int      @default(0) @map("sort_order")
-  estimatedMinutes Int?     @map("estimated_minutes")
+  sortOrder        Int       @default(0) @map("sort_order")
+  estimatedMinutes Int?      @map("estimated_minutes")
   deletedAt        DateTime? @map("deleted_at")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  school     School         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  curriculum Curriculum     @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  unit       CurriculumUnit @relation(fields: [unitId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  school       School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  curriculum   Curriculum          @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  unit         CurriculumUnit      @relation(fields: [unitId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  contentItems LessonContentItem[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -2322,6 +2337,49 @@ model CurriculumLesson {
   @@index([schoolId, unitId, sortOrder])
   @@index([deletedAt])
   @@map("curriculum_lessons")
+}
+
+model LessonContentItem {
+  id               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId         String                @map("school_id") @db.Uuid
+  curriculumId     String                @map("curriculum_id") @db.Uuid
+  unitId           String                @map("unit_id") @db.Uuid
+  lessonId         String                @map("lesson_id") @db.Uuid
+  type             LessonContentItemType
+  title            String
+  bodyText         String?               @map("body_text")
+  url              String?
+  fileId           String?               @map("file_id") @db.Uuid
+  sortOrder        Int                   @default(0) @map("sort_order")
+  isRequired       Boolean               @default(false) @map("is_required")
+  estimatedMinutes Int?                  @map("estimated_minutes")
+  metadata         Json?
+  createdByUserId  String                @map("created_by_user_id") @db.Uuid
+  updatedByUserId  String?               @map("updated_by_user_id") @db.Uuid
+  deletedAt        DateTime?             @map("deleted_at")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+
+  school     School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  curriculum Curriculum       @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  unit       CurriculumUnit   @relation(fields: [unitId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  lesson     CurriculumLesson @relation(fields: [lessonId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  file       File?            @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  createdBy  User             @relation("LessonContentItemCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy  User?            @relation("LessonContentItemUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, curriculumId])
+  @@index([schoolId, unitId])
+  @@index([schoolId, lessonId])
+  @@index([schoolId, lessonId, sortOrder])
+  @@index([schoolId, type])
+  @@index([fileId])
+  @@index([createdByUserId])
+  @@index([updatedByUserId])
+  @@index([deletedAt])
+  @@map("lesson_content_items")
 }
 
 model TimetableConfig {
@@ -3009,22 +3067,22 @@ model GradeAssessment {
   updatedAt           DateTime                      @updatedAt @map("updated_at")
   deletedAt           DateTime?                     @map("deleted_at")
 
-  school            School                          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicYear      AcademicYear                    @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term              Term                            @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  subject           Subject                         @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  stage             Stage?                          @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  grade             Grade?                          @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  section           Section?                        @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classroom         Classroom?                      @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  publishedBy       User?                           @relation("GradeAssessmentPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
-  approvedBy        User?                           @relation("GradeAssessmentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  lockedBy          User?                           @relation("GradeAssessmentLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
-  createdBy         User?                           @relation("GradeAssessmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  questions         GradeAssessmentQuestion[]
-  questionOptions   GradeAssessmentQuestionOption[]
-  submissions       GradeSubmission[]
-  submissionAnswers GradeSubmissionAnswer[]
+  school              School                          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear        AcademicYear                    @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                Term                            @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject             Subject                         @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  stage               Stage?                          @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade               Grade?                          @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  section             Section?                        @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom           Classroom?                      @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  publishedBy         User?                           @relation("GradeAssessmentPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  approvedBy          User?                           @relation("GradeAssessmentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  lockedBy            User?                           @relation("GradeAssessmentLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
+  createdBy           User?                           @relation("GradeAssessmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  questions           GradeAssessmentQuestion[]
+  questionOptions     GradeAssessmentQuestionOption[]
+  submissions         GradeSubmission[]
+  submissionAnswers   GradeSubmissionAnswer[]
   items               GradeItem[]
   homeworkAssignments HomeworkAssignment[]
   heroMissions        HeroMission[]
@@ -3364,10 +3422,10 @@ model HomeworkTarget {
   createdAt            DateTime             @default(now()) @map("created_at")
   updatedAt            DateTime             @updatedAt @map("updated_at")
 
-  school             School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  homeworkAssignment HomeworkAssignment @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Cascade)
-  student            Student            @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  enrollment         Enrollment         @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  school             School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  homeworkAssignment HomeworkAssignment   @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  student            Student              @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment         Enrollment           @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
   submissions        HomeworkSubmission[]
 
   @@unique([id, schoolId])
@@ -5121,6 +5179,7 @@ model File {
   school                               School?                               @relation(fields: [schoolId], references: [id], onDelete: SetNull)
   uploader                             User?                                 @relation("FileUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
   attachments                          Attachment[]
+  lessonContentItems                   LessonContentItem[]
   reinforcementProofSubmissions        ReinforcementSubmission[]             @relation("ReinforcementSubmissionProofFile")
   applicationDocuments                 ApplicationDocument[]
   studentDocuments                     StudentDocument[]

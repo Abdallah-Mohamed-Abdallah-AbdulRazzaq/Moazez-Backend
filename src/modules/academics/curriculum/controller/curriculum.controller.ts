@@ -38,6 +38,14 @@ import {
   UpdateCurriculumUseCase,
 } from '../application/curriculum.use-cases';
 import {
+  CreateLessonContentUseCase,
+  DeleteLessonContentUseCase,
+  GetLessonContentUseCase,
+  ListLessonContentUseCase,
+  ReorderLessonContentUseCase,
+  UpdateLessonContentUseCase,
+} from '../application/lesson-content.use-cases';
+import {
   CreateCurriculumDto,
   CreateCurriculumLessonDto,
   CreateCurriculumUnitDto,
@@ -48,6 +56,11 @@ import {
   UpdateCurriculumUnitDto,
 } from '../dto/curriculum.dto';
 import {
+  CreateLessonContentItemDto,
+  ReorderLessonContentItemDto,
+  UpdateLessonContentItemDto,
+} from '../dto/lesson-content.dto';
+import {
   CurriculaListResponseDto,
   CurriculumDetailResponseDto,
   CurriculumLessonResponseDto,
@@ -55,6 +68,11 @@ import {
   CurriculumUnitResponseDto,
   DeleteCurriculumNodeResponseDto,
 } from '../dto/curriculum-response.dto';
+import {
+  DeleteLessonContentItemResponseDto,
+  LessonContentItemResponseDto,
+  LessonContentListResponseDto,
+} from '../dto/lesson-content-response.dto';
 
 @ApiTags('academics-curriculum')
 @ApiBearerAuth()
@@ -76,6 +94,12 @@ export class CurriculumController {
     private readonly updateLessonUseCase: UpdateCurriculumLessonUseCase,
     private readonly reorderLessonUseCase: ReorderCurriculumLessonUseCase,
     private readonly deleteLessonUseCase: DeleteCurriculumLessonUseCase,
+    private readonly listLessonContentUseCase: ListLessonContentUseCase,
+    private readonly createLessonContentUseCase: CreateLessonContentUseCase,
+    private readonly getLessonContentUseCase: GetLessonContentUseCase,
+    private readonly updateLessonContentUseCase: UpdateLessonContentUseCase,
+    private readonly reorderLessonContentUseCase: ReorderLessonContentUseCase,
+    private readonly deleteLessonContentUseCase: DeleteLessonContentUseCase,
   ) {}
 
   @Get()
@@ -271,6 +295,137 @@ export class CurriculumController {
       lessonId,
       dto,
     );
+  }
+
+  @Get(':curriculumId/units/:unitId/lessons/:lessonId/content')
+  @RequiredPermissions('academics.curriculum.view')
+  @ApiOperation({ summary: 'List lesson content items' })
+  @ApiParam({ name: 'curriculumId', format: 'uuid' })
+  @ApiParam({ name: 'unitId', format: 'uuid' })
+  @ApiParam({ name: 'lessonId', format: 'uuid' })
+  @ApiOkResponse({ type: LessonContentListResponseDto })
+  listLessonContent(
+    @Param('curriculumId', new ParseUUIDPipe()) curriculumId: string,
+    @Param('unitId', new ParseUUIDPipe()) unitId: string,
+    @Param('lessonId', new ParseUUIDPipe()) lessonId: string,
+  ): Promise<LessonContentListResponseDto> {
+    return this.listLessonContentUseCase.execute({
+      curriculumId,
+      unitId,
+      lessonId,
+    });
+  }
+
+  @Post(':curriculumId/units/:unitId/lessons/:lessonId/content')
+  @RequiredPermissions('academics.curriculum.manage')
+  @ApiOperation({ summary: 'Create a lesson content item' })
+  @ApiParam({ name: 'curriculumId', format: 'uuid' })
+  @ApiParam({ name: 'unitId', format: 'uuid' })
+  @ApiParam({ name: 'lessonId', format: 'uuid' })
+  @ApiBody({ type: CreateLessonContentItemDto })
+  @ApiOkResponse({ type: LessonContentItemResponseDto })
+  createLessonContent(
+    @Param('curriculumId', new ParseUUIDPipe()) curriculumId: string,
+    @Param('unitId', new ParseUUIDPipe()) unitId: string,
+    @Param('lessonId', new ParseUUIDPipe()) lessonId: string,
+    @Body() dto: CreateLessonContentItemDto,
+  ): Promise<LessonContentItemResponseDto> {
+    return this.createLessonContentUseCase.execute(
+      { curriculumId, unitId, lessonId },
+      dto,
+    );
+  }
+
+  @Get(':curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId')
+  @RequiredPermissions('academics.curriculum.view')
+  @ApiOperation({ summary: 'Get lesson content item detail' })
+  @ApiParam({ name: 'curriculumId', format: 'uuid' })
+  @ApiParam({ name: 'unitId', format: 'uuid' })
+  @ApiParam({ name: 'lessonId', format: 'uuid' })
+  @ApiParam({ name: 'contentItemId', format: 'uuid' })
+  @ApiOkResponse({ type: LessonContentItemResponseDto })
+  getLessonContent(
+    @Param('curriculumId', new ParseUUIDPipe()) curriculumId: string,
+    @Param('unitId', new ParseUUIDPipe()) unitId: string,
+    @Param('lessonId', new ParseUUIDPipe()) lessonId: string,
+    @Param('contentItemId', new ParseUUIDPipe()) contentItemId: string,
+  ): Promise<LessonContentItemResponseDto> {
+    return this.getLessonContentUseCase.execute({
+      curriculumId,
+      unitId,
+      lessonId,
+      contentItemId,
+    });
+  }
+
+  @Patch(':curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId')
+  @RequiredPermissions('academics.curriculum.manage')
+  @ApiOperation({ summary: 'Update lesson content item' })
+  @ApiParam({ name: 'curriculumId', format: 'uuid' })
+  @ApiParam({ name: 'unitId', format: 'uuid' })
+  @ApiParam({ name: 'lessonId', format: 'uuid' })
+  @ApiParam({ name: 'contentItemId', format: 'uuid' })
+  @ApiBody({ type: UpdateLessonContentItemDto })
+  @ApiOkResponse({ type: LessonContentItemResponseDto })
+  updateLessonContent(
+    @Param('curriculumId', new ParseUUIDPipe()) curriculumId: string,
+    @Param('unitId', new ParseUUIDPipe()) unitId: string,
+    @Param('lessonId', new ParseUUIDPipe()) lessonId: string,
+    @Param('contentItemId', new ParseUUIDPipe()) contentItemId: string,
+    @Body() dto: UpdateLessonContentItemDto,
+  ): Promise<LessonContentItemResponseDto> {
+    return this.updateLessonContentUseCase.execute(
+      { curriculumId, unitId, lessonId, contentItemId },
+      dto,
+    );
+  }
+
+  @Patch(
+    ':curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId/reorder',
+  )
+  @RequiredPermissions('academics.curriculum.manage')
+  @ApiOperation({ summary: 'Reorder lesson content item' })
+  @ApiParam({ name: 'curriculumId', format: 'uuid' })
+  @ApiParam({ name: 'unitId', format: 'uuid' })
+  @ApiParam({ name: 'lessonId', format: 'uuid' })
+  @ApiParam({ name: 'contentItemId', format: 'uuid' })
+  @ApiBody({ type: ReorderLessonContentItemDto })
+  @ApiOkResponse({ type: LessonContentItemResponseDto })
+  reorderLessonContent(
+    @Param('curriculumId', new ParseUUIDPipe()) curriculumId: string,
+    @Param('unitId', new ParseUUIDPipe()) unitId: string,
+    @Param('lessonId', new ParseUUIDPipe()) lessonId: string,
+    @Param('contentItemId', new ParseUUIDPipe()) contentItemId: string,
+    @Body() dto: ReorderLessonContentItemDto,
+  ): Promise<LessonContentItemResponseDto> {
+    return this.reorderLessonContentUseCase.execute(
+      { curriculumId, unitId, lessonId, contentItemId },
+      dto,
+    );
+  }
+
+  @Delete(
+    ':curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId',
+  )
+  @RequiredPermissions('academics.curriculum.manage')
+  @ApiOperation({ summary: 'Soft delete lesson content item' })
+  @ApiParam({ name: 'curriculumId', format: 'uuid' })
+  @ApiParam({ name: 'unitId', format: 'uuid' })
+  @ApiParam({ name: 'lessonId', format: 'uuid' })
+  @ApiParam({ name: 'contentItemId', format: 'uuid' })
+  @ApiOkResponse({ type: DeleteLessonContentItemResponseDto })
+  deleteLessonContent(
+    @Param('curriculumId', new ParseUUIDPipe()) curriculumId: string,
+    @Param('unitId', new ParseUUIDPipe()) unitId: string,
+    @Param('lessonId', new ParseUUIDPipe()) lessonId: string,
+    @Param('contentItemId', new ParseUUIDPipe()) contentItemId: string,
+  ): Promise<DeleteLessonContentItemResponseDto> {
+    return this.deleteLessonContentUseCase.execute({
+      curriculumId,
+      unitId,
+      lessonId,
+      contentItemId,
+    });
   }
 
   @Delete(':curriculumId/units/:unitId/lessons/:lessonId')

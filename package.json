@@ -44,6 +44,7 @@
     "test:e2e:sprint13f": "jest --config ./test/jest-e2e.json --runInBand test/e2e/homework-final-closeout.e2e-spec.ts",
     "test:e2e:sprint14e": "jest --config ./test/jest-e2e.json --runInBand test/e2e/homework-submissions-final-closeout.e2e-spec.ts",
     "test:e2e:sprint15b": "jest --config ./test/jest-e2e.json --runInBand test/e2e/academics-curriculum-foundation.e2e-spec.ts",
+    "test:e2e:sprint15c": "jest --config ./test/jest-e2e.json --runInBand test/e2e/academics-lesson-content-foundation.e2e-spec.ts",
     "test:security": "jest --config ./test/jest-e2e.json test/security",
     "seed": "prisma db seed",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",
@@ -75,6 +76,7 @@
     "verify:sprint13f": "npm run verify:sprint12f && npm run test:e2e:sprint13f",
     "verify:sprint14e": "npm run verify:sprint13f && npx prisma validate && npx prisma generate && npm run build && npm run test -- homework --runInBand && npm run test -- student-app --runInBand && npm run test -- teacher-app --runInBand && npm run test -- parent-app --runInBand && npm run test:security -- --runInBand && npm run test:e2e:sprint14e",
     "verify:sprint15b": "npm run verify:sprint14e && npx prisma validate && npx prisma generate && npm run build && npm run test -- academics/curriculum --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.academics-curriculum.spec.ts && npm run test:e2e:sprint15b",
+    "verify:sprint15c": "npm run verify:sprint15b && npx prisma validate && npx prisma generate && npm run build && npm run test -- academics/curriculum --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.academics-curriculum.spec.ts test/security/tenancy.academics-lesson-content.spec.ts && npm run test:e2e:sprint15c",
     "demo:sprint1c": "node scripts/demo-sprint1c.cjs",
     "demo:sprint2a": "node scripts/demo-sprint2a.cjs",
     "demo:sprint2b": "node scripts/demo-sprint2b.cjs"
