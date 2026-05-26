@@ -4,9 +4,11 @@ import {
   Prisma,
 } from '@prisma/client';
 import {
+  ParentHomeworkAttachmentDto,
   ParentHomeworkDetailDto,
   ParentHomeworkListItemDto,
   ParentHomeworkMode,
+  ParentHomeworkQuestionDto,
   ParentHomeworkResponseDto,
   ParentHomeworkSubmissionDto,
   ParentHomeworksListResponseDto,
@@ -134,8 +136,8 @@ function presentListItem(
     estimatedMinutes: assignment.estimatedMinutes ?? null,
     totalMarks: presentDecimal(assignment.totalMarks),
     isGraded: assignment.isGraded,
-    questionCount: 0,
-    attachmentsCount: 0,
+    questionCount: assignment.questions.length,
+    attachmentsCount: assignment.attachments.length,
     submittedAt: presentDateTime(target.submittedAt),
     reviewedAt: presentDateTime(target.reviewedAt),
     createdAt: assignment.createdAt.toISOString(),
@@ -152,13 +154,56 @@ function presentDetail(
     ...presentListItem(target),
     publishAt: presentDateTime(assignment.publishAt),
     closedAt: presentDateTime(assignment.closedAt),
-    questions: [],
-    attachments: [],
+    questions: assignment.questions.map((question) =>
+      presentSafeQuestion(question),
+    ),
+    attachments: assignment.attachments.map((attachment) =>
+      presentSafeAttachment(attachment),
+    ),
     submission: target.submissions[0]
       ? presentParentHomeworkSubmission(target.submissions[0], {
           totalMarks: assignment.totalMarks,
         })
       : null,
+  };
+}
+
+function presentSafeQuestion(
+  question: ParentHomeworkTargetDetailReadModel['homeworkAssignment']['questions'][number],
+): ParentHomeworkQuestionDto {
+  return {
+    questionId: question.id,
+    homeworkId: question.homeworkAssignmentId,
+    type: question.type.toLowerCase(),
+    prompt: question.prompt,
+    instructions: question.instructions ?? null,
+    points: presentDecimal(question.points) ?? 0,
+    sortOrder: question.sortOrder,
+    isRequired: question.isRequired,
+    options: question.options.map((option) => ({
+      optionId: option.id,
+      questionId: option.homeworkQuestionId,
+      text: option.text,
+      sortOrder: option.sortOrder,
+    })),
+  };
+}
+
+function presentSafeAttachment(
+  attachment: ParentHomeworkTargetDetailReadModel['homeworkAssignment']['attachments'][number],
+): ParentHomeworkAttachmentDto {
+  return {
+    attachmentId: attachment.id,
+    homeworkId: attachment.homeworkAssignmentId,
+    fileId: attachment.fileId,
+    title: attachment.title ?? attachment.file.originalName,
+    description: attachment.description ?? null,
+    sortOrder: attachment.sortOrder,
+    file: {
+      filename: attachment.file.originalName,
+      mimeType: attachment.file.mimeType,
+      sizeBytes: attachment.file.sizeBytes.toString(),
+    },
   };
 }
 

@@ -135,9 +135,40 @@ export class StudentHomeworkListItemDto {
   updatedAt!: string;
 }
 
-export class StudentHomeworkQuestionDto {}
+export class StudentHomeworkQuestionOptionDto {
+  optionId!: string;
+  questionId!: string;
+  text!: string;
+  sortOrder!: number;
+}
 
-export class StudentHomeworkAttachmentDto {}
+export class StudentHomeworkQuestionDto {
+  questionId!: string;
+  homeworkId!: string;
+  type!: string;
+  prompt!: string;
+  instructions!: string | null;
+  points!: number;
+  sortOrder!: number;
+  isRequired!: boolean;
+  options!: StudentHomeworkQuestionOptionDto[];
+}
+
+export class StudentHomeworkAttachmentFileDto {
+  filename!: string;
+  mimeType!: string;
+  sizeBytes!: string;
+}
+
+export class StudentHomeworkAttachmentDto {
+  attachmentId!: string;
+  homeworkId!: string;
+  fileId!: string;
+  title!: string | null;
+  description!: string | null;
+  sortOrder!: number;
+  file!: StudentHomeworkAttachmentFileDto;
+}
 
 export class StudentHomeworkSubmissionDto {
   id!: string;

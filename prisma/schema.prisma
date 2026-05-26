@@ -507,6 +507,16 @@ enum HomeworkSubmissionStatus {
   @@map("homework_submission_status")
 }
 
+enum HomeworkQuestionType {
+  SHORT_TEXT
+  LONG_TEXT
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+
+  @@map("homework_question_type")
+}
+
 enum ReinforcementSource {
   TEACHER
   PARENT
@@ -1134,6 +1144,9 @@ model School {
   homeworkAssignments                   HomeworkAssignment[]
   homeworkTargets                       HomeworkTarget[]
   homeworkSubmissions                   HomeworkSubmission[]
+  homeworkQuestions                     HomeworkQuestion[]
+  homeworkQuestionOptions               HomeworkQuestionOption[]
+  homeworkAssignmentAttachments         HomeworkAssignmentAttachment[]
   reinforcementTasks                    ReinforcementTask[]
   reinforcementTaskTargets              ReinforcementTaskTarget[]
   reinforcementTaskStages               ReinforcementTaskStage[]
@@ -1251,6 +1264,9 @@ model User {
   homeworkAssignmentsCreated                     HomeworkAssignment[]                   @relation("HomeworkAssignmentCreatedBy")
   homeworkAssignmentsPublished                   HomeworkAssignment[]                   @relation("HomeworkAssignmentPublishedBy")
   homeworkSubmissionsReviewed                    HomeworkSubmission[]                   @relation("HomeworkSubmissionReviewedBy")
+  homeworkQuestionsCreated                       HomeworkQuestion[]                     @relation("HomeworkQuestionCreatedBy")
+  homeworkQuestionsUpdated                       HomeworkQuestion[]                     @relation("HomeworkQuestionUpdatedBy")
+  homeworkAssignmentAttachmentsCreated           HomeworkAssignmentAttachment[]         @relation("HomeworkAssignmentAttachmentCreatedBy")
   reinforcementTasksAssigned                     ReinforcementTask[]                    @relation("ReinforcementTaskAssignedBy")
   reinforcementTasksCreated                      ReinforcementTask[]                    @relation("ReinforcementTaskCreatedBy")
   reinforcementTasksCancelled                    ReinforcementTask[]                    @relation("ReinforcementTaskCancelledBy")
@@ -3525,6 +3541,8 @@ model HomeworkAssignment {
   publishedBy              User?                    @relation("HomeworkAssignmentPublishedBy", fields: [publishedByUserId], references: [id], onDelete: SetNull)
   targets                  HomeworkTarget[]
   submissions              HomeworkSubmission[]
+  questions                HomeworkQuestion[]
+  attachments              HomeworkAssignmentAttachment[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -3626,6 +3644,92 @@ model HomeworkSubmission {
   @@index([reviewedByUserId])
   @@index([schoolId, reviewedAt])
   @@map("homework_submissions")
+}
+
+model HomeworkQuestion {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String               @map("school_id") @db.Uuid
+  homeworkAssignmentId String               @map("homework_assignment_id") @db.Uuid
+  type                 HomeworkQuestionType
+  prompt               String               @db.Text
+  instructions         String?              @db.Text
+  points               Decimal              @default(0) @db.Decimal(7, 2)
+  sortOrder            Int                  @default(0) @map("sort_order")
+  isRequired           Boolean              @default(true) @map("is_required")
+  expectedAnswer       String?              @map("expected_answer") @db.Text
+  metadata             Json?
+  createdByUserId      String               @map("created_by_user_id") @db.Uuid
+  updatedByUserId      String?              @map("updated_by_user_id") @db.Uuid
+  deletedAt            DateTime?            @map("deleted_at")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+
+  school             School                     @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  homeworkAssignment HomeworkAssignment         @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy          User                       @relation("HomeworkQuestionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy          User?                      @relation("HomeworkQuestionUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  options            HomeworkQuestionOption[]
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, homeworkAssignmentId], map: "hw_question_school_assignment_idx")
+  @@index([schoolId, homeworkAssignmentId, sortOrder], map: "hw_question_school_assignment_sort_idx")
+  @@index([schoolId, type])
+  @@index([createdByUserId])
+  @@index([updatedByUserId])
+  @@index([deletedAt])
+  @@map("homework_questions")
+}
+
+model HomeworkQuestionOption {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String   @map("school_id") @db.Uuid
+  homeworkQuestionId String   @map("homework_question_id") @db.Uuid
+  text               String   @db.Text
+  isCorrect          Boolean  @default(false) @map("is_correct")
+  sortOrder          Int      @default(0) @map("sort_order")
+  metadata           Json?
+  deletedAt          DateTime? @map("deleted_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  school           School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  homeworkQuestion HomeworkQuestion @relation(fields: [homeworkQuestionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, homeworkQuestionId], map: "hw_option_school_question_idx")
+  @@index([schoolId, homeworkQuestionId, sortOrder], map: "hw_option_school_question_sort_idx")
+  @@index([deletedAt])
+  @@map("homework_question_options")
+}
+
+model HomeworkAssignmentAttachment {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId             String    @map("school_id") @db.Uuid
+  homeworkAssignmentId String    @map("homework_assignment_id") @db.Uuid
+  fileId               String    @map("file_id") @db.Uuid
+  title                String?
+  description          String?   @db.Text
+  sortOrder            Int       @default(0) @map("sort_order")
+  createdByUserId      String    @map("created_by_user_id") @db.Uuid
+  deletedAt            DateTime? @map("deleted_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  school             School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  homeworkAssignment HomeworkAssignment @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  file               File               @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  createdBy          User               @relation("HomeworkAssignmentAttachmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([schoolId, homeworkAssignmentId], map: "hw_attach_school_assignment_idx")
+  @@index([schoolId, homeworkAssignmentId, sortOrder], map: "hw_attach_school_assignment_sort_idx")
+  @@index([fileId])
+  @@index([createdByUserId])
+  @@index([deletedAt])
+  @@map("homework_assignment_attachments")
 }
 
 // ============================================================
@@ -5323,6 +5427,7 @@ model File {
   uploader                             User?                                 @relation("FileUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
   attachments                          Attachment[]
   lessonContentItems                   LessonContentItem[]
+  homeworkAssignmentAttachments         HomeworkAssignmentAttachment[]
   reinforcementProofSubmissions        ReinforcementSubmission[]             @relation("ReinforcementSubmissionProofFile")
   applicationDocuments                 ApplicationDocument[]
   studentDocuments                     StudentDocument[]

@@ -297,6 +297,8 @@ function homeworkTargetFixture(overrides?: {
         firstName: 'Teacher',
         lastName: 'One',
       },
+      questions: [],
+      attachments: [],
     },
   };
 }

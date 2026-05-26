@@ -227,6 +227,14 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
         'GET /api/v1/student/homeworks/:homeworkId/submission',
         'PUT /api/v1/student/homeworks/:homeworkId/submission',
         'POST /api/v1/student/homeworks/:homeworkId/submit',
+        'GET /api/v1/homework/assignments/:homeworkId/questions',
+        'POST /api/v1/homework/assignments/:homeworkId/questions',
+        'GET /api/v1/homework/assignments/:homeworkId/attachments',
+        'POST /api/v1/homework/assignments/:homeworkId/attachments',
+        'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions',
+        'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions',
+        'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments',
+        'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments',
         'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions',
         'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId',
         'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/review',
@@ -246,8 +254,6 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
       'POST /api/v1/student/homeworks/:homeworkId/answers',
       'GET /api/v1/parent/children/:studentId/homeworks/:homeworkId/questions',
       'GET /api/v1/parent/children/:studentId/homeworks/:homeworkId/attachments',
-      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions',
-      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments',
       'GET /api/v1/homework/assignments/:homeworkId/submissions',
       'GET /api/v1/homework/assignments/:homeworkId/submissions/:submissionId',
       'POST /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/review',
@@ -265,7 +271,7 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
 
     for (const route of routes) {
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/homework\/.*(question|answer|attachment|file|proof|upload|grade-sync|sync-grade|notification|xp|reward)/,
+        /^.+ \/api\/v1\/homework\/.*(answer|file|proof|upload|grade-sync|sync-grade|notification|xp|reward)/,
       );
       expect(route).not.toMatch(
         /^.+ \/api\/v1\/student\/homeworks\/.*(question|answer|attachment|file|proof|upload|grade-sync|sync-grade|notification|xp|reward|pickup|smart-pickup)/,
@@ -274,7 +280,7 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
         /^.+ \/api\/v1\/parent\/children\/:studentId\/homeworks\/.*(submit|submission\/submit|question|answer|attachment|file|proof|upload|grade-sync|sync-grade|notification|xp|reward|pickup|smart-pickup)/,
       );
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/teacher\/homeworks\/.*(question|answer|attachment|file|proof|upload|grade-sync|sync-grade|notification|xp|reward|pickup|smart-pickup)/,
+        /^.+ \/api\/v1\/teacher\/homeworks\/.*(answer|file|proof|upload|grade-sync|sync-grade|notification|xp|reward|pickup|smart-pickup)/,
       );
     }
   });

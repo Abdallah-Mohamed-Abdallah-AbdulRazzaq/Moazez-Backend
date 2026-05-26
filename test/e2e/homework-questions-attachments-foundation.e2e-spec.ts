@@ -14,7 +14,7 @@ type ExpressLayer = {
   };
 };
 
-describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
+describe('Sprint 15E Homework questions and attachments foundation (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeAll(async () => {
@@ -42,18 +42,11 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
     if (app) await app.close();
   });
 
-  it('registers the completed Homework Core and app-facing routes', () => {
+  it('registers assignment-owned question, option, and attachment routes', () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toEqual(
       expect.arrayContaining([
-        'GET /api/v1/homework/assignments',
-        'POST /api/v1/homework/assignments',
-        'GET /api/v1/homework/assignments/:homeworkId',
-        'PATCH /api/v1/homework/assignments/:homeworkId',
-        'POST /api/v1/homework/assignments/:homeworkId/publish',
-        'POST /api/v1/homework/assignments/:homeworkId/close',
-        'POST /api/v1/homework/assignments/:homeworkId/cancel',
         'GET /api/v1/homework/assignments/:homeworkId/questions',
         'POST /api/v1/homework/assignments/:homeworkId/questions',
         'GET /api/v1/homework/assignments/:homeworkId/questions/:questionId',
@@ -69,16 +62,6 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
         'PATCH /api/v1/homework/assignments/:homeworkId/attachments/:attachmentId',
         'PATCH /api/v1/homework/assignments/:homeworkId/attachments/:attachmentId/reorder',
         'DELETE /api/v1/homework/assignments/:homeworkId/attachments/:attachmentId',
-        'GET /api/v1/homework/assignments/:homeworkId/targets',
-        'POST /api/v1/homework/assignments/:homeworkId/targets/resolve',
-        'GET /api/v1/teacher/homeworks/dashboard',
-        'GET /api/v1/teacher/homeworks/classes/:classId/assignments',
-        'POST /api/v1/teacher/homeworks/classes/:classId/assignments',
-        'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId',
-        'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId',
-        'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/publish',
-        'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/close',
-        'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/cancel',
         'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions',
         'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions',
         'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId',
@@ -94,68 +77,46 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
         'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments/:attachmentId',
         'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments/:attachmentId/reorder',
         'DELETE /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments/:attachmentId',
-        'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions',
-        'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId',
-        'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/review',
-        'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/targets',
-        'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/targets/resolve',
-        'GET /api/v1/student/homeworks',
-        'GET /api/v1/student/homeworks/:homeworkId',
-        'GET /api/v1/student/homeworks/:homeworkId/submission',
-        'PUT /api/v1/student/homeworks/:homeworkId/submission',
-        'POST /api/v1/student/homeworks/:homeworkId/submit',
-        'GET /api/v1/parent/children/:studentId/homeworks',
-        'GET /api/v1/parent/children/:studentId/homeworks/:homeworkId',
       ]),
     );
   });
 
-  it('keeps deferred Homework and adjacent app routes unregistered', () => {
+  it('keeps answer persistence, submission uploads, grade sync, XP, and parent submit deferred', () => {
     const routes = listRegisteredRoutes();
 
     for (const absentRoute of [
-      'GET /api/v1/homework/submissions',
-      'POST /api/v1/homework/submissions',
-      'GET /api/v1/homework/assignments/:homeworkId/submissions',
-      'POST /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/review',
-      'GET /api/v1/homework/questions',
-      'POST /api/v1/homework/questions',
-      'GET /api/v1/homework/attachments',
-      'POST /api/v1/homework/attachments',
-      'POST /api/v1/student/homeworks/:homeworkId/submission/submit',
-      'PUT /api/v1/student/homeworks/:homeworkId/submission/answers',
-      'GET /api/v1/student/homeworks/:homeworkId/submission/history',
+      'POST /api/v1/student/homeworks/:homeworkId/answers',
+      'PUT /api/v1/student/homeworks/:homeworkId/submission/answers/:questionId',
+      'POST /api/v1/student/homeworks/:homeworkId/attachments',
+      'POST /api/v1/student/homeworks/:homeworkId/proof',
       'GET /api/v1/student/homeworks/:homeworkId/questions',
       'GET /api/v1/student/homeworks/:homeworkId/attachments',
       'POST /api/v1/parent/children/:studentId/homeworks/:homeworkId/submit',
       'POST /api/v1/parent/children/:studentId/homeworks/:homeworkId/submission/submit',
+      'POST /api/v1/parent/children/:studentId/homeworks/:homeworkId/answers',
       'GET /api/v1/parent/children/:studentId/homeworks/:homeworkId/questions',
       'GET /api/v1/parent/children/:studentId/homeworks/:homeworkId/attachments',
-      'GET /api/v1/parent/homeworks',
-      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers',
+      'POST /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/sync-grade-item',
       'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/sync-grade-item',
-      'GET /api/v1/teacher/notifications',
-      'GET /api/v1/student/notifications',
-      'GET /api/v1/parent/notifications',
-      'GET /api/v1/student/pickup',
-      'GET /api/v1/parent/pickup',
-      'GET /api/v1/parent/smart-pickup',
+      'POST /api/v1/homework/assignments/:homeworkId/notifications',
+      'POST /api/v1/homework/assignments/:homeworkId/xp',
+      'POST /api/v1/homework/assignments/:homeworkId/rewards',
     ]) {
       expect(routes).not.toContain(absentRoute);
     }
 
     for (const route of routes) {
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/homework\/.*(submission|answer|proof|upload|xp|reward|grade-sync)/,
+        /^.+ \/api\/v1\/student\/homeworks\/.*(answer|proof|upload|grade-sync|sync-grade|xp|reward)/,
       );
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/student\/homeworks\/.*(question|answer|attachment|proof|upload|grade-sync|xp|reward)/,
+        /^.+ \/api\/v1\/parent\/children\/:studentId\/homeworks\/.*(submit|answer|proof|upload|grade-sync|sync-grade|xp|reward)/,
       );
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/parent\/children\/:studentId\/homeworks\/.*(submit|submission|question|answer|attachment|proof|upload)/,
+        /^.+ \/api\/v1\/homework\/.*(answer|proof|upload|grade-sync|sync-grade|notification|xp|reward)/,
       );
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/teacher\/homeworks\/.*(answer|proof|upload|xp|reward|grade-sync)/,
+        /^.+ \/api\/v1\/teacher\/homeworks\/.*(answer|proof|upload|grade-sync|sync-grade|notification|xp|reward)/,
       );
     }
   });
@@ -183,9 +144,9 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
           .filter(([, enabled]) => enabled)
           .map(([method]) => method.toUpperCase());
 
-        for (const path of paths) {
+        for (const routePath of paths) {
           for (const method of methods) {
-            routes.push(`${method} ${normalizeRoutePath(path)}`);
+            routes.push(`${method} ${routePath}`);
           }
         }
       }
@@ -195,28 +156,16 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
       }
     }
   }
-
-  function normalizeRoutePath(path: string): string {
-    return `/${path}`.replace(/\/{2,}/g, '/');
-  }
-
-  function createNoopBullmqService(): Pick<
-    BullmqService,
-    'addJob' | 'createWorker' | 'getQueue'
-  > {
-    return {
-      getQueue: jest.fn(() => ({
-        add: jest.fn().mockResolvedValue({ id: 'noop-job' }),
-        close: jest.fn().mockResolvedValue(undefined),
-      })),
-      addJob: jest.fn().mockResolvedValue({ id: 'noop-job' }),
-      createWorker: jest.fn(() => ({
-        close: jest.fn().mockResolvedValue(undefined),
-        on: jest.fn(),
-      })),
-    } as unknown as Pick<
-      BullmqService,
-      'addJob' | 'createWorker' | 'getQueue'
-    >;
-  }
 });
+
+function createNoopBullmqService(): Pick<
+  BullmqService,
+  'addEmailJob' | 'addImportJob' | 'createWorker' | 'onModuleDestroy'
+> {
+  return {
+    addEmailJob: jest.fn().mockResolvedValue(undefined),
+    addImportJob: jest.fn().mockResolvedValue(undefined),
+    createWorker: jest.fn().mockReturnValue({ close: jest.fn() }),
+    onModuleDestroy: jest.fn().mockResolvedValue(undefined),
+  };
+}

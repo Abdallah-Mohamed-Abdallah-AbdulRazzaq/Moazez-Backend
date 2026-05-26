@@ -227,6 +227,10 @@ function coreAssignment(
     estimatedMinutes: 30,
     totalMarks: null,
     isGraded: false,
+    questionCount: 0,
+    attachmentsCount: 0,
+    questions: [],
+    attachments: [],
     counters: {
       totalTargets: 1,
       assigned: 1,

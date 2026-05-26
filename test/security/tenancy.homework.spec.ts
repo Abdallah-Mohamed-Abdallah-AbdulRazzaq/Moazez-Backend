@@ -2482,7 +2482,7 @@ describe('Homework tenancy isolation (security)', () => {
     }
   });
 
-  it('keeps submission, question, and attachment homework routes unregistered', async () => {
+  it('keeps deferred submission, answer, and upload homework routes unregistered', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     for (const route of [
@@ -2502,8 +2502,6 @@ describe('Homework tenancy isolation (security)', () => {
       `/parent/children/${demoStudentId}/homeworks/${demoHomeworkId}/questions`,
       `/parent/children/${demoStudentId}/homeworks/${demoHomeworkId}/attachments`,
       `/parent/children/${demoStudentId}/homeworks/${demoHomeworkId}/files`,
-      `/teacher/homeworks/classes/${demoAllocationId}/assignments/${demoHomeworkId}/questions`,
-      `/teacher/homeworks/classes/${demoAllocationId}/assignments/${demoHomeworkId}/attachments`,
       `/teacher/homeworks/classes/${demoAllocationId}/assignments/${demoHomeworkId}/submissions/${demoHomeworkId}/answers`,
     ]) {
       await request(app.getHttpServer())

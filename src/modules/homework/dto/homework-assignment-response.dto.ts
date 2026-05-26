@@ -1,3 +1,6 @@
+import { HomeworkAttachmentResponseDto } from './homework-attachment-response.dto';
+import { HomeworkQuestionResponseDto } from './homework-question-response.dto';
+
 export class HomeworkNamedReferenceDto {
   id!: string;
   name!: string;
@@ -56,6 +59,10 @@ export class HomeworkAssignmentResponseDto {
   estimatedMinutes!: number | null;
   totalMarks!: number | null;
   isGraded!: boolean;
+  questionCount!: number;
+  attachmentsCount!: number;
+  questions!: HomeworkQuestionResponseDto[];
+  attachments!: HomeworkAttachmentResponseDto[];
   counters!: HomeworkCountersDto;
   createdAt!: string;
   updatedAt!: string;

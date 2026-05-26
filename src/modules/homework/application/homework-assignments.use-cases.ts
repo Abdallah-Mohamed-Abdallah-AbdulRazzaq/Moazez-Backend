@@ -9,6 +9,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { AuthRepository } from '../../iam/auth/infrastructure/auth.repository';
 import { HomeworkScope, requireHomeworkScope } from '../homework-context';
+import { validateHomeworkQuestionsForPublish } from './homework-questions.use-cases';
 import {
   CreateHomeworkAssignmentDto,
   ListHomeworkAssignmentsQueryDto,
@@ -244,6 +245,10 @@ export class PublishHomeworkAssignmentUseCase {
       publishAt: assignment.publishAt,
       now: new Date(),
     });
+    await validateHomeworkQuestionsForPublish(
+      this.homeworkRepository,
+      homeworkId,
+    );
 
     const now = new Date();
     const updated = await this.homeworkRepository.publishAssignmentWithTargets(

@@ -138,9 +138,40 @@ export class ParentHomeworkListItemDto {
   updatedAt!: string;
 }
 
-export class ParentHomeworkQuestionDto {}
+export class ParentHomeworkQuestionOptionDto {
+  optionId!: string;
+  questionId!: string;
+  text!: string;
+  sortOrder!: number;
+}
 
-export class ParentHomeworkAttachmentDto {}
+export class ParentHomeworkQuestionDto {
+  questionId!: string;
+  homeworkId!: string;
+  type!: string;
+  prompt!: string;
+  instructions!: string | null;
+  points!: number;
+  sortOrder!: number;
+  isRequired!: boolean;
+  options!: ParentHomeworkQuestionOptionDto[];
+}
+
+export class ParentHomeworkAttachmentFileDto {
+  filename!: string;
+  mimeType!: string;
+  sizeBytes!: string;
+}
+
+export class ParentHomeworkAttachmentDto {
+  attachmentId!: string;
+  homeworkId!: string;
+  fileId!: string;
+  title!: string | null;
+  description!: string | null;
+  sortOrder!: number;
+  file!: ParentHomeworkAttachmentFileDto;
+}
 
 export class ParentHomeworkSubmissionDto {
   id!: string;

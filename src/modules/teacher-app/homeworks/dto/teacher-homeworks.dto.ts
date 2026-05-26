@@ -25,6 +25,8 @@ import {
   HomeworkAssignmentStatus,
   HomeworkTargetMode,
 } from '@prisma/client';
+import { HomeworkAttachmentResponseDto } from '../../../homework/dto/homework-attachment-response.dto';
+import { HomeworkQuestionResponseDto } from '../../../homework/dto/homework-question-response.dto';
 
 function toUpperEnumValue(value: unknown): unknown {
   if (value === undefined || value === null || value === '') return undefined;
@@ -53,6 +55,21 @@ export class TeacherHomeworkAssignmentParamsDto extends TeacherHomeworkClassPara
 export class TeacherHomeworkSubmissionParamsDto extends TeacherHomeworkAssignmentParamsDto {
   @IsUUID()
   submissionId!: string;
+}
+
+export class TeacherHomeworkQuestionParamsDto extends TeacherHomeworkAssignmentParamsDto {
+  @IsUUID()
+  questionId!: string;
+}
+
+export class TeacherHomeworkQuestionOptionParamsDto extends TeacherHomeworkQuestionParamsDto {
+  @IsUUID()
+  optionId!: string;
+}
+
+export class TeacherHomeworkAttachmentParamsDto extends TeacherHomeworkAssignmentParamsDto {
+  @IsUUID()
+  attachmentId!: string;
 }
 
 export const TEACHER_HOMEWORK_SUBMISSION_STATUSES = [
@@ -326,6 +343,10 @@ export class TeacherHomeworkAssignmentDto {
   estimatedMinutes!: number | null;
   totalMarks!: number | null;
   isGraded!: boolean;
+  questionCount!: number;
+  attachmentsCount!: number;
+  questions!: HomeworkQuestionResponseDto[];
+  attachments!: HomeworkAttachmentResponseDto[];
   counters!: TeacherHomeworkCountersDto;
   createdAt!: string;
   updatedAt!: string;

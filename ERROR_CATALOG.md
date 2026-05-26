@@ -246,6 +246,17 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `homework.assignment.no_eligible_targets` | 422  | Homework has no eligible targets             |
 | `homework.assignment.target_conflict`     | 409  | Homework target selection is invalid         |
 | `homework.assignment.validation_failed`   | 422  | Homework assignment validation failed        |
+| `homework.assignment.invalid_question_structure` | 422 | Homework assignment question structure is invalid |
+| `homework.question.not_found`             | 404  | Homework question was not found              |
+| `homework.question.invalid_type_payload`  | 422  | Homework question payload does not match its type |
+| `homework.question.invalid_options`       | 422  | Homework question options are invalid        |
+| `homework.question.read_only`             | 409  | Homework question cannot be changed for this assignment |
+| `homework.question.option_not_found`      | 404  | Homework question option was not found       |
+| `homework.question.invalid_reorder`       | 422  | Homework question reorder target is invalid  |
+| `homework.attachment.not_found`           | 404  | Homework assignment attachment was not found |
+| `homework.attachment.file_not_found`      | 404  | Homework attachment file was not found       |
+| `homework.attachment.read_only`           | 409  | Homework attachment cannot be changed for this assignment |
+| `homework.attachment.invalid_reorder`     | 422  | Homework attachment reorder target is invalid |
 | `homework.submission.target_not_found`    | 404  | Homework submission target was not found     |
 | `homework.submission.not_found`           | 404  | Homework submission was not found            |
 | `homework.submission.not_submittable`     | 409  | Homework submission is not allowed in the current state |

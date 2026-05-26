@@ -19,12 +19,37 @@ import {
   SaveHomeworkSubmissionDraftUseCase,
   SubmitHomeworkSubmissionUseCase,
 } from './application/homework-submissions.use-cases';
+import {
+  CreateHomeworkAttachmentUseCase,
+  DeleteHomeworkAttachmentUseCase,
+  ListHomeworkAttachmentsUseCase,
+  ReorderHomeworkAttachmentUseCase,
+  UpdateHomeworkAttachmentUseCase,
+} from './application/homework-attachments.use-cases';
+import {
+  CreateHomeworkQuestionOptionUseCase,
+  CreateHomeworkQuestionUseCase,
+  DeleteHomeworkQuestionOptionUseCase,
+  DeleteHomeworkQuestionUseCase,
+  GetHomeworkQuestionUseCase,
+  ListHomeworkQuestionsUseCase,
+  ReorderHomeworkQuestionOptionUseCase,
+  ReorderHomeworkQuestionUseCase,
+  UpdateHomeworkQuestionOptionUseCase,
+  UpdateHomeworkQuestionUseCase,
+} from './application/homework-questions.use-cases';
+import { HomeworkAttachmentsController } from './controller/homework-attachments.controller';
 import { HomeworkAssignmentsController } from './controller/homework-assignments.controller';
+import { HomeworkQuestionsController } from './controller/homework-questions.controller';
 import { HomeworkRepository } from './infrastructure/homework.repository';
 
 @Module({
   imports: [AuthModule],
-  controllers: [HomeworkAssignmentsController],
+  controllers: [
+    HomeworkAssignmentsController,
+    HomeworkQuestionsController,
+    HomeworkAttachmentsController,
+  ],
   providers: [
     HomeworkRepository,
     ListHomeworkAssignmentsUseCase,
@@ -42,6 +67,21 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     ReviewHomeworkSubmissionUseCase,
     SaveHomeworkSubmissionDraftUseCase,
     SubmitHomeworkSubmissionUseCase,
+    ListHomeworkQuestionsUseCase,
+    GetHomeworkQuestionUseCase,
+    CreateHomeworkQuestionUseCase,
+    UpdateHomeworkQuestionUseCase,
+    ReorderHomeworkQuestionUseCase,
+    DeleteHomeworkQuestionUseCase,
+    CreateHomeworkQuestionOptionUseCase,
+    UpdateHomeworkQuestionOptionUseCase,
+    ReorderHomeworkQuestionOptionUseCase,
+    DeleteHomeworkQuestionOptionUseCase,
+    ListHomeworkAttachmentsUseCase,
+    CreateHomeworkAttachmentUseCase,
+    UpdateHomeworkAttachmentUseCase,
+    ReorderHomeworkAttachmentUseCase,
+    DeleteHomeworkAttachmentUseCase,
   ],
   exports: [
     HomeworkRepository,
@@ -60,6 +100,21 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     ReviewHomeworkSubmissionUseCase,
     SaveHomeworkSubmissionDraftUseCase,
     SubmitHomeworkSubmissionUseCase,
+    ListHomeworkQuestionsUseCase,
+    GetHomeworkQuestionUseCase,
+    CreateHomeworkQuestionUseCase,
+    UpdateHomeworkQuestionUseCase,
+    ReorderHomeworkQuestionUseCase,
+    DeleteHomeworkQuestionUseCase,
+    CreateHomeworkQuestionOptionUseCase,
+    UpdateHomeworkQuestionOptionUseCase,
+    ReorderHomeworkQuestionOptionUseCase,
+    DeleteHomeworkQuestionOptionUseCase,
+    ListHomeworkAttachmentsUseCase,
+    CreateHomeworkAttachmentUseCase,
+    UpdateHomeworkAttachmentUseCase,
+    ReorderHomeworkAttachmentUseCase,
+    DeleteHomeworkAttachmentUseCase,
   ],
 })
 export class HomeworkModule {}

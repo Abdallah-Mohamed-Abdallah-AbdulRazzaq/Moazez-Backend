@@ -12,6 +12,8 @@ import {
   HomeworkStatusCounters,
   ListHomeworkAssignmentsResult,
 } from '../infrastructure/homework.repository';
+import { presentHomeworkAttachment } from './homework-attachment.presenter';
+import { presentHomeworkQuestionAdmin } from './homework-question.presenter';
 
 function deriveName(entity: { nameAr: string; nameEn: string }): string {
   return entity.nameEn.trim().length > 0 ? entity.nameEn : entity.nameAr;
@@ -120,6 +122,14 @@ export function presentHomeworkAssignment(
     estimatedMinutes: assignment.estimatedMinutes ?? null,
     totalMarks: presentDecimal(assignment.totalMarks),
     isGraded: assignment.isGraded,
+    questionCount: assignment.questions.length,
+    attachmentsCount: assignment.attachments.length,
+    questions: assignment.questions.map((question) =>
+      presentHomeworkQuestionAdmin(question),
+    ),
+    attachments: assignment.attachments.map((attachment) =>
+      presentHomeworkAttachment(attachment),
+    ),
     counters: presentCounters(assignment.counters),
     createdAt: assignment.createdAt.toISOString(),
     updatedAt: assignment.updatedAt.toISOString(),

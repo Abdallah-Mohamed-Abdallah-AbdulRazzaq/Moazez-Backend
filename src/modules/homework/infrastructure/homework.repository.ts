@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   HomeworkAssignmentMode,
   HomeworkAssignmentStatus,
+  HomeworkQuestionType,
   HomeworkSubmissionStatus,
   HomeworkTargetStatus,
   Prisma,
@@ -33,6 +34,66 @@ const NAMED_REFERENCE_SELECT = {
   nameAr: true,
   nameEn: true,
 } satisfies Prisma.AcademicYearSelect;
+
+const HOMEWORK_QUESTION_OPTION_SELECT = {
+  id: true,
+  schoolId: true,
+  homeworkQuestionId: true,
+  text: true,
+  isCorrect: true,
+  sortOrder: true,
+  metadata: true,
+  deletedAt: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.HomeworkQuestionOptionSelect;
+
+const HOMEWORK_QUESTION_SELECT = {
+  id: true,
+  schoolId: true,
+  homeworkAssignmentId: true,
+  type: true,
+  prompt: true,
+  instructions: true,
+  points: true,
+  sortOrder: true,
+  isRequired: true,
+  expectedAnswer: true,
+  metadata: true,
+  createdByUserId: true,
+  updatedByUserId: true,
+  deletedAt: true,
+  createdAt: true,
+  updatedAt: true,
+  options: {
+    where: { deletedAt: null },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    select: HOMEWORK_QUESTION_OPTION_SELECT,
+  },
+} satisfies Prisma.HomeworkQuestionSelect;
+
+const HOMEWORK_ATTACHMENT_SELECT = {
+  id: true,
+  schoolId: true,
+  homeworkAssignmentId: true,
+  fileId: true,
+  title: true,
+  description: true,
+  sortOrder: true,
+  createdByUserId: true,
+  deletedAt: true,
+  createdAt: true,
+  updatedAt: true,
+  file: {
+    select: {
+      id: true,
+      originalName: true,
+      mimeType: true,
+      sizeBytes: true,
+      deletedAt: true,
+    },
+  },
+} satisfies Prisma.HomeworkAssignmentAttachmentSelect;
 
 const HOMEWORK_ASSIGNMENT_ARGS =
   Prisma.validator<Prisma.HomeworkAssignmentDefaultArgs>()({
@@ -116,6 +177,16 @@ const HOMEWORK_ASSIGNMENT_ARGS =
           firstName: true,
           lastName: true,
         },
+      },
+      questions: {
+        where: { deletedAt: null },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+        select: HOMEWORK_QUESTION_SELECT,
+      },
+      attachments: {
+        where: { deletedAt: null },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+        select: HOMEWORK_ATTACHMENT_SELECT,
       },
     },
   });
@@ -356,6 +427,17 @@ export type HomeworkTargetRecord = Prisma.HomeworkTargetGetPayload<
 export type HomeworkSubmissionRecord = Prisma.HomeworkSubmissionGetPayload<
   typeof HOMEWORK_SUBMISSION_ARGS
 >;
+export type HomeworkQuestionRecord = Prisma.HomeworkQuestionGetPayload<{
+  select: typeof HOMEWORK_QUESTION_SELECT;
+}>;
+export type HomeworkQuestionOptionRecord =
+  Prisma.HomeworkQuestionOptionGetPayload<{
+    select: typeof HOMEWORK_QUESTION_OPTION_SELECT;
+  }>;
+export type HomeworkAttachmentRecord =
+  Prisma.HomeworkAssignmentAttachmentGetPayload<{
+    select: typeof HOMEWORK_ATTACHMENT_SELECT;
+  }>;
 export type HomeworkReviewSubmissionRecord =
   Prisma.HomeworkSubmissionGetPayload<typeof HOMEWORK_REVIEW_SUBMISSION_ARGS>;
 export type HomeworkTargetForSubmissionRecord =
@@ -412,6 +494,18 @@ export type UpdateHomeworkAssignmentData =
   Prisma.HomeworkAssignmentUncheckedUpdateInput;
 export type CreateHomeworkTargetData =
   Prisma.HomeworkTargetUncheckedCreateInput;
+export type CreateHomeworkQuestionData =
+  Prisma.HomeworkQuestionUncheckedCreateInput;
+export type UpdateHomeworkQuestionData =
+  Prisma.HomeworkQuestionUncheckedUpdateInput;
+export type CreateHomeworkQuestionOptionData =
+  Prisma.HomeworkQuestionOptionUncheckedCreateInput;
+export type UpdateHomeworkQuestionOptionData =
+  Prisma.HomeworkQuestionOptionUncheckedUpdateInput;
+export type CreateHomeworkAttachmentData =
+  Prisma.HomeworkAssignmentAttachmentUncheckedCreateInput;
+export type UpdateHomeworkAttachmentData =
+  Prisma.HomeworkAssignmentAttachmentUncheckedUpdateInput;
 export type SaveHomeworkSubmissionDraftResult =
   | { outcome: 'saved'; submission: HomeworkSubmissionRecord }
   | { outcome: 'already_submitted'; submission: HomeworkSubmissionRecord };
@@ -581,6 +675,268 @@ export class HomeworkRepository {
       where: { homeworkAssignmentId: homeworkId },
       orderBy: [{ assignedAt: 'asc' }, { id: 'asc' }],
       ...HOMEWORK_TARGET_ARGS,
+    });
+  }
+
+  listQuestions(homeworkId: string): Promise<HomeworkQuestionRecord[]> {
+    return this.scopedPrisma.homeworkQuestion.findMany({
+      where: { homeworkAssignmentId: homeworkId, deletedAt: null },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      select: HOMEWORK_QUESTION_SELECT,
+    });
+  }
+
+  findQuestionById(input: {
+    homeworkId: string;
+    questionId: string;
+  }): Promise<HomeworkQuestionRecord | null> {
+    return this.scopedPrisma.homeworkQuestion.findFirst({
+      where: {
+        id: input.questionId,
+        homeworkAssignmentId: input.homeworkId,
+        deletedAt: null,
+      },
+      select: HOMEWORK_QUESTION_SELECT,
+    });
+  }
+
+  async getNextQuestionSortOrder(homeworkId: string): Promise<number> {
+    const result = await this.scopedPrisma.homeworkQuestion.aggregate({
+      where: { homeworkAssignmentId: homeworkId, deletedAt: null },
+      _max: { sortOrder: true },
+    });
+
+    return (result._max.sortOrder ?? -1) + 1;
+  }
+
+  async createQuestionWithOptions(input: {
+    question: CreateHomeworkQuestionData;
+    options: CreateHomeworkQuestionOptionData[];
+  }): Promise<HomeworkQuestionRecord> {
+    await this.scopedPrisma.$transaction([
+      this.scopedPrisma.homeworkQuestion.create({
+        data: input.question,
+      }),
+      ...(input.options.length > 0
+        ? [
+            this.scopedPrisma.homeworkQuestionOption.createMany({
+              data: input.options,
+            }),
+          ]
+        : []),
+    ]);
+
+    return this.findQuestionMutationResult({
+      homeworkId: String(input.question.homeworkAssignmentId),
+      questionId: String(input.question.id),
+    });
+  }
+
+  async updateQuestion(input: {
+    homeworkId: string;
+    questionId: string;
+    data: UpdateHomeworkQuestionData;
+  }): Promise<HomeworkQuestionRecord> {
+    await this.scopedPrisma.homeworkQuestion.updateMany({
+      where: {
+        id: input.questionId,
+        homeworkAssignmentId: input.homeworkId,
+        deletedAt: null,
+      },
+      data: input.data as Prisma.HomeworkQuestionUncheckedUpdateManyInput,
+    });
+
+    return this.findQuestionMutationResult(input);
+  }
+
+  async softDeleteQuestion(input: {
+    homeworkId: string;
+    questionId: string;
+  }): Promise<void> {
+    const deletedAt = new Date();
+    await this.scopedPrisma.$transaction([
+      this.scopedPrisma.homeworkQuestion.updateMany({
+        where: {
+          id: input.questionId,
+          homeworkAssignmentId: input.homeworkId,
+          deletedAt: null,
+        },
+        data: { deletedAt },
+      }),
+      this.scopedPrisma.homeworkQuestionOption.updateMany({
+        where: {
+          homeworkQuestionId: input.questionId,
+          deletedAt: null,
+        },
+        data: { deletedAt },
+      }),
+    ]);
+  }
+
+  async getNextOptionSortOrder(questionId: string): Promise<number> {
+    const result = await this.scopedPrisma.homeworkQuestionOption.aggregate({
+      where: { homeworkQuestionId: questionId, deletedAt: null },
+      _max: { sortOrder: true },
+    });
+
+    return (result._max.sortOrder ?? -1) + 1;
+  }
+
+  findQuestionOptionById(input: {
+    homeworkId: string;
+    questionId: string;
+    optionId: string;
+  }): Promise<HomeworkQuestionOptionRecord | null> {
+    return this.scopedPrisma.homeworkQuestionOption.findFirst({
+      where: {
+        id: input.optionId,
+        homeworkQuestionId: input.questionId,
+        deletedAt: null,
+        homeworkQuestion: {
+          is: {
+            id: input.questionId,
+            homeworkAssignmentId: input.homeworkId,
+            deletedAt: null,
+          },
+        },
+      },
+      select: HOMEWORK_QUESTION_OPTION_SELECT,
+    });
+  }
+
+  async createQuestionOption(input: {
+    homeworkId: string;
+    data: CreateHomeworkQuestionOptionData;
+  }): Promise<HomeworkQuestionRecord> {
+    await this.scopedPrisma.homeworkQuestionOption.create({
+      data: input.data,
+    });
+
+    return this.findQuestionMutationResult({
+      homeworkId: input.homeworkId,
+      questionId: String(input.data.homeworkQuestionId),
+    });
+  }
+
+  async updateQuestionOption(input: {
+    homeworkId: string;
+    questionId: string;
+    optionId: string;
+    data: UpdateHomeworkQuestionOptionData;
+  }): Promise<HomeworkQuestionRecord> {
+    await this.scopedPrisma.homeworkQuestionOption.updateMany({
+      where: {
+        id: input.optionId,
+        homeworkQuestionId: input.questionId,
+        deletedAt: null,
+      },
+      data: input.data as Prisma.HomeworkQuestionOptionUncheckedUpdateManyInput,
+    });
+
+    return this.findQuestionMutationResult(input);
+  }
+
+  async softDeleteQuestionOption(input: {
+    homeworkId: string;
+    questionId: string;
+    optionId: string;
+  }): Promise<HomeworkQuestionRecord> {
+    await this.scopedPrisma.homeworkQuestionOption.updateMany({
+      where: {
+        id: input.optionId,
+        homeworkQuestionId: input.questionId,
+        deletedAt: null,
+      },
+      data: { deletedAt: new Date() },
+    });
+
+    return this.findQuestionMutationResult(input);
+  }
+
+  listAttachments(homeworkId: string): Promise<HomeworkAttachmentRecord[]> {
+    return this.scopedPrisma.homeworkAssignmentAttachment.findMany({
+      where: { homeworkAssignmentId: homeworkId, deletedAt: null },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      select: HOMEWORK_ATTACHMENT_SELECT,
+    });
+  }
+
+  findAttachmentById(input: {
+    homeworkId: string;
+    attachmentId: string;
+  }): Promise<HomeworkAttachmentRecord | null> {
+    return this.scopedPrisma.homeworkAssignmentAttachment.findFirst({
+      where: {
+        id: input.attachmentId,
+        homeworkAssignmentId: input.homeworkId,
+        deletedAt: null,
+      },
+      select: HOMEWORK_ATTACHMENT_SELECT,
+    });
+  }
+
+  async getNextAttachmentSortOrder(homeworkId: string): Promise<number> {
+    const result =
+      await this.scopedPrisma.homeworkAssignmentAttachment.aggregate({
+        where: { homeworkAssignmentId: homeworkId, deletedAt: null },
+        _max: { sortOrder: true },
+      });
+
+    return (result._max.sortOrder ?? -1) + 1;
+  }
+
+  async findAttachmentFile(fileId: string): Promise<{
+    id: string;
+    schoolId: string | null;
+    deletedAt: Date | null;
+  } | null> {
+    return this.scopedPrisma.file.findFirst({
+      where: { id: fileId, deletedAt: null },
+      select: { id: true, schoolId: true, deletedAt: true },
+    });
+  }
+
+  async createAttachment(
+    data: CreateHomeworkAttachmentData,
+  ): Promise<HomeworkAttachmentRecord> {
+    const attachment = await this.scopedPrisma.homeworkAssignmentAttachment.create(
+      {
+        data,
+        select: HOMEWORK_ATTACHMENT_SELECT,
+      },
+    );
+
+    return attachment;
+  }
+
+  async updateAttachment(input: {
+    homeworkId: string;
+    attachmentId: string;
+    data: UpdateHomeworkAttachmentData;
+  }): Promise<HomeworkAttachmentRecord> {
+    await this.scopedPrisma.homeworkAssignmentAttachment.updateMany({
+      where: {
+        id: input.attachmentId,
+        homeworkAssignmentId: input.homeworkId,
+        deletedAt: null,
+      },
+      data: input.data as Prisma.HomeworkAssignmentAttachmentUncheckedUpdateManyInput,
+    });
+
+    return this.findAttachmentMutationResult(input);
+  }
+
+  async softDeleteAttachment(input: {
+    homeworkId: string;
+    attachmentId: string;
+  }): Promise<void> {
+    await this.scopedPrisma.homeworkAssignmentAttachment.updateMany({
+      where: {
+        id: input.attachmentId,
+        homeworkAssignmentId: input.homeworkId,
+        deletedAt: null,
+      },
+      data: { deletedAt: new Date() },
     });
   }
 
@@ -923,6 +1279,30 @@ export class HomeworkRepository {
     }
 
     return assignment;
+  }
+
+  private async findQuestionMutationResult(input: {
+    homeworkId: string;
+    questionId: string;
+  }): Promise<HomeworkQuestionRecord> {
+    const question = await this.findQuestionById(input);
+    if (!question) {
+      throw new Error('Updated homework question was not found');
+    }
+
+    return question;
+  }
+
+  private async findAttachmentMutationResult(input: {
+    homeworkId: string;
+    attachmentId: string;
+  }): Promise<HomeworkAttachmentRecord> {
+    const attachment = await this.findAttachmentById(input);
+    if (!attachment) {
+      throw new Error('Updated homework attachment was not found');
+    }
+
+    return attachment;
   }
 
   private buildListWhere(

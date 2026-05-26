@@ -16,10 +16,50 @@ import {
   ReviewHomeworkSubmissionUseCase as CoreReviewHomeworkSubmissionUseCase,
 } from '../../../homework/application/homework-submissions.use-cases';
 import {
+  CreateHomeworkAttachmentUseCase,
+  DeleteHomeworkAttachmentUseCase,
+  ListHomeworkAttachmentsUseCase,
+  ReorderHomeworkAttachmentUseCase,
+  UpdateHomeworkAttachmentUseCase,
+} from '../../../homework/application/homework-attachments.use-cases';
+import {
+  CreateHomeworkQuestionOptionUseCase,
+  CreateHomeworkQuestionUseCase,
+  DeleteHomeworkQuestionOptionUseCase,
+  DeleteHomeworkQuestionUseCase,
+  GetHomeworkQuestionUseCase,
+  ListHomeworkQuestionsUseCase,
+  ReorderHomeworkQuestionOptionUseCase,
+  ReorderHomeworkQuestionUseCase,
+  UpdateHomeworkQuestionOptionUseCase,
+  UpdateHomeworkQuestionUseCase,
+} from '../../../homework/application/homework-questions.use-cases';
+import {
+  CreateHomeworkAttachmentDto,
+  ReorderHomeworkAttachmentDto,
+  UpdateHomeworkAttachmentDto,
+} from '../../../homework/dto/homework-attachment.dto';
+import {
+  HomeworkAttachmentDetailResponseDto,
+  HomeworkAttachmentsListResponseDto,
+} from '../../../homework/dto/homework-attachment-response.dto';
+import {
   CreateHomeworkAssignmentDto,
   ListHomeworkAssignmentsQueryDto,
   UpdateHomeworkAssignmentDto,
 } from '../../../homework/dto/homework-assignment.dto';
+import {
+  CreateHomeworkQuestionDto,
+  CreateHomeworkQuestionOptionDto,
+  ReorderHomeworkQuestionDto,
+  ReorderHomeworkQuestionOptionDto,
+  UpdateHomeworkQuestionDto,
+  UpdateHomeworkQuestionOptionDto,
+} from '../../../homework/dto/homework-question.dto';
+import {
+  HomeworkQuestionDetailResponseDto,
+  HomeworkQuestionsListResponseDto,
+} from '../../../homework/dto/homework-question-response.dto';
 import { HomeworkSubmissionStatus } from '@prisma/client';
 import { TeacherAppAllocationReadAdapter } from '../../access/teacher-app-allocation-read.adapter';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
@@ -304,6 +344,306 @@ export class ResolveTeacherHomeworkTargetsUseCase {
     });
 
     return TeacherHomeworksPresenter.presentAssignment(resolved);
+  }
+}
+
+@Injectable()
+export class ListTeacherHomeworkQuestionsUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly listHomeworkQuestionsUseCase: ListHomeworkQuestionsUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+  ): Promise<HomeworkQuestionsListResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.listHomeworkQuestionsUseCase.execute(homeworkId);
+  }
+}
+
+@Injectable()
+export class CreateTeacherHomeworkQuestionUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly createHomeworkQuestionUseCase: CreateHomeworkQuestionUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    dto: CreateHomeworkQuestionDto,
+  ): Promise<HomeworkQuestionDetailResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.createHomeworkQuestionUseCase.execute(homeworkId, dto);
+  }
+}
+
+@Injectable()
+export class GetTeacherHomeworkQuestionUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly getHomeworkQuestionUseCase: GetHomeworkQuestionUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    questionId: string,
+  ): Promise<HomeworkQuestionDetailResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.getHomeworkQuestionUseCase.execute({ homeworkId, questionId });
+  }
+}
+
+@Injectable()
+export class UpdateTeacherHomeworkQuestionUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly updateHomeworkQuestionUseCase: UpdateHomeworkQuestionUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    questionId: string,
+    dto: UpdateHomeworkQuestionDto,
+  ): Promise<HomeworkQuestionDetailResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.updateHomeworkQuestionUseCase.execute(
+      homeworkId,
+      questionId,
+      dto,
+    );
+  }
+}
+
+@Injectable()
+export class ReorderTeacherHomeworkQuestionUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly reorderHomeworkQuestionUseCase: ReorderHomeworkQuestionUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    questionId: string,
+    dto: ReorderHomeworkQuestionDto,
+  ): Promise<HomeworkQuestionDetailResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.reorderHomeworkQuestionUseCase.execute(
+      homeworkId,
+      questionId,
+      dto,
+    );
+  }
+}
+
+@Injectable()
+export class DeleteTeacherHomeworkQuestionUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly deleteHomeworkQuestionUseCase: DeleteHomeworkQuestionUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    questionId: string,
+  ): Promise<void> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.deleteHomeworkQuestionUseCase.execute(homeworkId, questionId);
+  }
+}
+
+@Injectable()
+export class CreateTeacherHomeworkQuestionOptionUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly createHomeworkQuestionOptionUseCase: CreateHomeworkQuestionOptionUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    questionId: string,
+    dto: CreateHomeworkQuestionOptionDto,
+  ): Promise<HomeworkQuestionDetailResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.createHomeworkQuestionOptionUseCase.execute(
+      homeworkId,
+      questionId,
+      dto,
+    );
+  }
+}
+
+@Injectable()
+export class UpdateTeacherHomeworkQuestionOptionUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly updateHomeworkQuestionOptionUseCase: UpdateHomeworkQuestionOptionUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    questionId: string,
+    optionId: string,
+    dto: UpdateHomeworkQuestionOptionDto,
+  ): Promise<HomeworkQuestionDetailResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.updateHomeworkQuestionOptionUseCase.execute(
+      homeworkId,
+      questionId,
+      optionId,
+      dto,
+    );
+  }
+}
+
+@Injectable()
+export class ReorderTeacherHomeworkQuestionOptionUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly reorderHomeworkQuestionOptionUseCase: ReorderHomeworkQuestionOptionUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    questionId: string,
+    optionId: string,
+    dto: ReorderHomeworkQuestionOptionDto,
+  ): Promise<HomeworkQuestionDetailResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.reorderHomeworkQuestionOptionUseCase.execute(
+      homeworkId,
+      questionId,
+      optionId,
+      dto,
+    );
+  }
+}
+
+@Injectable()
+export class DeleteTeacherHomeworkQuestionOptionUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly deleteHomeworkQuestionOptionUseCase: DeleteHomeworkQuestionOptionUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    questionId: string,
+    optionId: string,
+  ): Promise<HomeworkQuestionDetailResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.deleteHomeworkQuestionOptionUseCase.execute(
+      homeworkId,
+      questionId,
+      optionId,
+    );
+  }
+}
+
+@Injectable()
+export class ListTeacherHomeworkAttachmentsUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly listHomeworkAttachmentsUseCase: ListHomeworkAttachmentsUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+  ): Promise<HomeworkAttachmentsListResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.listHomeworkAttachmentsUseCase.execute(homeworkId);
+  }
+}
+
+@Injectable()
+export class CreateTeacherHomeworkAttachmentUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly createHomeworkAttachmentUseCase: CreateHomeworkAttachmentUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    dto: CreateHomeworkAttachmentDto,
+  ): Promise<HomeworkAttachmentDetailResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.createHomeworkAttachmentUseCase.execute(homeworkId, dto);
+  }
+}
+
+@Injectable()
+export class UpdateTeacherHomeworkAttachmentUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly updateHomeworkAttachmentUseCase: UpdateHomeworkAttachmentUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    attachmentId: string,
+    dto: UpdateHomeworkAttachmentDto,
+  ): Promise<HomeworkAttachmentDetailResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.updateHomeworkAttachmentUseCase.execute(
+      homeworkId,
+      attachmentId,
+      dto,
+    );
+  }
+}
+
+@Injectable()
+export class ReorderTeacherHomeworkAttachmentUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly reorderHomeworkAttachmentUseCase: ReorderHomeworkAttachmentUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    attachmentId: string,
+    dto: ReorderHomeworkAttachmentDto,
+  ): Promise<HomeworkAttachmentDetailResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.reorderHomeworkAttachmentUseCase.execute(
+      homeworkId,
+      attachmentId,
+      dto,
+    );
+  }
+}
+
+@Injectable()
+export class DeleteTeacherHomeworkAttachmentUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly deleteHomeworkAttachmentUseCase: DeleteHomeworkAttachmentUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    attachmentId: string,
+  ): Promise<void> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.deleteHomeworkAttachmentUseCase.execute(
+      homeworkId,
+      attachmentId,
+    );
   }
 }
 

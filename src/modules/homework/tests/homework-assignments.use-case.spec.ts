@@ -84,6 +84,7 @@ describe('Homework assignment use cases', () => {
           seedAssignment({ id, ...data }),
         ),
       listTargets: jest.fn().mockResolvedValue([seedTarget()]),
+      listQuestions: jest.fn().mockResolvedValue([]),
       listCurrentTargetStudentIds: jest
         .fn()
         .mockResolvedValue([
@@ -543,6 +544,8 @@ function seedAssignment(overrides?: Record<string, unknown>): any {
       firstName: 'Mona',
       lastName: 'Teacher',
     },
+    questions: [],
+    attachments: [],
     counters: counters(2),
     ...overrides,
   };
