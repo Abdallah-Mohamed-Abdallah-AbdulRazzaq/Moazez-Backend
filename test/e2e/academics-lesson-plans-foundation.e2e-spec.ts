@@ -2,11 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
-  LessonContentItemType,
+  CurriculumStatus,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
   SchoolStatus,
+  TimetableConfigStatus,
+  TimetableEntryStatus,
+  TimetablePeriodType,
+  TimetableScopeType,
   UserStatus,
   UserType,
 } from '@prisma/client';
@@ -14,10 +18,9 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
-import { StorageService } from '../../src/infrastructure/storage/storage.service';
 
 const GLOBAL_PREFIX = '/api/v1';
-const PASSWORD = 'Sprint15C123!';
+const PASSWORD = 'Sprint15D123!';
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
   memoryCost: 19 * 1024,
@@ -46,44 +49,43 @@ type AcademicBase = {
   stageId: string;
   gradeId: string;
   sectionId: string;
+  classroomId: string;
   subjectId: string;
 };
 
-type SideEffectCounts = {
-  gradeAssessments: number;
-  communicationNotifications: number;
-  xpLedgerEntries: number;
-  rewardRedemptions: number;
-  attachments: number;
+type LessonPrerequisites = {
+  teacherUserId: string;
+  allocationId: string;
+  curriculumId: string;
+  unitOneId: string;
+  unitTwoId: string;
+  lessonOneId: string;
+  lessonTwoId: string;
+  timetableConfigId: string;
+  periodId: string;
+  timetableEntryId: string;
 };
 
 jest.setTimeout(180000);
 
-describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
+describe('Sprint 15D Academics Lesson Plans Foundation (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
-  let storageService: StorageService;
 
   let organizationId = '';
   let schoolId = '';
   let adminUserId = '';
   let adminEmail = '';
   let academic: AcademicBase;
+  let prerequisites: LessonPrerequisites;
   let adminAuth: AuthTokens;
-
-  let curriculumId = '';
-  let unitId = '';
-  let lessonId = '';
-  let textContentId = '';
-  let fileContentId = '';
-  let videoContentId = '';
-  let externalContentId = '';
-  let uploadedFileId = '';
-  let uploadedBucket = '';
-  let uploadedObjectKey = '';
+  let lessonPlanId = '';
+  let itemOneId = '';
+  let itemTwoId = '';
+  let itemThreeId = '';
 
   const suffix = randomUUID().split('-')[0];
-  const marker = `s15c-${suffix}`;
+  const marker = `s15d-${suffix}`;
   const createdOrganizationIds: string[] = [];
   const createdSchoolIds: string[] = [];
   const createdUserIds: string[] = [];
@@ -100,11 +102,12 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
     adminEmail = `${marker}-admin@example.test`;
     adminUserId = await createUserWithMembership({
       email: adminEmail,
-      firstName: 'Sprint15C',
+      firstName: 'Sprint15D',
       lastName: 'Admin',
       userType: UserType.SCHOOL_USER,
       roleId: schoolAdminRole.id,
     });
+    prerequisites = await createLessonPrerequisites();
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -122,18 +125,11 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
     );
     await app.init();
 
-    storageService = app.get(StorageService);
     adminAuth = await login(adminEmail);
   });
 
   afterAll(async () => {
     try {
-      if (uploadedBucket && uploadedObjectKey && storageService) {
-        await storageService.deleteObject({
-          bucket: uploadedBucket,
-          objectKey: uploadedObjectKey,
-        });
-      }
       if (app) await app.close();
       await cleanupCloseoutData();
     } finally {
@@ -141,333 +137,311 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
     }
   });
 
-  it('registers backend-native lesson content routes and keeps deferred routes absent', () => {
+  it('registers backend-native lesson plan routes and keeps deferred routes absent', () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toEqual(
       expect.arrayContaining([
-        'GET /api/v1/academics/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content',
-        'POST /api/v1/academics/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content',
-        'GET /api/v1/academics/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId',
-        'PATCH /api/v1/academics/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId',
-        'PATCH /api/v1/academics/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId/reorder',
-        'DELETE /api/v1/academics/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId',
+        'GET /api/v1/academics/lesson-plans',
+        'POST /api/v1/academics/lesson-plans',
+        'GET /api/v1/academics/lesson-plans/:lessonPlanId',
+        'PATCH /api/v1/academics/lesson-plans/:lessonPlanId',
+        'POST /api/v1/academics/lesson-plans/:lessonPlanId/activate',
+        'POST /api/v1/academics/lesson-plans/:lessonPlanId/archive',
+        'DELETE /api/v1/academics/lesson-plans/:lessonPlanId',
+        'POST /api/v1/academics/lesson-plans/:lessonPlanId/items',
+        'PATCH /api/v1/academics/lesson-plans/:lessonPlanId/items/:itemId',
+        'PATCH /api/v1/academics/lesson-plans/:lessonPlanId/items/:itemId/reorder',
+        'POST /api/v1/academics/lesson-plans/:lessonPlanId/items/:itemId/start',
+        'POST /api/v1/academics/lesson-plans/:lessonPlanId/items/:itemId/complete',
+        'POST /api/v1/academics/lesson-plans/:lessonPlanId/items/:itemId/skip',
+        'POST /api/v1/academics/lesson-plans/:lessonPlanId/items/:itemId/cancel',
+        'DELETE /api/v1/academics/lesson-plans/:lessonPlanId/items/:itemId',
       ]),
     );
 
     for (const absentRoute of [
-      'GET /api/v1/student/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content',
-      'GET /api/v1/teacher/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content',
-      'POST /api/v1/teacher/lesson-preparation',
+      'GET /api/v1/student/lesson-plans',
+      'GET /api/v1/teacher/lesson-preparation',
+      'GET /api/v1/parent/lesson-plans',
       'POST /api/v1/homework/questions',
-      'POST /api/v1/homework/answers',
     ]) {
       expect(routes).not.toContain(absentRoute);
     }
   });
 
-  it('creates lesson text, file, video, and external resources with ordering and archive lockout', async () => {
-    const sideEffectsBefore = await countDeferredSideEffects();
-
-    curriculumId = (
+  it('creates, orders, transitions, activates, archives, and locks lesson plans', async () => {
+    lessonPlanId = (
       await request(app.getHttpServer())
-        .post(`${GLOBAL_PREFIX}/academics/curriculum`)
+        .post(`${GLOBAL_PREFIX}/academics/lesson-plans`)
         .set('Authorization', bearer(adminAuth))
         .send({
           academicYearId: academic.academicYearId,
           termId: academic.termId,
-          gradeId: academic.gradeId,
-          subjectId: academic.subjectId,
-          title: '  Sprint 15C Mathematics Curriculum  ',
-          description: '  Curriculum spine for lesson resources.  ',
-        })
-        .expect(201)
-    ).body.curriculumId;
-
-    unitId = (
-      await request(app.getHttpServer())
-        .post(`${GLOBAL_PREFIX}/academics/curriculum/${curriculumId}/units`)
-        .set('Authorization', bearer(adminAuth))
-        .send({ title: 'Number Sense' })
-        .expect(201)
-    ).body.unitId;
-
-    lessonId = (
-      await request(app.getHttpServer())
-        .post(
-          `${GLOBAL_PREFIX}/academics/curriculum/${curriculumId}/units/${unitId}/lessons`,
-        )
-        .set('Authorization', bearer(adminAuth))
-        .send({ title: 'Comparing Fractions', estimatedMinutes: 45 })
-        .expect(201)
-    ).body.lessonId;
-
-    const uploadResponse = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/files`)
-      .set('Authorization', bearer(adminAuth))
-      .attach('file', Buffer.from('lesson resource body'), {
-        filename: `${marker}-resource.txt`,
-        contentType: 'text/plain',
-      })
-      .expect(201);
-
-    uploadedFileId = uploadResponse.body.id;
-    const persistedFile = await prisma.file.findUniqueOrThrow({
-      where: { id: uploadedFileId },
-      select: { bucket: true, objectKey: true },
-    });
-    uploadedBucket = persistedFile.bucket;
-    uploadedObjectKey = persistedFile.objectKey;
-
-    textContentId = (
-      await request(app.getHttpServer())
-        .post(contentListUrl())
-        .set('Authorization', bearer(adminAuth))
-        .send({
-          type: LessonContentItemType.TEXT,
-          title: '  Guided Notes  ',
-          bodyText: '  Compare fractions with common denominators.  ',
-          sortOrder: 2,
-          isRequired: true,
-          estimatedMinutes: 10,
-          metadata: { display: 'notes' },
+          teacherSubjectAllocationId: prerequisites.allocationId,
+          curriculumId: prerequisites.curriculumId,
+          title: '  Week 2 Fractions Plan  ',
+          description: '  Planned classroom teaching flow.  ',
+          weekStartDate: '2026-09-07',
+          weekEndDate: '2026-09-11',
         })
         .expect(201)
         .expect((response) => {
           expect(response.body).toMatchObject({
-            type: 'text',
-            title: 'Guided Notes',
-            bodyText: 'Compare fractions with common denominators.',
-            url: null,
-            file: null,
-            sortOrder: 2,
-            isRequired: true,
-            estimatedMinutes: 10,
+            title: 'Week 2 Fractions Plan',
+            description: 'Planned classroom teaching flow.',
+            status: 'draft',
+            academicYearId: academic.academicYearId,
+            termId: academic.termId,
+            teacherSubjectAllocationId: prerequisites.allocationId,
+            teacherUserId: prerequisites.teacherUserId,
+            classroomId: academic.classroomId,
+            subjectId: academic.subjectId,
+            curriculumId: prerequisites.curriculumId,
+            weekStartDate: '2026-09-07',
+            weekEndDate: '2026-09-11',
+            items: [],
           });
           expectNoObjectKey(response.body, 'schoolId');
           expectNoObjectKey(response.body, 'organizationId');
         })
-    ).body.contentItemId;
+    ).body.lessonPlanId;
 
     await request(app.getHttpServer())
-      .post(contentListUrl())
+      .post(`${GLOBAL_PREFIX}/academics/lesson-plans`)
       .set('Authorization', bearer(adminAuth))
       .send({
-        type: LessonContentItemType.TEXT,
-        title: 'Invalid Text',
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        teacherSubjectAllocationId: prerequisites.allocationId,
+        curriculumId: prerequisites.curriculumId,
+        title: 'Duplicate Plan',
+        weekStartDate: '2026-09-07',
+        weekEndDate: '2026-09-11',
       })
-      .expect(422)
+      .expect(409)
       .expect((response) => {
         expect(response.body?.error?.code).toBe(
-          'academics.lesson_content.invalid_type_payload',
+          'academics.lesson_plan.duplicate',
         );
       });
 
-    fileContentId = (
+    itemOneId = (
       await request(app.getHttpServer())
-        .post(contentListUrl())
+        .post(`${planUrl()}/items`)
         .set('Authorization', bearer(adminAuth))
         .send({
-          type: LessonContentItemType.FILE,
-          title: 'Practice Worksheet',
-          bodyText: 'Download and solve independently.',
-          fileId: uploadedFileId,
-          sortOrder: 1,
+          unitId: prerequisites.unitOneId,
+          lessonId: prerequisites.lessonOneId,
+          timetableEntryId: prerequisites.timetableEntryId,
+          plannedDate: '2026-09-08',
+          title: 'Fractions mini lesson',
+          sortOrder: 5,
         })
         .expect(201)
         .expect((response) => {
           expect(response.body).toMatchObject({
-            type: 'file',
-            title: 'Practice Worksheet',
-            file: {
-              fileId: uploadedFileId,
-              filename: `${marker}-resource.txt`,
-              mimeType: 'text/plain',
-              sizeBytes: String(Buffer.byteLength('lesson resource body')),
-            },
-            url: null,
+            title: 'Fractions mini lesson',
+            status: 'planned',
+            timetableEntryId: prerequisites.timetableEntryId,
+            periodId: prerequisites.periodId,
+            plannedDate: '2026-09-08',
+            dayOfWeek: 2,
+            sortOrder: 5,
           });
           expectNoObjectKey(response.body, 'schoolId');
           expectNoObjectKey(response.body, 'organizationId');
         })
-    ).body.contentItemId;
+    ).body.itemId;
 
-    videoContentId = (
+    itemTwoId = (
       await request(app.getHttpServer())
-        .post(contentListUrl())
+        .post(`${planUrl()}/items`)
         .set('Authorization', bearer(adminAuth))
         .send({
-          type: LessonContentItemType.VIDEO_LINK,
-          title: 'Fraction Video',
-          url: 'https://videos.example.test/fractions',
+          unitId: prerequisites.unitTwoId,
+          lessonId: prerequisites.lessonTwoId,
+          plannedDate: '2026-09-09',
+          sortOrder: 10,
         })
         .expect(201)
-    ).body.contentItemId;
+    ).body.itemId;
 
-    externalContentId = (
+    itemThreeId = (
       await request(app.getHttpServer())
-        .post(contentListUrl())
+        .post(`${planUrl()}/items`)
         .set('Authorization', bearer(adminAuth))
         .send({
-          type: LessonContentItemType.EXTERNAL_LINK,
-          title: 'Interactive Reference',
-          url: 'https://resources.example.test/fractions',
-          sortOrder: 4,
+          unitId: prerequisites.unitOneId,
+          lessonId: prerequisites.lessonOneId,
+          title: 'Backup activity',
+          sortOrder: 20,
         })
         .expect(201)
-    ).body.contentItemId;
+    ).body.itemId;
 
     await request(app.getHttpServer())
-      .post(contentListUrl())
-      .set('Authorization', bearer(adminAuth))
-      .send({
-        type: LessonContentItemType.EXTERNAL_LINK,
-        title: 'Unsafe Reference',
-        url: 'javascript:alert(1)',
-      })
-      .expect(422)
-      .expect((response) => {
-        expect(response.body?.error?.code).toBe(
-          'academics.lesson_content.invalid_url',
-        );
-      });
-
-    await request(app.getHttpServer())
-      .patch(`${contentListUrl()}/${textContentId}`)
-      .set('Authorization', bearer(adminAuth))
-      .send({
-        title: 'Guided Notes Updated',
-        bodyText: 'Updated lesson reading.',
-        isRequired: false,
-      })
-      .expect(200)
-      .expect((response) => {
-        expect(response.body).toMatchObject({
-          contentItemId: textContentId,
-          title: 'Guided Notes Updated',
-          bodyText: 'Updated lesson reading.',
-          isRequired: false,
-        });
-        expectNoObjectKey(response.body, 'schoolId');
-        expectNoObjectKey(response.body, 'organizationId');
-      });
-
-    await request(app.getHttpServer())
-      .get(contentListUrl())
-      .set('Authorization', bearer(adminAuth))
-      .expect(200)
-      .expect((response) => {
-        expect(
-          response.body.items.map(
-            (item: { contentItemId: string }) => item.contentItemId,
-          ),
-        ).toEqual([
-          fileContentId,
-          textContentId,
-          videoContentId,
-          externalContentId,
-        ]);
-        expectNoObjectKey(response.body, 'schoolId');
-        expectNoObjectKey(response.body, 'organizationId');
-      });
-
-    await request(app.getHttpServer())
-      .patch(`${contentListUrl()}/${externalContentId}/reorder`)
+      .patch(`${planUrl()}/items/${itemTwoId}/reorder`)
       .set('Authorization', bearer(adminAuth))
       .send({ sortOrder: 0 })
       .expect(200)
       .expect((response) => {
         expect(response.body).toMatchObject({
-          contentItemId: externalContentId,
+          itemId: itemTwoId,
           sortOrder: 0,
         });
       });
 
     await request(app.getHttpServer())
-      .get(contentListUrl())
+      .post(`${planUrl()}/items/${itemOneId}/start`)
+      .set('Authorization', bearer(adminAuth))
+      .send({})
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          itemId: itemOneId,
+          status: 'in_progress',
+          startedAt: expect.any(String),
+        });
+      });
+
+    await request(app.getHttpServer())
+      .post(`${planUrl()}/items/${itemOneId}/complete`)
+      .set('Authorization', bearer(adminAuth))
+      .send({})
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          itemId: itemOneId,
+          status: 'done',
+          completedAt: expect.any(String),
+        });
+      });
+
+    await request(app.getHttpServer())
+      .post(`${planUrl()}/items/${itemTwoId}/skip`)
+      .set('Authorization', bearer(adminAuth))
+      .send({ note: 'Assembly replaced this period.' })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          itemId: itemTwoId,
+          status: 'skipped',
+          notes: 'Assembly replaced this period.',
+          skippedAt: expect.any(String),
+        });
+      });
+
+    await request(app.getHttpServer())
+      .post(`${planUrl()}/items/${itemThreeId}/cancel`)
+      .set('Authorization', bearer(adminAuth))
+      .send({ note: 'Cancelled by school event.' })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          itemId: itemThreeId,
+          status: 'cancelled',
+          cancelledAt: expect.any(String),
+        });
+      });
+
+    await request(app.getHttpServer())
+      .get(planUrl())
       .set('Authorization', bearer(adminAuth))
       .expect(200)
       .expect((response) => {
         expect(
-          response.body.items.map(
-            (item: { contentItemId: string }) => item.contentItemId,
-          ),
-        ).toEqual([
-          externalContentId,
-          fileContentId,
-          textContentId,
-          videoContentId,
-        ]);
-      });
-
-    await request(app.getHttpServer())
-      .get(`${contentListUrl()}/${externalContentId}`)
-      .set('Authorization', bearer(adminAuth))
-      .expect(200)
-      .expect((response) => {
-        expect(response.body).toMatchObject({
-          contentItemId: externalContentId,
-          type: 'external_link',
-          url: 'https://resources.example.test/fractions',
-        });
+          response.body.items.map((item: { itemId: string }) => item.itemId),
+        ).toEqual([itemTwoId, itemOneId, itemThreeId]);
+        expect(
+          response.body.items.map((item: { status: string }) => item.status),
+        ).toEqual(['skipped', 'done', 'cancelled']);
         expectNoObjectKey(response.body, 'schoolId');
         expectNoObjectKey(response.body, 'organizationId');
       });
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/academics/curriculum/${curriculumId}/activate`)
+      .get(`${GLOBAL_PREFIX}/academics/lesson-plans`)
+      .query({
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        teacherSubjectAllocationId: prerequisites.allocationId,
+        status: 'DRAFT',
+        weekStartDate: '2026-09-07',
+        search: 'fractions',
+      })
       .set('Authorization', bearer(adminAuth))
-      .send({})
-      .expect(200);
+      .expect(200)
+      .expect((response) => {
+        expect(
+          response.body.items.map(
+            (plan: { lessonPlanId: string }) => plan.lessonPlanId,
+          ),
+        ).toContain(lessonPlanId);
+        expectNoObjectKey(response.body, 'schoolId');
+        expectNoObjectKey(response.body, 'organizationId');
+      });
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/academics/curriculum/${curriculumId}/archive`)
+      .post(`${planUrl()}/activate`)
       .set('Authorization', bearer(adminAuth))
       .send({})
-      .expect(200);
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          lessonPlanId,
+          status: 'active',
+          activatedAt: expect.any(String),
+        });
+      });
+
+    await request(app.getHttpServer())
+      .post(`${planUrl()}/archive`)
+      .set('Authorization', bearer(adminAuth))
+      .send({})
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          lessonPlanId,
+          status: 'archived',
+          archivedAt: expect.any(String),
+        });
+      });
 
     for (const mutation of [
       () =>
         request(app.getHttpServer())
-          .post(contentListUrl())
-          .set('Authorization', bearer(adminAuth))
-          .send({
-            type: LessonContentItemType.TEXT,
-            title: 'Archived Create',
-            bodyText: 'Nope',
-          }),
-      () =>
-        request(app.getHttpServer())
-          .patch(`${contentListUrl()}/${textContentId}`)
+          .patch(planUrl())
           .set('Authorization', bearer(adminAuth))
           .send({ title: 'Archived Update' }),
       () =>
         request(app.getHttpServer())
-          .patch(`${contentListUrl()}/${fileContentId}/reorder`)
+          .post(`${planUrl()}/items`)
           .set('Authorization', bearer(adminAuth))
-          .send({ sortOrder: 9 }),
+          .send({
+            unitId: prerequisites.unitOneId,
+            lessonId: prerequisites.lessonOneId,
+          }),
       () =>
         request(app.getHttpServer())
-          .delete(`${contentListUrl()}/${fileContentId}`)
-          .set('Authorization', bearer(adminAuth)),
+          .post(`${planUrl()}/items/${itemThreeId}/start`)
+          .set('Authorization', bearer(adminAuth))
+          .send({}),
     ]) {
       await mutation()
         .expect(409)
         .expect((response) => {
           expect(response.body?.error?.code).toBe(
-            'academics.lesson_content.read_only',
+            'academics.lesson_plan.read_only',
           );
           expectNoObjectKey(response.body, 'schoolId');
           expectNoObjectKey(response.body, 'organizationId');
         });
     }
-
-    const sideEffectsAfter = await countDeferredSideEffects();
-    expect(sideEffectsAfter).toEqual(sideEffectsBefore);
   });
 
-  function contentListUrl(): string {
-    return `${GLOBAL_PREFIX}/academics/curriculum/${curriculumId}/units/${unitId}/lessons/${lessonId}/content`;
+  function planUrl(): string {
+    return `${GLOBAL_PREFIX}/academics/lesson-plans/${lessonPlanId}`;
   }
 
   async function findSystemRole(key: string): Promise<{ id: string }> {
@@ -483,7 +457,7 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
     const organization = await prisma.organization.create({
       data: {
         slug: `${marker}-org`,
-        name: `Sprint 15C Org ${suffix}`,
+        name: `Sprint 15D Org ${suffix}`,
         status: OrganizationStatus.ACTIVE,
       },
       select: { id: true },
@@ -497,7 +471,7 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
       data: {
         organizationId: inputOrganizationId,
         slug: `${marker}-school`,
-        name: `Sprint 15C School ${suffix}`,
+        name: `Sprint 15D School ${suffix}`,
         status: SchoolStatus.ACTIVE,
       },
       select: { id: true },
@@ -595,13 +569,22 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
       },
       select: { id: true },
     });
+    const classroom = await prisma.classroom.create({
+      data: {
+        schoolId: inputSchoolId,
+        sectionId: section.id,
+        nameAr: `${marker}-class-ar`,
+        nameEn: `${marker}-class`,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
     const subject = await prisma.subject.create({
       data: {
         schoolId: inputSchoolId,
         nameAr: `${marker}-subject-ar`,
         nameEn: `${marker}-subject`,
-        code: `S15C-${suffix}`,
-        color: '#225577',
+        code: `S15D-${suffix}`,
         isActive: true,
       },
       select: { id: true },
@@ -613,7 +596,140 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
       stageId: stage.id,
       gradeId: grade.id,
       sectionId: section.id,
+      classroomId: classroom.id,
       subjectId: subject.id,
+    };
+  }
+
+  async function createLessonPrerequisites(): Promise<LessonPrerequisites> {
+    const teacherRole = await findSystemRole('teacher');
+    const teacherUserId = await createUserWithMembership({
+      email: `${marker}-teacher@example.test`,
+      firstName: 'Sprint15D',
+      lastName: 'Teacher',
+      userType: UserType.TEACHER,
+      roleId: teacherRole.id,
+    });
+    const allocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId,
+        teacherUserId,
+        subjectId: academic.subjectId,
+        classroomId: academic.classroomId,
+        termId: academic.termId,
+      },
+      select: { id: true },
+    });
+    const curriculum = await prisma.curriculum.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        gradeId: academic.gradeId,
+        subjectId: academic.subjectId,
+        title: `${marker}-curriculum`,
+        status: CurriculumStatus.DRAFT,
+        createdByUserId: adminUserId,
+        updatedByUserId: adminUserId,
+      },
+      select: { id: true },
+    });
+    const unitOne = await prisma.curriculumUnit.create({
+      data: {
+        schoolId,
+        curriculumId: curriculum.id,
+        title: `${marker}-unit-one`,
+        sortOrder: 0,
+      },
+      select: { id: true },
+    });
+    const unitTwo = await prisma.curriculumUnit.create({
+      data: {
+        schoolId,
+        curriculumId: curriculum.id,
+        title: `${marker}-unit-two`,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    const lessonOne = await prisma.curriculumLesson.create({
+      data: {
+        schoolId,
+        curriculumId: curriculum.id,
+        unitId: unitOne.id,
+        title: `${marker}-lesson-one`,
+        sortOrder: 0,
+      },
+      select: { id: true },
+    });
+    const lessonTwo = await prisma.curriculumLesson.create({
+      data: {
+        schoolId,
+        curriculumId: curriculum.id,
+        unitId: unitTwo.id,
+        title: `${marker}-lesson-two`,
+        sortOrder: 0,
+      },
+      select: { id: true },
+    });
+    const timetableConfig = await prisma.timetableConfig.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        name: `${marker}-config`,
+        weekStartDay: 0,
+        activeDays: [0, 1, 2, 3, 4],
+        scopeType: TimetableScopeType.CLASSROOM,
+        scopeKey: academic.classroomId,
+        classroomId: academic.classroomId,
+        status: TimetableConfigStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    const period = await prisma.timetablePeriod.create({
+      data: {
+        schoolId,
+        timetableConfigId: timetableConfig.id,
+        periodIndex: 1,
+        label: `${marker}-period-one`,
+        startTime: '08:00',
+        endTime: '08:45',
+        type: TimetablePeriodType.CLASS,
+        isInstructional: true,
+      },
+      select: { id: true },
+    });
+    const timetableEntry = await prisma.timetableEntry.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        timetableConfigId: timetableConfig.id,
+        periodId: period.id,
+        dayOfWeek: 1,
+        gradeId: academic.gradeId,
+        sectionId: academic.sectionId,
+        classroomId: academic.classroomId,
+        subjectId: academic.subjectId,
+        teacherUserId,
+        teacherSubjectAllocationId: allocation.id,
+        status: TimetableEntryStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+
+    return {
+      teacherUserId,
+      allocationId: allocation.id,
+      curriculumId: curriculum.id,
+      unitOneId: unitOne.id,
+      unitTwoId: unitTwo.id,
+      lessonOneId: lessonOne.id,
+      lessonTwoId: lessonTwo.id,
+      timetableConfigId: timetableConfig.id,
+      periodId: period.id,
+      timetableEntryId: timetableEntry.id,
     };
   }
 
@@ -626,30 +742,6 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
     return {
       accessToken: response.body.accessToken,
       refreshToken: response.body.refreshToken,
-    };
-  }
-
-  async function countDeferredSideEffects(): Promise<SideEffectCounts> {
-    const [
-      gradeAssessments,
-      communicationNotifications,
-      xpLedgerEntries,
-      rewardRedemptions,
-      attachments,
-    ] = await Promise.all([
-      prisma.gradeAssessment.count({ where: { schoolId } }),
-      prisma.communicationNotification.count({ where: { schoolId } }),
-      prisma.xpLedger.count({ where: { schoolId } }),
-      prisma.rewardRedemption.count({ where: { schoolId } }),
-      prisma.attachment.count({ where: { schoolId } }),
-    ]);
-
-    return {
-      gradeAssessments,
-      communicationNotifications,
-      xpLedgerEntries,
-      rewardRedemptions,
-      attachments,
     };
   }
 
@@ -726,7 +818,19 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
         ],
       },
     });
-    await prisma.lessonContentItem.deleteMany({
+    await prisma.lessonPlanItem.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.lessonPlan.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.timetableEntry.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.timetablePeriod.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.timetableConfig.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
     });
     await prisma.curriculumLesson.deleteMany({
@@ -738,10 +842,13 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
     await prisma.curriculum.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
     });
-    if (uploadedFileId) {
-      await prisma.file.deleteMany({ where: { id: uploadedFileId } });
-    }
+    await prisma.teacherSubjectAllocation.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
     await prisma.subject.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.classroom.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
     });
     await prisma.section.deleteMany({

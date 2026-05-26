@@ -41,6 +41,8 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'academics.subjects.manage', module: 'academics', resource: 'subjects', action: 'manage', description: 'Manage subjects' },
   { code: 'academics.curriculum.view', module: 'academics', resource: 'curriculum', action: 'view', description: 'View curriculum, units, and lessons' },
   { code: 'academics.curriculum.manage', module: 'academics', resource: 'curriculum', action: 'manage', description: 'Create and manage curriculum, units, and lessons' },
+  { code: 'academics.lesson_plans.view', module: 'academics', resource: 'lesson_plans', action: 'view', description: 'View lesson plans and planned teaching items' },
+  { code: 'academics.lesson_plans.manage', module: 'academics', resource: 'lesson_plans', action: 'manage', description: 'Create and manage lesson plans and planned teaching items' },
 
   // attendance
   { code: 'attendance.policies.view', module: 'attendance', resource: 'policies', action: 'view', description: 'View attendance policies' },

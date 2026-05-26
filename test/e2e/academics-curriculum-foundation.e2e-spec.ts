@@ -155,7 +155,6 @@ describe('Sprint 15B Academics Curriculum Foundation (e2e)', () => {
       'GET /api/v1/student/curriculum',
       'GET /api/v1/parent/curriculum',
       'POST /api/v1/academics/lesson-content',
-      'POST /api/v1/academics/lesson-plans',
       'POST /api/v1/homework/questions',
       'POST /api/v1/homework/answers',
       'POST /api/v1/homework/attachments',

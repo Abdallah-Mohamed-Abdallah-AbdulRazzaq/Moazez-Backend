@@ -179,6 +179,14 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `academics.lesson_content.invalid_url` | 422 | Lesson content URL is invalid or unsafe |
 | `academics.lesson_content.file_not_found` | 404 | Lesson content file was not found or is outside scope |
 | `academics.lesson_content.read_only` | 409 | Lesson content cannot be changed for an archived curriculum |
+| `academics.lesson_plan.not_found` | 404 | Lesson plan was not found or is outside scope |
+| `academics.lesson_plan.duplicate` | 409 | A lesson plan already exists for this teacher allocation and week |
+| `academics.lesson_plan.invalid_scope` | 422 | Lesson plan academic scope is invalid |
+| `academics.lesson_plan.read_only` | 409 | Lesson plan is read-only in its current state |
+| `academics.lesson_plan.invalid_transition` | 409 | Lesson plan status transition is invalid |
+| `academics.lesson_plan.item_not_found` | 404 | Lesson plan item was not found or is outside scope |
+| `academics.lesson_plan.invalid_item_scope` | 422 | Lesson plan item scope is invalid |
+| `academics.lesson_plan.item_invalid_transition` | 409 | Lesson plan item status transition is invalid |
 
 ### Attendance
 
