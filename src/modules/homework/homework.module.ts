@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AssessmentsModule } from '../grades/assessments/assessments.module';
 import { AuthModule } from '../iam/auth/auth.module';
 import {
   CancelHomeworkAssignmentUseCase,
@@ -31,6 +32,12 @@ import {
   ReviewHomeworkSubmissionAnswerUseCase,
 } from './application/homework-answer-review.use-cases';
 import {
+  GetHomeworkGradeSyncStatusUseCase,
+  LinkHomeworkGradeAssessmentUseCase,
+  SyncHomeworkAssignmentToGradesUseCase,
+  SyncHomeworkSubmissionToGradesUseCase,
+} from './application/homework-grade-sync.use-cases';
+import {
   CreateStudentHomeworkSubmissionAttachmentUseCase,
   DeleteStudentHomeworkSubmissionAttachmentUseCase,
   ListHomeworkSubmissionAttachmentsUseCase,
@@ -59,14 +66,16 @@ import {
 } from './application/homework-questions.use-cases';
 import { HomeworkAttachmentsController } from './controller/homework-attachments.controller';
 import { HomeworkAssignmentsController } from './controller/homework-assignments.controller';
+import { HomeworkGradeSyncController } from './controller/homework-grade-sync.controller';
 import { HomeworkQuestionsController } from './controller/homework-questions.controller';
 import { HomeworkSubmissionContentController } from './controller/homework-submission-content.controller';
 import { HomeworkRepository } from './infrastructure/homework.repository';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, AssessmentsModule],
   controllers: [
     HomeworkAssignmentsController,
+    HomeworkGradeSyncController,
     HomeworkQuestionsController,
     HomeworkAttachmentsController,
     HomeworkSubmissionContentController,
@@ -92,6 +101,10 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     GetHomeworkSubmissionAnswerUseCase,
     ReviewHomeworkSubmissionAnswerUseCase,
     BulkReviewHomeworkSubmissionAnswersUseCase,
+    GetHomeworkGradeSyncStatusUseCase,
+    LinkHomeworkGradeAssessmentUseCase,
+    SyncHomeworkAssignmentToGradesUseCase,
+    SyncHomeworkSubmissionToGradesUseCase,
     ListStudentHomeworkAnswersUseCase,
     SaveStudentHomeworkAnswersDraftUseCase,
     SaveStudentHomeworkAnswerUseCase,
@@ -138,6 +151,10 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     GetHomeworkSubmissionAnswerUseCase,
     ReviewHomeworkSubmissionAnswerUseCase,
     BulkReviewHomeworkSubmissionAnswersUseCase,
+    GetHomeworkGradeSyncStatusUseCase,
+    LinkHomeworkGradeAssessmentUseCase,
+    SyncHomeworkAssignmentToGradesUseCase,
+    SyncHomeworkSubmissionToGradesUseCase,
     ListStudentHomeworkAnswersUseCase,
     SaveStudentHomeworkAnswersDraftUseCase,
     SaveStudentHomeworkAnswerUseCase,

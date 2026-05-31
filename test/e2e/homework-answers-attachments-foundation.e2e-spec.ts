@@ -66,7 +66,7 @@ describe('Sprint 15F Homework answers and submission attachments foundation (e2e
     );
   });
 
-  it('keeps parent submit, grade sync, notifications, XP, rewards, and upload surfaces deferred', () => {
+  it('keeps parent submit, legacy sync-grade, notifications, XP, rewards, and upload surfaces deferred', () => {
     const routes = listRegisteredRoutes();
 
     for (const absentRoute of [
@@ -92,10 +92,10 @@ describe('Sprint 15F Homework answers and submission attachments foundation (e2e
         /^.+ \/api\/v1\/parent\/children\/:studentId\/homeworks\/.*(submit|proof|upload|grade-sync|sync-grade|xp|reward)/,
       );
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/homework\/.*(proof|upload|grade-sync|sync-grade|notification|xp|reward)/,
+        /^.+ \/api\/v1\/homework\/.*(proof|upload|sync-grade|notification|xp|reward)/,
       );
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/teacher\/homeworks\/.*(proof|upload|grade-sync|sync-grade|notification|xp|reward)/,
+        /^.+ \/api\/v1\/teacher\/homeworks\/.*(proof|upload|sync-grade|notification|xp|reward)/,
       );
     }
   });

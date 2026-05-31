@@ -149,7 +149,7 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
 
     for (const route of routes) {
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/homework\/.*(proof|upload|xp|reward|grade-sync)/,
+        /^.+ \/api\/v1\/homework\/.*(proof|upload|xp|reward)/,
       );
       expect(route).not.toMatch(
         /^.+ \/api\/v1\/student\/homeworks\/.*(proof|upload|grade-sync|xp|reward)/,
@@ -158,7 +158,7 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
         /^.+ \/api\/v1\/parent\/children\/:studentId\/homeworks\/.*(submit|submission|question|answer|attachment|proof|upload)/,
       );
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/teacher\/homeworks\/.*(proof|upload|xp|reward|grade-sync)/,
+        /^.+ \/api\/v1\/teacher\/homeworks\/.*(proof|upload|xp|reward)/,
       );
     }
   });

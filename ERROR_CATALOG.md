@@ -271,6 +271,17 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `homework.answer_review.exceeds_assignment_marks` | 422 | Homework answer review total exceeds assignment marks |
 | `homework.answer_review.read_only` | 409 | Homework answer review is read-only in this submission state |
 | `homework.answer_review.incomplete_required_answers` | 422 | Required homework answers are not fully reviewed |
+| `homework.grade_sync.not_linked` | 409 | Homework assignment is not linked to a grade assessment |
+| `homework.grade_sync.invalid_assessment` | 422 | Grade assessment is not compatible with homework sync |
+| `homework.grade_sync.incompatible_scope` | 422 | Grade assessment scope is incompatible with homework |
+| `homework.grade_sync.assessment_locked` | 409 | Grade assessment is locked for homework sync |
+| `homework.grade_sync.submission_not_reviewed` | 409 | Homework submission is not reviewed for grade sync |
+| `homework.grade_sync.missing_score` | 422 | Reviewed homework submission has no awarded marks |
+| `homework.grade_sync.score_exceeds_homework_marks` | 422 | Homework score exceeds homework total marks |
+| `homework.grade_sync.score_exceeds_assessment_marks` | 422 | Homework score exceeds grade assessment marks |
+| `homework.grade_sync.duplicate_link` | 409 | Homework assignment already has a grade assessment link |
+| `homework.grade_sync.unlink_not_allowed` | 409 | Homework grade assessment link cannot be removed safely |
+| `homework.grade_sync.failed` | 409 | Homework grade sync failed |
 | `homework.submission_attachment.not_found` | 404 | Homework submission attachment was not found |
 | `homework.submission_attachment.file_not_found` | 404 | Homework submission attachment file was not found |
 | `homework.submission_attachment.read_only` | 409 | Homework submission attachment cannot be changed in this submission state |

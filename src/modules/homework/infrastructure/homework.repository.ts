@@ -208,6 +208,7 @@ const HOMEWORK_ASSIGNMENT_ARGS =
               grade: {
                 select: {
                   id: true,
+                  stageId: true,
                   nameAr: true,
                   nameEn: true,
                 },
@@ -717,6 +718,31 @@ export class HomeworkRepository {
     ]);
 
     return this.findMutationResult(homeworkId);
+  }
+
+  async updateAssignmentGradeAssessmentLink(
+    homeworkId: string,
+    gradeAssessmentId: string,
+  ): Promise<HomeworkAssignmentWithCounters> {
+    await this.scopedPrisma.homeworkAssignment.updateMany({
+      where: { id: homeworkId, deletedAt: null },
+      data: { gradeAssessmentId },
+    });
+
+    return this.findMutationResult(homeworkId);
+  }
+
+  async findAssignmentByGradeAssessmentId(
+    gradeAssessmentId: string,
+  ): Promise<HomeworkAssignmentWithCounters | null> {
+    const assignment = await this.scopedPrisma.homeworkAssignment.findFirst({
+      where: { gradeAssessmentId, deletedAt: null },
+      ...HOMEWORK_ASSIGNMENT_ARGS,
+    });
+
+    if (!assignment) return null;
+    const [withCounters] = await this.attachCounters([assignment]);
+    return withCounters;
   }
 
   async replaceTargets(
@@ -1302,6 +1328,26 @@ export class HomeworkRepository {
         status: { in: REVIEW_VISIBLE_SUBMISSION_STATUSES },
         homeworkAssignment: { is: reviewVisibleAssignmentWhere() },
       },
+      ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
+    });
+  }
+
+  listReviewedSubmissionsForGradeSync(
+    homeworkAssignmentId: string,
+  ): Promise<HomeworkReviewSubmissionRecord[]> {
+    return this.scopedPrisma.homeworkSubmission.findMany({
+      where: {
+        homeworkAssignmentId,
+        status: HomeworkSubmissionStatus.REVIEWED,
+        homeworkTarget: {
+          is: {
+            homeworkAssignmentId,
+            status: HomeworkTargetStatus.REVIEWED,
+          },
+        },
+        homeworkAssignment: { is: reviewVisibleAssignmentWhere() },
+      },
+      orderBy: [{ reviewedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
     });
   }

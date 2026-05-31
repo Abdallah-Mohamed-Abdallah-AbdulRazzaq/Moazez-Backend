@@ -32,6 +32,7 @@ import {
   DeleteTeacherHomeworkQuestionOptionUseCase,
   DeleteTeacherHomeworkQuestionUseCase,
   GetTeacherHomeworkAssignmentUseCase,
+  GetTeacherHomeworkGradeSyncStatusUseCase,
   GetTeacherHomeworkQuestionUseCase,
   GetTeacherHomeworkSubmissionUseCase,
   GetTeacherHomeworksDashboardUseCase,
@@ -49,6 +50,8 @@ import {
   ReviewTeacherHomeworkSubmissionAnswerUseCase,
   ReviewTeacherHomeworkSubmissionUseCase,
   ResolveTeacherHomeworkTargetsUseCase,
+  SyncTeacherHomeworkAssignmentToGradesUseCase,
+  SyncTeacherHomeworkSubmissionToGradesUseCase,
   UpdateTeacherHomeworkAttachmentUseCase,
   UpdateTeacherHomeworkAssignmentUseCase,
   UpdateTeacherHomeworkQuestionOptionUseCase,
@@ -84,6 +87,10 @@ import {
   ReviewHomeworkAnswerDto,
 } from '../../../homework/dto/homework-answer.dto';
 import { HomeworkSubmissionAttachmentsListResponseDto } from '../../../homework/dto/homework-submission-attachment-response.dto';
+import {
+  HomeworkGradeSyncResponseDto,
+  HomeworkGradeSyncStatusResponseDto,
+} from '../../../homework/dto/homework-grade-sync.dto';
 import {
   ListTeacherHomeworkAssignmentsQueryDto,
   ListTeacherHomeworkSubmissionsQueryDto,
@@ -142,6 +149,9 @@ export class TeacherHomeworksController {
     private readonly bulkReviewSubmissionAnswersUseCase: BulkReviewTeacherHomeworkSubmissionAnswersUseCase,
     private readonly listSubmissionAttachmentsUseCase: ListTeacherHomeworkSubmissionAttachmentsUseCase,
     private readonly reviewSubmissionUseCase: ReviewTeacherHomeworkSubmissionUseCase,
+    private readonly getGradeSyncStatusUseCase: GetTeacherHomeworkGradeSyncStatusUseCase,
+    private readonly syncAssignmentToGradesUseCase: SyncTeacherHomeworkAssignmentToGradesUseCase,
+    private readonly syncSubmissionToGradesUseCase: SyncTeacherHomeworkSubmissionToGradesUseCase,
   ) {}
 
   @Get('dashboard')
@@ -283,6 +293,37 @@ export class TeacherHomeworksController {
     @Param() params: TeacherHomeworkAssignmentParamsDto,
   ): Promise<TeacherHomeworkAssignmentDto> {
     return this.resolveTargetsUseCase.execute(
+      params.classId,
+      params.homeworkId,
+    );
+  }
+
+  @Get('classes/:classId/assignments/:homeworkId/grade-sync')
+  @ApiOperation({ summary: 'Get grade sync status for an owned homework' })
+  @ApiParam({ name: 'classId', format: 'uuid' })
+  @ApiParam({ name: 'homeworkId', format: 'uuid' })
+  @ApiOkResponse({ type: HomeworkGradeSyncStatusResponseDto })
+  getGradeSyncStatus(
+    @Param() params: TeacherHomeworkAssignmentParamsDto,
+  ): Promise<HomeworkGradeSyncStatusResponseDto> {
+    return this.getGradeSyncStatusUseCase.execute(
+      params.classId,
+      params.homeworkId,
+    );
+  }
+
+  @Post('classes/:classId/assignments/:homeworkId/grade-sync')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Sync reviewed owned homework submissions to Grades',
+  })
+  @ApiParam({ name: 'classId', format: 'uuid' })
+  @ApiParam({ name: 'homeworkId', format: 'uuid' })
+  @ApiOkResponse({ type: HomeworkGradeSyncResponseDto })
+  syncAssignmentToGrades(
+    @Param() params: TeacherHomeworkAssignmentParamsDto,
+  ): Promise<HomeworkGradeSyncResponseDto> {
+    return this.syncAssignmentToGradesUseCase.execute(
       params.classId,
       params.homeworkId,
     );
@@ -750,5 +791,26 @@ export class TeacherHomeworksController {
     @Body() dto: TeacherHomeworkSubmissionReviewDto,
   ): Promise<TeacherHomeworkSubmissionResponseDto> {
     return this.reviewSubmission(params, dto);
+  }
+
+  @Post(
+    'classes/:classId/assignments/:homeworkId/submissions/:submissionId/grade-sync',
+  )
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Sync one reviewed owned homework submission to Grades',
+  })
+  @ApiParam({ name: 'classId', format: 'uuid' })
+  @ApiParam({ name: 'homeworkId', format: 'uuid' })
+  @ApiParam({ name: 'submissionId', format: 'uuid' })
+  @ApiOkResponse({ type: HomeworkGradeSyncResponseDto })
+  syncSubmissionToGrades(
+    @Param() params: TeacherHomeworkSubmissionParamsDto,
+  ): Promise<HomeworkGradeSyncResponseDto> {
+    return this.syncSubmissionToGradesUseCase.execute(
+      params.classId,
+      params.homeworkId,
+      params.submissionId,
+    );
   }
 }

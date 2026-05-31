@@ -15,6 +15,7 @@ import {
   DeleteTeacherHomeworkQuestionOptionUseCase,
   DeleteTeacherHomeworkQuestionUseCase,
   GetTeacherHomeworkAssignmentUseCase,
+  GetTeacherHomeworkGradeSyncStatusUseCase,
   GetTeacherHomeworkQuestionUseCase,
   GetTeacherHomeworkSubmissionUseCase,
   GetTeacherHomeworksDashboardUseCase,
@@ -32,6 +33,8 @@ import {
   ReviewTeacherHomeworkSubmissionAnswerUseCase,
   ReviewTeacherHomeworkSubmissionUseCase,
   ResolveTeacherHomeworkTargetsUseCase,
+  SyncTeacherHomeworkAssignmentToGradesUseCase,
+  SyncTeacherHomeworkSubmissionToGradesUseCase,
   UpdateTeacherHomeworkAttachmentUseCase,
   UpdateTeacherHomeworkAssignmentUseCase,
   UpdateTeacherHomeworkQuestionOptionUseCase,
@@ -80,6 +83,9 @@ import { TeacherHomeworksReadAdapter } from './infrastructure/teacher-homeworks-
     BulkReviewTeacherHomeworkSubmissionAnswersUseCase,
     ListTeacherHomeworkSubmissionAttachmentsUseCase,
     ReviewTeacherHomeworkSubmissionUseCase,
+    GetTeacherHomeworkGradeSyncStatusUseCase,
+    SyncTeacherHomeworkAssignmentToGradesUseCase,
+    SyncTeacherHomeworkSubmissionToGradesUseCase,
   ],
 })
 export class TeacherHomeworksModule {}

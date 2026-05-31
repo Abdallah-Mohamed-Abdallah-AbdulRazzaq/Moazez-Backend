@@ -277,7 +277,7 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
 
     for (const route of routes) {
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/homework\/.*(file|proof|upload|grade-sync|sync-grade|notification|xp|reward)/,
+        /^.+ \/api\/v1\/homework\/.*(file|proof|upload|sync-grade|notification|xp|reward)/,
       );
       expect(route).not.toMatch(
         /^.+ \/api\/v1\/student\/homeworks\/.*(file|proof|upload|grade-sync|sync-grade|notification|xp|reward|pickup|smart-pickup)/,
@@ -286,7 +286,7 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
         /^.+ \/api\/v1\/parent\/children\/:studentId\/homeworks\/.*(submit|submission\/submit|question|answer|attachment|file|proof|upload|grade-sync|sync-grade|notification|xp|reward|pickup|smart-pickup)/,
       );
       expect(route).not.toMatch(
-        /^.+ \/api\/v1\/teacher\/homeworks\/.*(file|proof|upload|grade-sync|sync-grade|notification|xp|reward|pickup|smart-pickup)/,
+        /^.+ \/api\/v1\/teacher\/homeworks\/.*(file|proof|upload|sync-grade|notification|xp|reward|pickup|smart-pickup)/,
       );
     }
   });

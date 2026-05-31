@@ -82,6 +82,10 @@ import { GradesSubmissionsRepository } from './infrastructure/grades-submissions
     SyncGradeSubmissionToGradeItemUseCase,
   ],
   exports: [
+    GetGradeAssessmentUseCase,
+    ListGradeAssessmentItemsUseCase,
+    UpsertGradeAssessmentItemUseCase,
+    BulkUpsertGradeAssessmentItemsUseCase,
     ReviewGradeSubmissionAnswerUseCase,
     BulkReviewGradeSubmissionAnswersUseCase,
     FinalizeGradeSubmissionReviewUseCase,

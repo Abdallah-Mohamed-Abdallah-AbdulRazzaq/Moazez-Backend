@@ -20,6 +20,11 @@ import {
   BulkReviewHomeworkSubmissionAnswersUseCase as CoreBulkReviewHomeworkSubmissionAnswersUseCase,
   ReviewHomeworkSubmissionAnswerUseCase as CoreReviewHomeworkSubmissionAnswerUseCase,
 } from '../../../homework/application/homework-answer-review.use-cases';
+import {
+  GetHomeworkGradeSyncStatusUseCase,
+  SyncHomeworkAssignmentToGradesUseCase,
+  SyncHomeworkSubmissionToGradesUseCase,
+} from '../../../homework/application/homework-grade-sync.use-cases';
 import { ListHomeworkSubmissionAttachmentsUseCase } from '../../../homework/application/homework-submission-attachments.use-cases';
 import {
   CreateHomeworkAttachmentUseCase,
@@ -75,6 +80,10 @@ import {
   ReviewHomeworkAnswerDto,
 } from '../../../homework/dto/homework-answer.dto';
 import { HomeworkSubmissionAttachmentsListResponseDto } from '../../../homework/dto/homework-submission-attachment-response.dto';
+import {
+  HomeworkGradeSyncResponseDto,
+  HomeworkGradeSyncStatusResponseDto,
+} from '../../../homework/dto/homework-grade-sync.dto';
 import { HomeworkSubmissionStatus } from '@prisma/client';
 import { TeacherAppAllocationReadAdapter } from '../../access/teacher-app-allocation-read.adapter';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
@@ -833,6 +842,58 @@ export class ReviewTeacherHomeworkSubmissionUseCase {
     });
 
     return TeacherHomeworksPresenter.presentSubmissionDetail(submission);
+  }
+}
+
+@Injectable()
+export class GetTeacherHomeworkGradeSyncStatusUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly getHomeworkGradeSyncStatusUseCase: GetHomeworkGradeSyncStatusUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+  ): Promise<HomeworkGradeSyncStatusResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.getHomeworkGradeSyncStatusUseCase.execute(homeworkId);
+  }
+}
+
+@Injectable()
+export class SyncTeacherHomeworkAssignmentToGradesUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly syncHomeworkAssignmentToGradesUseCase: SyncHomeworkAssignmentToGradesUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+  ): Promise<HomeworkGradeSyncResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.syncHomeworkAssignmentToGradesUseCase.execute(homeworkId);
+  }
+}
+
+@Injectable()
+export class SyncTeacherHomeworkSubmissionToGradesUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly syncHomeworkSubmissionToGradesUseCase: SyncHomeworkSubmissionToGradesUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    submissionId: string,
+  ): Promise<HomeworkGradeSyncResponseDto> {
+    await this.ownershipService.resolveOwnedHomework({ classId, homeworkId });
+    return this.syncHomeworkSubmissionToGradesUseCase.execute({
+      homeworkId,
+      submissionId,
+    });
   }
 }
 
