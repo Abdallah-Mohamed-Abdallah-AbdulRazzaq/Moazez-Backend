@@ -263,6 +263,14 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `homework.answer.missing_required`        | 422  | Required homework answer is missing          |
 | `homework.answer.read_only`               | 409  | Homework answer cannot be changed in this submission state |
 | `homework.answer.invalid_submission_scope` | 404 | Homework answer submission scope was not found |
+| `homework.answer_review.not_found` | 404 | Homework answer review target was not found |
+| `homework.answer_review.invalid_scope` | 404 | Homework answer review scope is invalid |
+| `homework.answer_review.not_submitted` | 409 | Homework answer cannot be reviewed before submission |
+| `homework.answer_review.invalid_points` | 422 | Homework answer review points are invalid |
+| `homework.answer_review.exceeds_question_points` | 422 | Homework answer review points exceed question points |
+| `homework.answer_review.exceeds_assignment_marks` | 422 | Homework answer review total exceeds assignment marks |
+| `homework.answer_review.read_only` | 409 | Homework answer review is read-only in this submission state |
+| `homework.answer_review.incomplete_required_answers` | 422 | Required homework answers are not fully reviewed |
 | `homework.submission_attachment.not_found` | 404 | Homework submission attachment was not found |
 | `homework.submission_attachment.file_not_found` | 404 | Homework submission attachment file was not found |
 | `homework.submission_attachment.read_only` | 409 | Homework submission attachment cannot be changed in this submission state |

@@ -1,11 +1,16 @@
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
+  Min,
   ValidateNested,
 } from 'class-validator';
 
@@ -55,4 +60,33 @@ export class BulkSaveHomeworkAnswersDto {
   @ValidateNested({ each: true })
   @Type(() => HomeworkAnswerInputDto)
   answers!: HomeworkAnswerInputDto[];
+}
+
+export class ReviewHomeworkAnswerDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ allowInfinity: false, allowNaN: false, maxDecimalPlaces: 2 })
+  @Min(0)
+  awardedPoints?: number | null;
+
+  @IsOptional()
+  @Transform(({ value }) => trimText(value))
+  @IsString()
+  @MaxLength(2000)
+  teacherComment?: string | null;
+}
+
+export class BulkReviewHomeworkAnswerItemDto extends ReviewHomeworkAnswerDto {
+  @IsUUID()
+  @IsNotEmpty()
+  answerId!: string;
+}
+
+export class BulkReviewHomeworkAnswersDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => BulkReviewHomeworkAnswerItemDto)
+  answers!: BulkReviewHomeworkAnswerItemDto[];
 }

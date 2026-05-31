@@ -24,6 +24,11 @@ export interface HomeworkAnswerPresenterModel {
   teacherComment: string | null;
   awardedPoints: Prisma.Decimal | number | string | null;
   reviewedAt: Date | null;
+  reviewedByUser?: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+  } | null;
   createdAt: Date;
   updatedAt: Date;
   homeworkQuestion: {
@@ -38,18 +43,21 @@ export interface HomeworkAnswerPresenterModel {
 
 export function presentHomeworkAnswerStudent(
   answer: HomeworkAnswerPresenterModel,
+  options?: { includeReviewFields?: boolean },
 ): HomeworkAnswerResponseDto {
   return presentHomeworkAnswer(answer, {
     includePrompt: false,
     includeCorrectOptions: false,
-    includeReviewFields: false,
+    includeReviewFields: options?.includeReviewFields === true,
+    includeReviewedBy: false,
   });
 }
 
 export function presentHomeworkAnswerParent(
   answer: HomeworkAnswerPresenterModel,
+  options?: { includeReviewFields?: boolean },
 ): HomeworkAnswerResponseDto {
-  return presentHomeworkAnswerStudent(answer);
+  return presentHomeworkAnswerStudent(answer, options);
 }
 
 export function presentHomeworkAnswerTeacher(
@@ -59,22 +67,29 @@ export function presentHomeworkAnswerTeacher(
     includePrompt: true,
     includeCorrectOptions: true,
     includeReviewFields: true,
+    includeReviewedBy: true,
   });
 }
 
 export function presentHomeworkAnswersStudent(
   answers: HomeworkAnswerPresenterModel[],
+  options?: { includeReviewFields?: boolean },
 ): HomeworkAnswersListResponseDto {
   return {
-    items: answers.map((answer) => presentHomeworkAnswerStudent(answer)),
+    items: answers.map((answer) =>
+      presentHomeworkAnswerStudent(answer, options),
+    ),
   };
 }
 
 export function presentHomeworkAnswersParent(
   answers: HomeworkAnswerPresenterModel[],
+  options?: { includeReviewFields?: boolean },
 ): HomeworkAnswersListResponseDto {
   return {
-    items: answers.map((answer) => presentHomeworkAnswerParent(answer)),
+    items: answers.map((answer) =>
+      presentHomeworkAnswerParent(answer, options),
+    ),
   };
 }
 
@@ -98,6 +113,7 @@ function presentHomeworkAnswer(
     includePrompt: boolean;
     includeCorrectOptions: boolean;
     includeReviewFields: boolean;
+    includeReviewedBy: boolean;
   },
 ): HomeworkAnswerResponseDto {
   const selectedOptionIds = toStringArray(answer.selectedOptionIds);
@@ -140,10 +156,27 @@ function presentHomeworkAnswer(
           reviewedAt: answer.reviewedAt
             ? answer.reviewedAt.toISOString()
             : null,
+          ...(options.includeReviewedBy
+            ? { reviewedBy: presentReviewedBy(answer.reviewedByUser) }
+            : {}),
         }
       : {}),
     createdAt: answer.createdAt.toISOString(),
     updatedAt: answer.updatedAt.toISOString(),
+  };
+}
+
+function presentReviewedBy(
+  reviewedByUser: HomeworkAnswerPresenterModel['reviewedByUser'],
+) {
+  if (!reviewedByUser) return null;
+
+  return {
+    userId: reviewedByUser.id,
+    fullName: [reviewedByUser.firstName, reviewedByUser.lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim(),
   };
 }
 

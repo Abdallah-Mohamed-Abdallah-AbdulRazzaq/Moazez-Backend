@@ -204,6 +204,9 @@ export class StudentHomeworkAnswerDto {
   selectedOptionIds!: string[];
   selectedOptions!: StudentHomeworkAnswerSelectedOptionDto[];
   isDraft!: boolean;
+  teacherComment?: string | null;
+  awardedPoints?: number | null;
+  reviewedAt?: string | null;
   createdAt!: string;
   updatedAt!: string;
 }

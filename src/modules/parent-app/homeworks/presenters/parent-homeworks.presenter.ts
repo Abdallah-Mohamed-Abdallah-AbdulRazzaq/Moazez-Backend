@@ -222,6 +222,8 @@ export function presentParentHomeworkSubmission(
   submission: ParentHomeworkSubmissionPresenterModel,
   assignment: { totalMarks: Prisma.Decimal | number | string | null },
 ): ParentHomeworkSubmissionDto {
+  const isReviewed = submission.status === HomeworkSubmissionStatus.REVIEWED;
+
   return {
     id: submission.id,
     status:
@@ -229,7 +231,9 @@ export function presentParentHomeworkSubmission(
     bodyText: submission.bodyText,
     answers: isSubmittedSubmission(submission)
       ? (submission.answers ?? []).map((answer) =>
-          presentHomeworkAnswerParent(answer),
+          presentHomeworkAnswerParent(answer, {
+            includeReviewFields: isReviewed,
+          }),
         )
       : [],
     attachments: isSubmittedSubmission(submission)
@@ -238,9 +242,9 @@ export function presentParentHomeworkSubmission(
         )
       : [],
     submittedAt: presentDateTime(submission.submittedAt),
-    reviewedAt: presentDateTime(submission.reviewedAt),
-    reviewNote: submission.reviewNote,
-    awardedMarks: presentDecimal(submission.awardedMarks),
+    reviewedAt: isReviewed ? presentDateTime(submission.reviewedAt) : null,
+    reviewNote: isReviewed ? submission.reviewNote : null,
+    awardedMarks: isReviewed ? presentDecimal(submission.awardedMarks) : null,
     totalMarks: presentDecimal(assignment.totalMarks),
     updatedAt: submission.updatedAt.toISOString(),
   };

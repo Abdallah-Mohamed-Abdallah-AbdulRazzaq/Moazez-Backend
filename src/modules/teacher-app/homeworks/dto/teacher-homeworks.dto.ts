@@ -57,6 +57,11 @@ export class TeacherHomeworkSubmissionParamsDto extends TeacherHomeworkAssignmen
   submissionId!: string;
 }
 
+export class TeacherHomeworkSubmissionAnswerParamsDto extends TeacherHomeworkSubmissionParamsDto {
+  @IsUUID()
+  answerId!: string;
+}
+
 export class TeacherHomeworkQuestionParamsDto extends TeacherHomeworkAssignmentParamsDto {
   @IsUUID()
   questionId!: string;

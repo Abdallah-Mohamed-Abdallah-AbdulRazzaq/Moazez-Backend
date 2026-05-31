@@ -127,7 +127,10 @@ export class ListStudentHomeworkAnswersUseCase {
       return { items: [] };
     }
 
-    return presentHomeworkAnswersStudent(submission.answers);
+    return presentHomeworkAnswersStudent(submission.answers, {
+      includeReviewFields:
+        submission.status === HomeworkSubmissionStatus.REVIEWED,
+    });
   }
 }
 

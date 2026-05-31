@@ -4,6 +4,7 @@ import { TeacherAppAccessService } from '../access/teacher-app-access.service';
 import { TeacherAppAllocationReadAdapter } from '../access/teacher-app-allocation-read.adapter';
 import { TeacherHomeworkOwnershipService } from './application/teacher-homework-ownership.service';
 import {
+  BulkReviewTeacherHomeworkSubmissionAnswersUseCase,
   CancelTeacherHomeworkAssignmentUseCase,
   CloseTeacherHomeworkAssignmentUseCase,
   CreateTeacherHomeworkAttachmentUseCase,
@@ -28,6 +29,7 @@ import {
   ReorderTeacherHomeworkAttachmentUseCase,
   ReorderTeacherHomeworkQuestionOptionUseCase,
   ReorderTeacherHomeworkQuestionUseCase,
+  ReviewTeacherHomeworkSubmissionAnswerUseCase,
   ReviewTeacherHomeworkSubmissionUseCase,
   ResolveTeacherHomeworkTargetsUseCase,
   UpdateTeacherHomeworkAttachmentUseCase,
@@ -74,6 +76,8 @@ import { TeacherHomeworksReadAdapter } from './infrastructure/teacher-homeworks-
     ListTeacherHomeworkSubmissionsUseCase,
     GetTeacherHomeworkSubmissionUseCase,
     ListTeacherHomeworkSubmissionAnswersUseCase,
+    ReviewTeacherHomeworkSubmissionAnswerUseCase,
+    BulkReviewTeacherHomeworkSubmissionAnswersUseCase,
     ListTeacherHomeworkSubmissionAttachmentsUseCase,
     ReviewTeacherHomeworkSubmissionUseCase,
   ],

@@ -56,6 +56,12 @@ describe('Homework answers and submission attachments tenancy/security contracts
       'homework.submissions.view',
     ]);
     expect(readPermissions('getAnswer')).toEqual(['homework.submissions.view']);
+    expect(readPermissions('reviewAnswer')).toEqual([
+      'homework.assignments.manage',
+    ]);
+    expect(readPermissions('bulkReviewAnswers')).toEqual([
+      'homework.assignments.manage',
+    ]);
     expect(readPermissions('listAttachments')).toEqual([
       'homework.submissions.view',
     ]);

@@ -1,5 +1,6 @@
 import {
   HomeworkAssignmentStatus,
+  HomeworkSubmissionStatus,
   HomeworkTargetStatus,
   Prisma,
 } from '@prisma/client';
@@ -214,6 +215,8 @@ function presentSafeAttachment(
 export function presentStudentHomeworkSubmission(
   submission: StudentHomeworkSubmissionPresenterModel,
 ): StudentHomeworkSubmissionDto {
+  const isReviewed = submission.status === HomeworkSubmissionStatus.REVIEWED;
+
   return {
     id: submission.id,
     homeworkId: submission.homeworkAssignmentId,
@@ -221,15 +224,15 @@ export function presentStudentHomeworkSubmission(
       submission.status.toLowerCase() as StudentHomeworkSubmissionDto['status'],
     bodyText: submission.bodyText,
     answers: (submission.answers ?? []).map((answer) =>
-      presentHomeworkAnswerStudent(answer),
+      presentHomeworkAnswerStudent(answer, { includeReviewFields: isReviewed }),
     ),
     attachments: (submission.attachments ?? []).map((attachment) =>
       presentHomeworkSubmissionAttachment(attachment),
     ),
     submittedAt: presentDateTime(submission.submittedAt),
-    reviewedAt: presentDateTime(submission.reviewedAt),
-    reviewNote: submission.reviewNote,
-    awardedMarks: presentDecimal(submission.awardedMarks),
+    reviewedAt: isReviewed ? presentDateTime(submission.reviewedAt) : null,
+    reviewNote: isReviewed ? submission.reviewNote : null,
+    awardedMarks: isReviewed ? presentDecimal(submission.awardedMarks) : null,
     updatedAt: submission.updatedAt.toISOString(),
   };
 }

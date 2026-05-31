@@ -12,11 +12,13 @@ import { TeacherAppAllocationRecord } from '../../shared/teacher-app.types';
 import {
   CreateTeacherHomeworkAssignmentUseCase,
   GetTeacherHomeworkSubmissionUseCase,
+  BulkReviewTeacherHomeworkSubmissionAnswersUseCase,
   ListTeacherHomeworkSubmissionAnswersUseCase,
   ListTeacherHomeworkSubmissionAttachmentsUseCase,
   ListTeacherHomeworkAssignmentsUseCase,
   ListTeacherHomeworkSubmissionsUseCase,
   PublishTeacherHomeworkAssignmentUseCase,
+  ReviewTeacherHomeworkSubmissionAnswerUseCase,
   ReviewTeacherHomeworkSubmissionUseCase,
   ResolveTeacherHomeworkTargetsUseCase,
   UpdateTeacherHomeworkAssignmentUseCase,
@@ -309,6 +311,86 @@ describe('Teacher Homeworks use cases', () => {
       reviewNote: 'Good work',
       awardedMarks: 8.5,
     });
+  });
+
+  it('reviews an answer for an owned homework submission as the current teacher', async () => {
+    const ownership = ownershipMock();
+    const coreReview = {
+      execute: jest
+        .fn()
+        .mockResolvedValue({ answer: { answerId: 'answer-1' } }),
+    };
+    const useCase = new ReviewTeacherHomeworkSubmissionAnswerUseCase(
+      ownership as never,
+      coreReview as never,
+    );
+
+    const result = await useCase.execute(
+      'allocation-1',
+      'homework-1',
+      'submission-1',
+      'answer-1',
+      { awardedPoints: 2, teacherComment: 'Clear' },
+    );
+
+    expect(ownership.resolveOwnedHomework).toHaveBeenCalledWith({
+      classId: 'allocation-1',
+      homeworkId: 'homework-1',
+    });
+    expect(coreReview.execute).toHaveBeenCalledWith({
+      homeworkId: 'homework-1',
+      submissionId: 'submission-1',
+      answerId: 'answer-1',
+      reviewedByUserId: 'teacher-1',
+      review: { awardedPoints: 2, teacherComment: 'Clear' },
+    });
+    expect(result).toEqual({ answer: { answerId: 'answer-1' } });
+  });
+
+  it('bulk reviews answers for an owned homework submission as the current teacher', async () => {
+    const ownership = ownershipMock();
+    const coreReview = {
+      execute: jest
+        .fn()
+        .mockResolvedValue({ items: [{ answerId: 'answer-1' }] }),
+    };
+    const useCase = new BulkReviewTeacherHomeworkSubmissionAnswersUseCase(
+      ownership as never,
+      coreReview as never,
+    );
+
+    await useCase.execute('allocation-1', 'homework-1', 'submission-1', {
+      answers: [{ answerId: 'answer-1', awardedPoints: 2 }],
+    });
+
+    expect(coreReview.execute).toHaveBeenCalledWith({
+      homeworkId: 'homework-1',
+      submissionId: 'submission-1',
+      reviewedByUserId: 'teacher-1',
+      reviews: [{ answerId: 'answer-1', awardedPoints: 2 }],
+    });
+  });
+
+  it('does not review answers for an unowned teacher homework submission', async () => {
+    const ownership = ownershipMock();
+    const error = new Error('unowned');
+    ownership.resolveOwnedHomework.mockRejectedValue(error);
+    const coreReview = { execute: jest.fn() };
+    const useCase = new ReviewTeacherHomeworkSubmissionAnswerUseCase(
+      ownership as never,
+      coreReview as never,
+    );
+
+    await expect(
+      useCase.execute(
+        'allocation-other',
+        'homework-1',
+        'submission-1',
+        'answer-1',
+        { awardedPoints: 1 },
+      ),
+    ).rejects.toThrow(error);
+    expect(coreReview.execute).not.toHaveBeenCalled();
   });
 
   it('reads answers and attachments only after owned assignment resolution', async () => {

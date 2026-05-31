@@ -204,6 +204,9 @@ export class ParentHomeworkAnswerDto {
   selectedOptionIds!: string[];
   selectedOptions!: ParentHomeworkAnswerSelectedOptionDto[];
   isDraft!: boolean;
+  teacherComment?: string | null;
+  awardedPoints?: number | null;
+  reviewedAt?: string | null;
   createdAt!: string;
   updatedAt!: string;
 }

@@ -14,6 +14,11 @@ export class HomeworkAnswerPromptSummaryDto {
   isRequired!: boolean;
 }
 
+export class HomeworkAnswerReviewedByDto {
+  userId!: string;
+  fullName!: string;
+}
+
 export class HomeworkAnswerResponseDto {
   answerId!: string;
   homeworkId!: string;
@@ -28,6 +33,7 @@ export class HomeworkAnswerResponseDto {
   teacherComment?: string | null;
   awardedPoints?: number | null;
   reviewedAt?: string | null;
+  reviewedBy?: HomeworkAnswerReviewedByDto | null;
   createdAt!: string;
   updatedAt!: string;
 }

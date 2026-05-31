@@ -16,6 +16,10 @@ import {
   ReviewHomeworkSubmissionUseCase as CoreReviewHomeworkSubmissionUseCase,
 } from '../../../homework/application/homework-submissions.use-cases';
 import { ListHomeworkSubmissionAnswersUseCase } from '../../../homework/application/homework-answers.use-cases';
+import {
+  BulkReviewHomeworkSubmissionAnswersUseCase as CoreBulkReviewHomeworkSubmissionAnswersUseCase,
+  ReviewHomeworkSubmissionAnswerUseCase as CoreReviewHomeworkSubmissionAnswerUseCase,
+} from '../../../homework/application/homework-answer-review.use-cases';
 import { ListHomeworkSubmissionAttachmentsUseCase } from '../../../homework/application/homework-submission-attachments.use-cases';
 import {
   CreateHomeworkAttachmentUseCase,
@@ -62,7 +66,14 @@ import {
   HomeworkQuestionDetailResponseDto,
   HomeworkQuestionsListResponseDto,
 } from '../../../homework/dto/homework-question-response.dto';
-import { HomeworkAnswersListResponseDto } from '../../../homework/dto/homework-answer-response.dto';
+import {
+  HomeworkAnswerDetailResponseDto,
+  HomeworkAnswersListResponseDto,
+} from '../../../homework/dto/homework-answer-response.dto';
+import {
+  BulkReviewHomeworkAnswersDto,
+  ReviewHomeworkAnswerDto,
+} from '../../../homework/dto/homework-answer.dto';
 import { HomeworkSubmissionAttachmentsListResponseDto } from '../../../homework/dto/homework-submission-attachment-response.dto';
 import { HomeworkSubmissionStatus } from '@prisma/client';
 import { TeacherAppAllocationReadAdapter } from '../../access/teacher-app-allocation-read.adapter';
@@ -716,6 +727,62 @@ export class ListTeacherHomeworkSubmissionAnswersUseCase {
     return this.listHomeworkSubmissionAnswersUseCase.execute({
       homeworkId,
       submissionId,
+    });
+  }
+}
+
+@Injectable()
+export class ReviewTeacherHomeworkSubmissionAnswerUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly reviewHomeworkSubmissionAnswerUseCase: CoreReviewHomeworkSubmissionAnswerUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    submissionId: string,
+    answerId: string,
+    dto: ReviewHomeworkAnswerDto,
+  ): Promise<HomeworkAnswerDetailResponseDto> {
+    const context = await this.ownershipService.resolveOwnedHomework({
+      classId,
+      homeworkId,
+    });
+
+    return this.reviewHomeworkSubmissionAnswerUseCase.execute({
+      homeworkId,
+      submissionId,
+      answerId,
+      reviewedByUserId: context.teacherUserId,
+      review: dto,
+    });
+  }
+}
+
+@Injectable()
+export class BulkReviewTeacherHomeworkSubmissionAnswersUseCase {
+  constructor(
+    private readonly ownershipService: TeacherHomeworkOwnershipService,
+    private readonly bulkReviewHomeworkSubmissionAnswersUseCase: CoreBulkReviewHomeworkSubmissionAnswersUseCase,
+  ) {}
+
+  async execute(
+    classId: string,
+    homeworkId: string,
+    submissionId: string,
+    dto: BulkReviewHomeworkAnswersDto,
+  ): Promise<HomeworkAnswersListResponseDto> {
+    const context = await this.ownershipService.resolveOwnedHomework({
+      classId,
+      homeworkId,
+    });
+
+    return this.bulkReviewHomeworkSubmissionAnswersUseCase.execute({
+      homeworkId,
+      submissionId,
+      reviewedByUserId: context.teacherUserId,
+      reviews: dto.answers,
     });
   }
 }

@@ -27,6 +27,10 @@ import {
   SaveStudentHomeworkAnswersDraftUseCase,
 } from './application/homework-answers.use-cases';
 import {
+  BulkReviewHomeworkSubmissionAnswersUseCase,
+  ReviewHomeworkSubmissionAnswerUseCase,
+} from './application/homework-answer-review.use-cases';
+import {
   CreateStudentHomeworkSubmissionAttachmentUseCase,
   DeleteStudentHomeworkSubmissionAttachmentUseCase,
   ListHomeworkSubmissionAttachmentsUseCase,
@@ -86,6 +90,8 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     SubmitHomeworkSubmissionUseCase,
     ListHomeworkSubmissionAnswersUseCase,
     GetHomeworkSubmissionAnswerUseCase,
+    ReviewHomeworkSubmissionAnswerUseCase,
+    BulkReviewHomeworkSubmissionAnswersUseCase,
     ListStudentHomeworkAnswersUseCase,
     SaveStudentHomeworkAnswersDraftUseCase,
     SaveStudentHomeworkAnswerUseCase,
@@ -130,6 +136,8 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     SubmitHomeworkSubmissionUseCase,
     ListHomeworkSubmissionAnswersUseCase,
     GetHomeworkSubmissionAnswerUseCase,
+    ReviewHomeworkSubmissionAnswerUseCase,
+    BulkReviewHomeworkSubmissionAnswersUseCase,
     ListStudentHomeworkAnswersUseCase,
     SaveStudentHomeworkAnswersDraftUseCase,
     SaveStudentHomeworkAnswerUseCase,

@@ -30,6 +30,11 @@ import {
   saveStudentAnswersForSubmit,
   validateRequiredHomeworkAnswers,
 } from './homework-answers.use-cases';
+import {
+  assertAnswerReviewRollupWithinAssignmentMarks,
+  assertRequiredAnswerReviewsComplete,
+  computeAnswerReviewRollup,
+} from './homework-answer-review.use-cases';
 
 export const HOMEWORK_SUBMISSION_BODY_TEXT_MAX_LENGTH = 20_000;
 export const HOMEWORK_SUBMISSION_REVIEW_NOTE_MAX_LENGTH = 2_000;
@@ -287,7 +292,7 @@ export class ReviewHomeworkSubmissionUseCase {
 
     assertSubmissionIsReviewable(submission);
     const reviewNote = normalizeReviewNote(command.reviewNote);
-    const awardedMarks = normalizeAwardedMarks({
+    const awardedMarks = resolveSubmissionReviewAwardedMarks({
       value: command.awardedMarks,
       submission,
     });
@@ -520,6 +525,25 @@ function normalizeReviewNote(value: string | null | undefined): string | null {
   }
 
   return normalized;
+}
+
+function resolveSubmissionReviewAwardedMarks(input: {
+  value: number | null | undefined;
+  submission: HomeworkReviewSubmissionRecord;
+}): number | null {
+  const questions = input.submission.homeworkAssignment.questions ?? [];
+  if (questions.length === 0) {
+    return normalizeAwardedMarks(input);
+  }
+
+  assertRequiredAnswerReviewsComplete(input.submission);
+  const awardedMarks = computeAnswerReviewRollup(input.submission);
+  assertAnswerReviewRollupWithinAssignmentMarks({
+    submission: input.submission,
+    awardedMarks,
+  });
+
+  return awardedMarks;
 }
 
 function normalizeAwardedMarks(input: {

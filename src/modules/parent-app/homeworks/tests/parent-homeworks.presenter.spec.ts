@@ -193,6 +193,53 @@ describe('ParentHomeworksPresenter', () => {
     expect(serialized).not.toContain('storage-key');
   });
 
+  it('shows child answer feedback only after the submission is reviewed', () => {
+    const submitted = ParentHomeworksPresenter.presentDetail(
+      homeworkTargetFixture({
+        targetStatus: HomeworkTargetStatus.SUBMITTED,
+        submission: submissionFixture({
+          status: HomeworkSubmissionStatus.SUBMITTED,
+          answers: [
+            answerFixture({
+              reviewedAt: new Date('2026-09-10T11:00:00.000Z'),
+            }),
+          ],
+        }),
+      }) as any,
+    );
+    const reviewed = ParentHomeworksPresenter.presentDetail(
+      homeworkTargetFixture({
+        targetStatus: HomeworkTargetStatus.REVIEWED,
+        submission: submissionFixture({
+          status: HomeworkSubmissionStatus.REVIEWED,
+          reviewedAt: new Date('2026-09-10T11:00:00.000Z'),
+          reviewNote: 'Strong work',
+          awardedMarks: { toNumber: () => 1 },
+          answers: [
+            answerFixture({
+              reviewedAt: new Date('2026-09-10T11:00:00.000Z'),
+            }),
+          ],
+        }),
+      }) as any,
+    );
+
+    expect(submitted.homework.submission?.answers[0]).not.toHaveProperty(
+      'awardedPoints',
+    );
+    expect(submitted.homework.submission?.answers[0]).not.toHaveProperty(
+      'teacherComment',
+    );
+    expect(submitted.homework.submission?.awardedMarks).toBeNull();
+    expect(reviewed.homework.submission?.answers[0]).toMatchObject({
+      awardedPoints: 1,
+      teacherComment: 'Teacher-only comment',
+      reviewedAt: '2026-09-10T11:00:00.000Z',
+    });
+    expect(JSON.stringify(reviewed)).not.toContain('isCorrect');
+    expect(JSON.stringify(reviewed)).not.toContain('expectedAnswer');
+  });
+
   it('maps target and assignment state to stable Parent App statuses', () => {
     const now = new Date('2026-09-10T10:00:00.000Z');
 
@@ -355,7 +402,7 @@ function homeworkTargetFixture(overrides?: {
   };
 }
 
-function answerFixture() {
+function answerFixture(overrides?: Record<string, unknown>) {
   const now = new Date('2026-09-10T09:00:00.000Z');
   return {
     id: 'answer-1',
@@ -391,6 +438,24 @@ function answerFixture() {
         },
       ],
     },
+    ...overrides,
+  };
+}
+
+function submissionFixture(overrides?: Record<string, unknown>) {
+  return {
+    id: 'submission-submitted',
+    status: HomeworkSubmissionStatus.SUBMITTED,
+    bodyText: null,
+    submittedAt: new Date('2026-09-10T09:00:00.000Z'),
+    reviewedAt: null,
+    reviewedByUserId: null,
+    reviewNote: null,
+    awardedMarks: null,
+    answers: [],
+    attachments: [],
+    updatedAt: new Date('2026-09-10T09:00:00.000Z'),
+    ...overrides,
   };
 }
 

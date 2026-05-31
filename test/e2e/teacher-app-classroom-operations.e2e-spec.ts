@@ -517,6 +517,8 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
       'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId/options/:optionId',
       'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId/options/:optionId/reorder',
       'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId/reorder',
+      'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers/:answerId/review',
+      'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/review',
       'POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/review/finalize',
       'POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/sync-grade-item',
       'POST /api/v1/teacher/classroom/:classId/attendance/session/resolve',
@@ -537,6 +539,7 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
       'POST /api/v1/teacher/tasks/review-queue/:submissionId/reject',
       'PUT /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/answers/review',
       'PUT /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/entries',
+      'PUT /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers/review',
     ]);
 
     const teacher = await login(teacherAEmail);

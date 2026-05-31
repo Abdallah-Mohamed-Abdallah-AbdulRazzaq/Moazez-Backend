@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import {
@@ -20,6 +21,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  BulkReviewTeacherHomeworkSubmissionAnswersUseCase,
   CancelTeacherHomeworkAssignmentUseCase,
   CloseTeacherHomeworkAssignmentUseCase,
   CreateTeacherHomeworkAttachmentUseCase,
@@ -44,6 +46,7 @@ import {
   ReorderTeacherHomeworkAttachmentUseCase,
   ReorderTeacherHomeworkQuestionOptionUseCase,
   ReorderTeacherHomeworkQuestionUseCase,
+  ReviewTeacherHomeworkSubmissionAnswerUseCase,
   ReviewTeacherHomeworkSubmissionUseCase,
   ResolveTeacherHomeworkTargetsUseCase,
   UpdateTeacherHomeworkAttachmentUseCase,
@@ -72,7 +75,14 @@ import {
   HomeworkQuestionDetailResponseDto,
   HomeworkQuestionsListResponseDto,
 } from '../../../homework/dto/homework-question-response.dto';
-import { HomeworkAnswersListResponseDto } from '../../../homework/dto/homework-answer-response.dto';
+import {
+  HomeworkAnswerDetailResponseDto,
+  HomeworkAnswersListResponseDto,
+} from '../../../homework/dto/homework-answer-response.dto';
+import {
+  BulkReviewHomeworkAnswersDto,
+  ReviewHomeworkAnswerDto,
+} from '../../../homework/dto/homework-answer.dto';
 import { HomeworkSubmissionAttachmentsListResponseDto } from '../../../homework/dto/homework-submission-attachment-response.dto';
 import {
   ListTeacherHomeworkAssignmentsQueryDto,
@@ -86,6 +96,7 @@ import {
   TeacherHomeworkDashboardResponseDto,
   TeacherHomeworkQuestionOptionParamsDto,
   TeacherHomeworkQuestionParamsDto,
+  TeacherHomeworkSubmissionAnswerParamsDto,
   TeacherHomeworkSubmissionParamsDto,
   TeacherHomeworkSubmissionResponseDto,
   TeacherHomeworkSubmissionReviewDto,
@@ -127,6 +138,8 @@ export class TeacherHomeworksController {
     private readonly listSubmissionsUseCase: ListTeacherHomeworkSubmissionsUseCase,
     private readonly getSubmissionUseCase: GetTeacherHomeworkSubmissionUseCase,
     private readonly listSubmissionAnswersUseCase: ListTeacherHomeworkSubmissionAnswersUseCase,
+    private readonly reviewSubmissionAnswerUseCase: ReviewTeacherHomeworkSubmissionAnswerUseCase,
+    private readonly bulkReviewSubmissionAnswersUseCase: BulkReviewTeacherHomeworkSubmissionAnswersUseCase,
     private readonly listSubmissionAttachmentsUseCase: ListTeacherHomeworkSubmissionAttachmentsUseCase,
     private readonly reviewSubmissionUseCase: ReviewTeacherHomeworkSubmissionUseCase,
   ) {}
@@ -629,6 +642,54 @@ export class TeacherHomeworksController {
     );
   }
 
+  @Patch(
+    'classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers/:answerId/review',
+  )
+  @ApiOperation({
+    summary: 'Review one submitted homework answer for an owned assignment',
+  })
+  @ApiParam({ name: 'classId', format: 'uuid' })
+  @ApiParam({ name: 'homeworkId', format: 'uuid' })
+  @ApiParam({ name: 'submissionId', format: 'uuid' })
+  @ApiParam({ name: 'answerId', format: 'uuid' })
+  @ApiBody({ type: ReviewHomeworkAnswerDto })
+  @ApiOkResponse({ type: HomeworkAnswerDetailResponseDto })
+  reviewSubmissionAnswer(
+    @Param() params: TeacherHomeworkSubmissionAnswerParamsDto,
+    @Body() dto: ReviewHomeworkAnswerDto,
+  ): Promise<HomeworkAnswerDetailResponseDto> {
+    return this.reviewSubmissionAnswerUseCase.execute(
+      params.classId,
+      params.homeworkId,
+      params.submissionId,
+      params.answerId,
+      dto,
+    );
+  }
+
+  @Put(
+    'classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers/review',
+  )
+  @ApiOperation({
+    summary: 'Bulk review submitted homework answers for an owned assignment',
+  })
+  @ApiParam({ name: 'classId', format: 'uuid' })
+  @ApiParam({ name: 'homeworkId', format: 'uuid' })
+  @ApiParam({ name: 'submissionId', format: 'uuid' })
+  @ApiBody({ type: BulkReviewHomeworkAnswersDto })
+  @ApiOkResponse({ type: HomeworkAnswersListResponseDto })
+  bulkReviewSubmissionAnswers(
+    @Param() params: TeacherHomeworkSubmissionParamsDto,
+    @Body() dto: BulkReviewHomeworkAnswersDto,
+  ): Promise<HomeworkAnswersListResponseDto> {
+    return this.bulkReviewSubmissionAnswersUseCase.execute(
+      params.classId,
+      params.homeworkId,
+      params.submissionId,
+      dto,
+    );
+  }
+
   @Get(
     'classes/:classId/assignments/:homeworkId/submissions/:submissionId/attachments',
   )
@@ -671,5 +732,23 @@ export class TeacherHomeworksController {
       params.submissionId,
       dto,
     );
+  }
+
+  @Patch(
+    'classes/:classId/assignments/:homeworkId/submissions/:submissionId/review',
+  )
+  @ApiOperation({
+    summary: 'Review a submitted homework submission for an owned assignment',
+  })
+  @ApiParam({ name: 'classId', format: 'uuid' })
+  @ApiParam({ name: 'homeworkId', format: 'uuid' })
+  @ApiParam({ name: 'submissionId', format: 'uuid' })
+  @ApiBody({ type: TeacherHomeworkSubmissionReviewDto })
+  @ApiOkResponse({ type: TeacherHomeworkSubmissionResponseDto })
+  patchReviewSubmission(
+    @Param() params: TeacherHomeworkSubmissionParamsDto,
+    @Body() dto: TeacherHomeworkSubmissionReviewDto,
+  ): Promise<TeacherHomeworkSubmissionResponseDto> {
+    return this.reviewSubmission(params, dto);
   }
 }

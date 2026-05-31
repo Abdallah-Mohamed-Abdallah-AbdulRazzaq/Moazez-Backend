@@ -109,6 +109,13 @@ const HOMEWORK_SUBMISSION_ANSWER_SELECT = {
   awardedPoints: true,
   reviewedAt: true,
   reviewedByUserId: true,
+  reviewedByUser: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+    },
+  },
   deletedAt: true,
   createdAt: true,
   updatedAt: true,
@@ -438,6 +445,15 @@ const HOMEWORK_REVIEW_SUBMISSION_ARGS =
           totalMarks: true,
           isGraded: true,
           deletedAt: true,
+          questions: {
+            where: { deletedAt: null },
+            orderBy: [
+              { sortOrder: 'asc' },
+              { createdAt: 'asc' },
+              { id: 'asc' },
+            ],
+            select: HOMEWORK_QUESTION_SELECT,
+          },
         },
       },
       homeworkTarget: {
@@ -610,6 +626,9 @@ export type ReviewHomeworkSubmissionResult =
   | { outcome: 'not_found' }
   | { outcome: 'already_reviewed'; submission: HomeworkReviewSubmissionRecord }
   | { outcome: 'not_reviewable'; submission: HomeworkReviewSubmissionRecord };
+export type ReviewHomeworkSubmissionAnswersResult =
+  | { outcome: 'reviewed'; submission: HomeworkReviewSubmissionRecord }
+  | { outcome: 'not_found' };
 
 @Injectable()
 export class HomeworkRepository {
@@ -1284,6 +1303,112 @@ export class HomeworkRepository {
         homeworkAssignment: { is: reviewVisibleAssignmentWhere() },
       },
       ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
+    });
+  }
+
+  findSubmissionForAnswerReview(input: {
+    homeworkAssignmentId: string;
+    submissionId: string;
+  }): Promise<HomeworkReviewSubmissionRecord | null> {
+    return this.scopedPrisma.homeworkSubmission.findFirst({
+      where: {
+        id: input.submissionId,
+        homeworkAssignmentId: input.homeworkAssignmentId,
+        homeworkAssignment: {
+          is: {
+            deletedAt: null,
+          },
+        },
+      },
+      ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
+    });
+  }
+
+  async reviewSubmissionAnswers(input: {
+    schoolId: string;
+    homeworkAssignmentId: string;
+    submissionId: string;
+    homeworkTargetId: string;
+    studentId: string;
+    enrollmentId: string;
+    awardedMarks: number;
+    reviews: {
+      answerId: string;
+      homeworkQuestionId: string;
+      awardedPoints: number | null;
+      teacherComment: string | null;
+      reviewedAt: Date;
+      reviewedByUserId: string;
+    }[];
+  }): Promise<ReviewHomeworkSubmissionAnswersResult> {
+    return this.scopedPrisma.$transaction(async (tx) => {
+      const matchingAnswers = await tx.homeworkSubmissionAnswer.count({
+        where: {
+          schoolId: input.schoolId,
+          id: { in: input.reviews.map((review) => review.answerId) },
+          homeworkSubmissionId: input.submissionId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          homeworkTargetId: input.homeworkTargetId,
+          homeworkQuestionId: {
+            in: input.reviews.map((review) => review.homeworkQuestionId),
+          },
+          deletedAt: null,
+        },
+      });
+
+      if (matchingAnswers !== input.reviews.length) {
+        return { outcome: 'not_found' };
+      }
+
+      for (const review of input.reviews) {
+        await tx.homeworkSubmissionAnswer.updateMany({
+          where: {
+            schoolId: input.schoolId,
+            id: review.answerId,
+            homeworkSubmissionId: input.submissionId,
+            homeworkAssignmentId: input.homeworkAssignmentId,
+            homeworkTargetId: input.homeworkTargetId,
+            homeworkQuestionId: review.homeworkQuestionId,
+            deletedAt: null,
+          },
+          data: {
+            teacherComment: review.teacherComment,
+            awardedPoints: review.awardedPoints,
+            reviewedAt: review.reviewedAt,
+            reviewedByUserId: review.reviewedByUserId,
+          },
+        });
+      }
+
+      await tx.homeworkSubmission.updateMany({
+        where: {
+          schoolId: input.schoolId,
+          id: input.submissionId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          homeworkTargetId: input.homeworkTargetId,
+          studentId: input.studentId,
+          enrollmentId: input.enrollmentId,
+        },
+        data: {
+          awardedMarks: input.awardedMarks,
+        },
+      });
+
+      const submission = await tx.homeworkSubmission.findFirst({
+        where: {
+          schoolId: input.schoolId,
+          id: input.submissionId,
+          homeworkAssignmentId: input.homeworkAssignmentId,
+          homeworkTargetId: input.homeworkTargetId,
+          studentId: input.studentId,
+          enrollmentId: input.enrollmentId,
+        },
+        ...HOMEWORK_REVIEW_SUBMISSION_ARGS,
+      });
+
+      return submission
+        ? { outcome: 'reviewed', submission }
+        : { outcome: 'not_found' };
     });
   }
 
