@@ -64,7 +64,6 @@ const TEACHER_PERMISSIONS = [
   'communication.messages.report',
   'students.records.view',
   'files.uploads.manage',
-  'dashboard.summary.view',
 ];
 
 const PARENT_PERMISSIONS = [

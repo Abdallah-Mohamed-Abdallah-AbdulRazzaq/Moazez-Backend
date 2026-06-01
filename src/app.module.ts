@@ -16,6 +16,7 @@ import { AdmissionsModule } from './modules/admissions/admissions.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { BehaviorModule } from './modules/behavior/behavior.module';
 import { CommunicationModule } from './modules/communication/communication.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { FilesModule } from './modules/files/files.module';
 import { GradesModule } from './modules/grades/grades.module';
 import { HealthModule } from './modules/health/health.module';
@@ -50,6 +51,7 @@ import { TeacherAppModule } from './modules/teacher-app/teacher-app.module';
     ReinforcementModule,
     BehaviorModule,
     CommunicationModule,
+    DashboardModule,
     TeacherAppModule,
     StudentAppModule,
     ParentAppModule,
