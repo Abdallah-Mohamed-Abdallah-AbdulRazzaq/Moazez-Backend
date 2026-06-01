@@ -5054,6 +5054,100 @@
               ]
             },
             {
+              "name": "dashboard",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "application",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "get-dashboard-summary.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "controller",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "dashboard.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "dto",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "dashboard-summary.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "infrastructure",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "dashboard-summary.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "presenters",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "dashboard-summary.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "tests",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "dashboard-summary.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "dashboard-summary.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "dashboard-context.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "dashboard.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
               "name": "files",
               "type": "folder",
               "icon": "📁",
@@ -14709,6 +14803,11 @@
               "icon": "📘"
             },
             {
+              "name": "dashboard-summary-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "files-attachments-preview.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -14889,6 +14988,11 @@
             },
             {
               "name": "tenancy.communication.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.dashboard.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15165,7 +15269,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-01T11:54:38.993Z",
+    "generated": "2026-06-01T15:34:05.163Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
