@@ -344,6 +344,16 @@
           "icon": "📝"
         },
         {
+          "name": "sprint-15a-academics-curriculum-homework-completion-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-15i-learning-flow-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
           "name": "sprint-6c-planning-audit.md",
           "type": "file",
           "icon": "📝"
@@ -670,6 +680,66 @@
             },
             {
               "name": "20260525130000_0025_homework_teacher_submission_review_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260525150000_0026_curriculum_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260526120000_0027_lesson_content_resources",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260526130000_0028_lesson_plans_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260526140000_0029_homework_questions_attachments_foundation",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260526150000_0030_homework_answers_submission_attachments",
               "type": "folder",
               "icon": "📁",
               "children": [
@@ -1170,6 +1240,258 @@
               "type": "folder",
               "icon": "📁",
               "children": [
+                {
+                  "name": "curriculum",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "curriculum.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "lesson-content.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "curriculum.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "curriculum-inputs.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "curriculum.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "lesson-content-inputs.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "lesson-content.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "curriculum-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "curriculum.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "lesson-content-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "lesson-content.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "curriculum.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "lesson-content.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "curriculum.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "lesson-content.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "curriculum.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "lesson-content.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "curriculum.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "lesson-plans",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "lesson-plans.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "lesson-plans.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "lesson-plan-inputs.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "lesson-plan.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "lesson-plans-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "lesson-plans.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "lesson-plans.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "lesson-plans.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "lesson-plans.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "lesson-plans.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
                 {
                   "name": "rooms",
                   "type": "folder",
@@ -6057,7 +6379,37 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "homework-answer-review.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-answers.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "homework-assignments.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-attachments.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-grade-sync.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-questions.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-submission-attachments.use-cases.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -6077,6 +6429,26 @@
                       "name": "homework-assignments.controller.ts",
                       "type": "file",
                       "icon": "📘"
+                    },
+                    {
+                      "name": "homework-attachments.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-grade-sync.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-questions.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-submission-content.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
                     }
                   ]
                 },
@@ -6085,6 +6457,61 @@
                   "type": "folder",
                   "icon": "📁",
                   "children": [
+                    {
+                      "name": "homework-answer-inputs.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-answer-review-inputs.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-answer-review.exceptions.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-answer.exceptions.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-attachment-inputs.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-attachment.exceptions.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-grade-sync.exceptions.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-question-inputs.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-question.exceptions.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-submission-attachment-inputs.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-submission-attachment.exceptions.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
                     {
                       "name": "homework.exceptions.ts",
                       "type": "file",
@@ -6098,12 +6525,57 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "homework-answer-response.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-answer.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "homework-assignment-response.dto.ts",
                       "type": "file",
                       "icon": "📘"
                     },
                     {
                       "name": "homework-assignment.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-attachment-response.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-attachment.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-grade-sync.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-question-response.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-question.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-submission-attachment-response.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-submission-attachment.dto.ts",
                       "type": "file",
                       "icon": "📘"
                     }
@@ -6127,7 +6599,32 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "homework-answer.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "homework-assignment.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-attachment.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-grade-sync.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-question.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-submission-attachment.presenter.ts",
                       "type": "file",
                       "icon": "📘"
                     }
@@ -6139,7 +6636,27 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "homework-answer-review.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-answers-attachments.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "homework-assignments.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-grade-sync.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-questions-attachments.use-case.spec.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -14147,6 +14664,21 @@
               "icon": "📁"
             },
             {
+              "name": "academics-curriculum-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "academics-lesson-content-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "academics-lesson-plans-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "admissions-flow.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -14207,7 +14739,27 @@
               "icon": "📘"
             },
             {
+              "name": "homework-answer-review-completion.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "homework-answers-attachments-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "homework-final-closeout.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "homework-grade-sync-integration.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "homework-questions-attachments-foundation.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -14301,6 +14853,21 @@
               "icon": "📁"
             },
             {
+              "name": "tenancy.academics-curriculum.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.academics-lesson-content.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.academics-lesson-plans.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "tenancy.academics.spec.ts",
               "type": "file",
               "icon": "📘"
@@ -14337,6 +14904,26 @@
             },
             {
               "name": "tenancy.hero-journey.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.homework-answer-review.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.homework-answers-attachments.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.homework-grade-sync.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.homework-questions-attachments.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -14578,7 +15165,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-05-25T11:02:17.608Z",
+    "generated": "2026-06-01T11:54:38.993Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
