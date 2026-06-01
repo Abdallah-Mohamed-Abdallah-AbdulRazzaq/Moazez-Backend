@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
@@ -11,6 +12,7 @@ import {
   FileVisibility,
   MembershipStatus,
   OrganizationStatus,
+  Prisma,
   PrismaClient,
   SchoolStatus,
   StudentEnrollmentStatus,
@@ -25,10 +27,9 @@ const GLOBAL_PREFIX = '/api/v1';
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
 const DEMO_ADMIN_PASSWORD = 'School123!';
 
-const TENANT_B_ORG_SLUG = 'attendance-tenancy-org-b';
-const TENANT_B_SCHOOL_SLUG = 'attendance-tenancy-school-b';
-const ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE =
-  'attendance.excuse_request';
+const TENANT_B_ORG_SLUG_PREFIX = 'attendance-tenancy-org-b';
+const TENANT_B_SCHOOL_SLUG_PREFIX = 'attendance-tenancy-school-b';
+const ATTENDANCE_EXCUSE_ATTACHMENT_RESOURCE_TYPE = 'attendance.excuse_request';
 
 jest.setTimeout(30000);
 
@@ -80,7 +81,10 @@ describe('Attendance policies tenancy isolation (security)', () => {
   let demoExcuseAttachmentId: string;
   let tenantBExcuseAttachmentId: string;
 
-  const testSuffix = `attendance-security-${Date.now()}`;
+  const testRunId = randomUUID().replace(/-/g, '').slice(0, 12);
+  const testSuffix = `attendance-security-${testRunId}`;
+  const tenantBOrgSlug = `${TENANT_B_ORG_SLUG_PREFIX}-${testRunId}`;
+  const tenantBSchoolSlug = `${TENANT_B_SCHOOL_SLUG_PREFIX}-${testRunId}`;
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -128,33 +132,24 @@ describe('Attendance policies tenancy isolation (security)', () => {
       },
     });
 
-    const orgB = await prisma.organization.upsert({
-      where: { slug: TENANT_B_ORG_SLUG },
-      update: { status: OrganizationStatus.ACTIVE },
-      create: {
-        slug: TENANT_B_ORG_SLUG,
-        name: 'Attendance Tenancy Org B',
+    const orgB = await prisma.organization.create({
+      data: {
+        slug: tenantBOrgSlug,
+        name: `Attendance Tenancy Org B ${testRunId}`,
         status: OrganizationStatus.ACTIVE,
       },
     });
+    tenantBOrganizationId = orgB.id;
 
-    const schoolB = await prisma.school.upsert({
-      where: {
-        organizationId_slug: {
-          organizationId: orgB.id,
-          slug: TENANT_B_SCHOOL_SLUG,
-        },
-      },
-      update: { status: SchoolStatus.ACTIVE },
-      create: {
+    const schoolB = await prisma.school.create({
+      data: {
         organizationId: orgB.id,
-        slug: TENANT_B_SCHOOL_SLUG,
-        name: 'Attendance Tenancy School B',
+        slug: tenantBSchoolSlug,
+        name: `Attendance Tenancy School B ${testRunId}`,
         status: SchoolStatus.ACTIVE,
       },
     });
     tenantBSchoolId = schoolB.id;
-    tenantBOrganizationId = orgB.id;
 
     const demoYear = await prisma.academicYear.create({
       data: {
@@ -607,27 +602,26 @@ describe('Attendance policies tenancy isolation (security)', () => {
     });
     demoRequireAttachmentPolicyId = demoRequireAttachmentPolicy.id;
 
-    const demoRequireAttachmentSession =
-      await prisma.attendanceSession.create({
-        data: {
-          schoolId: demoSchoolId,
-          academicYearId: demoYearId,
-          termId: demoTermId,
-          date: new Date('2026-09-19T00:00:00.000Z'),
-          scopeType: AttendanceScopeType.CLASSROOM,
-          scopeKey: `classroom:${demoClassroomId}`,
-          stageId: demoStageId,
-          gradeId: demoGradeId,
-          sectionId: demoSectionId,
-          classroomId: demoClassroomId,
-          mode: AttendanceMode.DAILY,
-          periodKey: `${testSuffix}-requires-attachment`,
-          policyId: demoRequireAttachmentPolicyId,
-          status: AttendanceSessionStatus.SUBMITTED,
-          submittedAt: new Date('2026-09-19T07:20:00.000Z'),
-        },
-        select: { id: true },
-      });
+    const demoRequireAttachmentSession = await prisma.attendanceSession.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        date: new Date('2026-09-19T00:00:00.000Z'),
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: `classroom:${demoClassroomId}`,
+        stageId: demoStageId,
+        gradeId: demoGradeId,
+        sectionId: demoSectionId,
+        classroomId: demoClassroomId,
+        mode: AttendanceMode.DAILY,
+        periodKey: `${testSuffix}-requires-attachment`,
+        policyId: demoRequireAttachmentPolicyId,
+        status: AttendanceSessionStatus.SUBMITTED,
+        submittedAt: new Date('2026-09-19T07:20:00.000Z'),
+      },
+      select: { id: true },
+    });
     demoRequireAttachmentSessionId = demoRequireAttachmentSession.id;
 
     const demoRequireAttachmentEntry = await prisma.attendanceEntry.create({
@@ -754,109 +748,165 @@ describe('Attendance policies tenancy isolation (security)', () => {
   afterAll(async () => {
     if (app) await app.close();
     if (prisma) {
-      await prisma.attachment.deleteMany({
-        where: {
-          id: {
-            in: [
-              demoExcuseAttachmentId,
-              tenantBExcuseAttachmentId,
-            ].filter(Boolean),
-          },
-        },
-      });
-      await prisma.file.deleteMany({
-        where: { id: { in: [demoFileId, tenantBFileId].filter(Boolean) } },
-      });
-      await prisma.attendanceExcuseRequest.deleteMany({
-        where: {
-          id: {
-            in: [
-              demoExcuseRequestId,
-              tenantBExcuseRequestId,
-              demoNoMatchingExcuseRequestId,
-              demoRequireAttachmentExcuseRequestId,
-            ].filter(Boolean),
-          },
-        },
-      });
-      await prisma.attendanceEntry.deleteMany({
-        where: {
-          id: {
-            in: [
-              demoDraftEntryId,
-              demoSubmittedEntryId,
-              demoRequireAttachmentEntryId,
-              tenantBEntryId,
-              tenantBSubmittedEntryId,
-              tenantBOnlyReviewEntryId,
-            ].filter(Boolean),
-          },
-        },
-      });
-      await prisma.attendanceSession.deleteMany({
-        where: {
-          id: {
-            in: [
-              demoSessionId,
-              demoSubmittedSessionId,
-              demoRequireAttachmentSessionId,
-              tenantBSessionId,
-              tenantBSubmittedSessionId,
-              tenantBOnlyReviewSessionId,
-            ].filter(Boolean),
-          },
-        },
-      });
-      await prisma.attendancePolicy.deleteMany({
-        where: {
-          id: {
-            in: [
-              demoPolicyId,
-              tenantBPolicyId,
-              demoRequireAttachmentPolicyId,
-            ].filter(Boolean),
-          },
-        },
-      });
-      await prisma.enrollment.deleteMany({
-        where: {
-          id: { in: [demoEnrollmentId, tenantBEnrollmentId].filter(Boolean) },
-        },
-      });
-      await prisma.student.deleteMany({
-        where: {
-          id: { in: [demoStudentId, tenantBStudentId].filter(Boolean) },
-        },
-      });
-      await prisma.classroom.deleteMany({
-        where: {
-          id: { in: [demoClassroomId, tenantBClassroomId].filter(Boolean) },
-        },
-      });
-      await prisma.section.deleteMany({
-        where: {
-          id: { in: [demoSectionId, tenantBSectionId].filter(Boolean) },
-        },
-      });
-      await prisma.grade.deleteMany({
-        where: { id: { in: [demoGradeId, tenantBGradeId].filter(Boolean) } },
-      });
-      await prisma.stage.deleteMany({
-        where: { id: { in: [demoStageId, tenantBStageId].filter(Boolean) } },
-      });
-      await prisma.term.deleteMany({
-        where: { id: { in: [demoTermId, tenantBTermId].filter(Boolean) } },
-      });
-      await prisma.academicYear.deleteMany({
-        where: { id: { in: [demoYearId, tenantBYearId].filter(Boolean) } },
-      });
-      await prisma.school.deleteMany({ where: { id: tenantBSchoolId } });
-      await prisma.organization.deleteMany({
-        where: { slug: TENANT_B_ORG_SLUG },
-      });
-      await prisma.$disconnect();
+      try {
+        await cleanupFixtureData();
+      } finally {
+        await prisma.$disconnect();
+      }
     }
   });
+
+  async function cleanupFixtureData(): Promise<void> {
+    await deleteAttendanceExcuseRequestSessions();
+    await deleteSchoolScopedRows<Prisma.AttachmentWhereInput>(
+      prisma.attachment.deleteMany.bind(prisma.attachment),
+      presentIds([demoExcuseAttachmentId, tenantBExcuseAttachmentId]),
+    );
+    await deleteSchoolScopedRows<Prisma.FileWhereInput>(
+      prisma.file.deleteMany.bind(prisma.file),
+      presentIds([demoFileId, tenantBFileId]),
+    );
+    await deleteSchoolScopedRows<Prisma.AttendanceExcuseRequestWhereInput>(
+      prisma.attendanceExcuseRequest.deleteMany.bind(
+        prisma.attendanceExcuseRequest,
+      ),
+      presentIds([
+        demoExcuseRequestId,
+        tenantBExcuseRequestId,
+        demoNoMatchingExcuseRequestId,
+        demoRequireAttachmentExcuseRequestId,
+      ]),
+    );
+    await deleteSchoolScopedRows<Prisma.AttendanceEntryWhereInput>(
+      prisma.attendanceEntry.deleteMany.bind(prisma.attendanceEntry),
+      presentIds([
+        demoDraftEntryId,
+        demoSubmittedEntryId,
+        demoRequireAttachmentEntryId,
+        tenantBEntryId,
+        tenantBSubmittedEntryId,
+        tenantBOnlyReviewEntryId,
+      ]),
+    );
+    await deleteSchoolScopedRows<Prisma.AttendanceSessionWhereInput>(
+      prisma.attendanceSession.deleteMany.bind(prisma.attendanceSession),
+      presentIds([
+        demoSessionId,
+        demoSubmittedSessionId,
+        demoRequireAttachmentSessionId,
+        tenantBSessionId,
+        tenantBSubmittedSessionId,
+        tenantBOnlyReviewSessionId,
+      ]),
+    );
+    await deleteSchoolScopedRows<Prisma.AttendancePolicyWhereInput>(
+      prisma.attendancePolicy.deleteMany.bind(prisma.attendancePolicy),
+      presentIds([
+        demoPolicyId,
+        tenantBPolicyId,
+        demoRequireAttachmentPolicyId,
+      ]),
+    );
+    await deleteSchoolScopedRows<Prisma.EnrollmentWhereInput>(
+      prisma.enrollment.deleteMany.bind(prisma.enrollment),
+      presentIds([demoEnrollmentId, tenantBEnrollmentId]),
+    );
+    await deleteSchoolScopedRows<Prisma.StudentWhereInput>(
+      prisma.student.deleteMany.bind(prisma.student),
+      presentIds([demoStudentId, tenantBStudentId]),
+    );
+    await deleteSchoolScopedRows<Prisma.ClassroomWhereInput>(
+      prisma.classroom.deleteMany.bind(prisma.classroom),
+      presentIds([demoClassroomId, tenantBClassroomId]),
+    );
+    await deleteSchoolScopedRows<Prisma.SectionWhereInput>(
+      prisma.section.deleteMany.bind(prisma.section),
+      presentIds([demoSectionId, tenantBSectionId]),
+    );
+    await deleteSchoolScopedRows<Prisma.GradeWhereInput>(
+      prisma.grade.deleteMany.bind(prisma.grade),
+      presentIds([demoGradeId, tenantBGradeId]),
+    );
+    await deleteSchoolScopedRows<Prisma.StageWhereInput>(
+      prisma.stage.deleteMany.bind(prisma.stage),
+      presentIds([demoStageId, tenantBStageId]),
+    );
+    await deleteSchoolScopedRows<Prisma.TermWhereInput>(
+      prisma.term.deleteMany.bind(prisma.term),
+      presentIds([demoTermId, tenantBTermId]),
+    );
+    await deleteSchoolScopedRows<Prisma.AcademicYearWhereInput>(
+      prisma.academicYear.deleteMany.bind(prisma.academicYear),
+      presentIds([demoYearId, tenantBYearId]),
+    );
+
+    if (tenantBSchoolId) {
+      await prisma.school.deleteMany({ where: { id: tenantBSchoolId } });
+    }
+    if (tenantBOrganizationId) {
+      await prisma.organization.deleteMany({
+        where: { id: tenantBOrganizationId },
+      });
+    }
+  }
+
+  async function deleteAttendanceExcuseRequestSessions(): Promise<void> {
+    const filters: Prisma.AttendanceExcuseRequestSessionWhereInput[] = [];
+
+    if (tenantBSchoolId) {
+      filters.push({ schoolId: tenantBSchoolId });
+    }
+
+    const excuseRequestIds = presentIds([
+      demoExcuseRequestId,
+      tenantBExcuseRequestId,
+      demoNoMatchingExcuseRequestId,
+      demoRequireAttachmentExcuseRequestId,
+    ]);
+    if (excuseRequestIds.length > 0) {
+      filters.push({ attendanceExcuseRequestId: { in: excuseRequestIds } });
+    }
+
+    const sessionIds = presentIds([
+      demoSessionId,
+      demoSubmittedSessionId,
+      demoRequireAttachmentSessionId,
+      tenantBSessionId,
+      tenantBSubmittedSessionId,
+      tenantBOnlyReviewSessionId,
+    ]);
+    if (sessionIds.length > 0) {
+      filters.push({ attendanceSessionId: { in: sessionIds } });
+    }
+
+    if (filters.length > 0) {
+      await prisma.attendanceExcuseRequestSession.deleteMany({
+        where: { OR: filters },
+      });
+    }
+  }
+
+  async function deleteSchoolScopedRows<TWhere>(
+    deleteMany: (args: { where: TWhere }) => Promise<unknown>,
+    fixtureIds: string[],
+  ): Promise<void> {
+    const filters: Array<Record<string, unknown>> = [];
+
+    if (tenantBSchoolId) {
+      filters.push({ schoolId: tenantBSchoolId });
+    }
+    if (fixtureIds.length > 0) {
+      filters.push({ id: { in: fixtureIds } });
+    }
+
+    if (filters.length > 0) {
+      await deleteMany({ where: { OR: filters } as TWhere });
+    }
+  }
+
+  function presentIds(values: Array<string | undefined>): string[] {
+    return values.filter((value): value is string => Boolean(value));
+  }
 
   async function login(): Promise<{ accessToken: string }> {
     const response = await request(app.getHttpServer())
@@ -1366,6 +1416,8 @@ describe('Attendance policies tenancy isolation (security)', () => {
     const response = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/attendance/reports/summary`)
       .query({
+        academicYearId: demoYearId,
+        termId: demoTermId,
         dateFrom: '2026-09-15',
         dateTo: '2026-09-16',
       })
@@ -1392,6 +1444,8 @@ describe('Attendance policies tenancy isolation (security)', () => {
     const response = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/attendance/reports/daily-trend`)
       .query({
+        academicYearId: demoYearId,
+        termId: demoTermId,
         dateFrom: '2026-09-15',
         dateTo: '2026-09-16',
       })
@@ -1414,6 +1468,8 @@ describe('Attendance policies tenancy isolation (security)', () => {
     const response = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/attendance/reports/scope-breakdown`)
       .query({
+        academicYearId: demoYearId,
+        termId: demoTermId,
         dateFrom: '2026-09-15',
         dateTo: '2026-09-16',
         groupBy: 'classroom',
