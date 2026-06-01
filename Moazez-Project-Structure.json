@@ -5067,6 +5067,11 @@
                       "name": "get-dashboard-summary.use-case.ts",
                       "type": "file",
                       "icon": "📘"
+                    },
+                    {
+                      "name": "list-dashboard-alerts.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
                     }
                   ]
                 },
@@ -5088,6 +5093,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "dashboard-alerts.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "dashboard-summary.dto.ts",
                       "type": "file",
                       "icon": "📘"
@@ -5099,6 +5109,11 @@
                   "type": "folder",
                   "icon": "📁",
                   "children": [
+                    {
+                      "name": "dashboard-alerts.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
                     {
                       "name": "dashboard-summary.repository.ts",
                       "type": "file",
@@ -5112,6 +5127,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "dashboard-alerts.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "dashboard-summary.presenter.ts",
                       "type": "file",
                       "icon": "📘"
@@ -5123,6 +5143,16 @@
                   "type": "folder",
                   "icon": "📁",
                   "children": [
+                    {
+                      "name": "dashboard-alerts.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "dashboard-alerts.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
                     {
                       "name": "dashboard-summary.presenter.spec.ts",
                       "type": "file",
@@ -14803,6 +14833,11 @@
               "icon": "📘"
             },
             {
+              "name": "dashboard-alerts-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "dashboard-summary-foundation.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -14988,6 +15023,11 @@
             },
             {
               "name": "tenancy.communication.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.dashboard-alerts.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15269,7 +15309,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-01T15:34:05.163Z",
+    "generated": "2026-06-01T23:50:58.869Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
