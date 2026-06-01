@@ -165,6 +165,7 @@ const PERMISSIONS: PermissionSeed[] = [
 
   // dashboard
   { code: 'dashboard.summary.view', module: 'dashboard', resource: 'summary', action: 'view', description: 'View dashboard summary KPIs' },
+  { code: 'dashboard.alerts.view', module: 'dashboard', resource: 'alerts', action: 'view', description: 'View computed dashboard operational alerts' },
 ];
 
 export async function seedPermissions(prisma: PrismaClient): Promise<void> {

@@ -4,32 +4,53 @@ import { join } from 'node:path';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { SCHOOL_SCOPED_MODELS } from '../../src/infrastructure/database/school-scope.extension';
 import { DashboardController } from '../../src/modules/dashboard/controller/dashboard.controller';
+import { presentDashboardAlerts } from '../../src/modules/dashboard/presenters/dashboard-alerts.presenter';
 import { presentDashboardSummary } from '../../src/modules/dashboard/presenters/dashboard-summary.presenter';
 
 describe('Dashboard summary tenancy/security contracts', () => {
-  it('registers one school dashboard route guarded by dashboard.summary.view', () => {
-    expect(controllerMethods(DashboardController)).toEqual(['getSummary']);
+  it('registers school dashboard routes guarded by explicit dashboard permissions', () => {
+    expect(controllerMethods(DashboardController)).toEqual([
+      'getSummary',
+      'listAlerts',
+    ]);
     expect(readPermissions('getSummary')).toEqual(['dashboard.summary.view']);
+    expect(readPermissions('listAlerts')).toEqual(['dashboard.alerts.view']);
   });
 
   it('keeps source domains behind school-scoped models', () => {
     expect([...SCHOOL_SCOPED_MODELS]).toEqual(
       expect.arrayContaining([
         'Application',
+        'PlacementTest',
+        'Interview',
         'Student',
         'Enrollment',
+        'AcademicYear',
+        'Term',
+        'TimetableEntry',
+        'LessonPlan',
         'AttendanceSession',
+        'AttendanceEntry',
+        'AttendanceExcuseRequest',
         'GradeAssessment',
+        'GradeSubmission',
+        'GradeSubmissionAnswer',
         'HomeworkAssignment',
+        'HomeworkTarget',
+        'HomeworkSubmission',
         'BehaviorRecord',
         'ReinforcementTask',
+        'ReinforcementSubmission',
         'CommunicationConversation',
         'CommunicationMessageReport',
+        'CommunicationAnnouncement',
+        'SchoolLoginSettings',
+        'SchoolEmailConnection',
       ]),
     );
   });
 
-  it('keeps teacher, parent, and student system role seeds out of the dashboard permission', () => {
+  it('keeps teacher, parent, and student system role seeds out of dashboard permissions', () => {
     const rolesSeed = readFileSync(
       join(process.cwd(), 'prisma/seeds/02-system-roles.seed.ts'),
       'utf8',
@@ -38,11 +59,20 @@ describe('Dashboard summary tenancy/security contracts', () => {
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.summary.view',
     );
+    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
+      'dashboard.alerts.view',
+    );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.summary.view',
     );
+    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
+      'dashboard.alerts.view',
+    );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.summary.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
+      'dashboard.alerts.view',
     );
   });
 
@@ -65,6 +95,32 @@ describe('Dashboard summary tenancy/security contracts', () => {
         reinforcement: zeroReinforcement(),
         communication: zeroCommunication(),
       },
+    });
+
+    const serialized = JSON.stringify(response);
+    expect(serialized).not.toContain('schoolId');
+    expect(serialized).not.toContain('organizationId');
+  });
+
+  it('does not expose tenant fields in the dashboard alerts presenter', () => {
+    const response = presentDashboardAlerts({
+      generatedAt: new Date('2026-06-01T09:00:00.000Z'),
+      alerts: [
+        {
+          key: 'attendance.absent_entries_today',
+          source: 'attendance',
+          severity: 'critical',
+          title: 'Absences marked today',
+          description: 'There are 2 absent attendance entries for today.',
+          count: 2,
+          action: {
+            label: 'Review absences',
+            target: '/attendance/absences',
+          },
+          schoolId: 'school-a',
+          organizationId: 'org-a',
+        } as any,
+      ],
     });
 
     const serialized = JSON.stringify(response);

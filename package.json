@@ -51,6 +51,7 @@
     "test:e2e:sprint15g": "jest --config ./test/jest-e2e.json --runInBand test/e2e/homework-answer-review-completion.e2e-spec.ts",
     "test:e2e:sprint15h": "jest --config ./test/jest-e2e.json --runInBand test/e2e/homework-grade-sync-integration.e2e-spec.ts",
     "test:e2e:sprint16a": "jest --config ./test/jest-e2e.json --runInBand test/e2e/dashboard-summary-foundation.e2e-spec.ts",
+    "test:e2e:sprint16b": "jest --config ./test/jest-e2e.json --runInBand test/e2e/dashboard-alerts-foundation.e2e-spec.ts",
     "test:security": "jest --config ./test/jest-e2e.json test/security",
     "seed": "prisma db seed",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",
@@ -89,6 +90,7 @@
     "verify:sprint15g": "npm run verify:sprint15f && npx prisma validate && npx prisma generate && npm run build && npm run test -- homework --runInBand && npm run test -- student-app --runInBand && npm run test -- teacher-app --runInBand && npm run test -- parent-app --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.homework.spec.ts test/security/tenancy.homework-questions-attachments.spec.ts test/security/tenancy.homework-answers-attachments.spec.ts test/security/tenancy.homework-answer-review.spec.ts && npm run test:e2e:sprint15g",
     "verify:sprint15h": "npm run verify:sprint15g && npx prisma validate && npx prisma generate && npm run build && npm run test -- homework --runInBand && npm run test -- grades --runInBand && npm run test -- student-app --runInBand && npm run test -- teacher-app --runInBand && npm run test -- parent-app --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.homework.spec.ts test/security/tenancy.homework-questions-attachments.spec.ts test/security/tenancy.homework-answers-attachments.spec.ts test/security/tenancy.homework-answer-review.spec.ts test/security/tenancy.homework-grade-sync.spec.ts && npm run test:e2e:sprint15h",
     "verify:sprint16a": "npm run verify:sprint15h && npx prisma validate && npx prisma generate && npm run build && npm run test -- dashboard --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.dashboard.spec.ts && npm run test:e2e:sprint16a",
+    "verify:sprint16b": "npm run verify:sprint16a && npx prisma validate && npx prisma generate && npm run build && npm run test -- dashboard --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.dashboard.spec.ts test/security/tenancy.dashboard-alerts.spec.ts && npm run test:e2e:sprint16b",
     "demo:sprint1c": "node scripts/demo-sprint1c.cjs",
     "demo:sprint2a": "node scripts/demo-sprint2a.cjs",
     "demo:sprint2b": "node scripts/demo-sprint2b.cjs"

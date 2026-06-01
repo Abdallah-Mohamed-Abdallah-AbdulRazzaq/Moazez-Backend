@@ -91,13 +91,13 @@ describe('Sprint 16A Dashboard Summary Foundation (e2e)', () => {
     }
   });
 
-  it('registers only the native school dashboard summary surface', () => {
+  it('registers the native school dashboard summary surface without deferred extras', () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain('GET /api/v1/dashboard/summary');
+    expect(routes).toContain('GET /api/v1/dashboard/alerts');
     for (const absentRoute of [
       'GET /api/v1/dashboard/activity-feed',
-      'GET /api/v1/dashboard/alerts',
       'POST /api/v1/dashboard/alerts/:alertId/acknowledge',
       'GET /api/v1/platform/dashboard/summary',
       'GET /api/v1/admin/dashboard/summary',
