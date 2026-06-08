@@ -8248,6 +8248,177 @@
               ]
             },
             {
+              "name": "platform-admin",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "application",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "create-platform-organization.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "create-platform-school.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "get-platform-admin-overview.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "get-platform-organization.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "get-platform-school.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "list-platform-organizations.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "list-platform-schools.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "transition-platform-organization-status.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "transition-platform-school-status.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "update-platform-organization.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "update-platform-school.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "controller",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "platform-admin.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "domain",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "platform-admin-errors.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "platform-admin-inputs.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "dto",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "platform-admin-organization.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "platform-admin-overview.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "platform-admin-school.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "infrastructure",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "platform-admin.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "presenters",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "platform-admin.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "tests",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "platform-admin.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "platform-admin.use-cases.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "platform-admin-context.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
+                  "name": "platform-admin.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
               "name": "reinforcement",
               "type": "folder",
               "icon": "📁",
@@ -14958,6 +15129,11 @@
               "icon": "📘"
             },
             {
+              "name": "platform-admin-organizations-schools-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "reinforcement-foundation.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -15128,6 +15304,11 @@
             },
             {
               "name": "tenancy.parent-app.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.platform-admin.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15359,7 +15540,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-08T17:07:50.061Z",
+    "generated": "2026-06-08T20:12:38.183Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
