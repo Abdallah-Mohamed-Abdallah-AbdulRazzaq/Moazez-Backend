@@ -29,6 +29,7 @@ export interface RequestContext {
   requestId: string;
   actor?: RequestActor;
   activeMembership?: ActiveMembership;
+  platformPermissions?: string[];
   academicContext?: AcademicContext;
   bypass: ScopeBypassFlags;
 }
@@ -61,6 +62,11 @@ export function setActor(actor: RequestActor): void {
 export function setActiveMembership(membership: ActiveMembership): void {
   const ctx = storage.getStore();
   if (ctx) ctx.activeMembership = membership;
+}
+
+export function setPlatformPermissions(permissions: string[]): void {
+  const ctx = storage.getStore();
+  if (ctx) ctx.platformPermissions = permissions;
 }
 
 export function setAcademicContext(academic: AcademicContext): void {

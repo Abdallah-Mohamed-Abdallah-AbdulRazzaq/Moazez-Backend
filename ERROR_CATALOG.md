@@ -85,6 +85,19 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `iam.credentials.user_not_manageable` | 409 | User credentials cannot be managed in the current state |
 | `iam.credentials.temporary_password_unavailable` | 409 | Temporary password is unavailable             |
 
+### Platform Admin
+
+| Code                                             | HTTP | Message                                            |
+| ------------------------------------------------ | ---- | -------------------------------------------------- |
+| `platform.organization.not_found`                | 404  | Organization was not found                         |
+| `platform.organization.slug_taken`               | 409  | Organization slug is already taken                 |
+| `platform.organization.invalid_status_transition`| 409  | Organization status transition is invalid          |
+| `platform.organization.archived`                 | 409  | Organization is archived                           |
+| `platform.school.not_found`                      | 404  | School was not found                               |
+| `platform.school.slug_taken`                     | 409  | School slug is already taken in this organization  |
+| `platform.school.invalid_status_transition`      | 409  | School status transition is invalid                |
+| `platform.school.archived`                       | 409  | School is archived                                 |
+
 ### Settings
 
 | Code                                     | HTTP | Message                                           |

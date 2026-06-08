@@ -16,7 +16,9 @@ const COMMUNICATION_PLATFORM_PERMISSIONS = [
 ];
 
 const NON_PLATFORM = ALL.filter(
-  (code) => !COMMUNICATION_PLATFORM_PERMISSIONS.includes(code),
+  (code) =>
+    !code.startsWith('platform.') &&
+    !COMMUNICATION_PLATFORM_PERMISSIONS.includes(code),
 );
 
 const SCHOOL_LEVEL = NON_PLATFORM;

@@ -45,6 +45,26 @@ export class AuthRepository {
     });
   }
 
+  async findSystemRolePermissionCodes(roleKey: string): Promise<string[]> {
+    const role = await this.prisma.role.findFirst({
+      where: {
+        key: roleKey,
+        schoolId: null,
+        isSystem: true,
+        deletedAt: null,
+      },
+      select: {
+        rolePermissions: {
+          select: {
+            permission: { select: { code: true } },
+          },
+        },
+      },
+    });
+
+    return role?.rolePermissions.map((rp) => rp.permission.code) ?? [];
+  }
+
   createSession(data: {
     sessionId: string;
     userId: string;

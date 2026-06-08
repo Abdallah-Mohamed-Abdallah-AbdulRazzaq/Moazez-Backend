@@ -23,6 +23,7 @@ import { HealthModule } from './modules/health/health.module';
 import { HomeworkModule } from './modules/homework/homework.module';
 import { IamModule } from './modules/iam/iam.module';
 import { ParentAppModule } from './modules/parent-app/parent-app.module';
+import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module';
 import { ReinforcementModule } from './modules/reinforcement/reinforcement.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { StudentAppModule } from './modules/student-app/student-app.module';
@@ -40,6 +41,7 @@ import { TeacherAppModule } from './modules/teacher-app/teacher-app.module';
     RealtimeModule,
     HealthModule,
     IamModule,
+    PlatformAdminModule,
     SettingsModule,
     AcademicsModule,
     FilesModule,

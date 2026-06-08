@@ -9,6 +9,13 @@ type PermissionSeed = {
 };
 
 const PERMISSIONS: PermissionSeed[] = [
+  // platform admin
+  { code: 'platform.overview.view', module: 'platform', resource: 'overview', action: 'view', description: 'View Platform Admin overview counters' },
+  { code: 'platform.organizations.view', module: 'platform', resource: 'organizations', action: 'view', description: 'View organizations across the platform' },
+  { code: 'platform.organizations.manage', module: 'platform', resource: 'organizations', action: 'manage', description: 'Create, update, and transition organization status' },
+  { code: 'platform.schools.view', module: 'platform', resource: 'schools', action: 'view', description: 'View schools across the platform' },
+  { code: 'platform.schools.manage', module: 'platform', resource: 'schools', action: 'manage', description: 'Create, update, and transition school status' },
+
   // settings
   { code: 'settings.overview.view', module: 'settings', resource: 'overview', action: 'view', description: 'View settings overview metrics and recent audit activity' },
   { code: 'settings.users.view', module: 'settings', resource: 'users', action: 'view', description: 'View users in the school' },

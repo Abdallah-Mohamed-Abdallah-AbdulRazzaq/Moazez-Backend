@@ -9,6 +9,7 @@ import { PUBLIC_ROUTE_METADATA } from '../decorators/public-route.decorator';
 import {
   getRequestContext,
   setActiveMembership,
+  setPlatformPermissions,
 } from '../context/request-context';
 import {
   ScopeMissingException,
@@ -44,7 +45,14 @@ export class ScopeResolverGuard implements CanActivate {
 
     const membership = user.memberships[0];
     if (!membership) {
-      if (ctx.actor.userType === UserType.PLATFORM_USER) return true;
+      if (ctx.actor.userType === UserType.PLATFORM_USER) {
+        const platformPermissions =
+          await this.authRepository.findSystemRolePermissionCodes(
+            'platform_super_admin',
+          );
+        setPlatformPermissions(platformPermissions);
+        return true;
+      }
       throw new ScopeMissingException();
     }
 

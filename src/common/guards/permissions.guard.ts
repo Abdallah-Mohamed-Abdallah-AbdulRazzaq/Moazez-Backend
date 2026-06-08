@@ -4,7 +4,6 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { UserType } from '@prisma/client';
 import { PUBLIC_ROUTE_METADATA } from '../decorators/public-route.decorator';
 import { REQUIRED_PERMISSIONS_METADATA } from '../decorators/required-permissions.decorator';
 import { getRequestContext } from '../context/request-context';
@@ -14,9 +13,9 @@ import {
 } from '../../modules/iam/auth/domain/auth.exceptions';
 
 /**
- * Enforces @RequiredPermissions() on handlers. Platform users bypass the
- * check (they act across tenants); everyone else must carry every listed
- * permission code on their active membership.
+ * Enforces @RequiredPermissions() on handlers. School-scoped actors use their
+ * active membership permissions; platform actors without a membership use the
+ * platform permission bundle resolved by ScopeResolverGuard.
  */
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -38,9 +37,8 @@ export class PermissionsGuard implements CanActivate {
     const ctx = getRequestContext();
     if (!ctx?.actor) throw new TokenInvalidException();
 
-    if (ctx.actor.userType === UserType.PLATFORM_USER) return true;
-
-    const granted = ctx.activeMembership?.permissions ?? [];
+    const granted =
+      ctx.activeMembership?.permissions ?? ctx.platformPermissions ?? [];
     const missing = required.filter((code) => !granted.includes(code));
     if (missing.length > 0) {
       throw new ScopeMissingException({ missingPermissions: missing });
