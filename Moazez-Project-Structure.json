@@ -761,6 +761,18 @@
               ]
             },
             {
+              "name": "20260609120000_0031_school_entitlements",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -8283,6 +8295,11 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "get-school-entitlement.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "list-platform-organizations.use-case.ts",
                       "type": "file",
                       "icon": "📘"
@@ -8316,6 +8333,11 @@
                       "name": "update-platform-school.use-case.ts",
                       "type": "file",
                       "icon": "📘"
+                    },
+                    {
+                      "name": "upsert-school-entitlement.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
                     }
                   ]
                 },
@@ -8337,6 +8359,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "platform-admin-entitlement-inputs.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "platform-admin-errors.ts",
                       "type": "file",
                       "icon": "📘"
@@ -8353,6 +8380,11 @@
                   "type": "folder",
                   "icon": "📁",
                   "children": [
+                    {
+                      "name": "platform-admin-entitlement.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
                     {
                       "name": "platform-admin-organization.dto.ts",
                       "type": "file",
@@ -8381,6 +8413,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "platform-admin-entitlements.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "platform-admin.repository.ts",
                       "type": "file",
                       "icon": "📘"
@@ -8393,6 +8430,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "platform-admin-entitlement.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "platform-admin.presenter.ts",
                       "type": "file",
                       "icon": "📘"
@@ -8404,6 +8446,16 @@
                   "type": "folder",
                   "icon": "📁",
                   "children": [
+                    {
+                      "name": "platform-admin-entitlement.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "platform-admin-entitlement.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
                     {
                       "name": "platform-admin-school-provisioning.use-case.spec.ts",
                       "type": "file",
@@ -15144,6 +15196,11 @@
               "icon": "📘"
             },
             {
+              "name": "platform-admin-entitlements-seat-usage.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "platform-admin-organizations-schools-foundation.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -15560,7 +15617,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-08T21:45:17.268Z",
+    "generated": "2026-06-08T23:11:36.827Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
