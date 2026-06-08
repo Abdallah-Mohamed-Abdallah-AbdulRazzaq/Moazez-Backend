@@ -57,7 +57,6 @@ const PLATFORM_PERMISSIONS = [
 ];
 
 const DEFERRED_ROUTES = [
-  'POST /api/v1/platform-admin/school-provisioning',
   'GET /api/v1/platform-admin/features',
   'GET /api/v1/platform-admin/entitlements',
   'GET /api/v1/platform-admin/subscriptions',
@@ -186,6 +185,9 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
       await prisma.session.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
+      await prisma.schoolLoginSettings.deleteMany({
+        where: { schoolId: { in: createdSchoolIds } },
+      });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
@@ -204,7 +206,7 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
     }
   });
 
-  it('registers only the Sprint 17B platform-admin route surface', () => {
+  it('registers the Sprint 17C platform-admin route surface', () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toEqual(
@@ -224,6 +226,7 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
         'POST /api/v1/platform-admin/schools/:schoolId/activate',
         'POST /api/v1/platform-admin/schools/:schoolId/suspend',
         'POST /api/v1/platform-admin/schools/:schoolId/archive',
+        'POST /api/v1/platform-admin/school-provisioning',
       ]),
     );
 
@@ -263,6 +266,12 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ name: `${TEST_PREFIX} denied`, slug: `${TEST_PREFIX}-denied` })
       .expect(403);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/platform-admin/school-provisioning`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(provisioningPayload('limited-denied'))
+      .expect(403);
   });
 
   it('allows platform users with platform permissions to view overview', async () => {
@@ -288,13 +297,91 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
         archived: expect.any(Number),
       },
       deferred: {
-        schoolProvisioning: 'deferred',
+        schoolProvisioning: 'available',
         entitlements: 'deferred',
         featureControl: 'deferred',
         billing: 'out_of_scope_v1',
         advancedAnalytics: 'deferred',
       },
     });
+  });
+
+  it('denies non-platform actors from school provisioning', async () => {
+    for (const email of [
+      `${TEST_PREFIX}-school-admin@moazez.local`,
+      `${TEST_PREFIX}-teacher@moazez.local`,
+      `${TEST_PREFIX}-parent@moazez.local`,
+      `${TEST_PREFIX}-student@moazez.local`,
+      `${TEST_PREFIX}-organization-user@moazez.local`,
+    ]) {
+      const token = await login(email);
+      const response = await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/platform-admin/school-provisioning`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(provisioningPayload(`denied-${email.split('@')[0]}`))
+        .expect(403);
+
+      expect(response.body?.error?.code).toBe('auth.scope.missing');
+    }
+  });
+
+  it('allows platform users with platform.schools.manage to provision a school safely', async () => {
+    const token = await login(platformUserEmail);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/platform-admin/school-provisioning`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(provisioningPayload('allowed'))
+      .expect(201);
+
+    createdOrganizationIds.push(response.body.organization.organizationId);
+    createdSchoolIds.push(response.body.school.schoolId);
+    createdUserIds.push(response.body.primaryAdmin.userId);
+
+    expect(response.body).toMatchObject({
+      provisioningId: response.body.school.schoolId,
+      organization: {
+        organizationId: expect.any(String),
+        slug: `${TEST_PREFIX}-allowed-org`,
+        status: OrganizationStatus.ACTIVE,
+      },
+      school: {
+        schoolId: expect.any(String),
+        slug: 'main',
+        status: SchoolStatus.ACTIVE,
+      },
+      loginIdentity: {
+        loginDomain: `${TEST_PREFIX}-allowed.moazez.school`,
+        primaryAdminLoginEmail: `admin@${TEST_PREFIX}-allowed.moazez.school`,
+      },
+      primaryAdmin: {
+        userId: expect.any(String),
+        username: 'admin',
+        loginEmail: `admin@${TEST_PREFIX}-allowed.moazez.school`,
+        contactEmail: `${TEST_PREFIX}-allowed-admin@example.test`,
+        userType: 'school_user',
+        status: 'active',
+        mustChangePassword: true,
+      },
+      credentials: {
+        deliveryMode: 'manual',
+        status: 'manual_pending',
+        temporaryPassword: null,
+      },
+    });
+
+    const serialized = JSON.stringify(response.body);
+    for (const forbidden of [
+      'passwordHash',
+      'tokenHash',
+      'refreshTokenHash',
+      'encryptedPassword',
+      'encryptedApiKey',
+      'smtp-secret',
+      'requestContext',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
   });
 
   it('allows platform admins to create and see multiple organizations and schools', async () => {
@@ -341,7 +428,10 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
       (item: { organizationId: string }) => item.organizationId,
     );
     expect(organizationIds).toEqual(
-      expect.arrayContaining([orgA.body.organizationId, orgB.body.organizationId]),
+      expect.arrayContaining([
+        orgA.body.organizationId,
+        orgB.body.organizationId,
+      ]),
     );
 
     const schools = await request(app.getHttpServer())
@@ -358,7 +448,9 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
   });
 
   it('denies cross-platform listing to non-platform actors', async () => {
-    const schoolAdminToken = await login(`${TEST_PREFIX}-school-admin@moazez.local`);
+    const schoolAdminToken = await login(
+      `${TEST_PREFIX}-school-admin@moazez.local`,
+    );
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/platform-admin/organizations`)
@@ -408,11 +500,6 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
 
   it('keeps deferred platform routes absent at HTTP runtime', async () => {
     const token = await login(platformUserEmail);
-
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/platform-admin/school-provisioning`)
-      .set('Authorization', `Bearer ${token}`)
-      .expect(404);
 
     for (const route of [
       'features',
@@ -600,6 +687,37 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
       .expect(200);
 
     return response.body.accessToken;
+  }
+
+  function provisioningPayload(suffix: string) {
+    return {
+      organization: {
+        mode: 'create',
+        name: `${TEST_PREFIX} ${suffix} Org`,
+        slug: `${TEST_PREFIX}-${suffix}-org`,
+      },
+      school: {
+        name: `${TEST_PREFIX} ${suffix} School`,
+        slug: 'main',
+      },
+      loginIdentity: {
+        loginDomain: `${TEST_PREFIX}-${suffix}.moazez.school`,
+      },
+      primaryAdmin: {
+        firstName: 'School',
+        lastName: 'Admin',
+        username: 'admin',
+        contactEmail: `${TEST_PREFIX}-${suffix}-admin@example.test`,
+        phone: `+201${String(hashSuffix(suffix)).slice(0, 9).padEnd(9, '0')}`,
+      },
+      credentials: {
+        deliveryMode: 'manual',
+      },
+    };
+  }
+
+  function hashSuffix(value: string): number {
+    return [...value].reduce((hash, char) => hash + char.charCodeAt(0), 0);
   }
 
   function listRegisteredRoutes(): string[] {

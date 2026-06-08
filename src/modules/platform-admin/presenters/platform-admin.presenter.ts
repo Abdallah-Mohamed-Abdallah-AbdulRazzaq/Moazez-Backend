@@ -10,11 +10,13 @@ import {
   PlatformSchoolResponseDto,
   PlatformSchoolsListResponseDto,
 } from '../dto/platform-admin-school.dto';
+import { PlatformSchoolProvisioningResponseDto } from '../dto/platform-admin-school-provisioning.dto';
 import {
   PlatformOrganizationListParams,
   PlatformOrganizationRecord,
   PlatformOverviewCounts,
   PlatformPageResult,
+  PlatformSchoolProvisioningRecord,
   PlatformSchoolListParams,
   PlatformSchoolRecord,
   PlatformStatusCounters,
@@ -29,7 +31,7 @@ export function presentPlatformAdminOverview(input: {
     organizations: presentCounters(input.counts.organizations),
     schools: presentCounters(input.counts.schools),
     deferred: {
-      schoolProvisioning: 'deferred',
+      schoolProvisioning: 'available',
       entitlements: 'deferred',
       featureControl: 'deferred',
       billing: 'out_of_scope_v1',
@@ -88,10 +90,61 @@ export function presentPlatformSchool(
   };
 }
 
+export function presentPlatformSchoolProvisioning(input: {
+  record: PlatformSchoolProvisioningRecord;
+  temporaryPassword: string | null;
+}): PlatformSchoolProvisioningResponseDto {
+  const { record } = input;
+
+  return {
+    provisioningId: record.school.id,
+    organization: {
+      organizationId: record.organization.id,
+      name: record.organization.name,
+      slug: record.organization.slug,
+      status: record.organization.status,
+    },
+    school: {
+      schoolId: record.school.id,
+      organizationId: record.school.organizationId,
+      name: record.school.name,
+      slug: record.school.slug,
+      status: record.school.status,
+    },
+    loginIdentity: {
+      loginDomain: record.loginSettings.loginDomain,
+      primaryAdminLoginEmail: record.primaryAdmin.email,
+    },
+    primaryAdmin: {
+      userId: record.primaryAdmin.id,
+      username: record.primaryAdmin.username ?? '',
+      loginEmail: record.primaryAdmin.email,
+      contactEmail: record.primaryAdmin.contactEmail ?? null,
+      userType: 'school_user',
+      status: record.primaryAdmin.status.toLowerCase() as 'active',
+      mustChangePassword: record.primaryAdmin.mustChangePassword,
+    },
+    credentials: {
+      deliveryMode: record.credentials.deliveryMode,
+      status: record.credentials.status,
+      temporaryPassword: input.temporaryPassword,
+    },
+    deferred: {
+      entitlements: 'deferred',
+      featureControl: 'deferred',
+      studentSeatLimit: 'deferred',
+      billing: 'out_of_scope_v1',
+    },
+  };
+}
+
 export function presentPlatformSchoolsList(input: {
   generatedAt: Date;
   result: PlatformPageResult<PlatformSchoolRecord>;
-  filters: Pick<PlatformSchoolListParams, 'organizationId' | 'status' | 'search'>;
+  filters: Pick<
+    PlatformSchoolListParams,
+    'organizationId' | 'status' | 'search'
+  >;
 }): PlatformSchoolsListResponseDto {
   return {
     generatedAt: input.generatedAt.toISOString(),

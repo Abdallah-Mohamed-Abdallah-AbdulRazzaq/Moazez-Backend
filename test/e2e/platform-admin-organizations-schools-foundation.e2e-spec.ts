@@ -57,7 +57,6 @@ const PLATFORM_PERMISSIONS = [
 ];
 
 const DEFERRED_ROUTES = [
-  'POST /api/v1/platform-admin/school-provisioning',
   'GET /api/v1/platform-admin/features',
   'GET /api/v1/platform-admin/entitlements',
   'GET /api/v1/platform-admin/subscriptions',
@@ -172,7 +171,7 @@ describe('Sprint 17B Platform Admin Organizations/Schools Foundation (e2e)', () 
         archived: expect.any(Number),
       },
       deferred: {
-        schoolProvisioning: 'deferred',
+        schoolProvisioning: 'available',
         entitlements: 'deferred',
         featureControl: 'deferred',
         billing: 'out_of_scope_v1',
@@ -182,7 +181,10 @@ describe('Sprint 17B Platform Admin Organizations/Schools Foundation (e2e)', () 
   });
 
   it('manages organization lifecycle without cascading school state', async () => {
-    const organization = await createOrganization('Lifecycle Org', 'lifecycle-org');
+    const organization = await createOrganization(
+      'Lifecycle Org',
+      'lifecycle-org',
+    );
 
     const listed = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/platform-admin/organizations`)
@@ -190,7 +192,9 @@ describe('Sprint 17B Platform Admin Organizations/Schools Foundation (e2e)', () 
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
     expect(
-      listed.body.items.map((item: { organizationId: string }) => item.organizationId),
+      listed.body.items.map(
+        (item: { organizationId: string }) => item.organizationId,
+      ),
     ).toContain(organization.organizationId);
 
     const detail = await request(app.getHttpServer())
@@ -261,7 +265,10 @@ describe('Sprint 17B Platform Admin Organizations/Schools Foundation (e2e)', () 
   });
 
   it('manages school lifecycle across organizations', async () => {
-    const organization = await createOrganization('School Ops Org', 'school-ops-org');
+    const organization = await createOrganization(
+      'School Ops Org',
+      'school-ops-org',
+    );
     const school = await createSchool(
       organization.organizationId,
       'School Ops',
@@ -304,26 +311,35 @@ describe('Sprint 17B Platform Admin Organizations/Schools Foundation (e2e)', () 
     });
 
     const suspended = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/platform-admin/schools/${school.schoolId}/suspend`)
+      .post(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${school.schoolId}/suspend`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
     expect(suspended.body.status).toBe(SchoolStatus.SUSPENDED);
 
     const activated = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/platform-admin/schools/${school.schoolId}/activate`)
+      .post(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${school.schoolId}/activate`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
     expect(activated.body.status).toBe(SchoolStatus.ACTIVE);
 
     const archived = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/platform-admin/schools/${school.schoolId}/archive`)
+      .post(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${school.schoolId}/archive`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
     expect(archived.body.status).toBe(SchoolStatus.ARCHIVED);
   });
 
   it('rejects duplicate slugs and allows same school slug in different organizations', async () => {
-    const organization = await createOrganization('Duplicate Org', 'duplicate-org');
+    const organization = await createOrganization(
+      'Duplicate Org',
+      'duplicate-org',
+    );
 
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/platform-admin/organizations`)
@@ -374,7 +390,10 @@ describe('Sprint 17B Platform Admin Organizations/Schools Foundation (e2e)', () 
   });
 
   it('rejects school creation under archived organizations', async () => {
-    const organization = await createOrganization('Archived Org', 'archived-org');
+    const organization = await createOrganization(
+      'Archived Org',
+      'archived-org',
+    );
 
     await request(app.getHttpServer())
       .post(
@@ -394,7 +413,9 @@ describe('Sprint 17B Platform Admin Organizations/Schools Foundation (e2e)', () 
       })
       .expect(409)
       .expect((response) => {
-        expect(response.body?.error?.code).toBe('platform.organization.archived');
+        expect(response.body?.error?.code).toBe(
+          'platform.organization.archived',
+        );
       });
   });
 
@@ -450,11 +471,7 @@ describe('Sprint 17B Platform Admin Organizations/Schools Foundation (e2e)', () 
     for (const route of DEFERRED_ROUTES) {
       expect(routes).not.toContain(route);
     }
-
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/platform-admin/school-provisioning`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
+    expect(routes).toContain('POST /api/v1/platform-admin/school-provisioning');
 
     for (const route of [
       'features',
@@ -485,7 +502,10 @@ describe('Sprint 17B Platform Admin Organizations/Schools Foundation (e2e)', () 
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/platform-admin/organizations`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ name: `${TEST_PREFIX} ${label}`, slug: `${TEST_PREFIX}-${slugSuffix}` })
+      .send({
+        name: `${TEST_PREFIX} ${label}`,
+        slug: `${TEST_PREFIX}-${slugSuffix}`,
+      })
       .expect(201);
 
     createdOrganizationIds.push(response.body.organizationId);
@@ -518,7 +538,9 @@ describe('Sprint 17B Platform Admin Organizations/Schools Foundation (e2e)', () 
   }> {
     const usersBefore = await prisma.user.count();
     const response = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/platform-admin/organizations/${organizationId}/schools`)
+      .post(
+        `${GLOBAL_PREFIX}/platform-admin/organizations/${organizationId}/schools`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ name: `${TEST_PREFIX} ${label}`, slug })
       .expect(201);

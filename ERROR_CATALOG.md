@@ -97,6 +97,12 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `platform.school.slug_taken`                     | 409  | School slug is already taken in this organization  |
 | `platform.school.invalid_status_transition`      | 409  | School status transition is invalid                |
 | `platform.school.archived`                       | 409  | School is archived                                 |
+| `platform.school_provisioning.invalid_organization_mode` | 422  | School provisioning organization mode is invalid |
+| `platform.school_provisioning.organization_required` | 422  | School provisioning organization data is required |
+| `platform.school_provisioning.login_domain_taken` | 409  | Login domain is already configured for another school |
+| `platform.school_provisioning.login_domain_invalid` | 422  | Login domain is invalid |
+| `platform.school_provisioning.primary_admin_login_taken` | 409  | Primary admin login email is already taken |
+| `platform.school_provisioning.school_admin_role_missing` | 422  | School admin role is missing |
 
 ### Settings
 

@@ -10,11 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOkResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { OrganizationStatus, SchoolStatus } from '@prisma/client';
 import { PlatformScope } from '../../../common/decorators/platform-scope.decorator';
 import { RequiredPermissions } from '../../../common/decorators/required-permissions.decorator';
@@ -25,11 +21,16 @@ import { GetPlatformOrganizationUseCase } from '../application/get-platform-orga
 import { GetPlatformSchoolUseCase } from '../application/get-platform-school.use-case';
 import { ListPlatformOrganizationsUseCase } from '../application/list-platform-organizations.use-case';
 import { ListPlatformSchoolsUseCase } from '../application/list-platform-schools.use-case';
+import { ProvisionPlatformSchoolUseCase } from '../application/provision-platform-school.use-case';
 import { TransitionPlatformOrganizationStatusUseCase } from '../application/transition-platform-organization-status.use-case';
 import { TransitionPlatformSchoolStatusUseCase } from '../application/transition-platform-school-status.use-case';
 import { UpdatePlatformOrganizationUseCase } from '../application/update-platform-organization.use-case';
 import { UpdatePlatformSchoolUseCase } from '../application/update-platform-school.use-case';
 import { PlatformAdminOverviewResponseDto } from '../dto/platform-admin-overview.dto';
+import {
+  PlatformSchoolProvisioningResponseDto,
+  ProvisionPlatformSchoolDto,
+} from '../dto/platform-admin-school-provisioning.dto';
 import {
   CreatePlatformOrganizationDto,
   ListPlatformOrganizationsQueryDto,
@@ -62,6 +63,7 @@ export class PlatformAdminController {
     private readonly createPlatformSchoolUseCase: CreatePlatformSchoolUseCase,
     private readonly updatePlatformSchoolUseCase: UpdatePlatformSchoolUseCase,
     private readonly transitionPlatformSchoolStatusUseCase: TransitionPlatformSchoolStatusUseCase,
+    private readonly provisionPlatformSchoolUseCase: ProvisionPlatformSchoolUseCase,
   ) {}
 
   @Get('overview')
@@ -164,6 +166,15 @@ export class PlatformAdminController {
     @Body() dto: CreatePlatformSchoolDto,
   ): Promise<PlatformSchoolResponseDto> {
     return this.createPlatformSchoolUseCase.execute(organizationId, dto);
+  }
+
+  @Post('school-provisioning')
+  @RequiredPermissions('platform.schools.manage')
+  @ApiOkResponse({ type: PlatformSchoolProvisioningResponseDto })
+  provisionSchool(
+    @Body() dto: ProvisionPlatformSchoolDto,
+  ): Promise<PlatformSchoolProvisioningResponseDto> {
+    return this.provisionPlatformSchoolUseCase.execute(dto);
   }
 
   @Get('schools/:schoolId')

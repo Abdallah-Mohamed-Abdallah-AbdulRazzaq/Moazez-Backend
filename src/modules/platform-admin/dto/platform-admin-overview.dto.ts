@@ -6,7 +6,7 @@ export class PlatformAdminStatusCountersDto {
 }
 
 export class PlatformAdminDeferredDto {
-  schoolProvisioning!: 'deferred';
+  schoolProvisioning!: 'available';
   entitlements!: 'deferred';
   featureControl!: 'deferred';
   billing!: 'out_of_scope_v1';

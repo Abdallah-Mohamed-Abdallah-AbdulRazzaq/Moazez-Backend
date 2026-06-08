@@ -97,3 +97,68 @@ export class PlatformSchoolInvalidStatusTransitionException extends DomainExcept
     });
   }
 }
+
+export class PlatformSchoolProvisioningInvalidOrganizationModeException extends DomainException {
+  constructor(mode?: string) {
+    super({
+      code: 'platform.school_provisioning.invalid_organization_mode',
+      message: 'School provisioning organization mode is invalid',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details: { mode },
+    });
+  }
+}
+
+export class PlatformSchoolProvisioningOrganizationRequiredException extends DomainException {
+  constructor(fields: string[]) {
+    super({
+      code: 'platform.school_provisioning.organization_required',
+      message: 'School provisioning organization data is required',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details: { fields },
+    });
+  }
+}
+
+export class PlatformSchoolProvisioningLoginDomainTakenException extends DomainException {
+  constructor(loginDomain: string) {
+    super({
+      code: 'platform.school_provisioning.login_domain_taken',
+      message: 'Login domain is already configured for another school',
+      httpStatus: HttpStatus.CONFLICT,
+      details: { loginDomain },
+    });
+  }
+}
+
+export class PlatformSchoolProvisioningLoginDomainInvalidException extends DomainException {
+  constructor(reason: string, loginDomain?: string) {
+    super({
+      code: 'platform.school_provisioning.login_domain_invalid',
+      message: 'Login domain is invalid',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details: { reason, loginDomain },
+    });
+  }
+}
+
+export class PlatformSchoolProvisioningPrimaryAdminLoginTakenException extends DomainException {
+  constructor(loginEmail: string) {
+    super({
+      code: 'platform.school_provisioning.primary_admin_login_taken',
+      message: 'Primary admin login email is already taken',
+      httpStatus: HttpStatus.CONFLICT,
+      details: { loginEmail },
+    });
+  }
+}
+
+export class PlatformSchoolProvisioningSchoolAdminRoleMissingException extends DomainException {
+  constructor() {
+    super({
+      code: 'platform.school_provisioning.school_admin_role_missing',
+      message: 'School admin role is missing',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+    });
+  }
+}
