@@ -8293,6 +8293,11 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "provision-platform-school.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "transition-platform-organization-status.use-case.ts",
                       "type": "file",
                       "icon": "📘"
@@ -8359,6 +8364,11 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "platform-admin-school-provisioning.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "platform-admin-school.dto.ts",
                       "type": "file",
                       "icon": "📘"
@@ -8394,6 +8404,11 @@
                   "type": "folder",
                   "icon": "📁",
                   "children": [
+                    {
+                      "name": "platform-admin-school-provisioning.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
                     {
                       "name": "platform-admin.presenter.spec.ts",
                       "type": "file",
@@ -15134,6 +15149,11 @@
               "icon": "📘"
             },
             {
+              "name": "platform-admin-school-provisioning.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "reinforcement-foundation.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -15540,7 +15560,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-08T20:12:38.183Z",
+    "generated": "2026-06-08T21:45:17.268Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
