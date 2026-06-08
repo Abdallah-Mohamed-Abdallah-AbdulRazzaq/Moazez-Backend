@@ -5069,6 +5069,11 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "list-dashboard-activity-feed.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "list-dashboard-alerts.use-case.ts",
                       "type": "file",
                       "icon": "📘"
@@ -5093,6 +5098,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "dashboard-activity-feed.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "dashboard-alerts.dto.ts",
                       "type": "file",
                       "icon": "📘"
@@ -5109,6 +5119,11 @@
                   "type": "folder",
                   "icon": "📁",
                   "children": [
+                    {
+                      "name": "dashboard-activity-feed.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
                     {
                       "name": "dashboard-alerts.repository.ts",
                       "type": "file",
@@ -5127,6 +5142,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "dashboard-activity-feed.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "dashboard-alerts.presenter.ts",
                       "type": "file",
                       "icon": "📘"
@@ -5143,6 +5163,16 @@
                   "type": "folder",
                   "icon": "📁",
                   "children": [
+                    {
+                      "name": "dashboard-activity-feed.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "dashboard-activity-feed.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
                     {
                       "name": "dashboard-alerts.presenter.spec.ts",
                       "type": "file",
@@ -14833,6 +14863,11 @@
               "icon": "📘"
             },
             {
+              "name": "dashboard-activity-feed-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "dashboard-alerts-foundation.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -15023,6 +15058,11 @@
             },
             {
               "name": "tenancy.communication.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.dashboard-activity-feed.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15309,7 +15349,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-01T23:50:58.869Z",
+    "generated": "2026-06-08T15:31:26.111Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
