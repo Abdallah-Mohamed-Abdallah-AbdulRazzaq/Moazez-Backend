@@ -354,6 +354,11 @@
           "icon": "📝"
         },
         {
+          "name": "sprint-16d-dashboard-foundation-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
           "name": "sprint-6c-planning-audit.md",
           "type": "file",
           "icon": "📝"
@@ -15349,7 +15354,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-08T15:31:26.111Z",
+    "generated": "2026-06-08T16:03:06.944Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
