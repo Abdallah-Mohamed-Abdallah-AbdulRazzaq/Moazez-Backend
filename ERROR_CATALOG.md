@@ -103,6 +103,10 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `platform.school_provisioning.login_domain_invalid` | 422  | Login domain is invalid |
 | `platform.school_provisioning.primary_admin_login_taken` | 409  | Primary admin login email is already taken |
 | `platform.school_provisioning.school_admin_role_missing` | 422  | School admin role is missing |
+| `platform.entitlement.invalid_date_range`          | 422  | Entitlement end date must be after the start date |
+| `platform.entitlement.invalid_status`              | 422  | Entitlement status is invalid                    |
+| `platform.entitlement.school_archived`             | 409  | School is archived and cannot receive entitlement changes |
+| `platform.entitlement.student_seat_limit_invalid`  | 422  | Student seat limit must be a positive integer    |
 
 ### Settings
 

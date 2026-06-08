@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
@@ -16,6 +17,7 @@ import { PlatformScope } from '../../../common/decorators/platform-scope.decorat
 import { RequiredPermissions } from '../../../common/decorators/required-permissions.decorator';
 import { CreatePlatformOrganizationUseCase } from '../application/create-platform-organization.use-case';
 import { CreatePlatformSchoolUseCase } from '../application/create-platform-school.use-case';
+import { GetSchoolEntitlementUseCase } from '../application/get-school-entitlement.use-case';
 import { GetPlatformAdminOverviewUseCase } from '../application/get-platform-admin-overview.use-case';
 import { GetPlatformOrganizationUseCase } from '../application/get-platform-organization.use-case';
 import { GetPlatformSchoolUseCase } from '../application/get-platform-school.use-case';
@@ -26,6 +28,11 @@ import { TransitionPlatformOrganizationStatusUseCase } from '../application/tran
 import { TransitionPlatformSchoolStatusUseCase } from '../application/transition-platform-school-status.use-case';
 import { UpdatePlatformOrganizationUseCase } from '../application/update-platform-organization.use-case';
 import { UpdatePlatformSchoolUseCase } from '../application/update-platform-school.use-case';
+import { UpsertSchoolEntitlementUseCase } from '../application/upsert-school-entitlement.use-case';
+import {
+  PlatformSchoolEntitlementResponseDto,
+  UpsertPlatformSchoolEntitlementDto,
+} from '../dto/platform-admin-entitlement.dto';
 import { PlatformAdminOverviewResponseDto } from '../dto/platform-admin-overview.dto';
 import {
   PlatformSchoolProvisioningResponseDto,
@@ -64,6 +71,8 @@ export class PlatformAdminController {
     private readonly updatePlatformSchoolUseCase: UpdatePlatformSchoolUseCase,
     private readonly transitionPlatformSchoolStatusUseCase: TransitionPlatformSchoolStatusUseCase,
     private readonly provisionPlatformSchoolUseCase: ProvisionPlatformSchoolUseCase,
+    private readonly getSchoolEntitlementUseCase: GetSchoolEntitlementUseCase,
+    private readonly upsertSchoolEntitlementUseCase: UpsertSchoolEntitlementUseCase,
   ) {}
 
   @Get('overview')
@@ -184,6 +193,25 @@ export class PlatformAdminController {
     @Param('schoolId', new ParseUUIDPipe()) schoolId: string,
   ): Promise<PlatformSchoolResponseDto> {
     return this.getPlatformSchoolUseCase.execute(schoolId);
+  }
+
+  @Get('schools/:schoolId/entitlement')
+  @RequiredPermissions('platform.entitlements.view')
+  @ApiOkResponse({ type: PlatformSchoolEntitlementResponseDto })
+  getSchoolEntitlement(
+    @Param('schoolId', new ParseUUIDPipe()) schoolId: string,
+  ): Promise<PlatformSchoolEntitlementResponseDto> {
+    return this.getSchoolEntitlementUseCase.execute(schoolId);
+  }
+
+  @Put('schools/:schoolId/entitlement')
+  @RequiredPermissions('platform.entitlements.manage')
+  @ApiOkResponse({ type: PlatformSchoolEntitlementResponseDto })
+  upsertSchoolEntitlement(
+    @Param('schoolId', new ParseUUIDPipe()) schoolId: string,
+    @Body() dto: UpsertPlatformSchoolEntitlementDto,
+  ): Promise<PlatformSchoolEntitlementResponseDto> {
+    return this.upsertSchoolEntitlementUseCase.execute(schoolId, dto);
   }
 
   @Patch('schools/:schoolId')

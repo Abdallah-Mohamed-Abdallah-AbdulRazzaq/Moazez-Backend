@@ -1,4 +1,5 @@
 import {
+  PlatformAdminEntitlementCountersDto,
   PlatformAdminOverviewResponseDto,
   PlatformAdminStatusCountersDto,
 } from '../dto/platform-admin-overview.dto';
@@ -11,6 +12,7 @@ import {
   PlatformSchoolsListResponseDto,
 } from '../dto/platform-admin-school.dto';
 import { PlatformSchoolProvisioningResponseDto } from '../dto/platform-admin-school-provisioning.dto';
+import { PlatformEntitlementOverviewCounters } from '../infrastructure/platform-admin-entitlements.repository';
 import {
   PlatformOrganizationListParams,
   PlatformOrganizationRecord,
@@ -25,14 +27,16 @@ import {
 export function presentPlatformAdminOverview(input: {
   generatedAt: Date;
   counts: PlatformOverviewCounts;
+  entitlements: PlatformEntitlementOverviewCounters;
 }): PlatformAdminOverviewResponseDto {
   return {
     generatedAt: input.generatedAt.toISOString(),
     organizations: presentCounters(input.counts.organizations),
     schools: presentCounters(input.counts.schools),
+    entitlements: presentEntitlementCounters(input.entitlements),
     deferred: {
       schoolProvisioning: 'available',
-      entitlements: 'deferred',
+      entitlements: 'available',
       featureControl: 'deferred',
       billing: 'out_of_scope_v1',
       advancedAnalytics: 'deferred',
@@ -172,5 +176,19 @@ function presentCounters(
     active: counters.active,
     suspended: counters.suspended,
     archived: counters.archived,
+  };
+}
+
+function presentEntitlementCounters(
+  counters: PlatformEntitlementOverviewCounters,
+): PlatformAdminEntitlementCountersDto {
+  return {
+    total: counters.total,
+    active: counters.active,
+    trial: counters.trial,
+    suspended: counters.suspended,
+    expired: counters.expired,
+    archived: counters.archived,
+    schoolsOverSeatLimit: counters.schoolsOverSeatLimit,
   };
 }

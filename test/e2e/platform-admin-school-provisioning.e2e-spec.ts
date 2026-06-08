@@ -590,7 +590,7 @@ describe('Sprint 17C Platform Admin school provisioning (e2e)', () => {
     }
   });
 
-  it('does not create subscription, entitlement, feature-control, or billing surfaces', async () => {
+  it('does not create subscription, feature-control, billing surfaces, or provisioning entitlements', async () => {
     const routes = listRegisteredRoutes();
     for (const route of [
       'features',
@@ -614,7 +614,6 @@ describe('Sprint 17C Platform Admin school provisioning (e2e)', () => {
       FROM information_schema.tables
       WHERE table_schema = 'public'
         AND table_name IN (
-          'school_entitlements',
           'school_subscriptions',
           'school_feature_entitlements',
           'platform_billing',
@@ -623,6 +622,12 @@ describe('Sprint 17C Platform Admin school provisioning (e2e)', () => {
         )
     `;
     expect(deferredTables).toEqual([]);
+
+    await expect(
+      prisma.schoolEntitlement.count({
+        where: { schoolId: { in: createdSchoolIds } },
+      }),
+    ).resolves.toBe(0);
   });
 
   async function expectProvisionedState(

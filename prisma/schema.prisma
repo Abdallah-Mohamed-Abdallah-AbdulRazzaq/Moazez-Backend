@@ -53,6 +53,16 @@ enum SchoolStatus {
   @@map("school_status")
 }
 
+enum SchoolEntitlementStatus {
+  ACTIVE
+  TRIAL
+  SUSPENDED
+  EXPIRED
+  ARCHIVED
+
+  @@map("school_entitlement_status")
+}
+
 enum UserStatus {
   ACTIVE
   INVITED
@@ -1051,14 +1061,15 @@ model Organization {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  schools      School[]
-  memberships  Membership[]
-  auditLogs    AuditLog[]
-  files        File[]
-  leads        Lead[]
-  applications Application[]
-  students     Student[]
-  guardians    Guardian[]
+  schools            School[]
+  schoolEntitlements SchoolEntitlement[]
+  memberships        Membership[]
+  auditLogs          AuditLog[]
+  files              File[]
+  leads              Lead[]
+  applications       Application[]
+  students           Student[]
+  guardians          Guardian[]
 
   @@index([status])
   @@index([deletedAt])
@@ -1081,6 +1092,7 @@ model School {
   memberships                           Membership[]
   roles                                 Role[]
   schoolProfile                         SchoolProfile?
+  entitlement                           SchoolEntitlement?
   securitySetting                       SecuritySetting?
   schoolLoginSettings                   SchoolLoginSettings?
   schoolEmailConnection                 SchoolEmailConnection?
@@ -1197,6 +1209,28 @@ model School {
   @@index([status])
   @@index([deletedAt])
   @@map("schools")
+}
+
+model SchoolEntitlement {
+  id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId         String                  @unique @map("school_id") @db.Uuid
+  organizationId   String                  @map("organization_id") @db.Uuid
+  status           SchoolEntitlementStatus @default(TRIAL)
+  startsAt         DateTime?               @map("starts_at")
+  endsAt           DateTime?               @map("ends_at")
+  studentSeatLimit Int?                    @map("student_seat_limit")
+  notes            String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([endsAt])
+  @@map("school_entitlements")
 }
 
 // ============================================================

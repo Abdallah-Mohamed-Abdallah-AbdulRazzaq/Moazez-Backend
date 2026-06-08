@@ -55,6 +55,7 @@
     "test:e2e:sprint16c": "jest --config ./test/jest-e2e.json --runInBand test/e2e/dashboard-activity-feed-foundation.e2e-spec.ts",
     "test:e2e:sprint17b": "jest --config ./test/jest-e2e.json --runInBand test/e2e/platform-admin-organizations-schools-foundation.e2e-spec.ts",
     "test:e2e:sprint17c": "jest --config ./test/jest-e2e.json --runInBand test/e2e/platform-admin-school-provisioning.e2e-spec.ts",
+    "test:e2e:sprint17d": "jest --config ./test/jest-e2e.json --runInBand test/e2e/platform-admin-entitlements-seat-usage.e2e-spec.ts",
     "test:security": "jest --config ./test/jest-e2e.json test/security",
     "seed": "prisma db seed",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",
@@ -97,6 +98,7 @@
     "verify:sprint16c": "npm run verify:sprint16b && npx prisma validate && npx prisma generate && npm run build && npm run test -- dashboard --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.dashboard.spec.ts test/security/tenancy.dashboard-alerts.spec.ts test/security/tenancy.dashboard-activity-feed.spec.ts && npm run test:e2e:sprint16c",
     "verify:sprint17b": "npx prisma validate && npx prisma generate && npm run build && npm run test -- platform-admin --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.platform-admin.spec.ts && npm run test:e2e:sprint17b",
     "verify:sprint17c": "npx prisma validate && npx prisma generate && npm run build && npm run test -- platform-admin --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.platform-admin.spec.ts && npm run test:e2e:sprint17b && npm run test:e2e:sprint17c",
+    "verify:sprint17d": "npx prisma validate && npx prisma generate && npm run build && npm run test -- platform-admin --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.platform-admin.spec.ts && npm run test:e2e:sprint17b && npm run test:e2e:sprint17c && npm run test:e2e:sprint17d",
     "demo:sprint1c": "node scripts/demo-sprint1c.cjs",
     "demo:sprint2a": "node scripts/demo-sprint2a.cjs",
     "demo:sprint2b": "node scripts/demo-sprint2b.cjs"

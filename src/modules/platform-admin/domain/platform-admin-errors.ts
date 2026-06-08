@@ -162,3 +162,47 @@ export class PlatformSchoolProvisioningSchoolAdminRoleMissingException extends D
     });
   }
 }
+
+export class PlatformEntitlementInvalidDateRangeException extends DomainException {
+  constructor(details: { startsAt?: string | null; endsAt?: string | null }) {
+    super({
+      code: 'platform.entitlement.invalid_date_range',
+      message: 'Entitlement end date must be after the start date',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class PlatformEntitlementInvalidStatusException extends DomainException {
+  constructor(status?: string) {
+    super({
+      code: 'platform.entitlement.invalid_status',
+      message: 'Entitlement status is invalid',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details: { status },
+    });
+  }
+}
+
+export class PlatformEntitlementSchoolArchivedException extends DomainException {
+  constructor(schoolId: string) {
+    super({
+      code: 'platform.entitlement.school_archived',
+      message: 'School is archived and cannot receive entitlement changes',
+      httpStatus: HttpStatus.CONFLICT,
+      details: { schoolId },
+    });
+  }
+}
+
+export class PlatformEntitlementStudentSeatLimitInvalidException extends DomainException {
+  constructor(studentSeatLimit?: number | null) {
+    super({
+      code: 'platform.entitlement.student_seat_limit_invalid',
+      message: 'Student seat limit must be a positive integer',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details: { studentSeatLimit },
+    });
+  }
+}

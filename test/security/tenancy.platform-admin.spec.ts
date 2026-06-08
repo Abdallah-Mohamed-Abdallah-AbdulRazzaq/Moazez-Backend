@@ -54,6 +54,20 @@ const PLATFORM_PERMISSIONS = [
     action: 'manage',
     description: 'Manage Platform Admin schools.',
   },
+  {
+    code: 'platform.entitlements.view',
+    module: 'platform',
+    resource: 'entitlements',
+    action: 'view',
+    description: 'View Platform Admin school entitlements.',
+  },
+  {
+    code: 'platform.entitlements.manage',
+    module: 'platform',
+    resource: 'entitlements',
+    action: 'manage',
+    description: 'Manage Platform Admin school entitlements.',
+  },
 ];
 
 const DEFERRED_ROUTES = [
@@ -63,6 +77,7 @@ const DEFERRED_ROUTES = [
   'GET /api/v1/platform-admin/audit-logs',
   'GET /api/v1/platform-admin/billing',
   'GET /api/v1/platform-admin/invoices',
+  'GET /api/v1/platform-admin/payments',
 ];
 
 const ARGON2_OPTIONS: argon2.Options = {
@@ -91,6 +106,8 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
   let baseSchoolId: string;
   let platformUserEmail: string;
   let limitedPlatformUserEmail: string;
+  let entitlementViewOnlyPlatformEmail: string;
+  let entitlementManageOnlyPlatformEmail: string;
 
   const createdOrganizationIds: string[] = [];
   const createdSchoolIds: string[] = [];
@@ -106,6 +123,8 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
 
     platformUserEmail = `${TEST_PREFIX}-platform@moazez.local`;
     limitedPlatformUserEmail = `${TEST_PREFIX}-platform-limited@moazez.local`;
+    entitlementViewOnlyPlatformEmail = `${TEST_PREFIX}-ent-view@moazez.local`;
+    entitlementManageOnlyPlatformEmail = `${TEST_PREFIX}-ent-manage@moazez.local`;
 
     await createNoMembershipUser(platformUserEmail, UserType.PLATFORM_USER);
     await createActorWithMembership({
@@ -115,6 +134,28 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
         baseSchoolId,
         `${TEST_PREFIX}-platform-denied`,
         [],
+      ),
+      organizationId: baseOrganizationId,
+      schoolId: baseSchoolId,
+    });
+    await createActorWithMembership({
+      email: entitlementViewOnlyPlatformEmail,
+      userType: UserType.PLATFORM_USER,
+      roleId: await createRoleWithPermissions(
+        baseSchoolId,
+        `${TEST_PREFIX}-platform-entitlement-view`,
+        ['platform.entitlements.view'],
+      ),
+      organizationId: baseOrganizationId,
+      schoolId: baseSchoolId,
+    });
+    await createActorWithMembership({
+      email: entitlementManageOnlyPlatformEmail,
+      userType: UserType.PLATFORM_USER,
+      roleId: await createRoleWithPermissions(
+        baseSchoolId,
+        `${TEST_PREFIX}-platform-entitlement-manage`,
+        ['platform.entitlements.manage'],
       ),
       organizationId: baseOrganizationId,
       schoolId: baseSchoolId,
@@ -188,6 +229,9 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
       await prisma.schoolLoginSettings.deleteMany({
         where: { schoolId: { in: createdSchoolIds } },
       });
+      await prisma.schoolEntitlement.deleteMany({
+        where: { schoolId: { in: createdSchoolIds } },
+      });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
@@ -206,7 +250,7 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
     }
   });
 
-  it('registers the Sprint 17C platform-admin route surface', () => {
+  it('registers the Sprint 17D platform-admin route surface', () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toEqual(
@@ -222,6 +266,8 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
         'GET /api/v1/platform-admin/schools',
         'POST /api/v1/platform-admin/organizations/:organizationId/schools',
         'GET /api/v1/platform-admin/schools/:schoolId',
+        'GET /api/v1/platform-admin/schools/:schoolId/entitlement',
+        'PUT /api/v1/platform-admin/schools/:schoolId/entitlement',
         'PATCH /api/v1/platform-admin/schools/:schoolId',
         'POST /api/v1/platform-admin/schools/:schoolId/activate',
         'POST /api/v1/platform-admin/schools/:schoolId/suspend',
@@ -274,6 +320,138 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
       .expect(403);
   });
 
+  it('enforces platform entitlement view/manage permissions separately', async () => {
+    const limitedToken = await login(limitedPlatformUserEmail);
+    const viewOnlyToken = await login(entitlementViewOnlyPlatformEmail);
+    const manageOnlyToken = await login(entitlementManageOnlyPlatformEmail);
+    const platformToken = await login(platformUserEmail);
+
+    for (const email of [
+      `${TEST_PREFIX}-school-admin@moazez.local`,
+      `${TEST_PREFIX}-teacher@moazez.local`,
+      `${TEST_PREFIX}-parent@moazez.local`,
+      `${TEST_PREFIX}-student@moazez.local`,
+      `${TEST_PREFIX}-organization-user@moazez.local`,
+    ]) {
+      const token = await login(email);
+
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/entitlement`,
+        )
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .put(
+          `${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/entitlement`,
+        )
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'active', studentSeatLimit: 25 })
+        .expect(403);
+    }
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/entitlement`,
+      )
+      .set('Authorization', `Bearer ${limitedToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/entitlement`,
+      )
+      .set('Authorization', `Bearer ${viewOnlyToken}`)
+      .send({ status: 'active', studentSeatLimit: 25 })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/entitlement`,
+      )
+      .set('Authorization', `Bearer ${manageOnlyToken}`)
+      .expect(403);
+
+    const readResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/entitlement`,
+      )
+      .set('Authorization', `Bearer ${viewOnlyToken}`)
+      .expect(200);
+
+    expect(readResponse.body).toMatchObject({
+      school: {
+        schoolId: baseSchoolId,
+        organizationId: baseOrganizationId,
+        status: 'active',
+      },
+      entitlement: null,
+      studentSeatUsage: {
+        used: expect.any(Number),
+        limit: null,
+        remaining: null,
+        isUnlimited: true,
+        isOverLimit: false,
+        calculation: 'active_students',
+      },
+    });
+
+    const upsertResponse = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/entitlement`,
+      )
+      .set('Authorization', `Bearer ${platformToken}`)
+      .send({
+        status: 'active',
+        startsAt: '2026-06-01T00:00:00.000Z',
+        endsAt: '2027-06-01T00:00:00.000Z',
+        studentSeatLimit: 25,
+        notes: 'Security suite entitlement',
+      })
+      .expect(200);
+
+    expect(upsertResponse.body).toMatchObject({
+      school: {
+        schoolId: baseSchoolId,
+        organizationId: baseOrganizationId,
+        status: 'active',
+      },
+      entitlement: {
+        entitlementId: expect.any(String),
+        status: 'active',
+        startsAt: '2026-06-01T00:00:00.000Z',
+        endsAt: '2027-06-01T00:00:00.000Z',
+        studentSeatLimit: 25,
+      },
+      studentSeatUsage: {
+        limit: 25,
+        calculation: 'active_students',
+      },
+      deferred: {
+        seatLimitEnforcement: 'deferred',
+        featureControl: 'deferred',
+        billing: 'out_of_scope_v1',
+        invoices: 'out_of_scope_v1',
+        payments: 'out_of_scope_v1',
+      },
+    });
+
+    const serialized = JSON.stringify(upsertResponse.body);
+    for (const forbidden of [
+      'passwordHash',
+      'refreshTokenHash',
+      'encryptedPassword',
+      'encryptedApiKey',
+      'guardian',
+      'attendance',
+      'gradeItems',
+      'raw',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
   it('allows platform users with platform permissions to view overview', async () => {
     const token = await login(platformUserEmail);
 
@@ -296,9 +474,18 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
         suspended: expect.any(Number),
         archived: expect.any(Number),
       },
+      entitlements: {
+        total: expect.any(Number),
+        active: expect.any(Number),
+        trial: expect.any(Number),
+        suspended: expect.any(Number),
+        expired: expect.any(Number),
+        archived: expect.any(Number),
+        schoolsOverSeatLimit: expect.any(Number),
+      },
       deferred: {
         schoolProvisioning: 'available',
-        entitlements: 'deferred',
+        entitlements: 'available',
         featureControl: 'deferred',
         billing: 'out_of_scope_v1',
         advancedAnalytics: 'deferred',
@@ -508,6 +695,18 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
       'audit-logs',
       'billing',
       'invoices',
+      'payments',
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/platform-admin/${route}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(404);
+    }
+
+    for (const route of [
+      `schools/${baseSchoolId}/features`,
+      `schools/${baseSchoolId}/seat-enforcement`,
+      `schools/${baseSchoolId}/seat-limit-enforcement`,
     ]) {
       await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}/platform-admin/${route}`)

@@ -27,15 +27,33 @@ describe('Platform Admin presenter', () => {
         organizations: { total: 0, active: 0, suspended: 0, archived: 0 },
         schools: { total: 0, active: 0, suspended: 0, archived: 0 },
       },
+      entitlements: {
+        total: 0,
+        active: 0,
+        trial: 0,
+        suspended: 0,
+        expired: 0,
+        archived: 0,
+        schoolsOverSeatLimit: 0,
+      },
     });
 
     expect(response).toEqual({
       generatedAt: '2026-06-01T09:00:00.000Z',
       organizations: { total: 0, active: 0, suspended: 0, archived: 0 },
       schools: { total: 0, active: 0, suspended: 0, archived: 0 },
+      entitlements: {
+        total: 0,
+        active: 0,
+        trial: 0,
+        suspended: 0,
+        expired: 0,
+        archived: 0,
+        schoolsOverSeatLimit: 0,
+      },
       deferred: {
         schoolProvisioning: 'available',
-        entitlements: 'deferred',
+        entitlements: 'available',
         featureControl: 'deferred',
         billing: 'out_of_scope_v1',
         advancedAnalytics: 'deferred',

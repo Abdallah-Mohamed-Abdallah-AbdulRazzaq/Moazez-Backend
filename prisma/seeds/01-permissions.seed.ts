@@ -15,6 +15,8 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'platform.organizations.manage', module: 'platform', resource: 'organizations', action: 'manage', description: 'Create, update, and transition organization status' },
   { code: 'platform.schools.view', module: 'platform', resource: 'schools', action: 'view', description: 'View schools across the platform' },
   { code: 'platform.schools.manage', module: 'platform', resource: 'schools', action: 'manage', description: 'Create, update, and transition school status' },
+  { code: 'platform.entitlements.view', module: 'platform', resource: 'entitlements', action: 'view', description: 'View school subscription entitlements and student seat usage' },
+  { code: 'platform.entitlements.manage', module: 'platform', resource: 'entitlements', action: 'manage', description: 'Create and update school subscription entitlements' },
 
   // settings
   { code: 'settings.overview.view', module: 'settings', resource: 'overview', action: 'view', description: 'View settings overview metrics and recent audit activity' },
