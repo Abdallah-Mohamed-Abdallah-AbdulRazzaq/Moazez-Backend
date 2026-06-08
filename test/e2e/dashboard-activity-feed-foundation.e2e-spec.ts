@@ -2,8 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
-  AdmissionApplicationSource,
-  AdmissionApplicationStatus,
+  AuditOutcome,
   MembershipStatus,
   PrismaClient,
   UserStatus,
@@ -19,7 +18,7 @@ const GLOBAL_PREFIX = '/api/v1';
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
 const DEMO_ADMIN_PASSWORD = 'School123!';
 const DEMO_SCHOOL_SLUG = 'moazez-academy';
-const PASSWORD = 'DashboardAlerts123!';
+const PASSWORD = 'DashboardActivity123!';
 
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
@@ -48,15 +47,15 @@ type CreatedPrincipal = {
 
 jest.setTimeout(90000);
 
-describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
+describe('Sprint 16C Dashboard Activity Feed Foundation (e2e)', () => {
   const suffix = randomUUID().split('-')[0];
-  const marker = `s16b-alerts-${suffix}`;
+  const marker = `s16c-activity-${suffix}`;
 
   let app: INestApplication<App>;
   let prisma: PrismaClient;
   let demoSchoolId = '';
   let demoOrganizationId = '';
-  let alertsPermissionId = '';
+  let activityPermissionId = '';
   let deniedPrincipal: CreatedPrincipal;
   let minimalPrincipal: CreatedPrincipal;
 
@@ -64,7 +63,7 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
   const createdSchoolIds: string[] = [];
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
-  const createdApplicationIds: string[] = [];
+  const createdAuditResourceIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -80,8 +79,8 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
     demoSchoolId = demoSchool.id;
     demoOrganizationId = demoSchool.organizationId;
 
-    alertsPermissionId = await ensureAlertsPermission();
-    await ensureDemoAdminHasAlertsPermission();
+    activityPermissionId = await ensureActivityFeedPermission();
+    await ensureDemoAdminHasActivityFeedPermission();
     deniedPrincipal = await createPrincipal({
       label: 'denied',
       organizationId: demoOrganizationId,
@@ -89,7 +88,7 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
       permissionIds: [],
     });
     minimalPrincipal = await createMinimalSchoolPrincipal();
-    await createDemoAdmissionAlertSeed();
+    await createDemoActivityFeedSeed();
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -120,7 +119,7 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
     }
   });
 
-  it('registers summary and alerts, while keeping deferred lifecycle routes absent', () => {
+  it('registers the activity feed route and keeps lifecycle routes absent', () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain('GET /api/v1/dashboard/summary');
@@ -129,148 +128,156 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
     for (const absentRoute of [
       'GET /api/v1/dashboard/activities',
       'GET /api/v1/dashboard/analytics-builder',
-      'POST /api/v1/dashboard/alerts/:alertId/acknowledge',
-      'POST /api/v1/dashboard/alerts/:alertId/dismiss',
-      'POST /api/v1/dashboard/alerts/:alertId/read',
       'POST /api/v1/dashboard/activity-feed/:activityId/read',
       'POST /api/v1/dashboard/activity-feed/:activityId/dismiss',
       'POST /api/v1/dashboard/activity-feed/:activityId/pin',
       'POST /api/v1/dashboard/activity-feed/:activityId/unpin',
-      'GET /api/v1/platform/dashboard/alerts',
-      'GET /api/v1/admin/dashboard/alerts',
-      'GET /api/v1/teacher/dashboard/alerts',
-      'GET /api/v1/student/dashboard/alerts',
-      'GET /api/v1/parent/dashboard/alerts',
+      'POST /api/v1/dashboard/alerts/:alertId/read',
+      'POST /api/v1/dashboard/alerts/:alertId/dismiss',
     ]) {
       expect(routes).not.toContain(absentRoute);
     }
   });
 
-  it('requires dashboard.alerts.view and returns the stable alerts contract', async () => {
+  it('requires dashboard.activity_feed.view and returns the stable feed contract', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
     const deniedToken = await login(deniedPrincipal.email, PASSWORD);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
+      .get(`${GLOBAL_PREFIX}/dashboard/activity-feed`)
       .set('Authorization', `Bearer ${deniedToken}`)
       .expect(403);
 
     const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
+      .get(`${GLOBAL_PREFIX}/dashboard/activity-feed`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
     expect(response.body).toMatchObject({
       generatedAt: expect.any(String),
-      alerts: expect.any(Array),
-      summary: {
-        total: expect.any(Number),
-        critical: expect.any(Number),
-        warning: expect.any(Number),
-        info: expect.any(Number),
-        bySource: expect.any(Object),
+      items: expect.any(Array),
+      pageInfo: {
+        limit: 20,
+        hasMore: expect.any(Boolean),
+      },
+      filters: {
+        source: null,
+        eventType: null,
+        actorType: null,
+        dateFrom: null,
+        dateTo: null,
       },
       deferred: {
-        persistence: 'deferred',
-        acknowledge: 'deferred',
-        dismiss: 'deferred',
-        activityFeed: 'deferred',
+        readState: 'deferred',
+        pinning: 'deferred',
+        realtime: 'deferred',
+        analyticsBuilder: 'deferred',
       },
     });
+    expect(response.body.pageInfo).toHaveProperty('nextCursor');
+    expect(
+      response.body.pageInfo.nextCursor === null ||
+        typeof response.body.pageInfo.nextCursor === 'string',
+    ).toBe(true);
     expectNoTenantIds(response.body);
   });
 
-  it('supports source, severity, limit, and includeZeroCount query controls', async () => {
+  it('supports source and limit filters', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     const sourceResponse = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
-      .query({ source: 'admissions' })
+      .get(`${GLOBAL_PREFIX}/dashboard/activity-feed`)
+      .query({ source: 'homework' })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
-    expect(sourceResponse.body.alerts.length).toBeGreaterThan(0);
+    expect(sourceResponse.body.items.length).toBeGreaterThan(0);
     expect(
-      sourceResponse.body.alerts.every(
-        (alert: { source: string }) => alert.source === 'admissions',
-      ),
-    ).toBe(true);
-
-    const severityResponse = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
-      .query({ severity: 'warning' })
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
-    expect(severityResponse.body.alerts.length).toBeGreaterThan(0);
-    expect(
-      severityResponse.body.alerts.every(
-        (alert: { severity: string }) => alert.severity === 'warning',
+      sourceResponse.body.items.every(
+        (item: { source: string }) => item.source === 'homework',
       ),
     ).toBe(true);
 
     const limitedResponse = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
-      .query({ includeZeroCount: 'true', limit: '1' })
+      .get(`${GLOBAL_PREFIX}/dashboard/activity-feed`)
+      .query({ source: 'homework', limit: '1' })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
-    expect(limitedResponse.body.alerts).toHaveLength(1);
-
-    const zeroCountResponse = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
-      .query({ includeZeroCount: 'true', limit: '100' })
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
-    expect(zeroCountResponse.body.alerts.length).toBeGreaterThanOrEqual(
-      limitedResponse.body.alerts.length,
-    );
-    expectNoTenantIds(zeroCountResponse.body);
+    expect(limitedResponse.body.items).toHaveLength(1);
+    expect(limitedResponse.body.pageInfo.limit).toBe(1);
+    expectNoTenantIds(limitedResponse.body);
   });
 
-  it('validates alert query parameters', async () => {
+  it('rejects invalid filters', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
+      .get(`${GLOBAL_PREFIX}/dashboard/activity-feed`)
       .query({ source: 'wallet' })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(400);
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
-      .query({ severity: 'urgent' })
+      .get(`${GLOBAL_PREFIX}/dashboard/activity-feed`)
+      .query({ actorType: 'robot' })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(400);
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
-      .query({ limit: '0' })
+      .get(`${GLOBAL_PREFIX}/dashboard/activity-feed`)
+      .query({ limit: '101' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/activity-feed`)
+      .query({
+        dateFrom: '2026-06-03T00:00:00.000Z',
+        dateTo: '2026-06-01T00:00:00.000Z',
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/activity-feed`)
+      .query({ eventType: 'wallet.transaction.create' })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(400);
   });
 
-  it('returns a stable response for a new school with minimal data', async () => {
+  it('returns a stable response for minimal data', async () => {
     const token = await login(minimalPrincipal.email, PASSWORD);
 
     const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
+      .get(`${GLOBAL_PREFIX}/dashboard/activity-feed`)
+      .query({
+        dateFrom: '1990-01-01T00:00:00.000Z',
+        dateTo: '1990-01-02T00:00:00.000Z',
+      })
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
     expect(response.body).toMatchObject({
       generatedAt: expect.any(String),
-      alerts: expect.any(Array),
-      summary: expect.objectContaining({
-        total: expect.any(Number),
-        bySource: expect.any(Object),
-      }),
+      items: [],
+      pageInfo: {
+        limit: 20,
+        nextCursor: null,
+        hasMore: false,
+      },
+      filters: {
+        source: null,
+        eventType: null,
+        actorType: null,
+        dateFrom: '1990-01-01T00:00:00.000Z',
+        dateTo: '1990-01-02T00:00:00.000Z',
+      },
       deferred: {
-        persistence: 'deferred',
-        acknowledge: 'deferred',
-        dismiss: 'deferred',
-        activityFeed: 'deferred',
+        readState: 'deferred',
+        pinning: 'deferred',
+        realtime: 'deferred',
+        analyticsBuilder: 'deferred',
       },
     });
     expectNoTenantIds(response.body);
   });
 
-  it('keeps dashboard summary working after adding alerts', async () => {
+  it('keeps summary and alerts routes working', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     await request(app.getHttpServer())
@@ -279,26 +286,34 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
       .expect(200)
       .expect((response) => {
         expect(response.body).toHaveProperty('cards');
-        expect(response.body).toHaveProperty('alertsPreview');
+        expectNoTenantIds(response.body);
+      });
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toHaveProperty('alerts');
         expectNoTenantIds(response.body);
       });
   });
 
-  async function ensureAlertsPermission(): Promise<string> {
+  async function ensureActivityFeedPermission(): Promise<string> {
     const permission = await prisma.permission.upsert({
-      where: { code: 'dashboard.alerts.view' },
+      where: { code: 'dashboard.activity_feed.view' },
       update: {
         module: 'dashboard',
-        resource: 'alerts',
+        resource: 'activity_feed',
         action: 'view',
-        description: 'View computed dashboard operational alerts',
+        description: 'View read-only dashboard operational activity feed',
       },
       create: {
-        code: 'dashboard.alerts.view',
+        code: 'dashboard.activity_feed.view',
         module: 'dashboard',
-        resource: 'alerts',
+        resource: 'activity_feed',
         action: 'view',
-        description: 'View computed dashboard operational alerts',
+        description: 'View read-only dashboard operational activity feed',
       },
       select: { id: true },
     });
@@ -306,7 +321,7 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
     return permission.id;
   }
 
-  async function ensureDemoAdminHasAlertsPermission(): Promise<void> {
+  async function ensureDemoAdminHasActivityFeedPermission(): Promise<void> {
     const admin = await prisma.user.findUnique({
       where: { email: DEMO_ADMIN_EMAIL },
       select: { id: true },
@@ -330,31 +345,49 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
     }
 
     await prisma.rolePermission.createMany({
-      data: [{ roleId: membership.roleId, permissionId: alertsPermissionId }],
+      data: [{ roleId: membership.roleId, permissionId: activityPermissionId }],
       skipDuplicates: true,
     });
   }
 
-  async function createDemoAdmissionAlertSeed(): Promise<void> {
-    const application = await prisma.application.create({
-      data: {
-        organizationId: demoOrganizationId,
-        schoolId: demoSchoolId,
-        studentName: `${marker} demo admissions alert`,
-        source: AdmissionApplicationSource.WALK_IN,
-        status: AdmissionApplicationStatus.SUBMITTED,
-        submittedAt: new Date('2026-06-01T08:00:00.000Z'),
-      },
-      select: { id: true },
+  async function createDemoActivityFeedSeed(): Promise<void> {
+    const homeworkResourceId = `${marker}-demo-homework`;
+    const attendanceResourceId = `${marker}-demo-attendance`;
+    createdAuditResourceIds.push(homeworkResourceId, attendanceResourceId);
+
+    await prisma.auditLog.createMany({
+      data: [
+        {
+          organizationId: demoOrganizationId,
+          schoolId: demoSchoolId,
+          userType: UserType.SERVICE_ACCOUNT,
+          module: 'homework',
+          action: 'homework.submission.review',
+          resourceType: 'homework_submission',
+          resourceId: homeworkResourceId,
+          outcome: AuditOutcome.SUCCESS,
+          createdAt: new Date('2026-06-01T10:00:00.000Z'),
+        },
+        {
+          organizationId: demoOrganizationId,
+          schoolId: demoSchoolId,
+          userType: UserType.SERVICE_ACCOUNT,
+          module: 'attendance',
+          action: 'attendance.session.submit',
+          resourceType: 'attendance_session',
+          resourceId: attendanceResourceId,
+          outcome: AuditOutcome.SUCCESS,
+          createdAt: new Date('2026-06-01T09:00:00.000Z'),
+        },
+      ],
     });
-    createdApplicationIds.push(application.id);
   }
 
   async function createMinimalSchoolPrincipal(): Promise<CreatedPrincipal> {
     const organization = await prisma.organization.create({
       data: {
         slug: `${marker}-minimal-org`,
-        name: `Sprint 16B Minimal Org ${suffix}`,
+        name: `Sprint 16C Minimal Org ${suffix}`,
       },
       select: { id: true },
     });
@@ -364,7 +397,7 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
       data: {
         organizationId: organization.id,
         slug: `${marker}-minimal-school`,
-        name: `Sprint 16B Minimal School ${suffix}`,
+        name: `Sprint 16C Minimal School ${suffix}`,
       },
       select: { id: true },
     });
@@ -374,7 +407,7 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
       label: 'minimal',
       organizationId: organization.id,
       schoolId: school.id,
-      permissionIds: [alertsPermissionId],
+      permissionIds: [activityPermissionId],
     });
   }
 
@@ -388,8 +421,8 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
       data: {
         schoolId: input.schoolId,
         key: `${marker}-${input.label}-role`,
-        name: `Sprint 16B ${input.label} role`,
-        description: `Sprint 16B dashboard alerts ${input.label} role`,
+        name: `Sprint 16C ${input.label} role`,
+        description: `Sprint 16C dashboard activity ${input.label} role`,
         isSystem: false,
       },
       select: { id: true },
@@ -486,19 +519,10 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
   }
 
   async function cleanupE2eData(): Promise<void> {
-    if (createdApplicationIds.length > 0) {
-      await prisma.application.deleteMany({
-        where: { id: { in: createdApplicationIds } },
-      });
-    }
-    if (createdUserIds.length > 0) {
-      await prisma.session.deleteMany({
-        where: { userId: { in: createdUserIds } },
-      });
-    }
     await prisma.auditLog.deleteMany({
       where: {
         OR: [
+          { resourceId: { in: createdAuditResourceIds } },
           { actorId: { in: createdUserIds } },
           { schoolId: { in: createdSchoolIds } },
           { organizationId: { in: createdOrganizationIds } },
@@ -506,6 +530,9 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
       },
     });
     if (createdUserIds.length > 0) {
+      await prisma.session.deleteMany({
+        where: { userId: { in: createdUserIds } },
+      });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });

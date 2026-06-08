@@ -2,11 +2,7 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  AdmissionApplicationSource,
-  AdmissionApplicationStatus,
-  UserType,
-} from '@prisma/client';
+import { AuditOutcome, UserType } from '@prisma/client';
 import {
   createRequestContext,
   runWithRequestContext,
@@ -15,14 +11,16 @@ import {
 } from '../../src/common/context/request-context';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
+import { ListDashboardActivityFeedUseCase } from '../../src/modules/dashboard/application/list-dashboard-activity-feed.use-case';
 import { DashboardController } from '../../src/modules/dashboard/controller/dashboard.controller';
-import { DashboardAlertsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-alerts.repository';
+import { ListDashboardActivityFeedQueryDto } from '../../src/modules/dashboard/dto/dashboard-activity-feed.dto';
+import { DashboardActivityFeedRepository } from '../../src/modules/dashboard/infrastructure/dashboard-activity-feed.repository';
 
 jest.setTimeout(60000);
 
-describe('Dashboard alerts tenancy/security contracts', () => {
+describe('Dashboard activity feed tenancy/security contracts', () => {
   const suffix = randomUUID().split('-')[0];
-  const marker = `s16b-security-${suffix}`;
+  const marker = `s16c-security-${suffix}`;
 
   let prisma: PrismaService;
   let organizationId = '';
@@ -36,7 +34,7 @@ describe('Dashboard alerts tenancy/security contracts', () => {
     const organization = await prisma.organization.create({
       data: {
         slug: `${marker}-org`,
-        name: `Sprint 16B Security Org ${suffix}`,
+        name: `Sprint 16C Security Org ${suffix}`,
       },
       select: { id: true },
     });
@@ -47,7 +45,7 @@ describe('Dashboard alerts tenancy/security contracts', () => {
         data: {
           organizationId,
           slug: `${marker}-school-a`,
-          name: `Sprint 16B Security School A ${suffix}`,
+          name: `Sprint 16C Security School A ${suffix}`,
         },
         select: { id: true },
       }),
@@ -55,7 +53,7 @@ describe('Dashboard alerts tenancy/security contracts', () => {
         data: {
           organizationId,
           slug: `${marker}-school-b`,
-          name: `Sprint 16B Security School B ${suffix}`,
+          name: `Sprint 16C Security School B ${suffix}`,
         },
         select: { id: true },
       }),
@@ -63,31 +61,29 @@ describe('Dashboard alerts tenancy/security contracts', () => {
     schoolAId = schoolA.id;
     schoolBId = schoolB.id;
 
-    await prisma.application.createMany({
+    await prisma.auditLog.createMany({
       data: [
         {
           organizationId,
           schoolId: schoolAId,
-          studentName: `${marker} school-a application`,
-          source: AdmissionApplicationSource.WALK_IN,
-          status: AdmissionApplicationStatus.SUBMITTED,
-          submittedAt: new Date('2026-06-01T08:00:00.000Z'),
+          userType: UserType.SERVICE_ACCOUNT,
+          module: 'homework',
+          action: 'homework.submission.review',
+          resourceType: 'homework_submission',
+          resourceId: `${marker}-school-a-homework`,
+          outcome: AuditOutcome.SUCCESS,
+          createdAt: new Date('2026-06-01T09:00:00.000Z'),
         },
         {
           organizationId,
           schoolId: schoolBId,
-          studentName: `${marker} school-b application 1`,
-          source: AdmissionApplicationSource.WALK_IN,
-          status: AdmissionApplicationStatus.SUBMITTED,
-          submittedAt: new Date('2026-06-01T08:00:00.000Z'),
-        },
-        {
-          organizationId,
-          schoolId: schoolBId,
-          studentName: `${marker} school-b application 2`,
-          source: AdmissionApplicationSource.WALK_IN,
-          status: AdmissionApplicationStatus.UNDER_REVIEW,
-          submittedAt: new Date('2026-06-01T08:00:00.000Z'),
+          userType: UserType.SERVICE_ACCOUNT,
+          module: 'homework',
+          action: 'homework.submission.review',
+          resourceType: 'homework_submission',
+          resourceId: `${marker}-school-b-homework`,
+          outcome: AuditOutcome.SUCCESS,
+          createdAt: new Date('2026-06-01T10:00:00.000Z'),
         },
       ],
     });
@@ -96,8 +92,8 @@ describe('Dashboard alerts tenancy/security contracts', () => {
   afterAll(async () => {
     if (!prisma) return;
 
-    await prisma.application.deleteMany({
-      where: { organizationId },
+    await prisma.auditLog.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
     });
     await prisma.school.deleteMany({
       where: { id: { in: [schoolAId, schoolBId].filter(Boolean) } },
@@ -108,8 +104,7 @@ describe('Dashboard alerts tenancy/security contracts', () => {
     await prisma.$disconnect();
   });
 
-  it('registers read-only dashboard actions and keeps alert lifecycle absent', () => {
-    expect(readPermissions('listAlerts')).toEqual(['dashboard.alerts.view']);
+  it('requires dashboard.activity_feed.view on the activity feed route', () => {
     expect(readPermissions('listActivityFeed')).toEqual([
       'dashboard.activity_feed.view',
     ]);
@@ -118,16 +113,9 @@ describe('Dashboard alerts tenancy/security contracts', () => {
       'listAlerts',
       'listActivityFeed',
     ]);
-    expect(controllerMethods(DashboardController)).not.toEqual(
-      expect.arrayContaining([
-        'acknowledgeAlert',
-        'dismissAlert',
-        'markAlertRead',
-      ]),
-    );
   });
 
-  it('adds dashboard.alerts.view to admin-like seed inheritance only', () => {
+  it('keeps teacher, student, and parent seeds out of activity feed permission', () => {
     const permissionsSeed = readFileSync(
       join(process.cwd(), 'prisma/seeds/01-permissions.seed.ts'),
       'utf8',
@@ -137,65 +125,54 @@ describe('Dashboard alerts tenancy/security contracts', () => {
       'utf8',
     );
 
-    expect(permissionsSeed).toContain("'dashboard.alerts.view'");
+    expect(permissionsSeed).toContain("'dashboard.activity_feed.view'");
     expect(rolesSeed).toContain('const ALL = PERMISSION_CODES;');
     expect(rolesSeed).toContain('const SCHOOL_LEVEL = NON_PLATFORM;');
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
-      'dashboard.alerts.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.activity_feed.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
-      'dashboard.alerts.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.activity_feed.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
-      'dashboard.alerts.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.activity_feed.view',
     );
   });
 
-  it('keeps school A from seeing school B alert counts', async () => {
-    const repository = new DashboardAlertsRepository(prisma);
-    const window = {
-      now: new Date('2026-06-01T12:00:00.000Z'),
-      todayStart: new Date('2026-06-01T00:00:00.000Z'),
-      last30DaysStart: new Date('2026-05-02T12:00:00.000Z'),
-      next7DaysEnd: new Date('2026-06-08T12:00:00.000Z'),
-    };
+  it('keeps school A from seeing school B activity and hides tenant ids', async () => {
+    const repository = new DashboardActivityFeedRepository(prisma);
+    const useCase = new ListDashboardActivityFeedUseCase(repository);
 
-    const schoolASignals = await withSchoolScope(schoolAId, () =>
-      repository.loadAlertSignals(
-        {
-          actorId: 'security-user-a',
-          userType: UserType.SCHOOL_USER,
-          organizationId,
-          schoolId: schoolAId,
-          roleId: 'security-role-a',
-        },
-        window,
-      ),
-    );
-    const schoolBSignals = await withSchoolScope(schoolBId, () =>
-      repository.loadAlertSignals(
-        {
-          actorId: 'security-user-b',
-          userType: UserType.SCHOOL_USER,
-          organizationId,
-          schoolId: schoolBId,
-          roleId: 'security-role-b',
-        },
-        window,
-      ),
+    const response = await withSchoolScope(schoolAId, () =>
+      useCase.execute(query({ source: 'homework' })),
     );
 
-    expect(schoolASignals.admissions.applicationsWaitingDecision).toBe(1);
-    expect(schoolBSignals.admissions.applicationsWaitingDecision).toBe(2);
+    expect(response.items).toHaveLength(1);
+    expect(response.items[0]).toMatchObject({
+      source: 'homework',
+      eventType: 'homework.submission.review',
+      subject: {
+        id: `${marker}-school-a-homework`,
+      },
+    });
+    expect(JSON.stringify(response)).not.toContain(
+      `${marker}-school-b-homework`,
+    );
+    expectNoTenantIds(response);
+  });
+
+  it('keeps activity and alerts lifecycle methods absent', () => {
+    expect(controllerMethods(DashboardController)).not.toEqual(
+      expect.arrayContaining([
+        'markActivityRead',
+        'dismissActivity',
+        'pinActivity',
+        'unpinActivity',
+        'acknowledgeAlert',
+        'dismissAlert',
+        'markAlertRead',
+      ]),
+    );
   });
 
   async function withSchoolScope<T>(
@@ -209,7 +186,7 @@ describe('Dashboard alerts tenancy/security contracts', () => {
         organizationId,
         schoolId,
         roleId: `role-${schoolId}`,
-        permissions: ['dashboard.alerts.view'],
+        permissions: ['dashboard.activity_feed.view'],
       });
 
       return fn();
@@ -235,4 +212,16 @@ function extractArrayLiteral(source: string, arrayName: string): string {
     new RegExp(`const ${arrayName} = \\[([\\s\\S]*?)\\];`),
   );
   return match?.[1] ?? '';
+}
+
+function query(
+  overrides: Partial<ListDashboardActivityFeedQueryDto>,
+): ListDashboardActivityFeedQueryDto {
+  return Object.assign(new ListDashboardActivityFeedQueryDto(), overrides);
+}
+
+function expectNoTenantIds(body: unknown): void {
+  const serialized = JSON.stringify(body);
+  expect(serialized).not.toContain('schoolId');
+  expect(serialized).not.toContain('organizationId');
 }

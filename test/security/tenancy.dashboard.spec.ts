@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { SCHOOL_SCOPED_MODELS } from '../../src/infrastructure/database/school-scope.extension';
 import { DashboardController } from '../../src/modules/dashboard/controller/dashboard.controller';
+import { presentDashboardActivityFeed } from '../../src/modules/dashboard/presenters/dashboard-activity-feed.presenter';
 import { presentDashboardAlerts } from '../../src/modules/dashboard/presenters/dashboard-alerts.presenter';
 import { presentDashboardSummary } from '../../src/modules/dashboard/presenters/dashboard-summary.presenter';
 
@@ -12,9 +13,13 @@ describe('Dashboard summary tenancy/security contracts', () => {
     expect(controllerMethods(DashboardController)).toEqual([
       'getSummary',
       'listAlerts',
+      'listActivityFeed',
     ]);
     expect(readPermissions('getSummary')).toEqual(['dashboard.summary.view']);
     expect(readPermissions('listAlerts')).toEqual(['dashboard.alerts.view']);
+    expect(readPermissions('listActivityFeed')).toEqual([
+      'dashboard.activity_feed.view',
+    ]);
   });
 
   it('keeps source domains behind school-scoped models', () => {
@@ -62,17 +67,26 @@ describe('Dashboard summary tenancy/security contracts', () => {
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.alerts.view',
     );
+    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
+      'dashboard.activity_feed.view',
+    );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.summary.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.alerts.view',
     );
+    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
+      'dashboard.activity_feed.view',
+    );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.summary.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.alerts.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
+      'dashboard.activity_feed.view',
     );
   });
 
@@ -121,6 +135,44 @@ describe('Dashboard summary tenancy/security contracts', () => {
           organizationId: 'org-a',
         } as any,
       ],
+    });
+
+    const serialized = JSON.stringify(response);
+    expect(serialized).not.toContain('schoolId');
+    expect(serialized).not.toContain('organizationId');
+  });
+
+  it('does not expose tenant fields in the dashboard activity feed presenter', () => {
+    const response = presentDashboardActivityFeed({
+      generatedAt: new Date('2026-06-01T09:00:00.000Z'),
+      items: [
+        {
+          activityId: 'audit:activity-1',
+          source: 'homework',
+          eventType: 'homework.submission.review',
+          title: 'Homework reviewed',
+          description: 'A homework submission was reviewed.',
+          actor: {
+            id: 'teacher-1',
+            displayName: 'Teacher One',
+            type: 'teacher',
+          },
+          subject: {
+            type: 'homework_submission',
+            id: 'submission-1',
+            label: 'Homework Submission',
+          },
+          occurredAt: '2026-06-01T09:00:00.000Z',
+          schoolId: 'school-a',
+          organizationId: 'org-a',
+        } as any,
+      ],
+      pageInfo: {
+        limit: 20,
+        nextCursor: null,
+        hasMore: false,
+      },
+      filters: {},
     });
 
     const serialized = JSON.stringify(response);
