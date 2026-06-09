@@ -8337,6 +8337,11 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "student-seat-limit-policy.service.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "transition-platform-organization-status.use-case.ts",
                       "type": "file",
                       "icon": "📘"
@@ -8468,6 +8473,16 @@
                       "name": "platform-admin.repository.ts",
                       "type": "file",
                       "icon": "📘"
+                    },
+                    {
+                      "name": "student-seat-limit-policy.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "student-seat-usage.query.ts",
+                      "type": "file",
+                      "icon": "📘"
                     }
                   ]
                 },
@@ -8535,6 +8550,11 @@
                     },
                     {
                       "name": "platform-admin.use-cases.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "student-seat-limit-policy.service.spec.ts",
                       "type": "file",
                       "icon": "📘"
                     }
@@ -15283,6 +15303,11 @@
               "icon": "📘"
             },
             {
+              "name": "platform-admin-student-seat-limit-enforcement.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "reinforcement-foundation.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -15689,7 +15714,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-09T00:29:20.693Z",
+    "generated": "2026-06-09T13:23:49.788Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
