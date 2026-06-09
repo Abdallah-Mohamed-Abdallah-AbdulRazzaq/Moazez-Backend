@@ -190,6 +190,9 @@ describe('Sprint 17D Platform Admin entitlements and student seat usage (e2e)', 
       expect.arrayContaining([
         'GET /api/v1/platform-admin/schools/:schoolId/entitlement',
         'PUT /api/v1/platform-admin/schools/:schoolId/entitlement',
+        'GET /api/v1/platform-admin/schools/:schoolId/features',
+        'PUT /api/v1/platform-admin/schools/:schoolId/features',
+        'PUT /api/v1/platform-admin/schools/:schoolId/features/:featureKey',
       ]),
     );
 
@@ -200,7 +203,6 @@ describe('Sprint 17D Platform Admin entitlements and student seat usage (e2e)', 
       'GET /api/v1/platform-admin/invoices',
       'GET /api/v1/platform-admin/payments',
       'GET /api/v1/platform-admin/features',
-      'GET /api/v1/platform-admin/schools/:schoolId/features',
       'GET /api/v1/platform-admin/schools/:schoolId/seat-enforcement',
     ]) {
       expect(routes).not.toContain(route);
@@ -468,9 +470,15 @@ describe('Sprint 17D Platform Admin entitlements and student seat usage (e2e)', 
     expect(
       response.body.entitlements.schoolsOverSeatLimit,
     ).toBeGreaterThanOrEqual(1);
+    expect(response.body.features).toMatchObject({
+      knownFeatures: 15,
+      configuredSchools: expect.any(Number),
+      enabledControls: expect.any(Number),
+      disabledControls: expect.any(Number),
+    });
     expect(response.body.deferred).toMatchObject({
       entitlements: 'available',
-      featureControl: 'deferred',
+      featureControl: 'available',
       billing: 'out_of_scope_v1',
     });
     expect(JSON.stringify(response.body)).not.toContain('revenue');

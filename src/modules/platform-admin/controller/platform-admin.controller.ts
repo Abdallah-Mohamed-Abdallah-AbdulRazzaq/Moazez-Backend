@@ -15,8 +15,10 @@ import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { OrganizationStatus, SchoolStatus } from '@prisma/client';
 import { PlatformScope } from '../../../common/decorators/platform-scope.decorator';
 import { RequiredPermissions } from '../../../common/decorators/required-permissions.decorator';
+import { BulkUpdateSchoolFeatureControlsUseCase } from '../application/bulk-update-school-feature-controls.use-case';
 import { CreatePlatformOrganizationUseCase } from '../application/create-platform-organization.use-case';
 import { CreatePlatformSchoolUseCase } from '../application/create-platform-school.use-case';
+import { GetSchoolFeatureControlsUseCase } from '../application/get-school-feature-controls.use-case';
 import { GetSchoolEntitlementUseCase } from '../application/get-school-entitlement.use-case';
 import { GetPlatformAdminOverviewUseCase } from '../application/get-platform-admin-overview.use-case';
 import { GetPlatformOrganizationUseCase } from '../application/get-platform-organization.use-case';
@@ -28,11 +30,17 @@ import { TransitionPlatformOrganizationStatusUseCase } from '../application/tran
 import { TransitionPlatformSchoolStatusUseCase } from '../application/transition-platform-school-status.use-case';
 import { UpdatePlatformOrganizationUseCase } from '../application/update-platform-organization.use-case';
 import { UpdatePlatformSchoolUseCase } from '../application/update-platform-school.use-case';
+import { UpsertSchoolFeatureControlUseCase } from '../application/upsert-school-feature-control.use-case';
 import { UpsertSchoolEntitlementUseCase } from '../application/upsert-school-entitlement.use-case';
 import {
   PlatformSchoolEntitlementResponseDto,
   UpsertPlatformSchoolEntitlementDto,
 } from '../dto/platform-admin-entitlement.dto';
+import {
+  BulkUpdatePlatformSchoolFeatureControlsDto,
+  PlatformSchoolFeatureControlsResponseDto,
+  UpsertPlatformSchoolFeatureControlDto,
+} from '../dto/platform-admin-feature-control.dto';
 import { PlatformAdminOverviewResponseDto } from '../dto/platform-admin-overview.dto';
 import {
   PlatformSchoolProvisioningResponseDto,
@@ -73,6 +81,9 @@ export class PlatformAdminController {
     private readonly provisionPlatformSchoolUseCase: ProvisionPlatformSchoolUseCase,
     private readonly getSchoolEntitlementUseCase: GetSchoolEntitlementUseCase,
     private readonly upsertSchoolEntitlementUseCase: UpsertSchoolEntitlementUseCase,
+    private readonly getSchoolFeatureControlsUseCase: GetSchoolFeatureControlsUseCase,
+    private readonly upsertSchoolFeatureControlUseCase: UpsertSchoolFeatureControlUseCase,
+    private readonly bulkUpdateSchoolFeatureControlsUseCase: BulkUpdateSchoolFeatureControlsUseCase,
   ) {}
 
   @Get('overview')
@@ -212,6 +223,40 @@ export class PlatformAdminController {
     @Body() dto: UpsertPlatformSchoolEntitlementDto,
   ): Promise<PlatformSchoolEntitlementResponseDto> {
     return this.upsertSchoolEntitlementUseCase.execute(schoolId, dto);
+  }
+
+  @Get('schools/:schoolId/features')
+  @RequiredPermissions('platform.features.view')
+  @ApiOkResponse({ type: PlatformSchoolFeatureControlsResponseDto })
+  getSchoolFeatureControls(
+    @Param('schoolId', new ParseUUIDPipe()) schoolId: string,
+  ): Promise<PlatformSchoolFeatureControlsResponseDto> {
+    return this.getSchoolFeatureControlsUseCase.execute(schoolId);
+  }
+
+  @Put('schools/:schoolId/features')
+  @RequiredPermissions('platform.features.manage')
+  @ApiOkResponse({ type: PlatformSchoolFeatureControlsResponseDto })
+  bulkUpdateSchoolFeatureControls(
+    @Param('schoolId', new ParseUUIDPipe()) schoolId: string,
+    @Body() dto: BulkUpdatePlatformSchoolFeatureControlsDto,
+  ): Promise<PlatformSchoolFeatureControlsResponseDto> {
+    return this.bulkUpdateSchoolFeatureControlsUseCase.execute(schoolId, dto);
+  }
+
+  @Put('schools/:schoolId/features/:featureKey')
+  @RequiredPermissions('platform.features.manage')
+  @ApiOkResponse({ type: PlatformSchoolFeatureControlsResponseDto })
+  upsertSchoolFeatureControl(
+    @Param('schoolId', new ParseUUIDPipe()) schoolId: string,
+    @Param('featureKey') featureKey: string,
+    @Body() dto: UpsertPlatformSchoolFeatureControlDto,
+  ): Promise<PlatformSchoolFeatureControlsResponseDto> {
+    return this.upsertSchoolFeatureControlUseCase.execute(
+      schoolId,
+      featureKey,
+      dto,
+    );
   }
 
   @Patch('schools/:schoolId')

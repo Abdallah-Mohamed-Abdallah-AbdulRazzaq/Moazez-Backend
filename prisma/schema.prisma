@@ -63,6 +63,14 @@ enum SchoolEntitlementStatus {
   @@map("school_entitlement_status")
 }
 
+enum SchoolFeatureControlSource {
+  PLATFORM
+  ENTITLEMENT
+  SYSTEM
+
+  @@map("school_feature_control_source")
+}
+
 enum UserStatus {
   ACTIVE
   INVITED
@@ -1061,15 +1069,16 @@ model Organization {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  schools            School[]
-  schoolEntitlements SchoolEntitlement[]
-  memberships        Membership[]
-  auditLogs          AuditLog[]
-  files              File[]
-  leads              Lead[]
-  applications       Application[]
-  students           Student[]
-  guardians          Guardian[]
+  schools               School[]
+  schoolEntitlements    SchoolEntitlement[]
+  schoolFeatureControls SchoolFeatureControl[]
+  memberships           Membership[]
+  auditLogs             AuditLog[]
+  files                 File[]
+  leads                 Lead[]
+  applications          Application[]
+  students              Student[]
+  guardians             Guardian[]
 
   @@index([status])
   @@index([deletedAt])
@@ -1093,6 +1102,7 @@ model School {
   roles                                 Role[]
   schoolProfile                         SchoolProfile?
   entitlement                           SchoolEntitlement?
+  featureControls                       SchoolFeatureControl[]
   securitySetting                       SecuritySetting?
   schoolLoginSettings                   SchoolLoginSettings?
   schoolEmailConnection                 SchoolEmailConnection?
@@ -1231,6 +1241,28 @@ model SchoolEntitlement {
   @@index([status])
   @@index([endsAt])
   @@map("school_entitlements")
+}
+
+model SchoolFeatureControl {
+  id             String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                     @map("school_id") @db.Uuid
+  organizationId String                     @map("organization_id") @db.Uuid
+  featureKey     String                     @map("feature_key")
+  enabled        Boolean                    @default(false)
+  source         SchoolFeatureControlSource @default(PLATFORM)
+  notes          String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([schoolId, featureKey])
+  @@index([organizationId])
+  @@index([featureKey])
+  @@index([enabled])
+  @@map("school_feature_controls")
 }
 
 // ============================================================

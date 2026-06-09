@@ -36,6 +36,11 @@ describe('Platform Admin presenter', () => {
         archived: 0,
         schoolsOverSeatLimit: 0,
       },
+      features: {
+        configuredSchools: 0,
+        enabledControls: 0,
+        disabledControls: 0,
+      },
     });
 
     expect(response).toEqual({
@@ -51,10 +56,16 @@ describe('Platform Admin presenter', () => {
         archived: 0,
         schoolsOverSeatLimit: 0,
       },
+      features: {
+        knownFeatures: 15,
+        configuredSchools: 0,
+        enabledControls: 0,
+        disabledControls: 0,
+      },
       deferred: {
         schoolProvisioning: 'available',
         entitlements: 'available',
-        featureControl: 'deferred',
+        featureControl: 'available',
         billing: 'out_of_scope_v1',
         advancedAnalytics: 'deferred',
       },

@@ -179,10 +179,16 @@ describe('Sprint 17B Platform Admin Organizations/Schools Foundation (e2e)', () 
         archived: expect.any(Number),
         schoolsOverSeatLimit: expect.any(Number),
       },
+      features: {
+        knownFeatures: 15,
+        configuredSchools: expect.any(Number),
+        enabledControls: expect.any(Number),
+        disabledControls: expect.any(Number),
+      },
       deferred: {
         schoolProvisioning: 'available',
         entitlements: 'available',
-        featureControl: 'deferred',
+        featureControl: 'available',
         billing: 'out_of_scope_v1',
         advancedAnalytics: 'deferred',
       },

@@ -4,6 +4,7 @@ import {
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
+  SchoolFeatureControlSource,
   SchoolStatus,
   UserStatus,
   UserType,
@@ -68,6 +69,20 @@ const PLATFORM_PERMISSIONS = [
     action: 'manage',
     description: 'Manage Platform Admin school entitlements.',
   },
+  {
+    code: 'platform.features.view',
+    module: 'platform',
+    resource: 'features',
+    action: 'view',
+    description: 'View Platform Admin school feature controls.',
+  },
+  {
+    code: 'platform.features.manage',
+    module: 'platform',
+    resource: 'features',
+    action: 'manage',
+    description: 'Manage Platform Admin school feature controls.',
+  },
 ];
 
 const DEFERRED_ROUTES = [
@@ -108,6 +123,8 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
   let limitedPlatformUserEmail: string;
   let entitlementViewOnlyPlatformEmail: string;
   let entitlementManageOnlyPlatformEmail: string;
+  let featureViewOnlyPlatformEmail: string;
+  let featureManageOnlyPlatformEmail: string;
 
   const createdOrganizationIds: string[] = [];
   const createdSchoolIds: string[] = [];
@@ -125,6 +142,8 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
     limitedPlatformUserEmail = `${TEST_PREFIX}-platform-limited@moazez.local`;
     entitlementViewOnlyPlatformEmail = `${TEST_PREFIX}-ent-view@moazez.local`;
     entitlementManageOnlyPlatformEmail = `${TEST_PREFIX}-ent-manage@moazez.local`;
+    featureViewOnlyPlatformEmail = `${TEST_PREFIX}-feature-view@moazez.local`;
+    featureManageOnlyPlatformEmail = `${TEST_PREFIX}-feature-manage@moazez.local`;
 
     await createNoMembershipUser(platformUserEmail, UserType.PLATFORM_USER);
     await createActorWithMembership({
@@ -156,6 +175,28 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
         baseSchoolId,
         `${TEST_PREFIX}-platform-entitlement-manage`,
         ['platform.entitlements.manage'],
+      ),
+      organizationId: baseOrganizationId,
+      schoolId: baseSchoolId,
+    });
+    await createActorWithMembership({
+      email: featureViewOnlyPlatformEmail,
+      userType: UserType.PLATFORM_USER,
+      roleId: await createRoleWithPermissions(
+        baseSchoolId,
+        `${TEST_PREFIX}-platform-feature-view`,
+        ['platform.features.view'],
+      ),
+      organizationId: baseOrganizationId,
+      schoolId: baseSchoolId,
+    });
+    await createActorWithMembership({
+      email: featureManageOnlyPlatformEmail,
+      userType: UserType.PLATFORM_USER,
+      roleId: await createRoleWithPermissions(
+        baseSchoolId,
+        `${TEST_PREFIX}-platform-feature-manage`,
+        ['platform.features.manage'],
       ),
       organizationId: baseOrganizationId,
       schoolId: baseSchoolId,
@@ -232,6 +273,9 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
       await prisma.schoolEntitlement.deleteMany({
         where: { schoolId: { in: createdSchoolIds } },
       });
+      await prisma.schoolFeatureControl.deleteMany({
+        where: { schoolId: { in: createdSchoolIds } },
+      });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
@@ -268,6 +312,9 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
         'GET /api/v1/platform-admin/schools/:schoolId',
         'GET /api/v1/platform-admin/schools/:schoolId/entitlement',
         'PUT /api/v1/platform-admin/schools/:schoolId/entitlement',
+        'GET /api/v1/platform-admin/schools/:schoolId/features',
+        'PUT /api/v1/platform-admin/schools/:schoolId/features',
+        'PUT /api/v1/platform-admin/schools/:schoolId/features/:featureKey',
         'PATCH /api/v1/platform-admin/schools/:schoolId',
         'POST /api/v1/platform-admin/schools/:schoolId/activate',
         'POST /api/v1/platform-admin/schools/:schoolId/suspend',
@@ -452,6 +499,171 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
     }
   });
 
+  it('enforces platform feature view/manage permissions separately', async () => {
+    const limitedToken = await login(limitedPlatformUserEmail);
+    const viewOnlyToken = await login(featureViewOnlyPlatformEmail);
+    const manageOnlyToken = await login(featureManageOnlyPlatformEmail);
+
+    for (const email of [
+      `${TEST_PREFIX}-school-admin@moazez.local`,
+      `${TEST_PREFIX}-teacher@moazez.local`,
+      `${TEST_PREFIX}-parent@moazez.local`,
+      `${TEST_PREFIX}-student@moazez.local`,
+      `${TEST_PREFIX}-organization-user@moazez.local`,
+    ]) {
+      const token = await login(email);
+
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/features`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .put(
+          `${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/features/dashboard`,
+        )
+        .set('Authorization', `Bearer ${token}`)
+        .send({ enabled: true, source: 'platform' })
+        .expect(403);
+    }
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/features`)
+      .set('Authorization', `Bearer ${limitedToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/features/dashboard`,
+      )
+      .set('Authorization', `Bearer ${viewOnlyToken}`)
+      .send({ enabled: true, source: 'platform' })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/features`)
+      .set('Authorization', `Bearer ${manageOnlyToken}`)
+      .expect(403);
+
+    const readResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/features`)
+      .set('Authorization', `Bearer ${viewOnlyToken}`)
+      .expect(200);
+
+    expect(readResponse.body).toMatchObject({
+      school: {
+        schoolId: baseSchoolId,
+        organizationId: baseOrganizationId,
+        status: 'active',
+      },
+      summary: {
+        totalKnownFeatures: 15,
+        configured: 0,
+        enabled: 0,
+        disabled: 15,
+      },
+      deferred: {
+        runtimeEnforcement: 'deferred',
+        planAutomation: 'deferred',
+        billing: 'out_of_scope_v1',
+        rollouts: 'deferred',
+      },
+    });
+    expect(readResponse.body.features).toHaveLength(15);
+
+    const upsertResponse = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/features/dashboard`,
+      )
+      .set('Authorization', `Bearer ${manageOnlyToken}`)
+      .send({
+        enabled: true,
+        source: 'platform',
+        notes: 'Security suite feature control',
+      })
+      .expect(200);
+
+    expect(upsertResponse.body.summary).toMatchObject({
+      totalKnownFeatures: 15,
+      configured: 1,
+      enabled: 1,
+      disabled: 14,
+    });
+    expect(
+      upsertResponse.body.features.find(
+        (feature: { featureKey: string }) => feature.featureKey === 'dashboard',
+      ),
+    ).toMatchObject({
+      featureKey: 'dashboard',
+      enabled: true,
+      configured: true,
+      source: 'platform',
+    });
+
+    const bulkResponse = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/platform-admin/schools/${baseSchoolId}/features`)
+      .set('Authorization', `Bearer ${manageOnlyToken}`)
+      .send({
+        features: [
+          {
+            featureKey: 'dashboard',
+            enabled: false,
+            source: 'platform',
+          },
+          {
+            featureKey: 'teacher_app',
+            enabled: false,
+            source: 'platform',
+            notes: 'Deferred until onboarding',
+          },
+        ],
+      })
+      .expect(200);
+
+    expect(bulkResponse.body.summary).toMatchObject({
+      totalKnownFeatures: 15,
+      configured: 2,
+      enabled: 0,
+      disabled: 15,
+    });
+    await expect(
+      prisma.schoolFeatureControl.findUniqueOrThrow({
+        where: {
+          schoolId_featureKey: {
+            schoolId: baseSchoolId,
+            featureKey: 'dashboard',
+          },
+        },
+        select: { source: true, enabled: true },
+      }),
+    ).resolves.toEqual({
+      source: SchoolFeatureControlSource.PLATFORM,
+      enabled: false,
+    });
+
+    const serialized = JSON.stringify(bulkResponse.body);
+    for (const forbidden of [
+      'passwordHash',
+      'refreshTokenHash',
+      'encryptedPassword',
+      'encryptedApiKey',
+      'guardian',
+      'attendanceEntries',
+      'gradeItems',
+      'billing',
+      'invoice',
+      'payment',
+      'rolloutPercentage',
+      'raw',
+    ]) {
+      if (forbidden === 'billing') {
+        expect(serialized).toContain('"billing":"out_of_scope_v1"');
+      } else {
+        expect(serialized).not.toContain(forbidden);
+      }
+    }
+  });
+
   it('allows platform users with platform permissions to view overview', async () => {
     const token = await login(platformUserEmail);
 
@@ -483,10 +695,16 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
         archived: expect.any(Number),
         schoolsOverSeatLimit: expect.any(Number),
       },
+      features: {
+        knownFeatures: 15,
+        configuredSchools: expect.any(Number),
+        enabledControls: expect.any(Number),
+        disabledControls: expect.any(Number),
+      },
       deferred: {
         schoolProvisioning: 'available',
         entitlements: 'available',
-        featureControl: 'deferred',
+        featureControl: 'available',
         billing: 'out_of_scope_v1',
         advancedAnalytics: 'deferred',
       },
@@ -704,9 +922,9 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
     }
 
     for (const route of [
-      `schools/${baseSchoolId}/features`,
       `schools/${baseSchoolId}/seat-enforcement`,
       `schools/${baseSchoolId}/seat-limit-enforcement`,
+      `schools/${baseSchoolId}/features/dashboard/enforcement`,
     ]) {
       await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}/platform-admin/${route}`)
@@ -907,7 +1125,7 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
         lastName: 'Admin',
         username: 'admin',
         contactEmail: `${TEST_PREFIX}-${suffix}-admin@example.test`,
-        phone: `+201${String(hashSuffix(suffix)).slice(0, 9).padEnd(9, '0')}`,
+        phone: `+201${String(hashSuffix(`${TEST_PREFIX}-${suffix}`)).padStart(9, '0').slice(-9)}`,
       },
       credentials: {
         deliveryMode: 'manual',
@@ -916,7 +1134,10 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
   }
 
   function hashSuffix(value: string): number {
-    return [...value].reduce((hash, char) => hash + char.charCodeAt(0), 0);
+    return [...value].reduce(
+      (hash, char) => (hash * 31 + char.charCodeAt(0)) % 1_000_000_000,
+      17,
+    );
   }
 
   function listRegisteredRoutes(): string[] {

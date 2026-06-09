@@ -107,6 +107,9 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `platform.entitlement.invalid_status`              | 422  | Entitlement status is invalid                    |
 | `platform.entitlement.school_archived`             | 409  | School is archived and cannot receive entitlement changes |
 | `platform.entitlement.student_seat_limit_invalid`  | 422  | Student seat limit must be a positive integer    |
+| `platform.feature.unknown`                         | 422  | Feature key is not registered                    |
+| `platform.feature.duplicate_key`                   | 422  | Feature keys must be unique in a bulk update     |
+| `platform.feature.school_archived`                 | 409  | School is archived and cannot receive feature control changes |
 
 ### Settings
 

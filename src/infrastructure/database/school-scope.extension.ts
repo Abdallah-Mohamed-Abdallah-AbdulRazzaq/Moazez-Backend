@@ -24,6 +24,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'Attachment',
   'ImportJob',
   'SchoolEntitlement',
+  'SchoolFeatureControl',
   'SchoolProfile',
   'SecuritySetting',
   'SchoolLoginSettings',

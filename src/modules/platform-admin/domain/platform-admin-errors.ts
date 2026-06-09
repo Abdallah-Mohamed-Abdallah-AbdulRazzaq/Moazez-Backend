@@ -206,3 +206,36 @@ export class PlatformEntitlementStudentSeatLimitInvalidException extends DomainE
     });
   }
 }
+
+export class PlatformFeatureUnknownException extends DomainException {
+  constructor(featureKey: string) {
+    super({
+      code: 'platform.feature.unknown',
+      message: 'Feature key is not registered',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details: { featureKey },
+    });
+  }
+}
+
+export class PlatformFeatureDuplicateKeyException extends DomainException {
+  constructor(featureKeys: string[]) {
+    super({
+      code: 'platform.feature.duplicate_key',
+      message: 'Feature keys must be unique in a bulk update',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details: { featureKeys },
+    });
+  }
+}
+
+export class PlatformFeatureSchoolArchivedException extends DomainException {
+  constructor(schoolId: string) {
+    super({
+      code: 'platform.feature.school_archived',
+      message: 'School is archived and cannot receive feature control changes',
+      httpStatus: HttpStatus.CONFLICT,
+      details: { schoolId },
+    });
+  }
+}

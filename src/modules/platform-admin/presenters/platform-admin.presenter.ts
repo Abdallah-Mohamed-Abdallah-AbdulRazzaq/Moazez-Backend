@@ -1,8 +1,10 @@
 import {
   PlatformAdminEntitlementCountersDto,
+  PlatformAdminFeatureCountersDto,
   PlatformAdminOverviewResponseDto,
   PlatformAdminStatusCountersDto,
 } from '../dto/platform-admin-overview.dto';
+import { PLATFORM_SCHOOL_FEATURES } from '../domain/platform-admin-feature-registry';
 import {
   PlatformOrganizationResponseDto,
   PlatformOrganizationsListResponseDto,
@@ -13,6 +15,7 @@ import {
 } from '../dto/platform-admin-school.dto';
 import { PlatformSchoolProvisioningResponseDto } from '../dto/platform-admin-school-provisioning.dto';
 import { PlatformEntitlementOverviewCounters } from '../infrastructure/platform-admin-entitlements.repository';
+import { PlatformFeatureOverviewCounters } from '../infrastructure/platform-admin-features.repository';
 import {
   PlatformOrganizationListParams,
   PlatformOrganizationRecord,
@@ -28,16 +31,18 @@ export function presentPlatformAdminOverview(input: {
   generatedAt: Date;
   counts: PlatformOverviewCounts;
   entitlements: PlatformEntitlementOverviewCounters;
+  features: PlatformFeatureOverviewCounters;
 }): PlatformAdminOverviewResponseDto {
   return {
     generatedAt: input.generatedAt.toISOString(),
     organizations: presentCounters(input.counts.organizations),
     schools: presentCounters(input.counts.schools),
     entitlements: presentEntitlementCounters(input.entitlements),
+    features: presentFeatureCounters(input.features),
     deferred: {
       schoolProvisioning: 'available',
       entitlements: 'available',
-      featureControl: 'deferred',
+      featureControl: 'available',
       billing: 'out_of_scope_v1',
       advancedAnalytics: 'deferred',
     },
@@ -190,5 +195,16 @@ function presentEntitlementCounters(
     expired: counters.expired,
     archived: counters.archived,
     schoolsOverSeatLimit: counters.schoolsOverSeatLimit,
+  };
+}
+
+function presentFeatureCounters(
+  counters: PlatformFeatureOverviewCounters,
+): PlatformAdminFeatureCountersDto {
+  return {
+    knownFeatures: PLATFORM_SCHOOL_FEATURES.length,
+    configuredSchools: counters.configuredSchools,
+    enabledControls: counters.enabledControls,
+    disabledControls: counters.disabledControls,
   };
 }
