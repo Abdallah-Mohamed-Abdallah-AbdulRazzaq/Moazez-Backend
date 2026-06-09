@@ -5,6 +5,7 @@ import { ApplicationEnrollmentHandoffValidator } from '../../admissions/applicat
 import { TermsRepository } from '../../academics/structure/infrastructure/terms.repository';
 import { StructureRepository } from '../../academics/structure/infrastructure/structure.repository';
 import { AuthRepository } from '../../iam/auth/infrastructure/auth.repository';
+import { PlatformAdminModule } from '../../platform-admin/platform-admin.module';
 import { StudentsRecordsModule } from '../students/students.module';
 import { CreateEnrollmentUseCase } from './application/create-enrollment.use-case';
 import { GetCurrentEnrollmentUseCase } from './application/get-current-enrollment.use-case';
@@ -19,7 +20,7 @@ import { EnrollmentPlacementService } from './domain/enrollment-placement.servic
 import { EnrollmentsRepository } from './infrastructure/enrollments.repository';
 
 @Module({
-  imports: [StudentsRecordsModule],
+  imports: [StudentsRecordsModule, PlatformAdminModule],
   controllers: [EnrollmentsController],
   providers: [
     EnrollmentsRepository,

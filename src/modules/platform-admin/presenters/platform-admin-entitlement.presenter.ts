@@ -41,7 +41,7 @@ export function presentPlatformSchoolEntitlement(input: {
       limit,
     }),
     deferred: {
-      seatLimitEnforcement: 'deferred',
+      seatLimitEnforcement: 'available',
       featureControl: 'deferred',
       billing: 'out_of_scope_v1',
       invoices: 'out_of_scope_v1',

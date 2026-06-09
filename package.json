@@ -57,6 +57,7 @@
     "test:e2e:sprint17c": "jest --config ./test/jest-e2e.json --runInBand test/e2e/platform-admin-school-provisioning.e2e-spec.ts",
     "test:e2e:sprint17d": "jest --config ./test/jest-e2e.json --runInBand test/e2e/platform-admin-entitlements-seat-usage.e2e-spec.ts",
     "test:e2e:sprint17e": "jest --config ./test/jest-e2e.json --runInBand test/e2e/platform-admin-feature-control-foundation.e2e-spec.ts",
+    "test:e2e:sprint17f": "jest --config ./test/jest-e2e.json --runInBand test/e2e/platform-admin-student-seat-limit-enforcement.e2e-spec.ts",
     "test:security": "jest --config ./test/jest-e2e.json test/security",
     "seed": "prisma db seed",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",
@@ -101,6 +102,7 @@
     "verify:sprint17c": "npx prisma validate && npx prisma generate && npm run build && npm run test -- platform-admin --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.platform-admin.spec.ts && npm run test:e2e:sprint17b && npm run test:e2e:sprint17c",
     "verify:sprint17d": "npx prisma validate && npx prisma generate && npm run build && npm run test -- platform-admin --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.platform-admin.spec.ts && npm run test:e2e:sprint17b && npm run test:e2e:sprint17c && npm run test:e2e:sprint17d",
     "verify:sprint17e": "npx prisma validate && npx prisma generate && npm run build && npm run test -- platform-admin --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.platform-admin.spec.ts && npm run test:e2e:sprint17b && npm run test:e2e:sprint17c && npm run test:e2e:sprint17d && npm run test:e2e:sprint17e",
+    "verify:sprint17f": "npx prisma validate && npx prisma generate && npm run build && npm run test -- platform-admin --runInBand && npm run test -- students --runInBand && npm run test -- admissions --runInBand && npx jest --config ./test/jest-e2e.json --runInBand test/security/tenancy.platform-admin.spec.ts test/security/tenancy.students.spec.ts test/security/tenancy.admissions.spec.ts && npm run test:e2e:sprint17b && npm run test:e2e:sprint17c && npm run test:e2e:sprint17d && npm run test:e2e:sprint17e && npm run test:e2e:sprint17f",
     "demo:sprint1c": "node scripts/demo-sprint1c.cjs",
     "demo:sprint2a": "node scripts/demo-sprint2a.cjs",
     "demo:sprint2b": "node scripts/demo-sprint2b.cjs"

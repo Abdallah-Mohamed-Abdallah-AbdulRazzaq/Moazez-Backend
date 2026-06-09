@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { EnrollApplicationHandoffUseCase } from '../../../admissions/applications/application/enroll-application-handoff.use-case';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
-import { CreateEnrollmentDto, EnrollmentResponseDto } from '../dto/enrollment.dto';
+import { StudentSeatLimitPolicyService } from '../../../platform-admin/application/student-seat-limit-policy.service';
+import {
+  CreateEnrollmentDto,
+  EnrollmentResponseDto,
+} from '../dto/enrollment.dto';
 import { EnrollmentPlacementService } from '../domain/enrollment-placement.service';
 import { EnrollmentsRepository } from '../infrastructure/enrollments.repository';
 import { presentEnrollment } from '../presenters/enrollment.presenter';
@@ -14,11 +18,14 @@ export class CreateEnrollmentUseCase {
     private readonly enrollmentPlacementService: EnrollmentPlacementService,
     private readonly enrollApplicationHandoffUseCase: EnrollApplicationHandoffUseCase,
     private readonly authRepository: AuthRepository,
+    private readonly studentSeatLimitPolicy: StudentSeatLimitPolicyService,
   ) {}
 
   async execute(command: CreateEnrollmentDto): Promise<EnrollmentResponseDto> {
     const handoff = command.applicationId
-      ? await this.enrollApplicationHandoffUseCase.execute(command.applicationId)
+      ? await this.enrollApplicationHandoffUseCase.execute(
+          command.applicationId,
+        )
       : null;
 
     const resolvedPlacement =
@@ -31,6 +38,7 @@ export class CreateEnrollmentUseCase {
       resolvedPlacement,
       enrollmentsRepository: this.enrollmentsRepository,
       authRepository: this.authRepository,
+      studentSeatLimitPolicy: this.studentSeatLimitPolicy,
       source: 'create',
     });
 

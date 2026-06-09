@@ -476,7 +476,7 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
         calculation: 'active_students',
       },
       deferred: {
-        seatLimitEnforcement: 'deferred',
+        seatLimitEnforcement: 'available',
         featureControl: 'deferred',
         billing: 'out_of_scope_v1',
         invoices: 'out_of_scope_v1',
@@ -1125,7 +1125,9 @@ describe('Sprint 17B Platform Admin access boundary (security)', () => {
         lastName: 'Admin',
         username: 'admin',
         contactEmail: `${TEST_PREFIX}-${suffix}-admin@example.test`,
-        phone: `+201${String(hashSuffix(`${TEST_PREFIX}-${suffix}`)).padStart(9, '0').slice(-9)}`,
+        phone: `+201${String(hashSuffix(`${TEST_PREFIX}-${suffix}`))
+          .padStart(9, '0')
+          .slice(-9)}`,
       },
       credentials: {
         deliveryMode: 'manual',

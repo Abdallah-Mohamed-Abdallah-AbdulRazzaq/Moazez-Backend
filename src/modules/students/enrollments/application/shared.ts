@@ -1,5 +1,6 @@
 import { AuditOutcome, StudentEnrollmentStatus } from '@prisma/client';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
+import { StudentSeatLimitPolicyService } from '../../../platform-admin/application/student-seat-limit-policy.service';
 import { requireStudentsScope } from '../../students/domain/students-scope';
 import {
   CreateEnrollmentDto,
@@ -8,7 +9,10 @@ import {
 } from '../dto/enrollment.dto';
 import { StudentEnrollmentStatusApiValue } from '../domain/enrollment-status.enums';
 import { ResolvedEnrollmentPlacement } from '../domain/enrollment-placement.service';
-import { EnrollmentsRepository, EnrollmentRecord } from '../infrastructure/enrollments.repository';
+import {
+  EnrollmentsRepository,
+  EnrollmentRecord,
+} from '../infrastructure/enrollments.repository';
 import { presentEnrollment } from '../presenters/enrollment.presenter';
 
 type EnrollmentMutationCommand =
@@ -38,9 +42,20 @@ export async function createEnrollmentRecord(params: {
   resolvedPlacement: ResolvedEnrollmentPlacement;
   enrollmentsRepository: EnrollmentsRepository;
   authRepository?: AuthRepository;
+  studentSeatLimitPolicy?: StudentSeatLimitPolicyService;
   source: 'create' | 'upsert';
 }): Promise<EnrollmentRecord> {
   const scope = requireStudentsScope();
+
+  if (params.studentSeatLimitPolicy) {
+    await params.studentSeatLimitPolicy.assertCanIncreaseActiveStudentSeats({
+      schoolId: scope.schoolId,
+      existingStudentId: params.command.studentId,
+      reason: params.command.applicationId
+        ? 'admissions_handoff'
+        : 'enrollment_create',
+    });
+  }
 
   const enrollment = await params.enrollmentsRepository.createEnrollment({
     schoolId: scope.schoolId,

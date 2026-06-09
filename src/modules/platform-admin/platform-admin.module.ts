@@ -11,6 +11,7 @@ import { GetPlatformSchoolUseCase } from './application/get-platform-school.use-
 import { ListPlatformOrganizationsUseCase } from './application/list-platform-organizations.use-case';
 import { ListPlatformSchoolsUseCase } from './application/list-platform-schools.use-case';
 import { ProvisionPlatformSchoolUseCase } from './application/provision-platform-school.use-case';
+import { StudentSeatLimitPolicyService } from './application/student-seat-limit-policy.service';
 import { TransitionPlatformOrganizationStatusUseCase } from './application/transition-platform-organization-status.use-case';
 import { TransitionPlatformSchoolStatusUseCase } from './application/transition-platform-school-status.use-case';
 import { UpdatePlatformOrganizationUseCase } from './application/update-platform-organization.use-case';
@@ -21,6 +22,7 @@ import { PlatformAdminController } from './controller/platform-admin.controller'
 import { PlatformAdminEntitlementsRepository } from './infrastructure/platform-admin-entitlements.repository';
 import { PlatformAdminFeaturesRepository } from './infrastructure/platform-admin-features.repository';
 import { PlatformAdminRepository } from './infrastructure/platform-admin.repository';
+import { StudentSeatLimitPolicyRepository } from './infrastructure/student-seat-limit-policy.repository';
 
 @Module({
   imports: [AuthModule],
@@ -29,6 +31,8 @@ import { PlatformAdminRepository } from './infrastructure/platform-admin.reposit
     PlatformAdminRepository,
     PlatformAdminEntitlementsRepository,
     PlatformAdminFeaturesRepository,
+    StudentSeatLimitPolicyRepository,
+    StudentSeatLimitPolicyService,
     GetPlatformAdminOverviewUseCase,
     ListPlatformOrganizationsUseCase,
     GetPlatformOrganizationUseCase,
@@ -47,5 +51,6 @@ import { PlatformAdminRepository } from './infrastructure/platform-admin.reposit
     UpsertSchoolFeatureControlUseCase,
     BulkUpdateSchoolFeatureControlsUseCase,
   ],
+  exports: [StudentSeatLimitPolicyService],
 })
 export class PlatformAdminModule {}

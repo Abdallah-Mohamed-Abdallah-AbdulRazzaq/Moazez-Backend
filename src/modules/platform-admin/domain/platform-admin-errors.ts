@@ -207,6 +207,23 @@ export class PlatformEntitlementStudentSeatLimitInvalidException extends DomainE
   }
 }
 
+export class PlatformEntitlementStudentSeatLimitExceededException extends DomainException {
+  constructor(details: {
+    schoolId: string;
+    limit: number;
+    used: number;
+    remaining: number;
+    calculation: 'active_students';
+  }) {
+    super({
+      code: 'platform.entitlement.student_seat_limit_exceeded',
+      message: 'Student seat limit has been reached for this school.',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
 export class PlatformFeatureUnknownException extends DomainException {
   constructor(featureKey: string) {
     super({

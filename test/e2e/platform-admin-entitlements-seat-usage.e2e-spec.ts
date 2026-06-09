@@ -365,7 +365,7 @@ describe('Sprint 17D Platform Admin entitlements and student seat usage (e2e)', 
       });
   });
 
-  it('does not enforce the lowered seat limit on student or enrollment creation', async () => {
+  it('does not block bare student creation but blocks active enrollment creation after the limit is lowered', async () => {
     const studentResponse = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/students-guardians/students`)
       .set('Authorization', `Bearer ${schoolAdminAccessToken}`)
@@ -376,7 +376,7 @@ describe('Sprint 17D Platform Admin entitlements and student seat usage (e2e)', 
       .expect(201);
     createdStudentIds.push(studentResponse.body.id);
 
-    const enrollmentResponse = await request(app.getHttpServer())
+    await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/students-guardians/enrollments`)
       .set('Authorization', `Bearer ${schoolAdminAccessToken}`)
       .send({
@@ -385,8 +385,19 @@ describe('Sprint 17D Platform Admin entitlements and student seat usage (e2e)', 
         classroomId,
         enrollmentDate: '2026-09-05',
       })
-      .expect(201);
-    createdEnrollmentIds.push(enrollmentResponse.body.enrollmentId);
+      .expect(409)
+      .expect((response) => {
+        expect(response.body?.error).toMatchObject({
+          code: 'platform.entitlement.student_seat_limit_exceeded',
+          details: {
+            schoolId,
+            limit: 2,
+            used: 3,
+            remaining: 0,
+            calculation: 'active_students',
+          },
+        });
+      });
 
     const entitlementResponse = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/platform-admin/schools/${schoolId}/entitlement`)
@@ -394,7 +405,7 @@ describe('Sprint 17D Platform Admin entitlements and student seat usage (e2e)', 
       .expect(200);
 
     expect(entitlementResponse.body.studentSeatUsage).toMatchObject({
-      used: 4,
+      used: 3,
       limit: 2,
       remaining: 0,
       isOverLimit: true,

@@ -71,7 +71,7 @@ export class PlatformStudentSeatUsageDto {
 }
 
 export class PlatformSchoolEntitlementDeferredDto {
-  seatLimitEnforcement!: 'deferred';
+  seatLimitEnforcement!: 'available';
   featureControl!: 'deferred';
   billing!: 'out_of_scope_v1';
   invoices!: 'out_of_scope_v1';

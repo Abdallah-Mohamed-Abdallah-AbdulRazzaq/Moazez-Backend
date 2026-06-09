@@ -1,13 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import {
-  Prisma,
-  SchoolEntitlementStatus,
-  StudentEnrollmentStatus,
-  StudentStatus,
-} from '@prisma/client';
+import { Prisma, SchoolEntitlementStatus } from '@prisma/client';
 import { PlatformScope } from '../../../common/decorators/platform-scope.decorator';
 import { platformBypassScope } from '../../../infrastructure/database/platform-bypass.helper';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
+import { buildActiveStudentSeatWhere } from './student-seat-usage.query';
 
 const ENTITLEMENT_SCHOOL_SELECT = Prisma.validator<Prisma.SchoolSelect>()({
   id: true,
@@ -122,15 +118,9 @@ export class PlatformAdminEntitlementsRepository {
   async countActiveStudentSeats(schoolId: string): Promise<number> {
     return platformBypassScope(async () => {
       const rows = await this.prisma.enrollment.findMany({
-        where: {
+        where: buildActiveStudentSeatWhere({
           schoolId,
-          status: StudentEnrollmentStatus.ACTIVE,
-          deletedAt: null,
-          student: {
-            status: StudentStatus.ACTIVE,
-            deletedAt: null,
-          },
-        },
+        }),
         distinct: ['studentId'],
         select: { studentId: true },
       });
@@ -203,15 +193,9 @@ export class PlatformAdminEntitlementsRepository {
 
     const schoolIds = limitedEntitlements.map((item) => item.schoolId);
     const activeSeatRows = await this.prisma.enrollment.findMany({
-      where: {
+      where: buildActiveStudentSeatWhere({
         schoolId: { in: schoolIds },
-        status: StudentEnrollmentStatus.ACTIVE,
-        deletedAt: null,
-        student: {
-          status: StudentStatus.ACTIVE,
-          deletedAt: null,
-        },
-      },
+      }),
       distinct: ['schoolId', 'studentId'],
       select: { schoolId: true, studentId: true },
     });
