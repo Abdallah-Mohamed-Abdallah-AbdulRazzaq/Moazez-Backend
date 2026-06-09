@@ -364,6 +364,11 @@
           "icon": "📝"
         },
         {
+          "name": "sprint-17g-platform-admin-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
           "name": "sprint-6c-planning-audit.md",
           "type": "file",
           "icon": "📝"
@@ -15714,7 +15719,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-09T13:23:49.788Z",
+    "generated": "2026-06-09T14:46:00.754Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
