@@ -305,6 +305,11 @@
           "name": "ADR-0002-behavior-core-module-boundary.md",
           "type": "file",
           "icon": "📝"
+        },
+        {
+          "name": "ADR-0003-applicant-portal-pre-admission-account-boundary.md",
+          "type": "file",
+          "icon": "📝"
         }
       ]
     },
@@ -15724,7 +15729,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-09T16:52:37.059Z",
+    "generated": "2026-06-09T17:14:23.139Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
