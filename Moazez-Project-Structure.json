@@ -773,6 +773,18 @@
               ]
             },
             {
+              "name": "20260609130000_0032_school_feature_controls",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -8270,6 +8282,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "bulk-update-school-feature-controls.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "create-platform-organization.use-case.ts",
                       "type": "file",
                       "icon": "📘"
@@ -8296,6 +8313,11 @@
                     },
                     {
                       "name": "get-school-entitlement.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "get-school-feature-controls.use-case.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -8338,6 +8360,11 @@
                       "name": "upsert-school-entitlement.use-case.ts",
                       "type": "file",
                       "icon": "📘"
+                    },
+                    {
+                      "name": "upsert-school-feature-control.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
                     }
                   ]
                 },
@@ -8369,6 +8396,16 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "platform-admin-feature-control-inputs.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "platform-admin-feature-registry.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "platform-admin-inputs.ts",
                       "type": "file",
                       "icon": "📘"
@@ -8382,6 +8419,11 @@
                   "children": [
                     {
                       "name": "platform-admin-entitlement.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "platform-admin-feature-control.dto.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -8418,6 +8460,11 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "platform-admin-features.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "platform-admin.repository.ts",
                       "type": "file",
                       "icon": "📘"
@@ -8431,6 +8478,11 @@
                   "children": [
                     {
                       "name": "platform-admin-entitlement.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "platform-admin-feature-control.presenter.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -8453,6 +8505,21 @@
                     },
                     {
                       "name": "platform-admin-entitlement.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "platform-admin-feature-control.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "platform-admin-feature-control.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "platform-admin-feature-registry.spec.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -15201,6 +15268,11 @@
               "icon": "📘"
             },
             {
+              "name": "platform-admin-feature-control-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "platform-admin-organizations-schools-foundation.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -15617,7 +15689,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-08T23:11:36.827Z",
+    "generated": "2026-06-09T00:29:20.693Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
