@@ -1291,6 +1291,7 @@ model User {
   deletedAt DateTime? @map("deleted_at")
 
   memberships                                    Membership[]
+  applicantProfile                               ApplicantProfile?                     @relation("ApplicantProfileUser")
   sessions                                       Session[]
   auditLogsActing                                AuditLog[]                             @relation("AuditLogActor")
   filesUploaded                                  File[]                                 @relation("FileUploader")
@@ -1409,6 +1410,22 @@ model User {
   @@index([passwordProvisionedAt])
   @@index([deletedAt])
   @@map("users")
+}
+
+model ApplicantProfile {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @unique @map("user_id") @db.Uuid
+  fullName     String   @map("full_name") @db.VarChar(200)
+  phoneNumber  String?  @map("phone_number") @db.VarChar(50)
+  city         String?  @db.VarChar(120)
+  relationship String   @db.VarChar(40)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation("ApplicantProfileUser", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([relationship])
+  @@map("applicant_profiles")
 }
 
 model Membership {

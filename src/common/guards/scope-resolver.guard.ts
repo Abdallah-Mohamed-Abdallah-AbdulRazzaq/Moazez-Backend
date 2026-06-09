@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { UserType } from '@prisma/client';
+import { APPLICANT_PORTAL_ACCESS_METADATA } from '../decorators/applicant-portal-access.decorator';
 import { PUBLIC_ROUTE_METADATA } from '../decorators/public-route.decorator';
 import {
   getRequestContext,
@@ -20,8 +21,9 @@ import { AuthRepository } from '../../modules/iam/auth/infrastructure/auth.repos
 /**
  * Resolves the caller's active membership and populates RequestContext.
  * PLATFORM_USERs are allowed through without a membership (they operate
- * against the platform scope). All other user types must have an ACTIVE
- * membership; otherwise we throw auth.scope.missing.
+ * against the platform scope). APPLICANT users may pass only on routes
+ * explicitly marked for Applicant Portal access. All other user types must
+ * have an ACTIVE membership; otherwise we throw auth.scope.missing.
  */
 @Injectable()
 export class ScopeResolverGuard implements CanActivate {
@@ -37,6 +39,11 @@ export class ScopeResolverGuard implements CanActivate {
     );
     if (isPublic) return true;
 
+    const allowsApplicantPortalAccess = this.reflector.getAllAndOverride<boolean>(
+      APPLICANT_PORTAL_ACCESS_METADATA,
+      [context.getHandler(), context.getClass()],
+    );
+
     const ctx = getRequestContext();
     if (!ctx?.actor) throw new TokenInvalidException();
 
@@ -51,6 +58,12 @@ export class ScopeResolverGuard implements CanActivate {
             'platform_super_admin',
           );
         setPlatformPermissions(platformPermissions);
+        return true;
+      }
+      if (
+        ctx.actor.userType === UserType.APPLICANT &&
+        allowsApplicantPortalAccess
+      ) {
         return true;
       }
       throw new ScopeMissingException();
