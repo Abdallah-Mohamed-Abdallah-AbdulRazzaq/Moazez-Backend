@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../iam/auth/auth.module';
 import { ApplicantPortalAccessService } from './application/applicant-portal-access.service';
 import { CreateApplicantAccountUseCase } from './application/create-applicant-account.use-case';
+import { GetDiscoverableSchoolUseCase } from './application/get-discoverable-school.use-case';
 import { GetApplicantProfileUseCase } from './application/get-applicant-profile.use-case';
+import { ListDiscoverableSchoolsUseCase } from './application/list-discoverable-schools.use-case';
 import { ApplicantPortalController } from './controller/applicant-portal.controller';
 import { ApplicantPortalRepository } from './infrastructure/applicant-portal.repository';
 
@@ -14,6 +16,8 @@ import { ApplicantPortalRepository } from './infrastructure/applicant-portal.rep
     ApplicantPortalAccessService,
     CreateApplicantAccountUseCase,
     GetApplicantProfileUseCase,
+    ListDiscoverableSchoolsUseCase,
+    GetDiscoverableSchoolUseCase,
   ],
 })
 export class ApplicantPortalModule {}

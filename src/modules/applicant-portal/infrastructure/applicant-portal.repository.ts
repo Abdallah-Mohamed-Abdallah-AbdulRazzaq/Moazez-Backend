@@ -1,11 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import {
   MembershipStatus,
+  OrganizationStatus,
   Prisma,
+  SchoolStatus,
   UserStatus,
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
+import { NormalizedSchoolDiscoveryQuery } from '../domain/school-discovery.inputs';
 import { ApplicantRelationship } from '../domain/applicant-profile.inputs';
 
 const APPLICANT_PROFILE_WITH_USER = {
@@ -14,6 +17,28 @@ const APPLICANT_PROFILE_WITH_USER = {
 
 export type ApplicantProfileRecord = Prisma.ApplicantProfileGetPayload<
   typeof APPLICANT_PROFILE_WITH_USER
+>;
+
+const DISCOVERABLE_SCHOOL_ARGS = {
+  select: {
+    id: true,
+    name: true,
+    schoolProfile: {
+      select: {
+        schoolName: true,
+        shortName: true,
+        addressLine: true,
+        formattedAddress: true,
+        city: true,
+        country: true,
+        logoUrl: true,
+      },
+    },
+  },
+} satisfies Prisma.SchoolDefaultArgs;
+
+export type DiscoverableSchoolRecord = Prisma.SchoolGetPayload<
+  typeof DISCOVERABLE_SCHOOL_ARGS
 >;
 
 export interface CreateApplicantAccountRecord {
@@ -25,6 +50,13 @@ export interface CreateApplicantAccountRecord {
   phoneNumber: string | null;
   city: string | null;
   relationship: ApplicantRelationship;
+}
+
+export interface DiscoverableSchoolListResult {
+  items: DiscoverableSchoolRecord[];
+  page: number;
+  limit: number;
+  total: number;
 }
 
 @Injectable()
@@ -89,4 +121,106 @@ export class ApplicantPortalRepository {
       },
     });
   }
+
+  async listDiscoverableSchools(
+    params: NormalizedSchoolDiscoveryQuery,
+  ): Promise<DiscoverableSchoolListResult> {
+    const where = buildDiscoverableSchoolWhere(params);
+    const skip = (params.page - 1) * params.limit;
+
+    const [items, total] = await Promise.all([
+      this.prisma.school.findMany({
+        where,
+        orderBy: [{ name: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
+        skip,
+        take: params.limit,
+        ...DISCOVERABLE_SCHOOL_ARGS,
+      }),
+      this.prisma.school.count({ where }),
+    ]);
+
+    return {
+      items,
+      page: params.page,
+      limit: params.limit,
+      total,
+    };
+  }
+
+  findDiscoverableSchoolById(
+    schoolId: string,
+  ): Promise<DiscoverableSchoolRecord | null> {
+    return this.prisma.school.findFirst({
+      where: {
+        AND: [buildDiscoverableSchoolWhere(), { id: schoolId }],
+      },
+      ...DISCOVERABLE_SCHOOL_ARGS,
+    });
+  }
+}
+
+function buildDiscoverableSchoolWhere(
+  params: Partial<Pick<NormalizedSchoolDiscoveryQuery, 'search' | 'city'>> = {},
+): Prisma.SchoolWhereInput {
+  const filters: Prisma.SchoolWhereInput[] = [
+    {
+      status: SchoolStatus.ACTIVE,
+      deletedAt: null,
+      organization: {
+        status: OrganizationStatus.ACTIVE,
+        deletedAt: null,
+      },
+    },
+  ];
+
+  if (params.city) {
+    filters.push({
+      schoolProfile: {
+        is: {
+          city: { equals: params.city, mode: 'insensitive' },
+        },
+      },
+    });
+  }
+
+  if (params.search) {
+    filters.push({
+      OR: [
+        { name: { contains: params.search, mode: 'insensitive' } },
+        { slug: { contains: params.search, mode: 'insensitive' } },
+        {
+          schoolProfile: {
+            is: {
+              schoolName: {
+                contains: params.search,
+                mode: 'insensitive',
+              },
+            },
+          },
+        },
+        {
+          schoolProfile: {
+            is: {
+              shortName: {
+                contains: params.search,
+                mode: 'insensitive',
+              },
+            },
+          },
+        },
+        {
+          schoolProfile: {
+            is: {
+              city: {
+                contains: params.search,
+                mode: 'insensitive',
+              },
+            },
+          },
+        },
+      ],
+    });
+  }
+
+  return { AND: filters };
 }

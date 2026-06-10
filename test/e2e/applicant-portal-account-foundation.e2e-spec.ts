@@ -151,14 +151,15 @@ describe('Applicant Portal account foundation (e2e)', () => {
     }
   });
 
-  it('registers only the Sprint 18B Applicant Portal routes', async () => {
+  it('registers Applicant Portal foundation routes and keeps request/document routes deferred', async () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain('POST /api/v1/applicant-portal/accounts');
     expect(routes).toContain('GET /api/v1/applicant-portal/profile');
+    expect(routes).toContain('GET /api/v1/applicant-portal/schools');
+    expect(routes).toContain('GET /api/v1/applicant-portal/schools/:schoolId');
 
     for (const deferredRoute of [
-      'GET /api/v1/applicant-portal/schools',
       'GET /api/v1/applicant-portal/schools/:schoolId/admission-required-documents',
       'POST /api/v1/applicant-portal/requests',
       'GET /api/v1/applicant-portal/requests',
@@ -168,10 +169,6 @@ describe('Applicant Portal account foundation (e2e)', () => {
     }
 
     for (const deferredRouteCheck of [
-      {
-        method: 'get' as const,
-        path: `${GLOBAL_PREFIX}/applicant-portal/schools`,
-      },
       {
         method: 'get' as const,
         path: `${GLOBAL_PREFIX}/applicant-portal/schools/${randomUUID()}/admission-required-documents`,
