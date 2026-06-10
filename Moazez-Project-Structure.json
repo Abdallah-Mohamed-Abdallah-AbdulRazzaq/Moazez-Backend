@@ -817,6 +817,18 @@
               ]
             },
             {
+              "name": "20260609150000_0034_admission_required_documents",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -3461,6 +3473,11 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "list-admission-required-documents.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "list-discoverable-schools.use-case.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3502,6 +3519,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "admission-required-document.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "applicant-account.dto.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3531,6 +3553,11 @@
                   "icon": "📁",
                   "children": [
                     {
+                      "name": "admission-required-documents.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "applicant-profile.presenter.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3549,6 +3576,11 @@
                   "children": [
                     {
                       "name": "applicant-portal-foundation.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "applicant-portal-required-documents.spec.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -15351,6 +15383,11 @@
               "icon": "📘"
             },
             {
+              "name": "applicant-portal-required-documents.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "applicant-portal-school-discovery.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -15586,6 +15623,11 @@
             },
             {
               "name": "tenancy.admissions.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.applicant-portal-required-documents.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15907,7 +15949,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-10T15:20:46.567Z",
+    "generated": "2026-06-10T16:36:21.441Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
