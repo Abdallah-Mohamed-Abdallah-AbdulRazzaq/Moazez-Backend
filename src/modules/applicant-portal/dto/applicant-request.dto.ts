@@ -13,6 +13,15 @@ import {
 } from 'class-validator';
 import { APPLICANT_REQUEST_STATUS_FILTERS } from '../domain/applicant-request.inputs';
 
+export type ApplicantRequestApiStatus =
+  | 'draft'
+  | 'needs_action'
+  | 'submitted'
+  | 'under_review'
+  | 'waitlisted'
+  | 'accepted'
+  | 'rejected';
+
 export class CreateApplicantRequestDto {
   @ApiProperty({ format: 'uuid' })
   @IsUUID()
@@ -150,8 +159,8 @@ export class ApplicantRequestCardResponseDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
 
-  @ApiProperty({ enum: ['draft', 'submitted'], example: 'draft' })
-  status!: 'draft' | 'submitted';
+  @ApiProperty({ enum: APPLICANT_REQUEST_STATUS_FILTERS, example: 'draft' })
+  status!: ApplicantRequestApiStatus;
 
   @ApiProperty({ type: ApplicantRequestSchoolSummaryDto })
   school!: ApplicantRequestSchoolSummaryDto;

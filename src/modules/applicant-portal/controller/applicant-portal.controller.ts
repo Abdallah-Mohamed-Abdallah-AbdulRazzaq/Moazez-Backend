@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
@@ -33,6 +35,7 @@ import { GetApplicantProfileUseCase } from '../application/get-applicant-profile
 import { ListAdmissionRequiredDocumentsUseCase } from '../application/list-admission-required-documents.use-case';
 import { ListApplicantRequestsUseCase } from '../application/list-applicant-requests.use-case';
 import { ListDiscoverableSchoolsUseCase } from '../application/list-discoverable-schools.use-case';
+import { SubmitApplicantRequestUseCase } from '../application/submit-applicant-request.use-case';
 import { AdmissionRequiredDocumentsListResponseDto } from '../dto/admission-required-document.dto';
 import {
   ApplicantProfileResponseDto,
@@ -62,6 +65,7 @@ export class ApplicantPortalController {
     private readonly createApplicantRequestUseCase: CreateApplicantRequestUseCase,
     private readonly listApplicantRequestsUseCase: ListApplicantRequestsUseCase,
     private readonly getApplicantRequestUseCase: GetApplicantRequestUseCase,
+    private readonly submitApplicantRequestUseCase: SubmitApplicantRequestUseCase,
   ) {}
 
   @Post('accounts')
@@ -199,5 +203,31 @@ export class ApplicantPortalController {
     @Param('requestId', new ParseUUIDPipe()) requestId: string,
   ): Promise<ApplicantRequestDetailResponseDto> {
     return this.getApplicantRequestUseCase.execute(requestId);
+  }
+
+  @Post('requests/:requestId/submit')
+  @HttpCode(HttpStatus.OK)
+  @AllowApplicantPortalAccess()
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Submit an authenticated applicant admission request into Admissions',
+  })
+  @ApiParam({ name: 'requestId', format: 'uuid' })
+  @ApiOkResponse({ type: ApplicantRequestDetailResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ description: 'auth.token.invalid' })
+  @ApiForbiddenResponse({ description: 'auth.scope.missing' })
+  @ApiNotFoundResponse({ description: 'not_found' })
+  @ApiConflictResponse({ description: 'conflict' })
+  submitRequest(
+    @Param('requestId', new ParseUUIDPipe()) requestId: string,
+    @Req() req: Request,
+  ): Promise<ApplicantRequestDetailResponseDto> {
+    return this.submitApplicantRequestUseCase.execute({
+      requestId,
+      ipAddress: req.ip ?? null,
+      userAgent: req.header('user-agent') ?? null,
+    });
   }
 }

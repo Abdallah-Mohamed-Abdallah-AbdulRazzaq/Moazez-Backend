@@ -1,6 +1,14 @@
 import { ValidationDomainException } from '../../../common/exceptions/domain-exception';
 
-export const APPLICANT_REQUEST_STATUS_FILTERS = ['draft', 'submitted'] as const;
+export const APPLICANT_REQUEST_STATUS_FILTERS = [
+  'draft',
+  'needs_action',
+  'submitted',
+  'under_review',
+  'waitlisted',
+  'accepted',
+  'rejected',
+] as const;
 
 export type ApplicantRequestStatusFilter =
   (typeof APPLICANT_REQUEST_STATUS_FILTERS)[number];

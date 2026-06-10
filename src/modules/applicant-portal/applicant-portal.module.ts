@@ -9,6 +9,7 @@ import { GetApplicantProfileUseCase } from './application/get-applicant-profile.
 import { ListAdmissionRequiredDocumentsUseCase } from './application/list-admission-required-documents.use-case';
 import { ListApplicantRequestsUseCase } from './application/list-applicant-requests.use-case';
 import { ListDiscoverableSchoolsUseCase } from './application/list-discoverable-schools.use-case';
+import { SubmitApplicantRequestUseCase } from './application/submit-applicant-request.use-case';
 import { ApplicantPortalController } from './controller/applicant-portal.controller';
 import { ApplicantPortalRepository } from './infrastructure/applicant-portal.repository';
 
@@ -26,6 +27,7 @@ import { ApplicantPortalRepository } from './infrastructure/applicant-portal.rep
     CreateApplicantRequestUseCase,
     ListApplicantRequestsUseCase,
     GetApplicantRequestUseCase,
+    SubmitApplicantRequestUseCase,
   ],
 })
 export class ApplicantPortalModule {}

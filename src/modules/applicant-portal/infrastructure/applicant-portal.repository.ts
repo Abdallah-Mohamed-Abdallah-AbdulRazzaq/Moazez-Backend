@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
+  AdmissionApplicationSource,
+  AdmissionApplicationStatus,
   ApplicantAdmissionRequestStatus,
   MembershipStatus,
   OrganizationStatus,
@@ -98,6 +100,11 @@ const APPLICANT_ADMISSION_REQUEST_ARGS = {
     notes: true,
     createdAt: true,
     updatedAt: true,
+    application: {
+      select: {
+        status: true,
+      },
+    },
     school: { select: APPLICANT_REQUEST_SCHOOL_SUMMARY_SELECT },
     requestedAcademicYear: {
       select: {
@@ -120,6 +127,40 @@ export type ApplicantAdmissionRequestRecord =
   Prisma.ApplicantAdmissionRequestGetPayload<
     typeof APPLICANT_ADMISSION_REQUEST_ARGS
   >;
+
+const SUBMIT_APPLICANT_ADMISSION_REQUEST_ARGS = {
+  select: {
+    id: true,
+    applicantUserId: true,
+    schoolId: true,
+    organizationId: true,
+    requestedAcademicYearId: true,
+    requestedGradeId: true,
+    childFullName: true,
+    status: true,
+    submittedAt: true,
+    applicationId: true,
+  },
+} satisfies Prisma.ApplicantAdmissionRequestDefaultArgs;
+
+export type SubmitApplicantAdmissionRequestOutcome =
+  | {
+      kind: 'submitted';
+      request: ApplicantAdmissionRequestRecord;
+      schoolId: string;
+      organizationId: string;
+      missingItemsCount: number;
+      createdApplication: boolean;
+    }
+  | {
+      kind:
+        | 'not_found'
+        | 'unsafe_school'
+        | 'invalid_academic_year'
+        | 'invalid_grade'
+        | 'invalid_state'
+        | 'integrity_error';
+    };
 
 export interface CreateApplicantAccountRecord {
   email: string;
@@ -290,13 +331,7 @@ export class ApplicantPortalRepository {
 
   countMandatoryRequiredDocumentsForSchool(schoolId: string): Promise<number> {
     return this.prisma.admissionRequiredDocument.count({
-      where: {
-        schoolId,
-        gradeId: null,
-        isMandatory: true,
-        isActive: true,
-        deletedAt: null,
-      },
+      where: buildMandatoryRequiredDocumentsWhere(schoolId),
     });
   }
 
@@ -363,7 +398,7 @@ export class ApplicantPortalRepository {
     const where: Prisma.ApplicantAdmissionRequestWhereInput = {
       applicantUserId: params.applicantUserId,
       deletedAt: null,
-      status: toApplicantAdmissionRequestStatus(params.status),
+      ...buildApplicantAdmissionRequestStatusWhere(params.status),
     };
     const skip = (params.page - 1) * params.limit;
 
@@ -398,6 +433,166 @@ export class ApplicantPortalRepository {
       },
       ...APPLICANT_ADMISSION_REQUEST_ARGS,
     });
+  }
+
+  async submitApplicantAdmissionRequest(params: {
+    applicantUserId: string;
+    requestId: string;
+    submittedAt: Date;
+  }): Promise<SubmitApplicantAdmissionRequestOutcome> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${params.requestId}))`,
+      );
+
+      const request = await tx.applicantAdmissionRequest.findFirst({
+        where: {
+          id: params.requestId,
+          applicantUserId: params.applicantUserId,
+          deletedAt: null,
+        },
+        ...SUBMIT_APPLICANT_ADMISSION_REQUEST_ARGS,
+      });
+
+      if (!request) return { kind: 'not_found' };
+
+      if (
+        request.status === ApplicantAdmissionRequestStatus.SUBMITTED &&
+        request.applicationId
+      ) {
+        return this.buildSubmittedRequestOutcome(tx, {
+          requestId: request.id,
+          schoolId: request.schoolId,
+          organizationId: request.organizationId,
+          createdApplication: false,
+        });
+      }
+
+      if (
+        request.status !== ApplicantAdmissionRequestStatus.DRAFT ||
+        request.submittedAt !== null ||
+        request.applicationId !== null
+      ) {
+        return { kind: 'invalid_state' };
+      }
+
+      const school = await tx.school.findFirst({
+        where: {
+          id: request.schoolId,
+          status: SchoolStatus.ACTIVE,
+          deletedAt: null,
+          organization: {
+            status: OrganizationStatus.ACTIVE,
+            deletedAt: null,
+          },
+        },
+        select: { id: true, organizationId: true },
+      });
+
+      if (!school || school.organizationId !== request.organizationId) {
+        return { kind: 'unsafe_school' };
+      }
+
+      if (request.requestedAcademicYearId) {
+        const academicYear = await tx.academicYear.findFirst({
+          where: {
+            id: request.requestedAcademicYearId,
+            schoolId: request.schoolId,
+            deletedAt: null,
+          },
+          select: { id: true },
+        });
+        if (!academicYear) return { kind: 'invalid_academic_year' };
+      }
+
+      if (request.requestedGradeId) {
+        const grade = await tx.grade.findFirst({
+          where: {
+            id: request.requestedGradeId,
+            schoolId: request.schoolId,
+            deletedAt: null,
+          },
+          select: { id: true },
+        });
+        if (!grade) return { kind: 'invalid_grade' };
+      }
+
+      const missingItemsCount =
+        await tx.admissionRequiredDocument.count({
+          where: buildMandatoryRequiredDocumentsWhere(request.schoolId),
+        });
+      const applicationStatus =
+        missingItemsCount > 0
+          ? AdmissionApplicationStatus.DOCUMENTS_PENDING
+          : AdmissionApplicationStatus.SUBMITTED;
+
+      const application = await tx.application.create({
+        data: {
+          schoolId: request.schoolId,
+          organizationId: request.organizationId,
+          studentName: request.childFullName,
+          requestedAcademicYearId: request.requestedAcademicYearId,
+          requestedGradeId: request.requestedGradeId,
+          source: AdmissionApplicationSource.IN_APP,
+          status: applicationStatus,
+          submittedAt: params.submittedAt,
+        },
+        select: { id: true },
+      });
+
+      await tx.applicantAdmissionRequest.update({
+        where: { id: request.id },
+        data: {
+          status: ApplicantAdmissionRequestStatus.SUBMITTED,
+          submittedAt: params.submittedAt,
+          applicationId: application.id,
+        },
+        select: { id: true },
+      });
+
+      return this.buildSubmittedRequestOutcome(tx, {
+        requestId: request.id,
+        schoolId: request.schoolId,
+        organizationId: request.organizationId,
+        missingItemsCount,
+        createdApplication: true,
+      });
+    });
+  }
+
+  private async buildSubmittedRequestOutcome(
+    tx: Prisma.TransactionClient,
+    params: {
+      requestId: string;
+      schoolId: string;
+      organizationId: string;
+      missingItemsCount?: number;
+      createdApplication: boolean;
+    },
+  ): Promise<SubmitApplicantAdmissionRequestOutcome> {
+    const detail = await tx.applicantAdmissionRequest.findUnique({
+      where: { id: params.requestId },
+      ...APPLICANT_ADMISSION_REQUEST_ARGS,
+    });
+    if (!detail) return { kind: 'not_found' };
+    if (detail.status === ApplicantAdmissionRequestStatus.SUBMITTED) {
+      const missingItemsCount =
+        params.missingItemsCount ??
+        (await tx.admissionRequiredDocument.count({
+          where: buildMandatoryRequiredDocumentsWhere(params.schoolId),
+        }));
+
+      return {
+        kind: 'submitted',
+        request: detail,
+        schoolId: params.schoolId,
+        organizationId: params.organizationId,
+        missingItemsCount,
+        createdApplication: params.createdApplication,
+      };
+    }
+
+    return { kind: 'integrity_error' };
   }
 }
 
@@ -467,10 +662,63 @@ function buildDiscoverableSchoolWhere(
   return { AND: filters };
 }
 
-function toApplicantAdmissionRequestStatus(
+function buildApplicantAdmissionRequestStatusWhere(
   status: ApplicantRequestStatusFilter | undefined,
-): ApplicantAdmissionRequestStatus | undefined {
-  if (status === 'draft') return ApplicantAdmissionRequestStatus.DRAFT;
-  if (status === 'submitted') return ApplicantAdmissionRequestStatus.SUBMITTED;
-  return undefined;
+): Prisma.ApplicantAdmissionRequestWhereInput {
+  switch (status) {
+    case 'draft':
+      return { status: ApplicantAdmissionRequestStatus.DRAFT };
+    case 'needs_action':
+      return buildSubmittedApplicationStatusWhere(
+        AdmissionApplicationStatus.DOCUMENTS_PENDING,
+      );
+    case 'submitted':
+      return buildSubmittedApplicationStatusWhere(
+        AdmissionApplicationStatus.SUBMITTED,
+      );
+    case 'under_review':
+      return buildSubmittedApplicationStatusWhere(
+        AdmissionApplicationStatus.UNDER_REVIEW,
+      );
+    case 'waitlisted':
+      return buildSubmittedApplicationStatusWhere(
+        AdmissionApplicationStatus.WAITLISTED,
+      );
+    case 'accepted':
+      return buildSubmittedApplicationStatusWhere(
+        AdmissionApplicationStatus.ACCEPTED,
+      );
+    case 'rejected':
+      return buildSubmittedApplicationStatusWhere(
+        AdmissionApplicationStatus.REJECTED,
+      );
+    default:
+      return {};
+  }
+}
+
+function buildSubmittedApplicationStatusWhere(
+  status: AdmissionApplicationStatus,
+): Prisma.ApplicantAdmissionRequestWhereInput {
+  return {
+    status: ApplicantAdmissionRequestStatus.SUBMITTED,
+    application: {
+      is: {
+        status,
+        deletedAt: null,
+      },
+    },
+  };
+}
+
+function buildMandatoryRequiredDocumentsWhere(
+  schoolId: string,
+): Prisma.AdmissionRequiredDocumentWhereInput {
+  return {
+    schoolId,
+    gradeId: null,
+    isMandatory: true,
+    isActive: true,
+    deletedAt: null,
+  };
 }

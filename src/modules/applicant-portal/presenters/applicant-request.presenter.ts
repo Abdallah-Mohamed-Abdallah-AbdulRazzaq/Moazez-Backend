@@ -1,5 +1,9 @@
-import { ApplicantAdmissionRequestStatus } from '@prisma/client';
 import {
+  AdmissionApplicationStatus,
+  ApplicantAdmissionRequestStatus,
+} from '@prisma/client';
+import {
+  ApplicantRequestApiStatus,
   ApplicantRequestCardResponseDto,
   ApplicantRequestDetailResponseDto,
   ApplicantRequestsListResponseDto,
@@ -56,9 +60,11 @@ export function presentApplicantRequestCard(
   request: ApplicantAdmissionRequestRecord,
   missingItemsCount: number,
 ): ApplicantRequestCardResponseDto {
+  const status = presentRequestStatus(request);
+
   return {
     id: request.id,
-    status: presentRequestStatus(request.status),
+    status,
     school: {
       id: request.school.id,
       name:
@@ -92,22 +98,51 @@ export function presentApplicantRequestCard(
         }
       : null,
     missingItemsCount,
-    progressValue: presentProgressValue(request.status),
+    progressValue: presentProgressValue(status),
     createdAt: request.createdAt.toISOString(),
     updatedAt: request.updatedAt.toISOString(),
   };
 }
 
 function presentRequestStatus(
-  status: ApplicantAdmissionRequestStatus,
-): 'draft' | 'submitted' {
-  if (status === ApplicantAdmissionRequestStatus.SUBMITTED) return 'submitted';
-  return 'draft';
+  request: ApplicantAdmissionRequestRecord,
+): ApplicantRequestApiStatus {
+  if (request.status === ApplicantAdmissionRequestStatus.DRAFT) return 'draft';
+
+  switch (request.application?.status) {
+    case AdmissionApplicationStatus.DOCUMENTS_PENDING:
+      return 'needs_action';
+    case AdmissionApplicationStatus.SUBMITTED:
+      return 'submitted';
+    case AdmissionApplicationStatus.UNDER_REVIEW:
+      return 'under_review';
+    case AdmissionApplicationStatus.WAITLISTED:
+      return 'waitlisted';
+    case AdmissionApplicationStatus.ACCEPTED:
+      return 'accepted';
+    case AdmissionApplicationStatus.REJECTED:
+      return 'rejected';
+    default:
+      return 'submitted';
+  }
 }
 
-function presentProgressValue(status: ApplicantAdmissionRequestStatus): number {
-  if (status === ApplicantAdmissionRequestStatus.SUBMITTED) return 50;
-  return 25;
+function presentProgressValue(status: ApplicantRequestApiStatus): number {
+  switch (status) {
+    case 'needs_action':
+      return 40;
+    case 'submitted':
+      return 50;
+    case 'under_review':
+      return 70;
+    case 'waitlisted':
+      return 80;
+    case 'accepted':
+    case 'rejected':
+      return 100;
+    case 'draft':
+      return 25;
+  }
 }
 
 function presentDateOnly(value: Date | null): string | null {

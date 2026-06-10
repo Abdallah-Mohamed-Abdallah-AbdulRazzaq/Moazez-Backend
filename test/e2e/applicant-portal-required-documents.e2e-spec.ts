@@ -212,7 +212,7 @@ describe('Applicant Portal required documents (e2e)', () => {
     }
   });
 
-  it('registers required documents and keeps later request routes absent', async () => {
+  it('registers required documents and keeps later document routes absent', async () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain(
@@ -223,9 +223,11 @@ describe('Applicant Portal required documents (e2e)', () => {
     expect(routes).toContain(
       'GET /api/v1/applicant-portal/requests/:requestId',
     );
+    expect(routes).toContain(
+      'POST /api/v1/applicant-portal/requests/:requestId/submit',
+    );
 
     for (const deferredRoute of [
-      'POST /api/v1/applicant-portal/requests/:requestId/submit',
       'POST /api/v1/applicant-portal/requests/:requestId/documents',
       'GET /api/v1/applicant-portal/requests/:requestId/documents',
     ]) {
@@ -244,7 +246,7 @@ describe('Applicant Portal required documents (e2e)', () => {
       .expect(401);
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/submit`)
-      .expect(404);
+      .expect(401);
   });
 
   it('allows anonymous callers to read active required documents safely', async () => {

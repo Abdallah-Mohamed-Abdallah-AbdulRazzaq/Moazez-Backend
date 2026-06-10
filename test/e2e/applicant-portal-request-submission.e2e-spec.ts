@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AdmissionApplicationSource,
+  AdmissionApplicationStatus,
   ApplicantAdmissionRequestStatus,
   MembershipStatus,
   OrganizationStatus,
@@ -16,7 +18,7 @@ import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 
 const GLOBAL_PREFIX = '/api/v1';
-const PASSWORD = 'Applicant18FPass!';
+const PASSWORD = 'Applicant18GPass!';
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
   memoryCost: 19 * 1024,
@@ -51,26 +53,22 @@ type SideEffectSnapshot = {
   enrollments: number;
 };
 
-describe('Applicant Portal request ownership (e2e)', () => {
+describe('Applicant Portal request submission (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
 
   let organizationId = '';
-  let activeSchoolId = '';
-  let otherActiveSchoolId = '';
-  let suspendedSchoolId = '';
-  let archivedSchoolId = '';
-  let deletedSchoolId = '';
-  let suspendedOrganizationSchoolId = '';
-  let archivedOrganizationSchoolId = '';
-  let deletedOrganizationSchoolId = '';
+  let organizationToSuspendId = '';
+  let docsSchoolId = '';
+  let noDocsSchoolId = '';
+  let schoolToSuspendId = '';
+  let orgUnsafeSchoolId = '';
   let academicYearId = '';
   let gradeId = '';
-  let applicantUserId = '';
-  let applicantProfileId = '';
-  let applicantRequestId = '';
-  let otherApplicantRequestId = '';
   let roleId = '';
+  let docsRequestId = '';
+  let noDocsRequestId = '';
+  let otherApplicantRequestId = '';
 
   let applicantAuth: AuthTokens;
   let otherApplicantAuth: AuthTokens;
@@ -81,7 +79,7 @@ describe('Applicant Portal request ownership (e2e)', () => {
   let platformAuth: AuthTokens;
 
   const suffix = randomUUID().split('-')[0];
-  const marker = `s18f-requests-${suffix}`;
+  const marker = `s18g-submit-${suffix}`;
   const createdOrganizationIds: string[] = [];
   const createdSchoolIds: string[] = [];
   const createdSchoolProfileIds: string[] = [];
@@ -90,6 +88,7 @@ describe('Applicant Portal request ownership (e2e)', () => {
   const createdGradeIds: string[] = [];
   const createdDocumentIds: string[] = [];
   const createdRequestIds: string[] = [];
+  const createdApplicationIds: string[] = [];
   const createdUserIds: string[] = [];
   const createdProfileIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -100,130 +99,89 @@ describe('Applicant Portal request ownership (e2e)', () => {
 
     const activeOrganization = await createOrganization({
       slug: `${marker}-active-org`,
-      name: `Sprint 18F Active Org ${suffix}`,
+      name: `Sprint 18G Active Org ${suffix}`,
       status: OrganizationStatus.ACTIVE,
     });
     organizationId = activeOrganization.id;
-    const suspendedOrganization = await createOrganization({
-      slug: `${marker}-suspended-org`,
-      name: `Sprint 18F Suspended Org ${suffix}`,
-      status: OrganizationStatus.SUSPENDED,
-    });
-    const archivedOrganization = await createOrganization({
-      slug: `${marker}-archived-org`,
-      name: `Sprint 18F Archived Org ${suffix}`,
-      status: OrganizationStatus.ARCHIVED,
-    });
-    const deletedOrganization = await createOrganization({
-      slug: `${marker}-deleted-org`,
-      name: `Sprint 18F Deleted Org ${suffix}`,
+    const organizationToSuspend = await createOrganization({
+      slug: `${marker}-org-to-suspend`,
+      name: `Sprint 18G Org To Suspend ${suffix}`,
       status: OrganizationStatus.ACTIVE,
-      deletedAt: new Date(),
     });
+    organizationToSuspendId = organizationToSuspend.id;
 
-    activeSchoolId = await createSchoolWithProfile({
+    docsSchoolId = await createSchoolWithProfile({
       organizationId,
-      slug: `${marker}-active`,
-      name: `${marker} Active Academy`,
+      slug: `${marker}-docs-school`,
+      name: `${marker} Docs Academy`,
       status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} Active Public`,
-      shortName: `${marker} Active`,
+      schoolName: `${marker} Docs Public`,
+      shortName: `${marker} Docs`,
       city: 'Cairo',
       country: 'Egypt',
     });
-    otherActiveSchoolId = await createSchoolWithProfile({
+    noDocsSchoolId = await createSchoolWithProfile({
       organizationId,
-      slug: `${marker}-other-active`,
-      name: `${marker} Other Active Academy`,
+      slug: `${marker}-no-docs-school`,
+      name: `${marker} No Docs Academy`,
       status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} Other Active Public`,
+      schoolName: `${marker} No Docs Public`,
       city: 'Giza',
       country: 'Egypt',
     });
-    suspendedSchoolId = await createSchoolWithProfile({
+    schoolToSuspendId = await createSchoolWithProfile({
       organizationId,
-      slug: `${marker}-suspended`,
-      name: `${marker} Suspended Academy`,
-      status: SchoolStatus.SUSPENDED,
-      schoolName: `${marker} Suspended Public`,
-      city: 'Cairo',
-    });
-    archivedSchoolId = await createSchoolWithProfile({
-      organizationId,
-      slug: `${marker}-archived`,
-      name: `${marker} Archived Academy`,
-      status: SchoolStatus.ARCHIVED,
-      schoolName: `${marker} Archived Public`,
-      city: 'Cairo',
-    });
-    deletedSchoolId = await createSchoolWithProfile({
-      organizationId,
-      slug: `${marker}-deleted`,
-      name: `${marker} Deleted Academy`,
+      slug: `${marker}-school-to-suspend`,
+      name: `${marker} School To Suspend`,
       status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} Deleted Public`,
+      schoolName: `${marker} School To Suspend Public`,
       city: 'Cairo',
-      deletedAt: new Date(),
+      country: 'Egypt',
     });
-    suspendedOrganizationSchoolId = await createSchoolWithProfile({
-      organizationId: suspendedOrganization.id,
-      slug: `${marker}-suspended-org-school`,
-      name: `${marker} Suspended Org Academy`,
+    orgUnsafeSchoolId = await createSchoolWithProfile({
+      organizationId: organizationToSuspendId,
+      slug: `${marker}-org-unsafe-school`,
+      name: `${marker} Org Unsafe School`,
       status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} Suspended Org Public`,
+      schoolName: `${marker} Org Unsafe Public`,
       city: 'Cairo',
-    });
-    archivedOrganizationSchoolId = await createSchoolWithProfile({
-      organizationId: archivedOrganization.id,
-      slug: `${marker}-archived-org-school`,
-      name: `${marker} Archived Org Academy`,
-      status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} Archived Org Public`,
-      city: 'Cairo',
-    });
-    deletedOrganizationSchoolId = await createSchoolWithProfile({
-      organizationId: deletedOrganization.id,
-      slug: `${marker}-deleted-org-school`,
-      name: `${marker} Deleted Org Academy`,
-      status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} Deleted Org Public`,
-      city: 'Cairo',
+      country: 'Egypt',
     });
 
-    academicYearId = await createAcademicYear(activeSchoolId);
-    const stageId = await createStage(activeSchoolId);
-    gradeId = await createGrade(activeSchoolId, stageId);
+    academicYearId = await createAcademicYear(docsSchoolId);
+    const stageId = await createStage(docsSchoolId);
+    gradeId = await createGrade(docsSchoolId, stageId);
 
     await createRequiredDocument({
-      schoolId: activeSchoolId,
+      schoolId: docsSchoolId,
       organizationId,
       title: 'Birth certificate',
       isMandatory: true,
       sortOrder: 10,
     });
     await createRequiredDocument({
-      schoolId: activeSchoolId,
+      schoolId: docsSchoolId,
       organizationId,
       title: 'Parent ID',
       isMandatory: true,
       sortOrder: 20,
     });
     await createRequiredDocument({
-      schoolId: activeSchoolId,
+      schoolId: docsSchoolId,
       organizationId,
-      title: 'Optional family photo',
+      title: `${marker} Optional`,
       isMandatory: false,
       sortOrder: 30,
     });
     await createRequiredDocument({
-      schoolId: activeSchoolId,
+      schoolId: docsSchoolId,
       organizationId,
       title: `${marker} Inactive Mandatory`,
       isMandatory: true,
       isActive: false,
     });
     await createRequiredDocument({
-      schoolId: activeSchoolId,
+      schoolId: docsSchoolId,
       organizationId,
       title: `${marker} Deleted Mandatory`,
       isMandatory: true,
@@ -233,9 +191,9 @@ describe('Applicant Portal request ownership (e2e)', () => {
     roleId = (
       await prisma.role.create({
         data: {
-          schoolId: activeSchoolId,
+          schoolId: docsSchoolId,
           key: `${marker}-role`,
-          name: `Sprint 18F Role ${suffix}`,
+          name: `Sprint 18G Role ${suffix}`,
           isSystem: false,
         },
         select: { id: true },
@@ -265,10 +223,8 @@ describe('Applicant Portal request ownership (e2e)', () => {
     );
     await app.init();
 
-    const applicant = await createApplicantAccount('primary');
-    applicantUserId = applicant.userId;
-    applicantProfileId = applicant.applicantId;
-    const otherApplicant = await createApplicantAccount('other');
+    await createApplicantAccount('primary');
+    await createApplicantAccount('other');
 
     applicantAuth = await login(`${marker}-primary@example.test`);
     otherApplicantAuth = await login(`${marker}-other@example.test`);
@@ -277,8 +233,6 @@ describe('Applicant Portal request ownership (e2e)', () => {
     teacherAuth = await login(`${marker}-teacher@example.test`);
     schoolUserAuth = await login(`${marker}-school-user@example.test`);
     platformAuth = await login(`${marker}-platform@example.test`);
-
-    expect(otherApplicant.userId).toBeDefined();
   });
 
   afterAll(async () => {
@@ -290,14 +244,9 @@ describe('Applicant Portal request ownership (e2e)', () => {
     }
   });
 
-  it('registers request routes and keeps document/upload routes absent', async () => {
+  it('registers submit and keeps document/upload/conversion routes absent', async () => {
     const routes = listRegisteredRoutes();
 
-    expect(routes).toContain('POST /api/v1/applicant-portal/requests');
-    expect(routes).toContain('GET /api/v1/applicant-portal/requests');
-    expect(routes).toContain(
-      'GET /api/v1/applicant-portal/requests/:requestId',
-    );
     expect(routes).toContain(
       'POST /api/v1/applicant-portal/requests/:requestId/submit',
     );
@@ -307,144 +256,146 @@ describe('Applicant Portal request ownership (e2e)', () => {
       'POST /api/v1/applicant-portal/requests/:requestId/documents',
       'GET /api/v1/applicant-portal/requests/:requestId/documents',
       'POST /api/v1/applicant-portal/uploads',
+      'POST /api/v1/applicant-portal/requests/:requestId/convert-to-parent',
+      'POST /api/v1/applicant-portal/conversions',
     ]) {
       expect(routes).not.toContain(absentRoute);
     }
   });
 
-  it('allows an applicant to create a draft request for an active discoverable school', async () => {
+  it('submits an own draft request and creates exactly one linked Admissions Application', async () => {
     const before = await getSideEffectSnapshot();
-    const response = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-      .set('Authorization', bearer(applicantAuth))
-      .send({
-        schoolId: activeSchoolId,
-        childFirstName: 'Layla',
-        childLastName: 'Hassan',
-        childDateOfBirth: '2018-04-12',
-        childGender: 'female',
-        childNationality: 'Egyptian',
-        requestedAcademicYearId: academicYearId,
-        requestedGradeId: gradeId,
-        previousSchool: 'ABC School',
-        notes: 'Needs bus route info.',
-      })
-      .expect(201);
+    const draft = await createDraftRequest(applicantAuth, {
+      schoolId: docsSchoolId,
+      childFirstName: 'Layla',
+      childLastName: 'Hassan',
+      requestedAcademicYearId: academicYearId,
+      requestedGradeId: gradeId,
+    });
+    docsRequestId = draft.id;
 
-    applicantRequestId = response.body.id;
-    createdRequestIds.push(applicantRequestId);
+    const response = await submitRequest(applicantAuth, docsRequestId, 200);
 
     expect(response.body).toMatchObject({
-      id: applicantRequestId,
-      status: 'draft',
+      id: docsRequestId,
+      status: 'needs_action',
       school: {
-        id: activeSchoolId,
-        name: `${marker} Active Public`,
-        shortName: `${marker} Active`,
-        city: 'Cairo',
-        country: 'Egypt',
+        id: docsSchoolId,
+        name: `${marker} Docs Public`,
       },
       childFullName: 'Layla Hassan',
-      child: {
-        firstName: 'Layla',
-        lastName: 'Hassan',
-        fullName: 'Layla Hassan',
-        dateOfBirth: '2018-04-12',
-        gender: 'female',
-        nationality: 'Egyptian',
-      },
-      requestedAcademicYear: {
-        id: academicYearId,
-        label: `${marker} 2026/2027`,
-      },
-      requestedGrade: {
-        id: gradeId,
-        label: `${marker} Grade 4`,
-      },
-      previousSchool: 'ABC School',
-      notes: 'Needs bus route info.',
       missingItemsCount: 2,
-      progressValue: 25,
+      progressValue: 40,
     });
     expectSafeRequestResponse(response.body);
 
     const requestDb = await prisma.applicantAdmissionRequest.findUniqueOrThrow({
-      where: { id: applicantRequestId },
+      where: { id: docsRequestId },
     });
-    expect(requestDb).toMatchObject({
-      applicantUserId,
-      applicantProfileId,
-      schoolId: activeSchoolId,
+    expect(requestDb.status).toBe(ApplicantAdmissionRequestStatus.SUBMITTED);
+    expect(requestDb.submittedAt).toBeInstanceOf(Date);
+    expect(requestDb.applicationId).toEqual(expect.any(String));
+    createdApplicationIds.push(requestDb.applicationId as string);
+
+    const application = await prisma.application.findUniqueOrThrow({
+      where: { id: requestDb.applicationId as string },
+    });
+    expect(application).toMatchObject({
+      schoolId: docsSchoolId,
       organizationId,
+      studentName: 'Layla Hassan',
       requestedAcademicYearId: academicYearId,
       requestedGradeId: gradeId,
-      childFirstName: 'Layla',
-      childLastName: 'Hassan',
-      childFullName: 'Layla Hassan',
-      childGender: 'female',
-      childNationality: 'Egyptian',
-      previousSchool: 'ABC School',
-      notes: 'Needs bus route info.',
-      status: ApplicantAdmissionRequestStatus.DRAFT,
-      submittedAt: null,
-      applicationId: null,
-      deletedAt: null,
+      source: AdmissionApplicationSource.IN_APP,
+      status: AdmissionApplicationStatus.DOCUMENTS_PENDING,
     });
+    expect(application.submittedAt).toBeInstanceOf(Date);
 
     const after = await getSideEffectSnapshot();
-    expect(after).toEqual(before);
+    expect(after).toEqual({ ...before, applications: before.applications + 1 });
   });
 
-  it('allows an applicant to list only own requests', async () => {
-    const otherCreateResponse = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-      .set('Authorization', bearer(otherApplicantAuth))
-      .send({
-        schoolId: otherActiveSchoolId,
-        childFirstName: 'Omar',
-        childLastName: 'Ali',
-      })
-      .expect(201);
-    otherApplicantRequestId = otherCreateResponse.body.id;
-    createdRequestIds.push(otherApplicantRequestId);
+  it('keeps repeated submit idempotent without duplicate Applications', async () => {
+    const beforeCount = await prisma.application.count();
 
-    const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-      .query({ page: 1, limit: 100, status: 'draft' })
-      .set('Authorization', bearer(applicantAuth))
-      .expect(200);
+    const response = await submitRequest(applicantAuth, docsRequestId, 200);
 
-    expect(response.body.meta).toMatchObject({
-      page: 1,
-      limit: 100,
-      total: 1,
-      totalPages: 1,
-      hasNextPage: false,
-    });
-    expect(response.body.data).toHaveLength(1);
-    expect(response.body.data[0]).toMatchObject({
-      id: applicantRequestId,
-      status: 'draft',
-      childFullName: 'Layla Hassan',
+    expect(response.body).toMatchObject({
+      id: docsRequestId,
+      status: 'needs_action',
       missingItemsCount: 2,
-      progressValue: 25,
     });
-    expect(JSON.stringify(response.body)).not.toContain(
-      otherApplicantRequestId,
-    );
-    expectSafeRequestResponse(response.body);
+    await expect(prisma.application.count()).resolves.toBe(beforeCount);
   });
 
-  it('allows an applicant to read own request and hides another applicant request', async () => {
+  it('maps submitted when no mandatory required documents exist', async () => {
+    const draft = await createDraftRequest(applicantAuth, {
+      schoolId: noDocsSchoolId,
+      childFirstName: 'Omar',
+    });
+    noDocsRequestId = draft.id;
+
+    const response = await submitRequest(applicantAuth, noDocsRequestId, 200);
+
+    expect(response.body).toMatchObject({
+      id: noDocsRequestId,
+      status: 'submitted',
+      missingItemsCount: 0,
+      progressValue: 50,
+    });
+    expectSafeRequestResponse(response.body);
+
+    const requestDb = await prisma.applicantAdmissionRequest.findUniqueOrThrow({
+      where: { id: noDocsRequestId },
+    });
+    createdApplicationIds.push(requestDb.applicationId as string);
+    const application = await prisma.application.findUniqueOrThrow({
+      where: { id: requestDb.applicationId as string },
+    });
+    expect(application.status).toBe(AdmissionApplicationStatus.SUBMITTED);
+    expect(application.source).toBe(AdmissionApplicationSource.IN_APP);
+  });
+
+  it('lists and reads only the current applicant submitted requests', async () => {
+    const otherDraft = await createDraftRequest(otherApplicantAuth, {
+      schoolId: docsSchoolId,
+      childFirstName: 'Mona',
+    });
+    otherApplicantRequestId = otherDraft.id;
+
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}`)
+      .get(`${GLOBAL_PREFIX}/applicant-portal/requests`)
+      .query({ page: 1, limit: 100 })
+      .set('Authorization', bearer(applicantAuth))
+      .expect(200)
+      .expect(({ body }) => {
+        const serialized = JSON.stringify(body);
+        expect(serialized).toContain(docsRequestId);
+        expect(serialized).toContain(noDocsRequestId);
+        expect(serialized).not.toContain(otherApplicantRequestId);
+        expect(body.data).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: docsRequestId,
+              status: 'needs_action',
+            }),
+            expect.objectContaining({
+              id: noDocsRequestId,
+              status: 'submitted',
+            }),
+          ]),
+        );
+        expectSafeRequestResponse(body);
+      });
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${docsRequestId}`)
       .set('Authorization', bearer(applicantAuth))
       .expect(200)
       .expect(({ body }) => {
         expect(body).toMatchObject({
-          id: applicantRequestId,
-          childFullName: 'Layla Hassan',
-          missingItemsCount: 2,
+          id: docsRequestId,
+          status: 'needs_action',
         });
         expectSafeRequestResponse(body);
       });
@@ -455,9 +406,16 @@ describe('Applicant Portal request ownership (e2e)', () => {
       )
       .set('Authorization', bearer(applicantAuth))
       .expect(404);
+
+    await submitRequest(applicantAuth, otherApplicantRequestId, 404);
   });
 
-  it('rejects parent, student, teacher, school, and platform users from request routes', async () => {
+  it('rejects parent, student, teacher, school, and platform users from submit', async () => {
+    const draft = await createDraftRequest(applicantAuth, {
+      schoolId: docsSchoolId,
+      childFirstName: 'Nour',
+    });
+
     for (const auth of [
       parentAuth,
       studentAuth,
@@ -465,44 +423,36 @@ describe('Applicant Portal request ownership (e2e)', () => {
       schoolUserAuth,
       platformAuth,
     ]) {
-      await request(app.getHttpServer())
-        .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-        .set('Authorization', bearer(auth))
-        .send({ schoolId: activeSchoolId, childFirstName: 'Mona' })
-        .expect(403);
-      await request(app.getHttpServer())
-        .get(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-        .set('Authorization', bearer(auth))
-        .expect(403);
-      await request(app.getHttpServer())
-        .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}`)
-        .set('Authorization', bearer(auth))
-        .expect(403);
+      await submitRequest(auth, draft.id, 403);
     }
   });
 
-  it('rejects draft creation for unsafe schools and unsafe organizations', async () => {
-    for (const schoolId of [
-      suspendedSchoolId,
-      archivedSchoolId,
-      deletedSchoolId,
-      suspendedOrganizationSchoolId,
-      archivedOrganizationSchoolId,
-      deletedOrganizationSchoolId,
-      randomUUID(),
-    ]) {
-      await request(app.getHttpServer())
-        .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-        .set('Authorization', bearer(applicantAuth))
-        .send({ schoolId, childFirstName: 'Mona' })
-        .expect(404);
-    }
+  it('rejects submit when the selected school or organization becomes unsafe', async () => {
+    const schoolUnsafeDraft = await createDraftRequest(applicantAuth, {
+      schoolId: schoolToSuspendId,
+      childFirstName: 'Farah',
+    });
+    await prisma.school.update({
+      where: { id: schoolToSuspendId },
+      data: { status: SchoolStatus.SUSPENDED },
+    });
+    await submitRequest(applicantAuth, schoolUnsafeDraft.id, 404);
+
+    const orgUnsafeDraft = await createDraftRequest(applicantAuth, {
+      schoolId: orgUnsafeSchoolId,
+      childFirstName: 'Youssef',
+    });
+    await prisma.organization.update({
+      where: { id: organizationToSuspendId },
+      data: { status: OrganizationStatus.SUSPENDED },
+    });
+    await submitRequest(applicantAuth, orgUnsafeDraft.id, 404);
   });
 
-  it('keeps required documents endpoint working and keeps upload/document routes absent', async () => {
+  it('keeps required documents, draft routes, and deferred routes behavior intact', async () => {
     await request(app.getHttpServer())
       .get(
-        `${GLOBAL_PREFIX}/applicant-portal/schools/${activeSchoolId}/admission-required-documents`,
+        `${GLOBAL_PREFIX}/applicant-portal/schools/${docsSchoolId}/admission-required-documents`,
       )
       .expect(200)
       .expect(({ body }) => {
@@ -516,17 +466,25 @@ describe('Applicant Portal request ownership (e2e)', () => {
               title: 'Parent ID',
               isMandatory: true,
             }),
-            expect.objectContaining({
-              title: 'Optional family photo',
-              isMandatory: false,
-            }),
           ]),
         );
       });
 
+    const draft = await createDraftRequest(applicantAuth, {
+      schoolId: docsSchoolId,
+      childFirstName: 'Salma',
+    });
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${draft.id}`)
+      .set('Authorization', bearer(applicantAuth))
+      .expect(200);
+
     for (const route of [
-      `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents`,
+      `${GLOBAL_PREFIX}/applicant-portal/requests/${draft.id}/documents`,
       `${GLOBAL_PREFIX}/applicant-portal/uploads`,
+      `${GLOBAL_PREFIX}/applicant-portal/requests/${draft.id}/convert-to-parent`,
+      `${GLOBAL_PREFIX}/applicant-portal/conversions`,
     ]) {
       await request(app.getHttpServer())
         .post(route)
@@ -535,9 +493,12 @@ describe('Applicant Portal request ownership (e2e)', () => {
     }
 
     await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents`,
-      )
+      .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${draft.id}/documents`)
+      .set('Authorization', bearer(applicantAuth))
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/applicant-portal/requests/${draft.id}`)
       .set('Authorization', bearer(applicantAuth))
       .expect(404);
   });
@@ -546,14 +507,12 @@ describe('Applicant Portal request ownership (e2e)', () => {
     slug: string;
     name: string;
     status: OrganizationStatus;
-    deletedAt?: Date | null;
   }): Promise<{ id: string }> {
     const organization = await prisma.organization.create({
       data: {
         slug: input.slug,
         name: input.name,
         status: input.status,
-        deletedAt: input.deletedAt ?? null,
       },
       select: { id: true },
     });
@@ -570,7 +529,6 @@ describe('Applicant Portal request ownership (e2e)', () => {
     shortName?: string | null;
     city: string;
     country?: string | null;
-    deletedAt?: Date | null;
   }): Promise<string> {
     const school = await prisma.school.create({
       data: {
@@ -578,7 +536,6 @@ describe('Applicant Portal request ownership (e2e)', () => {
         slug: input.slug,
         name: input.name,
         status: input.status,
-        deletedAt: input.deletedAt ?? null,
       },
       select: { id: true },
     });
@@ -603,7 +560,7 @@ describe('Applicant Portal request ownership (e2e)', () => {
     const academicYear = await prisma.academicYear.create({
       data: {
         schoolId,
-        nameAr: `${marker} عام ٢٠٢٦/٢٠٢٧`,
+        nameAr: `${marker} year`,
         nameEn: `${marker} 2026/2027`,
         startDate: new Date('2026-09-01T00:00:00.000Z'),
         endDate: new Date('2027-06-30T00:00:00.000Z'),
@@ -619,7 +576,7 @@ describe('Applicant Portal request ownership (e2e)', () => {
     const stage = await prisma.stage.create({
       data: {
         schoolId,
-        nameAr: `${marker} ابتدائي`,
+        nameAr: `${marker} primary`,
         nameEn: `${marker} Primary`,
         sortOrder: 1,
       },
@@ -637,7 +594,7 @@ describe('Applicant Portal request ownership (e2e)', () => {
       data: {
         schoolId,
         stageId,
-        nameAr: `${marker} الصف الرابع`,
+        nameAr: `${marker} grade four`,
         nameEn: `${marker} Grade 4`,
         sortOrder: 1,
       },
@@ -674,14 +631,11 @@ describe('Applicant Portal request ownership (e2e)', () => {
     createdDocumentIds.push(document.id);
   }
 
-  async function createApplicantAccount(label: string): Promise<{
-    userId: string;
-    applicantId: string;
-  }> {
+  async function createApplicantAccount(label: string): Promise<void> {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/applicant-portal/accounts`)
       .send({
-        fullName: `Sprint 18F ${label} Applicant`,
+        fullName: `Sprint 18G ${label} Applicant`,
         email: `${marker}-${label}@example.test`,
         password: PASSWORD,
         phoneNumber: '+20 100 000 0000',
@@ -692,11 +646,37 @@ describe('Applicant Portal request ownership (e2e)', () => {
 
     createdUserIds.push(response.body.userId);
     createdProfileIds.push(response.body.applicantId);
+  }
 
-    return {
-      userId: response.body.userId,
-      applicantId: response.body.applicantId,
-    };
+  async function createDraftRequest(
+    auth: AuthTokens,
+    body: {
+      schoolId: string;
+      childFirstName: string;
+      childLastName?: string;
+      requestedAcademicYearId?: string;
+      requestedGradeId?: string;
+    },
+  ): Promise<{ id: string }> {
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
+      .set('Authorization', bearer(auth))
+      .send(body)
+      .expect(201);
+
+    createdRequestIds.push(response.body.id);
+    return { id: response.body.id };
+  }
+
+  async function submitRequest(
+    auth: AuthTokens,
+    requestId: string,
+    expectedStatus: number,
+  ) {
+    return request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/applicant-portal/requests/${requestId}/submit`)
+      .set('Authorization', bearer(auth))
+      .expect(expectedStatus);
   }
 
   async function createUserWithMembership(
@@ -708,7 +688,7 @@ describe('Applicant Portal request ownership (e2e)', () => {
       data: {
         userId,
         organizationId,
-        schoolId: activeSchoolId,
+        schoolId: docsSchoolId,
         roleId,
         userType,
         status: MembershipStatus.ACTIVE,
@@ -723,7 +703,7 @@ describe('Applicant Portal request ownership (e2e)', () => {
     const user = await prisma.user.create({
       data: {
         email: `${marker}-${label}@example.test`,
-        firstName: 'Sprint18F',
+        firstName: 'Sprint18G',
         lastName: label,
         userType,
         status: UserStatus.ACTIVE,
@@ -789,22 +769,23 @@ describe('Applicant Portal request ownership (e2e)', () => {
       'organizationId',
       'applicantUserId',
       'applicantProfileId',
+      'applicationId',
       'deletedAt',
       'submittedAt',
-      'applicationId',
       'DOCUMENTS_PENDING',
+      'SUBMITTED',
       'DRAFT',
+      'IN_APP',
+      'objectKey',
+      'bucket',
+      'signedUrl',
       'featureControl',
-      'featureControls',
       'entitlement',
       'billing',
       'subscription',
       'plan',
       'quota',
       'staff',
-      'studentCount',
-      'objectKey',
-      'bucket',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
@@ -860,7 +841,15 @@ describe('Applicant Portal request ownership (e2e)', () => {
       where: {
         OR: [
           { actorId: { in: createdUserIds } },
-          { resourceId: { in: [...createdProfileIds, ...createdRequestIds] } },
+          {
+            resourceId: {
+              in: [
+                ...createdProfileIds,
+                ...createdRequestIds,
+                ...createdApplicationIds,
+              ],
+            },
+          },
           { schoolId: { in: createdSchoolIds } },
           { organizationId: { in: createdOrganizationIds } },
         ],
@@ -868,6 +857,9 @@ describe('Applicant Portal request ownership (e2e)', () => {
     });
     await prisma.applicantAdmissionRequest.deleteMany({
       where: { id: { in: createdRequestIds } },
+    });
+    await prisma.application.deleteMany({
+      where: { id: { in: createdApplicationIds } },
     });
     await prisma.applicantProfile.deleteMany({
       where: { id: { in: createdProfileIds } },

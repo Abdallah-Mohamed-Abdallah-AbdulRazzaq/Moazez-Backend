@@ -152,7 +152,7 @@ describe('Applicant Portal school discovery (e2e)', () => {
     }
   });
 
-  it('registers public discovery routes and keeps later request routes absent', async () => {
+  it('registers public discovery routes and keeps later document routes absent', async () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain('GET /api/v1/applicant-portal/schools');
@@ -165,9 +165,11 @@ describe('Applicant Portal school discovery (e2e)', () => {
     expect(routes).toContain(
       'GET /api/v1/applicant-portal/requests/:requestId',
     );
+    expect(routes).toContain(
+      'POST /api/v1/applicant-portal/requests/:requestId/submit',
+    );
 
     for (const deferredRoute of [
-      'POST /api/v1/applicant-portal/requests/:requestId/submit',
       'POST /api/v1/applicant-portal/requests/:requestId/documents',
       'GET /api/v1/applicant-portal/requests/:requestId/documents',
     ]) {
@@ -194,7 +196,7 @@ describe('Applicant Portal school discovery (e2e)', () => {
       .expect(401);
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/submit`)
-      .expect(404);
+      .expect(401);
   });
 
   it('lists only active discoverable schools without authentication', async () => {

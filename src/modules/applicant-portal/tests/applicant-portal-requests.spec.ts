@@ -1,4 +1,6 @@
 import {
+  AdmissionApplicationSource,
+  AdmissionApplicationStatus,
   ApplicantAdmissionRequestStatus,
   AuditOutcome,
   UserStatus,
@@ -9,6 +11,7 @@ import { ApplicantPortalAccessService } from '../application/applicant-portal-ac
 import { CreateApplicantRequestUseCase } from '../application/create-applicant-request.use-case';
 import { GetApplicantRequestUseCase } from '../application/get-applicant-request.use-case';
 import { ListApplicantRequestsUseCase } from '../application/list-applicant-requests.use-case';
+import { SubmitApplicantRequestUseCase } from '../application/submit-applicant-request.use-case';
 import { normalizeCreateApplicantRequestInput } from '../domain/applicant-request.inputs';
 import {
   ApplicantAdmissionRequestRecord,
@@ -22,6 +25,7 @@ const APPLICANT_PROFILE_ID = '00000000-0000-0000-0000-000000000002';
 const SCHOOL_ID = '00000000-0000-0000-0000-000000000101';
 const ORGANIZATION_ID = '00000000-0000-0000-0000-000000000102';
 const REQUEST_ID = '00000000-0000-0000-0000-000000000201';
+const APPLICATION_ID = '00000000-0000-0000-0000-000000000501';
 const GRADE_ID = '00000000-0000-0000-0000-000000000301';
 const ACADEMIC_YEAR_ID = '00000000-0000-0000-0000-000000000401';
 
@@ -259,6 +263,125 @@ describe('Applicant Portal request ownership foundation', () => {
     });
   });
 
+  it('submits an own draft request and derives needs-action response status', async () => {
+    const repository = mockApplicantRepository();
+    repository.submitApplicantAdmissionRequest.mockResolvedValue({
+      kind: 'submitted',
+      request: requestRecordFixture({
+        status: ApplicantAdmissionRequestStatus.SUBMITTED,
+        application: { status: AdmissionApplicationStatus.DOCUMENTS_PENDING },
+      }),
+      schoolId: SCHOOL_ID,
+      organizationId: ORGANIZATION_ID,
+      missingItemsCount: 2,
+      createdApplication: true,
+    });
+    const authRepository = mockAuthRepository();
+    const useCase = new SubmitApplicantRequestUseCase(
+      mockAccessService(),
+      repository,
+      authRepository,
+    );
+
+    const response = await useCase.execute({
+      requestId: REQUEST_ID,
+      ipAddress: '127.0.0.1',
+      userAgent: 'jest',
+    });
+
+    expect(repository.submitApplicantAdmissionRequest).toHaveBeenCalledWith({
+      applicantUserId: APPLICANT_USER_ID,
+      requestId: REQUEST_ID,
+      submittedAt: expect.any(Date),
+    });
+    expect(authRepository.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: APPLICANT_USER_ID,
+        userType: UserType.APPLICANT,
+        organizationId: ORGANIZATION_ID,
+        schoolId: SCHOOL_ID,
+        module: 'applicant_portal',
+        action: 'applicant.request.submit',
+        resourceType: 'applicant_admission_request',
+        resourceId: REQUEST_ID,
+        outcome: AuditOutcome.SUCCESS,
+        after: {
+          status: 'needs_action',
+          missingItemsCount: 2,
+          applicationCreated: true,
+        },
+      }),
+    );
+    expect(response).toMatchObject({
+      id: REQUEST_ID,
+      status: 'needs_action',
+      missingItemsCount: 2,
+      progressValue: 40,
+    });
+  });
+
+  it('returns an already submitted request without duplicate submit audit work', async () => {
+    const repository = mockApplicantRepository();
+    repository.submitApplicantAdmissionRequest.mockResolvedValue({
+      kind: 'submitted',
+      request: requestRecordFixture({
+        status: ApplicantAdmissionRequestStatus.SUBMITTED,
+        application: { status: AdmissionApplicationStatus.SUBMITTED },
+      }),
+      schoolId: SCHOOL_ID,
+      organizationId: ORGANIZATION_ID,
+      missingItemsCount: 0,
+      createdApplication: false,
+    });
+    const authRepository = mockAuthRepository();
+    const useCase = new SubmitApplicantRequestUseCase(
+      mockAccessService(),
+      repository,
+      authRepository,
+    );
+
+    await expect(
+      useCase.execute({ requestId: REQUEST_ID }),
+    ).resolves.toMatchObject({
+      id: REQUEST_ID,
+      status: 'submitted',
+      missingItemsCount: 0,
+      progressValue: 50,
+    });
+    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('keeps cross-applicant, unsafe-school, and non-draft submit failures safe', async () => {
+    const repository = mockApplicantRepository();
+    const useCase = new SubmitApplicantRequestUseCase(
+      mockAccessService(),
+      repository,
+      mockAuthRepository(),
+    );
+
+    repository.submitApplicantAdmissionRequest.mockResolvedValueOnce({
+      kind: 'not_found',
+    });
+    await expect(useCase.execute({ requestId: REQUEST_ID })).rejects.toMatchObject({
+      code: 'not_found',
+    });
+
+    repository.submitApplicantAdmissionRequest.mockResolvedValueOnce({
+      kind: 'unsafe_school',
+    });
+    await expect(useCase.execute({ requestId: REQUEST_ID })).rejects.toMatchObject({
+      code: 'not_found',
+    });
+
+    repository.submitApplicantAdmissionRequest.mockResolvedValueOnce({
+      kind: 'invalid_state',
+    });
+    await expect(useCase.execute({ requestId: REQUEST_ID })).rejects.toMatchObject({
+      code: 'conflict',
+      httpStatus: 409,
+    });
+  });
+
   it('presents request details without leaking internal tenant or applicant fields', () => {
     const response = presentApplicantRequestDetail(
       {
@@ -320,6 +443,58 @@ describe('Applicant Portal request ownership foundation', () => {
       'status":"DRAFT',
     ]) {
       expect(serialized).not.toContain(forbidden);
+    }
+  });
+
+  it('maps linked Admissions statuses to applicant-facing request statuses', () => {
+    const cases: Array<{
+      applicationStatus: AdmissionApplicationStatus;
+      expectedStatus: string;
+      expectedProgress: number;
+    }> = [
+      {
+        applicationStatus: AdmissionApplicationStatus.DOCUMENTS_PENDING,
+        expectedStatus: 'needs_action',
+        expectedProgress: 40,
+      },
+      {
+        applicationStatus: AdmissionApplicationStatus.SUBMITTED,
+        expectedStatus: 'submitted',
+        expectedProgress: 50,
+      },
+      {
+        applicationStatus: AdmissionApplicationStatus.UNDER_REVIEW,
+        expectedStatus: 'under_review',
+        expectedProgress: 70,
+      },
+      {
+        applicationStatus: AdmissionApplicationStatus.WAITLISTED,
+        expectedStatus: 'waitlisted',
+        expectedProgress: 80,
+      },
+      {
+        applicationStatus: AdmissionApplicationStatus.ACCEPTED,
+        expectedStatus: 'accepted',
+        expectedProgress: 100,
+      },
+      {
+        applicationStatus: AdmissionApplicationStatus.REJECTED,
+        expectedStatus: 'rejected',
+        expectedProgress: 100,
+      },
+    ];
+
+    for (const testCase of cases) {
+      const response = presentApplicantRequestDetail(
+        requestRecordFixture({
+          status: ApplicantAdmissionRequestStatus.SUBMITTED,
+          application: { status: testCase.applicationStatus },
+        }),
+        2,
+      );
+
+      expect(response.status).toBe(testCase.expectedStatus);
+      expect(response.progressValue).toBe(testCase.expectedProgress);
     }
   });
 
@@ -396,6 +571,120 @@ describe('Applicant Portal request ownership foundation', () => {
     expect(prisma.enrollment.create).not.toHaveBeenCalled();
     expect(prisma.membership.create).not.toHaveBeenCalled();
   });
+
+  it('transactionally submits a draft by creating exactly one Admissions Application', async () => {
+    const submittedAt = new Date('2026-06-10T11:00:00.000Z');
+    const tx = mockSubmitTransactionClient({
+      request: submitRequestRecordFixture(),
+      detail: requestRecordFixture({
+        status: ApplicantAdmissionRequestStatus.SUBMITTED,
+        application: { status: AdmissionApplicationStatus.DOCUMENTS_PENDING },
+      }),
+      missingItemsCount: 2,
+    });
+    const prisma = {
+      $transaction: jest.fn((callback) => callback(tx)),
+    };
+    const repository = new ApplicantPortalRepository(prisma as never);
+
+    const result = await repository.submitApplicantAdmissionRequest({
+      applicantUserId: APPLICANT_USER_ID,
+      requestId: REQUEST_ID,
+      submittedAt,
+    });
+
+    expect(result).toMatchObject({
+      kind: 'submitted',
+      missingItemsCount: 2,
+      createdApplication: true,
+    });
+    expect(tx.application.create).toHaveBeenCalledTimes(1);
+    expect(tx.application.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          schoolId: SCHOOL_ID,
+          organizationId: ORGANIZATION_ID,
+          studentName: 'Layla Hassan',
+          requestedAcademicYearId: ACADEMIC_YEAR_ID,
+          requestedGradeId: GRADE_ID,
+          source: AdmissionApplicationSource.IN_APP,
+          status: AdmissionApplicationStatus.DOCUMENTS_PENDING,
+          submittedAt,
+        }),
+      }),
+    );
+    expect(tx.applicantAdmissionRequest.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: REQUEST_ID },
+        data: {
+          status: ApplicantAdmissionRequestStatus.SUBMITTED,
+          submittedAt,
+          applicationId: APPLICATION_ID,
+        },
+      }),
+    );
+    expect(tx.applicationDocument.create).not.toHaveBeenCalled();
+    expect(tx.file.create).not.toHaveBeenCalled();
+    expect(tx.student.create).not.toHaveBeenCalled();
+    expect(tx.guardian.create).not.toHaveBeenCalled();
+    expect(tx.studentGuardian.create).not.toHaveBeenCalled();
+    expect(tx.enrollment.create).not.toHaveBeenCalled();
+    expect(tx.membership.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps repeated submit idempotent without creating duplicate Applications', async () => {
+    const tx = mockSubmitTransactionClient({
+      request: submitRequestRecordFixture({
+        status: ApplicantAdmissionRequestStatus.SUBMITTED,
+        submittedAt: new Date('2026-06-10T11:00:00.000Z'),
+        applicationId: APPLICATION_ID,
+      }),
+      detail: requestRecordFixture({
+        status: ApplicantAdmissionRequestStatus.SUBMITTED,
+        application: { status: AdmissionApplicationStatus.SUBMITTED },
+      }),
+      missingItemsCount: 0,
+    });
+    const prisma = {
+      $transaction: jest.fn((callback) => callback(tx)),
+    };
+    const repository = new ApplicantPortalRepository(prisma as never);
+
+    await expect(
+      repository.submitApplicantAdmissionRequest({
+        applicantUserId: APPLICANT_USER_ID,
+        requestId: REQUEST_ID,
+        submittedAt: new Date('2026-06-10T11:05:00.000Z'),
+      }),
+    ).resolves.toMatchObject({
+      kind: 'submitted',
+      missingItemsCount: 0,
+      createdApplication: false,
+    });
+
+    expect(tx.application.create).not.toHaveBeenCalled();
+    expect(tx.applicantAdmissionRequest.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsafe school revalidation inside the submit transaction', async () => {
+    const tx = mockSubmitTransactionClient({
+      request: submitRequestRecordFixture(),
+      school: null,
+    });
+    const prisma = {
+      $transaction: jest.fn((callback) => callback(tx)),
+    };
+    const repository = new ApplicantPortalRepository(prisma as never);
+
+    await expect(
+      repository.submitApplicantAdmissionRequest({
+        applicantUserId: APPLICANT_USER_ID,
+        requestId: REQUEST_ID,
+        submittedAt: new Date('2026-06-10T11:00:00.000Z'),
+      }),
+    ).resolves.toEqual({ kind: 'unsafe_school' });
+    expect(tx.application.create).not.toHaveBeenCalled();
+  });
 });
 
 function requestRecordFixture(
@@ -404,6 +693,7 @@ function requestRecordFixture(
   return {
     id: REQUEST_ID,
     status: ApplicantAdmissionRequestStatus.DRAFT,
+    application: null,
     childFirstName: 'Layla',
     childLastName: 'Hassan',
     childFullName: 'Layla Hassan',
@@ -436,6 +726,81 @@ function requestRecordFixture(
     },
     ...overrides,
   } as ApplicantAdmissionRequestRecord;
+}
+
+function submitRequestRecordFixture(
+  overrides?: Partial<{
+    id: string;
+    applicantUserId: string;
+    schoolId: string;
+    organizationId: string;
+    requestedAcademicYearId: string | null;
+    requestedGradeId: string | null;
+    childFullName: string;
+    status: ApplicantAdmissionRequestStatus;
+    submittedAt: Date | null;
+    applicationId: string | null;
+  }>,
+) {
+  return {
+    id: REQUEST_ID,
+    applicantUserId: APPLICANT_USER_ID,
+    schoolId: SCHOOL_ID,
+    organizationId: ORGANIZATION_ID,
+    requestedAcademicYearId: ACADEMIC_YEAR_ID,
+    requestedGradeId: GRADE_ID,
+    childFullName: 'Layla Hassan',
+    status: ApplicantAdmissionRequestStatus.DRAFT,
+    submittedAt: null,
+    applicationId: null,
+    ...overrides,
+  };
+}
+
+function mockSubmitTransactionClient(input: {
+  request: ReturnType<typeof submitRequestRecordFixture>;
+  detail?: ApplicantAdmissionRequestRecord;
+  school?: { id: string; organizationId: string } | null;
+  missingItemsCount?: number;
+}) {
+  return {
+    $executeRaw: jest.fn(),
+    applicantAdmissionRequest: {
+      findFirst: jest.fn().mockResolvedValue(input.request),
+      update: jest.fn().mockResolvedValue({ id: REQUEST_ID }),
+      findUnique: jest
+        .fn()
+        .mockResolvedValue(input.detail ?? requestRecordFixture()),
+    },
+    school: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue(
+          input.school === undefined
+            ? { id: SCHOOL_ID, organizationId: ORGANIZATION_ID }
+            : input.school,
+        ),
+    },
+    academicYear: {
+      findFirst: jest.fn().mockResolvedValue({ id: ACADEMIC_YEAR_ID }),
+    },
+    grade: {
+      findFirst: jest.fn().mockResolvedValue({ id: GRADE_ID }),
+    },
+    admissionRequiredDocument: {
+      count: jest.fn().mockResolvedValue(input.missingItemsCount ?? 2),
+    },
+    application: {
+      create: jest.fn().mockResolvedValue({ id: APPLICATION_ID }),
+    },
+    applicationDocument: { create: jest.fn() },
+    file: { create: jest.fn() },
+    student: { create: jest.fn() },
+    guardian: { create: jest.fn() },
+    studentGuardian: { create: jest.fn() },
+    enrollment: { create: jest.fn() },
+    membership: { create: jest.fn() },
+  };
 }
 
 function mockAccessService(): jest.Mocked<ApplicantPortalAccessService> {
@@ -471,6 +836,7 @@ function mockApplicantRepository(): jest.Mocked<ApplicantPortalRepository> {
     findAcademicYearForSchool: jest.fn(),
     findGradeForSchool: jest.fn(),
     createApplicantAdmissionRequest: jest.fn(),
+    submitApplicantAdmissionRequest: jest.fn(),
     countMandatoryRequiredDocumentsForSchool: jest.fn(),
     listApplicantAdmissionRequestsForApplicant: jest.fn(),
     findApplicantAdmissionRequestForApplicant: jest.fn(),

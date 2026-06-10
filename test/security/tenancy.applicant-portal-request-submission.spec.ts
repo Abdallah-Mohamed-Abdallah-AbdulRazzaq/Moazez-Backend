@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AdmissionApplicationStatus,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
@@ -15,7 +16,7 @@ import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 
 const GLOBAL_PREFIX = '/api/v1';
-const PASSWORD = 'Applicant18FSecurity!';
+const PASSWORD = 'Applicant18GSecurity!';
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
   memoryCost: 19 * 1024,
@@ -40,16 +41,15 @@ type SideEffectSnapshot = {
   enrollments: number;
 };
 
-describe('Applicant Portal request ownership tenancy (security)', () => {
+describe('Applicant Portal request submission tenancy (security)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
 
   let organizationId = '';
+  let organizationToSuspendId = '';
   let activeSchoolId = '';
-  let suspendedSchoolId = '';
-  let deletedSchoolId = '';
-  let suspendedOrganizationSchoolId = '';
-  let deletedOrganizationSchoolId = '';
+  let schoolToSuspendId = '';
+  let orgUnsafeSchoolId = '';
   let roleId = '';
   let applicantRequestId = '';
   let otherApplicantRequestId = '';
@@ -63,12 +63,13 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
   let platformAuth: AuthTokens;
 
   const suffix = randomUUID().split('-')[0];
-  const marker = `s18f-security-${suffix}`;
+  const marker = `s18g-security-${suffix}`;
   const createdOrganizationIds: string[] = [];
   const createdSchoolIds: string[] = [];
   const createdSchoolProfileIds: string[] = [];
   const createdDocumentIds: string[] = [];
   const createdRequestIds: string[] = [];
+  const createdApplicationIds: string[] = [];
   const createdUserIds: string[] = [];
   const createdProfileIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -79,21 +80,16 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
 
     const activeOrganization = await createOrganization({
       slug: `${marker}-active-org`,
-      name: `Sprint 18F Security Active Org ${suffix}`,
+      name: `Sprint 18G Security Active Org ${suffix}`,
       status: OrganizationStatus.ACTIVE,
     });
     organizationId = activeOrganization.id;
-    const suspendedOrganization = await createOrganization({
-      slug: `${marker}-suspended-org`,
-      name: `Sprint 18F Security Suspended Org ${suffix}`,
-      status: OrganizationStatus.SUSPENDED,
-    });
-    const deletedOrganization = await createOrganization({
-      slug: `${marker}-deleted-org`,
-      name: `Sprint 18F Security Deleted Org ${suffix}`,
+    const organizationToSuspend = await createOrganization({
+      slug: `${marker}-org-to-suspend`,
+      name: `Sprint 18G Security Org To Suspend ${suffix}`,
       status: OrganizationStatus.ACTIVE,
-      deletedAt: new Date(),
     });
+    organizationToSuspendId = organizationToSuspend.id;
 
     activeSchoolId = await createSchoolWithProfile({
       organizationId,
@@ -102,34 +98,19 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
       status: SchoolStatus.ACTIVE,
       schoolName: `${marker} Active Public`,
     });
-    suspendedSchoolId = await createSchoolWithProfile({
+    schoolToSuspendId = await createSchoolWithProfile({
       organizationId,
-      slug: `${marker}-suspended`,
-      name: `${marker} Suspended Academy`,
-      status: SchoolStatus.SUSPENDED,
-      schoolName: `${marker} Suspended Public`,
-    });
-    deletedSchoolId = await createSchoolWithProfile({
-      organizationId,
-      slug: `${marker}-deleted`,
-      name: `${marker} Deleted Academy`,
+      slug: `${marker}-school-to-suspend`,
+      name: `${marker} School To Suspend`,
       status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} Deleted Public`,
-      deletedAt: new Date(),
+      schoolName: `${marker} School To Suspend Public`,
     });
-    suspendedOrganizationSchoolId = await createSchoolWithProfile({
-      organizationId: suspendedOrganization.id,
-      slug: `${marker}-suspended-org-school`,
-      name: `${marker} Suspended Org Academy`,
+    orgUnsafeSchoolId = await createSchoolWithProfile({
+      organizationId: organizationToSuspendId,
+      slug: `${marker}-org-unsafe-school`,
+      name: `${marker} Org Unsafe School`,
       status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} Suspended Org Public`,
-    });
-    deletedOrganizationSchoolId = await createSchoolWithProfile({
-      organizationId: deletedOrganization.id,
-      slug: `${marker}-deleted-org-school`,
-      name: `${marker} Deleted Org Academy`,
-      status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} Deleted Org Public`,
+      schoolName: `${marker} Org Unsafe Public`,
     });
 
     await createRequiredDocument('Birth certificate', true);
@@ -143,7 +124,7 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
         data: {
           schoolId: activeSchoolId,
           key: `${marker}-role`,
-          name: `Sprint 18F Security Role ${suffix}`,
+          name: `Sprint 18G Security Role ${suffix}`,
           isSystem: false,
         },
         select: { id: true },
@@ -194,94 +175,92 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
     }
   });
 
-  it('lets applicants access only their own draft requests and leaks no tenant fields', async () => {
+  it('lets an applicant submit only their own request and leaks no internals', async () => {
+    applicantRequestId = (
+      await createDraftRequest(applicantAuth, activeSchoolId, 'Layla')
+    ).id;
+    otherApplicantRequestId = (
+      await createDraftRequest(otherApplicantAuth, activeSchoolId, 'Omar')
+    ).id;
+
     const before = await getSideEffectSnapshot();
 
-    const createResponse = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-      .set('Authorization', bearer(applicantAuth))
-      .send({
-        schoolId: activeSchoolId,
-        childFirstName: 'Layla',
-        childLastName: 'Hassan',
-      })
-      .expect(201);
-    applicantRequestId = createResponse.body.id;
-    createdRequestIds.push(applicantRequestId);
-
-    expect(createResponse.body).toMatchObject({
-      id: applicantRequestId,
-      status: 'draft',
-      school: {
-        id: activeSchoolId,
-        name: `${marker} Active Public`,
-      },
-      childFullName: 'Layla Hassan',
-      missingItemsCount: 2,
-      progressValue: 25,
-    });
-    expectNoInternalTenantFields(createResponse.body);
-
-    const after = await getSideEffectSnapshot();
-    expect(after).toEqual(before);
-
-    const otherCreateResponse = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-      .set('Authorization', bearer(otherApplicantAuth))
-      .send({
-        schoolId: activeSchoolId,
-        childFirstName: 'Omar',
-      })
-      .expect(201);
-    otherApplicantRequestId = otherCreateResponse.body.id;
-    createdRequestIds.push(otherApplicantRequestId);
-
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}`)
+    const response = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/submit`,
+      )
       .set('Authorization', bearer(applicantAuth))
       .expect(200);
+
+    expect(response.body).toMatchObject({
+      id: applicantRequestId,
+      status: 'needs_action',
+      missingItemsCount: 2,
+      progressValue: 40,
+    });
+    expectNoInternalTenantFields(response.body);
+
+    const requestDb = await prisma.applicantAdmissionRequest.findUniqueOrThrow({
+      where: { id: applicantRequestId },
+    });
+    createdApplicationIds.push(requestDb.applicationId as string);
+    const application = await prisma.application.findUniqueOrThrow({
+      where: { id: requestDb.applicationId as string },
+    });
+    expect(application.status).toBe(
+      AdmissionApplicationStatus.DOCUMENTS_PENDING,
+    );
+    expect(application.schoolId).toBe(activeSchoolId);
+    expect(application.organizationId).toBe(organizationId);
+
+    const after = await getSideEffectSnapshot();
+    expect(after).toEqual({ ...before, applications: before.applications + 1 });
+
     await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${otherApplicantRequestId}`,
+      .post(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${otherApplicantRequestId}/submit`,
+      )
+      .set('Authorization', bearer(applicantAuth))
+      .expect(404);
+  });
+
+  it('rejects submit to unsafe schools and organizations', async () => {
+    const schoolUnsafeDraft = await createDraftRequest(
+      applicantAuth,
+      schoolToSuspendId,
+      'Farah',
+    );
+    await prisma.school.update({
+      where: { id: schoolToSuspendId },
+      data: { status: SchoolStatus.SUSPENDED },
+    });
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${schoolUnsafeDraft.id}/submit`,
       )
       .set('Authorization', bearer(applicantAuth))
       .expect(404);
 
-    const listResponse = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/applicant-portal/requests`)
+    const orgUnsafeDraft = await createDraftRequest(
+      applicantAuth,
+      orgUnsafeSchoolId,
+      'Youssef',
+    );
+    await prisma.organization.update({
+      where: { id: organizationToSuspendId },
+      data: { deletedAt: new Date() },
+    });
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${orgUnsafeDraft.id}/submit`,
+      )
       .set('Authorization', bearer(applicantAuth))
-      .expect(200);
-
-    expect(JSON.stringify(listResponse.body)).toContain(applicantRequestId);
-    expect(JSON.stringify(listResponse.body)).not.toContain(
-      otherApplicantRequestId,
-    );
-    expectNoInternalTenantFields(listResponse.body);
+      .expect(404);
   });
 
-  it('rejects unsafe school targets without creating a request', async () => {
-    const beforeCount = await prisma.applicantAdmissionRequest.count();
+  it('rejects non-applicant actors and school users from submit', async () => {
+    const draft = await createDraftRequest(applicantAuth, activeSchoolId, 'Nour');
 
-    for (const schoolId of [
-      suspendedSchoolId,
-      deletedSchoolId,
-      suspendedOrganizationSchoolId,
-      deletedOrganizationSchoolId,
-      randomUUID(),
-    ]) {
-      await request(app.getHttpServer())
-        .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-        .set('Authorization', bearer(applicantAuth))
-        .send({ schoolId, childFirstName: 'Mona' })
-        .expect(404);
-    }
-
-    await expect(prisma.applicantAdmissionRequest.count()).resolves.toBe(
-      beforeCount,
-    );
-  });
-
-  it('rejects parent, student, teacher, school, and platform users from applicant request routes', async () => {
     for (const auth of [
       parentAuth,
       studentAuth,
@@ -290,22 +269,13 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
       platformAuth,
     ]) {
       await request(app.getHttpServer())
-        .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-        .set('Authorization', bearer(auth))
-        .send({ schoolId: activeSchoolId, childFirstName: 'Mona' })
-        .expect(403);
-      await request(app.getHttpServer())
-        .get(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-        .set('Authorization', bearer(auth))
-        .expect(403);
-      await request(app.getHttpServer())
-        .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}`)
+        .post(`${GLOBAL_PREFIX}/applicant-portal/requests/${draft.id}/submit`)
         .set('Authorization', bearer(auth))
         .expect(403);
     }
   });
 
-  it('keeps applicant and school-user tokens out of unrelated protected surfaces', async () => {
+  it('keeps applicant denial from other protected surfaces unchanged', async () => {
     for (const route of [
       `${GLOBAL_PREFIX}/parent/home`,
       `${GLOBAL_PREFIX}/student/home`,
@@ -327,10 +297,12 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
       .expect(403);
   });
 
-  it('keeps document and upload applicant routes absent', async () => {
+  it('keeps document/upload/conversion applicant routes absent', async () => {
     for (const route of [
       `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents`,
       `${GLOBAL_PREFIX}/applicant-portal/uploads`,
+      `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/convert-to-parent`,
+      `${GLOBAL_PREFIX}/applicant-portal/conversions`,
     ]) {
       await request(app.getHttpServer())
         .post(route)
@@ -350,14 +322,12 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
     slug: string;
     name: string;
     status: OrganizationStatus;
-    deletedAt?: Date | null;
   }): Promise<{ id: string }> {
     const organization = await prisma.organization.create({
       data: {
         slug: input.slug,
         name: input.name,
         status: input.status,
-        deletedAt: input.deletedAt ?? null,
       },
       select: { id: true },
     });
@@ -371,7 +341,6 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
     name: string;
     status: SchoolStatus;
     schoolName: string;
-    deletedAt?: Date | null;
   }): Promise<string> {
     const school = await prisma.school.create({
       data: {
@@ -379,7 +348,6 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
         slug: input.slug,
         name: input.name,
         status: input.status,
-        deletedAt: input.deletedAt ?? null,
       },
       select: { id: true },
     });
@@ -425,7 +393,7 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/applicant-portal/accounts`)
       .send({
-        fullName: `Sprint 18F Security ${label} Applicant`,
+        fullName: `Sprint 18G Security ${label} Applicant`,
         email: `${marker}-${label}@example.test`,
         password: PASSWORD,
         phoneNumber: '+20 100 000 0000',
@@ -436,6 +404,21 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
 
     createdUserIds.push(response.body.userId);
     createdProfileIds.push(response.body.applicantId);
+  }
+
+  async function createDraftRequest(
+    auth: AuthTokens,
+    schoolId: string,
+    childFirstName: string,
+  ): Promise<{ id: string }> {
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
+      .set('Authorization', bearer(auth))
+      .send({ schoolId, childFirstName })
+      .expect(201);
+
+    createdRequestIds.push(response.body.id);
+    return { id: response.body.id };
   }
 
   async function createUserWithMembership(
@@ -462,7 +445,7 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
     const user = await prisma.user.create({
       data: {
         email: `${marker}-${label}@example.test`,
-        firstName: 'Sprint18F',
+        firstName: 'Sprint18G',
         lastName: label,
         userType,
         status: UserStatus.ACTIVE,
@@ -528,11 +511,15 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
       'organizationId',
       'applicantUserId',
       'applicantProfileId',
+      'applicationId',
       'deletedAt',
       'submittedAt',
-      'applicationId',
-      'DRAFT',
+      'DOCUMENTS_PENDING',
       'SUBMITTED',
+      'DRAFT',
+      'objectKey',
+      'bucket',
+      'signedUrl',
       'featureControl',
       'featureControls',
       'entitlement',
@@ -542,8 +529,6 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
       'quota',
       'staff',
       'studentCount',
-      'objectKey',
-      'bucket',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
@@ -559,7 +544,15 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
       where: {
         OR: [
           { actorId: { in: createdUserIds } },
-          { resourceId: { in: [...createdProfileIds, ...createdRequestIds] } },
+          {
+            resourceId: {
+              in: [
+                ...createdProfileIds,
+                ...createdRequestIds,
+                ...createdApplicationIds,
+              ],
+            },
+          },
           { schoolId: { in: createdSchoolIds } },
           { organizationId: { in: createdOrganizationIds } },
         ],
@@ -567,6 +560,9 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
     });
     await prisma.applicantAdmissionRequest.deleteMany({
       where: { id: { in: createdRequestIds } },
+    });
+    await prisma.application.deleteMany({
+      where: { id: { in: createdApplicationIds } },
     });
     await prisma.applicantProfile.deleteMany({
       where: { id: { in: createdProfileIds } },
