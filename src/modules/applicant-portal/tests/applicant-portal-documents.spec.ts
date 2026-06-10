@@ -12,10 +12,12 @@ import {
 import { AuthRepository } from '../../iam/auth/infrastructure/auth.repository';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
 import { ApplicantPortalAccessService } from '../application/applicant-portal-access.service';
+import { GetApplicantDocumentDownloadUrlUseCase } from '../application/get-applicant-document-download-url.use-case';
 import { GetApplicantDocumentUseCase } from '../application/get-applicant-document.use-case';
 import { ListApplicantDocumentsUseCase } from '../application/list-applicant-documents.use-case';
 import { UploadApplicantDocumentUseCase } from '../application/upload-applicant-document.use-case';
 import {
+  ApplicantAdmissionRequestDocumentDownloadRecord,
   ApplicantAdmissionRequestDocumentRecord,
   ApplicantAdmissionRequestForDocumentAccessRecord,
   ApplicantPortalRepository,
@@ -312,6 +314,156 @@ describe('Applicant Portal documents', () => {
     ).rejects.toMatchObject({ code: 'not_found' });
   });
 
+  it('creates a short-lived signed URL for the current applicant document after ownership authorization', async () => {
+    const repository = mockApplicantRepository();
+    const storageService = mockStorageService();
+    const authRepository = mockAuthRepository();
+    repository.findApplicantAdmissionRequestDocumentForDownload.mockResolvedValue(
+      documentDownloadRecordFixture(),
+    );
+    storageService.createDownloadUrl.mockResolvedValue(
+      'https://storage.example.test/private-files/signed?X-Amz-Expires=300',
+    );
+    const useCase = new GetApplicantDocumentDownloadUrlUseCase(
+      mockAccessService(),
+      repository,
+      storageService,
+      authRepository,
+    );
+
+    const url = await useCase.execute({
+      requestId: REQUEST_ID,
+      documentId: DOCUMENT_ID,
+      ipAddress: '127.0.0.1',
+      userAgent: 'jest',
+    });
+
+    expect(
+      repository.findApplicantAdmissionRequestDocumentForDownload,
+    ).toHaveBeenCalledWith({
+      applicantUserId: APPLICANT_USER_ID,
+      requestId: REQUEST_ID,
+      documentId: DOCUMENT_ID,
+    });
+    expect(
+      repository.findApplicantAdmissionRequestDocumentForDownload.mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      storageService.createDownloadUrl.mock.invocationCallOrder[0],
+    );
+    expect(storageService.createDownloadUrl).toHaveBeenCalledWith({
+      bucket: 'private-files',
+      objectKey:
+        'schools/00000000-0000-0000-0000-000000000101/applicant-requests/00000000-0000-0000-0000-000000000201/documents/birth-certificate.pdf',
+      expiresInSeconds: 5 * 60,
+      downloadFileName: 'birth-certificate.pdf',
+    });
+    expect(authRepository.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: APPLICANT_USER_ID,
+        userType: UserType.APPLICANT,
+        organizationId: ORGANIZATION_ID,
+        schoolId: SCHOOL_ID,
+        module: 'applicant_portal',
+        action: 'applicant.document.download',
+        resourceType: 'applicant_admission_request_document',
+        resourceId: DOCUMENT_ID,
+        outcome: AuditOutcome.SUCCESS,
+        ipAddress: '127.0.0.1',
+        userAgent: 'jest',
+        after: {
+          requestId: REQUEST_ID,
+          fileId: FILE_ID,
+          status: 'signed_url_created',
+        },
+      }),
+    );
+    expect(
+      JSON.stringify(authRepository.createAuditLog.mock.calls[0][0]),
+    ).not.toContain('objectKey');
+    expect(
+      JSON.stringify(authRepository.createAuditLog.mock.calls[0][0]),
+    ).not.toContain('https://');
+    expect(
+      JSON.stringify(authRepository.createAuditLog.mock.calls[0][0]),
+    ).not.toContain('X-Amz');
+    expect(url).toBe(
+      'https://storage.example.test/private-files/signed?X-Amz-Expires=300',
+    );
+  });
+
+  it('allows accepted applicant documents to be downloaded', async () => {
+    const repository = mockApplicantRepository();
+    const storageService = mockStorageService();
+    repository.findApplicantAdmissionRequestDocumentForDownload.mockResolvedValue(
+      documentDownloadRecordFixture({
+        status: ApplicantAdmissionRequestDocumentStatus.ACCEPTED,
+      }),
+    );
+    storageService.createDownloadUrl.mockResolvedValue(
+      'https://storage.example.test/private-files/accepted?X-Amz-Expires=300',
+    );
+    const useCase = new GetApplicantDocumentDownloadUrlUseCase(
+      mockAccessService(),
+      repository,
+      storageService,
+      mockAuthRepository(),
+    );
+
+    await expect(
+      useCase.execute({ requestId: REQUEST_ID, documentId: DOCUMENT_ID }),
+    ).resolves.toBe(
+      'https://storage.example.test/private-files/accepted?X-Amz-Expires=300',
+    );
+  });
+
+  it('does not sign cross-applicant, deleted, or inactive-lifecycle applicant documents', async () => {
+    const repository = mockApplicantRepository();
+    const storageService = mockStorageService();
+    const authRepository = mockAuthRepository();
+    const useCase = new GetApplicantDocumentDownloadUrlUseCase(
+      mockAccessService(),
+      repository,
+      storageService,
+      authRepository,
+    );
+
+    repository.findApplicantAdmissionRequestDocumentForDownload.mockResolvedValueOnce(
+      null,
+    );
+    await expect(
+      useCase.execute({ requestId: REQUEST_ID, documentId: DOCUMENT_ID }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+
+    for (const status of [
+      ApplicantAdmissionRequestDocumentStatus.SUPERSEDED,
+      ApplicantAdmissionRequestDocumentStatus.REJECTED,
+      ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
+    ]) {
+      repository.findApplicantAdmissionRequestDocumentForDownload.mockResolvedValueOnce(
+        documentDownloadRecordFixture({ status }),
+      );
+      await expect(
+        useCase.execute({ requestId: REQUEST_ID, documentId: DOCUMENT_ID }),
+      ).rejects.toMatchObject({ code: 'not_found' });
+    }
+
+    repository.findApplicantAdmissionRequestDocumentForDownload.mockResolvedValueOnce(
+      documentDownloadRecordFixture({
+        file: {
+          ...documentDownloadRecordFixture().file,
+          deletedAt: new Date('2026-06-10T13:00:00.000Z'),
+        },
+      }),
+    );
+    await expect(
+      useCase.execute({ requestId: REQUEST_ID, documentId: DOCUMENT_ID }),
+    ).rejects.toMatchObject({ code: 'files.not_found' });
+
+    expect(storageService.createDownloadUrl).not.toHaveBeenCalled();
+    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
+  });
+
   it('presents safe document details without leaking storage, applicant, tenant, bridge, or raw enum fields', () => {
     const response = presentApplicantDocument({
       ...documentRecordFixture(),
@@ -539,6 +691,28 @@ function documentRecordFixture(
   } as ApplicantAdmissionRequestDocumentRecord;
 }
 
+function documentDownloadRecordFixture(
+  overrides?: Partial<ApplicantAdmissionRequestDocumentDownloadRecord>,
+): ApplicantAdmissionRequestDocumentDownloadRecord {
+  return {
+    id: DOCUMENT_ID,
+    requestId: REQUEST_ID,
+    applicantUserId: APPLICANT_USER_ID,
+    schoolId: SCHOOL_ID,
+    organizationId: ORGANIZATION_ID,
+    status: ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+    file: {
+      id: FILE_ID,
+      bucket: 'private-files',
+      objectKey:
+        'schools/00000000-0000-0000-0000-000000000101/applicant-requests/00000000-0000-0000-0000-000000000201/documents/birth-certificate.pdf',
+      originalName: 'birth-certificate.pdf',
+      deletedAt: null,
+    },
+    ...overrides,
+  } as ApplicantAdmissionRequestDocumentDownloadRecord;
+}
+
 function multipartFileFixture(overrides?: {
   originalname?: string;
   mimetype?: string;
@@ -586,6 +760,7 @@ function mockApplicantRepository(): jest.Mocked<ApplicantPortalRepository> {
     createApplicantAdmissionRequestDocument: jest.fn(),
     listApplicantAdmissionRequestDocuments: jest.fn(),
     findApplicantAdmissionRequestDocumentForApplicant: jest.fn(),
+    findApplicantAdmissionRequestDocumentForDownload: jest.fn(),
   } as unknown as jest.Mocked<ApplicantPortalRepository>;
 }
 
@@ -596,6 +771,7 @@ function mockStorageService(): jest.Mocked<StorageService> {
       etag: 'etag',
     }),
     deleteObject: jest.fn(),
+    createDownloadUrl: jest.fn(),
   } as unknown as jest.Mocked<StorageService>;
 }
 

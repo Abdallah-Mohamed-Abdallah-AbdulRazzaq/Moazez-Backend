@@ -2,8 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
-  AdmissionApplicationSource,
-  AdmissionApplicationStatus,
   ApplicantAdmissionRequestDocumentStatus,
   MembershipStatus,
   OrganizationStatus,
@@ -19,7 +17,7 @@ import { AppModule } from '../../src/app.module';
 import { StorageService } from '../../src/infrastructure/storage/storage.service';
 
 const GLOBAL_PREFIX = '/api/v1';
-const PASSWORD = 'Applicant18IDocs!';
+const PASSWORD = 'Applicant18KDocs!';
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
   memoryCost: 19 * 1024,
@@ -44,36 +42,29 @@ type ExpressLayer = {
 };
 
 type SideEffectSnapshot = {
-  memberships: number;
+  applications: number;
   applicationDocuments: number;
-  applicantDocuments: number;
-  files: number;
   students: number;
   guardians: number;
   studentGuardianLinks: number;
   enrollments: number;
+  memberships: number;
 };
 
-describe('Applicant Portal documents (e2e)', () => {
+describe('Applicant Portal document download (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
   let storageService: StorageService;
 
   let organizationId = '';
-  let organizationToSuspendId = '';
   let activeSchoolId = '';
-  let otherSchoolId = '';
-  let schoolToSuspendId = '';
-  let orgUnsafeSchoolId = '';
   let requiredDocumentId = '';
-  let secondRequiredDocumentId = '';
-  let inactiveRequiredDocumentId = '';
-  let crossSchoolRequiredDocumentId = '';
   let roleId = '';
   let applicantRequestId = '';
   let otherApplicantRequestId = '';
-  let requiredUploadDocumentId = '';
-  let optionalUploadDocumentId = '';
+  let applicantDocumentId = '';
+  let uploadedFileId = '';
+  let uploadResponseBody: unknown;
 
   let applicantAuth: AuthTokens;
   let otherApplicantAuth: AuthTokens;
@@ -84,13 +75,12 @@ describe('Applicant Portal documents (e2e)', () => {
   let platformAuth: AuthTokens;
 
   const suffix = randomUUID().split('-')[0];
-  const marker = `s18i-documents-${suffix}`;
+  const marker = `s18k-docdl-${suffix}`;
   const createdOrganizationIds: string[] = [];
   const createdSchoolIds: string[] = [];
   const createdSchoolProfileIds: string[] = [];
   const createdDocumentIds: string[] = [];
   const createdRequestIds: string[] = [];
-  const createdApplicationIds: string[] = [];
   const createdApplicantDocumentIds: string[] = [];
   const createdFileIds: string[] = [];
   const createdUserIds: string[] = [];
@@ -101,46 +91,19 @@ describe('Applicant Portal documents (e2e)', () => {
     prisma = new PrismaClient();
     await prisma.$connect();
 
-    const activeOrganization = await createOrganization({
-      slug: `${marker}-active-org`,
-      name: `Sprint 18I Active Org ${suffix}`,
+    const organization = await createOrganization({
+      slug: `${marker}-org`,
+      name: `Sprint 18K Download Org ${suffix}`,
       status: OrganizationStatus.ACTIVE,
     });
-    organizationId = activeOrganization.id;
-    const organizationToSuspend = await createOrganization({
-      slug: `${marker}-org-to-suspend`,
-      name: `Sprint 18I Org To Suspend ${suffix}`,
-      status: OrganizationStatus.ACTIVE,
-    });
-    organizationToSuspendId = organizationToSuspend.id;
+    organizationId = organization.id;
 
     activeSchoolId = await createSchoolWithProfile({
       organizationId,
-      slug: `${marker}-active`,
+      slug: `${marker}-school`,
       name: `${marker} Active Academy`,
       status: SchoolStatus.ACTIVE,
       schoolName: `${marker} Active Public`,
-    });
-    otherSchoolId = await createSchoolWithProfile({
-      organizationId,
-      slug: `${marker}-other`,
-      name: `${marker} Other Academy`,
-      status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} Other Public`,
-    });
-    schoolToSuspendId = await createSchoolWithProfile({
-      organizationId,
-      slug: `${marker}-school-to-suspend`,
-      name: `${marker} School To Suspend`,
-      status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} School To Suspend Public`,
-    });
-    orgUnsafeSchoolId = await createSchoolWithProfile({
-      organizationId: organizationToSuspendId,
-      slug: `${marker}-org-unsafe-school`,
-      name: `${marker} Org Unsafe School`,
-      status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} Org Unsafe Public`,
     });
 
     requiredDocumentId = await createRequiredDocument({
@@ -148,31 +111,6 @@ describe('Applicant Portal documents (e2e)', () => {
       organizationId,
       title: 'Birth certificate',
       isMandatory: true,
-      sortOrder: 10,
-      acceptedFileTypes: ['application/pdf'],
-    });
-    secondRequiredDocumentId = await createRequiredDocument({
-      schoolId: activeSchoolId,
-      organizationId,
-      title: 'Parent ID',
-      isMandatory: true,
-      sortOrder: 20,
-      acceptedFileTypes: ['application/pdf'],
-    });
-    inactiveRequiredDocumentId = await createRequiredDocument({
-      schoolId: activeSchoolId,
-      organizationId,
-      title: 'Inactive document',
-      isMandatory: true,
-      isActive: false,
-      acceptedFileTypes: ['application/pdf'],
-    });
-    crossSchoolRequiredDocumentId = await createRequiredDocument({
-      schoolId: otherSchoolId,
-      organizationId,
-      title: 'Other school document',
-      isMandatory: true,
-      acceptedFileTypes: ['application/pdf'],
     });
 
     roleId = (
@@ -180,7 +118,7 @@ describe('Applicant Portal documents (e2e)', () => {
         data: {
           schoolId: activeSchoolId,
           key: `${marker}-role`,
-          name: `Sprint 18I Role ${suffix}`,
+          name: `Sprint 18K Role ${suffix}`,
           isSystem: false,
         },
         select: { id: true },
@@ -228,6 +166,23 @@ describe('Applicant Portal documents (e2e)', () => {
     otherApplicantRequestId = (
       await createDraftRequest(otherApplicantAuth, activeSchoolId, 'Omar')
     ).id;
+
+    const uploadResponse = await uploadDocument(
+      applicantAuth,
+      applicantRequestId,
+      {
+        requiredDocumentId,
+        filename: 'birth-certificate.pdf',
+        contentType: 'application/pdf',
+        body: Buffer.from('birth-certificate'),
+      },
+    ).expect(201);
+
+    uploadResponseBody = uploadResponse.body;
+    applicantDocumentId = uploadResponse.body.id;
+    uploadedFileId = uploadResponse.body.file.id;
+    createdApplicantDocumentIds.push(applicantDocumentId);
+    createdFileIds.push(uploadedFileId);
   });
 
   afterAll(async () => {
@@ -239,102 +194,27 @@ describe('Applicant Portal documents (e2e)', () => {
     }
   });
 
-  it('registers applicant upload/list/read routes and keeps deferred routes absent', async () => {
+  it('registers applicant download and keeps delete/replace routes absent', () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain(
-      'POST /api/v1/applicant-portal/requests/:requestId/documents',
-    );
-    expect(routes).toContain(
-      'GET /api/v1/applicant-portal/requests/:requestId/documents',
-    );
-    expect(routes).toContain(
-      'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
-    );
-    expect(routes).toContain(
       'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId/download',
     );
-
-    for (const absentRoute of [
+    expect(routes).not.toContain(
       'DELETE /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
+    );
+    expect(routes).not.toContain(
       'PATCH /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
-      'POST /api/v1/applicant-portal/uploads',
-      'POST /api/v1/applicant-portal/requests/:requestId/convert-to-parent',
-      'POST /api/v1/applicant-portal/conversions',
-    ]) {
-      expect(routes).not.toContain(absentRoute);
-    }
+    );
+    expect(routes).not.toContain(
+      'POST /api/v1/applicant-portal/requests/:requestId/documents/:documentId/replacements',
+    );
   });
 
-  it('uploads required and optional documents, lists/reads them safely, and updates missingItemsCount', async () => {
+  it('redirects the owning applicant to a short-lived signed URL without changing normal response safety', async () => {
     const before = await getSideEffectSnapshot();
 
-    const firstUpload = await uploadDocument(
-      applicantAuth,
-      applicantRequestId,
-      {
-        requiredDocumentId,
-        filename: 'birth-certificate.pdf',
-        contentType: 'application/pdf',
-        body: Buffer.from('birth-certificate'),
-      },
-    ).expect(201);
-    requiredUploadDocumentId = firstUpload.body.id;
-    createdApplicantDocumentIds.push(requiredUploadDocumentId);
-    createdFileIds.push(firstUpload.body.file.id);
-
-    expect(firstUpload.body).toMatchObject({
-      id: requiredUploadDocumentId,
-      requestId: applicantRequestId,
-      status: 'uploaded',
-      title: 'Birth certificate',
-      documentType: 'Birth certificate',
-      requiredDocument: {
-        id: requiredDocumentId,
-        title: 'Birth certificate',
-        isMandatory: true,
-      },
-      file: {
-        originalName: 'birth-certificate.pdf',
-        mimeType: 'application/pdf',
-        sizeBytes: 17,
-      },
-    });
-    expectSafeDocumentResponse(firstUpload.body);
-
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}`)
-      .set('Authorization', bearer(applicantAuth))
-      .expect(200)
-      .expect(({ body }) => {
-        expect(body.missingItemsCount).toBe(1);
-        expect(body.progressValue).toBe(35);
-        expectSafeRequestResponse(body);
-      });
-
-    const optionalUpload = await uploadDocument(
-      applicantAuth,
-      applicantRequestId,
-      {
-        title: 'Additional health note',
-        documentType: 'health_note',
-        notes: 'Uploaded for admissions context.',
-        filename: 'health-note.txt',
-        contentType: 'text/plain',
-        body: Buffer.from('healthy'),
-      },
-    ).expect(201);
-    optionalUploadDocumentId = optionalUpload.body.id;
-    createdApplicantDocumentIds.push(optionalUploadDocumentId);
-    createdFileIds.push(optionalUpload.body.file.id);
-    expect(optionalUpload.body).toMatchObject({
-      status: 'uploaded',
-      title: 'Additional health note',
-      documentType: 'health_note',
-      requiredDocument: null,
-      notes: 'Uploaded for admissions context.',
-    });
-    expectSafeDocumentResponse(optionalUpload.body);
+    expectNoInternalDocumentFields(uploadResponseBody);
 
     await request(app.getHttpServer())
       .get(
@@ -342,32 +222,24 @@ describe('Applicant Portal documents (e2e)', () => {
       )
       .set('Authorization', bearer(applicantAuth))
       .expect(200)
-      .expect(({ body }) => {
-        expect(body.data.map((item: { id: string }) => item.id)).toEqual([
-          requiredUploadDocumentId,
-          optionalUploadDocumentId,
-        ]);
-        expectSafeDocumentResponse(body);
-      });
+      .expect(({ body }) => expectNoInternalDocumentFields(body));
 
     await request(app.getHttpServer())
       .get(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${requiredUploadDocumentId}`,
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${applicantDocumentId}`,
       )
       .set('Authorization', bearer(applicantAuth))
       .expect(200)
-      .expect(({ body }) => {
-        expect(body.id).toBe(requiredUploadDocumentId);
-        expectSafeDocumentResponse(body);
-      });
+      .expect(({ body }) => expectNoInternalDocumentFields(body));
 
     const downloadResponse = await request(app.getHttpServer())
       .get(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${requiredUploadDocumentId}/download`,
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${applicantDocumentId}/download`,
       )
       .set('Authorization', bearer(applicantAuth))
       .redirects(0)
       .expect(307);
+
     expect(downloadResponse.headers.location).toEqual(expect.any(String));
     expect(downloadResponse.headers.location).toContain('X-Amz-Expires=300');
 
@@ -379,52 +251,33 @@ describe('Applicant Portal documents (e2e)', () => {
       'birth-certificate',
     );
 
-    const after = await getSideEffectSnapshot();
-    expect(after).toEqual({
-      ...before,
-      applicantDocuments: before.applicantDocuments + 2,
-      files: before.files + 2,
-    });
+    await expect(getSideEffectSnapshot()).resolves.toEqual(before);
   });
 
-  it('keeps applicant documents isolated by applicant request ownership', async () => {
+  it('hides applicant document downloads across applicant request ownership boundaries', async () => {
     await request(app.getHttpServer())
       .get(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${otherApplicantRequestId}/documents`,
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${otherApplicantRequestId}/documents/${applicantDocumentId}/download`,
       )
       .set('Authorization', bearer(applicantAuth))
       .expect(404);
 
     await request(app.getHttpServer())
       .get(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${otherApplicantRequestId}/documents/${requiredUploadDocumentId}`,
-      )
-      .set('Authorization', bearer(applicantAuth))
-      .expect(404);
-
-    await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${otherApplicantRequestId}/documents/${requiredUploadDocumentId}/download`,
-      )
-      .set('Authorization', bearer(applicantAuth))
-      .expect(404);
-
-    await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${requiredUploadDocumentId}/download`,
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${applicantDocumentId}/download`,
       )
       .set('Authorization', bearer(otherApplicantAuth))
       .expect(404);
 
-    await uploadDocument(applicantAuth, otherApplicantRequestId, {
-      title: 'Cross applicant attempt',
-      filename: 'cross.pdf',
-      contentType: 'application/pdf',
-      body: Buffer.from('cross'),
-    }).expect(404);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${randomUUID()}/download`,
+      )
+      .set('Authorization', bearer(applicantAuth))
+      .expect(404);
   });
 
-  it('rejects non-applicant actors from applicant document routes', async () => {
+  it('denies non-applicant users and keeps generic files download unavailable to applicants', async () => {
     for (const auth of [
       parentAuth,
       studentAuth,
@@ -432,165 +285,52 @@ describe('Applicant Portal documents (e2e)', () => {
       schoolUserAuth,
       platformAuth,
     ]) {
-      await uploadDocument(auth, applicantRequestId, {
-        title: 'Denied',
-        filename: 'denied.pdf',
-        contentType: 'application/pdf',
-        body: Buffer.from('denied'),
-      }).expect(403);
-
       await request(app.getHttpServer())
         .get(
-          `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents`,
-        )
-        .set('Authorization', bearer(auth))
-        .expect(403);
-
-      await request(app.getHttpServer())
-        .get(
-          `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${requiredUploadDocumentId}`,
-        )
-        .set('Authorization', bearer(auth))
-        .expect(403);
-
-      await request(app.getHttpServer())
-        .get(
-          `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${requiredUploadDocumentId}/download`,
+          `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${applicantDocumentId}/download`,
         )
         .set('Authorization', bearer(auth))
         .expect(403);
     }
-  });
-
-  it('rejects unsafe school or organization and invalid required document uploads', async () => {
-    const schoolUnsafeRequest = (
-      await createDraftRequest(applicantAuth, schoolToSuspendId, 'Farah')
-    ).id;
-    await prisma.school.update({
-      where: { id: schoolToSuspendId },
-      data: { status: SchoolStatus.SUSPENDED },
-    });
-    await uploadDocument(applicantAuth, schoolUnsafeRequest, {
-      title: 'Denied',
-      filename: 'denied.pdf',
-      contentType: 'application/pdf',
-      body: Buffer.from('denied'),
-    }).expect(404);
-
-    const orgUnsafeRequest = (
-      await createDraftRequest(applicantAuth, orgUnsafeSchoolId, 'Youssef')
-    ).id;
-    await prisma.organization.update({
-      where: { id: organizationToSuspendId },
-      data: { status: OrganizationStatus.SUSPENDED },
-    });
-    await uploadDocument(applicantAuth, orgUnsafeRequest, {
-      title: 'Denied',
-      filename: 'denied.pdf',
-      contentType: 'application/pdf',
-      body: Buffer.from('denied'),
-    }).expect(404);
-
-    for (const rejectedRequiredDocumentId of [
-      randomUUID(),
-      inactiveRequiredDocumentId,
-      crossSchoolRequiredDocumentId,
-    ]) {
-      await uploadDocument(applicantAuth, applicantRequestId, {
-        requiredDocumentId: rejectedRequiredDocumentId,
-        filename: 'invalid.pdf',
-        contentType: 'application/pdf',
-        body: Buffer.from('invalid'),
-      }).expect(404);
-    }
-
-    await uploadDocument(applicantAuth, applicantRequestId, {
-      requiredDocumentId,
-      filename: 'wrong-type.png',
-      contentType: 'image/png',
-      body: Buffer.from('png'),
-    }).expect(415);
-  });
-
-  it('submits successfully after all mandatory uploads and does not bridge documents in Sprint 18I', async () => {
-    const secondUpload = await uploadDocument(
-      applicantAuth,
-      applicantRequestId,
-      {
-        requiredDocumentId: secondRequiredDocumentId,
-        filename: 'parent-id.pdf',
-        contentType: 'application/pdf',
-        body: Buffer.from('parent-id'),
-      },
-    ).expect(201);
-    createdApplicantDocumentIds.push(secondUpload.body.id);
-    createdFileIds.push(secondUpload.body.file.id);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}`)
+      .get(`${GLOBAL_PREFIX}/files/${uploadedFileId}/download`)
       .set('Authorization', bearer(applicantAuth))
-      .expect(200)
-      .expect(({ body }) => {
-        expect(body.missingItemsCount).toBe(0);
-        expect(body.progressValue).toBe(35);
-      });
-
-    const submitResponse = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/submit`,
-      )
-      .set('Authorization', bearer(applicantAuth))
-      .expect(200);
-    expect(submitResponse.body).toMatchObject({
-      id: applicantRequestId,
-      status: 'submitted',
-      missingItemsCount: 0,
-    });
-
-    const applicantRequest =
-      await prisma.applicantAdmissionRequest.findUniqueOrThrow({
-        where: { id: applicantRequestId },
-      });
-    createdApplicationIds.push(applicantRequest.applicationId as string);
-    const application = await prisma.application.findUniqueOrThrow({
-      where: { id: applicantRequest.applicationId as string },
-    });
-    expect(application).toMatchObject({
-      schoolId: activeSchoolId,
-      organizationId,
-      source: AdmissionApplicationSource.IN_APP,
-      status: AdmissionApplicationStatus.SUBMITTED,
-    });
-
-    await expect(
-      prisma.applicationDocument.count({
-        where: { applicationId: applicantRequest.applicationId as string },
-      }),
-    ).resolves.toBe(0);
+      .expect(403);
   });
 
-  it('keeps delete/replace routes absent while download is present', async () => {
+  it('does not download superseded, rejected, needs-replacement, or soft-deleted documents', async () => {
+    for (const status of [
+      ApplicantAdmissionRequestDocumentStatus.SUPERSEDED,
+      ApplicantAdmissionRequestDocumentStatus.REJECTED,
+      ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
+    ]) {
+      await prisma.applicantAdmissionRequestDocument.update({
+        where: { id: applicantDocumentId },
+        data: { status },
+      });
+
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${applicantDocumentId}/download`,
+        )
+        .set('Authorization', bearer(applicantAuth))
+        .expect(404);
+    }
+
+    await prisma.applicantAdmissionRequestDocument.update({
+      where: { id: applicantDocumentId },
+      data: {
+        status: ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+        deletedAt: new Date(),
+      },
+    });
+
     await request(app.getHttpServer())
       .get(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${requiredUploadDocumentId}/download`,
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${applicantDocumentId}/download`,
       )
       .set('Authorization', bearer(applicantAuth))
-      .redirects(0)
-      .expect(307);
-
-    await request(app.getHttpServer())
-      .delete(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${requiredUploadDocumentId}`,
-      )
-      .set('Authorization', bearer(applicantAuth))
-      .expect(404);
-
-    await request(app.getHttpServer())
-      .patch(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${requiredUploadDocumentId}`,
-      )
-      .set('Authorization', bearer(applicantAuth))
-      .send({ title: 'Replace attempt' })
       .expect(404);
   });
 
@@ -648,9 +388,6 @@ describe('Applicant Portal documents (e2e)', () => {
     organizationId: string;
     title: string;
     isMandatory: boolean;
-    sortOrder?: number;
-    isActive?: boolean;
-    acceptedFileTypes?: string[];
   }): Promise<string> {
     const document = await prisma.admissionRequiredDocument.create({
       data: {
@@ -658,10 +395,8 @@ describe('Applicant Portal documents (e2e)', () => {
         organizationId: input.organizationId,
         title: input.title,
         isMandatory: input.isMandatory,
-        isActive: input.isActive ?? true,
-        acceptedFileTypes: input.acceptedFileTypes ?? [],
+        acceptedFileTypes: ['application/pdf'],
         maxFiles: 1,
-        sortOrder: input.sortOrder ?? 0,
       },
       select: { id: true },
     });
@@ -673,7 +408,7 @@ describe('Applicant Portal documents (e2e)', () => {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/applicant-portal/accounts`)
       .send({
-        fullName: `Sprint 18I ${label} Applicant`,
+        fullName: `Sprint 18K ${label} Applicant`,
         email: `${marker}-${label}@example.test`,
         password: PASSWORD,
         phoneNumber: '+20 100 000 0000',
@@ -706,9 +441,6 @@ describe('Applicant Portal documents (e2e)', () => {
     requestId: string,
     input: {
       requiredDocumentId?: string;
-      title?: string;
-      documentType?: string;
-      notes?: string;
       filename: string;
       contentType: string;
       body: Buffer;
@@ -725,9 +457,6 @@ describe('Applicant Portal documents (e2e)', () => {
     if (input.requiredDocumentId) {
       call.field('requiredDocumentId', input.requiredDocumentId);
     }
-    if (input.title) call.field('title', input.title);
-    if (input.documentType) call.field('documentType', input.documentType);
-    if (input.notes) call.field('notes', input.notes);
 
     return call;
   }
@@ -756,7 +485,7 @@ describe('Applicant Portal documents (e2e)', () => {
     const user = await prisma.user.create({
       data: {
         email: `${marker}-${label}@example.test`,
-        firstName: 'Sprint18I',
+        firstName: 'Sprint18K',
         lastName: label,
         userType,
         status: UserStatus.ACTIVE,
@@ -781,34 +510,31 @@ describe('Applicant Portal documents (e2e)', () => {
 
   async function getSideEffectSnapshot(): Promise<SideEffectSnapshot> {
     const [
-      memberships,
+      applications,
       applicationDocuments,
-      applicantDocuments,
-      files,
       students,
       guardians,
       studentGuardianLinks,
       enrollments,
+      memberships,
     ] = await Promise.all([
-      prisma.membership.count(),
+      prisma.application.count(),
       prisma.applicationDocument.count(),
-      prisma.applicantAdmissionRequestDocument.count(),
-      prisma.file.count(),
       prisma.student.count(),
       prisma.guardian.count(),
       prisma.studentGuardian.count(),
       prisma.enrollment.count(),
+      prisma.membership.count(),
     ]);
 
     return {
-      memberships,
+      applications,
       applicationDocuments,
-      applicantDocuments,
-      files,
       students,
       guardians,
       studentGuardianLinks,
       enrollments,
+      memberships,
     };
   }
 
@@ -816,7 +542,7 @@ describe('Applicant Portal documents (e2e)', () => {
     return `Bearer ${tokens.accessToken}`;
   }
 
-  function expectSafeDocumentResponse(body: unknown): void {
+  function expectNoInternalDocumentFields(body: unknown): void {
     const serialized = JSON.stringify(body);
     for (const forbidden of [
       'organizationId',
@@ -836,27 +562,6 @@ describe('Applicant Portal documents (e2e)', () => {
       'REJECTED',
       'NEEDS_REPLACEMENT',
       'SUPERSEDED',
-    ]) {
-      expect(serialized).not.toContain(forbidden);
-    }
-  }
-
-  function expectSafeRequestResponse(body: unknown): void {
-    const serialized = JSON.stringify(body);
-    for (const forbidden of [
-      'organizationId',
-      'applicantUserId',
-      'applicantProfileId',
-      'applicationId',
-      'applicationDocumentId',
-      'deletedAt',
-      'submittedAt',
-      'DOCUMENTS_PENDING',
-      'SUBMITTED',
-      'DRAFT',
-      'objectKey',
-      'bucket',
-      'signedUrl',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
@@ -907,7 +612,7 @@ describe('Applicant Portal documents (e2e)', () => {
 
     const files = await prisma.file.findMany({
       where: { id: { in: createdFileIds } },
-      select: { id: true, bucket: true, objectKey: true },
+      select: { bucket: true, objectKey: true },
     });
     await Promise.all(
       files.map((file) =>
@@ -930,7 +635,6 @@ describe('Applicant Portal documents (e2e)', () => {
                 ...createdProfileIds,
                 ...createdRequestIds,
                 ...createdApplicantDocumentIds,
-                ...createdApplicationIds,
               ],
             },
           },
@@ -945,9 +649,6 @@ describe('Applicant Portal documents (e2e)', () => {
     await prisma.file.deleteMany({ where: { id: { in: createdFileIds } } });
     await prisma.applicantAdmissionRequest.deleteMany({
       where: { id: { in: createdRequestIds } },
-    });
-    await prisma.application.deleteMany({
-      where: { id: { in: createdApplicationIds } },
     });
     await prisma.applicantProfile.deleteMany({
       where: { id: { in: createdProfileIds } },

@@ -4,6 +4,7 @@ import { AuthModule } from '../iam/auth/auth.module';
 import { ApplicantPortalAccessService } from './application/applicant-portal-access.service';
 import { CreateApplicantAccountUseCase } from './application/create-applicant-account.use-case';
 import { CreateApplicantRequestUseCase } from './application/create-applicant-request.use-case';
+import { GetApplicantDocumentDownloadUrlUseCase } from './application/get-applicant-document-download-url.use-case';
 import { GetApplicantDocumentUseCase } from './application/get-applicant-document.use-case';
 import { GetDiscoverableSchoolUseCase } from './application/get-discoverable-school.use-case';
 import { GetApplicantRequestUseCase } from './application/get-applicant-request.use-case';
@@ -35,6 +36,7 @@ import { ApplicantPortalRepository } from './infrastructure/applicant-portal.rep
     UploadApplicantDocumentUseCase,
     ListApplicantDocumentsUseCase,
     GetApplicantDocumentUseCase,
+    GetApplicantDocumentDownloadUrlUseCase,
   ],
 })
 export class ApplicantPortalModule {}

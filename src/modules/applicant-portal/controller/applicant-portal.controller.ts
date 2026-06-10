@@ -9,6 +9,7 @@ import {
   Post,
   Query,
   Req,
+  Redirect,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -25,6 +26,7 @@ import {
   ApiOperation,
   ApiParam,
   ApiTags,
+  ApiTemporaryRedirectResponse,
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
@@ -34,6 +36,7 @@ import { AllowApplicantPortalAccess } from '../../../common/decorators/applicant
 import { PublicRoute } from '../../../common/decorators/public-route.decorator';
 import { CreateApplicantAccountUseCase } from '../application/create-applicant-account.use-case';
 import { CreateApplicantRequestUseCase } from '../application/create-applicant-request.use-case';
+import { GetApplicantDocumentDownloadUrlUseCase } from '../application/get-applicant-document-download-url.use-case';
 import { GetApplicantDocumentUseCase } from '../application/get-applicant-document.use-case';
 import { GetDiscoverableSchoolUseCase } from '../application/get-discoverable-school.use-case';
 import { GetApplicantRequestUseCase } from '../application/get-applicant-request.use-case';
@@ -83,6 +86,7 @@ export class ApplicantPortalController {
     private readonly uploadApplicantDocumentUseCase: UploadApplicantDocumentUseCase,
     private readonly listApplicantDocumentsUseCase: ListApplicantDocumentsUseCase,
     private readonly getApplicantDocumentUseCase: GetApplicantDocumentUseCase,
+    private readonly getApplicantDocumentDownloadUrlUseCase: GetApplicantDocumentDownloadUrlUseCase,
   ) {}
 
   @Post('accounts')
@@ -321,5 +325,38 @@ export class ApplicantPortalController {
       requestId,
       documentId,
     });
+  }
+
+  @Get('requests/:requestId/documents/:documentId/download')
+  @Redirect(undefined, 307)
+  @AllowApplicantPortalAccess()
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Redirect an applicant to a short-lived download URL for their uploaded document',
+  })
+  @ApiParam({ name: 'requestId', format: 'uuid' })
+  @ApiParam({ name: 'documentId', format: 'uuid' })
+  @ApiTemporaryRedirectResponse({
+    description:
+      'Redirects to a short-lived signed URL after applicant document ownership authorization',
+  })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ description: 'auth.token.invalid' })
+  @ApiForbiddenResponse({ description: 'auth.scope.missing' })
+  @ApiNotFoundResponse({ description: 'not_found' })
+  async downloadDocument(
+    @Param('requestId', new ParseUUIDPipe()) requestId: string,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+    @Req() req: Request,
+  ): Promise<{ url: string }> {
+    return {
+      url: await this.getApplicantDocumentDownloadUrlUseCase.execute({
+        requestId,
+        documentId,
+        ipAddress: req.ip ?? null,
+        userAgent: req.header('user-agent') ?? null,
+      }),
+    };
   }
 }

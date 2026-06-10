@@ -216,6 +216,31 @@ export type ApplicantAdmissionRequestDocumentRecord =
     typeof APPLICANT_ADMISSION_REQUEST_DOCUMENT_ARGS
   >;
 
+const APPLICANT_ADMISSION_REQUEST_DOCUMENT_DOWNLOAD_ARGS = {
+  select: {
+    id: true,
+    requestId: true,
+    applicantUserId: true,
+    schoolId: true,
+    organizationId: true,
+    status: true,
+    file: {
+      select: {
+        id: true,
+        bucket: true,
+        objectKey: true,
+        originalName: true,
+        deletedAt: true,
+      },
+    },
+  },
+} satisfies Prisma.ApplicantAdmissionRequestDocumentDefaultArgs;
+
+export type ApplicantAdmissionRequestDocumentDownloadRecord =
+  Prisma.ApplicantAdmissionRequestDocumentGetPayload<
+    typeof APPLICANT_ADMISSION_REQUEST_DOCUMENT_DOWNLOAD_ARGS
+  >;
+
 const SUBMIT_APPLICANT_ADMISSION_REQUEST_ARGS = {
   select: {
     id: true,
@@ -647,6 +672,29 @@ export class ApplicantPortalRepository {
         },
       },
       ...APPLICANT_ADMISSION_REQUEST_DOCUMENT_ARGS,
+    });
+  }
+
+  findApplicantAdmissionRequestDocumentForDownload(params: {
+    applicantUserId: string;
+    requestId: string;
+    documentId: string;
+  }): Promise<ApplicantAdmissionRequestDocumentDownloadRecord | null> {
+    return this.prisma.applicantAdmissionRequestDocument.findFirst({
+      where: {
+        id: params.documentId,
+        requestId: params.requestId,
+        applicantUserId: params.applicantUserId,
+        deletedAt: null,
+        request: {
+          is: {
+            id: params.requestId,
+            applicantUserId: params.applicantUserId,
+            deletedAt: null,
+          },
+        },
+      },
+      ...APPLICANT_ADMISSION_REQUEST_DOCUMENT_DOWNLOAD_ARGS,
     });
   }
 
