@@ -3449,6 +3449,16 @@
                       "name": "get-applicant-profile.use-case.ts",
                       "type": "file",
                       "icon": "📘"
+                    },
+                    {
+                      "name": "get-discoverable-school.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "list-discoverable-schools.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
                     }
                   ]
                 },
@@ -3473,6 +3483,11 @@
                       "name": "applicant-profile.inputs.ts",
                       "type": "file",
                       "icon": "📘"
+                    },
+                    {
+                      "name": "school-discovery.inputs.ts",
+                      "type": "file",
+                      "icon": "📘"
                     }
                   ]
                 },
@@ -3483,6 +3498,11 @@
                   "children": [
                     {
                       "name": "applicant-account.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "school-discovery.dto.ts",
                       "type": "file",
                       "icon": "📘"
                     }
@@ -3509,6 +3529,11 @@
                       "name": "applicant-profile.presenter.ts",
                       "type": "file",
                       "icon": "📘"
+                    },
+                    {
+                      "name": "school-discovery.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
                     }
                   ]
                 },
@@ -3519,6 +3544,11 @@
                   "children": [
                     {
                       "name": "applicant-portal-foundation.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "applicant-portal-school-discovery.spec.ts",
                       "type": "file",
                       "icon": "📘"
                     }
@@ -15316,6 +15346,11 @@
               "icon": "📘"
             },
             {
+              "name": "applicant-portal-school-discovery.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "attendance-excuses-corrections.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -15546,6 +15581,11 @@
             },
             {
               "name": "tenancy.admissions.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.applicant-portal-school-discovery.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15862,7 +15902,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-10T00:04:46.369Z",
+    "generated": "2026-06-10T14:40:10.012Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
