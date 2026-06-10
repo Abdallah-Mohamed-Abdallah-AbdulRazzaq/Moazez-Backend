@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import {
   AdmissionApplicationSource,
   AdmissionApplicationStatus,
+  ApplicantAdmissionRequestDocumentStatus,
   ApplicantAdmissionRequestStatus,
+  FileVisibility,
   MembershipStatus,
   OrganizationStatus,
   Prisma,
@@ -73,6 +75,21 @@ export type AdmissionRequiredDocumentRecord =
     typeof ADMISSION_REQUIRED_DOCUMENT_ARGS
   >;
 
+const ADMISSION_REQUIRED_DOCUMENT_FOR_UPLOAD_ARGS = {
+  select: {
+    id: true,
+    schoolId: true,
+    title: true,
+    isMandatory: true,
+    acceptedFileTypes: true,
+  },
+} satisfies Prisma.AdmissionRequiredDocumentDefaultArgs;
+
+export type AdmissionRequiredDocumentForUploadRecord =
+  Prisma.AdmissionRequiredDocumentGetPayload<
+    typeof ADMISSION_REQUIRED_DOCUMENT_FOR_UPLOAD_ARGS
+  >;
+
 const APPLICANT_REQUEST_SCHOOL_SUMMARY_SELECT = {
   id: true,
   name: true,
@@ -126,6 +143,77 @@ const APPLICANT_ADMISSION_REQUEST_ARGS = {
 export type ApplicantAdmissionRequestRecord =
   Prisma.ApplicantAdmissionRequestGetPayload<
     typeof APPLICANT_ADMISSION_REQUEST_ARGS
+  >;
+
+const APPLICANT_ADMISSION_REQUEST_FOR_DOCUMENT_ACCESS_ARGS = {
+  select: {
+    id: true,
+    applicantUserId: true,
+    schoolId: true,
+    organizationId: true,
+    status: true,
+    application: {
+      select: {
+        status: true,
+        deletedAt: true,
+      },
+    },
+    school: {
+      select: {
+        id: true,
+        organizationId: true,
+        status: true,
+        deletedAt: true,
+        organization: {
+          select: {
+            id: true,
+            status: true,
+            deletedAt: true,
+          },
+        },
+      },
+    },
+  },
+} satisfies Prisma.ApplicantAdmissionRequestDefaultArgs;
+
+export type ApplicantAdmissionRequestForDocumentAccessRecord =
+  Prisma.ApplicantAdmissionRequestGetPayload<
+    typeof APPLICANT_ADMISSION_REQUEST_FOR_DOCUMENT_ACCESS_ARGS
+  >;
+
+const APPLICANT_ADMISSION_REQUEST_DOCUMENT_ARGS = {
+  select: {
+    id: true,
+    requestId: true,
+    title: true,
+    documentType: true,
+    status: true,
+    notes: true,
+    createdAt: true,
+    updatedAt: true,
+    requiredDocument: {
+      select: {
+        id: true,
+        title: true,
+        isMandatory: true,
+        sortOrder: true,
+      },
+    },
+    file: {
+      select: {
+        id: true,
+        originalName: true,
+        mimeType: true,
+        sizeBytes: true,
+        checksumSha256: true,
+      },
+    },
+  },
+} satisfies Prisma.ApplicantAdmissionRequestDocumentDefaultArgs;
+
+export type ApplicantAdmissionRequestDocumentRecord =
+  Prisma.ApplicantAdmissionRequestDocumentGetPayload<
+    typeof APPLICANT_ADMISSION_REQUEST_DOCUMENT_ARGS
   >;
 
 const SUBMIT_APPLICANT_ADMISSION_REQUEST_ARGS = {
@@ -195,6 +283,27 @@ export interface CreateApplicantAdmissionRequestRecord {
   childNationality: string | null;
   previousSchool: string | null;
   notes: string | null;
+}
+
+export interface CreateApplicantAdmissionRequestDocumentRecord {
+  requestId: string;
+  applicantUserId: string;
+  schoolId: string;
+  organizationId: string;
+  requiredDocumentId: string | null;
+  applicationDocumentId: string | null;
+  title: string;
+  documentType: string;
+  notes: string | null;
+  file: {
+    bucket: string;
+    objectKey: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: bigint;
+    checksumSha256: string;
+    visibility: FileVisibility;
+  };
 }
 
 export interface ApplicantAdmissionRequestListResult {
@@ -435,6 +544,121 @@ export class ApplicantPortalRepository {
     });
   }
 
+  findApplicantAdmissionRequestForDocumentAccess(params: {
+    applicantUserId: string;
+    requestId: string;
+  }): Promise<ApplicantAdmissionRequestForDocumentAccessRecord | null> {
+    return this.prisma.applicantAdmissionRequest.findFirst({
+      where: {
+        id: params.requestId,
+        applicantUserId: params.applicantUserId,
+        deletedAt: null,
+      },
+      ...APPLICANT_ADMISSION_REQUEST_FOR_DOCUMENT_ACCESS_ARGS,
+    });
+  }
+
+  findActiveSchoolLevelRequiredDocumentForUpload(params: {
+    schoolId: string;
+    requiredDocumentId: string;
+  }): Promise<AdmissionRequiredDocumentForUploadRecord | null> {
+    return this.prisma.admissionRequiredDocument.findFirst({
+      where: {
+        id: params.requiredDocumentId,
+        schoolId: params.schoolId,
+        gradeId: null,
+        isActive: true,
+        deletedAt: null,
+      },
+      ...ADMISSION_REQUIRED_DOCUMENT_FOR_UPLOAD_ARGS,
+    });
+  }
+
+  async createApplicantAdmissionRequestDocument(
+    data: CreateApplicantAdmissionRequestDocumentRecord,
+  ): Promise<ApplicantAdmissionRequestDocumentRecord> {
+    return this.prisma.$transaction(async (tx) => {
+      const file = await tx.file.create({
+        data: {
+          organizationId: data.organizationId,
+          schoolId: data.schoolId,
+          uploaderId: data.applicantUserId,
+          bucket: data.file.bucket,
+          objectKey: data.file.objectKey,
+          originalName: data.file.originalName,
+          mimeType: data.file.mimeType,
+          sizeBytes: data.file.sizeBytes,
+          checksumSha256: data.file.checksumSha256,
+          visibility: data.file.visibility,
+        },
+        select: { id: true },
+      });
+
+      return tx.applicantAdmissionRequestDocument.create({
+        data: {
+          requestId: data.requestId,
+          applicantUserId: data.applicantUserId,
+          schoolId: data.schoolId,
+          organizationId: data.organizationId,
+          requiredDocumentId: data.requiredDocumentId,
+          applicationDocumentId: data.applicationDocumentId,
+          fileId: file.id,
+          title: data.title,
+          documentType: data.documentType,
+          status: ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+          notes: data.notes,
+        },
+        ...APPLICANT_ADMISSION_REQUEST_DOCUMENT_ARGS,
+      });
+    });
+  }
+
+  listApplicantAdmissionRequestDocuments(params: {
+    applicantUserId: string;
+    requestId: string;
+  }): Promise<ApplicantAdmissionRequestDocumentRecord[]> {
+    return this.prisma.applicantAdmissionRequestDocument.findMany({
+      where: {
+        requestId: params.requestId,
+        applicantUserId: params.applicantUserId,
+        deletedAt: null,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      ...APPLICANT_ADMISSION_REQUEST_DOCUMENT_ARGS,
+    });
+  }
+
+  findApplicantAdmissionRequestDocumentForApplicant(params: {
+    applicantUserId: string;
+    requestId: string;
+    documentId: string;
+  }): Promise<ApplicantAdmissionRequestDocumentRecord | null> {
+    return this.prisma.applicantAdmissionRequestDocument.findFirst({
+      where: {
+        id: params.documentId,
+        requestId: params.requestId,
+        applicantUserId: params.applicantUserId,
+        deletedAt: null,
+        request: {
+          is: {
+            applicantUserId: params.applicantUserId,
+            deletedAt: null,
+          },
+        },
+      },
+      ...APPLICANT_ADMISSION_REQUEST_DOCUMENT_ARGS,
+    });
+  }
+
+  countMissingMandatoryRequiredDocumentsForRequest(params: {
+    schoolId: string;
+    requestId: string;
+  }): Promise<number> {
+    return this.prisma.admissionRequiredDocument.count({
+      where: buildMissingMandatoryRequiredDocumentsWhere(params),
+    });
+  }
+
   async submitApplicantAdmissionRequest(params: {
     applicantUserId: string;
     requestId: string;
@@ -517,10 +741,12 @@ export class ApplicantPortalRepository {
         if (!grade) return { kind: 'invalid_grade' };
       }
 
-      const missingItemsCount =
-        await tx.admissionRequiredDocument.count({
-          where: buildMandatoryRequiredDocumentsWhere(request.schoolId),
-        });
+      const missingItemsCount = await tx.admissionRequiredDocument.count({
+        where: buildMissingMandatoryRequiredDocumentsWhere({
+          schoolId: request.schoolId,
+          requestId: request.id,
+        }),
+      });
       const applicationStatus =
         missingItemsCount > 0
           ? AdmissionApplicationStatus.DOCUMENTS_PENDING
@@ -579,7 +805,10 @@ export class ApplicantPortalRepository {
       const missingItemsCount =
         params.missingItemsCount ??
         (await tx.admissionRequiredDocument.count({
-          where: buildMandatoryRequiredDocumentsWhere(params.schoolId),
+          where: buildMissingMandatoryRequiredDocumentsWhere({
+            schoolId: params.schoolId,
+            requestId: params.requestId,
+          }),
         }));
 
       return {
@@ -720,5 +949,28 @@ function buildMandatoryRequiredDocumentsWhere(
     isMandatory: true,
     isActive: true,
     deletedAt: null,
+  };
+}
+
+const REQUIRED_DOCUMENT_SATISFYING_STATUSES = [
+  ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+  ApplicantAdmissionRequestDocumentStatus.ACCEPTED,
+] as const;
+
+function buildMissingMandatoryRequiredDocumentsWhere(params: {
+  schoolId: string;
+  requestId: string;
+}): Prisma.AdmissionRequiredDocumentWhereInput {
+  return {
+    ...buildMandatoryRequiredDocumentsWhere(params.schoolId),
+    NOT: {
+      applicantAdmissionRequestDocuments: {
+        some: {
+          requestId: params.requestId,
+          deletedAt: null,
+          status: { in: [...REQUIRED_DOCUMENT_SATISFYING_STATUSES] },
+        },
+      },
+    },
   };
 }

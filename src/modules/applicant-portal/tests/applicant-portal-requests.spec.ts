@@ -199,7 +199,7 @@ describe('Applicant Portal request ownership foundation', () => {
     expect(repository.createApplicantAdmissionRequest).not.toHaveBeenCalled();
   });
 
-  it('lists only current applicant requests and derives missing count once per school', async () => {
+  it('lists only current applicant requests and derives missing count per request', async () => {
     const repository = mockApplicantRepository();
     repository.listApplicantAdmissionRequestsForApplicant.mockResolvedValue({
       items: [
@@ -211,6 +211,9 @@ describe('Applicant Portal request ownership foundation', () => {
       total: 2,
     });
     repository.countMandatoryRequiredDocumentsForSchool.mockResolvedValue(3);
+    repository.countMissingMandatoryRequiredDocumentsForRequest
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(1);
     const useCase = new ListApplicantRequestsUseCase(
       mockAccessService(),
       repository,
@@ -229,8 +232,11 @@ describe('Applicant Portal request ownership foundation', () => {
     expect(
       repository.countMandatoryRequiredDocumentsForSchool,
     ).toHaveBeenCalledTimes(1);
+    expect(
+      repository.countMissingMandatoryRequiredDocumentsForRequest,
+    ).toHaveBeenCalledTimes(2);
     expect(response.meta).toMatchObject({ page: 1, limit: 100, total: 2 });
-    expect(response.data.map((item) => item.missingItemsCount)).toEqual([3, 3]);
+    expect(response.data.map((item) => item.missingItemsCount)).toEqual([2, 1]);
   });
 
   it('reads only the current applicant request and returns not found on cross-applicant ids', async () => {
@@ -239,6 +245,9 @@ describe('Applicant Portal request ownership foundation', () => {
       requestRecordFixture(),
     );
     repository.countMandatoryRequiredDocumentsForSchool.mockResolvedValue(1);
+    repository.countMissingMandatoryRequiredDocumentsForRequest.mockResolvedValue(
+      1,
+    );
     const useCase = new GetApplicantRequestUseCase(
       mockAccessService(),
       repository,
@@ -362,21 +371,27 @@ describe('Applicant Portal request ownership foundation', () => {
     repository.submitApplicantAdmissionRequest.mockResolvedValueOnce({
       kind: 'not_found',
     });
-    await expect(useCase.execute({ requestId: REQUEST_ID })).rejects.toMatchObject({
+    await expect(
+      useCase.execute({ requestId: REQUEST_ID }),
+    ).rejects.toMatchObject({
       code: 'not_found',
     });
 
     repository.submitApplicantAdmissionRequest.mockResolvedValueOnce({
       kind: 'unsafe_school',
     });
-    await expect(useCase.execute({ requestId: REQUEST_ID })).rejects.toMatchObject({
+    await expect(
+      useCase.execute({ requestId: REQUEST_ID }),
+    ).rejects.toMatchObject({
       code: 'not_found',
     });
 
     repository.submitApplicantAdmissionRequest.mockResolvedValueOnce({
       kind: 'invalid_state',
     });
-    await expect(useCase.execute({ requestId: REQUEST_ID })).rejects.toMatchObject({
+    await expect(
+      useCase.execute({ requestId: REQUEST_ID }),
+    ).rejects.toMatchObject({
       code: 'conflict',
       httpStatus: 409,
     });
@@ -838,6 +853,7 @@ function mockApplicantRepository(): jest.Mocked<ApplicantPortalRepository> {
     createApplicantAdmissionRequest: jest.fn(),
     submitApplicantAdmissionRequest: jest.fn(),
     countMandatoryRequiredDocumentsForSchool: jest.fn(),
+    countMissingMandatoryRequiredDocumentsForRequest: jest.fn(),
     listApplicantAdmissionRequestsForApplicant: jest.fn(),
     findApplicantAdmissionRequestForApplicant: jest.fn(),
   } as unknown as jest.Mocked<ApplicantPortalRepository>;

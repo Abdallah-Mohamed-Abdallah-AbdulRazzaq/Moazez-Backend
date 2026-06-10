@@ -41,9 +41,14 @@ export class SubmitApplicantRequestUseCase {
       throw this.toSubmitException(result.kind, command.requestId);
     }
 
+    const mandatoryItemsCount =
+      await this.applicantPortalRepository.countMandatoryRequiredDocumentsForSchool(
+        result.schoolId,
+      );
     const response = presentApplicantRequestDetail(
       result.request,
       result.missingItemsCount,
+      mandatoryItemsCount,
     );
 
     if (result.createdApplication) {
@@ -90,9 +95,12 @@ export class SubmitApplicantRequestUseCase {
           requestId,
         });
       case 'invalid_academic_year':
-        return new NotFoundDomainException('Requested academic year not found', {
-          requestId,
-        });
+        return new NotFoundDomainException(
+          'Requested academic year not found',
+          {
+            requestId,
+          },
+        );
       case 'invalid_grade':
         return new NotFoundDomainException('Requested grade not found', {
           requestId,
@@ -100,7 +108,8 @@ export class SubmitApplicantRequestUseCase {
       case 'invalid_state':
         return new DomainException({
           code: 'conflict',
-          message: 'Applicant request cannot be submitted from its current state',
+          message:
+            'Applicant request cannot be submitted from its current state',
           httpStatus: HttpStatus.CONFLICT,
           details: { requestId },
         });

@@ -151,7 +151,7 @@ describe('Applicant Portal account foundation (e2e)', () => {
     }
   });
 
-  it('registers Applicant Portal foundation routes and keeps later document routes deferred', async () => {
+  it('registers Applicant Portal foundation and document routes while keeping deferred document actions absent', async () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain('POST /api/v1/applicant-portal/accounts');
@@ -170,9 +170,19 @@ describe('Applicant Portal account foundation (e2e)', () => {
       'POST /api/v1/applicant-portal/requests/:requestId/submit',
     );
 
-    for (const deferredRoute of [
+    for (const documentRoute of [
       'POST /api/v1/applicant-portal/requests/:requestId/documents',
       'GET /api/v1/applicant-portal/requests/:requestId/documents',
+      'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
+    ]) {
+      expect(routes).toContain(documentRoute);
+    }
+
+    for (const deferredRoute of [
+      'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId/download',
+      'DELETE /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
+      'PATCH /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
+      'POST /api/v1/applicant-portal/uploads',
     ]) {
       expect(routes).not.toContain(deferredRoute);
     }
@@ -203,6 +213,18 @@ describe('Applicant Portal account foundation (e2e)', () => {
         method: 'post' as const,
         path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/submit`,
       },
+      {
+        method: 'post' as const,
+        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents`,
+      },
+      {
+        method: 'get' as const,
+        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents`,
+      },
+      {
+        method: 'get' as const,
+        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents/${randomUUID()}`,
+      },
     ]) {
       await request(app.getHttpServer())
         [unauthenticatedRouteCheck.method](unauthenticatedRouteCheck.path)
@@ -211,12 +233,16 @@ describe('Applicant Portal account foundation (e2e)', () => {
 
     for (const deferredRouteCheck of [
       {
-        method: 'post' as const,
-        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents`,
+        method: 'get' as const,
+        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents/${randomUUID()}/download`,
       },
       {
-        method: 'get' as const,
-        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents`,
+        method: 'delete' as const,
+        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents/${randomUUID()}`,
+      },
+      {
+        method: 'patch' as const,
+        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents/${randomUUID()}`,
       },
     ]) {
       await request(app.getHttpServer())

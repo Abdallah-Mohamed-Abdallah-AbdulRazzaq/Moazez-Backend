@@ -13,9 +13,14 @@ import { ApplicantAdmissionRequestRecord } from '../infrastructure/applicant-por
 export function presentApplicantRequestDetail(
   request: ApplicantAdmissionRequestRecord,
   missingItemsCount: number,
+  mandatoryItemsCount = missingItemsCount,
 ): ApplicantRequestDetailResponseDto {
   return {
-    ...presentApplicantRequestCard(request, missingItemsCount),
+    ...presentApplicantRequestCard(
+      request,
+      missingItemsCount,
+      mandatoryItemsCount,
+    ),
     child: {
       firstName: request.childFirstName,
       lastName: request.childLastName ?? null,
@@ -34,7 +39,8 @@ export function presentApplicantRequestsList(input: {
   page: number;
   limit: number;
   total: number;
-  missingItemsCountBySchoolId: Map<string, number>;
+  missingItemsCountByRequestId: Map<string, number>;
+  mandatoryItemsCountBySchoolId?: Map<string, number>;
 }): ApplicantRequestsListResponseDto {
   const totalPages =
     input.total === 0 ? 0 : Math.ceil(input.total / input.limit);
@@ -43,7 +49,8 @@ export function presentApplicantRequestsList(input: {
     data: input.items.map((request) =>
       presentApplicantRequestCard(
         request,
-        input.missingItemsCountBySchoolId.get(request.school.id) ?? 0,
+        input.missingItemsCountByRequestId.get(request.id) ?? 0,
+        input.mandatoryItemsCountBySchoolId?.get(request.school.id) ?? 0,
       ),
     ),
     meta: {
@@ -59,6 +66,7 @@ export function presentApplicantRequestsList(input: {
 export function presentApplicantRequestCard(
   request: ApplicantAdmissionRequestRecord,
   missingItemsCount: number,
+  mandatoryItemsCount = missingItemsCount,
 ): ApplicantRequestCardResponseDto {
   const status = presentRequestStatus(request);
 
@@ -98,7 +106,10 @@ export function presentApplicantRequestCard(
         }
       : null,
     missingItemsCount,
-    progressValue: presentProgressValue(status),
+    progressValue: presentProgressValue(status, {
+      missingItemsCount,
+      mandatoryItemsCount,
+    }),
     createdAt: request.createdAt.toISOString(),
     updatedAt: request.updatedAt.toISOString(),
   };
@@ -127,9 +138,18 @@ function presentRequestStatus(
   }
 }
 
-function presentProgressValue(status: ApplicantRequestApiStatus): number {
+function presentProgressValue(
+  status: ApplicantRequestApiStatus,
+  counts: {
+    missingItemsCount: number;
+    mandatoryItemsCount: number;
+  },
+): number {
   switch (status) {
     case 'needs_action':
+      if (counts.mandatoryItemsCount > 0 && counts.missingItemsCount === 0) {
+        return 55;
+      }
       return 40;
     case 'submitted':
       return 50;
@@ -141,6 +161,12 @@ function presentProgressValue(status: ApplicantRequestApiStatus): number {
     case 'rejected':
       return 100;
     case 'draft':
+      if (
+        counts.mandatoryItemsCount > 0 &&
+        counts.missingItemsCount < counts.mandatoryItemsCount
+      ) {
+        return 35;
+      }
       return 25;
   }
 }

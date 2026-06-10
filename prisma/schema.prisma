@@ -305,6 +305,16 @@ enum ApplicantAdmissionRequestStatus {
   @@map("applicant_admission_request_status")
 }
 
+enum ApplicantAdmissionRequestDocumentStatus {
+  UPLOADED
+  NEEDS_REPLACEMENT
+  ACCEPTED
+  REJECTED
+  SUPERSEDED
+
+  @@map("applicant_admission_request_document_status")
+}
+
 enum StudentStatus {
   ACTIVE
   SUSPENDED
@@ -1076,18 +1086,19 @@ model Organization {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  schools                    School[]
-  schoolEntitlements         SchoolEntitlement[]
-  schoolFeatureControls      SchoolFeatureControl[]
-  memberships                Membership[]
-  auditLogs                  AuditLog[]
-  files                      File[]
-  leads                      Lead[]
-  applications               Application[]
-  applicantAdmissionRequests ApplicantAdmissionRequest[]
-  admissionRequiredDocuments AdmissionRequiredDocument[]
-  students                   Student[]
-  guardians                  Guardian[]
+  schools                            School[]
+  schoolEntitlements                 SchoolEntitlement[]
+  schoolFeatureControls              SchoolFeatureControl[]
+  memberships                        Membership[]
+  auditLogs                          AuditLog[]
+  files                              File[]
+  leads                              Lead[]
+  applications                       Application[]
+  applicantAdmissionRequests         ApplicantAdmissionRequest[]
+  applicantAdmissionRequestDocuments ApplicantAdmissionRequestDocument[]
+  admissionRequiredDocuments         AdmissionRequiredDocument[]
+  students                           Student[]
+  guardians                          Guardian[]
 
   @@index([status])
   @@index([deletedAt])
@@ -1149,6 +1160,7 @@ model School {
   leads                                 Lead[]
   applications                          Application[]
   applicantAdmissionRequests            ApplicantAdmissionRequest[]
+  applicantAdmissionRequestDocuments    ApplicantAdmissionRequestDocument[]
   admissionRequiredDocuments            AdmissionRequiredDocument[]
   applicationDocuments                  ApplicationDocument[]
   placementTests                        PlacementTest[]
@@ -1304,6 +1316,7 @@ model User {
   memberships                                    Membership[]
   applicantProfile                               ApplicantProfile?                      @relation("ApplicantProfileUser")
   applicantAdmissionRequests                     ApplicantAdmissionRequest[]            @relation("ApplicantAdmissionRequestUser")
+  applicantAdmissionRequestDocuments             ApplicantAdmissionRequestDocument[]    @relation("ApplicantAdmissionRequestDocumentUser")
   sessions                                       Session[]
   auditLogsActing                                AuditLog[]                             @relation("AuditLogActor")
   filesUploaded                                  File[]                                 @relation("FileUploader")
@@ -1980,13 +1993,14 @@ model ApplicantAdmissionRequest {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  applicantUser         User             @relation("ApplicantAdmissionRequestUser", fields: [applicantUserId], references: [id], onDelete: Restrict)
-  applicantProfile      ApplicantProfile @relation(fields: [applicantProfileId], references: [id], onDelete: Restrict)
-  school                School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  organization          Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  requestedAcademicYear AcademicYear?    @relation(fields: [requestedAcademicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  requestedGrade        Grade?           @relation(fields: [requestedGradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  application           Application?     @relation("ApplicantAdmissionRequestApplication", fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  applicantUser         User                                @relation("ApplicantAdmissionRequestUser", fields: [applicantUserId], references: [id], onDelete: Restrict)
+  applicantProfile      ApplicantProfile                    @relation(fields: [applicantProfileId], references: [id], onDelete: Restrict)
+  school                School                              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization          Organization                        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  requestedAcademicYear AcademicYear?                       @relation(fields: [requestedAcademicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  requestedGrade        Grade?                              @relation(fields: [requestedGradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  application           Application?                        @relation("ApplicantAdmissionRequestApplication", fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  documents             ApplicantAdmissionRequestDocument[]
 
   @@unique([id, schoolId])
   @@unique([applicationId, schoolId])
@@ -2022,9 +2036,10 @@ model AdmissionRequiredDocument {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  grade        Grade?       @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  school                             School                              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization                       Organization                        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  grade                              Grade?                              @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  applicantAdmissionRequestDocuments ApplicantAdmissionRequestDocument[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -2048,9 +2063,10 @@ model ApplicationDocument {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  school      School      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  application Application @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  file        File        @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  school                             School                              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  application                        Application                         @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  file                               File                                @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  applicantAdmissionRequestDocuments ApplicantAdmissionRequestDocument[]
 
   @@index([schoolId])
   @@index([applicationId])
@@ -2058,6 +2074,43 @@ model ApplicationDocument {
   @@index([schoolId, status])
   @@index([schoolId, applicationId, documentType])
   @@map("admission_application_documents")
+}
+
+model ApplicantAdmissionRequestDocument {
+  id                    String                                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestId             String                                  @map("request_id") @db.Uuid
+  applicantUserId       String                                  @map("applicant_user_id") @db.Uuid
+  schoolId              String                                  @map("school_id") @db.Uuid
+  organizationId        String                                  @map("organization_id") @db.Uuid
+  requiredDocumentId    String?                                 @map("required_document_id") @db.Uuid
+  applicationDocumentId String?                                 @map("application_document_id") @db.Uuid
+  fileId                String                                  @map("file_id") @db.Uuid
+  title                 String                                  @db.VarChar(180)
+  documentType          String                                  @map("document_type") @db.VarChar(120)
+  status                ApplicantAdmissionRequestDocumentStatus @default(UPLOADED)
+  notes                 String?                                 @db.Text
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  request             ApplicantAdmissionRequest  @relation(fields: [requestId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  applicantUser       User                       @relation("ApplicantAdmissionRequestDocumentUser", fields: [applicantUserId], references: [id], onDelete: Restrict)
+  school              School                     @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization        Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  requiredDocument    AdmissionRequiredDocument? @relation(fields: [requiredDocumentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  applicationDocument ApplicationDocument?       @relation(fields: [applicationDocumentId], references: [id], onDelete: Restrict)
+  file                File                       @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@index([requestId, deletedAt, createdAt(sort: Desc)])
+  @@index([applicantUserId, deletedAt, createdAt(sort: Desc)])
+  @@index([schoolId, requestId, deletedAt])
+  @@index([requestId, requiredDocumentId, deletedAt])
+  @@index([fileId])
+  @@index([status, deletedAt])
+  @@index([schoolId, applicationDocumentId])
+  @@index([organizationId])
+  @@map("applicant_admission_request_documents")
 }
 
 model PlacementTest {
@@ -5692,6 +5745,7 @@ model File {
   homeworkSubmissionAttachments        HomeworkSubmissionAttachment[]
   reinforcementProofSubmissions        ReinforcementSubmission[]             @relation("ReinforcementSubmissionProofFile")
   applicationDocuments                 ApplicationDocument[]
+  applicantAdmissionRequestDocuments   ApplicantAdmissionRequestDocument[]
   studentDocuments                     StudentDocument[]
   importJobsUploaded                   ImportJob[]                           @relation("ImportJobUploadedFile")
   heroBadges                           HeroBadge[]

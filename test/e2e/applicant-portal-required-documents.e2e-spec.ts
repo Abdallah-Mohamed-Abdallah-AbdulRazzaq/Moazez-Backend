@@ -212,7 +212,7 @@ describe('Applicant Portal required documents (e2e)', () => {
     }
   });
 
-  it('registers required documents and keeps later document routes absent', async () => {
+  it('registers required documents and applicant document routes while keeping deferred document actions absent', async () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain(
@@ -227,9 +227,19 @@ describe('Applicant Portal required documents (e2e)', () => {
       'POST /api/v1/applicant-portal/requests/:requestId/submit',
     );
 
-    for (const deferredRoute of [
+    for (const documentRoute of [
       'POST /api/v1/applicant-portal/requests/:requestId/documents',
       'GET /api/v1/applicant-portal/requests/:requestId/documents',
+      'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
+    ]) {
+      expect(routes).toContain(documentRoute);
+    }
+
+    for (const deferredRoute of [
+      'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId/download',
+      'DELETE /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
+      'PATCH /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
+      'POST /api/v1/applicant-portal/uploads',
     ]) {
       expect(routes).not.toContain(deferredRoute);
     }

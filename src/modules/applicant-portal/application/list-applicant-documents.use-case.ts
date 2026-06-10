@@ -1,50 +1,42 @@
 import { Injectable } from '@nestjs/common';
 import { NotFoundDomainException } from '../../../common/exceptions/domain-exception';
-import { ApplicantRequestDetailResponseDto } from '../dto/applicant-request.dto';
+import { ApplicantDocumentsListResponseDto } from '../dto/applicant-document.dto';
 import { ApplicantPortalRepository } from '../infrastructure/applicant-portal.repository';
-import { presentApplicantRequestDetail } from '../presenters/applicant-request.presenter';
+import { presentApplicantDocumentsList } from '../presenters/applicant-document.presenter';
 import { ApplicantPortalAccessService } from './applicant-portal-access.service';
 
 @Injectable()
-export class GetApplicantRequestUseCase {
+export class ListApplicantDocumentsUseCase {
   constructor(
     private readonly applicantPortalAccessService: ApplicantPortalAccessService,
     private readonly applicantPortalRepository: ApplicantPortalRepository,
   ) {}
 
-  async execute(requestId: string): Promise<ApplicantRequestDetailResponseDto> {
+  async execute(requestId: string): Promise<ApplicantDocumentsListResponseDto> {
     const applicantContext =
       await this.applicantPortalAccessService.getApplicantContext();
+
     const request =
-      await this.applicantPortalRepository.findApplicantAdmissionRequestForApplicant(
+      await this.applicantPortalRepository.findApplicantAdmissionRequestForDocumentAccess(
         {
           applicantUserId: applicantContext.applicantUserId,
           requestId,
         },
       );
-
     if (!request) {
       throw new NotFoundDomainException('Applicant request not found', {
         requestId,
       });
     }
 
-    const [missingItemsCount, mandatoryItemsCount] = await Promise.all([
-      this.applicantPortalRepository.countMissingMandatoryRequiredDocumentsForRequest(
+    const documents =
+      await this.applicantPortalRepository.listApplicantAdmissionRequestDocuments(
         {
-          schoolId: request.school.id,
-          requestId: request.id,
+          applicantUserId: applicantContext.applicantUserId,
+          requestId,
         },
-      ),
-      this.applicantPortalRepository.countMandatoryRequiredDocumentsForSchool(
-        request.school.id,
-      ),
-    ]);
+      );
 
-    return presentApplicantRequestDetail(
-      request,
-      missingItemsCount,
-      mandatoryItemsCount,
-    );
+    return presentApplicantDocumentsList(documents);
   }
 }

@@ -290,7 +290,7 @@ describe('Applicant Portal request ownership (e2e)', () => {
     }
   });
 
-  it('registers request routes and keeps document/upload routes absent', async () => {
+  it('registers request and document routes while keeping deferred document actions absent', async () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain('POST /api/v1/applicant-portal/requests');
@@ -302,10 +302,19 @@ describe('Applicant Portal request ownership (e2e)', () => {
       'POST /api/v1/applicant-portal/requests/:requestId/submit',
     );
 
-    for (const absentRoute of [
-      'PATCH /api/v1/applicant-portal/requests/:requestId',
+    for (const documentRoute of [
       'POST /api/v1/applicant-portal/requests/:requestId/documents',
       'GET /api/v1/applicant-portal/requests/:requestId/documents',
+      'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
+    ]) {
+      expect(routes).toContain(documentRoute);
+    }
+
+    for (const absentRoute of [
+      'PATCH /api/v1/applicant-portal/requests/:requestId',
+      'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId/download',
+      'DELETE /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
+      'PATCH /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
       'POST /api/v1/applicant-portal/uploads',
     ]) {
       expect(routes).not.toContain(absentRoute);
@@ -499,7 +508,7 @@ describe('Applicant Portal request ownership (e2e)', () => {
     }
   });
 
-  it('keeps required documents endpoint working and keeps upload/document routes absent', async () => {
+  it('keeps required documents endpoint working and keeps deferred upload/document actions absent', async () => {
     await request(app.getHttpServer())
       .get(
         `${GLOBAL_PREFIX}/applicant-portal/schools/${activeSchoolId}/admission-required-documents`,
@@ -524,19 +533,24 @@ describe('Applicant Portal request ownership (e2e)', () => {
         );
       });
 
-    for (const route of [
-      `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents`,
-      `${GLOBAL_PREFIX}/applicant-portal/uploads`,
-    ]) {
-      await request(app.getHttpServer())
-        .post(route)
-        .set('Authorization', bearer(applicantAuth))
-        .expect(404);
-    }
-
     await request(app.getHttpServer())
       .get(
         `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents`,
+      )
+      .set('Authorization', bearer(applicantAuth))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({ data: [] });
+      });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/applicant-portal/uploads`)
+      .set('Authorization', bearer(applicantAuth))
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${randomUUID()}/download`,
       )
       .set('Authorization', bearer(applicantAuth))
       .expect(404);

@@ -32,17 +32,22 @@ export class ListApplicantRequestsUseCase {
         },
       );
 
-    const missingItemsCountBySchoolId = await this.countMissingItemsBySchoolId(
-      result.items.map((request) => request.school.id),
-    );
+    const [missingItemsCountByRequestId, mandatoryItemsCountBySchoolId] =
+      await Promise.all([
+        this.countMissingItemsByRequestId(result.items),
+        this.countMandatoryItemsBySchoolId(
+          result.items.map((request) => request.school.id),
+        ),
+      ]);
 
     return presentApplicantRequestsList({
       ...result,
-      missingItemsCountBySchoolId,
+      missingItemsCountByRequestId,
+      mandatoryItemsCountBySchoolId,
     });
   }
 
-  private async countMissingItemsBySchoolId(
+  private async countMandatoryItemsBySchoolId(
     schoolIds: string[],
   ): Promise<Map<string, number>> {
     const uniqueSchoolIds = [...new Set(schoolIds)];
@@ -53,6 +58,27 @@ export class ListApplicantRequestsUseCase {
             schoolId,
             await this.applicantPortalRepository.countMandatoryRequiredDocumentsForSchool(
               schoolId,
+            ),
+          ] as const,
+      ),
+    );
+
+    return new Map(entries);
+  }
+
+  private async countMissingItemsByRequestId(
+    requests: Array<{ id: string; school: { id: string } }>,
+  ): Promise<Map<string, number>> {
+    const entries = await Promise.all(
+      requests.map(
+        async (request) =>
+          [
+            request.id,
+            await this.applicantPortalRepository.countMissingMandatoryRequiredDocumentsForRequest(
+              {
+                schoolId: request.school.id,
+                requestId: request.id,
+              },
             ),
           ] as const,
       ),

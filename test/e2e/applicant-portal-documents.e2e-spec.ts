@@ -4,7 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   AdmissionApplicationSource,
   AdmissionApplicationStatus,
-  ApplicantAdmissionRequestStatus,
+  ApplicantAdmissionRequestDocumentStatus,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
@@ -16,9 +16,10 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { StorageService } from '../../src/infrastructure/storage/storage.service';
 
 const GLOBAL_PREFIX = '/api/v1';
-const PASSWORD = 'Applicant18GPass!';
+const PASSWORD = 'Applicant18IDocs!';
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
   memoryCost: 19 * 1024,
@@ -26,7 +27,7 @@ const ARGON2_OPTIONS: argon2.Options = {
   parallelism: 1,
 };
 
-jest.setTimeout(45000);
+jest.setTimeout(60000);
 
 type AuthTokens = {
   accessToken: string;
@@ -44,8 +45,8 @@ type ExpressLayer = {
 
 type SideEffectSnapshot = {
   memberships: number;
-  applications: number;
   applicationDocuments: number;
+  applicantDocuments: number;
   files: number;
   students: number;
   guardians: number;
@@ -53,22 +54,26 @@ type SideEffectSnapshot = {
   enrollments: number;
 };
 
-describe('Applicant Portal request submission (e2e)', () => {
+describe('Applicant Portal documents (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
+  let storageService: StorageService;
 
   let organizationId = '';
   let organizationToSuspendId = '';
-  let docsSchoolId = '';
-  let noDocsSchoolId = '';
+  let activeSchoolId = '';
+  let otherSchoolId = '';
   let schoolToSuspendId = '';
   let orgUnsafeSchoolId = '';
-  let academicYearId = '';
-  let gradeId = '';
+  let requiredDocumentId = '';
+  let secondRequiredDocumentId = '';
+  let inactiveRequiredDocumentId = '';
+  let crossSchoolRequiredDocumentId = '';
   let roleId = '';
-  let docsRequestId = '';
-  let noDocsRequestId = '';
+  let applicantRequestId = '';
   let otherApplicantRequestId = '';
+  let requiredUploadDocumentId = '';
+  let optionalUploadDocumentId = '';
 
   let applicantAuth: AuthTokens;
   let otherApplicantAuth: AuthTokens;
@@ -79,16 +84,15 @@ describe('Applicant Portal request submission (e2e)', () => {
   let platformAuth: AuthTokens;
 
   const suffix = randomUUID().split('-')[0];
-  const marker = `s18g-submit-${suffix}`;
+  const marker = `s18i-documents-${suffix}`;
   const createdOrganizationIds: string[] = [];
   const createdSchoolIds: string[] = [];
   const createdSchoolProfileIds: string[] = [];
-  const createdAcademicYearIds: string[] = [];
-  const createdStageIds: string[] = [];
-  const createdGradeIds: string[] = [];
   const createdDocumentIds: string[] = [];
   const createdRequestIds: string[] = [];
   const createdApplicationIds: string[] = [];
+  const createdApplicantDocumentIds: string[] = [];
+  const createdFileIds: string[] = [];
   const createdUserIds: string[] = [];
   const createdProfileIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -99,35 +103,30 @@ describe('Applicant Portal request submission (e2e)', () => {
 
     const activeOrganization = await createOrganization({
       slug: `${marker}-active-org`,
-      name: `Sprint 18G Active Org ${suffix}`,
+      name: `Sprint 18I Active Org ${suffix}`,
       status: OrganizationStatus.ACTIVE,
     });
     organizationId = activeOrganization.id;
     const organizationToSuspend = await createOrganization({
       slug: `${marker}-org-to-suspend`,
-      name: `Sprint 18G Org To Suspend ${suffix}`,
+      name: `Sprint 18I Org To Suspend ${suffix}`,
       status: OrganizationStatus.ACTIVE,
     });
     organizationToSuspendId = organizationToSuspend.id;
 
-    docsSchoolId = await createSchoolWithProfile({
+    activeSchoolId = await createSchoolWithProfile({
       organizationId,
-      slug: `${marker}-docs-school`,
-      name: `${marker} Docs Academy`,
+      slug: `${marker}-active`,
+      name: `${marker} Active Academy`,
       status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} Docs Public`,
-      shortName: `${marker} Docs`,
-      city: 'Cairo',
-      country: 'Egypt',
+      schoolName: `${marker} Active Public`,
     });
-    noDocsSchoolId = await createSchoolWithProfile({
+    otherSchoolId = await createSchoolWithProfile({
       organizationId,
-      slug: `${marker}-no-docs-school`,
-      name: `${marker} No Docs Academy`,
+      slug: `${marker}-other`,
+      name: `${marker} Other Academy`,
       status: SchoolStatus.ACTIVE,
-      schoolName: `${marker} No Docs Public`,
-      city: 'Giza',
-      country: 'Egypt',
+      schoolName: `${marker} Other Public`,
     });
     schoolToSuspendId = await createSchoolWithProfile({
       organizationId,
@@ -135,8 +134,6 @@ describe('Applicant Portal request submission (e2e)', () => {
       name: `${marker} School To Suspend`,
       status: SchoolStatus.ACTIVE,
       schoolName: `${marker} School To Suspend Public`,
-      city: 'Cairo',
-      country: 'Egypt',
     });
     orgUnsafeSchoolId = await createSchoolWithProfile({
       organizationId: organizationToSuspendId,
@@ -144,56 +141,46 @@ describe('Applicant Portal request submission (e2e)', () => {
       name: `${marker} Org Unsafe School`,
       status: SchoolStatus.ACTIVE,
       schoolName: `${marker} Org Unsafe Public`,
-      city: 'Cairo',
-      country: 'Egypt',
     });
 
-    academicYearId = await createAcademicYear(docsSchoolId);
-    const stageId = await createStage(docsSchoolId);
-    gradeId = await createGrade(docsSchoolId, stageId);
-
-    await createRequiredDocument({
-      schoolId: docsSchoolId,
+    requiredDocumentId = await createRequiredDocument({
+      schoolId: activeSchoolId,
       organizationId,
       title: 'Birth certificate',
       isMandatory: true,
       sortOrder: 10,
+      acceptedFileTypes: ['application/pdf'],
     });
-    await createRequiredDocument({
-      schoolId: docsSchoolId,
+    secondRequiredDocumentId = await createRequiredDocument({
+      schoolId: activeSchoolId,
       organizationId,
       title: 'Parent ID',
       isMandatory: true,
       sortOrder: 20,
+      acceptedFileTypes: ['application/pdf'],
     });
-    await createRequiredDocument({
-      schoolId: docsSchoolId,
+    inactiveRequiredDocumentId = await createRequiredDocument({
+      schoolId: activeSchoolId,
       organizationId,
-      title: `${marker} Optional`,
-      isMandatory: false,
-      sortOrder: 30,
-    });
-    await createRequiredDocument({
-      schoolId: docsSchoolId,
-      organizationId,
-      title: `${marker} Inactive Mandatory`,
+      title: 'Inactive document',
       isMandatory: true,
       isActive: false,
+      acceptedFileTypes: ['application/pdf'],
     });
-    await createRequiredDocument({
-      schoolId: docsSchoolId,
+    crossSchoolRequiredDocumentId = await createRequiredDocument({
+      schoolId: otherSchoolId,
       organizationId,
-      title: `${marker} Deleted Mandatory`,
+      title: 'Other school document',
       isMandatory: true,
-      deletedAt: new Date(),
+      acceptedFileTypes: ['application/pdf'],
     });
 
     roleId = (
       await prisma.role.create({
         data: {
-          schoolId: docsSchoolId,
+          schoolId: activeSchoolId,
           key: `${marker}-role`,
-          name: `Sprint 18G Role ${suffix}`,
+          name: `Sprint 18I Role ${suffix}`,
           isSystem: false,
         },
         select: { id: true },
@@ -222,6 +209,7 @@ describe('Applicant Portal request submission (e2e)', () => {
       }),
     );
     await app.init();
+    storageService = moduleRef.get(StorageService);
 
     await createApplicantAccount('primary');
     await createApplicantAccount('other');
@@ -233,34 +221,38 @@ describe('Applicant Portal request submission (e2e)', () => {
     teacherAuth = await login(`${marker}-teacher@example.test`);
     schoolUserAuth = await login(`${marker}-school-user@example.test`);
     platformAuth = await login(`${marker}-platform@example.test`);
+
+    applicantRequestId = (
+      await createDraftRequest(applicantAuth, activeSchoolId, 'Layla')
+    ).id;
+    otherApplicantRequestId = (
+      await createDraftRequest(otherApplicantAuth, activeSchoolId, 'Omar')
+    ).id;
   });
 
   afterAll(async () => {
     try {
-      if (app) await app.close();
       await cleanupData();
+      if (app) await app.close();
     } finally {
       if (prisma) await prisma.$disconnect();
     }
   });
 
-  it('registers submit and document routes while keeping deferred document/conversion routes absent', async () => {
+  it('registers applicant upload/list/read routes and keeps deferred routes absent', async () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain(
-      'POST /api/v1/applicant-portal/requests/:requestId/submit',
+      'POST /api/v1/applicant-portal/requests/:requestId/documents',
+    );
+    expect(routes).toContain(
+      'GET /api/v1/applicant-portal/requests/:requestId/documents',
+    );
+    expect(routes).toContain(
+      'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
     );
 
-    for (const documentRoute of [
-      'POST /api/v1/applicant-portal/requests/:requestId/documents',
-      'GET /api/v1/applicant-portal/requests/:requestId/documents',
-      'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
-    ]) {
-      expect(routes).toContain(documentRoute);
-    }
-
     for (const absentRoute of [
-      'PATCH /api/v1/applicant-portal/requests/:requestId',
       'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId/download',
       'DELETE /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
       'PATCH /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
@@ -272,159 +264,133 @@ describe('Applicant Portal request submission (e2e)', () => {
     }
   });
 
-  it('submits an own draft request and creates exactly one linked Admissions Application', async () => {
+  it('uploads required and optional documents, lists/reads them safely, and updates missingItemsCount', async () => {
     const before = await getSideEffectSnapshot();
-    const draft = await createDraftRequest(applicantAuth, {
-      schoolId: docsSchoolId,
-      childFirstName: 'Layla',
-      childLastName: 'Hassan',
-      requestedAcademicYearId: academicYearId,
-      requestedGradeId: gradeId,
-    });
-    docsRequestId = draft.id;
 
-    const response = await submitRequest(applicantAuth, docsRequestId, 200);
-
-    expect(response.body).toMatchObject({
-      id: docsRequestId,
-      status: 'needs_action',
-      school: {
-        id: docsSchoolId,
-        name: `${marker} Docs Public`,
+    const firstUpload = await uploadDocument(
+      applicantAuth,
+      applicantRequestId,
+      {
+        requiredDocumentId,
+        filename: 'birth-certificate.pdf',
+        contentType: 'application/pdf',
+        body: Buffer.from('birth-certificate'),
       },
-      childFullName: 'Layla Hassan',
-      missingItemsCount: 2,
-      progressValue: 40,
+    ).expect(201);
+    requiredUploadDocumentId = firstUpload.body.id;
+    createdApplicantDocumentIds.push(requiredUploadDocumentId);
+    createdFileIds.push(firstUpload.body.file.id);
+
+    expect(firstUpload.body).toMatchObject({
+      id: requiredUploadDocumentId,
+      requestId: applicantRequestId,
+      status: 'uploaded',
+      title: 'Birth certificate',
+      documentType: 'Birth certificate',
+      requiredDocument: {
+        id: requiredDocumentId,
+        title: 'Birth certificate',
+        isMandatory: true,
+      },
+      file: {
+        originalName: 'birth-certificate.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 17,
+      },
     });
-    expectSafeRequestResponse(response.body);
-
-    const requestDb = await prisma.applicantAdmissionRequest.findUniqueOrThrow({
-      where: { id: docsRequestId },
-    });
-    expect(requestDb.status).toBe(ApplicantAdmissionRequestStatus.SUBMITTED);
-    expect(requestDb.submittedAt).toBeInstanceOf(Date);
-    expect(requestDb.applicationId).toEqual(expect.any(String));
-    createdApplicationIds.push(requestDb.applicationId as string);
-
-    const application = await prisma.application.findUniqueOrThrow({
-      where: { id: requestDb.applicationId as string },
-    });
-    expect(application).toMatchObject({
-      schoolId: docsSchoolId,
-      organizationId,
-      studentName: 'Layla Hassan',
-      requestedAcademicYearId: academicYearId,
-      requestedGradeId: gradeId,
-      source: AdmissionApplicationSource.IN_APP,
-      status: AdmissionApplicationStatus.DOCUMENTS_PENDING,
-    });
-    expect(application.submittedAt).toBeInstanceOf(Date);
-
-    const after = await getSideEffectSnapshot();
-    expect(after).toEqual({ ...before, applications: before.applications + 1 });
-  });
-
-  it('keeps repeated submit idempotent without duplicate Applications', async () => {
-    const beforeCount = await prisma.application.count();
-
-    const response = await submitRequest(applicantAuth, docsRequestId, 200);
-
-    expect(response.body).toMatchObject({
-      id: docsRequestId,
-      status: 'needs_action',
-      missingItemsCount: 2,
-    });
-    await expect(prisma.application.count()).resolves.toBe(beforeCount);
-  });
-
-  it('maps submitted when no mandatory required documents exist', async () => {
-    const draft = await createDraftRequest(applicantAuth, {
-      schoolId: noDocsSchoolId,
-      childFirstName: 'Omar',
-    });
-    noDocsRequestId = draft.id;
-
-    const response = await submitRequest(applicantAuth, noDocsRequestId, 200);
-
-    expect(response.body).toMatchObject({
-      id: noDocsRequestId,
-      status: 'submitted',
-      missingItemsCount: 0,
-      progressValue: 50,
-    });
-    expectSafeRequestResponse(response.body);
-
-    const requestDb = await prisma.applicantAdmissionRequest.findUniqueOrThrow({
-      where: { id: noDocsRequestId },
-    });
-    createdApplicationIds.push(requestDb.applicationId as string);
-    const application = await prisma.application.findUniqueOrThrow({
-      where: { id: requestDb.applicationId as string },
-    });
-    expect(application.status).toBe(AdmissionApplicationStatus.SUBMITTED);
-    expect(application.source).toBe(AdmissionApplicationSource.IN_APP);
-  });
-
-  it('lists and reads only the current applicant submitted requests', async () => {
-    const otherDraft = await createDraftRequest(otherApplicantAuth, {
-      schoolId: docsSchoolId,
-      childFirstName: 'Mona',
-    });
-    otherApplicantRequestId = otherDraft.id;
+    expectSafeDocumentResponse(firstUpload.body);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-      .query({ page: 1, limit: 100 })
+      .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}`)
       .set('Authorization', bearer(applicantAuth))
       .expect(200)
       .expect(({ body }) => {
-        const serialized = JSON.stringify(body);
-        expect(serialized).toContain(docsRequestId);
-        expect(serialized).toContain(noDocsRequestId);
-        expect(serialized).not.toContain(otherApplicantRequestId);
-        expect(body.data).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              id: docsRequestId,
-              status: 'needs_action',
-            }),
-            expect.objectContaining({
-              id: noDocsRequestId,
-              status: 'submitted',
-            }),
-          ]),
-        );
+        expect(body.missingItemsCount).toBe(1);
+        expect(body.progressValue).toBe(35);
         expectSafeRequestResponse(body);
       });
 
+    const optionalUpload = await uploadDocument(
+      applicantAuth,
+      applicantRequestId,
+      {
+        title: 'Additional health note',
+        documentType: 'health_note',
+        notes: 'Uploaded for admissions context.',
+        filename: 'health-note.txt',
+        contentType: 'text/plain',
+        body: Buffer.from('healthy'),
+      },
+    ).expect(201);
+    optionalUploadDocumentId = optionalUpload.body.id;
+    createdApplicantDocumentIds.push(optionalUploadDocumentId);
+    createdFileIds.push(optionalUpload.body.file.id);
+    expect(optionalUpload.body).toMatchObject({
+      status: 'uploaded',
+      title: 'Additional health note',
+      documentType: 'health_note',
+      requiredDocument: null,
+      notes: 'Uploaded for admissions context.',
+    });
+    expectSafeDocumentResponse(optionalUpload.body);
+
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${docsRequestId}`)
+      .get(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents`,
+      )
       .set('Authorization', bearer(applicantAuth))
       .expect(200)
       .expect(({ body }) => {
-        expect(body).toMatchObject({
-          id: docsRequestId,
-          status: 'needs_action',
-        });
-        expectSafeRequestResponse(body);
+        expect(body.data.map((item: { id: string }) => item.id)).toEqual([
+          requiredUploadDocumentId,
+          optionalUploadDocumentId,
+        ]);
+        expectSafeDocumentResponse(body);
       });
 
     await request(app.getHttpServer())
       .get(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${otherApplicantRequestId}`,
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${requiredUploadDocumentId}`,
+      )
+      .set('Authorization', bearer(applicantAuth))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.id).toBe(requiredUploadDocumentId);
+        expectSafeDocumentResponse(body);
+      });
+
+    const after = await getSideEffectSnapshot();
+    expect(after).toEqual({
+      ...before,
+      applicantDocuments: before.applicantDocuments + 2,
+      files: before.files + 2,
+    });
+  });
+
+  it('keeps applicant documents isolated by applicant request ownership', async () => {
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${otherApplicantRequestId}/documents`,
       )
       .set('Authorization', bearer(applicantAuth))
       .expect(404);
 
-    await submitRequest(applicantAuth, otherApplicantRequestId, 404);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${otherApplicantRequestId}/documents/${requiredUploadDocumentId}`,
+      )
+      .set('Authorization', bearer(applicantAuth))
+      .expect(404);
+
+    await uploadDocument(applicantAuth, otherApplicantRequestId, {
+      title: 'Cross applicant attempt',
+      filename: 'cross.pdf',
+      contentType: 'application/pdf',
+      body: Buffer.from('cross'),
+    }).expect(404);
   });
 
-  it('rejects parent, student, teacher, school, and platform users from submit', async () => {
-    const draft = await createDraftRequest(applicantAuth, {
-      schoolId: docsSchoolId,
-      childFirstName: 'Nour',
-    });
-
+  it('rejects non-applicant actors from applicant document routes', async () => {
     for (const auth of [
       parentAuth,
       studentAuth,
@@ -432,92 +398,157 @@ describe('Applicant Portal request submission (e2e)', () => {
       schoolUserAuth,
       platformAuth,
     ]) {
-      await submitRequest(auth, draft.id, 403);
+      await uploadDocument(auth, applicantRequestId, {
+        title: 'Denied',
+        filename: 'denied.pdf',
+        contentType: 'application/pdf',
+        body: Buffer.from('denied'),
+      }).expect(403);
+
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents`,
+        )
+        .set('Authorization', bearer(auth))
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${requiredUploadDocumentId}`,
+        )
+        .set('Authorization', bearer(auth))
+        .expect(403);
     }
   });
 
-  it('rejects submit when the selected school or organization becomes unsafe', async () => {
-    const schoolUnsafeDraft = await createDraftRequest(applicantAuth, {
-      schoolId: schoolToSuspendId,
-      childFirstName: 'Farah',
-    });
+  it('rejects unsafe school or organization and invalid required document uploads', async () => {
+    const schoolUnsafeRequest = (
+      await createDraftRequest(applicantAuth, schoolToSuspendId, 'Farah')
+    ).id;
     await prisma.school.update({
       where: { id: schoolToSuspendId },
       data: { status: SchoolStatus.SUSPENDED },
     });
-    await submitRequest(applicantAuth, schoolUnsafeDraft.id, 404);
+    await uploadDocument(applicantAuth, schoolUnsafeRequest, {
+      title: 'Denied',
+      filename: 'denied.pdf',
+      contentType: 'application/pdf',
+      body: Buffer.from('denied'),
+    }).expect(404);
 
-    const orgUnsafeDraft = await createDraftRequest(applicantAuth, {
-      schoolId: orgUnsafeSchoolId,
-      childFirstName: 'Youssef',
-    });
+    const orgUnsafeRequest = (
+      await createDraftRequest(applicantAuth, orgUnsafeSchoolId, 'Youssef')
+    ).id;
     await prisma.organization.update({
       where: { id: organizationToSuspendId },
       data: { status: OrganizationStatus.SUSPENDED },
     });
-    await submitRequest(applicantAuth, orgUnsafeDraft.id, 404);
-  });
+    await uploadDocument(applicantAuth, orgUnsafeRequest, {
+      title: 'Denied',
+      filename: 'denied.pdf',
+      contentType: 'application/pdf',
+      body: Buffer.from('denied'),
+    }).expect(404);
 
-  it('keeps required documents, draft routes, and deferred routes behavior intact', async () => {
-    await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/applicant-portal/schools/${docsSchoolId}/admission-required-documents`,
-      )
-      .expect(200)
-      .expect(({ body }) => {
-        expect(body.data).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              title: 'Birth certificate',
-              isMandatory: true,
-            }),
-            expect.objectContaining({
-              title: 'Parent ID',
-              isMandatory: true,
-            }),
-          ]),
-        );
-      });
-
-    const draft = await createDraftRequest(applicantAuth, {
-      schoolId: docsSchoolId,
-      childFirstName: 'Salma',
-    });
-
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${draft.id}`)
-      .set('Authorization', bearer(applicantAuth))
-      .expect(200);
-
-    for (const route of [
-      `${GLOBAL_PREFIX}/applicant-portal/uploads`,
-      `${GLOBAL_PREFIX}/applicant-portal/requests/${draft.id}/convert-to-parent`,
-      `${GLOBAL_PREFIX}/applicant-portal/conversions`,
+    for (const rejectedRequiredDocumentId of [
+      randomUUID(),
+      inactiveRequiredDocumentId,
+      crossSchoolRequiredDocumentId,
     ]) {
-      await request(app.getHttpServer())
-        .post(route)
-        .set('Authorization', bearer(applicantAuth))
-        .expect(404);
+      await uploadDocument(applicantAuth, applicantRequestId, {
+        requiredDocumentId: rejectedRequiredDocumentId,
+        filename: 'invalid.pdf',
+        contentType: 'application/pdf',
+        body: Buffer.from('invalid'),
+      }).expect(404);
     }
 
+    await uploadDocument(applicantAuth, applicantRequestId, {
+      requiredDocumentId,
+      filename: 'wrong-type.png',
+      contentType: 'image/png',
+      body: Buffer.from('png'),
+    }).expect(415);
+  });
+
+  it('submits successfully after all mandatory uploads and does not bridge documents in Sprint 18I', async () => {
+    const secondUpload = await uploadDocument(
+      applicantAuth,
+      applicantRequestId,
+      {
+        requiredDocumentId: secondRequiredDocumentId,
+        filename: 'parent-id.pdf',
+        contentType: 'application/pdf',
+        body: Buffer.from('parent-id'),
+      },
+    ).expect(201);
+    createdApplicantDocumentIds.push(secondUpload.body.id);
+    createdFileIds.push(secondUpload.body.file.id);
+
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${draft.id}/documents`)
+      .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}`)
       .set('Authorization', bearer(applicantAuth))
       .expect(200)
       .expect(({ body }) => {
-        expect(body).toEqual({ data: [] });
+        expect(body.missingItemsCount).toBe(0);
+        expect(body.progressValue).toBe(35);
       });
 
+    const submitResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/submit`,
+      )
+      .set('Authorization', bearer(applicantAuth))
+      .expect(200);
+    expect(submitResponse.body).toMatchObject({
+      id: applicantRequestId,
+      status: 'submitted',
+      missingItemsCount: 0,
+    });
+
+    const applicantRequest =
+      await prisma.applicantAdmissionRequest.findUniqueOrThrow({
+        where: { id: applicantRequestId },
+      });
+    createdApplicationIds.push(applicantRequest.applicationId as string);
+    const application = await prisma.application.findUniqueOrThrow({
+      where: { id: applicantRequest.applicationId as string },
+    });
+    expect(application).toMatchObject({
+      schoolId: activeSchoolId,
+      organizationId,
+      source: AdmissionApplicationSource.IN_APP,
+      status: AdmissionApplicationStatus.SUBMITTED,
+    });
+
+    await expect(
+      prisma.applicationDocument.count({
+        where: { applicationId: applicantRequest.applicationId as string },
+      }),
+    ).resolves.toBe(0);
+  });
+
+  it('keeps download/delete/replace routes absent', async () => {
     await request(app.getHttpServer())
       .get(
-        `${GLOBAL_PREFIX}/applicant-portal/requests/${draft.id}/documents/${randomUUID()}/download`,
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${requiredUploadDocumentId}/download`,
       )
       .set('Authorization', bearer(applicantAuth))
       .expect(404);
 
     await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/applicant-portal/requests/${draft.id}`)
+      .delete(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${requiredUploadDocumentId}`,
+      )
       .set('Authorization', bearer(applicantAuth))
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents/${requiredUploadDocumentId}`,
+      )
+      .set('Authorization', bearer(applicantAuth))
+      .send({ title: 'Replace attempt' })
       .expect(404);
   });
 
@@ -544,9 +575,6 @@ describe('Applicant Portal request submission (e2e)', () => {
     name: string;
     status: SchoolStatus;
     schoolName: string;
-    shortName?: string | null;
-    city: string;
-    country?: string | null;
   }): Promise<string> {
     const school = await prisma.school.create({
       data: {
@@ -563,63 +591,14 @@ describe('Applicant Portal request submission (e2e)', () => {
       data: {
         schoolId: school.id,
         schoolName: input.schoolName,
-        shortName: input.shortName ?? null,
-        city: input.city,
-        country: input.country ?? null,
+        city: 'Cairo',
+        country: 'Egypt',
       },
       select: { id: true },
     });
     createdSchoolProfileIds.push(profile.id);
 
     return school.id;
-  }
-
-  async function createAcademicYear(schoolId: string): Promise<string> {
-    const academicYear = await prisma.academicYear.create({
-      data: {
-        schoolId,
-        nameAr: `${marker} year`,
-        nameEn: `${marker} 2026/2027`,
-        startDate: new Date('2026-09-01T00:00:00.000Z'),
-        endDate: new Date('2027-06-30T00:00:00.000Z'),
-        isActive: true,
-      },
-      select: { id: true },
-    });
-    createdAcademicYearIds.push(academicYear.id);
-    return academicYear.id;
-  }
-
-  async function createStage(schoolId: string): Promise<string> {
-    const stage = await prisma.stage.create({
-      data: {
-        schoolId,
-        nameAr: `${marker} primary`,
-        nameEn: `${marker} Primary`,
-        sortOrder: 1,
-      },
-      select: { id: true },
-    });
-    createdStageIds.push(stage.id);
-    return stage.id;
-  }
-
-  async function createGrade(
-    schoolId: string,
-    stageId: string,
-  ): Promise<string> {
-    const grade = await prisma.grade.create({
-      data: {
-        schoolId,
-        stageId,
-        nameAr: `${marker} grade four`,
-        nameEn: `${marker} Grade 4`,
-        sortOrder: 1,
-      },
-      select: { id: true },
-    });
-    createdGradeIds.push(grade.id);
-    return grade.id;
   }
 
   async function createRequiredDocument(input: {
@@ -629,31 +608,30 @@ describe('Applicant Portal request submission (e2e)', () => {
     isMandatory: boolean;
     sortOrder?: number;
     isActive?: boolean;
-    deletedAt?: Date | null;
-  }): Promise<void> {
+    acceptedFileTypes?: string[];
+  }): Promise<string> {
     const document = await prisma.admissionRequiredDocument.create({
       data: {
         schoolId: input.schoolId,
         organizationId: input.organizationId,
         title: input.title,
-        description: null,
         isMandatory: input.isMandatory,
-        acceptedFileTypes: ['application/pdf'],
+        isActive: input.isActive ?? true,
+        acceptedFileTypes: input.acceptedFileTypes ?? [],
         maxFiles: 1,
         sortOrder: input.sortOrder ?? 0,
-        isActive: input.isActive ?? true,
-        deletedAt: input.deletedAt ?? null,
       },
       select: { id: true },
     });
     createdDocumentIds.push(document.id);
+    return document.id;
   }
 
   async function createApplicantAccount(label: string): Promise<void> {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/applicant-portal/accounts`)
       .send({
-        fullName: `Sprint 18G ${label} Applicant`,
+        fullName: `Sprint 18I ${label} Applicant`,
         email: `${marker}-${label}@example.test`,
         password: PASSWORD,
         phoneNumber: '+20 100 000 0000',
@@ -668,33 +646,48 @@ describe('Applicant Portal request submission (e2e)', () => {
 
   async function createDraftRequest(
     auth: AuthTokens,
-    body: {
-      schoolId: string;
-      childFirstName: string;
-      childLastName?: string;
-      requestedAcademicYearId?: string;
-      requestedGradeId?: string;
-    },
+    schoolId: string,
+    childFirstName: string,
   ): Promise<{ id: string }> {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
       .set('Authorization', bearer(auth))
-      .send(body)
+      .send({ schoolId, childFirstName })
       .expect(201);
 
     createdRequestIds.push(response.body.id);
     return { id: response.body.id };
   }
 
-  async function submitRequest(
+  function uploadDocument(
     auth: AuthTokens,
     requestId: string,
-    expectedStatus: number,
+    input: {
+      requiredDocumentId?: string;
+      title?: string;
+      documentType?: string;
+      notes?: string;
+      filename: string;
+      contentType: string;
+      body: Buffer;
+    },
   ) {
-    return request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/applicant-portal/requests/${requestId}/submit`)
+    const call = request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/applicant-portal/requests/${requestId}/documents`)
       .set('Authorization', bearer(auth))
-      .expect(expectedStatus);
+      .attach('file', input.body, {
+        filename: input.filename,
+        contentType: input.contentType,
+      });
+
+    if (input.requiredDocumentId) {
+      call.field('requiredDocumentId', input.requiredDocumentId);
+    }
+    if (input.title) call.field('title', input.title);
+    if (input.documentType) call.field('documentType', input.documentType);
+    if (input.notes) call.field('notes', input.notes);
+
+    return call;
   }
 
   async function createUserWithMembership(
@@ -706,7 +699,7 @@ describe('Applicant Portal request submission (e2e)', () => {
       data: {
         userId,
         organizationId,
-        schoolId: docsSchoolId,
+        schoolId: activeSchoolId,
         roleId,
         userType,
         status: MembershipStatus.ACTIVE,
@@ -721,7 +714,7 @@ describe('Applicant Portal request submission (e2e)', () => {
     const user = await prisma.user.create({
       data: {
         email: `${marker}-${label}@example.test`,
-        firstName: 'Sprint18G',
+        firstName: 'Sprint18I',
         lastName: label,
         userType,
         status: UserStatus.ACTIVE,
@@ -747,8 +740,8 @@ describe('Applicant Portal request submission (e2e)', () => {
   async function getSideEffectSnapshot(): Promise<SideEffectSnapshot> {
     const [
       memberships,
-      applications,
       applicationDocuments,
+      applicantDocuments,
       files,
       students,
       guardians,
@@ -756,8 +749,8 @@ describe('Applicant Portal request submission (e2e)', () => {
       enrollments,
     ] = await Promise.all([
       prisma.membership.count(),
-      prisma.application.count(),
       prisma.applicationDocument.count(),
+      prisma.applicantAdmissionRequestDocument.count(),
       prisma.file.count(),
       prisma.student.count(),
       prisma.guardian.count(),
@@ -767,8 +760,8 @@ describe('Applicant Portal request submission (e2e)', () => {
 
     return {
       memberships,
-      applications,
       applicationDocuments,
+      applicantDocuments,
       files,
       students,
       guardians,
@@ -781,6 +774,31 @@ describe('Applicant Portal request submission (e2e)', () => {
     return `Bearer ${tokens.accessToken}`;
   }
 
+  function expectSafeDocumentResponse(body: unknown): void {
+    const serialized = JSON.stringify(body);
+    for (const forbidden of [
+      'organizationId',
+      'schoolId',
+      'applicantUserId',
+      'applicantProfileId',
+      'applicationId',
+      'applicationDocumentId',
+      'bucket',
+      'objectKey',
+      'signedUrl',
+      'downloadUrl',
+      'storage',
+      'deletedAt',
+      'UPLOADED',
+      'ACCEPTED',
+      'REJECTED',
+      'NEEDS_REPLACEMENT',
+      'SUPERSEDED',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  }
+
   function expectSafeRequestResponse(body: unknown): void {
     const serialized = JSON.stringify(body);
     for (const forbidden of [
@@ -788,22 +806,15 @@ describe('Applicant Portal request submission (e2e)', () => {
       'applicantUserId',
       'applicantProfileId',
       'applicationId',
+      'applicationDocumentId',
       'deletedAt',
       'submittedAt',
       'DOCUMENTS_PENDING',
       'SUBMITTED',
       'DRAFT',
-      'IN_APP',
       'objectKey',
       'bucket',
       'signedUrl',
-      'featureControl',
-      'entitlement',
-      'billing',
-      'subscription',
-      'plan',
-      'quota',
-      'staff',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
@@ -852,6 +863,18 @@ describe('Applicant Portal request submission (e2e)', () => {
   async function cleanupData(): Promise<void> {
     if (!prisma) return;
 
+    const files = await prisma.file.findMany({
+      where: { id: { in: createdFileIds } },
+      select: { id: true, bucket: true, objectKey: true },
+    });
+    await Promise.all(
+      files.map((file) =>
+        storageService
+          .deleteObject({ bucket: file.bucket, objectKey: file.objectKey })
+          .catch(() => undefined),
+      ),
+    );
+
     await prisma.session.deleteMany({
       where: { userId: { in: createdUserIds } },
     });
@@ -864,6 +887,7 @@ describe('Applicant Portal request submission (e2e)', () => {
               in: [
                 ...createdProfileIds,
                 ...createdRequestIds,
+                ...createdApplicantDocumentIds,
                 ...createdApplicationIds,
               ],
             },
@@ -873,6 +897,10 @@ describe('Applicant Portal request submission (e2e)', () => {
         ],
       },
     });
+    await prisma.applicantAdmissionRequestDocument.deleteMany({
+      where: { id: { in: createdApplicantDocumentIds } },
+    });
+    await prisma.file.deleteMany({ where: { id: { in: createdFileIds } } });
     await prisma.applicantAdmissionRequest.deleteMany({
       where: { id: { in: createdRequestIds } },
     });
@@ -890,11 +918,6 @@ describe('Applicant Portal request submission (e2e)', () => {
     });
     await prisma.admissionRequiredDocument.deleteMany({
       where: { id: { in: createdDocumentIds } },
-    });
-    await prisma.grade.deleteMany({ where: { id: { in: createdGradeIds } } });
-    await prisma.stage.deleteMany({ where: { id: { in: createdStageIds } } });
-    await prisma.academicYear.deleteMany({
-      where: { id: { in: createdAcademicYearIds } },
     });
     await prisma.role.deleteMany({ where: { id: { in: createdRoleIds } } });
     await prisma.schoolProfile.deleteMany({

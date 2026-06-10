@@ -327,21 +327,19 @@ describe('Applicant Portal request ownership tenancy (security)', () => {
       .expect(403);
   });
 
-  it('keeps document and upload applicant routes absent', async () => {
-    for (const route of [
-      `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents`,
-      `${GLOBAL_PREFIX}/applicant-portal/uploads`,
-    ]) {
-      await request(app.getHttpServer())
-        .post(route)
-        .set('Authorization', bearer(applicantAuth))
-        .expect(404);
-    }
-
+  it('keeps applicant document list available and generic upload routes absent', async () => {
     await request(app.getHttpServer())
       .get(
         `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents`,
       )
+      .set('Authorization', bearer(applicantAuth))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({ data: [] });
+      });
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/applicant-portal/uploads`)
       .set('Authorization', bearer(applicantAuth))
       .expect(404);
   });

@@ -9,11 +9,15 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiConflictResponse,
+  ApiBody,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -24,19 +28,28 @@ import {
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { AllowApplicantPortalAccess } from '../../../common/decorators/applicant-portal-access.decorator';
 import { PublicRoute } from '../../../common/decorators/public-route.decorator';
 import { CreateApplicantAccountUseCase } from '../application/create-applicant-account.use-case';
 import { CreateApplicantRequestUseCase } from '../application/create-applicant-request.use-case';
+import { GetApplicantDocumentUseCase } from '../application/get-applicant-document.use-case';
 import { GetDiscoverableSchoolUseCase } from '../application/get-discoverable-school.use-case';
 import { GetApplicantRequestUseCase } from '../application/get-applicant-request.use-case';
 import { GetApplicantProfileUseCase } from '../application/get-applicant-profile.use-case';
 import { ListAdmissionRequiredDocumentsUseCase } from '../application/list-admission-required-documents.use-case';
+import { ListApplicantDocumentsUseCase } from '../application/list-applicant-documents.use-case';
 import { ListApplicantRequestsUseCase } from '../application/list-applicant-requests.use-case';
 import { ListDiscoverableSchoolsUseCase } from '../application/list-discoverable-schools.use-case';
 import { SubmitApplicantRequestUseCase } from '../application/submit-applicant-request.use-case';
+import { UploadApplicantDocumentUseCase } from '../application/upload-applicant-document.use-case';
 import { AdmissionRequiredDocumentsListResponseDto } from '../dto/admission-required-document.dto';
+import {
+  ApplicantDocumentResponseDto,
+  ApplicantDocumentsListResponseDto,
+  UploadApplicantDocumentRequestDto,
+} from '../dto/applicant-document.dto';
 import {
   ApplicantProfileResponseDto,
   CreateApplicantAccountDto,
@@ -52,6 +65,7 @@ import {
   DiscoverableSchoolsListResponseDto,
   ListDiscoverableSchoolsQueryDto,
 } from '../dto/school-discovery.dto';
+import { UploadedMultipartFile } from '../../files/uploads/domain/uploaded-file';
 
 @ApiTags('applicant-portal')
 @Controller('applicant-portal')
@@ -66,6 +80,9 @@ export class ApplicantPortalController {
     private readonly listApplicantRequestsUseCase: ListApplicantRequestsUseCase,
     private readonly getApplicantRequestUseCase: GetApplicantRequestUseCase,
     private readonly submitApplicantRequestUseCase: SubmitApplicantRequestUseCase,
+    private readonly uploadApplicantDocumentUseCase: UploadApplicantDocumentUseCase,
+    private readonly listApplicantDocumentsUseCase: ListApplicantDocumentsUseCase,
+    private readonly getApplicantDocumentUseCase: GetApplicantDocumentUseCase,
   ) {}
 
   @Post('accounts')
@@ -228,6 +245,81 @@ export class ApplicantPortalController {
       requestId,
       ipAddress: req.ip ?? null,
       userAgent: req.header('user-agent') ?? null,
+    });
+  }
+
+  @Post('requests/:requestId/documents')
+  @UseInterceptors(FileInterceptor('file', { limits: { files: 1 } }))
+  @AllowApplicantPortalAccess()
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ type: UploadApplicantDocumentRequestDto })
+  @ApiOperation({
+    summary: 'Upload an applicant-owned admission request document',
+  })
+  @ApiParam({ name: 'requestId', format: 'uuid' })
+  @ApiCreatedResponse({ type: ApplicantDocumentResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ description: 'auth.token.invalid' })
+  @ApiForbiddenResponse({ description: 'auth.scope.missing' })
+  @ApiNotFoundResponse({ description: 'not_found' })
+  @ApiConflictResponse({ description: 'conflict' })
+  uploadDocument(
+    @Param('requestId', new ParseUUIDPipe()) requestId: string,
+    @UploadedFile() file: UploadedMultipartFile | undefined,
+    @Body() dto: UploadApplicantDocumentRequestDto,
+    @Req() req: Request,
+  ): Promise<ApplicantDocumentResponseDto> {
+    return this.uploadApplicantDocumentUseCase.execute({
+      requestId,
+      file,
+      requiredDocumentId: dto.requiredDocumentId,
+      title: dto.title,
+      documentType: dto.documentType,
+      notes: dto.notes,
+      ipAddress: req.ip ?? null,
+      userAgent: req.header('user-agent') ?? null,
+    });
+  }
+
+  @Get('requests/:requestId/documents')
+  @AllowApplicantPortalAccess()
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'List authenticated applicant admission request documents',
+  })
+  @ApiParam({ name: 'requestId', format: 'uuid' })
+  @ApiOkResponse({ type: ApplicantDocumentsListResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ description: 'auth.token.invalid' })
+  @ApiForbiddenResponse({ description: 'auth.scope.missing' })
+  @ApiNotFoundResponse({ description: 'not_found' })
+  listDocuments(
+    @Param('requestId', new ParseUUIDPipe()) requestId: string,
+  ): Promise<ApplicantDocumentsListResponseDto> {
+    return this.listApplicantDocumentsUseCase.execute(requestId);
+  }
+
+  @Get('requests/:requestId/documents/:documentId')
+  @AllowApplicantPortalAccess()
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Read an authenticated applicant admission request document',
+  })
+  @ApiParam({ name: 'requestId', format: 'uuid' })
+  @ApiParam({ name: 'documentId', format: 'uuid' })
+  @ApiOkResponse({ type: ApplicantDocumentResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ description: 'auth.token.invalid' })
+  @ApiForbiddenResponse({ description: 'auth.scope.missing' })
+  @ApiNotFoundResponse({ description: 'not_found' })
+  getDocument(
+    @Param('requestId', new ParseUUIDPipe()) requestId: string,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+  ): Promise<ApplicantDocumentResponseDto> {
+    return this.getApplicantDocumentUseCase.execute({
+      requestId,
+      documentId,
     });
   }
 }
