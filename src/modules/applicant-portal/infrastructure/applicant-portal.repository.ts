@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  ApplicantAdmissionRequestStatus,
   MembershipStatus,
   OrganizationStatus,
   Prisma,
@@ -8,6 +9,7 @@ import {
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
+import { ApplicantRequestStatusFilter } from '../domain/applicant-request.inputs';
 import { NormalizedSchoolDiscoveryQuery } from '../domain/school-discovery.inputs';
 import { ApplicantRelationship } from '../domain/applicant-profile.inputs';
 
@@ -41,6 +43,17 @@ export type DiscoverableSchoolRecord = Prisma.SchoolGetPayload<
   typeof DISCOVERABLE_SCHOOL_ARGS
 >;
 
+const DISCOVERABLE_SCHOOL_FOR_REQUEST_ARGS = {
+  select: {
+    id: true,
+    organizationId: true,
+  },
+} satisfies Prisma.SchoolDefaultArgs;
+
+export type DiscoverableSchoolForRequestRecord = Prisma.SchoolGetPayload<
+  typeof DISCOVERABLE_SCHOOL_FOR_REQUEST_ARGS
+>;
+
 const ADMISSION_REQUIRED_DOCUMENT_ARGS = {
   select: {
     id: true,
@@ -58,6 +71,56 @@ export type AdmissionRequiredDocumentRecord =
     typeof ADMISSION_REQUIRED_DOCUMENT_ARGS
   >;
 
+const APPLICANT_REQUEST_SCHOOL_SUMMARY_SELECT = {
+  id: true,
+  name: true,
+  schoolProfile: {
+    select: {
+      schoolName: true,
+      shortName: true,
+      city: true,
+      country: true,
+    },
+  },
+} satisfies Prisma.SchoolSelect;
+
+const APPLICANT_ADMISSION_REQUEST_ARGS = {
+  select: {
+    id: true,
+    status: true,
+    childFirstName: true,
+    childLastName: true,
+    childFullName: true,
+    childDateOfBirth: true,
+    childGender: true,
+    childNationality: true,
+    previousSchool: true,
+    notes: true,
+    createdAt: true,
+    updatedAt: true,
+    school: { select: APPLICANT_REQUEST_SCHOOL_SUMMARY_SELECT },
+    requestedAcademicYear: {
+      select: {
+        id: true,
+        nameEn: true,
+        nameAr: true,
+      },
+    },
+    requestedGrade: {
+      select: {
+        id: true,
+        nameEn: true,
+        nameAr: true,
+      },
+    },
+  },
+} satisfies Prisma.ApplicantAdmissionRequestDefaultArgs;
+
+export type ApplicantAdmissionRequestRecord =
+  Prisma.ApplicantAdmissionRequestGetPayload<
+    typeof APPLICANT_ADMISSION_REQUEST_ARGS
+  >;
+
 export interface CreateApplicantAccountRecord {
   email: string;
   passwordHash: string;
@@ -71,6 +134,30 @@ export interface CreateApplicantAccountRecord {
 
 export interface DiscoverableSchoolListResult {
   items: DiscoverableSchoolRecord[];
+  page: number;
+  limit: number;
+  total: number;
+}
+
+export interface CreateApplicantAdmissionRequestRecord {
+  applicantUserId: string;
+  applicantProfileId: string;
+  schoolId: string;
+  organizationId: string;
+  requestedAcademicYearId: string | null;
+  requestedGradeId: string | null;
+  childFirstName: string;
+  childLastName: string | null;
+  childFullName: string;
+  childDateOfBirth: Date | null;
+  childGender: string | null;
+  childNationality: string | null;
+  previousSchool: string | null;
+  notes: string | null;
+}
+
+export interface ApplicantAdmissionRequestListResult {
+  items: ApplicantAdmissionRequestRecord[];
   page: number;
   limit: number;
   total: number;
@@ -175,6 +262,17 @@ export class ApplicantPortalRepository {
     });
   }
 
+  findDiscoverableSchoolForRequest(
+    schoolId: string,
+  ): Promise<DiscoverableSchoolForRequestRecord | null> {
+    return this.prisma.school.findFirst({
+      where: {
+        AND: [buildDiscoverableSchoolWhere(), { id: schoolId }],
+      },
+      ...DISCOVERABLE_SCHOOL_FOR_REQUEST_ARGS,
+    });
+  }
+
   listActiveAdmissionRequiredDocumentsForSchool(
     schoolId: string,
   ): Promise<AdmissionRequiredDocumentRecord[]> {
@@ -187,6 +285,118 @@ export class ApplicantPortalRepository {
       },
       orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }, { createdAt: 'asc' }],
       ...ADMISSION_REQUIRED_DOCUMENT_ARGS,
+    });
+  }
+
+  countMandatoryRequiredDocumentsForSchool(schoolId: string): Promise<number> {
+    return this.prisma.admissionRequiredDocument.count({
+      where: {
+        schoolId,
+        gradeId: null,
+        isMandatory: true,
+        isActive: true,
+        deletedAt: null,
+      },
+    });
+  }
+
+  findAcademicYearForSchool(
+    schoolId: string,
+    academicYearId: string,
+  ): Promise<{ id: string } | null> {
+    return this.prisma.academicYear.findFirst({
+      where: {
+        id: academicYearId,
+        schoolId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+  }
+
+  findGradeForSchool(
+    schoolId: string,
+    gradeId: string,
+  ): Promise<{ id: string } | null> {
+    return this.prisma.grade.findFirst({
+      where: {
+        id: gradeId,
+        schoolId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+  }
+
+  createApplicantAdmissionRequest(
+    data: CreateApplicantAdmissionRequestRecord,
+  ): Promise<ApplicantAdmissionRequestRecord> {
+    return this.prisma.applicantAdmissionRequest.create({
+      data: {
+        applicantUserId: data.applicantUserId,
+        applicantProfileId: data.applicantProfileId,
+        schoolId: data.schoolId,
+        organizationId: data.organizationId,
+        requestedAcademicYearId: data.requestedAcademicYearId,
+        requestedGradeId: data.requestedGradeId,
+        childFirstName: data.childFirstName,
+        childLastName: data.childLastName,
+        childFullName: data.childFullName,
+        childDateOfBirth: data.childDateOfBirth,
+        childGender: data.childGender,
+        childNationality: data.childNationality,
+        previousSchool: data.previousSchool,
+        notes: data.notes,
+        status: ApplicantAdmissionRequestStatus.DRAFT,
+        submittedAt: null,
+      },
+      ...APPLICANT_ADMISSION_REQUEST_ARGS,
+    });
+  }
+
+  async listApplicantAdmissionRequestsForApplicant(params: {
+    applicantUserId: string;
+    page: number;
+    limit: number;
+    status?: ApplicantRequestStatusFilter;
+  }): Promise<ApplicantAdmissionRequestListResult> {
+    const where: Prisma.ApplicantAdmissionRequestWhereInput = {
+      applicantUserId: params.applicantUserId,
+      deletedAt: null,
+      status: toApplicantAdmissionRequestStatus(params.status),
+    };
+    const skip = (params.page - 1) * params.limit;
+
+    const [items, total] = await Promise.all([
+      this.prisma.applicantAdmissionRequest.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip,
+        take: params.limit,
+        ...APPLICANT_ADMISSION_REQUEST_ARGS,
+      }),
+      this.prisma.applicantAdmissionRequest.count({ where }),
+    ]);
+
+    return {
+      items,
+      page: params.page,
+      limit: params.limit,
+      total,
+    };
+  }
+
+  findApplicantAdmissionRequestForApplicant(params: {
+    applicantUserId: string;
+    requestId: string;
+  }): Promise<ApplicantAdmissionRequestRecord | null> {
+    return this.prisma.applicantAdmissionRequest.findFirst({
+      where: {
+        id: params.requestId,
+        applicantUserId: params.applicantUserId,
+        deletedAt: null,
+      },
+      ...APPLICANT_ADMISSION_REQUEST_ARGS,
     });
   }
 }
@@ -255,4 +465,12 @@ function buildDiscoverableSchoolWhere(
   }
 
   return { AND: filters };
+}
+
+function toApplicantAdmissionRequestStatus(
+  status: ApplicantRequestStatusFilter | undefined,
+): ApplicantAdmissionRequestStatus | undefined {
+  if (status === 'draft') return ApplicantAdmissionRequestStatus.DRAFT;
+  if (status === 'submitted') return ApplicantAdmissionRequestStatus.SUBMITTED;
+  return undefined;
 }

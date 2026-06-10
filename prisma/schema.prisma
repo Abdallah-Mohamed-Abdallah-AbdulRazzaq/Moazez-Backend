@@ -298,6 +298,13 @@ enum AdmissionDecisionType {
   @@map("admission_decision_type")
 }
 
+enum ApplicantAdmissionRequestStatus {
+  DRAFT
+  SUBMITTED
+
+  @@map("applicant_admission_request_status")
+}
+
 enum StudentStatus {
   ACTIVE
   SUSPENDED
@@ -1077,6 +1084,7 @@ model Organization {
   files                      File[]
   leads                      Lead[]
   applications               Application[]
+  applicantAdmissionRequests ApplicantAdmissionRequest[]
   admissionRequiredDocuments AdmissionRequiredDocument[]
   students                   Student[]
   guardians                  Guardian[]
@@ -1140,6 +1148,7 @@ model School {
   files                                 File[]
   leads                                 Lead[]
   applications                          Application[]
+  applicantAdmissionRequests            ApplicantAdmissionRequest[]
   admissionRequiredDocuments            AdmissionRequiredDocument[]
   applicationDocuments                  ApplicationDocument[]
   placementTests                        PlacementTest[]
@@ -1293,7 +1302,8 @@ model User {
   deletedAt DateTime? @map("deleted_at")
 
   memberships                                    Membership[]
-  applicantProfile                               ApplicantProfile?                     @relation("ApplicantProfileUser")
+  applicantProfile                               ApplicantProfile?                      @relation("ApplicantProfileUser")
+  applicantAdmissionRequests                     ApplicantAdmissionRequest[]            @relation("ApplicantAdmissionRequestUser")
   sessions                                       Session[]
   auditLogsActing                                AuditLog[]                             @relation("AuditLogActor")
   filesUploaded                                  File[]                                 @relation("FileUploader")
@@ -1424,7 +1434,8 @@ model ApplicantProfile {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  user User @relation("ApplicantProfileUser", fields: [userId], references: [id], onDelete: Restrict)
+  user              User                        @relation("ApplicantProfileUser", fields: [userId], references: [id], onDelete: Restrict)
+  admissionRequests ApplicantAdmissionRequest[]
 
   @@index([relationship])
   @@map("applicant_profiles")
@@ -1921,16 +1932,17 @@ model Application {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  school                School                @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  lead                  Lead?                 @relation(fields: [leadId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  requestedAcademicYear AcademicYear?         @relation(fields: [requestedAcademicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  requestedGrade        Grade?                @relation(fields: [requestedGradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  documents             ApplicationDocument[]
-  placementTests        PlacementTest[]
-  interviews            Interview[]
-  decision              AdmissionDecision?
-  student               Student?
+  school                    School                     @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization              Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  lead                      Lead?                      @relation(fields: [leadId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  requestedAcademicYear     AcademicYear?              @relation(fields: [requestedAcademicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  requestedGrade            Grade?                     @relation(fields: [requestedGradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  documents                 ApplicationDocument[]
+  placementTests            PlacementTest[]
+  interviews                Interview[]
+  decision                  AdmissionDecision?
+  student                   Student?
+  applicantAdmissionRequest ApplicantAdmissionRequest? @relation("ApplicantAdmissionRequestApplication")
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -1942,6 +1954,55 @@ model Application {
   @@index([schoolId, submittedAt(sort: Desc)])
   @@index([deletedAt])
   @@map("admission_applications")
+}
+
+model ApplicantAdmissionRequest {
+  id                      String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicantUserId         String                          @map("applicant_user_id") @db.Uuid
+  applicantProfileId      String                          @map("applicant_profile_id") @db.Uuid
+  schoolId                String                          @map("school_id") @db.Uuid
+  organizationId          String                          @map("organization_id") @db.Uuid
+  requestedAcademicYearId String?                         @map("requested_academic_year_id") @db.Uuid
+  requestedGradeId        String?                         @map("requested_grade_id") @db.Uuid
+  childFirstName          String                          @map("child_first_name") @db.VarChar(100)
+  childLastName           String?                         @map("child_last_name") @db.VarChar(100)
+  childFullName           String                          @map("child_full_name") @db.VarChar(220)
+  childDateOfBirth        DateTime?                       @map("child_date_of_birth") @db.Date
+  childGender             String?                         @map("child_gender") @db.VarChar(40)
+  childNationality        String?                         @map("child_nationality") @db.VarChar(80)
+  previousSchool          String?                         @map("previous_school") @db.VarChar(180)
+  notes                   String?                         @db.Text
+  status                  ApplicantAdmissionRequestStatus @default(DRAFT)
+  submittedAt             DateTime?                       @map("submitted_at")
+  applicationId           String?                         @map("application_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  applicantUser         User             @relation("ApplicantAdmissionRequestUser", fields: [applicantUserId], references: [id], onDelete: Restrict)
+  applicantProfile      ApplicantProfile @relation(fields: [applicantProfileId], references: [id], onDelete: Restrict)
+  school                School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization          Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  requestedAcademicYear AcademicYear?    @relation(fields: [requestedAcademicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  requestedGrade        Grade?           @relation(fields: [requestedGradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  application           Application?     @relation("ApplicantAdmissionRequestApplication", fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@unique([applicationId, schoolId])
+  @@index([applicantUserId])
+  @@index([applicantProfileId])
+  @@index([schoolId])
+  @@index([organizationId])
+  @@index([requestedAcademicYearId])
+  @@index([requestedGradeId])
+  @@index([applicationId])
+  @@index([applicantUserId, deletedAt, createdAt(sort: Desc)])
+  @@index([schoolId, deletedAt, createdAt(sort: Desc)])
+  @@index([status, deletedAt])
+  @@index([schoolId, status, deletedAt])
+  @@index([deletedAt])
+  @@map("applicant_admission_requests")
 }
 
 model AdmissionRequiredDocument {
@@ -2090,6 +2151,7 @@ model AcademicYear {
   school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   terms                      Term[]
   requestedApplications      Application[]
+  applicantAdmissionRequests ApplicantAdmissionRequest[]
   enrollments                Enrollment[]
   attendancePolicies         AttendancePolicy[]
   attendanceSessions         AttendanceSession[]
@@ -2226,6 +2288,7 @@ model Grade {
   stage                              Stage                               @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
   sections                           Section[]
   requestedApplications              Application[]
+  applicantAdmissionRequests         ApplicantAdmissionRequest[]
   admissionRequiredDocuments         AdmissionRequiredDocument[]
   attendancePolicies                 AttendancePolicy[]
   attendanceSessions                 AttendanceSession[]
@@ -2633,16 +2696,16 @@ model LessonPlanItem {
   createdAt             DateTime             @default(now()) @map("created_at")
   updatedAt             DateTime             @updatedAt @map("updated_at")
 
-  school                School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  lessonPlan            LessonPlan        @relation(fields: [lessonPlanId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  curriculum            Curriculum        @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  unit                  CurriculumUnit    @relation(fields: [unitId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  lesson                CurriculumLesson  @relation(fields: [lessonId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  timetableEntry        TimetableEntry?   @relation(fields: [timetableEntryId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  rescheduledFromItem   LessonPlanItem?   @relation("LessonPlanItemReschedule", fields: [rescheduledFromItemId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  rescheduledItems      LessonPlanItem[]  @relation("LessonPlanItemReschedule")
-  createdBy             User              @relation("LessonPlanItemCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy             User?             @relation("LessonPlanItemUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  school              School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  lessonPlan          LessonPlan       @relation(fields: [lessonPlanId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  curriculum          Curriculum       @relation(fields: [curriculumId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  unit                CurriculumUnit   @relation(fields: [unitId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  lesson              CurriculumLesson @relation(fields: [lessonId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  timetableEntry      TimetableEntry?  @relation(fields: [timetableEntryId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  rescheduledFromItem LessonPlanItem?  @relation("LessonPlanItemReschedule", fields: [rescheduledFromItemId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  rescheduledItems    LessonPlanItem[] @relation("LessonPlanItemReschedule")
+  createdBy           User             @relation("LessonPlanItemCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy           User?            @relation("LessonPlanItemUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -3649,17 +3712,17 @@ model HomeworkAssignment {
   createdAt                  DateTime                 @default(now()) @map("created_at")
   updatedAt                  DateTime                 @updatedAt @map("updated_at")
 
-  school                   School                   @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  academicYear             AcademicYear             @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  term                     Term                     @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  classroom                Classroom                @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  subject                  Subject                  @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  teacherUser              User                     @relation("HomeworkAssignmentTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
-  teacherSubjectAllocation TeacherSubjectAllocation @relation(fields: [teacherSubjectAllocationId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  timetableEntry           TimetableEntry?          @relation(fields: [timetableEntryId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  gradeAssessment          GradeAssessment?         @relation(fields: [gradeAssessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  createdBy                User                     @relation("HomeworkAssignmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  publishedBy              User?                    @relation("HomeworkAssignmentPublishedBy", fields: [publishedByUserId], references: [id], onDelete: SetNull)
+  school                   School                         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear             AcademicYear                   @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term                     Term                           @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom                Classroom                      @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject                  Subject                        @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  teacherUser              User                           @relation("HomeworkAssignmentTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
+  teacherSubjectAllocation TeacherSubjectAllocation       @relation(fields: [teacherSubjectAllocationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  timetableEntry           TimetableEntry?                @relation(fields: [timetableEntryId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  gradeAssessment          GradeAssessment?               @relation(fields: [gradeAssessmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy                User                           @relation("HomeworkAssignmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  publishedBy              User?                          @relation("HomeworkAssignmentPublishedBy", fields: [publishedByUserId], references: [id], onDelete: SetNull)
   targets                  HomeworkTarget[]
   submissions              HomeworkSubmission[]
   submissionAnswers        HomeworkSubmissionAnswer[]
@@ -3706,12 +3769,12 @@ model HomeworkTarget {
   createdAt            DateTime             @default(now()) @map("created_at")
   updatedAt            DateTime             @updatedAt @map("updated_at")
 
-  school             School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  homeworkAssignment HomeworkAssignment   @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Cascade)
-  student            Student              @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  enrollment         Enrollment           @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  submissions        HomeworkSubmission[]
-  submissionAnswers  HomeworkSubmissionAnswer[]
+  school                School                         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  homeworkAssignment    HomeworkAssignment             @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  student               Student                        @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment            Enrollment                     @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  submissions           HomeworkSubmission[]
+  submissionAnswers     HomeworkSubmissionAnswer[]
   submissionAttachments HomeworkSubmissionAttachment[]
 
   @@unique([id, schoolId])
@@ -3744,12 +3807,12 @@ model HomeworkSubmission {
   createdAt            DateTime                 @default(now()) @map("created_at")
   updatedAt            DateTime                 @updatedAt @map("updated_at")
 
-  school             School             @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  homeworkAssignment HomeworkAssignment @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Cascade)
-  homeworkTarget     HomeworkTarget     @relation(fields: [homeworkTargetId, schoolId], references: [id, schoolId], onDelete: Cascade)
-  student            Student            @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  enrollment         Enrollment         @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  reviewedByUser     User?              @relation("HomeworkSubmissionReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  school             School                         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  homeworkAssignment HomeworkAssignment             @relation(fields: [homeworkAssignmentId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  homeworkTarget     HomeworkTarget                 @relation(fields: [homeworkTargetId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  student            Student                        @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment         Enrollment                     @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  reviewedByUser     User?                          @relation("HomeworkSubmissionReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
   answers            HomeworkSubmissionAnswer[]
   attachments        HomeworkSubmissionAttachment[]
 
@@ -3880,16 +3943,16 @@ model HomeworkSubmissionAttachment {
 }
 
 model HomeworkQuestionOption {
-  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId           String   @map("school_id") @db.Uuid
-  homeworkQuestionId String   @map("homework_question_id") @db.Uuid
-  text               String   @db.Text
-  isCorrect          Boolean  @default(false) @map("is_correct")
-  sortOrder          Int      @default(0) @map("sort_order")
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId           String    @map("school_id") @db.Uuid
+  homeworkQuestionId String    @map("homework_question_id") @db.Uuid
+  text               String    @db.Text
+  isCorrect          Boolean   @default(false) @map("is_correct")
+  sortOrder          Int       @default(0) @map("sort_order")
   metadata           Json?
   deletedAt          DateTime? @map("deleted_at")
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   school           School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   homeworkQuestion HomeworkQuestion @relation(fields: [homeworkQuestionId, schoolId], references: [id, schoolId], onDelete: Restrict)
@@ -5625,8 +5688,8 @@ model File {
   uploader                             User?                                 @relation("FileUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
   attachments                          Attachment[]
   lessonContentItems                   LessonContentItem[]
-  homeworkAssignmentAttachments         HomeworkAssignmentAttachment[]
-  homeworkSubmissionAttachments         HomeworkSubmissionAttachment[]
+  homeworkAssignmentAttachments        HomeworkAssignmentAttachment[]
+  homeworkSubmissionAttachments        HomeworkSubmissionAttachment[]
   reinforcementProofSubmissions        ReinforcementSubmission[]             @relation("ReinforcementSubmissionProofFile")
   applicationDocuments                 ApplicationDocument[]
   studentDocuments                     StudentDocument[]

@@ -15,7 +15,7 @@ import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 
 const GLOBAL_PREFIX = '/api/v1';
-const PASSWORD = 'Applicant18ESecurity!';
+const PASSWORD = 'Applicant18FSecurity!';
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
   memoryCost: 19 * 1024,
@@ -23,7 +23,7 @@ const ARGON2_OPTIONS: argon2.Options = {
   parallelism: 1,
 };
 
-jest.setTimeout(30000);
+jest.setTimeout(45000);
 
 type AuthTokens = {
   accessToken: string;
@@ -40,7 +40,7 @@ type SideEffectSnapshot = {
   enrollments: number;
 };
 
-describe('Applicant Portal required documents tenancy (security)', () => {
+describe('Applicant Portal request ownership tenancy (security)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
 
@@ -51,16 +51,24 @@ describe('Applicant Portal required documents tenancy (security)', () => {
   let suspendedOrganizationSchoolId = '';
   let deletedOrganizationSchoolId = '';
   let roleId = '';
-  let schoolUserId = '';
+  let applicantRequestId = '';
+  let otherApplicantRequestId = '';
+
   let applicantAuth: AuthTokens;
+  let otherApplicantAuth: AuthTokens;
+  let parentAuth: AuthTokens;
+  let studentAuth: AuthTokens;
+  let teacherAuth: AuthTokens;
   let schoolUserAuth: AuthTokens;
   let platformAuth: AuthTokens;
 
   const suffix = randomUUID().split('-')[0];
-  const marker = `s18e-security-${suffix}`;
+  const marker = `s18f-security-${suffix}`;
   const createdOrganizationIds: string[] = [];
   const createdSchoolIds: string[] = [];
+  const createdSchoolProfileIds: string[] = [];
   const createdDocumentIds: string[] = [];
+  const createdRequestIds: string[] = [];
   const createdUserIds: string[] = [];
   const createdProfileIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -71,19 +79,18 @@ describe('Applicant Portal required documents tenancy (security)', () => {
 
     const activeOrganization = await createOrganization({
       slug: `${marker}-active-org`,
-      name: `Sprint 18E Security Active Org ${suffix}`,
+      name: `Sprint 18F Security Active Org ${suffix}`,
       status: OrganizationStatus.ACTIVE,
     });
     organizationId = activeOrganization.id;
-
     const suspendedOrganization = await createOrganization({
       slug: `${marker}-suspended-org`,
-      name: `Sprint 18E Security Suspended Org ${suffix}`,
+      name: `Sprint 18F Security Suspended Org ${suffix}`,
       status: OrganizationStatus.SUSPENDED,
     });
     const deletedOrganization = await createOrganization({
       slug: `${marker}-deleted-org`,
-      name: `Sprint 18E Security Deleted Org ${suffix}`,
+      name: `Sprint 18F Security Deleted Org ${suffix}`,
       status: OrganizationStatus.ACTIVE,
       deletedAt: new Date(),
     });
@@ -125,92 +132,30 @@ describe('Applicant Portal required documents tenancy (security)', () => {
       schoolName: `${marker} Deleted Org Public`,
     });
 
-    await createRequiredDocument({
-      schoolId: activeSchoolId,
-      organizationId,
-      title: 'Birth certificate',
-      description: 'Clear scanned copy',
-      acceptedFileTypes: ['application/pdf', 'image/png'],
-      maxFiles: 1,
-      sortOrder: 10,
-    });
-    await createRequiredDocument({
-      schoolId: activeSchoolId,
-      organizationId,
-      title: 'Parent ID',
-      description: null,
-      acceptedFileTypes: ['image/jpeg'],
-      maxFiles: 2,
-      sortOrder: 20,
-    });
-    await createRequiredDocument({
-      schoolId: activeSchoolId,
-      organizationId,
-      title: `${marker} Inactive Required Document`,
-      isActive: false,
-    });
-    await createRequiredDocument({
-      schoolId: activeSchoolId,
-      organizationId,
-      title: `${marker} Deleted Required Document`,
-      deletedAt: new Date(),
-    });
-    await createRequiredDocument({
-      schoolId: suspendedSchoolId,
-      organizationId,
-      title: `${marker} Suspended School Required Document`,
-    });
-    await createRequiredDocument({
-      schoolId: deletedSchoolId,
-      organizationId,
-      title: `${marker} Deleted School Required Document`,
-    });
-    await createRequiredDocument({
-      schoolId: suspendedOrganizationSchoolId,
-      organizationId: suspendedOrganization.id,
-      title: `${marker} Suspended Org Required Document`,
-    });
-    await createRequiredDocument({
-      schoolId: deletedOrganizationSchoolId,
-      organizationId: deletedOrganization.id,
-      title: `${marker} Deleted Org Required Document`,
-    });
+    await createRequiredDocument('Birth certificate', true);
+    await createRequiredDocument('Parent ID', true);
+    await createRequiredDocument(`${marker} Optional`, false);
+    await createRequiredDocument(`${marker} Inactive`, true, false);
+    await createRequiredDocument(`${marker} Deleted`, true, true, new Date());
 
-    const role = await prisma.role.create({
-      data: {
-        schoolId: activeSchoolId,
-        key: `${marker}-school-user-role`,
-        name: `Sprint 18E Security School User ${suffix}`,
-        isSystem: false,
-      },
-      select: { id: true },
-    });
-    roleId = role.id;
-    createdRoleIds.push(role.id);
+    roleId = (
+      await prisma.role.create({
+        data: {
+          schoolId: activeSchoolId,
+          key: `${marker}-role`,
+          name: `Sprint 18F Security Role ${suffix}`,
+          isSystem: false,
+        },
+        select: { id: true },
+      })
+    ).id;
+    createdRoleIds.push(roleId);
 
-    schoolUserId = await createUser({
-      email: `${marker}-school-user@example.test`,
-      userType: UserType.SCHOOL_USER,
-      firstName: 'School',
-      lastName: 'User',
-    });
-    await prisma.membership.create({
-      data: {
-        userId: schoolUserId,
-        organizationId,
-        schoolId: activeSchoolId,
-        roleId,
-        userType: UserType.SCHOOL_USER,
-        status: MembershipStatus.ACTIVE,
-      },
-    });
-
-    await createUser({
-      email: `${marker}-platform@example.test`,
-      userType: UserType.PLATFORM_USER,
-      firstName: 'Platform',
-      lastName: 'User',
-    });
+    await createUserWithMembership(UserType.PARENT, 'parent');
+    await createUserWithMembership(UserType.STUDENT, 'student');
+    await createUserWithMembership(UserType.TEACHER, 'teacher');
+    await createUserWithMembership(UserType.SCHOOL_USER, 'school-user');
+    await createMembershiplessUser(UserType.PLATFORM_USER, 'platform');
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -228,8 +173,14 @@ describe('Applicant Portal required documents tenancy (security)', () => {
     );
     await app.init();
 
-    await createApplicantAccount();
-    applicantAuth = await login(`${marker}-applicant@example.test`);
+    await createApplicantAccount('primary');
+    await createApplicantAccount('other');
+
+    applicantAuth = await login(`${marker}-primary@example.test`);
+    otherApplicantAuth = await login(`${marker}-other@example.test`);
+    parentAuth = await login(`${marker}-parent@example.test`);
+    studentAuth = await login(`${marker}-student@example.test`);
+    teacherAuth = await login(`${marker}-teacher@example.test`);
     schoolUserAuth = await login(`${marker}-school-user@example.test`);
     platformAuth = await login(`${marker}-platform@example.test`);
   });
@@ -243,58 +194,74 @@ describe('Applicant Portal required documents tenancy (security)', () => {
     }
   });
 
-  it('returns identical required document response for anonymous, applicant, school-user, and platform callers', async () => {
-    const anonymousResponse = await readRequiredDocuments().expect(200);
+  it('lets applicants access only their own draft requests and leaks no tenant fields', async () => {
+    const before = await getSideEffectSnapshot();
 
-    for (const auth of [applicantAuth, schoolUserAuth, platformAuth]) {
-      const tokenResponse = await readRequiredDocuments()
-        .set('Authorization', bearer(auth))
-        .expect(200);
+    const createResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
+      .set('Authorization', bearer(applicantAuth))
+      .send({
+        schoolId: activeSchoolId,
+        childFirstName: 'Layla',
+        childLastName: 'Hassan',
+      })
+      .expect(201);
+    applicantRequestId = createResponse.body.id;
+    createdRequestIds.push(applicantRequestId);
 
-      expect(tokenResponse.body).toEqual(anonymousResponse.body);
-      expectNoForbiddenDocumentFields(tokenResponse.body);
-    }
+    expect(createResponse.body).toMatchObject({
+      id: applicantRequestId,
+      status: 'draft',
+      school: {
+        id: activeSchoolId,
+        name: `${marker} Active Public`,
+      },
+      childFullName: 'Layla Hassan',
+      missingItemsCount: 2,
+      progressValue: 25,
+    });
+    expectNoInternalTenantFields(createResponse.body);
+
+    const after = await getSideEffectSnapshot();
+    expect(after).toEqual(before);
+
+    const otherCreateResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
+      .set('Authorization', bearer(otherApplicantAuth))
+      .send({
+        schoolId: activeSchoolId,
+        childFirstName: 'Omar',
+      })
+      .expect(201);
+    otherApplicantRequestId = otherCreateResponse.body.id;
+    createdRequestIds.push(otherApplicantRequestId);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}`)
+      .set('Authorization', bearer(applicantAuth))
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${otherApplicantRequestId}`,
+      )
+      .set('Authorization', bearer(applicantAuth))
+      .expect(404);
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/applicant-portal/requests`)
+      .set('Authorization', bearer(applicantAuth))
+      .expect(200);
+
+    expect(JSON.stringify(listResponse.body)).toContain(applicantRequestId);
+    expect(JSON.stringify(listResponse.body)).not.toContain(
+      otherApplicantRequestId,
+    );
+    expectNoInternalTenantFields(listResponse.body);
   });
 
-  it('leaks no internal tenant fields or inactive/deleted required documents', async () => {
-    const response = await readRequiredDocuments().expect(200);
+  it('rejects unsafe school targets without creating a request', async () => {
+    const beforeCount = await prisma.applicantAdmissionRequest.count();
 
-    expect(response.body.data).toEqual([
-      {
-        id: expect.any(String),
-        title: 'Birth certificate',
-        description: 'Clear scanned copy',
-        isMandatory: true,
-        acceptedFileTypes: ['application/pdf', 'image/png'],
-        maxFiles: 1,
-        sortOrder: 10,
-      },
-      {
-        id: expect.any(String),
-        title: 'Parent ID',
-        description: null,
-        isMandatory: true,
-        acceptedFileTypes: ['image/jpeg'],
-        maxFiles: 2,
-        sortOrder: 20,
-      },
-    ]);
-    expectNoForbiddenDocumentFields(response.body);
-
-    const serialized = JSON.stringify(response.body);
-    for (const hiddenValue of [
-      organizationId,
-      activeSchoolId,
-      schoolUserId,
-      roleId,
-      `${marker} Inactive Required Document`,
-      `${marker} Deleted Required Document`,
-    ]) {
-      expect(serialized).not.toContain(hiddenValue);
-    }
-  });
-
-  it('does not expose required documents for unsafe schools or organizations', async () => {
     for (const schoolId of [
       suspendedSchoolId,
       deletedSchoolId,
@@ -303,25 +270,42 @@ describe('Applicant Portal required documents tenancy (security)', () => {
       randomUUID(),
     ]) {
       await request(app.getHttpServer())
-        .get(
-          `${GLOBAL_PREFIX}/applicant-portal/schools/${schoolId}/admission-required-documents`,
-        )
+        .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
+        .set('Authorization', bearer(applicantAuth))
+        .send({ schoolId, childFirstName: 'Mona' })
         .expect(404);
     }
 
-    const response = await readRequiredDocuments().expect(200);
-    const serialized = JSON.stringify(response.body);
-    for (const hiddenValue of [
-      `${marker} Suspended School Required Document`,
-      `${marker} Deleted School Required Document`,
-      `${marker} Suspended Org Required Document`,
-      `${marker} Deleted Org Required Document`,
+    await expect(prisma.applicantAdmissionRequest.count()).resolves.toBe(
+      beforeCount,
+    );
+  });
+
+  it('rejects parent, student, teacher, school, and platform users from applicant request routes', async () => {
+    for (const auth of [
+      parentAuth,
+      studentAuth,
+      teacherAuth,
+      schoolUserAuth,
+      platformAuth,
     ]) {
-      expect(serialized).not.toContain(hiddenValue);
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
+        .set('Authorization', bearer(auth))
+        .send({ schoolId: activeSchoolId, childFirstName: 'Mona' })
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/applicant-portal/requests`)
+        .set('Authorization', bearer(auth))
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}`)
+        .set('Authorization', bearer(auth))
+        .expect(403);
     }
   });
 
-  it('keeps applicant tokens out of non-applicant surfaces', async () => {
+  it('keeps applicant and school-user tokens out of unrelated protected surfaces', async () => {
     for (const route of [
       `${GLOBAL_PREFIX}/parent/home`,
       `${GLOBAL_PREFIX}/student/home`,
@@ -336,36 +320,32 @@ describe('Applicant Portal required documents tenancy (security)', () => {
 
       expect(response.body?.error?.code).toBe('auth.scope.missing');
     }
-  });
-
-  it('does not create memberships, admissions data, files, students, guardians, links, or enrollments', async () => {
-    const before = await getSideEffectSnapshot();
-
-    await readRequiredDocuments().expect(200);
-    await readRequiredDocuments()
-      .set('Authorization', bearer(applicantAuth))
-      .expect(200);
-    await readRequiredDocuments()
-      .set('Authorization', bearer(schoolUserAuth))
-      .expect(200);
-    await readRequiredDocuments()
-      .set('Authorization', bearer(platformAuth))
-      .expect(200);
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-      .send({ schoolId: activeSchoolId })
-      .expect(401);
-
-    const after = await getSideEffectSnapshot();
-    expect(after).toEqual(before);
+      .get(`${GLOBAL_PREFIX}/admissions/applications`)
+      .set('Authorization', bearer(schoolUserAuth))
+      .expect(403);
   });
 
-  function readRequiredDocuments(): request.Test {
-    return request(app.getHttpServer()).get(
-      `${GLOBAL_PREFIX}/applicant-portal/schools/${activeSchoolId}/admission-required-documents`,
-    );
-  }
+  it('keeps submit, document, and upload applicant routes absent', async () => {
+    for (const route of [
+      `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/submit`,
+      `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents`,
+      `${GLOBAL_PREFIX}/applicant-portal/uploads`,
+    ]) {
+      await request(app.getHttpServer())
+        .post(route)
+        .set('Authorization', bearer(applicantAuth))
+        .expect(404);
+    }
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents`,
+      )
+      .set('Authorization', bearer(applicantAuth))
+      .expect(404);
+  });
 
   async function createOrganization(input: {
     slug: string;
@@ -406,76 +386,48 @@ describe('Applicant Portal required documents tenancy (security)', () => {
     });
     createdSchoolIds.push(school.id);
 
-    await prisma.schoolProfile.create({
+    const profile = await prisma.schoolProfile.create({
       data: {
         schoolId: school.id,
         schoolName: input.schoolName,
         city: 'Cairo',
+        country: 'Egypt',
       },
+      select: { id: true },
     });
+    createdSchoolProfileIds.push(profile.id);
 
     return school.id;
   }
 
-  async function createRequiredDocument(input: {
-    schoolId: string;
-    organizationId: string;
-    title: string;
-    description?: string | null;
-    isMandatory?: boolean;
-    acceptedFileTypes?: string[];
-    maxFiles?: number;
-    sortOrder?: number;
-    isActive?: boolean;
-    deletedAt?: Date | null;
-  }): Promise<void> {
+  async function createRequiredDocument(
+    title: string,
+    isMandatory: boolean,
+    isActive = true,
+    deletedAt: Date | null = null,
+  ): Promise<void> {
     const document = await prisma.admissionRequiredDocument.create({
       data: {
-        schoolId: input.schoolId,
-        organizationId: input.organizationId,
-        title: input.title,
-        description: input.description ?? null,
-        isMandatory: input.isMandatory ?? true,
-        acceptedFileTypes: input.acceptedFileTypes ?? [],
-        maxFiles: input.maxFiles ?? 1,
-        sortOrder: input.sortOrder ?? 0,
-        isActive: input.isActive ?? true,
-        deletedAt: input.deletedAt ?? null,
+        schoolId: activeSchoolId,
+        organizationId,
+        title,
+        isMandatory,
+        isActive,
+        deletedAt,
+        acceptedFileTypes: ['application/pdf'],
+        maxFiles: 1,
       },
       select: { id: true },
     });
     createdDocumentIds.push(document.id);
   }
 
-  async function createUser(input: {
-    email: string;
-    userType: UserType;
-    firstName: string;
-    lastName: string;
-  }): Promise<string> {
-    const user = await prisma.user.create({
-      data: {
-        email: input.email,
-        firstName: input.firstName,
-        lastName: input.lastName,
-        userType: input.userType,
-        status: UserStatus.ACTIVE,
-        passwordHash: await argon2.hash(PASSWORD, ARGON2_OPTIONS),
-        passwordChangedAt: new Date(),
-        credentialVersion: 1,
-      },
-      select: { id: true },
-    });
-    createdUserIds.push(user.id);
-    return user.id;
-  }
-
-  async function createApplicantAccount(): Promise<void> {
+  async function createApplicantAccount(label: string): Promise<void> {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/applicant-portal/accounts`)
       .send({
-        fullName: 'Sprint 18E Security Applicant',
-        email: `${marker}-applicant@example.test`,
+        fullName: `Sprint 18F Security ${label} Applicant`,
+        email: `${marker}-${label}@example.test`,
         password: PASSWORD,
         phoneNumber: '+20 100 000 0000',
         city: 'Cairo',
@@ -485,6 +437,44 @@ describe('Applicant Portal required documents tenancy (security)', () => {
 
     createdUserIds.push(response.body.userId);
     createdProfileIds.push(response.body.applicantId);
+  }
+
+  async function createUserWithMembership(
+    userType: UserType,
+    label: string,
+  ): Promise<void> {
+    const userId = await createMembershiplessUser(userType, label);
+    await prisma.membership.create({
+      data: {
+        userId,
+        organizationId,
+        schoolId: activeSchoolId,
+        roleId,
+        userType,
+        status: MembershipStatus.ACTIVE,
+      },
+    });
+  }
+
+  async function createMembershiplessUser(
+    userType: UserType,
+    label: string,
+  ): Promise<string> {
+    const user = await prisma.user.create({
+      data: {
+        email: `${marker}-${label}@example.test`,
+        firstName: 'Sprint18F',
+        lastName: label,
+        userType,
+        status: UserStatus.ACTIVE,
+        passwordHash: await argon2.hash(PASSWORD, ARGON2_OPTIONS),
+        passwordChangedAt: new Date(),
+        credentialVersion: 1,
+      },
+      select: { id: true },
+    });
+    createdUserIds.push(user.id);
+    return user.id;
   }
 
   async function login(email: string): Promise<AuthTokens> {
@@ -533,17 +523,17 @@ describe('Applicant Portal required documents tenancy (security)', () => {
     return `Bearer ${tokens.accessToken}`;
   }
 
-  function expectNoForbiddenDocumentFields(body: unknown): void {
+  function expectNoInternalTenantFields(body: unknown): void {
     const serialized = JSON.stringify(body);
     for (const forbidden of [
-      'schoolId',
       'organizationId',
-      'gradeId',
-      'isActive',
+      'applicantUserId',
+      'applicantProfileId',
       'deletedAt',
-      'createdAt',
-      'updatedAt',
-      'tenant',
+      'submittedAt',
+      'applicationId',
+      'DRAFT',
+      'SUBMITTED',
       'featureControl',
       'featureControls',
       'entitlement',
@@ -553,26 +543,10 @@ describe('Applicant Portal required documents tenancy (security)', () => {
       'quota',
       'staff',
       'studentCount',
-      'applicantCount',
-      'storageKey',
       'objectKey',
       'bucket',
     ]) {
       expect(serialized).not.toContain(forbidden);
-    }
-
-    for (const item of (body as { data: Record<string, unknown>[] }).data) {
-      expect(Object.keys(item).sort()).toEqual(
-        [
-          'acceptedFileTypes',
-          'description',
-          'id',
-          'isMandatory',
-          'maxFiles',
-          'sortOrder',
-          'title',
-        ].sort(),
-      );
     }
   }
 
@@ -586,11 +560,14 @@ describe('Applicant Portal required documents tenancy (security)', () => {
       where: {
         OR: [
           { actorId: { in: createdUserIds } },
-          { resourceId: { in: createdProfileIds } },
+          { resourceId: { in: [...createdProfileIds, ...createdRequestIds] } },
           { schoolId: { in: createdSchoolIds } },
           { organizationId: { in: createdOrganizationIds } },
         ],
       },
+    });
+    await prisma.applicantAdmissionRequest.deleteMany({
+      where: { id: { in: createdRequestIds } },
     });
     await prisma.applicantProfile.deleteMany({
       where: { id: { in: createdProfileIds } },
@@ -606,7 +583,7 @@ describe('Applicant Portal required documents tenancy (security)', () => {
     });
     await prisma.role.deleteMany({ where: { id: { in: createdRoleIds } } });
     await prisma.schoolProfile.deleteMany({
-      where: { schoolId: { in: createdSchoolIds } },
+      where: { id: { in: createdSchoolProfileIds } },
     });
     await prisma.school.deleteMany({
       where: { id: { in: createdSchoolIds } },

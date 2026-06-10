@@ -151,7 +151,7 @@ describe('Applicant Portal account foundation (e2e)', () => {
     }
   });
 
-  it('registers Applicant Portal foundation routes and keeps request routes deferred', async () => {
+  it('registers Applicant Portal foundation routes and keeps later request routes deferred', async () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain('POST /api/v1/applicant-portal/accounts');
@@ -161,11 +161,16 @@ describe('Applicant Portal account foundation (e2e)', () => {
     expect(routes).toContain(
       'GET /api/v1/applicant-portal/schools/:schoolId/admission-required-documents',
     );
+    expect(routes).toContain('POST /api/v1/applicant-portal/requests');
+    expect(routes).toContain('GET /api/v1/applicant-portal/requests');
+    expect(routes).toContain(
+      'GET /api/v1/applicant-portal/requests/:requestId',
+    );
 
     for (const deferredRoute of [
-      'POST /api/v1/applicant-portal/requests',
-      'GET /api/v1/applicant-portal/requests',
-      'GET /api/v1/applicant-portal/requests/:requestId',
+      'POST /api/v1/applicant-portal/requests/:requestId/submit',
+      'POST /api/v1/applicant-portal/requests/:requestId/documents',
+      'GET /api/v1/applicant-portal/requests/:requestId/documents',
     ]) {
       expect(routes).not.toContain(deferredRoute);
     }
@@ -179,7 +184,7 @@ describe('Applicant Portal account foundation (e2e)', () => {
         expect(body).toEqual({ data: [] });
       });
 
-    for (const deferredRouteCheck of [
+    for (const unauthenticatedRouteCheck of [
       {
         method: 'post' as const,
         path: `${GLOBAL_PREFIX}/applicant-portal/requests`,
@@ -194,7 +199,27 @@ describe('Applicant Portal account foundation (e2e)', () => {
       },
     ]) {
       await request(app.getHttpServer())
+        [unauthenticatedRouteCheck.method](unauthenticatedRouteCheck.path)
+        .expect(401);
+    }
+
+    for (const deferredRouteCheck of [
+      {
+        method: 'post' as const,
+        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/submit`,
+      },
+      {
+        method: 'post' as const,
+        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents`,
+      },
+      {
+        method: 'get' as const,
+        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents`,
+      },
+    ]) {
+      await request(app.getHttpServer())
         [deferredRouteCheck.method](deferredRouteCheck.path)
+        .set('Authorization', 'Bearer definitely-not-valid')
         .expect(404);
     }
   });

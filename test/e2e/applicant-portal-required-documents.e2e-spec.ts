@@ -212,17 +212,22 @@ describe('Applicant Portal required documents (e2e)', () => {
     }
   });
 
-  it('registers required documents and keeps applicant request routes absent', async () => {
+  it('registers required documents and keeps later request routes absent', async () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain(
       'GET /api/v1/applicant-portal/schools/:schoolId/admission-required-documents',
     );
+    expect(routes).toContain('POST /api/v1/applicant-portal/requests');
+    expect(routes).toContain('GET /api/v1/applicant-portal/requests');
+    expect(routes).toContain(
+      'GET /api/v1/applicant-portal/requests/:requestId',
+    );
 
     for (const deferredRoute of [
-      'POST /api/v1/applicant-portal/requests',
-      'GET /api/v1/applicant-portal/requests',
-      'GET /api/v1/applicant-portal/requests/:requestId',
+      'POST /api/v1/applicant-portal/requests/:requestId/submit',
+      'POST /api/v1/applicant-portal/requests/:requestId/documents',
+      'GET /api/v1/applicant-portal/requests/:requestId/documents',
     ]) {
       expect(routes).not.toContain(deferredRoute);
     }
@@ -230,12 +235,15 @@ describe('Applicant Portal required documents (e2e)', () => {
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
       .send({ schoolId: activeSchoolId })
-      .expect(404);
+      .expect(401);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/applicant-portal/requests`)
-      .expect(404);
+      .expect(401);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}`)
+      .expect(401);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/submit`)
       .expect(404);
   });
 
@@ -323,10 +331,9 @@ describe('Applicant Portal required documents (e2e)', () => {
       .query({ search: marker, limit: 100 })
       .expect(200);
 
-    expect(schoolsResponse.body.data.map((item: { id: string }) => item.id)).toEqual([
-      activeSchoolId,
-      emptySchoolId,
-    ]);
+    expect(
+      schoolsResponse.body.data.map((item: { id: string }) => item.id),
+    ).toEqual([activeSchoolId, emptySchoolId]);
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/applicant-portal/schools/${activeSchoolId}`)

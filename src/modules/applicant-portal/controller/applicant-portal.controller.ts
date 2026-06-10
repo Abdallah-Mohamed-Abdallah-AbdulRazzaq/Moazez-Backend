@@ -26,15 +26,24 @@ import type { Request } from 'express';
 import { AllowApplicantPortalAccess } from '../../../common/decorators/applicant-portal-access.decorator';
 import { PublicRoute } from '../../../common/decorators/public-route.decorator';
 import { CreateApplicantAccountUseCase } from '../application/create-applicant-account.use-case';
+import { CreateApplicantRequestUseCase } from '../application/create-applicant-request.use-case';
 import { GetDiscoverableSchoolUseCase } from '../application/get-discoverable-school.use-case';
+import { GetApplicantRequestUseCase } from '../application/get-applicant-request.use-case';
 import { GetApplicantProfileUseCase } from '../application/get-applicant-profile.use-case';
 import { ListAdmissionRequiredDocumentsUseCase } from '../application/list-admission-required-documents.use-case';
+import { ListApplicantRequestsUseCase } from '../application/list-applicant-requests.use-case';
 import { ListDiscoverableSchoolsUseCase } from '../application/list-discoverable-schools.use-case';
 import { AdmissionRequiredDocumentsListResponseDto } from '../dto/admission-required-document.dto';
 import {
   ApplicantProfileResponseDto,
   CreateApplicantAccountDto,
 } from '../dto/applicant-account.dto';
+import {
+  ApplicantRequestDetailResponseDto,
+  ApplicantRequestsListResponseDto,
+  CreateApplicantRequestDto,
+  ListApplicantRequestsQueryDto,
+} from '../dto/applicant-request.dto';
 import {
   DiscoverableSchoolResponseDto,
   DiscoverableSchoolsListResponseDto,
@@ -50,6 +59,9 @@ export class ApplicantPortalController {
     private readonly listDiscoverableSchoolsUseCase: ListDiscoverableSchoolsUseCase,
     private readonly getDiscoverableSchoolUseCase: GetDiscoverableSchoolUseCase,
     private readonly listAdmissionRequiredDocumentsUseCase: ListAdmissionRequiredDocumentsUseCase,
+    private readonly createApplicantRequestUseCase: CreateApplicantRequestUseCase,
+    private readonly listApplicantRequestsUseCase: ListApplicantRequestsUseCase,
+    private readonly getApplicantRequestUseCase: GetApplicantRequestUseCase,
   ) {}
 
   @Post('accounts')
@@ -131,5 +143,61 @@ export class ApplicantPortalController {
   @ApiNotFoundResponse({ description: 'not_found' })
   getProfile(): Promise<ApplicantProfileResponseDto> {
     return this.getApplicantProfileUseCase.execute();
+  }
+
+  @Post('requests')
+  @AllowApplicantPortalAccess()
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Create an authenticated applicant draft admission request',
+  })
+  @ApiCreatedResponse({ type: ApplicantRequestDetailResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ description: 'auth.token.invalid' })
+  @ApiForbiddenResponse({ description: 'auth.scope.missing' })
+  @ApiNotFoundResponse({ description: 'not_found' })
+  createRequest(
+    @Body() dto: CreateApplicantRequestDto,
+    @Req() req: Request,
+  ): Promise<ApplicantRequestDetailResponseDto> {
+    return this.createApplicantRequestUseCase.execute({
+      ...dto,
+      ipAddress: req.ip ?? null,
+      userAgent: req.header('user-agent') ?? null,
+    });
+  }
+
+  @Get('requests')
+  @AllowApplicantPortalAccess()
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'List authenticated applicant admission requests',
+  })
+  @ApiOkResponse({ type: ApplicantRequestsListResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ description: 'auth.token.invalid' })
+  @ApiForbiddenResponse({ description: 'auth.scope.missing' })
+  listRequests(
+    @Query() query: ListApplicantRequestsQueryDto,
+  ): Promise<ApplicantRequestsListResponseDto> {
+    return this.listApplicantRequestsUseCase.execute(query);
+  }
+
+  @Get('requests/:requestId')
+  @AllowApplicantPortalAccess()
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Read an authenticated applicant admission request',
+  })
+  @ApiParam({ name: 'requestId', format: 'uuid' })
+  @ApiOkResponse({ type: ApplicantRequestDetailResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ description: 'auth.token.invalid' })
+  @ApiForbiddenResponse({ description: 'auth.scope.missing' })
+  @ApiNotFoundResponse({ description: 'not_found' })
+  getRequest(
+    @Param('requestId', new ParseUUIDPipe()) requestId: string,
+  ): Promise<ApplicantRequestDetailResponseDto> {
+    return this.getApplicantRequestUseCase.execute(requestId);
   }
 }
