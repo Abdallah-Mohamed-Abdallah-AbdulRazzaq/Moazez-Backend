@@ -28,7 +28,9 @@ import { PublicRoute } from '../../../common/decorators/public-route.decorator';
 import { CreateApplicantAccountUseCase } from '../application/create-applicant-account.use-case';
 import { GetDiscoverableSchoolUseCase } from '../application/get-discoverable-school.use-case';
 import { GetApplicantProfileUseCase } from '../application/get-applicant-profile.use-case';
+import { ListAdmissionRequiredDocumentsUseCase } from '../application/list-admission-required-documents.use-case';
 import { ListDiscoverableSchoolsUseCase } from '../application/list-discoverable-schools.use-case';
+import { AdmissionRequiredDocumentsListResponseDto } from '../dto/admission-required-document.dto';
 import {
   ApplicantProfileResponseDto,
   CreateApplicantAccountDto,
@@ -47,6 +49,7 @@ export class ApplicantPortalController {
     private readonly getApplicantProfileUseCase: GetApplicantProfileUseCase,
     private readonly listDiscoverableSchoolsUseCase: ListDiscoverableSchoolsUseCase,
     private readonly getDiscoverableSchoolUseCase: GetDiscoverableSchoolUseCase,
+    private readonly listAdmissionRequiredDocumentsUseCase: ListAdmissionRequiredDocumentsUseCase,
   ) {}
 
   @Post('accounts')
@@ -98,6 +101,22 @@ export class ApplicantPortalController {
     @Param('schoolId', new ParseUUIDPipe()) schoolId: string,
   ): Promise<DiscoverableSchoolResponseDto> {
     return this.getDiscoverableSchoolUseCase.execute(schoolId);
+  }
+
+  @Get('schools/:schoolId/admission-required-documents')
+  @PublicRoute()
+  @ApiOperation({
+    summary:
+      'List active admission required documents safe for public Applicant Portal discovery',
+  })
+  @ApiParam({ name: 'schoolId', format: 'uuid' })
+  @ApiOkResponse({ type: AdmissionRequiredDocumentsListResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiNotFoundResponse({ description: 'not_found' })
+  listAdmissionRequiredDocuments(
+    @Param('schoolId', new ParseUUIDPipe()) schoolId: string,
+  ): Promise<AdmissionRequiredDocumentsListResponseDto> {
+    return this.listAdmissionRequiredDocumentsUseCase.execute(schoolId);
   }
 
   @Get('profile')

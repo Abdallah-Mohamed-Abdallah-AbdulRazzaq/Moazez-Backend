@@ -151,16 +151,18 @@ describe('Applicant Portal account foundation (e2e)', () => {
     }
   });
 
-  it('registers Applicant Portal foundation routes and keeps request/document routes deferred', async () => {
+  it('registers Applicant Portal foundation routes and keeps request routes deferred', async () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain('POST /api/v1/applicant-portal/accounts');
     expect(routes).toContain('GET /api/v1/applicant-portal/profile');
     expect(routes).toContain('GET /api/v1/applicant-portal/schools');
     expect(routes).toContain('GET /api/v1/applicant-portal/schools/:schoolId');
+    expect(routes).toContain(
+      'GET /api/v1/applicant-portal/schools/:schoolId/admission-required-documents',
+    );
 
     for (const deferredRoute of [
-      'GET /api/v1/applicant-portal/schools/:schoolId/admission-required-documents',
       'POST /api/v1/applicant-portal/requests',
       'GET /api/v1/applicant-portal/requests',
       'GET /api/v1/applicant-portal/requests/:requestId',
@@ -168,11 +170,16 @@ describe('Applicant Portal account foundation (e2e)', () => {
       expect(routes).not.toContain(deferredRoute);
     }
 
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/applicant-portal/schools/${schoolId}/admission-required-documents`,
+      )
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({ data: [] });
+      });
+
     for (const deferredRouteCheck of [
-      {
-        method: 'get' as const,
-        path: `${GLOBAL_PREFIX}/applicant-portal/schools/${randomUUID()}/admission-required-documents`,
-      },
       {
         method: 'post' as const,
         path: `${GLOBAL_PREFIX}/applicant-portal/requests`,

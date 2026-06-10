@@ -41,6 +41,23 @@ export type DiscoverableSchoolRecord = Prisma.SchoolGetPayload<
   typeof DISCOVERABLE_SCHOOL_ARGS
 >;
 
+const ADMISSION_REQUIRED_DOCUMENT_ARGS = {
+  select: {
+    id: true,
+    title: true,
+    description: true,
+    isMandatory: true,
+    acceptedFileTypes: true,
+    maxFiles: true,
+    sortOrder: true,
+  },
+} satisfies Prisma.AdmissionRequiredDocumentDefaultArgs;
+
+export type AdmissionRequiredDocumentRecord =
+  Prisma.AdmissionRequiredDocumentGetPayload<
+    typeof ADMISSION_REQUIRED_DOCUMENT_ARGS
+  >;
+
 export interface CreateApplicantAccountRecord {
   email: string;
   passwordHash: string;
@@ -155,6 +172,21 @@ export class ApplicantPortalRepository {
         AND: [buildDiscoverableSchoolWhere(), { id: schoolId }],
       },
       ...DISCOVERABLE_SCHOOL_ARGS,
+    });
+  }
+
+  listActiveAdmissionRequiredDocumentsForSchool(
+    schoolId: string,
+  ): Promise<AdmissionRequiredDocumentRecord[]> {
+    return this.prisma.admissionRequiredDocument.findMany({
+      where: {
+        schoolId,
+        gradeId: null,
+        isActive: true,
+        deletedAt: null,
+      },
+      orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }, { createdAt: 'asc' }],
+      ...ADMISSION_REQUIRED_DOCUMENT_ARGS,
     });
   }
 }

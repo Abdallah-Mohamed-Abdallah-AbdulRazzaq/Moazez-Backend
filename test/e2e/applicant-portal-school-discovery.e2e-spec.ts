@@ -152,14 +152,16 @@ describe('Applicant Portal school discovery (e2e)', () => {
     }
   });
 
-  it('registers public discovery routes and keeps applicant request/document routes absent', async () => {
+  it('registers public discovery routes and keeps applicant request routes absent', async () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toContain('GET /api/v1/applicant-portal/schools');
     expect(routes).toContain('GET /api/v1/applicant-portal/schools/:schoolId');
+    expect(routes).toContain(
+      'GET /api/v1/applicant-portal/schools/:schoolId/admission-required-documents',
+    );
 
     for (const deferredRoute of [
-      'GET /api/v1/applicant-portal/schools/:schoolId/admission-required-documents',
       'POST /api/v1/applicant-portal/requests',
       'GET /api/v1/applicant-portal/requests',
       'GET /api/v1/applicant-portal/requests/:requestId',
@@ -171,7 +173,10 @@ describe('Applicant Portal school discovery (e2e)', () => {
       .get(
         `${GLOBAL_PREFIX}/applicant-portal/schools/${activeNorthSchoolId}/admission-required-documents`,
       )
-      .expect(404);
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({ data: [] });
+      });
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/applicant-portal/requests`)
       .send({ schoolId: activeNorthSchoolId })

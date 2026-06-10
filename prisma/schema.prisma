@@ -1069,16 +1069,17 @@ model Organization {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  schools               School[]
-  schoolEntitlements    SchoolEntitlement[]
-  schoolFeatureControls SchoolFeatureControl[]
-  memberships           Membership[]
-  auditLogs             AuditLog[]
-  files                 File[]
-  leads                 Lead[]
-  applications          Application[]
-  students              Student[]
-  guardians             Guardian[]
+  schools                    School[]
+  schoolEntitlements         SchoolEntitlement[]
+  schoolFeatureControls      SchoolFeatureControl[]
+  memberships                Membership[]
+  auditLogs                  AuditLog[]
+  files                      File[]
+  leads                      Lead[]
+  applications               Application[]
+  admissionRequiredDocuments AdmissionRequiredDocument[]
+  students                   Student[]
+  guardians                  Guardian[]
 
   @@index([status])
   @@index([deletedAt])
@@ -1139,6 +1140,7 @@ model School {
   files                                 File[]
   leads                                 Lead[]
   applications                          Application[]
+  admissionRequiredDocuments            AdmissionRequiredDocument[]
   applicationDocuments                  ApplicationDocument[]
   placementTests                        PlacementTest[]
   interviews                            Interview[]
@@ -1942,6 +1944,37 @@ model Application {
   @@map("admission_applications")
 }
 
+model AdmissionRequiredDocument {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String   @map("school_id") @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  gradeId           String?  @map("grade_id") @db.Uuid
+  title             String   @db.VarChar(180)
+  description       String?  @db.Text
+  isMandatory       Boolean  @default(true) @map("is_mandatory")
+  acceptedFileTypes String[] @default([]) @map("accepted_file_types")
+  maxFiles          Int      @default(1) @map("max_files")
+  sortOrder         Int      @default(0) @map("sort_order")
+  isActive          Boolean  @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  grade        Grade?       @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([organizationId])
+  @@index([gradeId])
+  @@index([schoolId, isActive, deletedAt])
+  @@index([schoolId, gradeId, isActive, deletedAt])
+  @@index([deletedAt])
+  @@map("admission_required_documents")
+}
+
 model ApplicationDocument {
   id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   schoolId      String                  @map("school_id") @db.Uuid
@@ -2193,6 +2226,7 @@ model Grade {
   stage                              Stage                               @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
   sections                           Section[]
   requestedApplications              Application[]
+  admissionRequiredDocuments         AdmissionRequiredDocument[]
   attendancePolicies                 AttendancePolicy[]
   attendanceSessions                 AttendanceSession[]
   gradeAssessments                   GradeAssessment[]
