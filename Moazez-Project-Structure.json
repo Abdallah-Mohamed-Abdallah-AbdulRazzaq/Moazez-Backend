@@ -800,6 +800,18 @@
               ]
             },
             {
+              "name": "20260609140000_0033_applicant_profiles",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -946,6 +958,11 @@
               "type": "folder",
               "icon": "📁",
               "children": [
+                {
+                  "name": "applicant-portal-access.decorator.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
                 {
                   "name": "current-actor.decorator.ts",
                   "type": "file",
@@ -3403,6 +3420,112 @@
                 },
                 {
                   "name": "admissions.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "applicant-portal",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "application",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "applicant-portal-access.service.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "create-applicant-account.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "get-applicant-profile.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "controller",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "applicant-portal.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "domain",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "applicant-profile.inputs.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "dto",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "applicant-account.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "infrastructure",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "applicant-portal.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "presenters",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "applicant-profile.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "tests",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "applicant-portal-foundation.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "applicant-portal.module.ts",
                   "type": "file",
                   "icon": "📘"
                 }
@@ -15188,6 +15311,11 @@
               "icon": "📘"
             },
             {
+              "name": "applicant-portal-account-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "attendance-excuses-corrections.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -15418,6 +15546,11 @@
             },
             {
               "name": "tenancy.admissions.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.applicant-portal.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15729,7 +15862,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-09T17:14:23.139Z",
+    "generated": "2026-06-10T00:04:46.369Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
