@@ -829,6 +829,18 @@
               ]
             },
             {
+              "name": "20260610170000_0035_applicant_admission_requests",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -3463,7 +3475,17 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "create-applicant-request.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "get-applicant-profile.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "get-applicant-request.use-case.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -3474,6 +3496,11 @@
                     },
                     {
                       "name": "list-admission-required-documents.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "list-applicant-requests.use-case.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -3507,6 +3534,11 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "applicant-request.inputs.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "school-discovery.inputs.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3525,6 +3557,11 @@
                     },
                     {
                       "name": "applicant-account.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "applicant-request.dto.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -3563,6 +3600,11 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "applicant-request.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "school-discovery.presenter.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3576,6 +3618,11 @@
                   "children": [
                     {
                       "name": "applicant-portal-foundation.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "applicant-portal-requests.spec.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -15383,6 +15430,11 @@
               "icon": "📘"
             },
             {
+              "name": "applicant-portal-request-ownership.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "applicant-portal-required-documents.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -15623,6 +15675,11 @@
             },
             {
               "name": "tenancy.admissions.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.applicant-portal-requests.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15949,7 +16006,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-10T16:36:21.441Z",
+    "generated": "2026-06-10T17:45:56.397Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
