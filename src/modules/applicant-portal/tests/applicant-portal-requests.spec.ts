@@ -1,6 +1,8 @@
 import {
   AdmissionApplicationSource,
   AdmissionApplicationStatus,
+  AdmissionDocumentStatus,
+  ApplicantAdmissionRequestDocumentStatus,
   ApplicantAdmissionRequestStatus,
   AuditOutcome,
   UserStatus,
@@ -26,6 +28,9 @@ const SCHOOL_ID = '00000000-0000-0000-0000-000000000101';
 const ORGANIZATION_ID = '00000000-0000-0000-0000-000000000102';
 const REQUEST_ID = '00000000-0000-0000-0000-000000000201';
 const APPLICATION_ID = '00000000-0000-0000-0000-000000000501';
+const APPLICATION_DOCUMENT_ID = '00000000-0000-0000-0000-000000000502';
+const APPLICANT_DOCUMENT_ID = '00000000-0000-0000-0000-000000000503';
+const FILE_ID = '00000000-0000-0000-0000-000000000504';
 const GRADE_ID = '00000000-0000-0000-0000-000000000301';
 const ACADEMIC_YEAR_ID = '00000000-0000-0000-0000-000000000401';
 
@@ -647,6 +652,86 @@ describe('Applicant Portal request ownership foundation', () => {
     expect(tx.membership.create).not.toHaveBeenCalled();
   });
 
+  it('bridges active draft applicant documents during submit with pending review status', async () => {
+    const submittedAt = new Date('2026-06-10T11:00:00.000Z');
+    const tx = mockSubmitTransactionClient({
+      request: submitRequestRecordFixture(),
+      detail: requestRecordFixture({
+        status: ApplicantAdmissionRequestStatus.SUBMITTED,
+        application: { status: AdmissionApplicationStatus.SUBMITTED },
+      }),
+      missingItemsCount: 0,
+      bridgeableApplicantDocuments: [
+        {
+          id: APPLICANT_DOCUMENT_ID,
+          fileId: FILE_ID,
+          documentType: 'Birth certificate',
+          status: ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+        },
+      ],
+    });
+    const prisma = {
+      $transaction: jest.fn((callback) => callback(tx)),
+    };
+    const repository = new ApplicantPortalRepository(prisma as never);
+
+    await expect(
+      repository.submitApplicantAdmissionRequest({
+        applicantUserId: APPLICANT_USER_ID,
+        requestId: REQUEST_ID,
+        submittedAt,
+      }),
+    ).resolves.toMatchObject({
+      kind: 'submitted',
+      missingItemsCount: 0,
+      createdApplication: true,
+    });
+
+    expect(tx.applicantAdmissionRequestDocument.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          requestId: REQUEST_ID,
+          schoolId: SCHOOL_ID,
+          deletedAt: null,
+          applicationDocumentId: null,
+          status: {
+            in: [
+              ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+              ApplicantAdmissionRequestDocumentStatus.ACCEPTED,
+            ],
+          },
+        }),
+      }),
+    );
+    expect(tx.applicationDocument.create).toHaveBeenCalledTimes(1);
+    expect(tx.applicationDocument.create).toHaveBeenCalledWith({
+      data: {
+        schoolId: SCHOOL_ID,
+        applicationId: APPLICATION_ID,
+        fileId: FILE_ID,
+        documentType: 'Birth certificate',
+        status: AdmissionDocumentStatus.PENDING_REVIEW,
+        notes: null,
+      },
+      select: { id: true },
+    });
+    expect(
+      tx.applicantAdmissionRequestDocument.updateMany,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: APPLICANT_DOCUMENT_ID,
+        deletedAt: null,
+        applicationDocumentId: null,
+      },
+      data: { applicationDocumentId: APPLICATION_DOCUMENT_ID },
+    });
+    expect(tx.student.create).not.toHaveBeenCalled();
+    expect(tx.guardian.create).not.toHaveBeenCalled();
+    expect(tx.studentGuardian.create).not.toHaveBeenCalled();
+    expect(tx.enrollment.create).not.toHaveBeenCalled();
+    expect(tx.membership.create).not.toHaveBeenCalled();
+  });
+
   it('keeps repeated submit idempotent without creating duplicate Applications', async () => {
     const tx = mockSubmitTransactionClient({
       request: submitRequestRecordFixture({
@@ -777,6 +862,12 @@ function mockSubmitTransactionClient(input: {
   detail?: ApplicantAdmissionRequestRecord;
   school?: { id: string; organizationId: string } | null;
   missingItemsCount?: number;
+  bridgeableApplicantDocuments?: Array<{
+    id: string;
+    fileId: string;
+    documentType: string;
+    status: ApplicantAdmissionRequestDocumentStatus;
+  }>;
 }) {
   return {
     $executeRaw: jest.fn(),
@@ -786,6 +877,12 @@ function mockSubmitTransactionClient(input: {
       findUnique: jest
         .fn()
         .mockResolvedValue(input.detail ?? requestRecordFixture()),
+    },
+    applicantAdmissionRequestDocument: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue(input.bridgeableApplicantDocuments ?? []),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     school: {
       findFirst: jest
@@ -808,7 +905,9 @@ function mockSubmitTransactionClient(input: {
     application: {
       create: jest.fn().mockResolvedValue({ id: APPLICATION_ID }),
     },
-    applicationDocument: { create: jest.fn() },
+    applicationDocument: {
+      create: jest.fn().mockResolvedValue({ id: APPLICATION_DOCUMENT_ID }),
+    },
     file: { create: jest.fn() },
     student: { create: jest.fn() },
     guardian: { create: jest.fn() },

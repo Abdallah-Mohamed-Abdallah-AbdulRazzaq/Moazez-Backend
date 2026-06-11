@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   AdmissionApplicationSource,
   AdmissionApplicationStatus,
+  AdmissionDocumentStatus,
   ApplicantAdmissionRequestDocumentStatus,
   ApplicantAdmissionRequestStatus,
   FileVisibility,
@@ -154,6 +155,7 @@ const APPLICANT_ADMISSION_REQUEST_FOR_DOCUMENT_ACCESS_ARGS = {
     status: true,
     application: {
       select: {
+        id: true,
         status: true,
         deletedAt: true,
       },
@@ -261,6 +263,7 @@ const APPLICANT_ADMISSION_REQUEST_DOCUMENT_MUTATION_ARGS = {
         status: true,
         application: {
           select: {
+            id: true,
             status: true,
             deletedAt: true,
           },
@@ -371,6 +374,7 @@ export interface CreateApplicantAdmissionRequestDocumentRecord {
   organizationId: string;
   requiredDocumentId: string | null;
   applicationDocumentId: string | null;
+  bridgeApplicationId?: string | null;
   title: string;
   documentType: string;
   notes: string | null;
@@ -392,6 +396,7 @@ export interface ReplaceApplicantAdmissionRequestDocumentRecord {
   schoolId: string;
   organizationId: string;
   requiredDocumentId: string | null;
+  bridgeApplicationId?: string | null;
   title: string;
   documentType: string;
   notes: string | null;
@@ -694,7 +699,7 @@ export class ApplicantPortalRepository {
         select: { id: true },
       });
 
-      return tx.applicantAdmissionRequestDocument.create({
+      const document = await tx.applicantAdmissionRequestDocument.create({
         data: {
           requestId: data.requestId,
           applicantUserId: data.applicantUserId,
@@ -710,6 +715,24 @@ export class ApplicantPortalRepository {
         },
         ...APPLICANT_ADMISSION_REQUEST_DOCUMENT_ARGS,
       });
+
+      if (data.bridgeApplicationId) {
+        await this.bridgeApplicantDocumentInTransaction(tx, {
+          applicantDocumentId: document.id,
+          applicationId: data.bridgeApplicationId,
+          schoolId: data.schoolId,
+          fileId: file.id,
+          documentType: data.documentType,
+          applicantStatus: ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+        });
+
+        return tx.applicantAdmissionRequestDocument.findUniqueOrThrow({
+          where: { id: document.id },
+          ...APPLICANT_ADMISSION_REQUEST_DOCUMENT_ARGS,
+        });
+      }
+
+      return document;
     });
   }
 
@@ -847,7 +870,7 @@ export class ApplicantPortalRepository {
         select: { id: true },
       });
 
-      return tx.applicantAdmissionRequestDocument.create({
+      const replacement = await tx.applicantAdmissionRequestDocument.create({
         data: {
           requestId: data.requestId,
           applicantUserId: data.applicantUserId,
@@ -863,6 +886,24 @@ export class ApplicantPortalRepository {
         },
         ...APPLICANT_ADMISSION_REQUEST_DOCUMENT_ARGS,
       });
+
+      if (data.bridgeApplicationId) {
+        await this.bridgeApplicantDocumentInTransaction(tx, {
+          applicantDocumentId: replacement.id,
+          applicationId: data.bridgeApplicationId,
+          schoolId: data.schoolId,
+          fileId: file.id,
+          documentType: data.documentType,
+          applicantStatus: ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+        });
+
+        return tx.applicantAdmissionRequestDocument.findUniqueOrThrow({
+          where: { id: replacement.id },
+          ...APPLICANT_ADMISSION_REQUEST_DOCUMENT_ARGS,
+        });
+      }
+
+      return replacement;
     });
   }
 
@@ -927,6 +968,12 @@ export class ApplicantPortalRepository {
         request.status === ApplicantAdmissionRequestStatus.SUBMITTED &&
         request.applicationId
       ) {
+        await this.bridgeApplicantDocumentsForRequestInTransaction(tx, {
+          requestId: request.id,
+          applicationId: request.applicationId,
+          schoolId: request.schoolId,
+        });
+
         return this.buildSubmittedRequestOutcome(tx, {
           requestId: request.id,
           schoolId: request.schoolId,
@@ -1019,6 +1066,12 @@ export class ApplicantPortalRepository {
         select: { id: true },
       });
 
+      await this.bridgeApplicantDocumentsForRequestInTransaction(tx, {
+        requestId: request.id,
+        applicationId: application.id,
+        schoolId: request.schoolId,
+      });
+
       return this.buildSubmittedRequestOutcome(tx, {
         requestId: request.id,
         schoolId: request.schoolId,
@@ -1027,6 +1080,85 @@ export class ApplicantPortalRepository {
         createdApplication: true,
       });
     });
+  }
+
+  private async bridgeApplicantDocumentsForRequestInTransaction(
+    tx: Prisma.TransactionClient,
+    params: {
+      requestId: string;
+      applicationId: string;
+      schoolId: string;
+    },
+  ): Promise<void> {
+    const bridgeableDocuments =
+      await tx.applicantAdmissionRequestDocument.findMany({
+        where: {
+          requestId: params.requestId,
+          schoolId: params.schoolId,
+          deletedAt: null,
+          applicationDocumentId: null,
+          status: { in: [...BRIDGEABLE_APPLICANT_DOCUMENT_STATUSES] },
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          fileId: true,
+          documentType: true,
+          status: true,
+        },
+      });
+
+    for (const applicantDocument of bridgeableDocuments) {
+      await this.bridgeApplicantDocumentInTransaction(tx, {
+        applicantDocumentId: applicantDocument.id,
+        applicationId: params.applicationId,
+        schoolId: params.schoolId,
+        fileId: applicantDocument.fileId,
+        documentType: applicantDocument.documentType,
+        applicantStatus: applicantDocument.status,
+      });
+    }
+  }
+
+  private async bridgeApplicantDocumentInTransaction(
+    tx: Prisma.TransactionClient,
+    params: {
+      applicantDocumentId: string;
+      applicationId: string;
+      schoolId: string;
+      fileId: string;
+      documentType: string;
+      applicantStatus: ApplicantAdmissionRequestDocumentStatus;
+    },
+  ): Promise<string> {
+    const applicationDocument = await tx.applicationDocument.create({
+      data: {
+        schoolId: params.schoolId,
+        applicationId: params.applicationId,
+        fileId: params.fileId,
+        documentType: params.documentType,
+        status: mapApplicantDocumentStatusToAdmissionDocumentStatus(
+          params.applicantStatus,
+        ),
+        notes: null,
+      },
+      select: { id: true },
+    });
+
+    const linked = await tx.applicantAdmissionRequestDocument.updateMany({
+      where: {
+        id: params.applicantDocumentId,
+        deletedAt: null,
+        applicationDocumentId: null,
+      },
+      data: { applicationDocumentId: applicationDocument.id },
+    });
+
+    if (linked.count !== 1) {
+      throw new Error('Applicant document bridge link failed');
+    }
+
+    return applicationDocument.id;
   }
 
   private async buildSubmittedRequestOutcome(
@@ -1200,6 +1332,11 @@ const REQUIRED_DOCUMENT_SATISFYING_STATUSES = [
   ApplicantAdmissionRequestDocumentStatus.ACCEPTED,
 ] as const;
 
+const BRIDGEABLE_APPLICANT_DOCUMENT_STATUSES = [
+  ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+  ApplicantAdmissionRequestDocumentStatus.ACCEPTED,
+] as const;
+
 function buildMissingMandatoryRequiredDocumentsWhere(params: {
   schoolId: string;
   requestId: string;
@@ -1216,4 +1353,14 @@ function buildMissingMandatoryRequiredDocumentsWhere(params: {
       },
     },
   };
+}
+
+function mapApplicantDocumentStatusToAdmissionDocumentStatus(
+  status: ApplicantAdmissionRequestDocumentStatus,
+): AdmissionDocumentStatus {
+  if (status === ApplicantAdmissionRequestDocumentStatus.ACCEPTED) {
+    return AdmissionDocumentStatus.COMPLETE;
+  }
+
+  return AdmissionDocumentStatus.PENDING_REVIEW;
 }

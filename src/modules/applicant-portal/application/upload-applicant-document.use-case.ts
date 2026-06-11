@@ -124,6 +124,7 @@ export class UploadApplicantDocumentUseCase {
             organizationId: request.organizationId,
             requiredDocumentId: requiredDocument?.id ?? null,
             applicationDocumentId: null,
+            bridgeApplicationId: this.resolveBridgeApplicationId(request),
             title: documentText.title,
             documentType: documentText.documentType,
             notes: normalizedInput.notes,
@@ -231,6 +232,22 @@ export class UploadApplicantDocumentUseCase {
       httpStatus: HttpStatus.CONFLICT,
       details: { requestId: request.id },
     });
+  }
+
+  private resolveBridgeApplicationId(
+    request: ApplicantAdmissionRequestForDocumentAccessRecord,
+  ): string | null {
+    if (
+      request.status === ApplicantAdmissionRequestStatus.SUBMITTED &&
+      request.application?.id &&
+      request.application.status ===
+        AdmissionApplicationStatus.DOCUMENTS_PENDING &&
+      !request.application.deletedAt
+    ) {
+      return request.application.id;
+    }
+
+    return null;
   }
 
   private validateFile(

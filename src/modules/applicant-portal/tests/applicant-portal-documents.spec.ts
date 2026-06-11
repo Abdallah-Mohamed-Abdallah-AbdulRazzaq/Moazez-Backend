@@ -1,5 +1,6 @@
 import {
   AdmissionApplicationStatus,
+  AdmissionDocumentStatus,
   ApplicantAdmissionRequestDocumentStatus,
   ApplicantAdmissionRequestStatus,
   AuditOutcome,
@@ -33,7 +34,9 @@ const APPLICANT_PROFILE_ID = '00000000-0000-0000-0000-000000000002';
 const SCHOOL_ID = '00000000-0000-0000-0000-000000000101';
 const ORGANIZATION_ID = '00000000-0000-0000-0000-000000000102';
 const REQUEST_ID = '00000000-0000-0000-0000-000000000201';
+const APPLICATION_ID = '00000000-0000-0000-0000-000000000202';
 const DOCUMENT_ID = '00000000-0000-0000-0000-000000000301';
+const APPLICATION_DOCUMENT_ID = '00000000-0000-0000-0000-000000000303';
 const REPLACEMENT_DOCUMENT_ID = '00000000-0000-0000-0000-000000000302';
 const REQUIRED_DOCUMENT_ID = '00000000-0000-0000-0000-000000000401';
 const FILE_ID = '00000000-0000-0000-0000-000000000501';
@@ -268,6 +271,44 @@ describe('Applicant Portal documents', () => {
         file: multipartFileFixture(),
       }),
     ).rejects.toMatchObject({ code: 'conflict', httpStatus: 409 });
+  });
+
+  it('bridges post-submit DOCUMENTS_PENDING uploads through the linked application id', async () => {
+    const repository = mockApplicantRepository();
+    const storageService = mockStorageService();
+    repository.findApplicantAdmissionRequestForDocumentAccess.mockResolvedValue(
+      requestForDocumentFixture({
+        status: ApplicantAdmissionRequestStatus.SUBMITTED,
+        applicationStatus: AdmissionApplicationStatus.DOCUMENTS_PENDING,
+        applicationId: APPLICATION_ID,
+      }),
+    );
+    repository.createApplicantAdmissionRequestDocument.mockResolvedValue(
+      documentRecordFixture(),
+    );
+    const useCase = new UploadApplicantDocumentUseCase(
+      mockAccessService(),
+      repository,
+      storageService,
+      mockAuthRepository(),
+    );
+
+    await expect(
+      useCase.execute({
+        requestId: REQUEST_ID,
+        title: 'Post-submit note',
+        file: multipartFileFixture(),
+      }),
+    ).resolves.toMatchObject({ id: DOCUMENT_ID });
+
+    expect(
+      repository.createApplicantAdmissionRequestDocument,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        applicationDocumentId: null,
+        bridgeApplicationId: APPLICATION_ID,
+      }),
+    );
   });
 
   it('lists and reads only the current applicant document', async () => {
@@ -685,6 +726,21 @@ describe('Applicant Portal documents', () => {
 
     repository.findApplicantAdmissionRequestDocumentForMutation.mockResolvedValueOnce(
       documentMutationRecordFixture({
+        applicationDocumentId: APPLICATION_DOCUMENT_ID,
+        requestStatus: ApplicantAdmissionRequestStatus.SUBMITTED,
+        applicationStatus: AdmissionApplicationStatus.DOCUMENTS_PENDING,
+      }),
+    );
+    await expect(
+      useCase.execute({
+        requestId: REQUEST_ID,
+        documentId: DOCUMENT_ID,
+        file: multipartFileFixture(),
+      }),
+    ).rejects.toMatchObject({ code: 'conflict', httpStatus: 409 });
+
+    repository.findApplicantAdmissionRequestDocumentForMutation.mockResolvedValueOnce(
+      documentMutationRecordFixture({
         requestStatus: ApplicantAdmissionRequestStatus.SUBMITTED,
         applicationStatus: AdmissionApplicationStatus.DOCUMENTS_PENDING,
       }),
@@ -704,6 +760,43 @@ describe('Applicant Portal documents', () => {
     expect(
       repository.replaceApplicantAdmissionRequestDocument,
     ).not.toHaveBeenCalled();
+  });
+
+  it('passes bridgeApplicationId for an unbridged DOCUMENTS_PENDING replacement', async () => {
+    const repository = mockApplicantRepository();
+    repository.findApplicantAdmissionRequestDocumentForMutation.mockResolvedValue(
+      documentMutationRecordFixture({
+        requestStatus: ApplicantAdmissionRequestStatus.SUBMITTED,
+        applicationStatus: AdmissionApplicationStatus.DOCUMENTS_PENDING,
+        applicationId: APPLICATION_ID,
+      }),
+    );
+    repository.findActiveSchoolLevelRequiredDocumentForUpload.mockResolvedValue(
+      requiredDocumentFixture(),
+    );
+    repository.replaceApplicantAdmissionRequestDocument.mockResolvedValue(
+      documentRecordFixture({ id: REPLACEMENT_DOCUMENT_ID }),
+    );
+    const useCase = new ReplaceApplicantDocumentUseCase(
+      mockAccessService(),
+      repository,
+      mockStorageService(),
+      mockAuthRepository(),
+    );
+
+    await expect(
+      useCase.execute({
+        requestId: REQUEST_ID,
+        documentId: DOCUMENT_ID,
+        file: multipartFileFixture({ originalname: 'replacement.pdf' }),
+      }),
+    ).resolves.toMatchObject({ id: REPLACEMENT_DOCUMENT_ID });
+
+    expect(
+      repository.replaceApplicantAdmissionRequestDocument,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ bridgeApplicationId: APPLICATION_ID }),
+    );
   });
 
   it('cleans up a newly uploaded replacement object when persistence fails', async () => {
@@ -982,6 +1075,85 @@ describe('Applicant Portal documents', () => {
     expect(tx.membership.create).not.toHaveBeenCalled();
   });
 
+  it('bridges a post-submit upload to ApplicationDocument with pending review status', async () => {
+    const tx = {
+      file: { create: jest.fn().mockResolvedValue({ id: FILE_ID }) },
+      applicantAdmissionRequestDocument: {
+        create: jest.fn().mockResolvedValue(documentRecordFixture()),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(documentRecordFixture()),
+      },
+      applicationDocument: {
+        create: jest.fn().mockResolvedValue({ id: APPLICATION_DOCUMENT_ID }),
+      },
+      student: { create: jest.fn() },
+      guardian: { create: jest.fn() },
+      studentGuardian: { create: jest.fn() },
+      enrollment: { create: jest.fn() },
+      membership: { create: jest.fn() },
+    };
+    const prisma = {
+      $transaction: jest.fn((callback) => callback(tx)),
+    };
+    const repository = new ApplicantPortalRepository(prisma as never);
+
+    await expect(
+      repository.createApplicantAdmissionRequestDocument({
+        requestId: REQUEST_ID,
+        applicantUserId: APPLICANT_USER_ID,
+        schoolId: SCHOOL_ID,
+        organizationId: ORGANIZATION_ID,
+        requiredDocumentId: REQUIRED_DOCUMENT_ID,
+        applicationDocumentId: null,
+        bridgeApplicationId: APPLICATION_ID,
+        title: 'Birth certificate',
+        documentType: 'Birth certificate',
+        notes: null,
+        file: {
+          bucket: 'private-files',
+          objectKey: 'schools/s/applicant-requests/r/documents/f.pdf',
+          originalName: 'birth-certificate.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: BigInt(11),
+          checksumSha256: 'hash',
+          visibility: FileVisibility.PRIVATE,
+        },
+      }),
+    ).resolves.toMatchObject({ id: DOCUMENT_ID });
+
+    expect(tx.applicationDocument.create).toHaveBeenCalledWith({
+      data: {
+        schoolId: SCHOOL_ID,
+        applicationId: APPLICATION_ID,
+        fileId: FILE_ID,
+        documentType: 'Birth certificate',
+        status: AdmissionDocumentStatus.PENDING_REVIEW,
+        notes: null,
+      },
+      select: { id: true },
+    });
+    expect(
+      tx.applicantAdmissionRequestDocument.updateMany,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: DOCUMENT_ID,
+        deletedAt: null,
+        applicationDocumentId: null,
+      },
+      data: { applicationDocumentId: APPLICATION_DOCUMENT_ID },
+    });
+    expect(
+      tx.applicantAdmissionRequestDocument.findUniqueOrThrow,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: DOCUMENT_ID } }),
+    );
+    expect(tx.student.create).not.toHaveBeenCalled();
+    expect(tx.guardian.create).not.toHaveBeenCalled();
+    expect(tx.studentGuardian.create).not.toHaveBeenCalled();
+    expect(tx.enrollment.create).not.toHaveBeenCalled();
+    expect(tx.membership.create).not.toHaveBeenCalled();
+  });
+
   it('transactionally creates replacement File metadata, supersedes the old document, and creates a new document', async () => {
     const tx = {
       $executeRaw: jest.fn(),
@@ -1145,6 +1317,7 @@ describe('Applicant Portal documents', () => {
 function requestForDocumentFixture(overrides?: {
   status?: ApplicantAdmissionRequestStatus;
   applicationStatus?: AdmissionApplicationStatus | null;
+  applicationId?: string;
   schoolStatus?: SchoolStatus;
   organizationStatus?: OrganizationStatus;
   organizationDeletedAt?: Date | null;
@@ -1164,6 +1337,7 @@ function requestForDocumentFixture(overrides?: {
       applicationStatus === null
         ? null
         : {
+            id: overrides?.applicationId ?? APPLICATION_ID,
             status: applicationStatus,
             deletedAt: null,
           },
@@ -1247,11 +1421,13 @@ function documentMutationRecordFixture(
   overrides?: Partial<ApplicantAdmissionRequestDocumentMutationRecord> & {
     requestStatus?: ApplicantAdmissionRequestStatus;
     applicationStatus?: AdmissionApplicationStatus | null;
+    applicationId?: string;
   },
 ): ApplicantAdmissionRequestDocumentMutationRecord {
   const {
     requestStatus,
     applicationStatus: inputApplicationStatus,
+    applicationId,
     ...rest
   } = overrides ?? {};
   const applicationStatus =
@@ -1277,6 +1453,7 @@ function documentMutationRecordFixture(
         applicationStatus === null
           ? null
           : {
+              id: applicationId ?? APPLICATION_ID,
               status: applicationStatus,
               deletedAt: null,
             },

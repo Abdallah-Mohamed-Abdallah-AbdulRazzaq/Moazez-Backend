@@ -76,22 +76,24 @@ describe('Admissions application documents use cases', () => {
 
   function createFilesRepository(): FilesRepository {
     return {
-      findScopedFileById: jest.fn().mockImplementation(async (fileId: string) => ({
-        id: fileId,
-        organizationId: 'org-1',
-        schoolId: 'school-1',
-        uploaderId: 'user-1',
-        bucket: 'moazez-dev',
-        objectKey: `schools/school-1/files/${fileId}.pdf`,
-        originalName: `${fileId}.pdf`,
-        mimeType: 'application/pdf',
-        sizeBytes: BigInt(4096),
-        checksumSha256: null,
-        visibility: FileVisibility.PRIVATE,
-        createdAt: new Date('2026-04-21T09:00:00.000Z'),
-        updatedAt: new Date('2026-04-21T09:00:00.000Z'),
-        deletedAt: null,
-      })),
+      findScopedFileById: jest
+        .fn()
+        .mockImplementation(async (fileId: string) => ({
+          id: fileId,
+          organizationId: 'org-1',
+          schoolId: 'school-1',
+          uploaderId: 'user-1',
+          bucket: 'moazez-dev',
+          objectKey: `schools/school-1/files/${fileId}.pdf`,
+          originalName: `${fileId}.pdf`,
+          mimeType: 'application/pdf',
+          sizeBytes: BigInt(4096),
+          checksumSha256: null,
+          visibility: FileVisibility.PRIVATE,
+          createdAt: new Date('2026-04-21T09:00:00.000Z'),
+          updatedAt: new Date('2026-04-21T09:00:00.000Z'),
+          deletedAt: null,
+        })),
     } as unknown as FilesRepository;
   }
 
@@ -109,12 +111,13 @@ describe('Admissions application documents use cases', () => {
         ),
       findApplicationDocumentByType: jest
         .fn()
-        .mockImplementation(async (params: { applicationId: string; documentType: string }) =>
-          store.find(
-            (document) =>
-              document.applicationId === params.applicationId &&
-              document.documentType === params.documentType,
-          ) ?? null,
+        .mockImplementation(
+          async (params: { applicationId: string; documentType: string }) =>
+            store.find(
+              (document) =>
+                document.applicationId === params.applicationId &&
+                document.documentType === params.documentType,
+            ) ?? null,
         ),
       createApplicationDocument: jest.fn().mockImplementation(async (data) => {
         const now = new Date('2026-04-21T10:00:00.000Z');
@@ -139,41 +142,48 @@ describe('Admissions application documents use cases', () => {
         store.push(document);
         return document;
       }),
-      updateApplicationDocument: jest.fn().mockImplementation(async (id: string, data) => {
-        const document = store.find((item) => item.id === id);
-        if (!document) {
-          return null;
-        }
-
-        document.fileId = String(data.fileId ?? document.fileId);
-        document.documentType = String(data.documentType ?? document.documentType);
-        document.status =
-          (data.status as AdmissionDocumentStatus | undefined) ?? document.status;
-        document.notes = (data.notes as string | null | undefined) ?? null;
-        document.updatedAt = new Date('2026-04-21T11:00:00.000Z');
-        document.file = {
-          ...document.file,
-          id: document.fileId,
-          originalName: `${document.fileId}.pdf`,
-        };
-
-        return document;
-      }),
-      deleteApplicationDocument: jest
+      updateApplicationDocument: jest
         .fn()
-        .mockImplementation(async (params: { applicationId: string; documentId: string }) => {
-          const index = store.findIndex(
-            (document) =>
-              document.applicationId === params.applicationId &&
-              document.id === params.documentId,
-          );
-          if (index === -1) {
-            return { status: 'not_found' as const };
+        .mockImplementation(async (id: string, data) => {
+          const document = store.find((item) => item.id === id);
+          if (!document) {
+            return null;
           }
 
-          store.splice(index, 1);
-          return { status: 'deleted' as const };
+          document.fileId = String(data.fileId ?? document.fileId);
+          document.documentType = String(
+            data.documentType ?? document.documentType,
+          );
+          document.status =
+            (data.status as AdmissionDocumentStatus | undefined) ??
+            document.status;
+          document.notes = (data.notes as string | null | undefined) ?? null;
+          document.updatedAt = new Date('2026-04-21T11:00:00.000Z');
+          document.file = {
+            ...document.file,
+            id: document.fileId,
+            originalName: `${document.fileId}.pdf`,
+          };
+
+          return document;
         }),
+      deleteApplicationDocument: jest
+        .fn()
+        .mockImplementation(
+          async (params: { applicationId: string; documentId: string }) => {
+            const index = store.findIndex(
+              (document) =>
+                document.applicationId === params.applicationId &&
+                document.id === params.documentId,
+            );
+            if (index === -1) {
+              return { status: 'not_found' as const };
+            }
+
+            store.splice(index, 1);
+            return { status: 'deleted' as const };
+          },
+        ),
     } as unknown as ApplicationDocumentsRepository;
 
     return { repository, store };
@@ -206,9 +216,7 @@ describe('Admissions application documents use cases', () => {
       repository,
     );
 
-    const result = await withScope(() =>
-      useCase.execute('application-1'),
-    );
+    const result = await withScope(() => useCase.execute('application-1'));
 
     expect(result).toEqual([
       {
@@ -229,6 +237,39 @@ describe('Admissions application documents use cases', () => {
         },
       },
     ]);
+  });
+
+  it('presents pending review documents with API-safe status casing', async () => {
+    const applicationsRepository = createApplicationsRepository();
+    const { repository, store } = createDocumentsRepository();
+    store.push({
+      id: 'document-1',
+      schoolId: 'school-1',
+      applicationId: 'application-1',
+      fileId: 'file-1',
+      documentType: 'birth_certificate',
+      status: AdmissionDocumentStatus.PENDING_REVIEW,
+      notes: null,
+      createdAt: new Date('2026-04-21T10:00:00.000Z'),
+      updatedAt: new Date('2026-04-21T10:00:00.000Z'),
+      file: {
+        id: 'file-1',
+        originalName: 'birth-certificate.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: BigInt(4096),
+        visibility: FileVisibility.PRIVATE,
+      },
+    });
+
+    const useCase = new ListApplicationDocumentsUseCase(
+      applicationsRepository,
+      repository,
+    );
+
+    const result = await withScope(() => useCase.execute('application-1'));
+
+    expect(result[0]).toMatchObject({ status: 'pending_review' });
+    expect(JSON.stringify(result)).not.toContain('PENDING_REVIEW');
   });
 
   it('links and removes an application document record without touching file storage', async () => {

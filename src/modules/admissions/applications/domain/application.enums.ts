@@ -23,6 +23,7 @@ export const APPLICATION_STATUS_API_VALUES = [
 export const APPLICATION_DOCUMENT_STATUS_API_VALUES = [
   'complete',
   'missing',
+  'pending_review',
 ] as const;
 
 export type ApplicationSourceApiValue =
@@ -108,6 +109,8 @@ export function mapApplicationDocumentStatusFromApi(
       return AdmissionDocumentStatus.COMPLETE;
     case 'missing':
       return AdmissionDocumentStatus.MISSING;
+    case 'pending_review':
+      return AdmissionDocumentStatus.PENDING_REVIEW;
   }
 }
 
@@ -119,5 +122,7 @@ export function mapApplicationDocumentStatusToApi(
       return 'complete';
     case AdmissionDocumentStatus.MISSING:
       return 'missing';
+    case AdmissionDocumentStatus.PENDING_REVIEW:
+      return 'pending_review';
   }
 }

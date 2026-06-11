@@ -267,6 +267,7 @@ enum AdmissionApplicationSource {
 enum AdmissionDocumentStatus {
   COMPLETE
   MISSING
+  PENDING_REVIEW
 
   @@map("admission_document_status")
 }

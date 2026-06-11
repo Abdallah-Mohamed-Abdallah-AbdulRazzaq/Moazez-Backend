@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   AdmissionApplicationSource,
   AdmissionApplicationStatus,
+  AdmissionDocumentStatus,
   ApplicantAdmissionRequestDocumentStatus,
   MembershipStatus,
   OrganizationStatus,
@@ -73,6 +74,7 @@ describe('Applicant Portal documents (e2e)', () => {
   let applicantRequestId = '';
   let otherApplicantRequestId = '';
   let requiredUploadDocumentId = '';
+  let requiredUploadFileId = '';
   let optionalUploadDocumentId = '';
 
   let applicantAuth: AuthTokens;
@@ -285,8 +287,9 @@ describe('Applicant Portal documents (e2e)', () => {
       },
     ).expect(201);
     requiredUploadDocumentId = firstUpload.body.id;
+    requiredUploadFileId = firstUpload.body.file.id;
     createdApplicantDocumentIds.push(requiredUploadDocumentId);
-    createdFileIds.push(firstUpload.body.file.id);
+    createdFileIds.push(requiredUploadFileId);
 
     expect(firstUpload.body).toMatchObject({
       id: requiredUploadDocumentId,
@@ -567,11 +570,30 @@ describe('Applicant Portal documents (e2e)', () => {
       status: AdmissionApplicationStatus.SUBMITTED,
     });
 
-    await expect(
-      prisma.applicationDocument.count({
-        where: { applicationId: applicantRequest.applicationId as string },
+    const bridgedDocuments = await prisma.applicationDocument.findMany({
+      where: { applicationId: applicantRequest.applicationId as string },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        fileId: true,
+        documentType: true,
+        status: true,
+        applicantAdmissionRequestDocuments: {
+          select: { id: true },
+        },
+      },
+    });
+    expect(bridgedDocuments).toEqual([
+      expect.objectContaining({
+        fileId: requiredUploadFileId,
+        documentType: 'Birth certificate',
+        status: AdmissionDocumentStatus.PENDING_REVIEW,
+        applicantAdmissionRequestDocuments: [{ id: requiredUploadDocumentId }],
       }),
-    ).resolves.toBe(0);
+      expect.objectContaining({
+        documentType: 'Parent ID',
+        status: AdmissionDocumentStatus.PENDING_REVIEW,
+      }),
+    ]);
   });
 
   it('keeps PATCH absent while document mutations honor submitted-state policy', async () => {

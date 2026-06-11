@@ -560,10 +560,7 @@ describe('Applicant Portal document replace/delete (e2e)', () => {
     }
   });
 
-  it('does not create bridge, conversion, operational identity, enrollment, or applicant membership side effects', async () => {
-    await expect(
-      prisma.applicationDocument.count({ where: { schoolId: activeSchoolId } }),
-    ).resolves.toBe(0);
+  it('does not create conversion, operational identity, enrollment, or applicant membership side effects', async () => {
     await expect(
       prisma.student.count({ where: { schoolId: activeSchoolId } }),
     ).resolves.toBe(0);

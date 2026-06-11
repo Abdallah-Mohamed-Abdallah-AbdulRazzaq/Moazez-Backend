@@ -131,6 +131,7 @@ export class ReplaceApplicantDocumentUseCase {
               schoolId: oldDocument.schoolId,
               organizationId: oldDocument.organizationId,
               requiredDocumentId: oldDocument.requiredDocumentId,
+              bridgeApplicationId: this.resolveBridgeApplicationId(oldDocument),
               title: documentText.title,
               documentType: documentText.documentType,
               notes: normalizedInput.notes,
@@ -287,6 +288,23 @@ export class ReplaceApplicantDocumentUseCase {
         documentId: oldDocument.id,
       });
     }
+  }
+
+  private resolveBridgeApplicationId(
+    oldDocument: ApplicantAdmissionRequestDocumentMutationRecord,
+  ): string | null {
+    if (
+      oldDocument.request.status ===
+        ApplicantAdmissionRequestStatus.SUBMITTED &&
+      oldDocument.request.application?.id &&
+      oldDocument.request.application.status ===
+        AdmissionApplicationStatus.DOCUMENTS_PENDING &&
+      !oldDocument.request.application.deletedAt
+    ) {
+      return oldDocument.request.application.id;
+    }
+
+    return null;
   }
 
   private validateFile(
