@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -36,6 +37,7 @@ import { AllowApplicantPortalAccess } from '../../../common/decorators/applicant
 import { PublicRoute } from '../../../common/decorators/public-route.decorator';
 import { CreateApplicantAccountUseCase } from '../application/create-applicant-account.use-case';
 import { CreateApplicantRequestUseCase } from '../application/create-applicant-request.use-case';
+import { DeleteApplicantDocumentUseCase } from '../application/delete-applicant-document.use-case';
 import { GetApplicantDocumentDownloadUrlUseCase } from '../application/get-applicant-document-download-url.use-case';
 import { GetApplicantDocumentUseCase } from '../application/get-applicant-document.use-case';
 import { GetDiscoverableSchoolUseCase } from '../application/get-discoverable-school.use-case';
@@ -45,12 +47,15 @@ import { ListAdmissionRequiredDocumentsUseCase } from '../application/list-admis
 import { ListApplicantDocumentsUseCase } from '../application/list-applicant-documents.use-case';
 import { ListApplicantRequestsUseCase } from '../application/list-applicant-requests.use-case';
 import { ListDiscoverableSchoolsUseCase } from '../application/list-discoverable-schools.use-case';
+import { ReplaceApplicantDocumentUseCase } from '../application/replace-applicant-document.use-case';
 import { SubmitApplicantRequestUseCase } from '../application/submit-applicant-request.use-case';
 import { UploadApplicantDocumentUseCase } from '../application/upload-applicant-document.use-case';
 import { AdmissionRequiredDocumentsListResponseDto } from '../dto/admission-required-document.dto';
 import {
   ApplicantDocumentResponseDto,
   ApplicantDocumentsListResponseDto,
+  DeleteApplicantDocumentResponseDto,
+  ReplaceApplicantDocumentRequestDto,
   UploadApplicantDocumentRequestDto,
 } from '../dto/applicant-document.dto';
 import {
@@ -87,6 +92,8 @@ export class ApplicantPortalController {
     private readonly listApplicantDocumentsUseCase: ListApplicantDocumentsUseCase,
     private readonly getApplicantDocumentUseCase: GetApplicantDocumentUseCase,
     private readonly getApplicantDocumentDownloadUrlUseCase: GetApplicantDocumentDownloadUrlUseCase,
+    private readonly replaceApplicantDocumentUseCase: ReplaceApplicantDocumentUseCase,
+    private readonly deleteApplicantDocumentUseCase: DeleteApplicantDocumentUseCase,
   ) {}
 
   @Post('accounts')
@@ -358,5 +365,71 @@ export class ApplicantPortalController {
         userAgent: req.header('user-agent') ?? null,
       }),
     };
+  }
+
+  @Post('requests/:requestId/documents/:documentId/replacements')
+  @UseInterceptors(FileInterceptor('file', { limits: { files: 1 } }))
+  @AllowApplicantPortalAccess()
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ type: ReplaceApplicantDocumentRequestDto })
+  @ApiOperation({
+    summary:
+      'Replace an applicant-owned admission request document with a new upload',
+  })
+  @ApiParam({ name: 'requestId', format: 'uuid' })
+  @ApiParam({ name: 'documentId', format: 'uuid' })
+  @ApiCreatedResponse({ type: ApplicantDocumentResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ description: 'auth.token.invalid' })
+  @ApiForbiddenResponse({ description: 'auth.scope.missing' })
+  @ApiNotFoundResponse({ description: 'not_found' })
+  @ApiConflictResponse({ description: 'conflict' })
+  replaceDocument(
+    @Param('requestId', new ParseUUIDPipe()) requestId: string,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+    @UploadedFile() file: UploadedMultipartFile | undefined,
+    @Body() dto: ReplaceApplicantDocumentRequestDto,
+    @Req() req: Request,
+  ): Promise<ApplicantDocumentResponseDto> {
+    return this.replaceApplicantDocumentUseCase.execute({
+      requestId,
+      documentId,
+      file,
+      title: dto.title,
+      documentType: dto.documentType,
+      notes: dto.notes,
+      ipAddress: req.ip ?? null,
+      userAgent: req.header('user-agent') ?? null,
+    });
+  }
+
+  @Delete('requests/:requestId/documents/:documentId')
+  @AllowApplicantPortalAccess()
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Soft-delete an applicant-owned admission request document',
+  })
+  @ApiParam({ name: 'requestId', format: 'uuid' })
+  @ApiParam({ name: 'documentId', format: 'uuid' })
+  @ApiOkResponse({ type: DeleteApplicantDocumentResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ description: 'auth.token.invalid' })
+  @ApiForbiddenResponse({ description: 'auth.scope.missing' })
+  @ApiNotFoundResponse({ description: 'not_found' })
+  @ApiConflictResponse({ description: 'conflict' })
+  async deleteDocument(
+    @Param('requestId', new ParseUUIDPipe()) requestId: string,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+    @Req() req: Request,
+  ): Promise<DeleteApplicantDocumentResponseDto> {
+    await this.deleteApplicantDocumentUseCase.execute({
+      requestId,
+      documentId,
+      ipAddress: req.ip ?? null,
+      userAgent: req.header('user-agent') ?? null,
+    });
+
+    return { ok: true };
   }
 }

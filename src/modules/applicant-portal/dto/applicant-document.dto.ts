@@ -46,6 +46,38 @@ export class UploadApplicantDocumentRequestDto {
   notes?: string;
 }
 
+export class ReplaceApplicantDocumentRequestDto {
+  @ApiProperty({ type: 'string', format: 'binary' })
+  @Allow()
+  file!: unknown;
+
+  @ApiPropertyOptional({ example: 'Birth certificate', maxLength: 180 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  title?: string;
+
+  @ApiPropertyOptional({ example: 'birth_certificate', maxLength: 120 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  documentType?: string;
+
+  @ApiPropertyOptional({
+    example: 'Uploaded a replacement copy.',
+    maxLength: 2000,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  notes?: string;
+}
+
+export class DeleteApplicantDocumentResponseDto {
+  @ApiProperty({ example: true })
+  ok!: boolean;
+}
+
 export class ApplicantDocumentRequiredDocumentSummaryDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;

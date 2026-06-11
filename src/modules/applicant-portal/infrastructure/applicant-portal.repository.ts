@@ -241,6 +241,60 @@ export type ApplicantAdmissionRequestDocumentDownloadRecord =
     typeof APPLICANT_ADMISSION_REQUEST_DOCUMENT_DOWNLOAD_ARGS
   >;
 
+const APPLICANT_ADMISSION_REQUEST_DOCUMENT_MUTATION_ARGS = {
+  select: {
+    id: true,
+    requestId: true,
+    applicantUserId: true,
+    schoolId: true,
+    organizationId: true,
+    requiredDocumentId: true,
+    applicationDocumentId: true,
+    fileId: true,
+    title: true,
+    documentType: true,
+    status: true,
+    request: {
+      select: {
+        id: true,
+        applicantUserId: true,
+        status: true,
+        application: {
+          select: {
+            status: true,
+            deletedAt: true,
+          },
+        },
+        school: {
+          select: {
+            id: true,
+            organizationId: true,
+            status: true,
+            deletedAt: true,
+            organization: {
+              select: {
+                id: true,
+                status: true,
+                deletedAt: true,
+              },
+            },
+          },
+        },
+      },
+    },
+    file: {
+      select: {
+        id: true,
+      },
+    },
+  },
+} satisfies Prisma.ApplicantAdmissionRequestDocumentDefaultArgs;
+
+export type ApplicantAdmissionRequestDocumentMutationRecord =
+  Prisma.ApplicantAdmissionRequestDocumentGetPayload<
+    typeof APPLICANT_ADMISSION_REQUEST_DOCUMENT_MUTATION_ARGS
+  >;
+
 const SUBMIT_APPLICANT_ADMISSION_REQUEST_ARGS = {
   select: {
     id: true,
@@ -317,6 +371,27 @@ export interface CreateApplicantAdmissionRequestDocumentRecord {
   organizationId: string;
   requiredDocumentId: string | null;
   applicationDocumentId: string | null;
+  title: string;
+  documentType: string;
+  notes: string | null;
+  file: {
+    bucket: string;
+    objectKey: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: bigint;
+    checksumSha256: string;
+    visibility: FileVisibility;
+  };
+}
+
+export interface ReplaceApplicantAdmissionRequestDocumentRecord {
+  oldDocumentId: string;
+  requestId: string;
+  applicantUserId: string;
+  schoolId: string;
+  organizationId: string;
+  requiredDocumentId: string | null;
   title: string;
   documentType: string;
   notes: string | null;
@@ -647,6 +722,7 @@ export class ApplicantPortalRepository {
         requestId: params.requestId,
         applicantUserId: params.applicantUserId,
         deletedAt: null,
+        status: { not: ApplicantAdmissionRequestDocumentStatus.SUPERSEDED },
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       ...APPLICANT_ADMISSION_REQUEST_DOCUMENT_ARGS,
@@ -664,6 +740,7 @@ export class ApplicantPortalRepository {
         requestId: params.requestId,
         applicantUserId: params.applicantUserId,
         deletedAt: null,
+        status: { not: ApplicantAdmissionRequestDocumentStatus.SUPERSEDED },
         request: {
           is: {
             applicantUserId: params.applicantUserId,
@@ -696,6 +773,124 @@ export class ApplicantPortalRepository {
       },
       ...APPLICANT_ADMISSION_REQUEST_DOCUMENT_DOWNLOAD_ARGS,
     });
+  }
+
+  findApplicantAdmissionRequestDocumentForMutation(params: {
+    applicantUserId: string;
+    requestId: string;
+    documentId: string;
+  }): Promise<ApplicantAdmissionRequestDocumentMutationRecord | null> {
+    return this.prisma.applicantAdmissionRequestDocument.findFirst({
+      where: {
+        id: params.documentId,
+        requestId: params.requestId,
+        applicantUserId: params.applicantUserId,
+        deletedAt: null,
+        request: {
+          is: {
+            id: params.requestId,
+            applicantUserId: params.applicantUserId,
+            deletedAt: null,
+          },
+        },
+      },
+      ...APPLICANT_ADMISSION_REQUEST_DOCUMENT_MUTATION_ARGS,
+    });
+  }
+
+  async replaceApplicantAdmissionRequestDocument(
+    data: ReplaceApplicantAdmissionRequestDocumentRecord,
+  ): Promise<ApplicantAdmissionRequestDocumentRecord | null> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${data.oldDocumentId}))`,
+      );
+
+      const oldDocument = await tx.applicantAdmissionRequestDocument.findFirst({
+        where: {
+          id: data.oldDocumentId,
+          requestId: data.requestId,
+          applicantUserId: data.applicantUserId,
+          deletedAt: null,
+          applicationDocumentId: null,
+          status: {
+            in: [
+              ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+              ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
+              ApplicantAdmissionRequestDocumentStatus.REJECTED,
+            ],
+          },
+        },
+        select: { id: true },
+      });
+      if (!oldDocument) return null;
+
+      const file = await tx.file.create({
+        data: {
+          organizationId: data.organizationId,
+          schoolId: data.schoolId,
+          uploaderId: data.applicantUserId,
+          bucket: data.file.bucket,
+          objectKey: data.file.objectKey,
+          originalName: data.file.originalName,
+          mimeType: data.file.mimeType,
+          sizeBytes: data.file.sizeBytes,
+          checksumSha256: data.file.checksumSha256,
+          visibility: data.file.visibility,
+        },
+        select: { id: true },
+      });
+
+      await tx.applicantAdmissionRequestDocument.update({
+        where: { id: oldDocument.id },
+        data: { status: ApplicantAdmissionRequestDocumentStatus.SUPERSEDED },
+        select: { id: true },
+      });
+
+      return tx.applicantAdmissionRequestDocument.create({
+        data: {
+          requestId: data.requestId,
+          applicantUserId: data.applicantUserId,
+          schoolId: data.schoolId,
+          organizationId: data.organizationId,
+          requiredDocumentId: data.requiredDocumentId,
+          applicationDocumentId: null,
+          fileId: file.id,
+          title: data.title,
+          documentType: data.documentType,
+          status: ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+          notes: data.notes,
+        },
+        ...APPLICANT_ADMISSION_REQUEST_DOCUMENT_ARGS,
+      });
+    });
+  }
+
+  async softDeleteApplicantAdmissionRequestDocument(params: {
+    applicantUserId: string;
+    requestId: string;
+    documentId: string;
+    deletedAt: Date;
+  }): Promise<boolean> {
+    const result =
+      await this.prisma.applicantAdmissionRequestDocument.updateMany({
+        where: {
+          id: params.documentId,
+          requestId: params.requestId,
+          applicantUserId: params.applicantUserId,
+          deletedAt: null,
+          applicationDocumentId: null,
+          status: {
+            notIn: [
+              ApplicantAdmissionRequestDocumentStatus.SUPERSEDED,
+              ApplicantAdmissionRequestDocumentStatus.ACCEPTED,
+            ],
+          },
+        },
+        data: { deletedAt: params.deletedAt },
+      });
+
+    return result.count === 1;
   }
 
   countMissingMandatoryRequiredDocumentsForRequest(params: {
