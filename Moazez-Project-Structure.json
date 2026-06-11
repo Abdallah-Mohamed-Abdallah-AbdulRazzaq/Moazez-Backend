@@ -384,6 +384,21 @@
           "icon": "📝"
         },
         {
+          "name": "sprint-18h-applicant-documents-file-boundary-contract-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-18j-applicant-documents-download-replace-bridge-contract-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-18n-applicant-portal-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
           "name": "sprint-6c-planning-audit.md",
           "type": "file",
           "icon": "📝"
@@ -830,6 +845,30 @@
             },
             {
               "name": "20260610170000_0035_applicant_admission_requests",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260610190000_0036_applicant_admission_request_documents",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260610230000_0037_admission_document_pending_review",
               "type": "folder",
               "icon": "📁",
               "children": [
@@ -3480,6 +3519,21 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "delete-applicant-document.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "get-applicant-document-download-url.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "get-applicant-document.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "get-applicant-profile.use-case.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3500,12 +3554,32 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "list-applicant-documents.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "list-applicant-requests.use-case.ts",
                       "type": "file",
                       "icon": "📘"
                     },
                     {
                       "name": "list-discoverable-schools.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "replace-applicant-document.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "submit-applicant-request.use-case.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "upload-applicant-document.use-case.ts",
                       "type": "file",
                       "icon": "📘"
                     }
@@ -3528,6 +3602,11 @@
                   "type": "folder",
                   "icon": "📁",
                   "children": [
+                    {
+                      "name": "applicant-document.inputs.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
                     {
                       "name": "applicant-profile.inputs.ts",
                       "type": "file",
@@ -3557,6 +3636,11 @@
                     },
                     {
                       "name": "applicant-account.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "applicant-document.dto.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -3595,6 +3679,11 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "applicant-document.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "applicant-profile.presenter.ts",
                       "type": "file",
                       "icon": "📘"
@@ -3616,6 +3705,11 @@
                   "type": "folder",
                   "icon": "📁",
                   "children": [
+                    {
+                      "name": "applicant-portal-documents.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
                     {
                       "name": "applicant-portal-foundation.spec.ts",
                       "type": "file",
@@ -15430,7 +15524,32 @@
               "icon": "📘"
             },
             {
+              "name": "applicant-portal-document-bridge.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "applicant-portal-document-download.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "applicant-portal-document-replace-delete.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "applicant-portal-documents.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "applicant-portal-request-ownership.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "applicant-portal-request-submission.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15675,6 +15794,31 @@
             },
             {
               "name": "tenancy.admissions.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.applicant-portal-document-bridge.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.applicant-portal-document-download.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.applicant-portal-document-replace-delete.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.applicant-portal-documents.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.applicant-portal-request-submission.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -16006,7 +16150,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-10T17:45:56.397Z",
+    "generated": "2026-06-11T17:18:17.943Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
