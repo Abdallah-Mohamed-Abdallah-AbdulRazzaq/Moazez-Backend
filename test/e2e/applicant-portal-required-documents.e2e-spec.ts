@@ -212,34 +212,47 @@ describe('Applicant Portal required documents (e2e)', () => {
     }
   });
 
-  it('registers required documents and applicant document routes while keeping deferred document actions absent', async () => {
+  it('registers required documents and current applicant document routes while keeping deferred actions absent', async () => {
     const routes = listRegisteredRoutes();
 
-    expect(routes).toContain(
+    for (const implementedRoute of [
+      'POST /api/v1/applicant-portal/accounts',
+      'GET /api/v1/applicant-portal/profile',
+      'GET /api/v1/applicant-portal/schools',
+      'GET /api/v1/applicant-portal/schools/:schoolId',
       'GET /api/v1/applicant-portal/schools/:schoolId/admission-required-documents',
-    );
-    expect(routes).toContain('POST /api/v1/applicant-portal/requests');
-    expect(routes).toContain('GET /api/v1/applicant-portal/requests');
-    expect(routes).toContain(
+      'POST /api/v1/applicant-portal/requests',
+      'GET /api/v1/applicant-portal/requests',
       'GET /api/v1/applicant-portal/requests/:requestId',
-    );
-    expect(routes).toContain(
       'POST /api/v1/applicant-portal/requests/:requestId/submit',
-    );
-
-    for (const documentRoute of [
       'POST /api/v1/applicant-portal/requests/:requestId/documents',
       'GET /api/v1/applicant-portal/requests/:requestId/documents',
       'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
+      'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId/download',
+      'POST /api/v1/applicant-portal/requests/:requestId/documents/:documentId/replacements',
+      'DELETE /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
     ]) {
-      expect(routes).toContain(documentRoute);
+      expect(routes).toContain(implementedRoute);
     }
+    expect(routes).toContain(
+      'GET /api/v1/admissions/applications/:applicationId/documents',
+    );
 
     for (const deferredRoute of [
-      'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId/download',
-      'DELETE /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
+      'PATCH /api/v1/applicant-portal/requests/:requestId',
       'PATCH /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
       'POST /api/v1/applicant-portal/uploads',
+      'POST /api/v1/applicant-portal/requests/:requestId/convert-to-parent',
+      'POST /api/v1/applicant-portal/requests/:requestId/convert-to-guardian',
+      'POST /api/v1/applicant-portal/requests/:requestId/convert-to-student',
+      'POST /api/v1/applicant-portal/requests/:requestId/convert-to-enrollment',
+      'POST /api/v1/applicant-portal/conversions',
+      'GET /api/v1/admissions/applications/:applicationId/documents/:documentId',
+      'PATCH /api/v1/admissions/applications/:applicationId/documents/:documentId',
+      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/accept',
+      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/reject',
+      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/request-replacement',
+      'POST /api/v1/admissions/applications/:applicationId/documents/reopen-collection',
     ]) {
       expect(routes).not.toContain(deferredRoute);
     }

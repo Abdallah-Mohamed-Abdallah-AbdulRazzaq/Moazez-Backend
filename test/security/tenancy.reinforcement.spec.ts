@@ -641,6 +641,12 @@ describe('Reinforcement tenancy isolation (security)', () => {
       });
       await prisma.role.deleteMany({ where: { id: { in: createdRoleIds } } });
       if (tenantBSchoolId) {
+        await prisma.schoolEntitlement.deleteMany({
+          where: { schoolId: tenantBSchoolId },
+        });
+        await prisma.schoolFeatureControl.deleteMany({
+          where: { schoolId: tenantBSchoolId },
+        });
         await prisma.school.deleteMany({ where: { id: tenantBSchoolId } });
       }
       await prisma.organization.deleteMany({ where: { slug: TENANT_B_ORG_SLUG } });
@@ -2079,6 +2085,8 @@ describe('Reinforcement tenancy isolation (security)', () => {
     await prisma.stage.deleteMany({ where: { schoolId } });
     await prisma.term.deleteMany({ where: { schoolId } });
     await prisma.academicYear.deleteMany({ where: { schoolId } });
+    await prisma.schoolEntitlement.deleteMany({ where: { schoolId } });
+    await prisma.schoolFeatureControl.deleteMany({ where: { schoolId } });
   }
 
   async function createDemoTaskFixture(titleSuffix: string): Promise<{
