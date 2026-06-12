@@ -76,6 +76,7 @@ describe('Applicant Portal documents (e2e)', () => {
   let requiredUploadDocumentId = '';
   let requiredUploadFileId = '';
   let optionalUploadDocumentId = '';
+  let optionalUploadFileId = '';
 
   let applicantAuth: AuthTokens;
   let otherApplicantAuth: AuthTokens;
@@ -333,6 +334,7 @@ describe('Applicant Portal documents (e2e)', () => {
       },
     ).expect(201);
     optionalUploadDocumentId = optionalUpload.body.id;
+    optionalUploadFileId = optionalUpload.body.file.id;
     createdApplicantDocumentIds.push(optionalUploadDocumentId);
     createdFileIds.push(optionalUpload.body.file.id);
     expect(optionalUpload.body).toMatchObject({
@@ -520,7 +522,7 @@ describe('Applicant Portal documents (e2e)', () => {
     }).expect(415);
   });
 
-  it('submits successfully after all mandatory uploads and does not bridge documents in Sprint 18I', async () => {
+  it('submits successfully after all mandatory uploads and bridges active uploads to Admissions documents', async () => {
     const secondUpload = await uploadDocument(
       applicantAuth,
       applicantRequestId,
@@ -533,6 +535,8 @@ describe('Applicant Portal documents (e2e)', () => {
     ).expect(201);
     createdApplicantDocumentIds.push(secondUpload.body.id);
     createdFileIds.push(secondUpload.body.file.id);
+    const secondUploadDocumentId = secondUpload.body.id;
+    const secondUploadFileId = secondUpload.body.file.id;
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}`)
@@ -543,6 +547,7 @@ describe('Applicant Portal documents (e2e)', () => {
         expect(body.progressValue).toBe(35);
       });
 
+    const beforeSubmit = await getSideEffectSnapshot();
     const submitResponse = await request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/submit`,
@@ -554,6 +559,7 @@ describe('Applicant Portal documents (e2e)', () => {
       status: 'submitted',
       missingItemsCount: 0,
     });
+    expectSafeRequestResponse(submitResponse.body);
 
     const applicantRequest =
       await prisma.applicantAdmissionRequest.findUniqueOrThrow({
@@ -570,10 +576,29 @@ describe('Applicant Portal documents (e2e)', () => {
       status: AdmissionApplicationStatus.SUBMITTED,
     });
 
+    const expectedBridgeableDocuments = [
+      {
+        applicantDocumentId: requiredUploadDocumentId,
+        fileId: requiredUploadFileId,
+        documentType: 'Birth certificate',
+      },
+      {
+        applicantDocumentId: optionalUploadDocumentId,
+        fileId: optionalUploadFileId,
+        documentType: 'health_note',
+      },
+      {
+        applicantDocumentId: secondUploadDocumentId,
+        fileId: secondUploadFileId,
+        documentType: 'Parent ID',
+      },
+    ];
     const bridgedDocuments = await prisma.applicationDocument.findMany({
       where: { applicationId: applicantRequest.applicationId as string },
-      orderBy: { createdAt: 'asc' },
       select: {
+        id: true,
+        schoolId: true,
+        applicationId: true,
         fileId: true,
         documentType: true,
         status: true,
@@ -582,18 +607,68 @@ describe('Applicant Portal documents (e2e)', () => {
         },
       },
     });
-    expect(bridgedDocuments).toEqual([
-      expect.objectContaining({
-        fileId: requiredUploadFileId,
-        documentType: 'Birth certificate',
+    expect(bridgedDocuments).toHaveLength(expectedBridgeableDocuments.length);
+
+    const documentsByApplicantDocumentId = new Map(
+      bridgedDocuments.flatMap((document) =>
+        document.applicantAdmissionRequestDocuments.map((applicantDocument) => [
+          applicantDocument.id,
+          document,
+        ] as const),
+      ),
+    );
+    expect([...documentsByApplicantDocumentId.keys()].sort()).toEqual(
+      expectedBridgeableDocuments
+        .map((document) => document.applicantDocumentId)
+        .sort(),
+    );
+
+    for (const expectedDocument of expectedBridgeableDocuments) {
+      const bridgedDocument = documentsByApplicantDocumentId.get(
+        expectedDocument.applicantDocumentId,
+      );
+      expect(bridgedDocument).toMatchObject({
+        schoolId: activeSchoolId,
+        applicationId: applicantRequest.applicationId,
+        fileId: expectedDocument.fileId,
+        documentType: expectedDocument.documentType,
         status: AdmissionDocumentStatus.PENDING_REVIEW,
-        applicantAdmissionRequestDocuments: [{ id: requiredUploadDocumentId }],
-      }),
-      expect.objectContaining({
-        documentType: 'Parent ID',
-        status: AdmissionDocumentStatus.PENDING_REVIEW,
-      }),
-    ]);
+        applicantAdmissionRequestDocuments: [
+          { id: expectedDocument.applicantDocumentId },
+        ],
+      });
+
+      await expect(
+        prisma.applicantAdmissionRequestDocument.findUnique({
+          where: { id: expectedDocument.applicantDocumentId },
+          select: { applicationDocumentId: true },
+        }),
+      ).resolves.toEqual({
+        applicationDocumentId: bridgedDocument?.id,
+      });
+    }
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${applicantRequestId}/documents`,
+      )
+      .set('Authorization', bearer(applicantAuth))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data.map((item: { id: string }) => item.id).sort()).toEqual(
+          expectedBridgeableDocuments
+            .map((document) => document.applicantDocumentId)
+            .sort(),
+        );
+        expectSafeDocumentResponse(body);
+      });
+
+    const afterSubmit = await getSideEffectSnapshot();
+    expect(afterSubmit).toEqual({
+      ...beforeSubmit,
+      applicationDocuments:
+        beforeSubmit.applicationDocuments + expectedBridgeableDocuments.length,
+    });
   });
 
   it('keeps PATCH absent while document mutations honor submitted-state policy', async () => {
@@ -977,6 +1052,7 @@ describe('Applicant Portal documents (e2e)', () => {
         ],
       },
     });
+    await deleteApplicationDocumentsForCreatedRecords();
     await prisma.applicantAdmissionRequestDocument.deleteMany({
       where: { id: { in: createdApplicantDocumentIds } },
     });
@@ -1008,6 +1084,35 @@ describe('Applicant Portal documents (e2e)', () => {
     });
     await prisma.organization.deleteMany({
       where: { id: { in: createdOrganizationIds } },
+    });
+  }
+
+  async function deleteApplicationDocumentsForCreatedRecords(): Promise<void> {
+    const applicationDocuments = await prisma.applicationDocument.findMany({
+      where: {
+        OR: [
+          { applicationId: { in: createdApplicationIds } },
+          { fileId: { in: createdFileIds } },
+          {
+            applicantAdmissionRequestDocuments: {
+              some: { id: { in: createdApplicantDocumentIds } },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    const applicationDocumentIds = applicationDocuments.map(
+      (document) => document.id,
+    );
+    if (applicationDocumentIds.length === 0) return;
+
+    await prisma.applicantAdmissionRequestDocument.updateMany({
+      where: { applicationDocumentId: { in: applicationDocumentIds } },
+      data: { applicationDocumentId: null },
+    });
+    await prisma.applicationDocument.deleteMany({
+      where: { id: { in: applicationDocumentIds } },
     });
   }
 });

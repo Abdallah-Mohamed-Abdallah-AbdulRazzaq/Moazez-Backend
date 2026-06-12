@@ -926,6 +926,7 @@ describe('Applicant Portal document replace/delete (e2e)', () => {
         ],
       },
     });
+    await deleteApplicationDocumentsForCreatedRecords();
     await prisma.applicantAdmissionRequestDocument.deleteMany({
       where: { id: { in: createdApplicantDocumentIds } },
     });
@@ -957,6 +958,35 @@ describe('Applicant Portal document replace/delete (e2e)', () => {
     });
     await prisma.organization.deleteMany({
       where: { id: { in: createdOrganizationIds } },
+    });
+  }
+
+  async function deleteApplicationDocumentsForCreatedRecords(): Promise<void> {
+    const applicationDocuments = await prisma.applicationDocument.findMany({
+      where: {
+        OR: [
+          { applicationId: { in: createdApplicationIds } },
+          { fileId: { in: createdFileIds } },
+          {
+            applicantAdmissionRequestDocuments: {
+              some: { id: { in: createdApplicantDocumentIds } },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    const applicationDocumentIds = applicationDocuments.map(
+      (document) => document.id,
+    );
+    if (applicationDocumentIds.length === 0) return;
+
+    await prisma.applicantAdmissionRequestDocument.updateMany({
+      where: { applicationDocumentId: { in: applicationDocumentIds } },
+      data: { applicationDocumentId: null },
+    });
+    await prisma.applicationDocument.deleteMany({
+      where: { id: { in: applicationDocumentIds } },
     });
   }
 });

@@ -151,38 +151,44 @@ describe('Applicant Portal account foundation (e2e)', () => {
     }
   });
 
-  it('registers Applicant Portal foundation and document routes while keeping deferred document actions absent', async () => {
+  it('registers the implemented Applicant Portal route surface while keeping deferred routes absent', async () => {
     const routes = listRegisteredRoutes();
 
-    expect(routes).toContain('POST /api/v1/applicant-portal/accounts');
-    expect(routes).toContain('GET /api/v1/applicant-portal/profile');
-    expect(routes).toContain('GET /api/v1/applicant-portal/schools');
-    expect(routes).toContain('GET /api/v1/applicant-portal/schools/:schoolId');
-    expect(routes).toContain(
+    for (const implementedRoute of [
+      'POST /api/v1/applicant-portal/accounts',
+      'GET /api/v1/applicant-portal/profile',
+      'GET /api/v1/applicant-portal/schools',
+      'GET /api/v1/applicant-portal/schools/:schoolId',
       'GET /api/v1/applicant-portal/schools/:schoolId/admission-required-documents',
-    );
-    expect(routes).toContain('POST /api/v1/applicant-portal/requests');
-    expect(routes).toContain('GET /api/v1/applicant-portal/requests');
-    expect(routes).toContain(
+      'POST /api/v1/applicant-portal/requests',
+      'GET /api/v1/applicant-portal/requests',
       'GET /api/v1/applicant-portal/requests/:requestId',
-    );
-    expect(routes).toContain(
       'POST /api/v1/applicant-portal/requests/:requestId/submit',
-    );
-
-    for (const documentRoute of [
       'POST /api/v1/applicant-portal/requests/:requestId/documents',
       'GET /api/v1/applicant-portal/requests/:requestId/documents',
       'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
+      'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId/download',
+      'POST /api/v1/applicant-portal/requests/:requestId/documents/:documentId/replacements',
+      'DELETE /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
+      'GET /api/v1/admissions/applications/:applicationId/documents',
     ]) {
-      expect(routes).toContain(documentRoute);
+      expect(routes).toContain(implementedRoute);
     }
 
     for (const deferredRoute of [
-      'GET /api/v1/applicant-portal/requests/:requestId/documents/:documentId/download',
-      'DELETE /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
       'PATCH /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
       'POST /api/v1/applicant-portal/uploads',
+      'POST /api/v1/applicant-portal/requests/:requestId/convert-to-parent',
+      'POST /api/v1/applicant-portal/requests/:requestId/convert-to-guardian',
+      'POST /api/v1/applicant-portal/requests/:requestId/convert-to-student',
+      'POST /api/v1/applicant-portal/requests/:requestId/convert-to-enrollment',
+      'POST /api/v1/applicant-portal/conversions',
+      'POST /api/v1/applicant-portal/requests/:requestId/reopen-document-collection',
+      'PATCH /api/v1/admissions/applications/:applicationId/documents/:documentId',
+      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/accept',
+      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/reject',
+      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/request-replacement',
+      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/reopen',
     ]) {
       expect(routes).not.toContain(deferredRoute);
     }
@@ -225,6 +231,22 @@ describe('Applicant Portal account foundation (e2e)', () => {
         method: 'get' as const,
         path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents/${randomUUID()}`,
       },
+      {
+        method: 'get' as const,
+        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents/${randomUUID()}/download`,
+      },
+      {
+        method: 'post' as const,
+        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents/${randomUUID()}/replacements`,
+      },
+      {
+        method: 'delete' as const,
+        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents/${randomUUID()}`,
+      },
+      {
+        method: 'get' as const,
+        path: `${GLOBAL_PREFIX}/admissions/applications/${randomUUID()}/documents`,
+      },
     ]) {
       await request(app.getHttpServer())
         [unauthenticatedRouteCheck.method](unauthenticatedRouteCheck.path)
@@ -232,14 +254,6 @@ describe('Applicant Portal account foundation (e2e)', () => {
     }
 
     for (const deferredRouteCheck of [
-      {
-        method: 'get' as const,
-        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents/${randomUUID()}/download`,
-      },
-      {
-        method: 'delete' as const,
-        path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents/${randomUUID()}`,
-      },
       {
         method: 'patch' as const,
         path: `${GLOBAL_PREFIX}/applicant-portal/requests/${randomUUID()}/documents/${randomUUID()}`,

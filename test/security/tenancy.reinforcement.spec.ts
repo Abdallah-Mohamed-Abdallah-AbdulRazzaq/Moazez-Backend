@@ -307,6 +307,7 @@ describe('Reinforcement tenancy isolation (security)', () => {
       },
     });
     tenantBOrganizationId = orgB.id;
+    await cleanupReinforcementTenantOrganization({ deleteOrganization: false });
 
     const schoolB = await prisma.school.upsert({
       where: {
@@ -640,16 +641,7 @@ describe('Reinforcement tenancy isolation (security)', () => {
         where: { roleId: { in: createdRoleIds } },
       });
       await prisma.role.deleteMany({ where: { id: { in: createdRoleIds } } });
-      if (tenantBSchoolId) {
-        await prisma.schoolEntitlement.deleteMany({
-          where: { schoolId: tenantBSchoolId },
-        });
-        await prisma.schoolFeatureControl.deleteMany({
-          where: { schoolId: tenantBSchoolId },
-        });
-        await prisma.school.deleteMany({ where: { id: tenantBSchoolId } });
-      }
-      await prisma.organization.deleteMany({ where: { slug: TENANT_B_ORG_SLUG } });
+      await cleanupReinforcementTenantOrganization({ deleteOrganization: true });
       await prisma.$disconnect();
     }
   });
@@ -2060,33 +2052,130 @@ describe('Reinforcement tenancy isolation (security)', () => {
     };
   }
 
+  async function cleanupReinforcementTenantOrganization(options: {
+    deleteOrganization: boolean;
+  }): Promise<void> {
+    const organization = await prisma.organization.findUnique({
+      where: { slug: TENANT_B_ORG_SLUG },
+      select: { id: true },
+    });
+    if (!organization) return;
+
+    const schools = await prisma.school.findMany({
+      where: { organizationId: organization.id },
+      select: { id: true },
+    });
+    const schoolIds = schools.map((school) => school.id);
+
+    if (schoolIds.length > 0) {
+      await cleanupReinforcementTenantSchools(schoolIds);
+      await prisma.school.deleteMany({
+        where: {
+          id: { in: schoolIds },
+          organizationId: organization.id,
+        },
+      });
+    }
+
+    await prisma.membership.deleteMany({
+      where: {
+        organizationId: organization.id,
+        schoolId: null,
+      },
+    });
+
+    if (options.deleteOrganization) {
+      await prisma.organization.deleteMany({
+        where: { id: organization.id, slug: TENANT_B_ORG_SLUG },
+      });
+    }
+  }
+
   async function cleanupReinforcementTenantSchool(schoolId: string): Promise<void> {
-    await prisma.xpLedger.deleteMany({ where: { schoolId } });
+    await cleanupReinforcementTenantSchools([schoolId]);
+  }
+
+  async function cleanupReinforcementTenantSchools(
+    schoolIds: string[],
+  ): Promise<void> {
+    if (schoolIds.length === 0) return;
+
+    await prisma.xpLedger.deleteMany({ where: { schoolId: { in: schoolIds } } });
     await prisma.reinforcementSubmission.updateMany({
-      where: { schoolId },
+      where: { schoolId: { in: schoolIds } },
       data: { currentReviewId: null },
     });
-    await prisma.reinforcementReview.deleteMany({ where: { schoolId } });
-    await prisma.reinforcementSubmission.deleteMany({ where: { schoolId } });
-    await prisma.reinforcementAssignment.deleteMany({ where: { schoolId } });
-    await prisma.reinforcementTaskTarget.deleteMany({ where: { schoolId } });
-    await prisma.reinforcementTaskStage.deleteMany({ where: { schoolId } });
-    await prisma.reinforcementTask.deleteMany({ where: { schoolId } });
-    await prisma.reinforcementTaskTemplateStage.deleteMany({ where: { schoolId } });
-    await prisma.reinforcementTaskTemplate.deleteMany({ where: { schoolId } });
-    await prisma.xpPolicy.deleteMany({ where: { schoolId } });
-    await prisma.file.deleteMany({ where: { schoolId } });
-    await prisma.enrollment.deleteMany({ where: { schoolId } });
-    await prisma.student.deleteMany({ where: { schoolId } });
-    await prisma.classroom.deleteMany({ where: { schoolId } });
-    await prisma.section.deleteMany({ where: { schoolId } });
-    await prisma.grade.deleteMany({ where: { schoolId } });
-    await prisma.subject.deleteMany({ where: { schoolId } });
-    await prisma.stage.deleteMany({ where: { schoolId } });
-    await prisma.term.deleteMany({ where: { schoolId } });
-    await prisma.academicYear.deleteMany({ where: { schoolId } });
-    await prisma.schoolEntitlement.deleteMany({ where: { schoolId } });
-    await prisma.schoolFeatureControl.deleteMany({ where: { schoolId } });
+    await prisma.reinforcementReview.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.reinforcementSubmission.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.reinforcementAssignment.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.reinforcementTaskTarget.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.reinforcementTaskStage.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.reinforcementTask.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.reinforcementTaskTemplateStage.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.reinforcementTaskTemplate.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.xpPolicy.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.file.deleteMany({ where: { schoolId: { in: schoolIds } } });
+    await prisma.enrollment.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.student.deleteMany({ where: { schoolId: { in: schoolIds } } });
+    await prisma.classroom.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.section.deleteMany({ where: { schoolId: { in: schoolIds } } });
+    await prisma.grade.deleteMany({ where: { schoolId: { in: schoolIds } } });
+    await prisma.subject.deleteMany({ where: { schoolId: { in: schoolIds } } });
+    await prisma.stage.deleteMany({ where: { schoolId: { in: schoolIds } } });
+    await prisma.term.deleteMany({ where: { schoolId: { in: schoolIds } } });
+    await prisma.academicYear.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.schoolLoginSettings.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.schoolProfile.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.schoolEntitlement.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.schoolFeatureControl.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    await prisma.membership.deleteMany({
+      where: { schoolId: { in: schoolIds } },
+    });
+    const schoolScopedRoles = await prisma.role.findMany({
+      where: { schoolId: { in: schoolIds } },
+      select: { id: true },
+    });
+    const schoolScopedRoleIds = schoolScopedRoles.map((role) => role.id);
+    if (schoolScopedRoleIds.length > 0) {
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: { in: schoolScopedRoleIds } },
+      });
+      await prisma.role.deleteMany({
+        where: { id: { in: schoolScopedRoleIds } },
+      });
+    }
   }
 
   async function createDemoTaskFixture(titleSuffix: string): Promise<{
