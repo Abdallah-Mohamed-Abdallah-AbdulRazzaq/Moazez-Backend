@@ -267,9 +267,21 @@ export class ReplaceApplicantDocumentUseCase {
     }
 
     if (
-      oldDocument.status === ApplicantAdmissionRequestDocumentStatus.ACCEPTED ||
-      oldDocument.applicationDocumentId
+      oldDocument.status === ApplicantAdmissionRequestDocumentStatus.ACCEPTED
     ) {
+      throw new DomainException({
+        code: 'conflict',
+        message: 'Applicant document cannot be replaced',
+        httpStatus: HttpStatus.CONFLICT,
+        details: { documentId: oldDocument.id },
+      });
+    }
+
+    if (this.isSchoolRequestedBridgeReplacement(oldDocument)) {
+      return;
+    }
+
+    if (oldDocument.applicationDocumentId) {
       throw new DomainException({
         code: 'conflict',
         message: 'Applicant document cannot be replaced',
@@ -288,6 +300,20 @@ export class ReplaceApplicantDocumentUseCase {
         documentId: oldDocument.id,
       });
     }
+  }
+
+  private isSchoolRequestedBridgeReplacement(
+    oldDocument: ApplicantAdmissionRequestDocumentMutationRecord,
+  ): boolean {
+    return (
+      oldDocument.applicationDocumentId !== null &&
+      oldDocument.status ===
+        ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT &&
+      oldDocument.request.status === ApplicantAdmissionRequestStatus.SUBMITTED &&
+      oldDocument.request.application?.status ===
+        AdmissionApplicationStatus.DOCUMENTS_PENDING &&
+      !oldDocument.request.application.deletedAt
+    );
   }
 
   private resolveBridgeApplicationId(

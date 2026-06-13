@@ -315,6 +315,13 @@ describe('Applicant Portal request ownership (e2e)', () => {
     expect(routes).toContain(
       'GET /api/v1/admissions/applications/:applicationId/documents',
     );
+    for (const reviewRoute of [
+      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/accept',
+      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/reject',
+      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/request-replacement',
+    ]) {
+      expect(routes).toContain(reviewRoute);
+    }
 
     for (const absentRoute of [
       'PATCH /api/v1/applicant-portal/requests/:requestId',
@@ -327,9 +334,6 @@ describe('Applicant Portal request ownership (e2e)', () => {
       'POST /api/v1/applicant-portal/conversions',
       'GET /api/v1/admissions/applications/:applicationId/documents/:documentId',
       'PATCH /api/v1/admissions/applications/:applicationId/documents/:documentId',
-      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/accept',
-      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/reject',
-      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/request-replacement',
       'POST /api/v1/admissions/applications/:applicationId/documents/reopen-collection',
     ]) {
       expect(routes).not.toContain(absentRoute);

@@ -171,6 +171,9 @@ describe('Applicant Portal account foundation (e2e)', () => {
       'POST /api/v1/applicant-portal/requests/:requestId/documents/:documentId/replacements',
       'DELETE /api/v1/applicant-portal/requests/:requestId/documents/:documentId',
       'GET /api/v1/admissions/applications/:applicationId/documents',
+      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/accept',
+      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/reject',
+      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/request-replacement',
     ]) {
       expect(routes).toContain(implementedRoute);
     }
@@ -185,9 +188,6 @@ describe('Applicant Portal account foundation (e2e)', () => {
       'POST /api/v1/applicant-portal/conversions',
       'POST /api/v1/applicant-portal/requests/:requestId/reopen-document-collection',
       'PATCH /api/v1/admissions/applications/:applicationId/documents/:documentId',
-      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/accept',
-      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/reject',
-      'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/request-replacement',
       'POST /api/v1/admissions/applications/:applicationId/documents/:documentId/reopen',
     ]) {
       expect(routes).not.toContain(deferredRoute);

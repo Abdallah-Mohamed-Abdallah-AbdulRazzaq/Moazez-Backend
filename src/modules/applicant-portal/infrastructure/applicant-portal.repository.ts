@@ -835,14 +835,23 @@ export class ApplicantPortalRepository {
           requestId: data.requestId,
           applicantUserId: data.applicantUserId,
           deletedAt: null,
-          applicationDocumentId: null,
-          status: {
-            in: [
-              ApplicantAdmissionRequestDocumentStatus.UPLOADED,
-              ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
-              ApplicantAdmissionRequestDocumentStatus.REJECTED,
-            ],
-          },
+          OR: [
+            {
+              applicationDocumentId: null,
+              status: {
+                in: [
+                  ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+                  ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
+                  ApplicantAdmissionRequestDocumentStatus.REJECTED,
+                ],
+              },
+            },
+            {
+              applicationDocumentId: { not: null },
+              status:
+                ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
+            },
+          ],
         },
         select: { id: true },
       });

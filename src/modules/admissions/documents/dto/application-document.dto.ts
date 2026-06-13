@@ -1,8 +1,13 @@
 import { FileVisibility } from '@prisma/client';
-import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import {
-  APPLICATION_DOCUMENT_STATUS_API_VALUES,
-} from '../../applications/domain/application.enums';
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+import { APPLICATION_DOCUMENT_STATUS_API_VALUES } from '../../applications/domain/application.enums';
 import type { ApplicationDocumentStatusApiValue } from '../../applications/domain/application.enums';
 
 export class CreateApplicationDocumentDto {
@@ -22,6 +27,20 @@ export class CreateApplicationDocumentDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+}
+
+export class ReviewApplicationDocumentDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
+}
+
+export class RequireApplicationDocumentReviewNoteDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  note!: string;
 }
 
 export class ApplicationDocumentFileSummaryDto {

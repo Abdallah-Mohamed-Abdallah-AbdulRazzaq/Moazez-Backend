@@ -799,6 +799,109 @@ describe('Applicant Portal documents', () => {
     );
   });
 
+  it('allows append-only replacement of a bridged document after school requests replacement', async () => {
+    const repository = mockApplicantRepository();
+    repository.findApplicantAdmissionRequestDocumentForMutation.mockResolvedValue(
+      documentMutationRecordFixture({
+        applicationDocumentId: APPLICATION_DOCUMENT_ID,
+        status: ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
+        requestStatus: ApplicantAdmissionRequestStatus.SUBMITTED,
+        applicationStatus: AdmissionApplicationStatus.DOCUMENTS_PENDING,
+        applicationId: APPLICATION_ID,
+      }),
+    );
+    repository.findActiveSchoolLevelRequiredDocumentForUpload.mockResolvedValue(
+      requiredDocumentFixture(),
+    );
+    repository.replaceApplicantAdmissionRequestDocument.mockResolvedValue(
+      documentRecordFixture({
+        id: REPLACEMENT_DOCUMENT_ID,
+        file: {
+          ...documentRecordFixture().file,
+          id: REPLACEMENT_FILE_ID,
+          originalName: 'school-requested-replacement.pdf',
+        },
+      }),
+    );
+    const useCase = new ReplaceApplicantDocumentUseCase(
+      mockAccessService(),
+      repository,
+      mockStorageService(),
+      mockAuthRepository(),
+    );
+
+    const response = await useCase.execute({
+      requestId: REQUEST_ID,
+      documentId: DOCUMENT_ID,
+      file: multipartFileFixture({
+        originalname: 'school-requested-replacement.pdf',
+      }),
+    });
+
+    expect(
+      repository.replaceApplicantAdmissionRequestDocument,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        oldDocumentId: DOCUMENT_ID,
+        bridgeApplicationId: APPLICATION_ID,
+        requiredDocumentId: REQUIRED_DOCUMENT_ID,
+        file: expect.objectContaining({
+          originalName: 'school-requested-replacement.pdf',
+          visibility: FileVisibility.PRIVATE,
+        }),
+      }),
+    );
+    expect(response).toMatchObject({
+      id: REPLACEMENT_DOCUMENT_ID,
+      status: 'uploaded',
+      file: {
+        id: REPLACEMENT_FILE_ID,
+        originalName: 'school-requested-replacement.pdf',
+      },
+    });
+    expectSafeDocumentResponse(response);
+  });
+
+  it('continues denying bridged replacement unless the school requested replacement', async () => {
+    const repository = mockApplicantRepository();
+    const storageService = mockStorageService();
+    const useCase = new ReplaceApplicantDocumentUseCase(
+      mockAccessService(),
+      repository,
+      storageService,
+      mockAuthRepository(),
+    );
+
+    for (const status of [
+      ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+      ApplicantAdmissionRequestDocumentStatus.REJECTED,
+      ApplicantAdmissionRequestDocumentStatus.ACCEPTED,
+    ]) {
+      repository.findApplicantAdmissionRequestDocumentForMutation.mockResolvedValueOnce(
+        documentMutationRecordFixture({
+          applicationDocumentId: APPLICATION_DOCUMENT_ID,
+          status,
+          requestStatus: ApplicantAdmissionRequestStatus.SUBMITTED,
+          applicationStatus: AdmissionApplicationStatus.DOCUMENTS_PENDING,
+          applicationId: APPLICATION_ID,
+        }),
+      );
+
+      await expect(
+        useCase.execute({
+          requestId: REQUEST_ID,
+          documentId: DOCUMENT_ID,
+          file: multipartFileFixture(),
+        }),
+      ).rejects.toMatchObject({ code: 'conflict', httpStatus: 409 });
+    }
+
+    expect(storageService.saveObject).not.toHaveBeenCalled();
+    expect(
+      repository.replaceApplicantAdmissionRequestDocument,
+    ).not.toHaveBeenCalled();
+  });
+
   it('cleans up a newly uploaded replacement object when persistence fails', async () => {
     const repository = mockApplicantRepository();
     const storageService = mockStorageService();
@@ -1216,14 +1319,23 @@ describe('Applicant Portal documents', () => {
           requestId: REQUEST_ID,
           applicantUserId: APPLICANT_USER_ID,
           deletedAt: null,
-          applicationDocumentId: null,
-          status: {
-            in: [
-              ApplicantAdmissionRequestDocumentStatus.UPLOADED,
-              ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
-              ApplicantAdmissionRequestDocumentStatus.REJECTED,
-            ],
-          },
+          OR: [
+            {
+              applicationDocumentId: null,
+              status: {
+                in: [
+                  ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+                  ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
+                  ApplicantAdmissionRequestDocumentStatus.REJECTED,
+                ],
+              },
+            },
+            {
+              applicationDocumentId: { not: null },
+              status:
+                ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
+            },
+          ],
         }),
       }),
     );
@@ -1264,6 +1376,107 @@ describe('Applicant Portal documents', () => {
       }),
     );
     expect(tx.applicationDocument.create).not.toHaveBeenCalled();
+    expect(tx.student.create).not.toHaveBeenCalled();
+    expect(tx.guardian.create).not.toHaveBeenCalled();
+    expect(tx.studentGuardian.create).not.toHaveBeenCalled();
+    expect(tx.enrollment.create).not.toHaveBeenCalled();
+    expect(tx.membership.create).not.toHaveBeenCalled();
+  });
+
+  it('re-bridges school-requested replacements as new pending review application documents', async () => {
+    const newApplicationDocumentId = '00000000-0000-0000-0000-000000000304';
+    const tx = {
+      $executeRaw: jest.fn(),
+      file: {
+        create: jest.fn().mockResolvedValue({ id: REPLACEMENT_FILE_ID }),
+      },
+      applicantAdmissionRequestDocument: {
+        findFirst: jest.fn().mockResolvedValue({ id: DOCUMENT_ID }),
+        update: jest.fn().mockResolvedValue({ id: DOCUMENT_ID }),
+        create: jest.fn().mockResolvedValue(
+          documentRecordFixture({
+            id: REPLACEMENT_DOCUMENT_ID,
+            file: {
+              ...documentRecordFixture().file,
+              id: REPLACEMENT_FILE_ID,
+            },
+          }),
+        ),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(
+          documentRecordFixture({
+            id: REPLACEMENT_DOCUMENT_ID,
+            file: {
+              ...documentRecordFixture().file,
+              id: REPLACEMENT_FILE_ID,
+            },
+          }),
+        ),
+      },
+      applicationDocument: {
+        create: jest.fn().mockResolvedValue({ id: newApplicationDocumentId }),
+      },
+      student: { create: jest.fn() },
+      guardian: { create: jest.fn() },
+      studentGuardian: { create: jest.fn() },
+      enrollment: { create: jest.fn() },
+      membership: { create: jest.fn() },
+    };
+    const prisma = {
+      $transaction: jest.fn((callback) => callback(tx)),
+    };
+    const repository = new ApplicantPortalRepository(prisma as never);
+
+    await expect(
+      repository.replaceApplicantAdmissionRequestDocument({
+        oldDocumentId: DOCUMENT_ID,
+        requestId: REQUEST_ID,
+        applicantUserId: APPLICANT_USER_ID,
+        schoolId: SCHOOL_ID,
+        organizationId: ORGANIZATION_ID,
+        requiredDocumentId: REQUIRED_DOCUMENT_ID,
+        bridgeApplicationId: APPLICATION_ID,
+        title: 'Birth certificate',
+        documentType: 'Birth certificate',
+        notes: null,
+        file: {
+          bucket: 'private-files',
+          objectKey: 'schools/s/applicant-requests/r/documents/replacement.pdf',
+          originalName: 'replacement.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: BigInt(18),
+          checksumSha256: 'replacement-hash',
+          visibility: FileVisibility.PRIVATE,
+        },
+      }),
+    ).resolves.toMatchObject({ id: REPLACEMENT_DOCUMENT_ID });
+
+    expect(tx.applicantAdmissionRequestDocument.update).toHaveBeenCalledWith({
+      where: { id: DOCUMENT_ID },
+      data: { status: ApplicantAdmissionRequestDocumentStatus.SUPERSEDED },
+      select: { id: true },
+    });
+    expect(tx.applicationDocument.create).toHaveBeenCalledWith({
+      data: {
+        schoolId: SCHOOL_ID,
+        applicationId: APPLICATION_ID,
+        fileId: REPLACEMENT_FILE_ID,
+        documentType: 'Birth certificate',
+        status: AdmissionDocumentStatus.PENDING_REVIEW,
+        notes: null,
+      },
+      select: { id: true },
+    });
+    expect(
+      tx.applicantAdmissionRequestDocument.updateMany,
+    ).toHaveBeenCalledWith({
+      where: {
+        id: REPLACEMENT_DOCUMENT_ID,
+        deletedAt: null,
+        applicationDocumentId: null,
+      },
+      data: { applicationDocumentId: newApplicationDocumentId },
+    });
     expect(tx.student.create).not.toHaveBeenCalled();
     expect(tx.guardian.create).not.toHaveBeenCalled();
     expect(tx.studentGuardian.create).not.toHaveBeenCalled();
