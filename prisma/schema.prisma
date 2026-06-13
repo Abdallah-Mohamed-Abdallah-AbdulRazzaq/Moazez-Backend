@@ -974,6 +974,24 @@ enum CommunicationNotificationDeliveryStatus {
   @@map("communication_notification_delivery_status")
 }
 
+enum AcademicCalendarEventType {
+  HOLIDAY
+  EXAM
+  ACTIVITY
+  OTHER
+
+  @@map("academic_calendar_event_type")
+}
+
+enum AcademicCalendarEventScopeType {
+  SCHOOL
+  STAGE
+  GRADE
+  SECTION
+
+  @@map("academic_calendar_event_scope_type")
+}
+
 enum CurriculumStatus {
   DRAFT
   ACTIVE
@@ -1143,6 +1161,7 @@ model School {
   subjects                              Subject[]
   teacherSubjectAllocations             TeacherSubjectAllocation[]
   rooms                                 Room[]
+  academicCalendarEvents                AcademicCalendarEvent[]
   curricula                             Curriculum[]
   curriculumUnits                       CurriculumUnit[]
   curriculumLessons                     CurriculumLesson[]
@@ -1339,6 +1358,9 @@ model User {
   lessonPlansUpdated                             LessonPlan[]                           @relation("LessonPlanUpdatedBy")
   lessonPlanItemsCreated                         LessonPlanItem[]                       @relation("LessonPlanItemCreatedBy")
   lessonPlanItemsUpdated                         LessonPlanItem[]                       @relation("LessonPlanItemUpdatedBy")
+  academicCalendarEventsCreated                  AcademicCalendarEvent[]                @relation("AcademicCalendarEventCreatedBy")
+  academicCalendarEventsUpdated                  AcademicCalendarEvent[]                @relation("AcademicCalendarEventUpdatedBy")
+  academicCalendarEventsDeleted                  AcademicCalendarEvent[]                @relation("AcademicCalendarEventDeletedBy")
   guardianProfiles                               Guardian[]                             @relation("GuardianUser")
   studentProfile                                 Student?                               @relation("StudentUser")
   timetableEntries                               TimetableEntry[]                       @relation("TimetableEntryTeacher")
@@ -2213,6 +2235,7 @@ model AcademicYear {
   gradeAssessments           GradeAssessment[]
   gradeRules                 GradeRule[]
   homeworkAssignments        HomeworkAssignment[]
+  academicCalendarEvents     AcademicCalendarEvent[]
   curricula                  Curriculum[]
   lessonPlans                LessonPlan[]
   reinforcementTasks         ReinforcementTask[]
@@ -2267,6 +2290,7 @@ model Term {
   gradeItems                 GradeItem[]
   gradeRules                 GradeRule[]
   homeworkAssignments        HomeworkAssignment[]
+  academicCalendarEvents     AcademicCalendarEvent[]
   curricula                  Curriculum[]
   lessonPlans                LessonPlan[]
   reinforcementTasks         ReinforcementTask[]
@@ -2312,6 +2336,7 @@ model Stage {
   attendancePolicies                 AttendancePolicy[]
   attendanceSessions                 AttendanceSession[]
   gradeAssessments                   GradeAssessment[]
+  academicCalendarEvents             AcademicCalendarEvent[]
   reinforcementTaskTargets           ReinforcementTaskTarget[]
   heroMissions                       HeroMission[]
   communicationConversations         CommunicationConversation[]
@@ -2348,6 +2373,7 @@ model Grade {
   attendanceSessions                 AttendanceSession[]
   gradeAssessments                   GradeAssessment[]
   gradeRules                         GradeRule[]
+  academicCalendarEvents             AcademicCalendarEvent[]
   curricula                          Curriculum[]
   reinforcementTaskTargets           ReinforcementTaskTarget[]
   communicationConversations         CommunicationConversation[]
@@ -2383,6 +2409,7 @@ model Section {
   attendancePolicies                 AttendancePolicy[]
   attendanceSessions                 AttendanceSession[]
   gradeAssessments                   GradeAssessment[]
+  academicCalendarEvents             AcademicCalendarEvent[]
   reinforcementTaskTargets           ReinforcementTaskTarget[]
   communicationConversations         CommunicationConversation[]
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
@@ -2526,6 +2553,59 @@ model Room {
   @@index([schoolId, isActive])
   @@index([deletedAt])
   @@map("rooms")
+}
+
+model AcademicCalendarEvent {
+  id             String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String                         @map("school_id") @db.Uuid
+  academicYearId String                         @map("academic_year_id") @db.Uuid
+  termId         String                         @map("term_id") @db.Uuid
+  title          String
+  description    String?
+  notes          String?
+  type           AcademicCalendarEventType
+  scopeType      AcademicCalendarEventScopeType @map("scope_type")
+  scopeKey       String?                        @map("scope_key") @db.Uuid
+  stageId        String?                        @map("stage_id") @db.Uuid
+  gradeId        String?                        @map("grade_id") @db.Uuid
+  sectionId      String?                        @map("section_id") @db.Uuid
+  allDay         Boolean                        @default(true) @map("all_day")
+  startDate      DateTime                       @map("start_date")
+  endDate        DateTime                       @map("end_date")
+  createdByUserId String?                       @map("created_by_user_id") @db.Uuid
+  updatedByUserId String?                       @map("updated_by_user_id") @db.Uuid
+  deletedByUserId String?                       @map("deleted_by_user_id") @db.Uuid
+  createdAt      DateTime                       @default(now()) @map("created_at")
+  updatedAt      DateTime                       @updatedAt @map("updated_at")
+  deletedAt      DateTime?                      @map("deleted_at")
+
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term         @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  stage        Stage?       @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade        Grade?       @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  section      Section?     @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy    User?        @relation("AcademicCalendarEventCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedBy    User?        @relation("AcademicCalendarEventUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  deletedBy    User?        @relation("AcademicCalendarEventDeletedBy", fields: [deletedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([stageId])
+  @@index([gradeId])
+  @@index([sectionId])
+  @@index([createdByUserId])
+  @@index([updatedByUserId])
+  @@index([deletedByUserId])
+  @@index([schoolId, academicYearId])
+  @@index([schoolId, termId])
+  @@index([schoolId, termId, startDate])
+  @@index([schoolId, termId, type])
+  @@index([schoolId, termId, scopeType, scopeKey], map: "academic_calendar_events_term_scope_idx")
+  @@index([deletedAt])
+  @@map("academic_calendar_events")
 }
 
 model Curriculum {
