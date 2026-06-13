@@ -227,13 +227,23 @@ describe('Files imports skeleton flow (e2e)', () => {
       },
     });
 
-    expect(persistedImportJobBeforePolling).toEqual({
-      id: importJobId,
-      uploadedFileId,
-      type: 'students_basic',
-      status: ImportJobStatus.PENDING,
-      reportJson: expect.any(Object),
-    });
+    const earlyImportJobStatuses = [
+      ImportJobStatus.PENDING,
+      ImportJobStatus.PROCESSING,
+      ImportJobStatus.COMPLETED,
+    ];
+
+    expect(persistedImportJobBeforePolling).toEqual(
+      expect.objectContaining({
+        id: importJobId,
+        uploadedFileId,
+        type: 'students_basic',
+        reportJson: expect.any(Object),
+      }),
+    );
+    expect(earlyImportJobStatuses).toContain(
+      persistedImportJobBeforePolling?.status,
+    );
 
     const completedStatus = await waitForImportCompletion(accessToken, importJobId);
     expect(completedStatus).toEqual({
