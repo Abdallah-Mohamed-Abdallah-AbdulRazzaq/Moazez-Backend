@@ -137,7 +137,7 @@ describe('Academic calendar events (e2e)', () => {
     }
   });
 
-  it('registers calendar routes and keeps overview/app calendar routes deferred', () => {
+  it('registers calendar and overview routes while keeping app calendar routes deferred', () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toEqual(
@@ -147,11 +147,11 @@ describe('Academic calendar events (e2e)', () => {
         'GET /api/v1/academics/calendar/events/:eventId',
         'PATCH /api/v1/academics/calendar/events/:eventId',
         'DELETE /api/v1/academics/calendar/events/:eventId',
+        'GET /api/v1/academics/overview',
       ]),
     );
 
     for (const absentRoute of [
-      'GET /api/v1/academics/overview',
       'GET /api/v1/teacher/calendar',
       'GET /api/v1/student/calendar',
       'GET /api/v1/parent/children/:studentId/calendar',
