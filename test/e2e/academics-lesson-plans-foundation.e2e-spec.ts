@@ -162,7 +162,6 @@ describe('Sprint 15D Academics Lesson Plans Foundation (e2e)', () => {
 
     for (const absentRoute of [
       'GET /api/v1/student/lesson-plans',
-      'GET /api/v1/teacher/lesson-preparation',
       'GET /api/v1/parent/lesson-plans',
       'POST /api/v1/homework/questions',
     ]) {

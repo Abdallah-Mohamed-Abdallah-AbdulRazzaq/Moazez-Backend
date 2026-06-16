@@ -39,6 +39,12 @@ import { TeacherClassroomReadAdapter } from './classroom/infrastructure/teacher-
 import { GetTeacherHomeUseCase } from './home/application/get-teacher-home.use-case';
 import { TeacherHomeController } from './home/controller/teacher-home.controller';
 import { TeacherHomeworksModule } from './homeworks/teacher-homeworks.module';
+import { GetTeacherLessonPreparationDetailUseCase } from './lesson-preparation/application/get-teacher-lesson-preparation-detail.use-case';
+import { GetTeacherLessonPreparationTodayUseCase } from './lesson-preparation/application/get-teacher-lesson-preparation-today.use-case';
+import { GetTeacherLessonPreparationWeekUseCase } from './lesson-preparation/application/get-teacher-lesson-preparation-week.use-case';
+import { UpdateTeacherLessonPreparationStatusUseCase } from './lesson-preparation/application/update-teacher-lesson-preparation-status.use-case';
+import { TeacherLessonPreparationController } from './lesson-preparation/controller/teacher-lesson-preparation.controller';
+import { TeacherLessonPreparationReadAdapter } from './lesson-preparation/infrastructure/teacher-lesson-preparation-read.adapter';
 import { GetTeacherMessageConversationUseCase } from './messages/application/get-teacher-message-conversation.use-case';
 import { ListTeacherConversationMessagesUseCase } from './messages/application/list-teacher-conversation-messages.use-case';
 import { ListTeacherMessageConversationsUseCase } from './messages/application/list-teacher-message-conversations.use-case';
@@ -108,6 +114,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     TeacherSettingsController,
     TeacherScheduleController,
     TeacherCalendarController,
+    TeacherLessonPreparationController,
   ],
   providers: [
     TeacherAppAccessService,
@@ -170,6 +177,11 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     GetTeacherWeeklyScheduleUseCase,
     ListTeacherCalendarEventsUseCase,
     GetTeacherCalendarEventUseCase,
+    TeacherLessonPreparationReadAdapter,
+    GetTeacherLessonPreparationTodayUseCase,
+    GetTeacherLessonPreparationWeekUseCase,
+    GetTeacherLessonPreparationDetailUseCase,
+    UpdateTeacherLessonPreparationStatusUseCase,
   ],
   exports: [TeacherAppAccessService],
 })

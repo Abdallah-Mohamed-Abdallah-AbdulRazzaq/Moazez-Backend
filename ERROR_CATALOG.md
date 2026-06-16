@@ -454,6 +454,11 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `teacher_app.actor.required_teacher`      | 403  | Teacher App requires an active teacher membership |
 | `teacher_app.allocation.not_found`        | 404  | Teacher App class allocation was not found        |
 | `teacher_app.allocation.forbidden`        | 403  | Teacher does not own this class allocation        |
+| `teacher_app.lesson_preparation.not_found` | 404 | Teacher lesson preparation item was not found     |
+| `teacher_app.lesson_preparation.closed_term` | 409 | Teacher lesson preparation cannot be changed for a closed term |
+| `teacher_app.lesson_preparation.read_only` | 409 | Teacher lesson preparation item is read-only      |
+| `teacher_app.lesson_preparation.invalid_status` | 422 | Teacher lesson preparation status is invalid      |
+| `teacher_app.lesson_preparation.invalid_transition` | 409 | Teacher lesson preparation status transition is invalid |
 
 ### Student App
 

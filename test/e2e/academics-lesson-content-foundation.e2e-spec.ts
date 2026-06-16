@@ -158,7 +158,6 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
     for (const absentRoute of [
       'GET /api/v1/student/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content',
       'GET /api/v1/teacher/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content',
-      'POST /api/v1/teacher/lesson-preparation',
       'POST /api/v1/homework/questions',
       'POST /api/v1/homework/answers',
     ]) {

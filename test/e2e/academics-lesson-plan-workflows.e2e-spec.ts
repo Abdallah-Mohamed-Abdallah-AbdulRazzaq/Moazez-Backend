@@ -161,7 +161,6 @@ describe('Academics lesson plan workflows (e2e)', () => {
       ]),
     );
 
-    expect(routes).not.toContain('GET /api/v1/teacher/lesson-preparation');
     expect(routes).not.toContain('GET /api/v1/student/lesson-plans');
     expect(routes).not.toContain('GET /api/v1/parent/lesson-plans');
   });
