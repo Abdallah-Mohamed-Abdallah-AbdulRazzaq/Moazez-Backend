@@ -167,6 +167,11 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `academics.year.has_enrollments`  | 409  | Cannot delete year with active enrollments       |
 | `academics.structure.child_exists`| 409  | Cannot delete a structure node with children     |
 | `academics.section.capacity_invalid`| 422| Invalid section capacity                         |
+| `academics.subject_allocation.invalid_scope` | 422 | Subject allocation academic scope is invalid |
+| `academics.subject_allocation.duplicate_pair` | 422 | Subject allocation bulk request contains a duplicate grade and subject pair |
+| `academics.subject_allocation.invalid_weekly_hours` | 422 | Subject allocation weekly hours value is invalid |
+| `academics.subject_allocation.invalid_bulk_size` | 422 | Subject allocation bulk request size is invalid |
+| `academics.subject_allocation.closed_term` | 409 | Term is closed for subject allocation changes |
 | `academics.timetable.config_not_found` | 404 | Timetable config was not found or is outside scope |
 | `academics.timetable.period_not_found` | 404 | Timetable period was not found or is outside scope |
 | `academics.timetable.entry_not_found` | 404 | Timetable entry was not found or is outside scope |

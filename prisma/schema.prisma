@@ -1159,6 +1159,7 @@ model School {
   sections                              Section[]
   classrooms                            Classroom[]
   subjects                              Subject[]
+  subjectAllocations                    SubjectAllocation[]
   teacherSubjectAllocations             TeacherSubjectAllocation[]
   rooms                                 Room[]
   academicCalendarEvents                AcademicCalendarEvent[]
@@ -2236,6 +2237,7 @@ model AcademicYear {
   gradeRules                 GradeRule[]
   homeworkAssignments        HomeworkAssignment[]
   academicCalendarEvents     AcademicCalendarEvent[]
+  subjectAllocations         SubjectAllocation[]
   curricula                  Curriculum[]
   lessonPlans                LessonPlan[]
   reinforcementTasks         ReinforcementTask[]
@@ -2280,6 +2282,7 @@ model Term {
 
   school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   academicYear               AcademicYear                @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subjectAllocations         SubjectAllocation[]
   teacherSubjectAllocations  TeacherSubjectAllocation[]
   enrollments                Enrollment[]
   attendancePolicies         AttendancePolicy[]
@@ -2374,6 +2377,7 @@ model Grade {
   gradeAssessments                   GradeAssessment[]
   gradeRules                         GradeRule[]
   academicCalendarEvents             AcademicCalendarEvent[]
+  subjectAllocations                  SubjectAllocation[]
   curricula                          Curriculum[]
   reinforcementTaskTargets           ReinforcementTaskTarget[]
   communicationConversations         CommunicationConversation[]
@@ -2479,6 +2483,7 @@ model Subject {
   deletedAt DateTime? @map("deleted_at")
 
   school                     School                      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  subjectAllocations         SubjectAllocation[]
   teacherSubjectAllocations  TeacherSubjectAllocation[]
   lessonPlans                LessonPlan[]
   placementTests             PlacementTest[]
@@ -2496,6 +2501,40 @@ model Subject {
   @@index([schoolId, isActive])
   @@index([deletedAt])
   @@map("subjects")
+}
+
+model SubjectAllocation {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId       String @map("school_id") @db.Uuid
+  academicYearId String @map("academic_year_id") @db.Uuid
+  termId         String @map("term_id") @db.Uuid
+  gradeId        String @map("grade_id") @db.Uuid
+  subjectId      String @map("subject_id") @db.Uuid
+  weeklyHours    Int    @map("weekly_hours")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  academicYear AcademicYear @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  term         Term         @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade        Grade        @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  subject      Subject      @relation(fields: [subjectId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, termId, gradeId, subjectId])
+  @@index([schoolId])
+  @@index([academicYearId])
+  @@index([termId])
+  @@index([gradeId])
+  @@index([subjectId])
+  @@index([schoolId, academicYearId])
+  @@index([schoolId, termId])
+  @@index([schoolId, termId, gradeId])
+  @@index([schoolId, termId, subjectId])
+  @@index([deletedAt])
+  @@map("subject_allocations")
 }
 
 model TeacherSubjectAllocation {
