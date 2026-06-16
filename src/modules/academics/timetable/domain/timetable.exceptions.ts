@@ -275,3 +275,47 @@ export class TimetableRoomConflictException extends DomainException {
     });
   }
 }
+
+export class TimetableInvalidBulkSizeException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.invalid_bulk_size',
+      message: 'Timetable bulk request size is invalid',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class TimetableDuplicateSlotException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.duplicate_slot',
+      message: 'Timetable bulk request contains duplicate classroom slots',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class TimetableMissingSubjectAllocationException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.missing_subject_allocation',
+      message: 'Subject allocation weekly-hours row is required before scheduling',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class TimetableInvalidTeacherAllocationException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.timetable.invalid_teacher_allocation',
+      message: 'Teacher allocation is invalid for this timetable slot',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}

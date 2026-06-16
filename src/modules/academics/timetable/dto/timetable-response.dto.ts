@@ -173,3 +173,131 @@ export class TimetablePublicationResponseDto {
   blockingReasons!: TimetablePublishBlockingReasonResponseDto[];
   summary!: TimetablePublicationSummaryResponseDto;
 }
+
+export class TimetableDashboardClassroomContextDto {
+  id!: string;
+  nameAr!: string;
+  nameEn!: string;
+}
+
+export class TimetableDashboardGradeContextDto {
+  id!: string;
+  nameAr!: string;
+  nameEn!: string;
+}
+
+export class TimetableDashboardConfigSummaryDto {
+  id!: string;
+  name!: string;
+  scopeType!: string;
+  scopeKey!: string;
+  status!: string;
+  activeDays!: number[];
+}
+
+export class TimetableDashboardItemDto {
+  classroomId!: string;
+  classroom!: TimetableDashboardClassroomContextDto;
+  gradeId!: string;
+  grade!: TimetableDashboardGradeContextDto;
+  configs!: TimetableDashboardConfigSummaryDto[];
+  periods!: TimetablePeriodResponseDto[];
+  entries!: TimetableEntryResponseDto[];
+}
+
+export class TimetableDashboardAllResponseDto {
+  termId!: string;
+  academicYearId!: string;
+  publishedAt!: string | null;
+  isPublished!: boolean;
+  items!: TimetableDashboardItemDto[];
+}
+
+export class TimetableEntriesBulkResponseDto
+  extends TimetableEntriesListResponseDto {
+  summary!: {
+    requestedCount: number;
+    createdCount: number;
+    updatedCount: number;
+  };
+}
+
+export class TimetableUnpublishResponseDto {
+  termId!: string;
+  academicYearId!: string;
+  summary!: {
+    configsChecked: number;
+    unpublishedCount: number;
+    entriesReturnedToDraft: number;
+  };
+}
+
+export type TimetableValidationItemStatus =
+  | 'complete'
+  | 'under_scheduled'
+  | 'over_scheduled'
+  | 'missing_teacher_allocation'
+  | 'missing_subject_allocation';
+
+export class TimetableValidationIssueDto {
+  code!: string;
+  message!: string;
+  details?: Record<string, unknown>;
+}
+
+export class TimetableValidationItemDto {
+  classroomId!: string;
+  classroom!: TimetableDashboardClassroomContextDto;
+  gradeId!: string;
+  grade!: TimetableDashboardGradeContextDto;
+  subjectId!: string | null;
+  subject!: {
+    id: string;
+    nameAr: string;
+    nameEn: string;
+    code: string | null;
+    color: string | null;
+  } | null;
+  expectedWeeklyHours!: number | null;
+  scheduledWeeklyHours!: number;
+  status!: TimetableValidationItemStatus;
+  issues!: TimetableValidationIssueDto[];
+}
+
+export class TimetableValidationResponseDto {
+  termId!: string;
+  academicYearId!: string;
+  summary!: {
+    classroomsChecked: number;
+    expectedWeeklySlots: number;
+    actualScheduledSlots: number;
+    missingTeacherAllocations: number;
+    underScheduledSubjects: number;
+    overScheduledSubjects: number;
+    teacherConflicts: number;
+    classroomConflicts: number;
+    roomConflicts: number;
+    missingSubjectAllocationRows: number;
+  };
+  items!: TimetableValidationItemDto[];
+}
+
+export class TimetableConflictCheckItemDto {
+  code!: string;
+  message!: string;
+  severity!: string;
+  dayOfWeek!: number | null;
+  periodId!: string | null;
+  classroomId!: string | null;
+  teacherUserId!: string | null;
+  roomId!: string | null;
+  entryIds!: string[];
+  proposedIndexes!: number[];
+}
+
+export class TimetableConflictCheckResponseDto {
+  termId!: string;
+  academicYearId!: string;
+  hasConflicts!: boolean;
+  conflicts!: TimetableConflictCheckItemDto[];
+}

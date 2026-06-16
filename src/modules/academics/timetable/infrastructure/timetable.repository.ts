@@ -30,6 +30,8 @@ const GRADE_ARGS = Prisma.validator<Prisma.GradeDefaultArgs>()({
   select: {
     id: true,
     schoolId: true,
+    nameAr: true,
+    nameEn: true,
   },
 });
 
@@ -75,6 +77,35 @@ const TEACHER_ALLOCATION_ARGS =
       subjectId: true,
       classroomId: true,
       termId: true,
+    },
+  });
+
+const SUBJECT_ALLOCATION_ARGS =
+  Prisma.validator<Prisma.SubjectAllocationDefaultArgs>()({
+    select: {
+      id: true,
+      schoolId: true,
+      academicYearId: true,
+      termId: true,
+      gradeId: true,
+      subjectId: true,
+      weeklyHours: true,
+      grade: {
+        select: {
+          id: true,
+          nameAr: true,
+          nameEn: true,
+        },
+      },
+      subject: {
+        select: {
+          id: true,
+          nameAr: true,
+          nameEn: true,
+          code: true,
+          color: true,
+        },
+      },
     },
   });
 
@@ -235,6 +266,8 @@ export type TimetableClassroomRecord = Prisma.ClassroomGetPayload<
 export type TimetableRoomRecord = Prisma.RoomGetPayload<typeof ROOM_ARGS>;
 export type TimetableTeacherAllocationRecord =
   Prisma.TeacherSubjectAllocationGetPayload<typeof TEACHER_ALLOCATION_ARGS>;
+export type TimetableSubjectAllocationRecord =
+  Prisma.SubjectAllocationGetPayload<typeof SUBJECT_ALLOCATION_ARGS>;
 export type TimetableConfigRecord = Prisma.TimetableConfigGetPayload<
   typeof TIMETABLE_CONFIG_ARGS
 >;
@@ -259,6 +292,33 @@ export type DeleteTimetablePeriodResult =
 export type DeleteTimetableEntryResult =
   | { status: 'deleted' }
   | { status: 'not_found' };
+
+export interface BulkTimetableEntryInput {
+  schoolId: string;
+  academicYearId: string;
+  termId: string;
+  timetableConfigId: string;
+  periodId: string;
+  dayOfWeek: number;
+  gradeId: string;
+  sectionId: string;
+  classroomId: string;
+  subjectId: string;
+  teacherUserId: string;
+  teacherSubjectAllocationId: string;
+  roomId: string | null;
+}
+
+export interface BulkSaveTimetableEntriesResult {
+  entries: TimetableEntryRecord[];
+  createdCount: number;
+  updatedCount: number;
+}
+
+export interface UnpublishTimetableResult {
+  unpublishedCount: number;
+  entriesReturnedToDraft: number;
+}
 
 export interface ListTimetableEntriesFilters {
   timetableConfigId: string;
@@ -344,6 +404,59 @@ export class TimetableRepository {
     });
   }
 
+  findSubjectAllocationByKey(input: {
+    termId: string;
+    gradeId: string;
+    subjectId: string;
+  }): Promise<TimetableSubjectAllocationRecord | null> {
+    return this.scopedPrisma.subjectAllocation.findFirst({
+      where: {
+        termId: input.termId,
+        gradeId: input.gradeId,
+        subjectId: input.subjectId,
+        grade: { is: { deletedAt: null } },
+        subject: { is: { deletedAt: null } },
+      },
+      ...SUBJECT_ALLOCATION_ARGS,
+    });
+  }
+
+  findSubjectAllocationsByKeys(
+    termId: string,
+    keys: Array<{ gradeId: string; subjectId: string }>,
+  ): Promise<TimetableSubjectAllocationRecord[]> {
+    if (keys.length === 0) return Promise.resolve([]);
+
+    return this.scopedPrisma.subjectAllocation.findMany({
+      where: {
+        termId,
+        OR: keys.map((key) => ({
+          gradeId: key.gradeId,
+          subjectId: key.subjectId,
+        })),
+        grade: { is: { deletedAt: null } },
+        subject: { is: { deletedAt: null } },
+      },
+      ...SUBJECT_ALLOCATION_ARGS,
+    });
+  }
+
+  listSubjectAllocationsForTerm(filters: {
+    termId: string;
+    gradeId?: string;
+  }): Promise<TimetableSubjectAllocationRecord[]> {
+    return this.scopedPrisma.subjectAllocation.findMany({
+      where: {
+        termId: filters.termId,
+        ...(filters.gradeId ? { gradeId: filters.gradeId } : {}),
+        grade: { is: { deletedAt: null } },
+        subject: { is: { deletedAt: null } },
+      },
+      orderBy: [{ gradeId: 'asc' }, { subjectId: 'asc' }],
+      ...SUBJECT_ALLOCATION_ARGS,
+    });
+  }
+
   findConfigByScope(input: {
     academicYearId: string;
     termId: string;
@@ -366,6 +479,14 @@ export class TimetableRepository {
   ): Promise<TimetableConfigRecord | null> {
     return this.scopedPrisma.timetableConfig.findFirst({
       where: { id: timetableConfigId },
+      ...TIMETABLE_CONFIG_ARGS,
+    });
+  }
+
+  listConfigsByTerm(termId: string): Promise<TimetableConfigRecord[]> {
+    return this.scopedPrisma.timetableConfig.findMany({
+      where: { termId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       ...TIMETABLE_CONFIG_ARGS,
     });
   }
@@ -394,6 +515,18 @@ export class TimetableRepository {
     return this.scopedPrisma.timetablePeriod.findMany({
       where: { timetableConfigId },
       orderBy: [{ periodIndex: 'asc' }],
+      ...TIMETABLE_PERIOD_ARGS,
+    });
+  }
+
+  listPeriodsByConfigIds(
+    timetableConfigIds: string[],
+  ): Promise<TimetablePeriodRecord[]> {
+    if (timetableConfigIds.length === 0) return Promise.resolve([]);
+
+    return this.scopedPrisma.timetablePeriod.findMany({
+      where: { timetableConfigId: { in: timetableConfigIds } },
+      orderBy: [{ periodIndex: 'asc' }, { id: 'asc' }],
       ...TIMETABLE_PERIOD_ARGS,
     });
   }
@@ -502,6 +635,79 @@ export class TimetableRepository {
     });
   }
 
+  listEntriesByTerm(filters: {
+    termId: string;
+    gradeId?: string;
+    classroomId?: string;
+  }): Promise<TimetableEntryRecord[]> {
+    return this.scopedPrisma.timetableEntry.findMany({
+      where: {
+        termId: filters.termId,
+        ...(filters.gradeId ? { gradeId: filters.gradeId } : {}),
+        ...(filters.classroomId ? { classroomId: filters.classroomId } : {}),
+      },
+      orderBy: [
+        { classroomId: 'asc' },
+        { dayOfWeek: 'asc' },
+        { period: { periodIndex: 'asc' } },
+        { createdAt: 'asc' },
+      ],
+      ...TIMETABLE_ENTRY_ARGS,
+    });
+  }
+
+  listTeacherAllocationsByTerm(filters: {
+    termId: string;
+    gradeId?: string;
+    classroomId?: string;
+  }): Promise<TimetableTeacherAllocationRecord[]> {
+    return this.scopedPrisma.teacherSubjectAllocation.findMany({
+      where: {
+        termId: filters.termId,
+        ...(filters.classroomId ? { classroomId: filters.classroomId } : {}),
+        ...(filters.gradeId
+          ? {
+              classroom: {
+                is: {
+                  section: { is: { gradeId: filters.gradeId } },
+                },
+              },
+            }
+          : {}),
+      },
+      ...TEACHER_ALLOCATION_ARGS,
+    });
+  }
+
+  listClassroomsByGradeIds(
+    gradeIds: string[],
+  ): Promise<TimetableClassroomRecord[]> {
+    if (gradeIds.length === 0) return Promise.resolve([]);
+
+    return this.scopedPrisma.classroom.findMany({
+      where: {
+        section: {
+          is: {
+            gradeId: { in: gradeIds },
+            deletedAt: null,
+            grade: { is: { deletedAt: null } },
+          },
+        },
+      },
+      orderBy: [{ nameEn: 'asc' }, { nameAr: 'asc' }],
+      ...CLASSROOM_ARGS,
+    });
+  }
+
+  listGradesByIds(gradeIds: string[]): Promise<TimetableGradeRecord[]> {
+    if (gradeIds.length === 0) return Promise.resolve([]);
+
+    return this.scopedPrisma.grade.findMany({
+      where: { id: { in: gradeIds } },
+      ...GRADE_ARGS,
+    });
+  }
+
   findEntryById(entryId: string): Promise<TimetableEntryRecord | null> {
     return this.scopedPrisma.timetableEntry.findFirst({
       where: { id: entryId },
@@ -555,6 +761,105 @@ export class TimetableRepository {
     return result.count > 0 ? { status: 'deleted' } : { status: 'not_found' };
   }
 
+  async bulkUpsertEntries(
+    entries: BulkTimetableEntryInput[],
+  ): Promise<BulkSaveTimetableEntriesResult> {
+    if (entries.length === 0) {
+      return { entries: [], createdCount: 0, updatedCount: 0 };
+    }
+
+    const schoolId = this.getCurrentSchoolId();
+
+    return this.prisma.$transaction(async (tx) => {
+      const changedIds: string[] = [];
+      let createdCount = 0;
+      let updatedCount = 0;
+
+      for (const entry of entries) {
+        const existing = await tx.timetableEntry.findFirst({
+          where: {
+            schoolId,
+            termId: entry.termId,
+            classroomId: entry.classroomId,
+            dayOfWeek: entry.dayOfWeek,
+            periodId: entry.periodId,
+          },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: { id: true },
+        });
+
+        if (existing) {
+          const updated = await tx.timetableEntry.update({
+            where: {
+              id_schoolId: {
+                id: existing.id,
+                schoolId,
+              },
+            },
+            data: {
+              academicYearId: entry.academicYearId,
+              termId: entry.termId,
+              timetableConfigId: entry.timetableConfigId,
+              periodId: entry.periodId,
+              dayOfWeek: entry.dayOfWeek,
+              gradeId: entry.gradeId,
+              sectionId: entry.sectionId,
+              classroomId: entry.classroomId,
+              subjectId: entry.subjectId,
+              teacherUserId: entry.teacherUserId,
+              teacherSubjectAllocationId: entry.teacherSubjectAllocationId,
+              roomId: entry.roomId,
+              status: TimetableEntryStatus.DRAFT,
+            },
+            select: { id: true },
+          });
+          changedIds.push(updated.id);
+          updatedCount += 1;
+          continue;
+        }
+
+        const created = await tx.timetableEntry.create({
+          data: {
+            schoolId,
+            academicYearId: entry.academicYearId,
+            termId: entry.termId,
+            timetableConfigId: entry.timetableConfigId,
+            periodId: entry.periodId,
+            dayOfWeek: entry.dayOfWeek,
+            gradeId: entry.gradeId,
+            sectionId: entry.sectionId,
+            classroomId: entry.classroomId,
+            subjectId: entry.subjectId,
+            teacherUserId: entry.teacherUserId,
+            teacherSubjectAllocationId: entry.teacherSubjectAllocationId,
+            roomId: entry.roomId,
+            status: TimetableEntryStatus.DRAFT,
+          },
+          select: { id: true },
+        });
+        changedIds.push(created.id);
+        createdCount += 1;
+      }
+
+      const changedEntries = await tx.timetableEntry.findMany({
+        where: { schoolId, id: { in: changedIds } },
+        orderBy: [
+          { classroomId: 'asc' },
+          { dayOfWeek: 'asc' },
+          { period: { periodIndex: 'asc' } },
+          { createdAt: 'asc' },
+        ],
+        ...TIMETABLE_ENTRY_ARGS,
+      });
+
+      return {
+        entries: changedEntries,
+        createdCount,
+        updatedCount,
+      };
+    });
+  }
+
   listPersistedConflicts(
     timetableConfigId: string,
   ): Promise<TimetableConflictRecord[]> {
@@ -570,6 +875,18 @@ export class TimetableRepository {
   ): Promise<TimetablePublicationRecord | null> {
     return this.scopedPrisma.timetablePublication.findFirst({
       where: { timetableConfigId },
+      orderBy: [{ revision: 'desc' }, { createdAt: 'desc' }],
+      ...TIMETABLE_PUBLICATION_ARGS,
+    });
+  }
+
+  findLatestPublicationsByConfigIds(
+    timetableConfigIds: string[],
+  ): Promise<TimetablePublicationRecord[]> {
+    if (timetableConfigIds.length === 0) return Promise.resolve([]);
+
+    return this.scopedPrisma.timetablePublication.findMany({
+      where: { timetableConfigId: { in: timetableConfigIds } },
       orderBy: [{ revision: 'desc' }, { createdAt: 'desc' }],
       ...TIMETABLE_PUBLICATION_ARGS,
     });
@@ -619,5 +936,47 @@ export class TimetableRepository {
       config,
       activatedEntriesCount: activatedEntries.count,
     };
+  }
+
+  async unpublishConfigs(
+    timetableConfigIds: string[],
+  ): Promise<UnpublishTimetableResult> {
+    if (timetableConfigIds.length === 0) {
+      return { unpublishedCount: 0, entriesReturnedToDraft: 0 };
+    }
+
+    const schoolId = this.getCurrentSchoolId();
+
+    return this.prisma.$transaction(async (tx) => {
+      const publications = await tx.timetablePublication.updateMany({
+        where: {
+          schoolId,
+          timetableConfigId: { in: timetableConfigIds },
+          status: TimetablePublicationStatus.PUBLISHED,
+        },
+        data: { status: TimetablePublicationStatus.SUPERSEDED },
+      });
+      await tx.timetableConfig.updateMany({
+        where: {
+          schoolId,
+          id: { in: timetableConfigIds },
+          status: TimetableConfigStatus.ACTIVE,
+        },
+        data: { status: TimetableConfigStatus.DRAFT },
+      });
+      const entries = await tx.timetableEntry.updateMany({
+        where: {
+          schoolId,
+          timetableConfigId: { in: timetableConfigIds },
+          status: TimetableEntryStatus.ACTIVE,
+        },
+        data: { status: TimetableEntryStatus.DRAFT },
+      });
+
+      return {
+        unpublishedCount: publications.count,
+        entriesReturnedToDraft: entries.count,
+      };
+    });
   }
 }

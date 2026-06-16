@@ -13,6 +13,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import {
   TimetableConfigStatus,
@@ -84,6 +85,67 @@ export class TimetableConfigIdQueryDto {
 export class PublishTimetableDto {
   @IsUUID()
   timetableConfigId!: string;
+}
+
+export class TimetableDashboardQueryDto {
+  @IsUUID()
+  termId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  gradeId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  classroomId?: string;
+}
+
+export class TimetableBulkEntryItemDto {
+  @IsUUID()
+  classroomId!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  dayOfWeek!: number;
+
+  @IsUUID()
+  periodId!: string;
+
+  @IsUUID()
+  teacherSubjectAllocationId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  roomId?: string | null;
+}
+
+export class BulkSaveTimetableEntriesDto {
+  @IsUUID()
+  termId!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(1000)
+  @ValidateNested({ each: true })
+  @Type(() => TimetableBulkEntryItemDto)
+  items!: TimetableBulkEntryItemDto[];
+}
+
+export class CheckTimetableConflictsDto extends BulkSaveTimetableEntriesDto {}
+
+export class UnpublishTimetableDto {
+  @IsUUID()
+  termId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  gradeId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  classroomId?: string;
 }
 
 export class CreateTimetablePeriodDto {

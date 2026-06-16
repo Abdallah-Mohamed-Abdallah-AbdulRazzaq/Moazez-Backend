@@ -205,6 +205,10 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `academics.timetable.entry_conflict` | 409 | Timetable entry has a scheduling conflict       |
 | `academics.timetable.teacher_conflict` | 409 | Teacher is already scheduled in this period   |
 | `academics.timetable.room_conflict` | 409 | Room is already scheduled in this period       |
+| `academics.timetable.invalid_bulk_size` | 422 | Timetable bulk request size is invalid         |
+| `academics.timetable.duplicate_slot` | 422 | Timetable bulk request contains duplicate classroom slots |
+| `academics.timetable.missing_subject_allocation` | 422 | Subject allocation weekly-hours row is required before scheduling |
+| `academics.timetable.invalid_teacher_allocation` | 422 | Teacher allocation is invalid for this timetable slot |
 | `academics.curriculum.not_found` | 404 | Curriculum was not found or is outside scope |
 | `academics.curriculum.duplicate` | 409 | Curriculum already exists for this academic scope |
 | `academics.curriculum.invalid_scope` | 422 | Curriculum academic scope is invalid |
