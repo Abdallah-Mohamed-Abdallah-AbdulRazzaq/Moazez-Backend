@@ -38,6 +38,11 @@ import { StudentHomeworksModule } from './homeworks/student-homeworks.module';
 import { GetStudentHomeUseCase } from './home/application/get-student-home.use-case';
 import { StudentHomeController } from './home/controller/student-home.controller';
 import { StudentHomeReadAdapter } from './home/infrastructure/student-home-read.adapter';
+import { GetStudentLessonDetailUseCase } from './lessons/application/get-student-lesson-detail.use-case';
+import { GetStudentLessonsTodayUseCase } from './lessons/application/get-student-lessons-today.use-case';
+import { GetStudentLessonsWeekUseCase } from './lessons/application/get-student-lessons-week.use-case';
+import { StudentLessonsController } from './lessons/controller/student-lessons.controller';
+import { StudentLessonsReadAdapter } from './lessons/infrastructure/student-lessons-read.adapter';
 import { GetStudentMessageConversationUseCase } from './messages/application/get-student-message-conversation.use-case';
 import { ListStudentConversationMessagesUseCase } from './messages/application/list-student-conversation-messages.use-case';
 import { ListStudentMessageConversationsUseCase } from './messages/application/list-student-message-conversations.use-case';
@@ -90,6 +95,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentMessagesController,
     StudentAnnouncementsController,
     StudentCalendarController,
+    StudentLessonsController,
   ],
   providers: [
     StudentAppAccessService,
@@ -146,6 +152,10 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     ListStudentAnnouncementAttachmentsUseCase,
     ListStudentCalendarEventsUseCase,
     GetStudentCalendarEventUseCase,
+    StudentLessonsReadAdapter,
+    GetStudentLessonsTodayUseCase,
+    GetStudentLessonsWeekUseCase,
+    GetStudentLessonDetailUseCase,
   ],
   exports: [StudentAppAccessService],
 })

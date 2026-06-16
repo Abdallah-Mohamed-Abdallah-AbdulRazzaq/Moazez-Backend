@@ -10,6 +10,8 @@ import {
   OrganizationStatus,
   PrismaClient,
   SchoolStatus,
+  StudentEnrollmentStatus,
+  StudentStatus,
   TimetableConfigStatus,
   TimetableEntryStatus,
   TimetablePeriodType,
@@ -24,7 +26,7 @@ import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 
 const GLOBAL_PREFIX = '/api/v1';
-const PASSWORD = 'TeacherLessonPrep123!';
+const PASSWORD = 'StudentLessonsSecurity123!';
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
   memoryCost: 19 * 1024,
@@ -49,24 +51,19 @@ type AuthTokens = {
 type AcademicContext = {
   academicYearId: string;
   termId: string;
-  closedTermId: string;
 };
 
 type LessonFixture = {
   allocationId: string;
   classroomId: string;
   subjectId: string;
-  curriculumId: string;
-  unitId: string;
-  lessonId: string;
-  lessonPlanId: string;
   lessonPlanItemId: string;
   timetableEntryId: string;
 };
 
 jest.setTimeout(120000);
 
-describe('Teacher App lesson preparation workflows (e2e)', () => {
+describe('Student App lesson content tenancy/security (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
 
@@ -74,34 +71,38 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
   let crossOrganizationId = '';
   let schoolId = '';
   let crossSchoolId = '';
-  let teacherAId = '';
-  let teacherBId = '';
-  let teacherAEmail = '';
-  let teacherBEmail = '';
-  let adminEmail = '';
+  let teacherUserId = '';
+  let studentAUserId = '';
+  let studentAEmail = '';
+  let studentBEmail = '';
+  let teacherEmail = '';
   let parentEmail = '';
-  let studentEmail = '';
+  let adminEmail = '';
   let academic: AcademicContext;
-  let fixture: LessonFixture;
-  let otherTeacherFixture: LessonFixture;
-  let closedTermFixture: LessonFixture;
+  let ownFixture: LessonFixture;
+  let otherClassroomFixture: LessonFixture;
+  let crossSchoolFixture: LessonFixture;
+  let archivedPlanItemId = '';
+
+  let studentAAuth: AuthTokens;
   let teacherAuth: AuthTokens;
+  let parentAuth: AuthTokens;
+  let adminAuth: AuthTokens;
 
   const suffix = randomUUID().split('-')[0];
-  const marker = `s22g-e2e-${suffix}`;
+  const marker = `s22h-sec-${suffix}`;
   const cleanup = createCleanupState();
 
   beforeAll(async () => {
     prisma = new PrismaClient();
     await prisma.$connect();
 
-    const [teacherRole, schoolAdminRole, parentRole, studentRole] =
-      await Promise.all([
-        findSystemRole('teacher'),
-        findSystemRole('school_admin'),
-        findSystemRole('parent'),
-        findSystemRole('student'),
-      ]);
+    const [teacherRole, studentRole, parentRole, adminRole] = await Promise.all([
+      findSystemRole('teacher'),
+      findSystemRole('student'),
+      findSystemRole('parent'),
+      findSystemRole('school_admin'),
+    ]);
 
     organizationId = await createOrganization('main');
     crossOrganizationId = await createOrganization('cross');
@@ -109,39 +110,37 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
     crossSchoolId = await createSchool(crossOrganizationId, 'cross');
     academic = await createAcademicContext(schoolId);
 
-    teacherAEmail = `${marker}-teacher-a@example.test`;
-    teacherBEmail = `${marker}-teacher-b@example.test`;
-    adminEmail = `${marker}-admin@example.test`;
-    parentEmail = `${marker}-parent@example.test`;
-    studentEmail = `${marker}-student@example.test`;
-
-    teacherAId = await createUserWithMembership({
-      email: teacherAEmail,
+    teacherEmail = `${marker}-teacher@example.test`;
+    teacherUserId = await createUserWithMembership({
+      email: teacherEmail,
       firstName: 'Teacher',
+      lastName: 'User',
+      userType: UserType.TEACHER,
+      roleId: teacherRole.id,
+      organizationId,
+      schoolId,
+    });
+    studentAEmail = `${marker}-student-a@example.test`;
+    studentAUserId = await createUserWithMembership({
+      email: studentAEmail,
+      firstName: 'Student',
       lastName: 'A',
-      userType: UserType.TEACHER,
-      roleId: teacherRole.id,
+      userType: UserType.STUDENT,
+      roleId: studentRole.id,
       organizationId,
       schoolId,
     });
-    teacherBId = await createUserWithMembership({
-      email: teacherBEmail,
-      firstName: 'Teacher',
+    studentBEmail = `${marker}-student-b@example.test`;
+    const studentBUserId = await createUserWithMembership({
+      email: studentBEmail,
+      firstName: 'Student',
       lastName: 'B',
-      userType: UserType.TEACHER,
-      roleId: teacherRole.id,
+      userType: UserType.STUDENT,
+      roleId: studentRole.id,
       organizationId,
       schoolId,
     });
-    await createUserWithMembership({
-      email: adminEmail,
-      firstName: 'School',
-      lastName: 'Admin',
-      userType: UserType.SCHOOL_USER,
-      roleId: schoolAdminRole.id,
-      organizationId,
-      schoolId,
-    });
+    parentEmail = `${marker}-parent@example.test`;
     await createUserWithMembership({
       email: parentEmail,
       firstName: 'Parent',
@@ -151,44 +150,63 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
       organizationId,
       schoolId,
     });
+    adminEmail = `${marker}-admin@example.test`;
     await createUserWithMembership({
-      email: studentEmail,
-      firstName: 'Student',
-      lastName: 'User',
-      userType: UserType.STUDENT,
-      roleId: studentRole.id,
+      email: adminEmail,
+      firstName: 'School',
+      lastName: 'Admin',
+      userType: UserType.SCHOOL_USER,
+      roleId: adminRole.id,
       organizationId,
       schoolId,
     });
 
-    fixture = await createLessonFixture({
+    ownFixture = await createLessonFixture({
       organizationId,
       schoolId,
       academicYearId: academic.academicYearId,
       termId: academic.termId,
-      teacherUserId: teacherAId,
+      teacherUserId,
       marker: 'own',
-      plannedDate: '2026-09-14',
-      deletedContent: true,
+      itemNotes: 'teacher private note',
     });
-    otherTeacherFixture = await createLessonFixture({
+    await createStudentEnrollment({
+      organizationId,
+      schoolId,
+      userId: studentAUserId,
+      academicYearId: academic.academicYearId,
+      termId: academic.termId,
+      classroomId: ownFixture.classroomId,
+      marker: 'student-a',
+    });
+
+    otherClassroomFixture = await createLessonFixture({
       organizationId,
       schoolId,
       academicYearId: academic.academicYearId,
       termId: academic.termId,
-      teacherUserId: teacherBId,
-      marker: 'other',
-      plannedDate: '2026-09-14',
+      teacherUserId,
+      marker: 'other-class',
     });
-    closedTermFixture = await createLessonFixture({
+    await createStudentEnrollment({
       organizationId,
       schoolId,
+      userId: studentBUserId,
       academicYearId: academic.academicYearId,
-      termId: academic.closedTermId,
-      teacherUserId: teacherAId,
-      marker: 'closed',
-      plannedDate: '2026-10-05',
+      termId: academic.termId,
+      classroomId: otherClassroomFixture.classroomId,
+      marker: 'student-b',
     });
+
+    archivedPlanItemId = await createArchivedPlanItem({
+      source: ownFixture,
+      schoolId,
+      academicYearId: academic.academicYearId,
+      termId: academic.termId,
+      teacherUserId,
+      marker: 'archived',
+    });
+
     const crossAcademic = await createAcademicContext(crossSchoolId);
     const crossTeacherId = await createUserWithMembership({
       email: `${marker}-cross-teacher@example.test`,
@@ -199,14 +217,13 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
       organizationId: crossOrganizationId,
       schoolId: crossSchoolId,
     });
-    await createLessonFixture({
+    crossSchoolFixture = await createLessonFixture({
       organizationId: crossOrganizationId,
       schoolId: crossSchoolId,
       academicYearId: crossAcademic.academicYearId,
       termId: crossAcademic.termId,
       teacherUserId: crossTeacherId,
       marker: 'cross',
-      plannedDate: '2026-09-14',
     });
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -224,7 +241,10 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
     );
     await app.init();
 
-    teacherAuth = await login(teacherAEmail);
+    studentAAuth = await login(studentAEmail);
+    teacherAuth = await login(teacherEmail);
+    parentAuth = await login(parentEmail);
+    adminAuth = await login(adminEmail);
   });
 
   afterAll(async () => {
@@ -236,196 +256,85 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
     }
   });
 
-  it('registers Teacher App lesson-preparation routes and keeps Parent lesson routes absent', () => {
-    const routes = listRegisteredRoutes();
+  it('denies non-student actors from Student App lesson routes', async () => {
+    for (const auth of [teacherAuth, parentAuth, adminAuth]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/lessons/today`)
+        .query({ date: '2026-09-14' })
+        .set('Authorization', bearer(auth))
+        .expect(403);
 
-    expect(routes).toEqual(
-      expect.arrayContaining([
-        'GET /api/v1/teacher/lesson-preparation/today',
-        'GET /api/v1/teacher/lesson-preparation/week',
-        'GET /api/v1/teacher/lesson-preparation/:lessonPlanItemId',
-        'PATCH /api/v1/teacher/lesson-preparation/:lessonPlanItemId/status',
-        'GET /api/v1/student/lessons/today',
-        'GET /api/v1/student/lessons/week',
-        'GET /api/v1/student/lessons/:lessonPlanItemId',
-        'GET /api/v1/teacher/schedule',
-        'GET /api/v1/teacher/my-classes',
-        'GET /api/v1/academics/lesson-plans',
-      ]),
-    );
-    expect(routes).not.toContain('GET /api/v1/parent/children/:studentId/lessons/today');
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/lessons/${ownFixture.lessonPlanItemId}`)
+        .set('Authorization', bearer(auth))
+        .expect(403);
+    }
   });
 
-  it('lists today and week lesson-preparation items for the teacher only', async () => {
-    const today = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/lesson-preparation/today`)
+  it('hides another classroom, cross-school, and archived lesson items', async () => {
+    for (const hiddenItemId of [
+      otherClassroomFixture.lessonPlanItemId,
+      crossSchoolFixture.lessonPlanItemId,
+      archivedPlanItemId,
+    ]) {
+      const response = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/lessons/${hiddenItemId}`)
+        .set('Authorization', bearer(studentAAuth))
+        .expect(404);
+
+      expect(JSON.stringify(response.body)).not.toContain(hiddenItemId);
+    }
+  });
+
+  it('does not leak hidden lesson existence through list routes', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/lessons/today`)
       .query({ date: '2026-09-14' })
-      .set('Authorization', bearer(teacherAuth))
+      .set('Authorization', bearer(studentAAuth))
       .expect(200);
+    const json = JSON.stringify(response.body);
 
-    expect(today.body).toMatchObject({
-      date: '2026-09-14',
-      dayOfWeek: 1,
-      items: [
-        expect.objectContaining({
-          lessonPlanItemId: fixture.lessonPlanItemId,
-          lessonPlanId: fixture.lessonPlanId,
-          teacherSubjectAllocationId: fixture.allocationId,
-          timetableEntryId: fixture.timetableEntryId,
-          plannedDate: '2026-09-14',
-          status: 'planned',
-        }),
-      ],
-    });
-    expect(JSON.stringify(today.body)).not.toContain(
-      otherTeacherFixture.lessonPlanItemId,
+    expect(json).toContain(ownFixture.lessonPlanItemId);
+    expect(json).not.toContain(otherClassroomFixture.lessonPlanItemId);
+    expect(json).not.toContain(crossSchoolFixture.lessonPlanItemId);
+    expect(json).not.toContain(archivedPlanItemId);
+  });
+
+  it('returns safe lesson content without tenant, storage, or teacher-only fields', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/lessons/${ownFixture.lessonPlanItemId}`)
+      .set('Authorization', bearer(studentAAuth))
+      .expect(200);
+    const json = JSON.stringify(response.body);
+
+    expect(json).not.toContain('teacher private note');
+    expect(json).not.toContain('hidden deleted content');
+    for (const forbiddenKey of [
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'email',
+      'passwordHash',
+      'deletedAt',
+      'objectKey',
+      'bucket',
+      'uploaderId',
+      'createdByUserId',
+      'updatedByUserId',
+      'notes',
+    ]) {
+      expectNoObjectKey(response.body, forbiddenKey);
+    }
+  });
+
+  it('keeps Parent App child lesson routes absent', () => {
+    expect(listRegisteredRoutes()).not.toContain(
+      'GET /api/v1/parent/children/:studentId/lessons/today',
     );
-    expectNoObjectKey(today.body, 'schoolId');
-    expectNoObjectKey(today.body, 'organizationId');
-    expectNoObjectKey(today.body, 'deletedAt');
-
-    const week = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/lesson-preparation/week`)
-      .query({ date: '2026-09-16' })
-      .set('Authorization', bearer(teacherAuth))
-      .expect(200);
-
-    expect(week.body.weekStartDate).toBe('2026-09-13');
-    expect(week.body.weekEndDate).toBe('2026-09-19');
-    expect(week.body.days).toHaveLength(7);
-    expect(
-      week.body.days.find((day: { date: string }) => day.date === '2026-09-14')
-        .items,
-    ).toEqual([
-      expect.objectContaining({
-        lessonPlanItemId: fixture.lessonPlanItemId,
-      }),
-    ]);
   });
 
-  it('returns detail with safe curriculum lesson content metadata only', async () => {
-    const detail = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/teacher/lesson-preparation/${fixture.lessonPlanItemId}`,
-      )
-      .set('Authorization', bearer(teacherAuth))
-      .expect(200);
-
-    expect(detail.body).toMatchObject({
-      lessonPlanItemId: fixture.lessonPlanItemId,
-      subject: { id: fixture.subjectId, code: expect.any(String) },
-      classroom: { id: fixture.classroomId },
-      period: {
-        id: expect.any(String),
-        periodIndex: 1,
-        startTime: '08:00',
-        endTime: '08:45',
-      },
-      curriculum: { id: fixture.curriculumId },
-      unit: { id: fixture.unitId },
-      lesson: { id: fixture.lessonId, objectives: ['objective'] },
-    });
-    expect(detail.body.content).toEqual([
-      expect.objectContaining({
-        type: 'text',
-        title: `${marker}-own-text`,
-        file: null,
-      }),
-      expect.objectContaining({
-        type: 'file',
-        title: `${marker}-own-file`,
-        file: {
-          fileId: expect.any(String),
-          filename: `${marker}-own.pdf`,
-          mimeType: 'application/pdf',
-          sizeBytes: '2048',
-        },
-      }),
-    ]);
-    expect(JSON.stringify(detail.body)).not.toContain('object_key');
-    expect(JSON.stringify(detail.body)).not.toContain('objectKey');
-    expect(JSON.stringify(detail.body)).not.toContain(`${marker}-own-deleted`);
-    expectNoObjectKey(detail.body, 'schoolId');
-    expectNoObjectKey(detail.body, 'organizationId');
-    expectNoObjectKey(detail.body, 'email');
-    expectNoObjectKey(detail.body, 'deletedAt');
-  });
-
-  it('updates status and notes without adding prepared or app-facing side effects', async () => {
-    const updated = await request(app.getHttpServer())
-      .patch(
-        `${GLOBAL_PREFIX}/teacher/lesson-preparation/${fixture.lessonPlanItemId}/status`,
-      )
-      .set('Authorization', bearer(teacherAuth))
-      .send({ status: 'in_progress', notes: 'Prepared with worksheet' })
-      .expect(200);
-
-    expect(updated.body).toMatchObject({
-      lessonPlanItemId: fixture.lessonPlanItemId,
-      status: 'in_progress',
-      notes: 'Prepared with worksheet',
-    });
-    await expect(
-      prisma.lessonPlanItem.findUniqueOrThrow({
-        where: { id: fixture.lessonPlanItemId },
-        select: { status: true, notes: true, updatedByUserId: true },
-      }),
-    ).resolves.toMatchObject({
-      status: LessonPlanItemStatus.IN_PROGRESS,
-      notes: 'Prepared with worksheet',
-      updatedByUserId: teacherAId,
-    });
-
-    await request(app.getHttpServer())
-      .patch(
-        `${GLOBAL_PREFIX}/teacher/lesson-preparation/${fixture.lessonPlanItemId}/status`,
-      )
-      .set('Authorization', bearer(teacherAuth))
-      .send({ status: 'done' })
-      .expect(200)
-      .expect((response) => {
-        expect(response.body.status).toBe('done');
-      });
-
-    await request(app.getHttpServer())
-      .patch(
-        `${GLOBAL_PREFIX}/teacher/lesson-preparation/${fixture.lessonPlanItemId}/status`,
-      )
-      .set('Authorization', bearer(teacherAuth))
-      .send({ status: 'prepared' })
-      .expect(400);
-  });
-
-  it('denies closed-term status writes and preserves existing Teacher App reads', async () => {
-    await request(app.getHttpServer())
-      .patch(
-        `${GLOBAL_PREFIX}/teacher/lesson-preparation/${closedTermFixture.lessonPlanItemId}/status`,
-      )
-      .set('Authorization', bearer(teacherAuth))
-      .send({ status: 'in_progress' })
-      .expect(409)
-      .expect((response) => {
-        expect(response.body.error.code).toBe(
-          'teacher_app.lesson_preparation.closed_term',
-        );
-      });
-
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/schedule`)
-      .query({ date: '2026-09-14' })
-      .set('Authorization', bearer(teacherAuth))
-      .expect(200);
-
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/my-classes`)
-      .set('Authorization', bearer(teacherAuth))
-      .expect(200)
-      .expect((response) => {
-        expect(JSON.stringify(response.body)).toContain(fixture.allocationId);
-      });
-  });
-
-  async function findSystemRole(key: string): Promise<{ id: string }> {
+  async function findSystemRole(key: string) {
     const role = await prisma.role.findFirst({
       where: { key, schoolId: null, isSystem: true },
       select: { id: true },
@@ -530,25 +439,47 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
     });
     cleanup.termIds.add(term.id);
 
-    const closedTerm = await prisma.term.create({
-      data: {
-        schoolId: schoolIdForContext,
-        academicYearId: academicYear.id,
-        nameAr: `${marker}-${schoolIdForContext}-closed-term-ar`,
-        nameEn: `${marker}-${schoolIdForContext}-closed-term`,
-        startDate: new Date('2026-09-01T00:00:00.000Z'),
-        endDate: new Date('2026-12-31T00:00:00.000Z'),
-        isActive: false,
-      },
-      select: { id: true },
-    });
-    cleanup.termIds.add(closedTerm.id);
-
     return {
       academicYearId: academicYear.id,
       termId: term.id,
-      closedTermId: closedTerm.id,
     };
+  }
+
+  async function createStudentEnrollment(params: {
+    organizationId: string;
+    schoolId: string;
+    userId: string;
+    academicYearId: string;
+    termId: string;
+    classroomId: string;
+    marker: string;
+  }): Promise<void> {
+    const student = await prisma.student.create({
+      data: {
+        organizationId: params.organizationId,
+        schoolId: params.schoolId,
+        userId: params.userId,
+        firstName: `${marker}-${params.marker}-student`,
+        lastName: 'Learner',
+        status: StudentStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    cleanup.studentIds.add(student.id);
+
+    const enrollment = await prisma.enrollment.create({
+      data: {
+        schoolId: params.schoolId,
+        studentId: student.id,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        classroomId: params.classroomId,
+        status: StudentEnrollmentStatus.ACTIVE,
+        enrolledAt: new Date('2026-09-01T00:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    cleanup.enrollmentIds.add(enrollment.id);
   }
 
   async function createLessonFixture(params: {
@@ -558,8 +489,7 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
     termId: string;
     teacherUserId: string;
     marker: string;
-    plannedDate: string;
-    deletedContent?: boolean;
+    itemNotes?: string;
   }): Promise<LessonFixture> {
     const stage = await prisma.stage.create({
       data: {
@@ -625,7 +555,7 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
         schoolId: params.schoolId,
         nameAr: `${marker}-${params.marker}-subject-ar`,
         nameEn: `${marker}-${params.marker}-subject`,
-        code: `${suffix}-${params.marker}`.toUpperCase(),
+        code: `${suffix}-${params.marker}`.slice(0, 30).toUpperCase(),
         color: '#3366ff',
         isActive: true,
       },
@@ -651,8 +581,8 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
         academicYearId: params.academicYearId,
         termId: params.termId,
         name: `${marker}-${params.marker}-config`,
-        weekStartDay: 0,
-        activeDays: [0, 1, 2, 3, 4],
+        weekStartDay: 1,
+        activeDays: [1, 2, 3, 4, 5],
         scopeType: TimetableScopeType.CLASSROOM,
         scopeKey: classroom.id,
         gradeId: grade.id,
@@ -761,9 +691,10 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
         lessonId: lesson.id,
         type: LessonContentItemType.TEXT,
         title: `${marker}-${params.marker}-text`,
-        bodyText: 'Teacher-facing content',
+        bodyText: 'Student-visible content',
         sortOrder: 1,
         isRequired: true,
+        estimatedMinutes: 10,
         createdByUserId: params.teacherUserId,
       },
     });
@@ -797,22 +728,20 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
       },
     });
 
-    if (params.deletedContent) {
-      await prisma.lessonContentItem.create({
-        data: {
-          schoolId: params.schoolId,
-          curriculumId: curriculum.id,
-          unitId: unit.id,
-          lessonId: lesson.id,
-          type: LessonContentItemType.TEXT,
-          title: `${marker}-${params.marker}-deleted`,
-          bodyText: 'Should stay hidden',
-          sortOrder: 3,
-          createdByUserId: params.teacherUserId,
-          deletedAt: new Date(),
-        },
-      });
-    }
+    await prisma.lessonContentItem.create({
+      data: {
+        schoolId: params.schoolId,
+        curriculumId: curriculum.id,
+        unitId: unit.id,
+        lessonId: lesson.id,
+        type: LessonContentItemType.TEXT,
+        title: `${marker}-${params.marker}-deleted`,
+        bodyText: 'hidden deleted content',
+        sortOrder: 3,
+        createdByUserId: params.teacherUserId,
+        deletedAt: new Date(),
+      },
+    });
 
     const lessonPlan = await prisma.lessonPlan.create({
       data: {
@@ -826,8 +755,8 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
         curriculumId: curriculum.id,
         title: `${marker}-${params.marker}-plan`,
         status: LessonPlanStatus.ACTIVE,
-        weekStartDate: new Date('2026-09-13T00:00:00.000Z'),
-        weekEndDate: new Date('2026-09-19T00:00:00.000Z'),
+        weekStartDate: new Date('2026-09-14T00:00:00.000Z'),
+        weekEndDate: new Date('2026-09-20T00:00:00.000Z'),
         createdByUserId: params.teacherUserId,
       },
       select: { id: true },
@@ -842,11 +771,12 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
         unitId: unit.id,
         lessonId: lesson.id,
         timetableEntryId: entry.id,
-        plannedDate: new Date(`${params.plannedDate}T00:00:00.000Z`),
+        plannedDate: new Date('2026-09-14T00:00:00.000Z'),
         dayOfWeek: 1,
         periodId: period.id,
         periodLabel: 'Period 1',
         title: `${marker}-${params.marker}-item`,
+        notes: params.itemNotes ?? null,
         status: LessonPlanItemStatus.PLANNED,
         sortOrder: 1,
         createdByUserId: params.teacherUserId,
@@ -859,13 +789,131 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
       allocationId: allocation.id,
       classroomId: classroom.id,
       subjectId: subject.id,
-      curriculumId: curriculum.id,
-      unitId: unit.id,
-      lessonId: lesson.id,
-      lessonPlanId: lessonPlan.id,
       lessonPlanItemId: item.id,
       timetableEntryId: entry.id,
     };
+  }
+
+  async function createArchivedPlanItem(params: {
+    source: LessonFixture;
+    schoolId: string;
+    academicYearId: string;
+    termId: string;
+    teacherUserId: string;
+    marker: string;
+  }): Promise<string> {
+    const classroom = await prisma.classroom.findUniqueOrThrow({
+      where: {
+        id_schoolId: {
+          id: params.source.classroomId,
+          schoolId: params.schoolId,
+        },
+      },
+      select: { section: { select: { gradeId: true } } },
+    });
+    const subject = await prisma.subject.create({
+      data: {
+        schoolId: params.schoolId,
+        nameAr: `${marker}-${params.marker}-subject-ar`,
+        nameEn: `${marker}-${params.marker}-subject`,
+        code: `${suffix}-${params.marker}`.slice(0, 30).toUpperCase(),
+        color: '#6633ff',
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    cleanup.subjectIds.add(subject.id);
+
+    const allocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId: params.schoolId,
+        teacherUserId: params.teacherUserId,
+        subjectId: subject.id,
+        classroomId: params.source.classroomId,
+        termId: params.termId,
+      },
+      select: { id: true },
+    });
+    cleanup.allocationIds.add(allocation.id);
+
+    const curriculum = await prisma.curriculum.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        gradeId: classroom.section.gradeId,
+        subjectId: subject.id,
+        title: `${marker}-${params.marker}-curriculum`,
+        status: CurriculumStatus.ACTIVE,
+        createdByUserId: params.teacherUserId,
+      },
+      select: { id: true },
+    });
+    cleanup.curriculumIds.add(curriculum.id);
+
+    const unit = await prisma.curriculumUnit.create({
+      data: {
+        schoolId: params.schoolId,
+        curriculumId: curriculum.id,
+        title: `${marker}-${params.marker}-unit`,
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    cleanup.curriculumUnitIds.add(unit.id);
+
+    const lesson = await prisma.curriculumLesson.create({
+      data: {
+        schoolId: params.schoolId,
+        curriculumId: curriculum.id,
+        unitId: unit.id,
+        title: `${marker}-${params.marker}-lesson`,
+        objectives: ['objective'],
+        sortOrder: 1,
+      },
+      select: { id: true },
+    });
+    cleanup.curriculumLessonIds.add(lesson.id);
+
+    const plan = await prisma.lessonPlan.create({
+      data: {
+        schoolId: params.schoolId,
+        academicYearId: params.academicYearId,
+        termId: params.termId,
+        teacherSubjectAllocationId: allocation.id,
+        teacherUserId: params.teacherUserId,
+        classroomId: params.source.classroomId,
+        subjectId: subject.id,
+        curriculumId: curriculum.id,
+        title: `${marker}-${params.marker}-plan`,
+        status: LessonPlanStatus.ARCHIVED,
+        weekStartDate: new Date('2026-09-14T00:00:00.000Z'),
+        weekEndDate: new Date('2026-09-20T00:00:00.000Z'),
+        createdByUserId: params.teacherUserId,
+      },
+      select: { id: true },
+    });
+    cleanup.lessonPlanIds.add(plan.id);
+
+    const item = await prisma.lessonPlanItem.create({
+      data: {
+        schoolId: params.schoolId,
+        lessonPlanId: plan.id,
+        curriculumId: curriculum.id,
+        unitId: unit.id,
+        lessonId: lesson.id,
+        timetableEntryId: null,
+        plannedDate: new Date('2026-09-14T00:00:00.000Z'),
+        dayOfWeek: 1,
+        title: `${marker}-${params.marker}-item`,
+        status: LessonPlanItemStatus.PLANNED,
+        sortOrder: 2,
+        createdByUserId: params.teacherUserId,
+      },
+      select: { id: true },
+    });
+    cleanup.lessonPlanItemIds.add(item.id);
+    return item.id;
   }
 
   async function login(email: string): Promise<AuthTokens> {
@@ -976,6 +1024,12 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
     await prisma.subject.deleteMany({
       where: { id: { in: [...cleanup.subjectIds] } },
     });
+    await prisma.enrollment.deleteMany({
+      where: { id: { in: [...cleanup.enrollmentIds] } },
+    });
+    await prisma.student.deleteMany({
+      where: { id: { in: [...cleanup.studentIds] } },
+    });
     await prisma.classroom.deleteMany({
       where: { id: { in: [...cleanup.classroomIds] } },
     });
@@ -1036,5 +1090,7 @@ function createCleanupState() {
     lessonPlanIds: new Set<string>(),
     lessonPlanItemIds: new Set<string>(),
     fileIds: new Set<string>(),
+    studentIds: new Set<string>(),
+    enrollmentIds: new Set<string>(),
   };
 }

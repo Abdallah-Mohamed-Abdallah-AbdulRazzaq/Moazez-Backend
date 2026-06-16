@@ -468,6 +468,7 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `student_app.student.not_found`           | 404  | Student App student was not found                |
 | `student_app.enrollment.not_found`        | 404  | Student App active enrollment was not found      |
 | `student_app.classroom.not_found`         | 404  | Student App classroom was not found              |
+| `student_app.lessons.not_found`           | 404  | Student lesson was not found                     |
 
 ### Parent App
 
