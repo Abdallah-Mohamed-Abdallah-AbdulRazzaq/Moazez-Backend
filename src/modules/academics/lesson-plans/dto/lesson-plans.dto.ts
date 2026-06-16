@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -54,6 +55,92 @@ export class ListLessonPlansQueryDto {
   @MaxLength(120)
   search?: string;
 }
+
+export class LessonPlanWeeksQueryDto {
+  @IsUUID()
+  termId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  teacherSubjectAllocationId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+}
+
+export class LessonPlanSummaryQueryDto {
+  @IsUUID()
+  termId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  teacherSubjectAllocationId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  gradeId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  subjectId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  classroomId?: string;
+}
+
+export class AutoPlanLessonPlanDto {
+  @IsUUID()
+  termId!: string;
+
+  @IsUUID()
+  teacherSubjectAllocationId!: string;
+
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  overwrite?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
+}
+
+export class MoveLessonPlanItemDto {
+  @IsOptional()
+  @IsDateString()
+  plannedDate?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  weekIndex?: number;
+
+  @IsOptional()
+  @IsUUID()
+  timetableEntryId?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+}
+
+export class LessonPlanValidationQueryDto extends LessonPlanSummaryQueryDto {}
 
 export class CreateLessonPlanDto {
   @IsUUID()

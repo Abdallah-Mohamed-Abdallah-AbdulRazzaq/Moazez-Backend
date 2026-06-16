@@ -35,6 +35,72 @@ export class LessonPlanInvalidScopeException extends DomainException {
   }
 }
 
+export class LessonPlanClosedTermException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.lesson_plan.closed_term',
+      message: 'Lesson plan cannot be changed for a closed term',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class LessonPlanInvalidDateRangeException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.lesson_plan.invalid_date_range',
+      message: 'Lesson plan date range is invalid',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class LessonPlanHolidayDateException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.lesson_plan.holiday_date',
+      message: 'Lesson plan item cannot be scheduled on a holiday',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class LessonPlanAutoPlanNoCurriculumException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.lesson_plan.auto_plan_no_curriculum',
+      message: 'No curriculum lessons are available for auto-plan',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class LessonPlanAutoPlanNoSlotsException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.lesson_plan.auto_plan_no_slots',
+      message: 'No timetable slots are available for auto-plan',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
+export class LessonPlanInvalidTimetableEntryException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'academics.lesson_plan.invalid_timetable_entry',
+      message: 'Lesson plan timetable entry scope is invalid',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
 export class LessonPlanReadOnlyException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({

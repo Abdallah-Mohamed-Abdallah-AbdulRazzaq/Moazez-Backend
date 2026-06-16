@@ -4,11 +4,32 @@ import type {
   LessonPlanListRecord,
 } from '../infrastructure/lesson-plans.repository';
 import type {
+  AutoPlanLessonPlanResponseDto,
+  LessonPlanSummaryResponseDto,
+  LessonPlanValidationResponseDto,
+  LessonPlanWeeksResponseDto,
   LessonPlanDetailResponseDto,
   LessonPlanItemResponseDto,
   LessonPlanResponseDto,
   LessonPlansListResponseDto,
 } from '../dto/lesson-plans-response.dto';
+
+export type LessonPlanWeekPresentation = {
+  weekIndex: number;
+  startsAt: Date;
+  endsAt: Date;
+  instructionalDays: Date[];
+  holidayDays: Array<{
+    date: Date;
+    eventId: string;
+    title: string;
+  }>;
+  plannedItemsCount: number;
+};
+
+export type LessonPlanSummaryPresentation = LessonPlanSummaryResponseDto;
+export type AutoPlanLessonPlanPresentation = AutoPlanLessonPlanResponseDto;
+export type LessonPlanValidationPresentation = LessonPlanValidationResponseDto;
 
 function deriveName(nameAr: string, nameEn: string): string {
   return nameEn.trim().length > 0 ? nameEn : nameAr;
@@ -134,4 +155,47 @@ export function presentLessonPlanItem(
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
   };
+}
+
+export function presentLessonPlanWeeks(input: {
+  termId: string;
+  academicYearId: string;
+  weeks: LessonPlanWeekPresentation[];
+}): LessonPlanWeeksResponseDto {
+  return {
+    termId: input.termId,
+    academicYearId: input.academicYearId,
+    weeks: input.weeks.map((week) => ({
+      weekIndex: week.weekIndex,
+      startsAt: dateToDateOnly(week.startsAt) ?? '',
+      endsAt: dateToDateOnly(week.endsAt) ?? '',
+      instructionalDays: week.instructionalDays.map(
+        (day) => dateToDateOnly(day) ?? '',
+      ),
+      holidayDays: week.holidayDays.map((holiday) => ({
+        date: dateToDateOnly(holiday.date) ?? '',
+        eventId: holiday.eventId,
+        title: holiday.title,
+      })),
+      plannedItemsCount: week.plannedItemsCount,
+    })),
+  };
+}
+
+export function presentLessonPlanSummary(
+  input: LessonPlanSummaryPresentation,
+): LessonPlanSummaryResponseDto {
+  return input;
+}
+
+export function presentAutoPlanLessonPlan(
+  input: AutoPlanLessonPlanPresentation,
+): AutoPlanLessonPlanResponseDto {
+  return input;
+}
+
+export function presentLessonPlanValidation(
+  input: LessonPlanValidationPresentation,
+): LessonPlanValidationResponseDto {
+  return input;
 }

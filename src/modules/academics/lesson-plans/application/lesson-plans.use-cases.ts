@@ -35,6 +35,7 @@ import {
 } from '../domain/lesson-plan-inputs';
 import {
   isUniqueConstraintError,
+  LessonPlanClosedTermException,
   LessonPlanDuplicateException,
   LessonPlanInvalidItemScopeException,
   LessonPlanInvalidScopeException,
@@ -49,6 +50,7 @@ import {
   LessonPlanDetailRecord,
   LessonPlanItemRecord,
   LessonPlanLessonRecord,
+  LessonPlanTermRecord,
   LessonPlanTimetableEntryRecord,
   LessonPlansRepository,
   ListLessonPlansFilters,
@@ -102,6 +104,7 @@ export class CreateLessonPlanUseCase {
       this.lessonPlansRepository,
       command,
     );
+    assertTermWritable(resolved.term);
     const title = normalizeRequiredTitle(command.title);
     const description = normalizeNullableText(command.description);
     const weekStartDate = normalizeDateOnly(
@@ -194,6 +197,7 @@ export class UpdateLessonPlanUseCase {
       lessonPlanId,
     );
     assertPlanMutable(existing);
+    assertPlanTermWritable(existing);
 
     const weekStartDate =
       command.weekStartDate !== undefined
@@ -257,6 +261,7 @@ export class ActivateLessonPlanUseCase {
       this.lessonPlansRepository,
       lessonPlanId,
     );
+    assertPlanTermWritable(existing);
     if (existing.status !== LessonPlanStatus.DRAFT) {
       throw new LessonPlanInvalidTransitionException({
         from: existing.status,
@@ -302,6 +307,7 @@ export class ArchiveLessonPlanUseCase {
       this.lessonPlansRepository,
       lessonPlanId,
     );
+    assertPlanTermWritable(existing);
     if (existing.status === LessonPlanStatus.ARCHIVED) {
       throw new LessonPlanInvalidTransitionException({
         from: existing.status,
@@ -341,6 +347,7 @@ export class DeleteLessonPlanUseCase {
       this.lessonPlansRepository,
       lessonPlanId,
     );
+    assertPlanTermWritable(existing);
     const result = await this.lessonPlansRepository.softDeletePlan(lessonPlanId);
     if (result.status === 'not_found') {
       throw new LessonPlanNotFoundException({ lessonPlanId });
@@ -376,6 +383,7 @@ export class CreateLessonPlanItemUseCase {
       lessonPlanId,
     );
     assertPlanMutable(lessonPlan);
+    assertPlanTermWritable(lessonPlan);
     const lesson = await resolveItemLessonScope(
       this.lessonPlansRepository,
       lessonPlan,
@@ -442,6 +450,7 @@ export class UpdateLessonPlanItemUseCase {
       lessonPlanId,
     );
     assertPlanMutable(lessonPlan);
+    assertPlanTermWritable(lessonPlan);
     const existing = await findItemOrThrow(this.lessonPlansRepository, {
       lessonPlanId,
       itemId,
@@ -524,6 +533,7 @@ export class ReorderLessonPlanItemUseCase {
       lessonPlanId,
     );
     assertPlanMutable(lessonPlan);
+    assertPlanTermWritable(lessonPlan);
     assertSortOrder(command.sortOrder);
     const existing = await findItemOrThrow(this.lessonPlansRepository, {
       lessonPlanId,
@@ -567,6 +577,7 @@ export class LessonPlanItemStatusUseCase {
       lessonPlanId,
     );
     assertPlanMutable(lessonPlan);
+    assertPlanTermWritable(lessonPlan);
     const existing = await findItemOrThrow(this.lessonPlansRepository, {
       lessonPlanId,
       itemId,
@@ -708,6 +719,7 @@ export class DeleteLessonPlanItemUseCase {
       lessonPlanId,
     );
     assertPlanMutable(lessonPlan);
+    assertPlanTermWritable(lessonPlan);
     const existing = await findItemOrThrow(this.lessonPlansRepository, {
       lessonPlanId,
       itemId,
@@ -736,6 +748,7 @@ export class DeleteLessonPlanItemUseCase {
 
 type PlanCreateScope = {
   allocation: LessonPlanAllocationRecord;
+  term: LessonPlanTermRecord;
 };
 
 async function resolvePlanCreateScope(
@@ -791,7 +804,7 @@ async function resolvePlanCreateScope(
     throw new LessonPlanInvalidScopeException({ field: 'curriculumId' });
   }
 
-  return { allocation };
+  return { allocation, term };
 }
 
 async function findPlanOrThrow(
@@ -824,6 +837,16 @@ function assertPlanMutable(lessonPlan: LessonPlanDetailRecord): void {
       lessonPlanId: lessonPlan.id,
       status: lessonPlan.status,
     });
+  }
+}
+
+function assertPlanTermWritable(lessonPlan: LessonPlanDetailRecord): void {
+  assertTermWritable(lessonPlan.term);
+}
+
+function assertTermWritable(term: { id: string; isActive: boolean }): void {
+  if (!term.isActive) {
+    throw new LessonPlanClosedTermException({ termId: term.id });
   }
 }
 

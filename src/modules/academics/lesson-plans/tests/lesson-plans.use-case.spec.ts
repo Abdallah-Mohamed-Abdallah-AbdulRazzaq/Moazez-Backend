@@ -1,6 +1,9 @@
 import {
+  AcademicCalendarEventScopeType,
+  AcademicCalendarEventType,
   LessonPlanItemStatus,
   LessonPlanStatus,
+  TimetableEntryStatus,
   UserType,
 } from '@prisma/client';
 import {
@@ -9,6 +12,13 @@ import {
   setActiveMembership,
   setActor,
 } from '../../../../common/context/request-context';
+import {
+  AutoPlanLessonPlanUseCase,
+  GetLessonPlanSummaryUseCase,
+  ListLessonPlanWeeksUseCase,
+  MoveLessonPlanItemUseCase,
+  ValidateLessonPlansUseCase,
+} from '../application/lesson-plan-workflows.use-cases';
 import {
   CreateLessonPlanItemUseCase,
   CreateLessonPlanUseCase,
@@ -58,6 +68,8 @@ describe('Lesson plans use cases', () => {
         id: 'term-1',
         schoolId: 'school-1',
         academicYearId: 'year-1',
+        startDate: new Date('2026-09-01T00:00:00.000Z'),
+        endDate: new Date('2026-12-31T00:00:00.000Z'),
         isActive: true,
       }),
       findTeacherAllocationById: jest.fn().mockResolvedValue(allocationRecord()),
@@ -108,6 +120,32 @@ describe('Lesson plans use cases', () => {
       listItemsForPlan: jest.fn().mockResolvedValue([]),
       countNonDeletedItems: jest.fn().mockResolvedValue(1),
       updateManyItemsStatus: jest.fn(),
+      listPlanDetailsForWorkflows: jest.fn().mockResolvedValue([]),
+      listTeacherAllocationsForWorkflows: jest
+        .fn()
+        .mockResolvedValue([allocationRecord()]),
+      listHolidayEvents: jest.fn().mockResolvedValue([]),
+      listCurriculumLessonsForAllocation: jest
+        .fn()
+        .mockResolvedValue([curriculumLessonRecord()]),
+      listTimetableEntriesForAllocation: jest
+        .fn()
+        .mockResolvedValue([timetableRecord()]),
+      findItemWithPlanById: jest.fn().mockResolvedValue({
+        item: itemRecord(),
+        lessonPlan: planRecord({ items: [itemRecord()] }),
+      }),
+      findPlanByAllocationAndWeek: jest.fn().mockResolvedValue(null),
+      persistAutoPlanItems: jest.fn().mockResolvedValue({
+        createdItems: [itemRecord({ id: 'auto-item-1' })],
+        updatedItems: [],
+      }),
+      moveItemToWeek: jest.fn().mockImplementation(async ({ data }) =>
+        itemRecord({
+          id: 'item-1',
+          ...data,
+        }),
+      ),
       ...overrides,
     };
 
@@ -379,6 +417,320 @@ describe('Lesson plans use cases', () => {
     });
   });
 
+  it('returns holiday-aware lesson plan weeks', async () => {
+    const repository = createRepository({
+      listHolidayEvents: jest.fn().mockResolvedValue([holidayRecord()]),
+      listPlanDetailsForWorkflows: jest.fn().mockResolvedValue([
+        planRecord({
+          items: [
+            itemRecord({
+              plannedDate: new Date('2026-09-02T00:00:00.000Z'),
+            }),
+          ],
+        }),
+      ]),
+    });
+    const useCase = new ListLessonPlanWeeksUseCase(repository);
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute({
+          termId: 'term-1',
+          from: '2026-09-01',
+          to: '2026-09-07',
+        }),
+      ).resolves.toMatchObject({
+        termId: 'term-1',
+        weeks: [
+          {
+            weekIndex: 1,
+            startsAt: '2026-09-01',
+            endsAt: '2026-09-07',
+            plannedItemsCount: 1,
+            holidayDays: [
+              {
+                date: '2026-09-03',
+                eventId: 'holiday-1',
+                title: 'Founders Day',
+              },
+            ],
+          },
+        ],
+      });
+    });
+  });
+
+  it('summarizes lesson plan progress by teacher allocation', async () => {
+    const repository = createRepository({
+      listPlanDetailsForWorkflows: jest.fn().mockResolvedValue([
+        planRecord({
+          items: [
+            itemRecord({ lessonId: 'lesson-1' }),
+            itemRecord({
+              id: 'item-2',
+              lessonId: 'lesson-2',
+              status: LessonPlanItemStatus.DONE,
+            }),
+          ],
+        }),
+      ]),
+      listCurriculumLessonsForAllocation: jest.fn().mockResolvedValue([
+        curriculumLessonRecord({ id: 'lesson-1' }),
+        curriculumLessonRecord({ id: 'lesson-2', sortOrder: 2 }),
+        curriculumLessonRecord({ id: 'lesson-3', sortOrder: 3 }),
+      ]),
+    });
+    const useCase = new GetLessonPlanSummaryUseCase(repository);
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute({ termId: 'term-1' }),
+      ).resolves.toMatchObject({
+        summary: {
+          lessonPlansCount: 1,
+          itemsCount: 2,
+          plannedItemsCount: 1,
+          completedItemsCount: 1,
+          unplannedLessonsCount: 1,
+          coveragePercent: 67,
+        },
+        byTeacherAllocation: [
+          {
+            teacherSubjectAllocationId: 'allocation-1',
+            teacher: {
+              id: 'teacher-1',
+              firstName: 'Tina',
+              lastName: 'Teacher',
+            },
+            unplannedLessonsCount: 1,
+          },
+        ],
+      });
+    });
+  });
+
+  it('auto-plan dryRun proposes curriculum lessons on timetable slots and skips holidays', async () => {
+    const repository = createRepository({
+      listHolidayEvents: jest.fn().mockResolvedValue([holidayRecord()]),
+      listCurriculumLessonsForAllocation: jest.fn().mockResolvedValue([
+        curriculumLessonRecord({ id: 'lesson-1' }),
+        curriculumLessonRecord({ id: 'lesson-2', sortOrder: 2 }),
+      ]),
+      listTimetableEntriesForAllocation: jest.fn().mockResolvedValue([
+        timetableRecord({ id: 'entry-1', dayOfWeek: 3 }),
+        timetableRecord({ id: 'entry-2', dayOfWeek: 4 }),
+      ]),
+    });
+    const useCase = new AutoPlanLessonPlanUseCase(
+      repository,
+      createAuthRepository() as never,
+    );
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute({
+          termId: 'term-1',
+          teacherSubjectAllocationId: 'allocation-1',
+          from: '2026-09-02',
+          to: '2026-09-03',
+          dryRun: true,
+        }),
+      ).resolves.toMatchObject({
+        dryRun: true,
+        summary: {
+          candidateLessons: 2,
+          availableSlots: 1,
+          proposedItems: 1,
+          skippedHolidaySlots: 1,
+        },
+        items: [
+          {
+            lessonId: 'lesson-1',
+            plannedDate: '2026-09-02',
+            timetableEntryId: 'entry-1',
+            status: 'proposed',
+          },
+        ],
+      });
+    });
+
+    expect(repository.persistAutoPlanItems).not.toHaveBeenCalled();
+  });
+
+  it('auto-plan persistence creates planned items without duplicating existing lessons', async () => {
+    const repository = createRepository({
+      listPlanDetailsForWorkflows: jest.fn().mockResolvedValue([
+        planRecord({ items: [itemRecord({ lessonId: 'lesson-1' })] }),
+      ]),
+      listCurriculumLessonsForAllocation: jest.fn().mockResolvedValue([
+        curriculumLessonRecord({ id: 'lesson-1' }),
+        curriculumLessonRecord({ id: 'lesson-2', sortOrder: 2 }),
+      ]),
+      listTimetableEntriesForAllocation: jest.fn().mockResolvedValue([
+        timetableRecord({ id: 'entry-1', dayOfWeek: 2 }),
+      ]),
+    });
+    const useCase = new AutoPlanLessonPlanUseCase(
+      repository,
+      createAuthRepository() as never,
+    );
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute({
+          termId: 'term-1',
+          teacherSubjectAllocationId: 'allocation-1',
+          from: '2026-09-01',
+          to: '2026-09-02',
+        }),
+      ).resolves.toMatchObject({
+        dryRun: false,
+        summary: {
+          proposedItems: 1,
+          createdItems: 1,
+          skippedExistingItems: 1,
+        },
+      });
+    });
+
+    expect(repository.persistAutoPlanItems).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schoolId: 'school-1',
+        actorId: 'user-1',
+        overwrite: false,
+        items: [
+          expect.objectContaining({
+            lessonId: 'lesson-2',
+            timetableEntryId: 'entry-1',
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('rejects auto-plan persistence for a closed term', async () => {
+    const repository = createRepository({
+      findTermById: jest.fn().mockResolvedValue({
+        id: 'term-1',
+        schoolId: 'school-1',
+        academicYearId: 'year-1',
+        startDate: new Date('2026-09-01T00:00:00.000Z'),
+        endDate: new Date('2026-12-31T00:00:00.000Z'),
+        isActive: false,
+      }),
+    });
+    const useCase = new AutoPlanLessonPlanUseCase(
+      repository,
+      createAuthRepository() as never,
+    );
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute({
+          termId: 'term-1',
+          teacherSubjectAllocationId: 'allocation-1',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.lesson_plan.closed_term',
+      });
+    });
+  });
+
+  it('moves a lesson plan item to a new date and timetable slot', async () => {
+    const repository = createRepository({
+      findTimetableEntryById: jest
+        .fn()
+        .mockResolvedValue(timetableRecord({ dayOfWeek: 3 })),
+    });
+    const useCase = new MoveLessonPlanItemUseCase(
+      repository,
+      createAuthRepository() as never,
+    );
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute('item-1', {
+          plannedDate: '2026-09-09',
+          timetableEntryId: 'entry-1',
+          sortOrder: 4,
+        }),
+      ).resolves.toMatchObject({
+        itemId: 'item-1',
+        plannedDate: '2026-09-09',
+        timetableEntryId: 'entry-1',
+        sortOrder: 4,
+      });
+    });
+
+    expect(repository.moveItemToWeek).toHaveBeenCalledWith(
+      expect.objectContaining({
+        weekStartDate: new Date('2026-09-08T00:00:00.000Z'),
+        weekEndDate: new Date('2026-09-14T00:00:00.000Z'),
+        data: expect.objectContaining({
+          plannedDate: new Date('2026-09-09T00:00:00.000Z'),
+          dayOfWeek: 3,
+          sortOrder: 4,
+        }),
+      }),
+    );
+  });
+
+  it('rejects moving a lesson plan item onto a holiday', async () => {
+    const repository = createRepository({
+      listHolidayEvents: jest.fn().mockResolvedValue([holidayRecord()]),
+    });
+    const useCase = new MoveLessonPlanItemUseCase(
+      repository,
+      createAuthRepository() as never,
+    );
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute('item-1', { plannedDate: '2026-09-03' }),
+      ).rejects.toMatchObject({
+        code: 'academics.lesson_plan.holiday_date',
+      });
+    });
+  });
+
+  it('validation reports missing planned curriculum lessons and holiday items', async () => {
+    const repository = createRepository({
+      listHolidayEvents: jest.fn().mockResolvedValue([holidayRecord()]),
+      listPlanDetailsForWorkflows: jest.fn().mockResolvedValue([
+        planRecord({
+          items: [
+            itemRecord({
+              lessonId: 'lesson-1',
+              plannedDate: new Date('2026-09-03T00:00:00.000Z'),
+            }),
+          ],
+        }),
+      ]),
+      listCurriculumLessonsForAllocation: jest.fn().mockResolvedValue([
+        curriculumLessonRecord({ id: 'lesson-1' }),
+        curriculumLessonRecord({ id: 'lesson-2', sortOrder: 2 }),
+      ]),
+    });
+    const useCase = new ValidateLessonPlansUseCase(repository);
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute({ termId: 'term-1' }),
+      ).resolves.toMatchObject({
+        summary: {
+          lessonPlansChecked: 1,
+          itemsChecked: 1,
+          missingPlannedLessons: 1,
+          holidayItems: 1,
+        },
+        issues: expect.arrayContaining([
+          expect.objectContaining({ code: 'missing_planned_lesson' }),
+          expect.objectContaining({ code: 'holiday_planned_item' }),
+        ]),
+      });
+    });
+  });
+
   it('presenter hides tenant fields', () => {
     const result = presentLessonPlanDetail(
       planRecord({
@@ -418,6 +770,10 @@ function allocationRecord(overrides: Record<string, unknown> = {}) {
       section: {
         id: 'section-1',
         gradeId: 'grade-1',
+        grade: {
+          id: 'grade-1',
+          stageId: 'stage-1',
+        },
       },
     },
     subject: {
@@ -430,6 +786,9 @@ function allocationRecord(overrides: Record<string, unknown> = {}) {
     term: {
       id: 'term-1',
       academicYearId: 'year-1',
+      startDate: new Date('2026-09-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T00:00:00.000Z'),
+      isActive: true,
     },
     ...overrides,
   };
@@ -483,6 +842,9 @@ function planRecord(
       id: 'term-1',
       nameAr: 'Term AR',
       nameEn: 'Term EN',
+      startDate: new Date('2026-09-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T00:00:00.000Z'),
+      isActive: true,
     },
     teacherUser: {
       id: 'teacher-1',
@@ -497,6 +859,10 @@ function planRecord(
       section: {
         id: 'section-1',
         gradeId: 'grade-1',
+        grade: {
+          id: 'grade-1',
+          stageId: 'stage-1',
+        },
       },
     },
     subject: {
@@ -562,6 +928,48 @@ function itemRecord(
   } as LessonPlanItemRecord;
 }
 
+function curriculumLessonRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'lesson-1',
+    curriculumId: 'curriculum-1',
+    unitId: 'unit-1',
+    title: 'Lesson 1',
+    sortOrder: 1,
+    unit: {
+      id: 'unit-1',
+      title: 'Unit 1',
+      sortOrder: 1,
+    },
+    curriculum: {
+      id: 'curriculum-1',
+      academicYearId: 'year-1',
+      termId: 'term-1',
+      gradeId: 'grade-1',
+      subjectId: 'subject-1',
+      title: 'Math Curriculum',
+      status: 'ACTIVE',
+    },
+    ...overrides,
+  };
+}
+
+function holidayRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'holiday-1',
+    termId: 'term-1',
+    title: 'Founders Day',
+    type: AcademicCalendarEventType.HOLIDAY,
+    scopeType: AcademicCalendarEventScopeType.SCHOOL,
+    scopeKey: null,
+    stageId: null,
+    gradeId: null,
+    sectionId: null,
+    startDate: new Date('2026-09-03T00:00:00.000Z'),
+    endDate: new Date('2026-09-03T23:59:59.000Z'),
+    ...overrides,
+  };
+}
+
 function timetableRecord(overrides: Record<string, unknown> = {}) {
   return {
     id: 'entry-1',
@@ -573,10 +981,11 @@ function timetableRecord(overrides: Record<string, unknown> = {}) {
     subjectId: 'subject-1',
     periodId: 'period-1',
     dayOfWeek: 2,
-    status: 'ACTIVE',
+    status: TimetableEntryStatus.ACTIVE,
     period: {
       id: 'period-1',
       label: 'Period 1',
+      periodIndex: 1,
     },
     ...overrides,
   };

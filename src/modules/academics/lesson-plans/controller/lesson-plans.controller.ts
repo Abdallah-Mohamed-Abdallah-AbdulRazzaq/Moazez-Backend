@@ -21,6 +21,13 @@ import {
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import {
+  AutoPlanLessonPlanUseCase,
+  GetLessonPlanSummaryUseCase,
+  ListLessonPlanWeeksUseCase,
+  MoveLessonPlanItemUseCase,
+  ValidateLessonPlansUseCase,
+} from '../application/lesson-plan-workflows.use-cases';
+import {
   ActivateLessonPlanUseCase,
   ArchiveLessonPlanUseCase,
   CancelLessonPlanItemUseCase,
@@ -38,19 +45,28 @@ import {
   UpdateLessonPlanUseCase,
 } from '../application/lesson-plans.use-cases';
 import {
+  AutoPlanLessonPlanDto,
   CreateLessonPlanDto,
   CreateLessonPlanItemDto,
+  LessonPlanSummaryQueryDto,
+  LessonPlanValidationQueryDto,
+  LessonPlanWeeksQueryDto,
   LessonPlanItemStatusNoteDto,
   ListLessonPlansQueryDto,
+  MoveLessonPlanItemDto,
   ReorderLessonPlanItemDto,
   UpdateLessonPlanDto,
   UpdateLessonPlanItemDto,
 } from '../dto/lesson-plans.dto';
 import {
+  AutoPlanLessonPlanResponseDto,
   DeleteLessonPlanItemResponseDto,
   DeleteLessonPlanResponseDto,
   LessonPlanDetailResponseDto,
   LessonPlanItemResponseDto,
+  LessonPlanSummaryResponseDto,
+  LessonPlanValidationResponseDto,
+  LessonPlanWeeksResponseDto,
   LessonPlansListResponseDto,
 } from '../dto/lesson-plans-response.dto';
 
@@ -59,6 +75,11 @@ import {
 @Controller('academics/lesson-plans')
 export class LessonPlansController {
   constructor(
+    private readonly listLessonPlanWeeksUseCase: ListLessonPlanWeeksUseCase,
+    private readonly getLessonPlanSummaryUseCase: GetLessonPlanSummaryUseCase,
+    private readonly autoPlanLessonPlanUseCase: AutoPlanLessonPlanUseCase,
+    private readonly moveLessonPlanItemUseCase: MoveLessonPlanItemUseCase,
+    private readonly validateLessonPlansUseCase: ValidateLessonPlansUseCase,
     private readonly listLessonPlansUseCase: ListLessonPlansUseCase,
     private readonly createLessonPlanUseCase: CreateLessonPlanUseCase,
     private readonly getLessonPlanUseCase: GetLessonPlanUseCase,
@@ -95,6 +116,61 @@ export class LessonPlansController {
     @Body() dto: CreateLessonPlanDto,
   ): Promise<LessonPlanDetailResponseDto> {
     return this.createLessonPlanUseCase.execute(dto);
+  }
+
+  @Get('weeks')
+  @RequiredPermissions('academics.lesson_plans.view')
+  @ApiOperation({ summary: 'List lesson plan week buckets' })
+  @ApiOkResponse({ type: LessonPlanWeeksResponseDto })
+  listLessonPlanWeeks(
+    @Query() query: LessonPlanWeeksQueryDto,
+  ): Promise<LessonPlanWeeksResponseDto> {
+    return this.listLessonPlanWeeksUseCase.execute(query);
+  }
+
+  @Get('summary')
+  @RequiredPermissions('academics.lesson_plans.view')
+  @ApiOperation({ summary: 'Get lesson plan dashboard summary' })
+  @ApiOkResponse({ type: LessonPlanSummaryResponseDto })
+  getLessonPlanSummary(
+    @Query() query: LessonPlanSummaryQueryDto,
+  ): Promise<LessonPlanSummaryResponseDto> {
+    return this.getLessonPlanSummaryUseCase.execute(query);
+  }
+
+  @Post('auto-plan')
+  @HttpCode(HttpStatus.OK)
+  @RequiredPermissions('academics.lesson_plans.manage')
+  @ApiOperation({ summary: 'Generate lesson plan items from curriculum and timetable slots' })
+  @ApiBody({ type: AutoPlanLessonPlanDto })
+  @ApiOkResponse({ type: AutoPlanLessonPlanResponseDto })
+  autoPlanLessonPlan(
+    @Body() dto: AutoPlanLessonPlanDto,
+  ): Promise<AutoPlanLessonPlanResponseDto> {
+    return this.autoPlanLessonPlanUseCase.execute(dto);
+  }
+
+  @Patch('items/:itemId/move')
+  @RequiredPermissions('academics.lesson_plans.manage')
+  @ApiOperation({ summary: 'Move or reschedule a lesson plan item' })
+  @ApiParam({ name: 'itemId', format: 'uuid' })
+  @ApiBody({ type: MoveLessonPlanItemDto })
+  @ApiOkResponse({ type: LessonPlanItemResponseDto })
+  moveLessonPlanItem(
+    @Param('itemId', new ParseUUIDPipe()) itemId: string,
+    @Body() dto: MoveLessonPlanItemDto,
+  ): Promise<LessonPlanItemResponseDto> {
+    return this.moveLessonPlanItemUseCase.execute(itemId, dto);
+  }
+
+  @Get('validation')
+  @RequiredPermissions('academics.lesson_plans.view')
+  @ApiOperation({ summary: 'Validate lesson plan readiness and completion' })
+  @ApiOkResponse({ type: LessonPlanValidationResponseDto })
+  validateLessonPlans(
+    @Query() query: LessonPlanValidationQueryDto,
+  ): Promise<LessonPlanValidationResponseDto> {
+    return this.validateLessonPlansUseCase.execute(query);
   }
 
   @Get(':lessonPlanId')

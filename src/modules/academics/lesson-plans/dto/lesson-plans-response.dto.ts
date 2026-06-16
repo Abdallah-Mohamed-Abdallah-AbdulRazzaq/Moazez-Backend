@@ -13,6 +13,13 @@ export class LessonPlanTeacherSummaryDto {
   email!: string | null;
 }
 
+export class LessonPlanSafeTeacherSummaryDto {
+  id!: string;
+  name!: string;
+  firstName!: string;
+  lastName!: string;
+}
+
 export class LessonPlanSubjectSummaryDto {
   id!: string;
   name!: string;
@@ -26,6 +33,106 @@ export class LessonPlanCurriculumSummaryDto {
   curriculumId!: string;
   title!: string;
   status!: string;
+}
+
+export class LessonPlanHolidayDayDto {
+  date!: string;
+  eventId!: string;
+  title!: string;
+}
+
+export class LessonPlanWeekBucketDto {
+  weekIndex!: number;
+  startsAt!: string;
+  endsAt!: string;
+  instructionalDays!: string[];
+  holidayDays!: LessonPlanHolidayDayDto[];
+  plannedItemsCount!: number;
+}
+
+export class LessonPlanWeeksResponseDto {
+  termId!: string;
+  academicYearId!: string;
+  weeks!: LessonPlanWeekBucketDto[];
+}
+
+export class LessonPlanSummaryTotalsDto {
+  lessonPlansCount!: number;
+  itemsCount!: number;
+  plannedItemsCount!: number;
+  completedItemsCount!: number;
+  unplannedLessonsCount!: number;
+  coveragePercent!: number;
+}
+
+export class LessonPlanAllocationSummaryDto {
+  teacherSubjectAllocationId!: string;
+  teacher!: LessonPlanSafeTeacherSummaryDto;
+  subject!: LessonPlanSubjectSummaryDto;
+  classroom!: LessonPlanNamedSummaryDto;
+  plannedItemsCount!: number;
+  completedItemsCount!: number;
+  unplannedLessonsCount!: number;
+  coveragePercent!: number;
+}
+
+export class LessonPlanSummaryResponseDto {
+  termId!: string;
+  academicYearId!: string;
+  summary!: LessonPlanSummaryTotalsDto;
+  byTeacherAllocation!: LessonPlanAllocationSummaryDto[];
+}
+
+export class AutoPlanLessonPlanSummaryDto {
+  candidateLessons!: number;
+  availableSlots!: number;
+  proposedItems!: number;
+  createdItems!: number;
+  skippedExistingItems!: number;
+  skippedHolidaySlots!: number;
+}
+
+export class AutoPlanLessonPlanItemDto {
+  lessonId!: string;
+  title!: string;
+  plannedDate!: string;
+  timetableEntryId!: string | null;
+  weekIndex!: number;
+  status!: string;
+}
+
+export class AutoPlanLessonPlanResponseDto {
+  termId!: string;
+  academicYearId!: string;
+  teacherSubjectAllocationId!: string;
+  dryRun!: boolean;
+  summary!: AutoPlanLessonPlanSummaryDto;
+  items!: AutoPlanLessonPlanItemDto[];
+}
+
+export class LessonPlanValidationSummaryDto {
+  lessonPlansChecked!: number;
+  itemsChecked!: number;
+  missingPlannedLessons!: number;
+  holidayItems!: number;
+  outsideTermItems!: number;
+  duplicateLessons!: number;
+}
+
+export class LessonPlanValidationIssueDto {
+  code!: string;
+  severity!: string;
+  message!: string;
+  lessonId?: string;
+  itemId?: string;
+  teacherSubjectAllocationId?: string;
+}
+
+export class LessonPlanValidationResponseDto {
+  termId!: string;
+  academicYearId!: string;
+  summary!: LessonPlanValidationSummaryDto;
+  issues!: LessonPlanValidationIssueDto[];
 }
 
 export class LessonPlanItemResponseDto {

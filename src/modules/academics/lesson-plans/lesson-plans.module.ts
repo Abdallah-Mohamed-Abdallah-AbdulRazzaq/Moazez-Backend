@@ -1,6 +1,13 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../iam/auth/auth.module';
 import {
+  AutoPlanLessonPlanUseCase,
+  GetLessonPlanSummaryUseCase,
+  ListLessonPlanWeeksUseCase,
+  MoveLessonPlanItemUseCase,
+  ValidateLessonPlansUseCase,
+} from './application/lesson-plan-workflows.use-cases';
+import {
   ActivateLessonPlanUseCase,
   ArchiveLessonPlanUseCase,
   CancelLessonPlanItemUseCase,
@@ -25,6 +32,11 @@ import { LessonPlansRepository } from './infrastructure/lesson-plans.repository'
   controllers: [LessonPlansController],
   providers: [
     LessonPlansRepository,
+    ListLessonPlanWeeksUseCase,
+    GetLessonPlanSummaryUseCase,
+    AutoPlanLessonPlanUseCase,
+    MoveLessonPlanItemUseCase,
+    ValidateLessonPlansUseCase,
     ListLessonPlansUseCase,
     CreateLessonPlanUseCase,
     GetLessonPlanUseCase,
@@ -45,6 +57,9 @@ import { LessonPlansRepository } from './infrastructure/lesson-plans.repository'
     LessonPlansRepository,
     ListLessonPlansUseCase,
     GetLessonPlanUseCase,
+    ListLessonPlanWeeksUseCase,
+    GetLessonPlanSummaryUseCase,
+    ValidateLessonPlansUseCase,
   ],
 })
 export class LessonPlansModule {}

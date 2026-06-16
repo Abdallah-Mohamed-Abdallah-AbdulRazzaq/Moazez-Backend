@@ -1,7 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import { LessonPlanItemStatus, Prisma } from '@prisma/client';
+import {
+  AcademicCalendarEventScopeType,
+  AcademicCalendarEventType,
+  CurriculumStatus,
+  LessonPlanItemStatus,
+  LessonPlanStatus,
+  Prisma,
+  TimetableEntryStatus,
+} from '@prisma/client';
 import { getRequestContext } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+
+function dateToDateOnly(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
 
 const SUMMARY_NAME_ARGS = {
   select: {
@@ -10,6 +22,17 @@ const SUMMARY_NAME_ARGS = {
     nameEn: true,
   },
 } satisfies Prisma.AcademicYearDefaultArgs;
+
+const TERM_SUMMARY_ARGS = {
+  select: {
+    id: true,
+    nameAr: true,
+    nameEn: true,
+    startDate: true,
+    endDate: true,
+    isActive: true,
+  },
+} satisfies Prisma.TermDefaultArgs;
 
 const TEACHER_SUMMARY_SELECT = {
   id: true,
@@ -26,6 +49,12 @@ const CLASSROOM_SUMMARY_SELECT = {
     select: {
       id: true,
       gradeId: true,
+      grade: {
+        select: {
+          id: true,
+          stageId: true,
+        },
+      },
     },
   },
 } satisfies Prisma.ClassroomSelect;
@@ -73,7 +102,7 @@ const LESSON_PLAN_LIST_ARGS =
       createdAt: true,
       updatedAt: true,
       academicYear: SUMMARY_NAME_ARGS,
-      term: SUMMARY_NAME_ARGS,
+      term: TERM_SUMMARY_ARGS,
       teacherUser: { select: TEACHER_SUMMARY_SELECT },
       classroom: { select: CLASSROOM_SUMMARY_SELECT },
       subject: { select: SUBJECT_SUMMARY_SELECT },
@@ -158,6 +187,8 @@ const TERM_ARGS = Prisma.validator<Prisma.TermDefaultArgs>()({
     id: true,
     schoolId: true,
     academicYearId: true,
+    startDate: true,
+    endDate: true,
     isActive: true,
   },
 });
@@ -178,6 +209,9 @@ const TEACHER_ALLOCATION_ARGS =
         select: {
           id: true,
           academicYearId: true,
+          startDate: true,
+          endDate: true,
+          isActive: true,
         },
       },
     },
@@ -221,6 +255,53 @@ const TIMETABLE_ENTRY_ARGS =
         select: {
           id: true,
           label: true,
+          periodIndex: true,
+        },
+      },
+    },
+  });
+
+const CALENDAR_HOLIDAY_ARGS =
+  Prisma.validator<Prisma.AcademicCalendarEventDefaultArgs>()({
+    select: {
+      id: true,
+      termId: true,
+      title: true,
+      type: true,
+      scopeType: true,
+      scopeKey: true,
+      stageId: true,
+      gradeId: true,
+      sectionId: true,
+      startDate: true,
+      endDate: true,
+    },
+  });
+
+const CURRICULUM_LESSON_FOR_PLAN_ARGS =
+  Prisma.validator<Prisma.CurriculumLessonDefaultArgs>()({
+    select: {
+      id: true,
+      curriculumId: true,
+      unitId: true,
+      title: true,
+      sortOrder: true,
+      unit: {
+        select: {
+          id: true,
+          title: true,
+          sortOrder: true,
+        },
+      },
+      curriculum: {
+        select: {
+          id: true,
+          academicYearId: true,
+          termId: true,
+          gradeId: true,
+          subjectId: true,
+          title: true,
+          status: true,
         },
       },
     },
@@ -253,6 +334,11 @@ export type LessonPlanLessonRecord = Prisma.CurriculumLessonGetPayload<
 export type LessonPlanTimetableEntryRecord = Prisma.TimetableEntryGetPayload<
   typeof TIMETABLE_ENTRY_ARGS
 >;
+export type LessonPlanHolidayRecord = Prisma.AcademicCalendarEventGetPayload<
+  typeof CALENDAR_HOLIDAY_ARGS
+>;
+export type LessonPlanCurriculumLessonRecord =
+  Prisma.CurriculumLessonGetPayload<typeof CURRICULUM_LESSON_FOR_PLAN_ARGS>;
 
 export type ListLessonPlansFilters = {
   academicYearId?: string;
@@ -265,6 +351,54 @@ export type ListLessonPlansFilters = {
   status?: Prisma.EnumLessonPlanStatusFilter['equals'];
   weekStartDate?: Date;
   search?: string;
+};
+
+export type LessonPlanWorkflowFilters = {
+  termId: string;
+  teacherSubjectAllocationId?: string;
+  gradeId?: string;
+  subjectId?: string;
+  classroomId?: string;
+};
+
+export type PersistAutoPlanItemInput = {
+  curriculumId: string;
+  unitId: string;
+  lessonId: string;
+  title: string;
+  plannedDate: Date;
+  dayOfWeek: number;
+  periodId: string | null;
+  periodLabel: string | null;
+  timetableEntryId: string | null;
+  weekStartDate: Date;
+  weekEndDate: Date;
+  sortOrder: number;
+  existingItemId?: string;
+};
+
+export type PersistAutoPlanInput = {
+  schoolId: string;
+  actorId: string;
+  term: LessonPlanTermRecord;
+  allocation: LessonPlanAllocationRecord;
+  overwrite: boolean;
+  items: PersistAutoPlanItemInput[];
+};
+
+export type PersistAutoPlanResult = {
+  createdItems: LessonPlanItemRecord[];
+  updatedItems: LessonPlanItemRecord[];
+};
+
+export type MoveLessonPlanItemInput = {
+  schoolId: string;
+  actorId: string;
+  sourcePlan: LessonPlanDetailRecord;
+  item: LessonPlanItemRecord;
+  weekStartDate: Date;
+  weekEndDate: Date;
+  data: Prisma.LessonPlanItemUncheckedUpdateInput;
 };
 
 export type SoftDeleteLessonPlanResult =
@@ -576,5 +710,338 @@ export class LessonPlansRepository {
         updatedByUserId: input.updatedByUserId,
       },
     });
+  }
+
+  listPlanDetailsForWorkflows(
+    filters: LessonPlanWorkflowFilters,
+  ): Promise<LessonPlanDetailRecord[]> {
+    return this.scopedPrisma.lessonPlan.findMany({
+      where: this.buildWorkflowPlanWhere(filters),
+      orderBy: [{ weekStartDate: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      ...LESSON_PLAN_DETAIL_ARGS,
+    });
+  }
+
+  listTeacherAllocationsForWorkflows(
+    filters: LessonPlanWorkflowFilters,
+  ): Promise<LessonPlanAllocationRecord[]> {
+    return this.scopedPrisma.teacherSubjectAllocation.findMany({
+      where: {
+        termId: filters.termId,
+        ...(filters.teacherSubjectAllocationId
+          ? { id: filters.teacherSubjectAllocationId }
+          : {}),
+        ...(filters.subjectId ? { subjectId: filters.subjectId } : {}),
+        ...(filters.classroomId ? { classroomId: filters.classroomId } : {}),
+        ...(filters.gradeId
+          ? {
+              classroom: {
+                section: {
+                  gradeId: filters.gradeId,
+                },
+              },
+            }
+          : {}),
+      },
+      orderBy: [{ classroomId: 'asc' }, { subjectId: 'asc' }, { id: 'asc' }],
+      ...TEACHER_ALLOCATION_ARGS,
+    });
+  }
+
+  listHolidayEvents(input: {
+    termId: string;
+    from: Date;
+    to: Date;
+    stageId?: string | null;
+    gradeId?: string | null;
+    sectionId?: string | null;
+  }): Promise<LessonPlanHolidayRecord[]> {
+    const scopeFilters: Prisma.AcademicCalendarEventWhereInput[] = [
+      { scopeType: AcademicCalendarEventScopeType.SCHOOL },
+    ];
+    if (input.stageId) {
+      scopeFilters.push({ stageId: input.stageId });
+    }
+    if (input.gradeId) {
+      scopeFilters.push({ gradeId: input.gradeId });
+    }
+    if (input.sectionId) {
+      scopeFilters.push({ sectionId: input.sectionId });
+    }
+
+    return this.scopedPrisma.academicCalendarEvent.findMany({
+      where: {
+        termId: input.termId,
+        type: AcademicCalendarEventType.HOLIDAY,
+        startDate: { lte: input.to },
+        endDate: { gte: input.from },
+        OR: scopeFilters,
+      },
+      orderBy: [{ startDate: 'asc' }, { id: 'asc' }],
+      ...CALENDAR_HOLIDAY_ARGS,
+    });
+  }
+
+  listCurriculumLessonsForAllocation(input: {
+    academicYearId: string;
+    termId: string;
+    gradeId: string;
+    subjectId: string;
+  }): Promise<LessonPlanCurriculumLessonRecord[]> {
+    return this.scopedPrisma.curriculumLesson.findMany({
+      where: {
+        curriculum: {
+          academicYearId: input.academicYearId,
+          termId: input.termId,
+          gradeId: input.gradeId,
+          subjectId: input.subjectId,
+          status: { not: CurriculumStatus.ARCHIVED },
+          deletedAt: null,
+        },
+        unit: { deletedAt: null },
+      },
+      orderBy: [
+        { curriculum: { title: 'asc' } },
+        { unit: { sortOrder: 'asc' } },
+        { sortOrder: 'asc' },
+        { id: 'asc' },
+      ],
+      ...CURRICULUM_LESSON_FOR_PLAN_ARGS,
+    });
+  }
+
+  listTimetableEntriesForAllocation(input: {
+    termId: string;
+    teacherSubjectAllocationId: string;
+  }): Promise<LessonPlanTimetableEntryRecord[]> {
+    return this.scopedPrisma.timetableEntry.findMany({
+      where: {
+        termId: input.termId,
+        teacherSubjectAllocationId: input.teacherSubjectAllocationId,
+        status: { not: TimetableEntryStatus.CANCELLED },
+      },
+      orderBy: [
+        { dayOfWeek: 'asc' },
+        { period: { periodIndex: 'asc' } },
+        { id: 'asc' },
+      ],
+      ...TIMETABLE_ENTRY_ARGS,
+    });
+  }
+
+  async findItemWithPlanById(itemId: string): Promise<{
+    item: LessonPlanItemRecord;
+    lessonPlan: LessonPlanDetailRecord;
+  } | null> {
+    const item = await this.scopedPrisma.lessonPlanItem.findFirst({
+      where: { id: itemId },
+      ...LESSON_PLAN_ITEM_ARGS,
+    });
+    if (!item) {
+      return null;
+    }
+
+    const lessonPlan = await this.findPlanById(item.lessonPlanId);
+    if (!lessonPlan) {
+      return null;
+    }
+
+    return { item, lessonPlan };
+  }
+
+  findPlanByAllocationAndWeek(input: {
+    teacherSubjectAllocationId: string;
+    weekStartDate: Date;
+  }): Promise<LessonPlanDetailRecord | null> {
+    return this.scopedPrisma.lessonPlan.findFirst({
+      where: {
+        teacherSubjectAllocationId: input.teacherSubjectAllocationId,
+        weekStartDate: input.weekStartDate,
+      },
+      ...LESSON_PLAN_DETAIL_ARGS,
+    });
+  }
+
+  async persistAutoPlanItems(
+    input: PersistAutoPlanInput,
+  ): Promise<PersistAutoPlanResult> {
+    const createdItems: LessonPlanItemRecord[] = [];
+    const updatedItems: LessonPlanItemRecord[] = [];
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const item of input.items) {
+        let lessonPlan = await tx.lessonPlan.findFirst({
+          where: {
+            schoolId: input.schoolId,
+            teacherSubjectAllocationId: input.allocation.id,
+            weekStartDate: item.weekStartDate,
+            deletedAt: null,
+          },
+          ...LESSON_PLAN_DETAIL_ARGS,
+        });
+
+        if (!lessonPlan) {
+          lessonPlan = await tx.lessonPlan.create({
+            data: {
+              schoolId: input.schoolId,
+              academicYearId: input.term.academicYearId,
+              termId: input.term.id,
+              teacherSubjectAllocationId: input.allocation.id,
+              teacherUserId: input.allocation.teacherUserId,
+              classroomId: input.allocation.classroomId,
+              subjectId: input.allocation.subjectId,
+              curriculumId: item.curriculumId,
+              title: `Auto plan week ${dateToDateOnly(item.weekStartDate)}`,
+              description: null,
+              status: LessonPlanStatus.DRAFT,
+              weekStartDate: item.weekStartDate,
+              weekEndDate: item.weekEndDate,
+              createdByUserId: input.actorId,
+              updatedByUserId: input.actorId,
+            },
+            ...LESSON_PLAN_DETAIL_ARGS,
+          });
+        }
+
+        if (input.overwrite && item.existingItemId) {
+          const updated = await tx.lessonPlanItem.update({
+            where: {
+              id_schoolId: {
+                id: item.existingItemId,
+                schoolId: input.schoolId,
+              },
+            },
+            data: {
+              lessonPlanId: lessonPlan.id,
+              curriculumId: item.curriculumId,
+              unitId: item.unitId,
+              lessonId: item.lessonId,
+              timetableEntryId: item.timetableEntryId,
+              plannedDate: item.plannedDate,
+              dayOfWeek: item.dayOfWeek,
+              periodId: item.periodId,
+              periodLabel: item.periodLabel,
+              title: item.title,
+              sortOrder: item.sortOrder,
+              updatedByUserId: input.actorId,
+            },
+            ...LESSON_PLAN_ITEM_ARGS,
+          });
+          updatedItems.push(updated);
+          continue;
+        }
+
+        const created = await tx.lessonPlanItem.create({
+          data: {
+            schoolId: input.schoolId,
+            lessonPlanId: lessonPlan.id,
+            curriculumId: item.curriculumId,
+            unitId: item.unitId,
+            lessonId: item.lessonId,
+            timetableEntryId: item.timetableEntryId,
+            plannedDate: item.plannedDate,
+            dayOfWeek: item.dayOfWeek,
+            periodId: item.periodId,
+            periodLabel: item.periodLabel,
+            title: item.title,
+            notes: null,
+            status: LessonPlanItemStatus.PLANNED,
+            sortOrder: item.sortOrder,
+            createdByUserId: input.actorId,
+            updatedByUserId: input.actorId,
+          },
+          ...LESSON_PLAN_ITEM_ARGS,
+        });
+        createdItems.push(created);
+      }
+    });
+
+    return { createdItems, updatedItems };
+  }
+
+  async moveItemToWeek(
+    input: MoveLessonPlanItemInput,
+  ): Promise<LessonPlanItemRecord> {
+    let movedItem: LessonPlanItemRecord | null = null;
+
+    await this.prisma.$transaction(async (tx) => {
+      let targetPlan = await tx.lessonPlan.findFirst({
+        where: {
+          schoolId: input.schoolId,
+          teacherSubjectAllocationId:
+            input.sourcePlan.teacherSubjectAllocationId,
+          weekStartDate: input.weekStartDate,
+          deletedAt: null,
+        },
+        ...LESSON_PLAN_DETAIL_ARGS,
+      });
+
+      if (!targetPlan) {
+        targetPlan = await tx.lessonPlan.create({
+          data: {
+            schoolId: input.schoolId,
+            academicYearId: input.sourcePlan.academicYearId,
+            termId: input.sourcePlan.termId,
+            teacherSubjectAllocationId:
+              input.sourcePlan.teacherSubjectAllocationId,
+            teacherUserId: input.sourcePlan.teacherUserId,
+            classroomId: input.sourcePlan.classroomId,
+            subjectId: input.sourcePlan.subjectId,
+            curriculumId: input.sourcePlan.curriculumId,
+            title: `Rescheduled week ${dateToDateOnly(input.weekStartDate)}`,
+            description: null,
+            status: LessonPlanStatus.DRAFT,
+            weekStartDate: input.weekStartDate,
+            weekEndDate: input.weekEndDate,
+            createdByUserId: input.actorId,
+            updatedByUserId: input.actorId,
+          },
+          ...LESSON_PLAN_DETAIL_ARGS,
+        });
+      }
+
+      movedItem = await tx.lessonPlanItem.update({
+        where: {
+          id_schoolId: {
+            id: input.item.id,
+            schoolId: input.schoolId,
+          },
+        },
+        data: {
+          ...input.data,
+          lessonPlanId: targetPlan.id,
+          updatedByUserId: input.actorId,
+        },
+        ...LESSON_PLAN_ITEM_ARGS,
+      });
+    });
+
+    if (!movedItem) {
+      throw new Error('Lesson plan item move transaction did not return an item');
+    }
+
+    return movedItem;
+  }
+
+  private buildWorkflowPlanWhere(
+    filters: LessonPlanWorkflowFilters,
+  ): Prisma.LessonPlanWhereInput {
+    return {
+      termId: filters.termId,
+      ...(filters.teacherSubjectAllocationId
+        ? { teacherSubjectAllocationId: filters.teacherSubjectAllocationId }
+        : {}),
+      ...(filters.subjectId ? { subjectId: filters.subjectId } : {}),
+      ...(filters.classroomId ? { classroomId: filters.classroomId } : {}),
+      ...(filters.gradeId
+        ? {
+            classroom: {
+              section: {
+                gradeId: filters.gradeId,
+              },
+            },
+          }
+        : {}),
+    };
   }
 }

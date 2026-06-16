@@ -226,6 +226,12 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `academics.lesson_plan.not_found` | 404 | Lesson plan was not found or is outside scope |
 | `academics.lesson_plan.duplicate` | 409 | A lesson plan already exists for this teacher allocation and week |
 | `academics.lesson_plan.invalid_scope` | 422 | Lesson plan academic scope is invalid |
+| `academics.lesson_plan.closed_term` | 409 | Lesson plan cannot be changed for a closed term |
+| `academics.lesson_plan.invalid_date_range` | 422 | Lesson plan date range is invalid |
+| `academics.lesson_plan.holiday_date` | 422 | Lesson plan item cannot be scheduled on a holiday |
+| `academics.lesson_plan.auto_plan_no_curriculum` | 422 | No curriculum lessons are available for auto-plan |
+| `academics.lesson_plan.auto_plan_no_slots` | 422 | No timetable slots are available for auto-plan |
+| `academics.lesson_plan.invalid_timetable_entry` | 422 | Lesson plan timetable entry scope is invalid |
 | `academics.lesson_plan.read_only` | 409 | Lesson plan is read-only in its current state |
 | `academics.lesson_plan.invalid_transition` | 409 | Lesson plan status transition is invalid |
 | `academics.lesson_plan.item_not_found` | 404 | Lesson plan item was not found or is outside scope |
