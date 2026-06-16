@@ -172,6 +172,14 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `academics.subject_allocation.invalid_weekly_hours` | 422 | Subject allocation weekly hours value is invalid |
 | `academics.subject_allocation.invalid_bulk_size` | 422 | Subject allocation bulk request size is invalid |
 | `academics.subject_allocation.closed_term` | 409 | Term is closed for subject allocation changes |
+| `academics.allocation.duplicate` | 409 | Teacher allocation already exists |
+| `academics.allocation.invalid_scope` | 422 | Teacher allocation scope is invalid |
+| `academics.allocation.invalid_bulk_size` | 422 | Teacher allocation bulk request size is invalid |
+| `academics.allocation.duplicate_pair` | 422 | Teacher allocation bulk request contains a duplicate allocation pair |
+| `academics.allocation.closed_term` | 409 | Term is closed for teacher allocation changes |
+| `academics.allocation.missing_subject_allocation` | 422 | Subject allocation weekly-hours row is required before teacher allocation |
+| `academics.allocation.delete_conflict` | 409 | Teacher allocation cannot be deleted because dependent academic records exist |
+| `academics.allocation.clear_conflict` | 409 | Teacher allocations cannot be cleared because dependent academic records exist |
 | `academics.timetable.config_not_found` | 404 | Timetable config was not found or is outside scope |
 | `academics.timetable.period_not_found` | 404 | Timetable period was not found or is outside scope |
 | `academics.timetable.entry_not_found` | 404 | Timetable entry was not found or is outside scope |
