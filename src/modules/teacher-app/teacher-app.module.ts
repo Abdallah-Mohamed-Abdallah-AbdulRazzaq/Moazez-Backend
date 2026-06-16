@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { RollCallModule } from '../attendance/roll-call/roll-call.module';
 import { AssessmentsModule } from '../grades/assessments/assessments.module';
@@ -6,6 +7,9 @@ import { ReviewsModule } from '../reinforcement/reviews/reviews.module';
 import { TasksModule } from '../reinforcement/tasks/tasks.module';
 import { TeacherAppAccessService } from './access/teacher-app-access.service';
 import { TeacherAppAllocationReadAdapter } from './access/teacher-app-allocation-read.adapter';
+import { GetTeacherCalendarEventUseCase } from './calendar/application/get-teacher-calendar-event.use-case';
+import { ListTeacherCalendarEventsUseCase } from './calendar/application/list-teacher-calendar-events.use-case';
+import { TeacherCalendarController } from './calendar/controller/teacher-calendar.controller';
 import { GetTeacherClassroomAttendanceRosterUseCase } from './classroom/attendance/application/get-teacher-classroom-attendance-roster.use-case';
 import { GetTeacherClassroomAttendanceSessionUseCase } from './classroom/attendance/application/get-teacher-classroom-attendance-session.use-case';
 import { ResolveTeacherClassroomAttendanceSessionUseCase } from './classroom/attendance/application/resolve-teacher-classroom-attendance-session.use-case';
@@ -80,6 +84,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
 
 @Module({
   imports: [
+    AppCalendarReadModelModule,
     RollCallModule,
     AssessmentsModule,
     TasksModule,
@@ -102,6 +107,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     TeacherProfileController,
     TeacherSettingsController,
     TeacherScheduleController,
+    TeacherCalendarController,
   ],
   providers: [
     TeacherAppAccessService,
@@ -162,6 +168,8 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     TeacherScheduleReadAdapter,
     GetTeacherDailyScheduleUseCase,
     GetTeacherWeeklyScheduleUseCase,
+    ListTeacherCalendarEventsUseCase,
+    GetTeacherCalendarEventUseCase,
   ],
   exports: [TeacherAppAccessService],
 })

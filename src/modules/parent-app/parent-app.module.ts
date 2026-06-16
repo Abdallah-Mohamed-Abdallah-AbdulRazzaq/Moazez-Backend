@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { ParentAppAccessService } from './access/parent-app-access.service';
 import { ParentAppGuardianReadAdapter } from './access/parent-app-guardian-read.adapter';
@@ -13,6 +14,9 @@ import { GetParentChildBehaviorSummaryUseCase } from './behavior/application/get
 import { ListParentChildBehaviorUseCase } from './behavior/application/list-parent-child-behavior.use-case';
 import { ParentBehaviorController } from './behavior/controller/parent-behavior.controller';
 import { ParentBehaviorReadAdapter } from './behavior/infrastructure/parent-behavior-read.adapter';
+import { GetParentCalendarEventUseCase } from './calendar/application/get-parent-calendar-event.use-case';
+import { ListParentCalendarEventsUseCase } from './calendar/application/list-parent-calendar-events.use-case';
+import { ParentCalendarController } from './calendar/controller/parent-calendar.controller';
 import { GetParentChildUseCase } from './children/application/get-parent-child.use-case';
 import { ListParentChildrenUseCase } from './children/application/list-parent-children.use-case';
 import { ParentChildrenController } from './children/controller/parent-children.controller';
@@ -60,7 +64,11 @@ import { ParentTasksController } from './tasks/controller/parent-tasks.controlle
 import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read.adapter';
 
 @Module({
-  imports: [CommunicationModule, ParentHomeworksModule],
+  imports: [
+    AppCalendarReadModelModule,
+    CommunicationModule,
+    ParentHomeworksModule,
+  ],
   controllers: [
     ParentHomeController,
     ParentChildrenController,
@@ -73,6 +81,7 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ParentTasksController,
     ParentMessagesController,
     ParentAnnouncementsController,
+    ParentCalendarController,
   ],
   providers: [
     ParentAppAccessService,
@@ -121,6 +130,8 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     GetParentAnnouncementUseCase,
     MarkParentAnnouncementReadUseCase,
     ListParentAnnouncementAttachmentsUseCase,
+    ListParentCalendarEventsUseCase,
+    GetParentCalendarEventUseCase,
   ],
   exports: [ParentAppAccessService],
 })

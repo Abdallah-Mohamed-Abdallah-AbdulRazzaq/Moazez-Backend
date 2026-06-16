@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { StudentAppAccessService } from './access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from './access/student-app-student-read.adapter';
@@ -13,6 +14,9 @@ import { GetStudentBehaviorSummaryUseCase } from './behavior/application/get-stu
 import { ListStudentBehaviorRecordsUseCase } from './behavior/application/list-student-behavior-records.use-case';
 import { StudentBehaviorController } from './behavior/controller/student-behavior.controller';
 import { StudentBehaviorReadAdapter } from './behavior/infrastructure/student-behavior-read.adapter';
+import { GetStudentCalendarEventUseCase } from './calendar/application/get-student-calendar-event.use-case';
+import { ListStudentCalendarEventsUseCase } from './calendar/application/list-student-calendar-events.use-case';
+import { StudentCalendarController } from './calendar/controller/student-calendar.controller';
 import { GetStudentExamSubmissionUseCase } from './exams/application/get-student-exam-submission.use-case';
 import { GetStudentExamUseCase } from './exams/application/get-student-exam.use-case';
 import { ListStudentExamsUseCase } from './exams/application/list-student-exams.use-case';
@@ -67,7 +71,11 @@ import { StudentTasksController } from './tasks/controller/student-tasks.control
 import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-read.adapter';
 
 @Module({
-  imports: [CommunicationModule, StudentHomeworksModule],
+  imports: [
+    AppCalendarReadModelModule,
+    CommunicationModule,
+    StudentHomeworksModule,
+  ],
   controllers: [
     StudentHomeController,
     StudentProfileController,
@@ -81,6 +89,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentTasksController,
     StudentMessagesController,
     StudentAnnouncementsController,
+    StudentCalendarController,
   ],
   providers: [
     StudentAppAccessService,
@@ -135,6 +144,8 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     GetStudentAnnouncementUseCase,
     MarkStudentAnnouncementReadUseCase,
     ListStudentAnnouncementAttachmentsUseCase,
+    ListStudentCalendarEventsUseCase,
+    GetStudentCalendarEventUseCase,
   ],
   exports: [StudentAppAccessService],
 })

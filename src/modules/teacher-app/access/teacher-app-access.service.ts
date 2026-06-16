@@ -68,4 +68,21 @@ export class TeacherAppAccessService {
       teacherContext.teacherUserId,
     );
   }
+
+  async listOwnedTeacherAllocations(): Promise<TeacherAppAllocationRecord[]> {
+    const teacherContext = this.getTeacherAppContext();
+    const allocations =
+      await this.allocationReadAdapter.listAllOwnedAllocations(
+        teacherContext.teacherUserId,
+      );
+
+    for (const allocation of allocations) {
+      assertTeacherOwnsAllocationRecord({
+        context: teacherContext,
+        allocation,
+      });
+    }
+
+    return allocations;
+  }
 }
