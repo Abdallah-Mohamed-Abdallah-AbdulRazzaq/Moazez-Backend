@@ -2,12 +2,11 @@ import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../../../common/exceptions/domain-exception';
 
 export class LessonPlanNotFoundException extends DomainException {
-  constructor(details?: Record<string, unknown>) {
+  constructor(_details?: Record<string, unknown>) {
     super({
       code: 'academics.lesson_plan.not_found',
       message: 'Lesson plan was not found or is outside scope',
       httpStatus: HttpStatus.NOT_FOUND,
-      details,
     });
   }
 }
@@ -124,12 +123,11 @@ export class LessonPlanInvalidTransitionException extends DomainException {
 }
 
 export class LessonPlanItemNotFoundException extends DomainException {
-  constructor(details?: Record<string, unknown>) {
+  constructor(_details?: Record<string, unknown>) {
     super({
       code: 'academics.lesson_plan.item_not_found',
       message: 'Lesson plan item was not found or is outside scope',
       httpStatus: HttpStatus.NOT_FOUND,
-      details,
     });
   }
 }

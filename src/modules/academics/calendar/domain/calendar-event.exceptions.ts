@@ -2,12 +2,11 @@ import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../../../common/exceptions/domain-exception';
 
 export class CalendarEventNotFoundException extends DomainException {
-  constructor(details?: Record<string, unknown>) {
+  constructor(_details?: Record<string, unknown>) {
     super({
       code: 'academics.calendar_event.not_found',
       message: 'Academic calendar event was not found or is outside scope',
       httpStatus: HttpStatus.NOT_FOUND,
-      details,
     });
   }
 }
