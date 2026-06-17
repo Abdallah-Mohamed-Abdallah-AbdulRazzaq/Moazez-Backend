@@ -2483,7 +2483,7 @@ describe('Homework tenancy isolation (security)', () => {
   });
 
   it('keeps deferred parent submit and upload homework routes unregistered', async () => {
-    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const { accessToken } = await login(parentEmail, 'HomeworkParent123!');
 
     for (const route of [
       '/homework/submissions',
@@ -2503,6 +2503,35 @@ describe('Homework tenancy isolation (security)', () => {
     ]) {
       await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}${route}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+
+    for (const route of [
+      `/parent/children/${demoStudentId}/homeworks/${demoHomeworkId}/submit`,
+      `/parent/children/${demoStudentId}/homeworks/${demoHomeworkId}/submission`,
+      `/parent/children/${demoStudentId}/homeworks/${demoHomeworkId}/submission/submit`,
+      `/parent/children/${demoStudentId}/homeworks/${demoHomeworkId}/answers`,
+      `/parent/children/${demoStudentId}/homeworks/${demoHomeworkId}/attachments`,
+      `/parent/children/${demoStudentId}/homeworks/${demoHomeworkId}/files`,
+    ]) {
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}${route}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(404);
+      await request(app.getHttpServer())
+        .put(`${GLOBAL_PREFIX}${route}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(404);
+      await request(app.getHttpServer())
+        .patch(`${GLOBAL_PREFIX}${route}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(404);
+      await request(app.getHttpServer())
+        .delete(`${GLOBAL_PREFIX}${route}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(404);
     }

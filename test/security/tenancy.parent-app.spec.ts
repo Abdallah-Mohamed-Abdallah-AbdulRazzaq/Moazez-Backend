@@ -1185,8 +1185,34 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       totalEarned: 8,
       totalMax: 10,
       percentage: 80,
+      rating: 'very_good',
+      motivationalMessage: 'Very good progress',
+      assessmentCount: 1,
+      enteredCount: 1,
+      missingCount: 0,
+      absentCount: 0,
     });
+    expect(summary.body.selectedAcademicYear).toMatchObject({
+      id: academicYearAId,
+    });
+    expect(summary.body.selectedTerm).toMatchObject({ id: termAId });
+    expect(summary.body.subjects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          subjectId: subjectAId,
+          totalEarned: 8,
+          totalMax: 10,
+          percentage: 80,
+          rating: 'very_good',
+          assessmentCount: 1,
+          enteredCount: 1,
+          missingCount: 0,
+          absentCount: 0,
+        }),
+      ]),
+    );
     assertNoForbiddenParentAppFields(summary.body);
+    assertNoAnswerKeysOrCorrectAnswers(summary.body);
 
     const detail = await request(app.getHttpServer())
       .get(

@@ -1057,8 +1057,34 @@ describe('Student App Home/Profile routes (security)', () => {
       totalMax: 20,
       total_earned: 8,
       total_max: 20,
+      percentage: 40,
+      assessmentCount: 2,
+      enteredCount: 1,
+      missingCount: 1,
+      absentCount: 0,
+      rating: 'needs_support',
     });
+    expect(gradeSummary.body.selectedAcademicYear).toMatchObject({
+      id: academicYearId,
+    });
+    expect(gradeSummary.body.selectedTerm).toMatchObject({ id: termId });
+    expect(gradeSummary.body.subjects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          subjectId,
+          totalEarned: 8,
+          totalMax: 20,
+          percentage: 40,
+          assessmentCount: 2,
+          enteredCount: 1,
+          missingCount: 1,
+          absentCount: 0,
+          rating: 'needs_support',
+        }),
+      ]),
+    );
     assertNoForbiddenStudentAppFields(gradeSummary.body);
+    assertNoAnswerKeysOrCorrectAnswers(gradeSummary.body);
 
     const assessmentGrade = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/student/grades/assessments/${ownAssessmentId}`)
@@ -1081,6 +1107,7 @@ describe('Student App Home/Profile routes (security)', () => {
       },
     });
     assertNoForbiddenStudentAppFields(assessmentGrade.body);
+    assertNoAnswerKeysOrCorrectAnswers(assessmentGrade.body);
 
     const exams = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/student/exams`)

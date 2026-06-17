@@ -2970,6 +2970,20 @@ describe('Teacher App tenancy isolation (security)', () => {
       .send({})
       .expect(404);
     await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments/${ownAssessmentId}/items/${ownStudentIds[0]}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ score: 9, status: 'entered' })
+      .expect(404);
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/grades/assessments/${ownAssessmentId}/items`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ items: [{ studentId: ownStudentIds[0], score: 9 }] })
+      .expect(404);
+    await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/assignments`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({})
