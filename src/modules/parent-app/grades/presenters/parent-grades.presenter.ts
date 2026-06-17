@@ -1,9 +1,13 @@
 import { GradeAssessmentApprovalStatus, GradeItemStatus } from '@prisma/client';
 import {
   ParentAssessmentGradeDetailResponseDto,
+  ParentGradeAcademicYearDto,
   ParentGradeAssessmentItemDto,
+  ParentGradeBreakdownItemDto,
   ParentGradeSubjectDto,
+  ParentGradeTermDto,
   ParentGradesChildDto,
+  ParentGradesEmptyStateDto,
   ParentGradesListResponseDto,
   ParentGradesSummaryDto,
   ParentGradesSummaryResponseDto,
@@ -37,29 +41,21 @@ export class ParentGradesPresenter {
     const summary = summarizeAssessmentItems(assessmentItems);
     const academicYear = result.enrollment.academicYear;
     const term = result.enrollment.term;
+    const selectedAcademicYear = presentAcademicYear(academicYear);
+    const selectedTerm = term
+      ? presentTerm(term, result.enrollment.academicYearId)
+      : null;
+    const emptyState = buildEmptyState(result, assessmentItems);
 
     return {
       child: presentChild(result),
-      academicYears: [
-        {
-          id: academicYear.id,
-          name: displayName(academicYear),
-        },
-      ],
-      academic_years: [
-        {
-          id: academicYear.id,
-          name: displayName(academicYear),
-        },
-      ],
-      terms: term
-        ? [
-            {
-              id: term.id,
-              name: displayName(term),
-            },
-          ]
-        : [],
+      academicYears: [selectedAcademicYear],
+      academic_years: [selectedAcademicYear],
+      terms: selectedTerm ? [selectedTerm] : [],
+      selectedAcademicYear,
+      selectedTerm,
+      selected_academic_year: selectedAcademicYear,
+      selected_term: selectedTerm,
       summary,
       subjects,
       assessments: assessmentItems,
@@ -69,6 +65,8 @@ export class ParentGradesPresenter {
         total: result.total,
       },
       visibility: VISIBILITY,
+      emptyState,
+      empty_state: emptyState,
     };
   }
 
@@ -81,9 +79,15 @@ export class ParentGradesPresenter {
       child: list.child,
       academicYear: list.academicYears[0] ?? null,
       term: list.terms[0] ?? null,
+      selectedAcademicYear: list.selectedAcademicYear,
+      selectedTerm: list.selectedTerm,
+      selected_academic_year: list.selected_academic_year,
+      selected_term: list.selected_term,
       summary: list.summary,
       subjects: list.subjects,
       visibility: VISIBILITY,
+      emptyState: list.emptyState,
+      empty_state: list.empty_state,
     };
   }
 
@@ -144,8 +148,10 @@ function presentChild(
   return {
     studentId: result.child.studentId,
     enrollmentId: result.child.enrollmentId,
+    displayName: null,
     student_id: result.child.studentId,
     enrollment_id: result.child.enrollmentId,
+    display_name: null,
   };
 }
 
@@ -171,6 +177,7 @@ function presentAssessmentItems(
       date: assessment.date.toISOString().slice(0, 10),
       score,
       maxScore,
+      weight: decimalToNumber(assessment.weight) ?? 0,
       percent: calculatePercent(score, maxScore),
       gradeItemId: item?.id ?? null,
       itemStatus: item ? lowerEnum(item.status) : 'missing',
@@ -200,15 +207,22 @@ function presentSubjects(
     const subject = assessments[0].subject;
     const breakdown = assessments.map((assessment) => {
       const item = itemsByAssessmentId.get(assessment.id) ?? null;
+      const earned =
+        item?.status === GradeItemStatus.ENTERED
+          ? decimalToNumber(item.score)
+          : null;
+      const total = decimalToNumber(assessment.maxScore) ?? 0;
       return {
         assessmentId: assessment.id,
         title: assessmentTitle(assessment),
         type: lowerEnum(assessment.type),
-        earned:
-          item?.status === GradeItemStatus.ENTERED
-            ? decimalToNumber(item.score)
-            : null,
-        total: decimalToNumber(assessment.maxScore) ?? 0,
+        earned,
+        total,
+        score: earned,
+        maxScore: total,
+        percentage: calculatePercent(earned, total),
+        weight: decimalToNumber(assessment.weight) ?? 0,
+        comment: item?.comment ?? null,
         status: item ? lowerEnum(item.status) : 'missing',
         date: assessment.date.toISOString().slice(0, 10),
       };
@@ -219,18 +233,37 @@ function presentSubjects(
       0,
     );
     const percentage = calculatePercent(earnedMarks, totalMarks);
+    const counts = summarizeBreakdownItems(breakdown);
 
     return {
       id: subject.id,
       subjectId: subject.id,
       subjectName: displayName(subject),
+      subjectNameAr: subject.nameAr,
+      subjectNameEn: subject.nameEn,
       subject_name: displayName(subject),
+      subject_name_ar: subject.nameAr,
+      subject_name_en: subject.nameEn,
+      totalEarned: earnedMarks,
+      totalMax: totalMarks,
       totalMarks,
       total_marks: totalMarks,
       earnedMarks,
       earned_marks: earnedMarks,
       percentage,
+      completedWeight: counts.completedWeight,
+      assessmentCount: counts.assessmentCount,
+      enteredCount: counts.enteredCount,
+      missingCount: counts.missingCount,
+      absentCount: counts.absentCount,
       rating: ratingForPercentage(percentage),
+      total_earned: earnedMarks,
+      total_max: totalMarks,
+      completed_weight: counts.completedWeight,
+      assessment_count: counts.assessmentCount,
+      entered_count: counts.enteredCount,
+      missing_count: counts.missingCount,
+      absent_count: counts.absentCount,
       breakdown,
     };
   });
@@ -244,6 +277,7 @@ function summarizeAssessmentItems(
   const percentage = calculatePercent(totalEarned, totalMax);
   const rating = ratingForPercentage(percentage);
   const motivationalMessage = motivationalMessageForRating(rating);
+  const counts = summarizeAssessmentCounts(items);
 
   return {
     totalEarned,
@@ -251,10 +285,118 @@ function summarizeAssessmentItems(
     percentage,
     rating,
     motivationalMessage,
+    completedWeight: counts.completedWeight,
+    assessmentCount: counts.assessmentCount,
+    enteredCount: counts.enteredCount,
+    missingCount: counts.missingCount,
+    absentCount: counts.absentCount,
     total_earned: totalEarned,
     total_max: totalMax,
     motivational_message: motivationalMessage,
+    completed_weight: counts.completedWeight,
+    assessment_count: counts.assessmentCount,
+    entered_count: counts.enteredCount,
+    missing_count: counts.missingCount,
+    absent_count: counts.absentCount,
   };
+}
+
+function presentAcademicYear(academicYear: {
+  id: string;
+  nameAr: string | null;
+  nameEn: string | null;
+}): ParentGradeAcademicYearDto {
+  return {
+    id: academicYear.id,
+    name: displayName(academicYear),
+    nameAr: academicYear.nameAr,
+    nameEn: academicYear.nameEn,
+    name_ar: academicYear.nameAr,
+    name_en: academicYear.nameEn,
+  };
+}
+
+function presentTerm(
+  term: {
+    id: string;
+    nameAr: string | null;
+    nameEn: string | null;
+  },
+  academicYearId: string,
+): ParentGradeTermDto {
+  return {
+    id: term.id,
+    academicYearId,
+    academic_year_id: academicYearId,
+    name: displayName(term),
+    nameAr: term.nameAr,
+    nameEn: term.nameEn,
+    name_ar: term.nameAr,
+    name_en: term.nameEn,
+  };
+}
+
+function summarizeAssessmentCounts(items: ParentGradeAssessmentItemDto[]): {
+  assessmentCount: number;
+  enteredCount: number;
+  missingCount: number;
+  absentCount: number;
+  completedWeight: number;
+} {
+  return summarizeStatuses(
+    items.map((item) => ({ status: item.itemStatus, weight: item.weight })),
+  );
+}
+
+function summarizeBreakdownItems(items: ParentGradeBreakdownItemDto[]): {
+  assessmentCount: number;
+  enteredCount: number;
+  missingCount: number;
+  absentCount: number;
+  completedWeight: number;
+} {
+  return summarizeStatuses(items.map((item) => item));
+}
+
+function summarizeStatuses(items: Array<{ status: string; weight: number }>): {
+  assessmentCount: number;
+  enteredCount: number;
+  missingCount: number;
+  absentCount: number;
+  completedWeight: number;
+} {
+  const enteredItems = items.filter((item) => item.status === 'entered');
+
+  return {
+    assessmentCount: items.length,
+    enteredCount: enteredItems.length,
+    missingCount: items.filter((item) => item.status === 'missing').length,
+    absentCount: items.filter((item) => item.status === 'absent').length,
+    completedWeight: roundTwo(
+      enteredItems.reduce((sum, item) => sum + item.weight, 0),
+    ),
+  };
+}
+
+function buildEmptyState(
+  result: ParentGradesReadResult,
+  items: ParentGradeAssessmentItemDto[],
+): ParentGradesEmptyStateDto | null {
+  if (!result.enrollment.term) {
+    return {
+      reason: 'no_active_term',
+      message: 'No active term is available for this child.',
+    };
+  }
+
+  if (items.length === 0) {
+    return {
+      reason: 'no_visible_grades',
+      message: 'No published or approved child grades are available yet.',
+    };
+  }
+
+  return null;
 }
 
 function presentAssessmentStatus(assessment: {
@@ -272,8 +414,11 @@ function assessmentTitle(assessment: {
   return assessment.titleEn ?? assessment.titleAr ?? null;
 }
 
-function displayName(node: { nameEn: string; nameAr: string }): string {
-  return node.nameEn || node.nameAr;
+function displayName(node: {
+  nameEn: string | null;
+  nameAr: string | null;
+}): string {
+  return node.nameEn || node.nameAr || '';
 }
 
 function lowerEnum(value: string): string {
@@ -328,4 +473,8 @@ function motivationalMessageForRating(rating: string | null): string | null {
     default:
       return null;
   }
+}
+
+function roundTwo(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }

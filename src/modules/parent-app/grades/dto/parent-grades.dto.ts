@@ -60,18 +60,30 @@ export class ParentGradesQueryDto {
 export class ParentGradesChildDto {
   studentId!: string;
   enrollmentId!: string;
+  displayName?: string | null;
   student_id!: string;
   enrollment_id!: string;
+  display_name?: string | null;
 }
 
 export class ParentGradeAcademicYearDto {
   id!: string;
   name!: string;
+  nameAr!: string | null;
+  nameEn!: string | null;
+  name_ar!: string | null;
+  name_en!: string | null;
 }
 
 export class ParentGradeTermDto {
   id!: string;
+  academicYearId!: string;
+  academic_year_id!: string;
   name!: string;
+  nameAr!: string | null;
+  nameEn!: string | null;
+  name_ar!: string | null;
+  name_en!: string | null;
 }
 
 export class ParentGradesSummaryDto {
@@ -80,9 +92,19 @@ export class ParentGradesSummaryDto {
   percentage!: number | null;
   rating!: string | null;
   motivationalMessage!: string | null;
+  completedWeight!: number;
+  assessmentCount!: number;
+  enteredCount!: number;
+  missingCount!: number;
+  absentCount!: number;
   total_earned!: number;
   total_max!: number;
   motivational_message!: string | null;
+  completed_weight!: number;
+  assessment_count!: number;
+  entered_count!: number;
+  missing_count!: number;
+  absent_count!: number;
 }
 
 export class ParentGradeBreakdownItemDto {
@@ -91,6 +113,11 @@ export class ParentGradeBreakdownItemDto {
   type!: string;
   earned!: number | null;
   total!: number;
+  score!: number | null;
+  maxScore!: number;
+  percentage!: number | null;
+  weight!: number;
+  comment!: string | null;
   status!: string;
   date!: string;
 }
@@ -99,13 +126,31 @@ export class ParentGradeSubjectDto {
   id!: string;
   subjectId!: string;
   subjectName!: string;
+  subjectNameAr!: string | null;
+  subjectNameEn!: string | null;
   subject_name!: string;
+  subject_name_ar!: string | null;
+  subject_name_en!: string | null;
+  totalEarned!: number;
+  totalMax!: number;
   totalMarks!: number;
   total_marks!: number;
   earnedMarks!: number;
   earned_marks!: number;
   percentage!: number | null;
+  completedWeight!: number;
+  assessmentCount!: number;
+  enteredCount!: number;
+  missingCount!: number;
+  absentCount!: number;
   rating!: string | null;
+  total_earned!: number;
+  total_max!: number;
+  completed_weight!: number;
+  assessment_count!: number;
+  entered_count!: number;
+  missing_count!: number;
+  absent_count!: number;
   breakdown!: ParentGradeBreakdownItemDto[];
 }
 
@@ -119,6 +164,7 @@ export class ParentGradeAssessmentItemDto {
   date!: string;
   score!: number | null;
   maxScore!: number;
+  weight!: number;
   percent!: number | null;
   gradeItemId!: string | null;
   itemStatus!: string;
@@ -141,20 +187,37 @@ export class ParentGradesListResponseDto {
   academicYears!: ParentGradeAcademicYearDto[];
   academic_years!: ParentGradeAcademicYearDto[];
   terms!: ParentGradeTermDto[];
+  selectedAcademicYear!: ParentGradeAcademicYearDto | null;
+  selectedTerm!: ParentGradeTermDto | null;
+  selected_academic_year!: ParentGradeAcademicYearDto | null;
+  selected_term!: ParentGradeTermDto | null;
   summary!: ParentGradesSummaryDto;
   subjects!: ParentGradeSubjectDto[];
   assessments!: ParentGradeAssessmentItemDto[];
   pagination!: ParentGradesPaginationDto;
   visibility!: ParentGradesVisibilityDto;
+  emptyState!: ParentGradesEmptyStateDto | null;
+  empty_state!: ParentGradesEmptyStateDto | null;
 }
 
 export class ParentGradesSummaryResponseDto {
   child!: ParentGradesChildDto;
   academicYear!: ParentGradeAcademicYearDto | null;
   term!: ParentGradeTermDto | null;
+  selectedAcademicYear!: ParentGradeAcademicYearDto | null;
+  selectedTerm!: ParentGradeTermDto | null;
+  selected_academic_year!: ParentGradeAcademicYearDto | null;
+  selected_term!: ParentGradeTermDto | null;
   summary!: ParentGradesSummaryDto;
   subjects!: ParentGradeSubjectDto[];
   visibility!: ParentGradesVisibilityDto;
+  emptyState!: ParentGradesEmptyStateDto | null;
+  empty_state!: ParentGradesEmptyStateDto | null;
+}
+
+export class ParentGradesEmptyStateDto {
+  reason!: string;
+  message!: string;
 }
 
 export class ParentAssessmentGradeSubjectDto {

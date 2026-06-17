@@ -60,19 +60,40 @@ export class StudentGradesQueryDto {
 export class StudentGradeAcademicYearDto {
   id!: string;
   name!: string;
+  nameAr!: string | null;
+  nameEn!: string | null;
+  name_ar!: string | null;
+  name_en!: string | null;
 }
 
 export class StudentGradeTermDto {
   id!: string;
+  academicYearId!: string;
+  academic_year_id!: string;
   name!: string;
+  nameAr!: string | null;
+  nameEn!: string | null;
+  name_ar!: string | null;
+  name_en!: string | null;
 }
 
 export class StudentGradesSummaryDto {
   totalEarned!: number;
   totalMax!: number;
   percentage!: number | null;
+  completedWeight!: number;
+  assessmentCount!: number;
+  enteredCount!: number;
+  missingCount!: number;
+  absentCount!: number;
+  rating!: string | null;
   total_earned!: number;
   total_max!: number;
+  completed_weight!: number;
+  assessment_count!: number;
+  entered_count!: number;
+  missing_count!: number;
+  absent_count!: number;
 }
 
 export class StudentGradeBreakdownItemDto {
@@ -81,6 +102,11 @@ export class StudentGradeBreakdownItemDto {
   type!: string;
   earned!: number | null;
   total!: number;
+  score!: number | null;
+  maxScore!: number;
+  percentage!: number | null;
+  weight!: number;
+  comment!: string | null;
   status!: string;
   date!: string;
 }
@@ -89,11 +115,31 @@ export class StudentGradeSubjectDto {
   id!: string;
   subjectId!: string;
   subjectName!: string;
+  subjectNameAr!: string | null;
+  subjectNameEn!: string | null;
   subject_name!: string;
+  subject_name_ar!: string | null;
+  subject_name_en!: string | null;
+  totalEarned!: number;
+  totalMax!: number;
+  percentage!: number | null;
+  completedWeight!: number;
+  assessmentCount!: number;
+  enteredCount!: number;
+  missingCount!: number;
+  absentCount!: number;
+  rating!: string | null;
   totalMarks!: number;
   total_marks!: number;
   earnedMarks!: number;
   earned_marks!: number;
+  total_earned!: number;
+  total_max!: number;
+  completed_weight!: number;
+  assessment_count!: number;
+  entered_count!: number;
+  missing_count!: number;
+  absent_count!: number;
   breakdown!: StudentGradeBreakdownItemDto[];
 }
 
@@ -107,6 +153,7 @@ export class StudentGradeAssessmentItemDto {
   date!: string;
   score!: number | null;
   maxScore!: number;
+  weight!: number;
   percent!: number | null;
   gradeItemId!: string | null;
   itemStatus!: string;
@@ -123,17 +170,34 @@ export class StudentGradesListResponseDto {
   academicYears!: StudentGradeAcademicYearDto[];
   academic_years!: StudentGradeAcademicYearDto[];
   terms!: StudentGradeTermDto[];
+  selectedAcademicYear!: StudentGradeAcademicYearDto | null;
+  selectedTerm!: StudentGradeTermDto | null;
+  selected_academic_year!: StudentGradeAcademicYearDto | null;
+  selected_term!: StudentGradeTermDto | null;
   summary!: StudentGradesSummaryDto;
   subjects!: StudentGradeSubjectDto[];
   assessments!: StudentGradeAssessmentItemDto[];
   pagination!: StudentGradesPaginationDto;
+  emptyState!: StudentGradesEmptyStateDto | null;
+  empty_state!: StudentGradesEmptyStateDto | null;
 }
 
 export class StudentGradesSummaryResponseDto {
   academicYear!: StudentGradeAcademicYearDto | null;
   term!: StudentGradeTermDto | null;
+  selectedAcademicYear!: StudentGradeAcademicYearDto | null;
+  selectedTerm!: StudentGradeTermDto | null;
+  selected_academic_year!: StudentGradeAcademicYearDto | null;
+  selected_term!: StudentGradeTermDto | null;
   summary!: StudentGradesSummaryDto;
   subjects!: StudentGradeSubjectDto[];
+  emptyState!: StudentGradesEmptyStateDto | null;
+  empty_state!: StudentGradesEmptyStateDto | null;
+}
+
+export class StudentGradesEmptyStateDto {
+  reason!: string;
+  message!: string;
 }
 
 export class StudentAssessmentGradeSubjectDto {
