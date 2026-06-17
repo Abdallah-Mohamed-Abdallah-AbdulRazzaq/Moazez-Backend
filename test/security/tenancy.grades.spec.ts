@@ -1190,6 +1190,28 @@ describe('Grades tenancy isolation (security)', () => {
     return { accessToken: response.body.accessToken };
   }
 
+  function expectNoDashboardInternalFields(body: unknown): void {
+    const serialized = JSON.stringify(body);
+
+    for (const field of [
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'deletedAt',
+      'createdAt',
+      'updatedAt',
+      'answerKey',
+      'correctAnswer',
+      'isCorrect',
+      'objectKey',
+      'bucket',
+      'passwordHash',
+    ]) {
+      expect(serialized).not.toContain(field);
+    }
+  }
+
   function assessmentPayload(overrides?: Record<string, unknown>) {
     return {
       yearId: demoYearId,
@@ -2902,6 +2924,59 @@ describe('Grades tenancy isolation (security)', () => {
     expect(itemIds).not.toContain(tenantBQuestionItem.id);
   });
 
+  it('school A grades bootstrap does not include school B filter data or internal fields', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/bootstrap`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body.academicYears.map((year: { id: string }) => year.id))
+      .toContain(demoYearId);
+    expect(response.body.academicYears.map((year: { id: string }) => year.id))
+      .not.toContain(tenantBYearId);
+    expect(response.body.terms.map((term: { id: string }) => term.id)).toContain(
+      demoTermId,
+    );
+    expect(response.body.terms.map((term: { id: string }) => term.id)).not.toContain(
+      tenantBTermId,
+    );
+    expect(response.body.stages.map((stage: { id: string }) => stage.id))
+      .toContain(demoStageId);
+    expect(response.body.stages.map((stage: { id: string }) => stage.id))
+      .not.toContain(tenantBStageId);
+    expect(response.body.grades.map((grade: { id: string }) => grade.id))
+      .toContain(demoGradeId);
+    expect(response.body.grades.map((grade: { id: string }) => grade.id))
+      .not.toContain(tenantBGradeId);
+    expect(response.body.sections.map((section: { id: string }) => section.id))
+      .toContain(demoSectionId);
+    expect(response.body.sections.map((section: { id: string }) => section.id))
+      .not.toContain(tenantBSectionId);
+    expect(
+      response.body.classrooms.map((classroom: { id: string }) => classroom.id),
+    ).toContain(demoClassroomId);
+    expect(
+      response.body.classrooms.map((classroom: { id: string }) => classroom.id),
+    ).not.toContain(tenantBClassroomId);
+    expect(response.body.subjects.map((subject: { id: string }) => subject.id))
+      .toContain(demoSubjectId);
+    expect(response.body.subjects.map((subject: { id: string }) => subject.id))
+      .not.toContain(tenantBSubjectId);
+    expect(response.body.supportedScopes).toEqual([
+      'school',
+      'stage',
+      'grade',
+      'section',
+      'classroom',
+    ]);
+    expect(response.body.assessmentTypes).toContain('QUIZ');
+    expect(response.body.deliveryModes).toContain('QUESTION_BASED');
+    expect(response.body.approvalStatuses).toContain('published');
+    expectNoDashboardInternalFields(response.body);
+  });
+
   it('school A gradebook for school B scope returns 404', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
@@ -2917,6 +2992,67 @@ describe('Grades tenancy isolation (security)', () => {
       .expect(404);
 
     expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('school A overview does not include school B data or internal fields', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const demoReadAssessmentId = await createDemoWorkflowAssessment({
+      approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+      titleSuffix: 'read-overview-a',
+      weight: 0.01,
+    });
+    const tenantBReadAssessmentId = await createTenantBWorkflowAssessment({
+      approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+      titleSuffix: 'read-overview-b',
+    });
+
+    await prisma.gradeItem.create({
+      data: {
+        schoolId: demoSchoolId,
+        termId: demoTermId,
+        assessmentId: demoReadAssessmentId,
+        studentId: demoStudentId,
+        score: 18,
+        status: GradeItemStatus.ENTERED,
+      },
+    });
+    await prisma.gradeItem.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        termId: tenantBTermId,
+        assessmentId: tenantBReadAssessmentId,
+        studentId: tenantBStudentId,
+        score: 19,
+        status: GradeItemStatus.ENTERED,
+      },
+    });
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/overview`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const assessmentIds = response.body.assessments.map(
+      (assessment: { assessmentId: string }) => assessment.assessmentId,
+    );
+
+    expect(response.body.scope).toMatchObject({
+      scopeType: 'grade',
+      scopeId: demoGradeId,
+    });
+    expect(response.body.totals.studentCount).toBe(2);
+    expect(assessmentIds).toContain(demoReadAssessmentId);
+    expect(assessmentIds).not.toContain(tenantBReadAssessmentId);
+    expect(JSON.stringify(response.body)).not.toContain(tenantBStudentId);
+    expect(JSON.stringify(response.body)).not.toContain(tenantBSubjectId);
+    expect(JSON.stringify(response.body)).not.toContain(tenantBGradeId);
+    expectNoDashboardInternalFields(response.body);
   });
 
   it('school A analytics does not include school B data', async () => {
@@ -2958,6 +3094,23 @@ describe('Grades tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('not_found');
   });
 
+  it('school A overview for school B scope returns 404', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/overview`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: tenantBGradeId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
   it('school A cannot fetch school B student snapshot', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
@@ -2970,11 +3123,33 @@ describe('Grades tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('not_found');
   });
 
+  it('returns 401 for unauthenticated grades dashboard read-model routes', async () => {
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/bootstrap`)
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/overview`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+      })
+      .expect(401);
+  });
+
   it('returns 403 when the same-school actor lacks grades.gradebook.view', async () => {
     const { accessToken } = await login(
       MANAGE_ONLY_EMAIL,
       MANAGE_ONLY_PASSWORD,
     );
+
+    const bootstrapResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/bootstrap`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+    expect(bootstrapResponse.body?.error?.code).toBe('auth.scope.missing');
 
     const response = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/grades/gradebook`)
@@ -3019,6 +3194,18 @@ describe('Grades tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(403);
     expect(distributionResponse.body?.error?.code).toBe('auth.scope.missing');
+
+    const overviewResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/overview`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+    expect(overviewResponse.body?.error?.code).toBe('auth.scope.missing');
   });
 
   it('returns 403 when the same-school actor lacks grades.snapshots.view', async () => {
@@ -3046,6 +3233,11 @@ describe('Grades tenancy isolation (security)', () => {
     };
 
     await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/bootstrap`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/grades/gradebook`)
       .query(query)
       .set('Authorization', `Bearer ${accessToken}`)
@@ -3059,6 +3251,12 @@ describe('Grades tenancy isolation (security)', () => {
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/grades/analytics/distribution`)
+      .query(query)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/overview`)
       .query(query)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
@@ -3100,6 +3298,21 @@ describe('Grades tenancy isolation (security)', () => {
       .expect(200);
 
     expect(analyticsResponse.body.assessmentCount).toBe(0);
+
+    const overviewResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/overview`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+        assessmentStatus: 'DRAFT',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(overviewResponse.body.totals.assessmentCount).toBe(0);
+    expect(overviewResponse.body.assessments).toHaveLength(0);
   });
 
   it('gradebook and analytics include locked approved assessments as readable', async () => {
@@ -3142,6 +3355,27 @@ describe('Grades tenancy isolation (security)', () => {
       .expect(200);
 
     expect(analyticsResponse.body.assessmentCount).toBeGreaterThan(0);
+
+    const overviewResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/overview`)
+      .query({
+        yearId: demoYearId,
+        termId: demoTermId,
+        scopeType: 'grade',
+        gradeId: demoGradeId,
+        assessmentStatus: 'APPROVED',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(
+      overviewResponse.body.assessments.map(
+        (assessment: { assessmentId: string }) => assessment.assessmentId,
+      ),
+    ).toContain(lockedAssessmentId);
+    expect(overviewResponse.body.totals.lockedAssessmentCount).toBeGreaterThan(
+      0,
+    );
   });
 
   it('school A list does not include school B grade rules', async () => {
