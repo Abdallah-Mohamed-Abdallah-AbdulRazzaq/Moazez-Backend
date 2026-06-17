@@ -30,6 +30,11 @@ import { GetParentHomeUseCase } from './home/application/get-parent-home.use-cas
 import { ParentHomeController } from './home/controller/parent-home.controller';
 import { ParentHomeReadAdapter } from './home/infrastructure/parent-home-read.adapter';
 import { ParentHomeworksModule } from './homeworks/parent-homeworks.module';
+import { GetParentChildLessonDetailUseCase } from './lessons/application/get-parent-child-lesson-detail.use-case';
+import { GetParentChildLessonsTodayUseCase } from './lessons/application/get-parent-child-lessons-today.use-case';
+import { GetParentChildLessonsWeekUseCase } from './lessons/application/get-parent-child-lessons-week.use-case';
+import { ParentChildLessonsController } from './lessons/controller/parent-child-lessons.controller';
+import { ParentChildLessonsReadAdapter } from './lessons/infrastructure/parent-child-lessons-read.adapter';
 import { GetParentMessageConversationUseCase } from './messages/application/get-parent-message-conversation.use-case';
 import { ListParentConversationMessagesUseCase } from './messages/application/list-parent-conversation-messages.use-case';
 import { ListParentMessageConversationsUseCase } from './messages/application/list-parent-message-conversations.use-case';
@@ -82,6 +87,7 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ParentMessagesController,
     ParentAnnouncementsController,
     ParentCalendarController,
+    ParentChildLessonsController,
   ],
   providers: [
     ParentAppAccessService,
@@ -132,6 +138,10 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ListParentAnnouncementAttachmentsUseCase,
     ListParentCalendarEventsUseCase,
     GetParentCalendarEventUseCase,
+    ParentChildLessonsReadAdapter,
+    GetParentChildLessonsTodayUseCase,
+    GetParentChildLessonsWeekUseCase,
+    GetParentChildLessonDetailUseCase,
   ],
   exports: [ParentAppAccessService],
 })

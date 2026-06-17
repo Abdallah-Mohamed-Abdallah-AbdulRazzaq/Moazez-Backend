@@ -26,7 +26,7 @@ import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 
 const GLOBAL_PREFIX = '/api/v1';
-const PASSWORD = 'StudentLessons123!';
+const PASSWORD = 'ParentChildLessons123!';
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
   memoryCost: 19 * 1024,
@@ -67,7 +67,7 @@ type LessonFixture = {
 
 jest.setTimeout(120000);
 
-describe('Student App lesson content workflows (e2e)', () => {
+describe('Parent App child lesson content workflows (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
 
@@ -77,25 +77,28 @@ describe('Student App lesson content workflows (e2e)', () => {
   let crossSchoolId = '';
   let teacherUserId = '';
   let studentUserId = '';
-  let studentEmail = '';
+  let parentUserId = '';
+  let parentEmail = '';
+  let childStudentId = '';
   let academic: AcademicContext;
   let fixture: LessonFixture;
   let otherClassroomFixture: LessonFixture;
   let archivedPlanItemId = '';
   let archivedCurriculumItemId = '';
-  let studentAuth: AuthTokens;
+  let parentAuth: AuthTokens;
 
   const suffix = randomUUID().split('-')[0];
-  const marker = `s22h-e2e-${suffix}`;
+  const marker = `s22i-e2e-${suffix}`;
   const cleanup = createCleanupState();
 
   beforeAll(async () => {
     prisma = new PrismaClient();
     await prisma.$connect();
 
-    const [teacherRole, studentRole] = await Promise.all([
+    const [teacherRole, studentRole, parentRole] = await Promise.all([
       findSystemRole('teacher'),
       findSystemRole('student'),
+      findSystemRole('parent'),
     ]);
 
     organizationId = await createOrganization('main');
@@ -113,13 +116,22 @@ describe('Student App lesson content workflows (e2e)', () => {
       organizationId,
       schoolId,
     });
-    studentEmail = `${marker}-student@example.test`;
     studentUserId = await createUserWithMembership({
-      email: studentEmail,
+      email: `${marker}-student@example.test`,
       firstName: 'Student',
       lastName: 'User',
       userType: UserType.STUDENT,
       roleId: studentRole.id,
+      organizationId,
+      schoolId,
+    });
+    parentEmail = `${marker}-parent@example.test`;
+    parentUserId = await createUserWithMembership({
+      email: parentEmail,
+      firstName: 'Parent',
+      lastName: 'User',
+      userType: UserType.PARENT,
+      roleId: parentRole.id,
       organizationId,
       schoolId,
     });
@@ -135,7 +147,7 @@ describe('Student App lesson content workflows (e2e)', () => {
       deletedContent: true,
       itemNotes: 'teacher-only note',
     });
-    await createStudentEnrollment({
+    const childEnrollment = await createStudentEnrollment({
       organizationId,
       schoolId,
       userId: studentUserId,
@@ -143,6 +155,18 @@ describe('Student App lesson content workflows (e2e)', () => {
       termId: academic.termId,
       classroomId: fixture.classroomId,
       marker: 'own',
+    });
+    childStudentId = childEnrollment.studentId;
+    const guardianId = await createGuardian({
+      organizationId,
+      schoolId,
+      userId: parentUserId,
+      marker: 'own',
+    });
+    await linkGuardianToStudent({
+      schoolId,
+      studentId: childStudentId,
+      guardianId,
     });
 
     otherClassroomFixture = await createLessonFixture({
@@ -209,7 +233,7 @@ describe('Student App lesson content workflows (e2e)', () => {
     );
     await app.init();
 
-    studentAuth = await login(studentEmail);
+    parentAuth = await login(parentEmail);
   });
 
   afterAll(async () => {
@@ -221,7 +245,7 @@ describe('Student App lesson content workflows (e2e)', () => {
     }
   });
 
-  it('registers Student App lesson routes and preserves Parent lesson routes', () => {
+  it('registers Parent child lesson routes and preserves Student/Teacher lesson routes', () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toEqual(
@@ -229,25 +253,25 @@ describe('Student App lesson content workflows (e2e)', () => {
         'GET /api/v1/student/lessons/today',
         'GET /api/v1/student/lessons/week',
         'GET /api/v1/student/lessons/:lessonPlanItemId',
-        'GET /api/v1/student/schedule',
-        'GET /api/v1/student/subjects',
         'GET /api/v1/parent/children/:studentId/lessons/today',
         'GET /api/v1/parent/children/:studentId/lessons/week',
         'GET /api/v1/parent/children/:studentId/lessons/:lessonPlanItemId',
+        'GET /api/v1/parent/children/:studentId/schedule/today',
         'GET /api/v1/teacher/lesson-preparation/today',
         'GET /api/v1/academics/lesson-plans',
       ]),
     );
   });
 
-  it('lists today and week visible lessons for the current student classroom', async () => {
+  it('lists today and week visible lessons for the owned child classroom', async () => {
     const today = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/lessons/today`)
+      .get(`${GLOBAL_PREFIX}/parent/children/${childStudentId}/lessons/today`)
       .query({ date: '2026-09-14' })
-      .set('Authorization', bearer(studentAuth))
+      .set('Authorization', bearer(parentAuth))
       .expect(200);
 
     expect(today.body).toMatchObject({
+      studentId: childStudentId,
       date: '2026-09-14',
       dayOfWeek: 1,
       items: [
@@ -265,11 +289,12 @@ describe('Student App lesson content workflows (e2e)', () => {
     );
 
     const week = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/lessons/week`)
+      .get(`${GLOBAL_PREFIX}/parent/children/${childStudentId}/lessons/week`)
       .query({ date: '2026-09-16' })
-      .set('Authorization', bearer(studentAuth))
+      .set('Authorization', bearer(parentAuth))
       .expect(200);
 
+    expect(week.body.studentId).toBe(childStudentId);
     expect(week.body.weekStartDate).toBe('2026-09-14');
     expect(week.body.days).toHaveLength(7);
     expect(
@@ -284,8 +309,10 @@ describe('Student App lesson content workflows (e2e)', () => {
 
   it('returns safe lesson detail with curriculum content and no teacher-only fields', async () => {
     const detail = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/lessons/${fixture.lessonPlanItemId}`)
-      .set('Authorization', bearer(studentAuth))
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${childStudentId}/lessons/${fixture.lessonPlanItemId}`,
+      )
+      .set('Authorization', bearer(parentAuth))
       .expect(200);
 
     expect(detail.body).toMatchObject({
@@ -304,7 +331,7 @@ describe('Student App lesson content workflows (e2e)', () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: 'text',
-          bodyText: 'Student-visible content',
+          bodyText: 'Parent-visible content',
           file: null,
           isRequired: true,
           estimatedMinutes: 10,
@@ -331,42 +358,41 @@ describe('Student App lesson content workflows (e2e)', () => {
     expectNoObjectKey(detail.body, 'notes');
   });
 
-  it('does not expose another classroom, archived plan, or archived curriculum lessons', async () => {
+  it('does not expose unlinked classroom, archived plan, or archived curriculum lessons', async () => {
     await request(app.getHttpServer())
       .get(
-        `${GLOBAL_PREFIX}/student/lessons/${otherClassroomFixture.lessonPlanItemId}`,
+        `${GLOBAL_PREFIX}/parent/children/${childStudentId}/lessons/${otherClassroomFixture.lessonPlanItemId}`,
       )
-      .set('Authorization', bearer(studentAuth))
+      .set('Authorization', bearer(parentAuth))
       .expect(404);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/lessons/${archivedPlanItemId}`)
-      .set('Authorization', bearer(studentAuth))
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${childStudentId}/lessons/${archivedPlanItemId}`,
+      )
+      .set('Authorization', bearer(parentAuth))
       .expect(404);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/lessons/${archivedCurriculumItemId}`)
-      .set('Authorization', bearer(studentAuth))
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${childStudentId}/lessons/${archivedCurriculumItemId}`,
+      )
+      .set('Authorization', bearer(parentAuth))
       .expect(404);
   });
 
-  it('keeps existing Student schedule and subject routes working', async () => {
+  it('keeps existing Parent child schedule and children routes working', async () => {
     const schedule = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/schedule`)
-      .query({ date: '2026-09-14' })
-      .set('Authorization', bearer(studentAuth))
+      .get(`${GLOBAL_PREFIX}/parent/children/${childStudentId}/schedule/today`)
+      .set('Authorization', bearer(parentAuth))
       .expect(200);
-    expect(schedule.body.items).toEqual([
-      expect.objectContaining({
-        timetableEntryId: fixture.timetableEntryId,
-      }),
-    ]);
+    expect(Array.isArray(schedule.body.items)).toBe(true);
 
-    const subjects = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/subjects`)
-      .set('Authorization', bearer(studentAuth))
+    const children = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children`)
+      .set('Authorization', bearer(parentAuth))
       .expect(200);
-    expect(JSON.stringify(subjects.body)).toContain(fixture.subjectId);
+    expect(JSON.stringify(children.body)).toContain(childStudentId);
   });
 
   async function findSystemRole(key: string) {
@@ -488,7 +514,7 @@ describe('Student App lesson content workflows (e2e)', () => {
     termId: string;
     classroomId: string;
     marker: string;
-  }): Promise<void> {
+  }): Promise<{ studentId: string; enrollmentId: string }> {
     const student = await prisma.student.create({
       data: {
         organizationId: params.organizationId,
@@ -515,6 +541,53 @@ describe('Student App lesson content workflows (e2e)', () => {
       select: { id: true },
     });
     cleanup.enrollmentIds.add(enrollment.id);
+
+    return {
+      studentId: student.id,
+      enrollmentId: enrollment.id,
+    };
+  }
+
+  async function createGuardian(params: {
+    organizationId: string;
+    schoolId: string;
+    userId: string;
+    marker: string;
+  }): Promise<string> {
+    const guardian = await prisma.guardian.create({
+      data: {
+        organizationId: params.organizationId,
+        schoolId: params.schoolId,
+        userId: params.userId,
+        firstName: `${marker}-${params.marker}-guardian`,
+        lastName: 'Parent',
+        phone: `${marker}-${params.marker}-phone`,
+        email: `${marker}-${params.marker}-guardian@example.test`,
+        relation: 'parent',
+        isPrimary: true,
+      },
+      select: { id: true },
+    });
+    cleanup.guardianIds.add(guardian.id);
+
+    return guardian.id;
+  }
+
+  async function linkGuardianToStudent(params: {
+    schoolId: string;
+    studentId: string;
+    guardianId: string;
+  }): Promise<void> {
+    const link = await prisma.studentGuardian.create({
+      data: {
+        schoolId: params.schoolId,
+        studentId: params.studentId,
+        guardianId: params.guardianId,
+        isPrimary: true,
+      },
+      select: { id: true },
+    });
+    cleanup.studentGuardianIds.add(link.id);
   }
 
   async function createLessonFixture(params: {
@@ -728,7 +801,7 @@ describe('Student App lesson content workflows (e2e)', () => {
         lessonId: lesson.id,
         type: LessonContentItemType.TEXT,
         title: `${marker}-${params.marker}-text`,
-        bodyText: 'Student-visible content',
+        bodyText: 'Parent-visible content',
         sortOrder: 1,
         isRequired: true,
         estimatedMinutes: 10,
@@ -1087,6 +1160,9 @@ describe('Student App lesson content workflows (e2e)', () => {
     await prisma.enrollment.deleteMany({
       where: { id: { in: [...cleanup.enrollmentIds] } },
     });
+    await prisma.studentGuardian.deleteMany({
+      where: { id: { in: [...cleanup.studentGuardianIds] } },
+    });
     await prisma.student.deleteMany({
       where: { id: { in: [...cleanup.studentIds] } },
     });
@@ -1110,6 +1186,9 @@ describe('Student App lesson content workflows (e2e)', () => {
     });
     await prisma.academicYear.deleteMany({
       where: { id: { in: [...cleanup.academicYearIds] } },
+    });
+    await prisma.guardian.deleteMany({
+      where: { id: { in: [...cleanup.guardianIds] } },
     });
     await prisma.membership.deleteMany({
       where: { userId: { in: [...cleanup.userIds] } },
@@ -1152,5 +1231,7 @@ function createCleanupState() {
     fileIds: new Set<string>(),
     studentIds: new Set<string>(),
     enrollmentIds: new Set<string>(),
+    guardianIds: new Set<string>(),
+    studentGuardianIds: new Set<string>(),
   };
 }

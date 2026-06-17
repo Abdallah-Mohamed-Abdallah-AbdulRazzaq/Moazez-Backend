@@ -328,9 +328,13 @@ describe('Student App lesson content tenancy/security (e2e)', () => {
     }
   });
 
-  it('keeps Parent App child lesson routes absent', () => {
-    expect(listRegisteredRoutes()).not.toContain(
-      'GET /api/v1/parent/children/:studentId/lessons/today',
+  it('registers Parent App child lesson routes', () => {
+    expect(listRegisteredRoutes()).toEqual(
+      expect.arrayContaining([
+        'GET /api/v1/parent/children/:studentId/lessons/today',
+        'GET /api/v1/parent/children/:studentId/lessons/week',
+        'GET /api/v1/parent/children/:studentId/lessons/:lessonPlanItemId',
+      ]),
     );
   });
 

@@ -236,7 +236,7 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
     }
   });
 
-  it('registers Teacher App lesson-preparation routes and keeps Parent lesson routes absent', () => {
+  it('registers Teacher App lesson-preparation routes and preserves Parent lesson routes', () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toEqual(
@@ -248,12 +248,14 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
         'GET /api/v1/student/lessons/today',
         'GET /api/v1/student/lessons/week',
         'GET /api/v1/student/lessons/:lessonPlanItemId',
+        'GET /api/v1/parent/children/:studentId/lessons/today',
+        'GET /api/v1/parent/children/:studentId/lessons/week',
+        'GET /api/v1/parent/children/:studentId/lessons/:lessonPlanItemId',
         'GET /api/v1/teacher/schedule',
         'GET /api/v1/teacher/my-classes',
         'GET /api/v1/academics/lesson-plans',
       ]),
     );
-    expect(routes).not.toContain('GET /api/v1/parent/children/:studentId/lessons/today');
   });
 
   it('lists today and week lesson-preparation items for the teacher only', async () => {
