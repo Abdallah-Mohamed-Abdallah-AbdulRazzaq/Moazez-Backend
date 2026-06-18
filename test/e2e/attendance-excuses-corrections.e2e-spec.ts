@@ -6,6 +6,7 @@ import {
   AttendanceExcuseType,
   AttendanceMode,
   AttendanceScopeType,
+  AttendanceSessionStatus,
   AttendanceStatus,
   PrismaClient,
   StudentEnrollmentStatus,
@@ -1020,6 +1021,328 @@ describe('Attendance excuses and corrections closeout flow (e2e)', () => {
       incidentCount: 1,
       affectedStudentsCount: 1,
     });
+  });
+
+  it('covers direct absence excuse and early-leave correction convenience routes', async () => {
+    const { accessToken } = await login();
+    const fixture = await createAttendancePrerequisites();
+    const policyNameSuffix = randomUUID().split('-')[0];
+
+    const createPolicyResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/attendance/policies`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: fixture.academicYearId,
+        termId: fixture.termId,
+        nameAr: `Sprint 25C Policy ${policyNameSuffix} AR`,
+        nameEn: `Sprint 25C Policy ${policyNameSuffix}`,
+        scopeType: AttendanceScopeType.CLASSROOM,
+        classroomId: fixture.classroomId,
+        mode: AttendanceMode.DAILY,
+        effectiveStartDate: fixture.termStartDate,
+        effectiveEndDate: fixture.termEndDate,
+        allowExcuses: true,
+        notifyGuardians: true,
+        notifyOnAbsent: true,
+        isActive: true,
+      })
+      .expect(201);
+
+    cleanupState.policyIds.add(createPolicyResponse.body.id);
+
+    const resolveSessionResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/attendance/roll-call/session/resolve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        ...attendanceScopeQuery(fixture),
+        mode: AttendanceMode.DAILY,
+      })
+      .expect(201);
+
+    const sessionId = resolveSessionResponse.body.session.id;
+    cleanupState.sessionIds.add(sessionId);
+
+    const saveEntriesResponse = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${sessionId}/entries`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        entries: [
+          {
+            studentId: fixture.absentStudentId,
+            enrollmentId: fixture.absentEnrollmentId,
+            status: AttendanceStatus.ABSENT,
+            note: 'Sprint 25C direct absence',
+          },
+          {
+            studentId: fixture.lateStudentId,
+            enrollmentId: fixture.lateEnrollmentId,
+            status: AttendanceStatus.LATE,
+            lateMinutes: 14,
+            note: 'Sprint 25C late incident',
+          },
+        ],
+      })
+      .expect(200);
+
+    for (const entry of saveEntriesResponse.body.entries) {
+      cleanupState.entryIds.add(entry.id);
+    }
+
+    const absentEntry = saveEntriesResponse.body.entries.find(
+      (entry: { studentId: string }) =>
+        entry.studentId === fixture.absentStudentId,
+    );
+    const lateEntry = saveEntriesResponse.body.entries.find(
+      (entry: { studentId: string }) =>
+        entry.studentId === fixture.lateStudentId,
+    );
+    expect(absentEntry).toBeDefined();
+    expect(lateEntry).toBeDefined();
+    if (!absentEntry || !lateEntry) {
+      throw new Error('Expected direct correction fixture entries to exist.');
+    }
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${sessionId}/submit`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    const excuseRequestsBefore = await prisma.attendanceExcuseRequest.count({
+      where: {
+        studentId: fixture.absentStudentId,
+        termId: fixture.termId,
+      },
+    });
+
+    const directExcuseResponse = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/attendance/absences/${absentEntry.id}/excuse`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        excuseReason: 'Parent called attendance office',
+        note: 'Direct dashboard correction',
+        correctionReason: 'Attendance officer verified the parent call',
+      })
+      .expect(200);
+
+    expect(directExcuseResponse.body).toEqual(
+      expect.objectContaining({
+        id: absentEntry.id,
+        entryId: absentEntry.id,
+        sessionId,
+        studentId: fixture.absentStudentId,
+        status: AttendanceStatus.EXCUSED,
+        excuseReason: 'Parent called attendance office',
+        note: 'Direct dashboard correction',
+      }),
+    );
+    expect(directExcuseResponse.body).not.toHaveProperty('schoolId');
+    expect(directExcuseResponse.body).not.toHaveProperty('organizationId');
+    expect(directExcuseResponse.body).not.toHaveProperty('markedById');
+    expect(directExcuseResponse.body).not.toHaveProperty('deletedAt');
+
+    const excuseRequestsAfter = await prisma.attendanceExcuseRequest.count({
+      where: {
+        studentId: fixture.absentStudentId,
+        termId: fixture.termId,
+      },
+    });
+    expect(excuseRequestsAfter).toBe(excuseRequestsBefore);
+
+    const directEarlyLeaveResponse = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/attendance/absences/${lateEntry.id}/early-leave`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        earlyLeaveMinutes: 21,
+        note: 'Nurse dismissal verified',
+        correctionReason: 'Late incident was actually an early leave',
+      })
+      .expect(200);
+
+    expect(directEarlyLeaveResponse.body).toEqual(
+      expect.objectContaining({
+        id: lateEntry.id,
+        entryId: lateEntry.id,
+        sessionId,
+        studentId: fixture.lateStudentId,
+        status: AttendanceStatus.EARLY_LEAVE,
+        lateMinutes: null,
+        minutesLate: null,
+        earlyLeaveMinutes: 21,
+        minutesEarlyLeave: 21,
+        excuseReason: null,
+        note: 'Nurse dismissal verified',
+      }),
+    );
+    expect(directEarlyLeaveResponse.body).not.toHaveProperty('schoolId');
+    expect(directEarlyLeaveResponse.body).not.toHaveProperty('markedById');
+
+    const sessionAfterDirectCorrectionsResponse = await request(
+      app.getHttpServer(),
+    )
+      .get(`${GLOBAL_PREFIX}/attendance/roll-call/sessions/${sessionId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(sessionAfterDirectCorrectionsResponse.body.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: absentEntry.id,
+          status: AttendanceStatus.EXCUSED,
+        }),
+        expect.objectContaining({
+          id: lateEntry.id,
+          status: AttendanceStatus.EARLY_LEAVE,
+          lateMinutes: null,
+          earlyLeaveMinutes: 21,
+        }),
+      ]),
+    );
+
+    const absencesAfterDirectCorrectionsResponse = await request(
+      app.getHttpServer(),
+    )
+      .get(`${GLOBAL_PREFIX}/attendance/absences`)
+      .query(attendanceReadQuery(fixture))
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(absencesAfterDirectCorrectionsResponse.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: absentEntry.id,
+          status: AttendanceStatus.EXCUSED,
+        }),
+        expect.objectContaining({
+          id: lateEntry.id,
+          status: AttendanceStatus.EARLY_LEAVE,
+          earlyLeaveMinutes: 21,
+        }),
+      ]),
+    );
+
+    const reportsAfterDirectCorrectionsResponse = await request(
+      app.getHttpServer(),
+    )
+      .get(`${GLOBAL_PREFIX}/attendance/reports/summary`)
+      .query(attendanceReadQuery(fixture))
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(reportsAfterDirectCorrectionsResponse.body).toMatchObject({
+      totalSessions: 1,
+      totalEntries: 2,
+      absentCount: 0,
+      lateCount: 0,
+      earlyLeaveCount: 1,
+      excusedCount: 1,
+      incidentCount: 2,
+      affectedStudentsCount: 2,
+    });
+
+    const closedYear = await prisma.academicYear.create({
+      data: {
+        schoolId: demoSchoolId,
+        nameAr: `Sprint 25C Closed Year ${policyNameSuffix} AR`,
+        nameEn: `Sprint 25C Closed Year ${policyNameSuffix}`,
+        startDate: new Date('2027-09-01T00:00:00.000Z'),
+        endDate: new Date('2028-06-30T00:00:00.000Z'),
+        isActive: false,
+      },
+      select: { id: true },
+    });
+    cleanupState.academicYearIds.add(closedYear.id);
+
+    const closedTerm = await prisma.term.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: closedYear.id,
+        nameAr: `Sprint 25C Closed Term ${policyNameSuffix} AR`,
+        nameEn: `Sprint 25C Closed Term ${policyNameSuffix}`,
+        startDate: new Date('2027-09-01T00:00:00.000Z'),
+        endDate: new Date('2027-12-31T00:00:00.000Z'),
+        isActive: false,
+      },
+      select: { id: true },
+    });
+    cleanupState.termIds.add(closedTerm.id);
+
+    const closedStudent = await prisma.student.create({
+      data: {
+        schoolId: demoSchoolId,
+        organizationId: demoOrganizationId,
+        firstName: `Sprint 25C Closed ${policyNameSuffix}`,
+        lastName: 'Student',
+      },
+      select: { id: true },
+    });
+    cleanupState.studentIds.add(closedStudent.id);
+
+    const closedEnrollment = await prisma.enrollment.create({
+      data: {
+        schoolId: demoSchoolId,
+        studentId: closedStudent.id,
+        academicYearId: closedYear.id,
+        termId: closedTerm.id,
+        classroomId: fixture.classroomId,
+        status: StudentEnrollmentStatus.ACTIVE,
+        enrolledAt: new Date('2027-09-01T00:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    cleanupState.enrollmentIds.add(closedEnrollment.id);
+
+    const closedSession = await prisma.attendanceSession.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: closedYear.id,
+        termId: closedTerm.id,
+        date: new Date('2027-09-08T00:00:00.000Z'),
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: `classroom:${fixture.classroomId}`,
+        stageId: fixture.stageId,
+        gradeId: fixture.gradeId,
+        sectionId: fixture.sectionId,
+        classroomId: fixture.classroomId,
+        mode: AttendanceMode.DAILY,
+        periodKey: 'daily',
+        status: AttendanceSessionStatus.SUBMITTED,
+        submittedAt: new Date('2027-09-08T07:20:00.000Z'),
+      },
+      select: { id: true },
+    });
+    cleanupState.sessionIds.add(closedSession.id);
+
+    const closedEntry = await prisma.attendanceEntry.create({
+      data: {
+        schoolId: demoSchoolId,
+        sessionId: closedSession.id,
+        studentId: closedStudent.id,
+        enrollmentId: closedEnrollment.id,
+        status: AttendanceStatus.ABSENT,
+      },
+      select: { id: true },
+    });
+    cleanupState.entryIds.add(closedEntry.id);
+
+    const closedTermResponse = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/attendance/absences/${closedEntry.id}/excuse`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        excuseReason: 'Closed term direct correction',
+        correctionReason: 'Closed terms must reject direct corrections',
+      })
+      .expect(400);
+
+    expect(closedTermResponse.body?.error?.code).toBe('validation.failed');
+    expect(closedTermResponse.body?.error?.message).toBe(
+      'Attendance sessions cannot be changed in a closed term',
+    );
   });
 });
 

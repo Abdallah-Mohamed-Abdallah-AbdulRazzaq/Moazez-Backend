@@ -22,6 +22,8 @@ describe('Attendance absences presenter', () => {
       earlyLeaveMinutes: null,
       excuseReason: null,
       note: 'Traffic',
+      markedById: 'user-1',
+      markedAt: timestamp,
       createdAt: timestamp,
       updatedAt: timestamp,
       student: {
@@ -78,6 +80,13 @@ describe('Attendance absences presenter', () => {
         createdAt: timestamp,
         updatedAt: timestamp,
         deletedAt: null,
+        term: {
+          id: 'term-1',
+          academicYearId: 'year-1',
+          startDate: new Date('2026-09-01T00:00:00.000Z'),
+          endDate: new Date('2026-12-31T00:00:00.000Z'),
+          isActive: true,
+        },
         stage: null,
         grade: null,
         section: null,

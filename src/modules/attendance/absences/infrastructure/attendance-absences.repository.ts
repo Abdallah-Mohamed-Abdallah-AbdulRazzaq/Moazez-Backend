@@ -113,6 +113,8 @@ const ATTENDANCE_ABSENCE_INCIDENT_ARGS =
       earlyLeaveMinutes: true,
       excuseReason: true,
       note: true,
+      markedById: true,
+      markedAt: true,
       createdAt: true,
       updatedAt: true,
       student: {
@@ -157,6 +159,9 @@ const ATTENDANCE_ABSENCE_INCIDENT_ARGS =
           createdAt: true,
           updatedAt: true,
           deletedAt: true,
+          term: {
+            select: TERM_REFERENCE_ARGS.select,
+          },
           stage: {
             select: STAGE_SELECT,
           },
@@ -254,6 +259,59 @@ export class AttendanceAbsencesRepository {
       where: this.buildIncidentWhere(filters),
       ...ATTENDANCE_ABSENCE_SUMMARY_ARGS,
     });
+  }
+
+  findIncidentById(
+    entryId: string,
+  ): Promise<AttendanceAbsenceIncidentRecord | null> {
+    return this.scopedPrisma.attendanceEntry.findFirst({
+      where: {
+        id: entryId,
+        session: {
+          status: AttendanceSessionStatus.SUBMITTED,
+          deletedAt: null,
+        },
+      },
+      ...ATTENDANCE_ABSENCE_INCIDENT_ARGS,
+    });
+  }
+
+  async correctIncidentEntry(params: {
+    entryId: string;
+    correction: {
+      status: AttendanceStatus;
+      lateMinutes: number | null;
+      earlyLeaveMinutes: number | null;
+      excuseReason: string | null;
+      note: string | null;
+    };
+    markedById: string | null;
+    markedAt: Date;
+  }): Promise<AttendanceAbsenceIncidentRecord | null> {
+    const result = await this.scopedPrisma.attendanceEntry.updateMany({
+      where: {
+        id: params.entryId,
+        session: {
+          status: AttendanceSessionStatus.SUBMITTED,
+          deletedAt: null,
+        },
+      },
+      data: {
+        status: params.correction.status,
+        lateMinutes: params.correction.lateMinutes,
+        earlyLeaveMinutes: params.correction.earlyLeaveMinutes,
+        excuseReason: params.correction.excuseReason,
+        note: params.correction.note,
+        markedById: params.markedById,
+        markedAt: params.markedAt,
+      },
+    });
+
+    if (result.count === 0) {
+      return null;
+    }
+
+    return this.findIncidentById(params.entryId);
   }
 
   findAcademicYearById(

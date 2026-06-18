@@ -1,4 +1,5 @@
 import { AttendanceStatus } from '@prisma/client';
+import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 
 export const ATTENDANCE_INCIDENT_STATUSES = [
   AttendanceStatus.ABSENT,
@@ -37,6 +38,36 @@ export function resolveAttendanceIncidentStatuses(
 ): AttendanceIncidentStatus[] {
   if (!status) return [...ATTENDANCE_INCIDENT_STATUSES];
   return isAttendanceIncidentStatus(status) ? [status] : [];
+}
+
+export function assertAttendanceIncidentCanBeExcused(
+  status: AttendanceStatus,
+): void {
+  if (
+    status !== AttendanceStatus.ABSENT &&
+    status !== AttendanceStatus.LATE &&
+    status !== AttendanceStatus.EARLY_LEAVE
+  ) {
+    throw new ValidationDomainException(
+      'Attendance incident cannot be marked excused from its current status',
+      { status },
+    );
+  }
+}
+
+export function assertAttendanceIncidentCanBecomeEarlyLeave(
+  status: AttendanceStatus,
+): void {
+  if (
+    status !== AttendanceStatus.ABSENT &&
+    status !== AttendanceStatus.LATE &&
+    status !== AttendanceStatus.EARLY_LEAVE
+  ) {
+    throw new ValidationDomainException(
+      'Attendance incident cannot be corrected to early leave from its current status',
+      { status },
+    );
+  }
 }
 
 export function summarizeAttendanceIncidents(

@@ -3,13 +3,17 @@ import {
   AttendanceScopeType,
   AttendanceStatus,
 } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
   IsDateString,
   IsEnum,
+  IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
+  Min,
 } from 'class-validator';
 
 export class ListAttendanceAbsencesQueryDto {
@@ -76,6 +80,40 @@ export class ListAttendanceAbsencesQueryDto {
 }
 
 export class AttendanceAbsenceSummaryQueryDto extends ListAttendanceAbsencesQueryDto {}
+
+export class MarkAttendanceAbsenceExcusedDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  excuseReason?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string | null;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  correctionReason!: string;
+}
+
+export class CorrectAttendanceAbsenceEarlyLeaveDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  earlyLeaveMinutes!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string | null;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  correctionReason!: string;
+}
 
 export class AttendanceAbsenceScopeIdsResponseDto {
   stageId!: string | null;

@@ -10,15 +10,19 @@ import { AttendanceAbsencesRepository } from '../infrastructure/attendance-absen
 describe('AttendanceAbsencesRepository', () => {
   function buildRepository() {
     const findMany = jest.fn().mockResolvedValue([]);
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
     const scoped = {
       attendanceEntry: {
         findMany,
+        findFirst,
+        updateMany,
       },
     };
     const prisma = { scoped } as unknown as PrismaService;
     const repository = new AttendanceAbsencesRepository(prisma);
 
-    return { repository, findMany };
+    return { repository, findMany, findFirst, updateMany };
   }
 
   it('lists only entries whose parent session is submitted', async () => {
@@ -94,5 +98,59 @@ describe('AttendanceAbsencesRepository', () => {
     const where = findMany.mock.calls[0][0].where;
     expect(where.session.status).toBe(AttendanceSessionStatus.SUBMITTED);
     expect(where.status.in).toEqual([...ATTENDANCE_INCIDENT_STATUSES]);
+  });
+
+  it('finds correction targets only from submitted non-deleted sessions', async () => {
+    const { repository, findFirst } = buildRepository();
+
+    await repository.findIncidentById('entry-1');
+
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'entry-1',
+          session: {
+            status: AttendanceSessionStatus.SUBMITTED,
+            deletedAt: null,
+          },
+        },
+      }),
+    );
+  });
+
+  it('updates the source entry through the submitted non-deleted session guard', async () => {
+    const { repository, updateMany } = buildRepository();
+
+    await repository.correctIncidentEntry({
+      entryId: 'entry-1',
+      correction: {
+        status: AttendanceStatus.EXCUSED,
+        lateMinutes: null,
+        earlyLeaveMinutes: null,
+        excuseReason: 'Medical',
+        note: 'Verified',
+      },
+      markedById: 'user-1',
+      markedAt: new Date('2026-09-15T09:00:00.000Z'),
+    });
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'entry-1',
+        session: {
+          status: AttendanceSessionStatus.SUBMITTED,
+          deletedAt: null,
+        },
+      },
+      data: {
+        status: AttendanceStatus.EXCUSED,
+        lateMinutes: null,
+        earlyLeaveMinutes: null,
+        excuseReason: 'Medical',
+        note: 'Verified',
+        markedById: 'user-1',
+        markedAt: expect.any(Date),
+      },
+    });
   });
 });

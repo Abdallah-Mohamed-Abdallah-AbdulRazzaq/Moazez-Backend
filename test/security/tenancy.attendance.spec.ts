@@ -1386,6 +1386,96 @@ describe('Attendance policies tenancy isolation (security)', () => {
     expect(ids).not.toContain(tenantBSubmittedEntryId);
   });
 
+  it('returns 404 when school A marks a school B absence incident as excused', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/attendance/absences/${tenantBSubmittedEntryId}/excuse`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        excuseReason: `${testSuffix}-cross-school-absence-excuse`,
+        correctionReason: `${testSuffix}-cross-school-absence-excuse`,
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A marks a school B absence incident as early leave', async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/attendance/absences/${tenantBSubmittedEntryId}/early-leave`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        earlyLeaveMinutes: 11,
+        correctionReason: `${testSuffix}-cross-school-absence-early-leave`,
+      })
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A guesses a school B entry id through absence corrections', async () => {
+    const { accessToken } = await login();
+
+    const excuseResponse = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/attendance/absences/${tenantBEntryId}/excuse`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        excuseReason: `${testSuffix}-guessed-school-b-entry`,
+        correctionReason: `${testSuffix}-guessed-school-b-entry`,
+      })
+      .expect(404);
+
+    expect(excuseResponse.body?.error?.code).toBe('not_found');
+
+    const earlyLeaveResponse = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/attendance/absences/${tenantBEntryId}/early-leave`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        earlyLeaveMinutes: 13,
+        correctionReason: `${testSuffix}-guessed-school-b-entry`,
+      })
+      .expect(404);
+
+    expect(earlyLeaveResponse.body?.error?.code).toBe('not_found');
+  });
+
+  it('returns 404 when school A corrects a draft-session absence incident from the absence routes', async () => {
+    const { accessToken } = await login();
+
+    const excuseResponse = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/attendance/absences/${demoDraftEntryId}/excuse`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        excuseReason: `${testSuffix}-draft-session-excuse`,
+        correctionReason: `${testSuffix}-draft-session-excuse`,
+      })
+      .expect(404);
+
+    expect(excuseResponse.body?.error?.code).toBe('not_found');
+
+    const earlyLeaveResponse = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/attendance/absences/${demoDraftEntryId}/early-leave`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        earlyLeaveMinutes: 17,
+        correctionReason: `${testSuffix}-draft-session-early-leave`,
+      })
+      .expect(404);
+
+    expect(earlyLeaveResponse.body?.error?.code).toBe('not_found');
+  });
+
   it('summarizes school A absence incidents without leaking school B or draft incidents', async () => {
     const { accessToken } = await login();
 
