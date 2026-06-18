@@ -390,6 +390,22 @@ export class GradesSubmissionsRepository {
     });
   }
 
+  findExistingSubmissionForEnrollment(params: {
+    assessmentId: string;
+    studentId: string;
+    enrollmentId: string;
+  }): Promise<GradeSubmissionDetailRecord | null> {
+    return this.scopedPrisma.gradeSubmission.findFirst({
+      where: {
+        assessmentId: params.assessmentId,
+        studentId: params.studentId,
+        enrollmentId: params.enrollmentId,
+        assessment: { deletedAt: null },
+      },
+      ...SUBMISSION_DETAIL_ARGS,
+    });
+  }
+
   async createSubmission(
     input: CreateSubmissionInput,
   ): Promise<GradeSubmissionDetailRecord> {

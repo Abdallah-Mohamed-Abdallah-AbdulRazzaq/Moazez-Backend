@@ -1,5 +1,19 @@
 import { Transform, Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 export const STUDENT_EXAM_TYPES = [
   'quiz',
@@ -14,6 +28,8 @@ export const STUDENT_EXAM_STATUSES = [
   'in_progress',
   'completed',
 ] as const;
+const MAX_SELECTED_OPTIONS = 100;
+const MAX_BULK_SUBMISSION_ANSWERS = 200;
 
 export type StudentExamType = (typeof STUDENT_EXAM_TYPES)[number];
 export type StudentExamStatus = (typeof STUDENT_EXAM_STATUSES)[number];
@@ -178,4 +194,35 @@ export class StudentExamSubmissionStateResponseDto {
   assessmentId!: string;
   status!: StudentExamStatus;
   submission!: StudentExamSubmissionDto | null;
+}
+
+export class StudentExamSaveAnswerDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(10000)
+  answerText?: string | null;
+
+  @IsOptional()
+  @IsObject()
+  answerJson?: Record<string, unknown> | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_SELECTED_OPTIONS)
+  @IsUUID(undefined, { each: true })
+  selectedOptionIds?: string[] | null;
+}
+
+export class StudentExamBulkSaveAnswerItemDto extends StudentExamSaveAnswerDto {
+  @IsUUID()
+  questionId!: string;
+}
+
+export class StudentExamBulkSaveAnswersDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(MAX_BULK_SUBMISSION_ANSWERS)
+  @ValidateNested({ each: true })
+  @Type(() => StudentExamBulkSaveAnswerItemDto)
+  answers!: StudentExamBulkSaveAnswerItemDto[];
 }

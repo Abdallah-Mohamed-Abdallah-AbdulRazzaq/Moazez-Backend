@@ -1742,6 +1742,48 @@ describe('Student App Home/Profile routes (security)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(404);
     }
+
+    for (const assessmentId of [
+      otherClassroomAssessmentId,
+      tenantBAssessmentId,
+    ]) {
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/student/exams/${assessmentId}/start`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .put(
+          `${GLOBAL_PREFIX}/student/exams/${assessmentId}/submission/answers`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          answers: [
+            {
+              questionId: '11111111-1111-4111-8111-111111111111',
+              selectedOptionIds: [],
+            },
+          ],
+        })
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .patch(
+          `${GLOBAL_PREFIX}/student/exams/${assessmentId}/submission/answers/11111111-1111-4111-8111-111111111111`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ selectedOptionIds: [] })
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/student/exams/${assessmentId}/submission/submit`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(404);
+    }
   });
 
   it('forbids non-student actors from home and profile', async () => {
@@ -1795,6 +1837,8 @@ describe('Student App Home/Profile routes (security)', () => {
         `messages/conversations/${ownConversationId}/messages`,
         `messages/conversations/${ownConversationId}/read`,
         `announcements/${ownAnnouncementId}/read`,
+        `exams/${ownNoSubmissionAssessmentId}/start`,
+        `exams/${ownNoSubmissionAssessmentId}/submission/submit`,
       ]) {
         await request(app.getHttpServer())
           .post(`${GLOBAL_PREFIX}/student/${path}`)
@@ -1802,6 +1846,29 @@ describe('Student App Home/Profile routes (security)', () => {
           .send({ body: 'blocked' })
           .expect(403);
       }
+
+      await request(app.getHttpServer())
+        .put(
+          `${GLOBAL_PREFIX}/student/exams/${ownNoSubmissionAssessmentId}/submission/answers`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          answers: [
+            {
+              questionId: '11111111-1111-4111-8111-111111111111',
+              selectedOptionIds: [],
+            },
+          ],
+        })
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .patch(
+          `${GLOBAL_PREFIX}/student/exams/${ownNoSubmissionAssessmentId}/submission/answers/11111111-1111-4111-8111-111111111111`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ selectedOptionIds: [] })
+        .expect(403);
     }
   });
 

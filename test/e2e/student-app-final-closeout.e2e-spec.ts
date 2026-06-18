@@ -783,16 +783,20 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'GET /api/v1/student/tasks/:taskId/submissions',
       'GET /api/v1/student/tasks/:taskId/submissions/:submissionId',
       'GET /api/v1/student/tasks/summary',
+      'PATCH /api/v1/student/exams/:assessmentId/submission/answers/:questionId',
       'PATCH /api/v1/student/homeworks/:homeworkId/submission/answers/:questionId',
       'PATCH /api/v1/student/homeworks/:homeworkId/submission/attachments/:attachmentId',
       'PATCH /api/v1/student/homeworks/:homeworkId/submission/attachments/:attachmentId/reorder',
       'POST /api/v1/student/announcements/:announcementId/read',
+      'POST /api/v1/student/exams/:assessmentId/start',
+      'POST /api/v1/student/exams/:assessmentId/submission/submit',
       'POST /api/v1/student/homeworks/:homeworkId/submission/attachments',
       'POST /api/v1/student/homeworks/:homeworkId/submission/draft',
       'POST /api/v1/student/homeworks/:homeworkId/submission/submit',
       'POST /api/v1/student/homeworks/:homeworkId/submit',
       'POST /api/v1/student/messages/conversations/:conversationId/messages',
       'POST /api/v1/student/messages/conversations/:conversationId/read',
+      'PUT /api/v1/student/exams/:assessmentId/submission/answers',
       'PUT /api/v1/student/homeworks/:homeworkId/submission',
       'PUT /api/v1/student/homeworks/:homeworkId/submission/answers',
     ]);
@@ -1664,6 +1668,8 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
         `messages/conversations/${ownConversationId}/messages`,
         `messages/conversations/${ownConversationId}/read`,
         `announcements/${ownAnnouncementId}/read`,
+        `exams/${ownNoSubmissionAssessmentId}/start`,
+        `exams/${ownNoSubmissionAssessmentId}/submission/submit`,
       ]) {
         await request(app.getHttpServer())
           .post(`${GLOBAL_PREFIX}/student/${path}`)
@@ -1671,6 +1677,29 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
           .send({ body: 'blocked' })
           .expect(403);
       }
+
+      await request(app.getHttpServer())
+        .put(
+          `${GLOBAL_PREFIX}/student/exams/${ownNoSubmissionAssessmentId}/submission/answers`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          answers: [
+            {
+              questionId: '11111111-1111-4111-8111-111111111111',
+              selectedOptionIds: [],
+            },
+          ],
+        })
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .patch(
+          `${GLOBAL_PREFIX}/student/exams/${ownNoSubmissionAssessmentId}/submission/answers/11111111-1111-4111-8111-111111111111`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ selectedOptionIds: [] })
+        .expect(403);
     }
   });
 

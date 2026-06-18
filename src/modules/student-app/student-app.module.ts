@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
 import { CommunicationModule } from '../communication/communication.module';
+import { GradesSubmissionsRepository } from '../grades/assessments/infrastructure/grades-submissions.repository';
+import { AuthModule } from '../iam/auth/auth.module';
 import { StudentAppAccessService } from './access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from './access/student-app-student-read.adapter';
 import { GetStudentAnnouncementUseCase } from './announcements/application/get-student-announcement.use-case';
@@ -17,11 +19,16 @@ import { StudentBehaviorReadAdapter } from './behavior/infrastructure/student-be
 import { GetStudentCalendarEventUseCase } from './calendar/application/get-student-calendar-event.use-case';
 import { ListStudentCalendarEventsUseCase } from './calendar/application/list-student-calendar-events.use-case';
 import { StudentCalendarController } from './calendar/controller/student-calendar.controller';
+import { BulkSaveStudentExamAnswersUseCase } from './exams/application/bulk-save-student-exam-answers.use-case';
 import { GetStudentExamSubmissionUseCase } from './exams/application/get-student-exam-submission.use-case';
 import { GetStudentExamUseCase } from './exams/application/get-student-exam.use-case';
 import { ListStudentExamsUseCase } from './exams/application/list-student-exams.use-case';
+import { SaveStudentExamAnswerUseCase } from './exams/application/save-student-exam-answer.use-case';
+import { StartStudentExamSubmissionUseCase } from './exams/application/start-student-exam-submission.use-case';
+import { SubmitStudentExamSubmissionUseCase } from './exams/application/submit-student-exam-submission.use-case';
 import { StudentExamsController } from './exams/controller/student-exams.controller';
 import { StudentExamsReadAdapter } from './exams/infrastructure/student-exams-read.adapter';
+import { StudentExamsSubmissionWriteAdapter } from './exams/infrastructure/student-exams-submission-write.adapter';
 import { GetStudentAssessmentGradeUseCase } from './grades/application/get-student-assessment-grade.use-case';
 import { GetStudentGradesSummaryUseCase } from './grades/application/get-student-grades-summary.use-case';
 import { ListStudentGradesUseCase } from './grades/application/list-student-grades.use-case';
@@ -78,6 +85,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
 @Module({
   imports: [
     AppCalendarReadModelModule,
+    AuthModule,
     CommunicationModule,
     StudentHomeworksModule,
   ],
@@ -112,9 +120,15 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     GetStudentGradesSummaryUseCase,
     GetStudentAssessmentGradeUseCase,
     StudentExamsReadAdapter,
+    StudentExamsSubmissionWriteAdapter,
+    GradesSubmissionsRepository,
     ListStudentExamsUseCase,
     GetStudentExamUseCase,
     GetStudentExamSubmissionUseCase,
+    StartStudentExamSubmissionUseCase,
+    BulkSaveStudentExamAnswersUseCase,
+    SaveStudentExamAnswerUseCase,
+    SubmitStudentExamSubmissionUseCase,
     StudentBehaviorReadAdapter,
     ListStudentBehaviorRecordsUseCase,
     GetStudentBehaviorSummaryUseCase,
