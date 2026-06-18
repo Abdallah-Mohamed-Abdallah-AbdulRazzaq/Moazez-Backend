@@ -288,6 +288,23 @@ export function assertManualBonusPayload(input: {
   };
 }
 
+export function assertManualBonusIdempotencyKey(input: {
+  sourceId?: string | null;
+  dedupeKey?: string | null;
+}): string {
+  const sourceId = normalizeNullableText(input.sourceId);
+  const dedupeKey = normalizeNullableText(input.dedupeKey);
+  const idempotencyKey = sourceId ?? dedupeKey;
+  if (!idempotencyKey) {
+    throw new ValidationDomainException(
+      'Manual XP bonus requires sourceId or dedupeKey',
+      { field: 'dedupeKey', aliases: ['sourceId'] },
+    );
+  }
+
+  return idempotencyKey;
+}
+
 export function calculateXpCapUsage(input: {
   dailyXp: number;
   weeklyXp: number;

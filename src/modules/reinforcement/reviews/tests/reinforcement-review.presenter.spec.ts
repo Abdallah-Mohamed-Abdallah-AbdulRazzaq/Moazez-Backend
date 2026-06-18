@@ -53,6 +53,28 @@ describe('reinforcement review presenter', () => {
     });
   });
 
+  it('does not expose unsafe proof file or tenancy internals', () => {
+    const response = presentReinforcementReviewItemDetail(reviewItem());
+    const serialized = JSON.stringify(response);
+
+    expect(serialized).not.toContain('schoolId');
+    expect(serialized).not.toContain('submittedById');
+    expect(serialized).not.toContain('metadata');
+    expect(serialized).not.toContain('bucket');
+    expect(serialized).not.toContain('objectKey');
+    expect(serialized).not.toContain('signedUrl');
+    expect(serialized).not.toContain('storage');
+    expect(serialized).not.toContain('https://storage.example.test');
+    expect(response.proof.file).toEqual({
+      id: 'file-1',
+      originalName: 'proof.png',
+      mimeType: 'image/png',
+      sizeBytes: '1234',
+      visibility: 'private',
+      createdAt: '2026-04-29T08:00:00.000Z',
+    });
+  });
+
   function reviewItem() {
     const now = new Date('2026-04-29T08:00:00.000Z');
     const review = {

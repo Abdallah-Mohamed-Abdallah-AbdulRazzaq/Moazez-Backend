@@ -184,12 +184,18 @@ export function normalizeProofType(
 export function normalizeRewardType(
   input: ReinforcementRewardType | string | null | undefined,
 ): ReinforcementRewardType | null {
-  if (input === undefined || input === null || String(input).trim() === '') {
+  const normalized = normalizeOptionalString(input);
+  if (!normalized) {
+    return null;
+  }
+
+  const aliasKey = normalized.replace(/[-\s]/g, '_').toLowerCase();
+  if (aliasKey === 'none') {
     return null;
   }
 
   return normalizeEnumValue({
-    input,
+    input: normalized,
     aliases: REWARD_TYPE_ALIASES,
     values: Object.values(ReinforcementRewardType),
     field: 'rewardType',

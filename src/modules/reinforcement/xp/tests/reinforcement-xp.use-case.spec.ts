@@ -387,6 +387,26 @@ describe('reinforcement XP use cases', () => {
     expect(repository.createXpLedger).not.toHaveBeenCalled();
   });
 
+  it('rejects manual bonus XP without a stable idempotency key', async () => {
+    const repository = baseRepository({
+      createXpLedger: jest.fn(),
+    });
+
+    await expect(
+      withScope(() =>
+        new GrantManualXpUseCase(repository, authRepository()).execute({
+          yearId: YEAR_ID,
+          termId: TERM_ID,
+          studentId: STUDENT_ID,
+          amount: 10,
+          reason: 'Excellent participation',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'validation.failed' });
+
+    expect(repository.createXpLedger).not.toHaveBeenCalled();
+  });
+
   function baseRepository(overrides?: Partial<Record<string, jest.Mock>>) {
     const repository = {
       findAcademicYear: jest.fn().mockResolvedValue({ id: YEAR_ID, isActive: true }),

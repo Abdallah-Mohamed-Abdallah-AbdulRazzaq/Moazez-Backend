@@ -1,11 +1,13 @@
 import {
   ReinforcementProofType,
+  ReinforcementRewardType,
   ReinforcementTargetScope,
 } from '@prisma/client';
 import {
   assertNoDuplicateTargets,
   buildDefaultStage,
   normalizeProofType,
+  normalizeRewardType,
   normalizeTargetScope,
   normalizeTaskStages,
   normalizeTaskTarget,
@@ -21,6 +23,16 @@ describe('Reinforcement task domain helpers', () => {
       ReinforcementTargetScope.STUDENT,
     );
     expect(normalizeProofType('none')).toBe(ReinforcementProofType.NONE);
+  });
+
+  it('treats explicit none rewards as no reward', () => {
+    expect(normalizeRewardType('none')).toBeNull();
+    expect(normalizeRewardType(null)).toBeNull();
+    expect(normalizeRewardType('moral')).toBe(ReinforcementRewardType.MORAL);
+    expect(normalizeRewardType('financial')).toBe(
+      ReinforcementRewardType.FINANCIAL,
+    );
+    expect(normalizeRewardType('xp')).toBe(ReinforcementRewardType.XP);
   });
 
   it('rejects duplicate target scopes and ids', () => {

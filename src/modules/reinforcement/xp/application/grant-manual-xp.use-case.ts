@@ -1,10 +1,10 @@
-import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { XpSourceType } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireReinforcementScope } from '../../reinforcement-context';
 import {
+  assertManualBonusIdempotencyKey,
   assertManualBonusPayload,
   buildXpLedgerPayload,
   isUniqueConstraintError,
@@ -57,10 +57,7 @@ export class GrantManualXpUseCase {
     });
 
     const sourceType = XpSourceType.MANUAL_BONUS;
-    const sourceId =
-      normalizeNullableText(command.sourceId) ??
-      normalizeNullableText(command.dedupeKey) ??
-      randomUUID();
+    const sourceId = assertManualBonusIdempotencyKey(command);
     const existing = await this.xpRepository.findExistingLedgerBySource({
       sourceType,
       sourceId,
