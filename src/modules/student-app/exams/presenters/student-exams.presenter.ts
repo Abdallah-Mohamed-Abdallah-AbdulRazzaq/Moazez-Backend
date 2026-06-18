@@ -282,6 +282,14 @@ function sanitizeAnswerJson(value: unknown): unknown {
     'signedUrl',
     'fileUrl',
     'url',
+    'metadata',
+    'rawMetadata',
+    'rawStorageMetadata',
+    'storageMetadata',
+    'storage',
+    'fileMetadata',
+    'rawAnswerMetadata',
+    'answerMetadata',
   ]);
 
   return Object.fromEntries(
