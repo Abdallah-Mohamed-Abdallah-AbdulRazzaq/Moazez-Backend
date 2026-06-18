@@ -230,6 +230,9 @@ const ATTENDANCE_SESSION_SUMMARY_ARGS =
       createdAt: true,
       updatedAt: true,
       deletedAt: true,
+      term: {
+        select: TERM_REFERENCE_ARGS.select,
+      },
     },
   });
 
@@ -259,6 +262,9 @@ const ATTENDANCE_SESSION_DETAIL_ARGS =
       createdAt: true,
       updatedAt: true,
       deletedAt: true,
+      term: {
+        select: TERM_REFERENCE_ARGS.select,
+      },
       entries: {
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         select: ATTENDANCE_ENTRY_ARGS.select,

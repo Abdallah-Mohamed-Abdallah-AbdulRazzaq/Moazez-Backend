@@ -112,6 +112,12 @@ export function assertRollCallTermWritable(term: TermReferenceRecord): void {
   }
 }
 
+export function assertRollCallSessionTermWritable(session: {
+  term: TermReferenceRecord;
+}): void {
+  assertRollCallTermWritable(session.term);
+}
+
 export async function resolveRollCallScope(
   repository: AttendanceRollCallRepository,
   input: RollCallScopeInput,

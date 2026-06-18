@@ -12,7 +12,9 @@ import {
   setActiveMembership,
   setActor,
 } from '../../../../common/context/request-context';
-import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
+import {
+  NotFoundDomainException,
+} from '../../../../common/exceptions/domain-exception';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { GetRollCallRosterUseCase } from '../application/get-roll-call-roster.use-case';
 import { ResolveRollCallSessionUseCase } from '../application/resolve-roll-call-session.use-case';
@@ -27,6 +29,9 @@ import {
 import { AttendanceRollCallRepository } from '../infrastructure/attendance-roll-call.repository';
 
 describe('Attendance roll-call use cases', () => {
+  const CLOSED_TERM_MESSAGE =
+    'Attendance sessions cannot be changed in a closed term';
+
   async function withAttendanceScope<T>(fn: () => Promise<T>): Promise<T> {
     return runWithRequestContext(createRequestContext(), async () => {
       setActor({ id: 'user-1', userType: UserType.SCHOOL_USER });
@@ -57,6 +62,10 @@ describe('Attendance roll-call use cases', () => {
     };
   }
 
+  function inactiveTerm() {
+    return { ...activeTerm(), isActive: false };
+  }
+
   function classroomReference() {
     return {
       id: 'classroom-1',
@@ -79,6 +88,7 @@ describe('Attendance roll-call use cases', () => {
       submittedById: string | null;
       updatedAt: Date;
       entries: unknown[];
+      term: ReturnType<typeof activeTerm>;
     }>,
   ) {
     return {
@@ -105,6 +115,7 @@ describe('Attendance roll-call use cases', () => {
       createdAt: new Date('2026-09-15T07:00:00.000Z'),
       updatedAt: overrides?.updatedAt ?? new Date('2026-09-15T07:00:00.000Z'),
       deletedAt: null,
+      term: overrides?.term ?? activeTerm(),
       entries: overrides?.entries ?? [],
     };
   }
@@ -389,6 +400,31 @@ describe('Attendance roll-call use cases', () => {
     expect(authRepository.createAuditLog).not.toHaveBeenCalled();
   });
 
+  it('rejects submitting a session when the term is inactive', async () => {
+    const repository = baseRepository({
+      findSessionById: jest.fn().mockResolvedValue(
+        sessionRecord({
+          term: inactiveTerm(),
+        }),
+      ),
+      submitSession: jest.fn(),
+    });
+    const authRepository = baseAuthRepository();
+    const useCase = new SubmitRollCallSessionUseCase(
+      repository,
+      authRepository,
+    );
+
+    await expect(
+      withAttendanceScope(() => useCase.execute('session-1')),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      message: CLOSED_TERM_MESSAGE,
+    });
+    expect(repository.submitSession).not.toHaveBeenCalled();
+    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
+  });
+
   it('unsubmits a submitted session and clears submission metadata', async () => {
     const submittedAt = new Date('2026-09-15T07:20:00.000Z');
     const repository = baseRepository({
@@ -464,6 +500,32 @@ describe('Attendance roll-call use cases', () => {
     expect(authRepository.createAuditLog).not.toHaveBeenCalled();
   });
 
+  it('rejects unsubmitting a session when the term is inactive', async () => {
+    const repository = baseRepository({
+      findSessionById: jest.fn().mockResolvedValue(
+        sessionRecord({
+          status: AttendanceSessionStatus.SUBMITTED,
+          term: inactiveTerm(),
+        }),
+      ),
+      unsubmitSession: jest.fn(),
+    });
+    const authRepository = baseAuthRepository();
+    const useCase = new UnsubmitRollCallSessionUseCase(
+      repository,
+      authRepository,
+    );
+
+    await expect(
+      withAttendanceScope(() => useCase.execute('session-1')),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      message: CLOSED_TERM_MESSAGE,
+    });
+    expect(repository.unsubmitSession).not.toHaveBeenCalled();
+    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
+  });
+
   it('upserts draft entries for roster students', async () => {
     const repository = baseRepository();
     const useCase = new SaveRollCallEntriesUseCase(repository);
@@ -522,6 +584,36 @@ describe('Attendance roll-call use cases', () => {
     expect(repository.bulkUpsertEntries).not.toHaveBeenCalled();
   });
 
+  it('rejects bulk saving entries when the term is inactive', async () => {
+    const repository = baseRepository({
+      findSessionById: jest.fn().mockResolvedValue(
+        sessionRecord({
+          term: inactiveTerm(),
+        }),
+      ),
+      bulkUpsertEntries: jest.fn(),
+    });
+    const useCase = new SaveRollCallEntriesUseCase(repository);
+
+    await expect(
+      withAttendanceScope(() =>
+        useCase.execute('session-1', {
+          entries: [
+            {
+              studentId: 'student-1',
+              status: AttendanceStatus.PRESENT,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      message: CLOSED_TERM_MESSAGE,
+    });
+    expect(repository.listRosterStudents).not.toHaveBeenCalled();
+    expect(repository.bulkUpsertEntries).not.toHaveBeenCalled();
+  });
+
   it('rejects targeted entry upsert when session is submitted', async () => {
     const repository = baseRepository({
       findSessionById: jest
@@ -541,6 +633,32 @@ describe('Attendance roll-call use cases', () => {
         }),
       ),
     ).rejects.toBeInstanceOf(AttendanceSessionAlreadySubmittedException);
+    expect(repository.bulkUpsertEntries).not.toHaveBeenCalled();
+  });
+
+  it('rejects targeted entry upsert when the term is inactive', async () => {
+    const repository = baseRepository({
+      findSessionById: jest.fn().mockResolvedValue(
+        sessionRecord({
+          term: inactiveTerm(),
+        }),
+      ),
+      bulkUpsertEntries: jest.fn(),
+    });
+    const saveUseCase = new SaveRollCallEntriesUseCase(repository);
+    const useCase = new UpsertRollCallEntryUseCase(saveUseCase);
+
+    await expect(
+      withAttendanceScope(() =>
+        useCase.execute('session-1', 'student-1', {
+          status: AttendanceStatus.PRESENT,
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      message: CLOSED_TERM_MESSAGE,
+    });
+    expect(repository.listRosterStudents).not.toHaveBeenCalled();
     expect(repository.bulkUpsertEntries).not.toHaveBeenCalled();
   });
 

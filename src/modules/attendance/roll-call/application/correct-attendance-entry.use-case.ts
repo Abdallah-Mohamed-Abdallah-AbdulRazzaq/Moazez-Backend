@@ -11,6 +11,7 @@ import {
 } from '../domain/entry-correction';
 import { AttendanceRollCallRepository } from '../infrastructure/attendance-roll-call.repository';
 import { presentRollCallEntry } from '../presenters/attendance-roll-call.presenter';
+import { assertRollCallSessionTermWritable } from './roll-call-use-case.helpers';
 
 @Injectable()
 export class CorrectAttendanceEntryUseCase {
@@ -36,6 +37,8 @@ export class CorrectAttendanceEntryUseCase {
         sessionId,
       });
     }
+
+    assertRollCallSessionTermWritable(session);
 
     assertSubmittedSessionForCorrection({
       sessionId: session.id,

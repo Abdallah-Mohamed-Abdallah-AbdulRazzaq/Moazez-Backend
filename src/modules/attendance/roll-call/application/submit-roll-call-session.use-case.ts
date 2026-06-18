@@ -9,6 +9,7 @@ import {
   RollCallSessionDetailRecord,
 } from '../infrastructure/attendance-roll-call.repository';
 import { presentRollCallSession } from '../presenters/attendance-roll-call.presenter';
+import { assertRollCallSessionTermWritable } from './roll-call-use-case.helpers';
 
 @Injectable()
 export class SubmitRollCallSessionUseCase {
@@ -26,6 +27,8 @@ export class SubmitRollCallSessionUseCase {
         sessionId,
       });
     }
+
+    assertRollCallSessionTermWritable(session);
 
     if (session.status !== AttendanceSessionStatus.DRAFT) {
       throw new AttendanceSessionAlreadySubmittedException({

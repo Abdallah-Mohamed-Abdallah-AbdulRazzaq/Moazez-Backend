@@ -20,6 +20,9 @@ import { AttendanceSessionNotSubmittedException } from '../domain/roll-call.exce
 import { AttendanceRollCallRepository } from '../infrastructure/attendance-roll-call.repository';
 
 describe('CorrectAttendanceEntryUseCase', () => {
+  const CLOSED_TERM_MESSAGE =
+    'Attendance sessions cannot be changed in a closed term';
+
   async function withAttendanceScope<T>(fn: () => Promise<T>): Promise<T> {
     return runWithRequestContext(createRequestContext(), async () => {
       setActor({ id: 'user-1', userType: UserType.SCHOOL_USER });
@@ -35,9 +38,24 @@ describe('CorrectAttendanceEntryUseCase', () => {
     });
   }
 
+  function activeTerm() {
+    return {
+      id: 'term-1',
+      academicYearId: 'year-1',
+      startDate: new Date('2026-09-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T00:00:00.000Z'),
+      isActive: true,
+    };
+  }
+
+  function inactiveTerm() {
+    return { ...activeTerm(), isActive: false };
+  }
+
   function sessionRecord(
     overrides?: Partial<{
       status: AttendanceSessionStatus;
+      term: ReturnType<typeof activeTerm>;
     }>,
   ) {
     return {
@@ -64,6 +82,7 @@ describe('CorrectAttendanceEntryUseCase', () => {
       createdAt: new Date('2026-09-15T07:00:00.000Z'),
       updatedAt: new Date('2026-09-15T07:20:00.000Z'),
       deletedAt: null,
+      term: overrides?.term ?? activeTerm(),
     };
   }
 
@@ -298,6 +317,33 @@ describe('CorrectAttendanceEntryUseCase', () => {
         }),
       ),
     ).rejects.toBeInstanceOf(AttendanceSessionNotSubmittedException);
+    expect(repository.correctSubmittedEntry).not.toHaveBeenCalled();
+  });
+
+  it('rejects correction when the term is inactive', async () => {
+    const repository = baseRepository({
+      findSessionEntryForCorrection: jest.fn().mockResolvedValue({
+        session: sessionRecord({ term: inactiveTerm() }),
+        entry: entryRecord(),
+      }),
+      correctSubmittedEntry: jest.fn(),
+    });
+    const useCase = new CorrectAttendanceEntryUseCase(
+      repository,
+      baseAuthRepository(),
+    );
+
+    await expect(
+      withAttendanceScope(() =>
+        useCase.execute('session-1', 'student-1', {
+          status: AttendanceStatus.PRESENT,
+          correctionReason: 'Attendance officer verified classroom sheet',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      message: CLOSED_TERM_MESSAGE,
+    });
     expect(repository.correctSubmittedEntry).not.toHaveBeenCalled();
   });
 

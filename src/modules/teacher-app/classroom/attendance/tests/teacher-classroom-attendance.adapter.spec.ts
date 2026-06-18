@@ -10,10 +10,14 @@ import { ResolveRollCallSessionUseCase } from '../../../../attendance/roll-call/
 import { SaveRollCallEntriesUseCase } from '../../../../attendance/roll-call/application/save-roll-call-entries.use-case';
 import { SubmitRollCallSessionUseCase } from '../../../../attendance/roll-call/application/submit-roll-call-session.use-case';
 import { AttendanceSessionAlreadySubmittedException } from '../../../../attendance/roll-call/domain/roll-call.exceptions';
+import { ValidationDomainException } from '../../../../../common/exceptions/domain-exception';
 import type { TeacherAppAllocationRecord } from '../../../shared/teacher-app.types';
 import { TeacherClassroomAttendanceAdapter } from '../infrastructure/teacher-classroom-attendance.adapter';
 
 describe('TeacherClassroomAttendanceAdapter', () => {
+  const CLOSED_TERM_MESSAGE =
+    'Attendance sessions cannot be changed in a closed term';
+
   it('uses core roll-call roster lookup without creating a session', async () => {
     const { adapter, getRoster, resolveSession, saveEntries, submitSession } =
       createAdapter();
@@ -131,6 +135,24 @@ describe('TeacherClassroomAttendanceAdapter', () => {
     });
   });
 
+  it('propagates core closed-term protection for entry updates', async () => {
+    const { adapter, saveEntries } = createAdapter();
+    saveEntries.execute.mockRejectedValue(
+      new ValidationDomainException(CLOSED_TERM_MESSAGE, { termId: 'term-1' }),
+    );
+
+    await expect(
+      adapter.updateEntries({
+        allocation: allocationFixture(),
+        sessionId: 'session-1',
+        entries: [{ studentId: 'student-1', status: 'present' }],
+      }),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      message: CLOSED_TERM_MESSAGE,
+    });
+  });
+
   it('validates ownership before submitting through Attendance core', async () => {
     const { adapter, getSession, submitSession } = createAdapter();
 
@@ -142,6 +164,23 @@ describe('TeacherClassroomAttendanceAdapter', () => {
     expect(getSession.execute).toHaveBeenCalledWith('session-1');
     expect(submitSession.execute).toHaveBeenCalledWith('session-1');
     expect(result.session.status).toBe(AttendanceSessionStatus.SUBMITTED);
+  });
+
+  it('propagates core closed-term protection for session submit', async () => {
+    const { adapter, submitSession } = createAdapter();
+    submitSession.execute.mockRejectedValue(
+      new ValidationDomainException(CLOSED_TERM_MESSAGE, { termId: 'term-1' }),
+    );
+
+    await expect(
+      adapter.submitSession({
+        allocation: allocationFixture(),
+        sessionId: 'session-1',
+      }),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      message: CLOSED_TERM_MESSAGE,
+    });
   });
 });
 

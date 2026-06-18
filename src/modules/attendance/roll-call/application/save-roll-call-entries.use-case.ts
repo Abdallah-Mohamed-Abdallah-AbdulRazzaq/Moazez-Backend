@@ -15,7 +15,10 @@ import {
   RollCallRosterEnrollmentRecord,
 } from '../infrastructure/attendance-roll-call.repository';
 import { presentSavedRollCallEntries } from '../presenters/attendance-roll-call.presenter';
-import { scopeFromSession } from './roll-call-use-case.helpers';
+import {
+  assertRollCallSessionTermWritable,
+  scopeFromSession,
+} from './roll-call-use-case.helpers';
 
 @Injectable()
 export class SaveRollCallEntriesUseCase {
@@ -39,6 +42,7 @@ export class SaveRollCallEntriesUseCase {
       });
     }
 
+    assertRollCallSessionTermWritable(session);
     assertDraftAttendanceSession({
       sessionId: session.id,
       status: session.status,
