@@ -51,6 +51,11 @@ describe('Parent Reports use-cases', () => {
 
     expect(result.academic.percentage).toBe(80);
     expect(result.behavior.totalBehaviorPoints).toBe(3);
+    expect(result.discipline).toMatchObject({
+      totalIncidents: 5,
+      attendanceIncidentCount: 3,
+      behaviorPoints: 3,
+    });
     expect(result.xp.totalXp).toBe(25);
     expect(result.unavailable).toMatchObject({
       reportEngine: { available: false },
@@ -143,6 +148,19 @@ function summaryFixture(): ParentReportsSummaryReadModel {
       positivePoints: 5,
       negativePoints: -2,
       totalBehaviorPoints: 3,
+    },
+    discipline: {
+      totalIncidents: 5,
+      attendanceIncidentCount: 3,
+      absenceCount: 1,
+      lateCount: 1,
+      earlyLeaveCount: 1,
+      excusedCount: 0,
+      positiveCount: 1,
+      negativeCount: 1,
+      behaviorPoints: 3,
+      period: 'current_term',
+      dateText: 'current_term',
     },
     xp: {
       child,

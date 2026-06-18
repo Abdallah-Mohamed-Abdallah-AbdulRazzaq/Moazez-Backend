@@ -18,6 +18,22 @@ describe('ParentReportsPresenter', () => {
       presentCount: 10,
       absenceCount: 1,
       lateCount: 2,
+      disciplinePercentage: 76.92,
+      discipline_percentage: 76.92,
+    });
+    expect(result.discipline).toMatchObject({
+      totalIncidents: 5,
+      attendanceIncidentCount: 3,
+      absenceCount: 1,
+      lateCount: 1,
+      earlyLeaveCount: 1,
+      excusedCount: 0,
+      positiveCount: 1,
+      negativeCount: 1,
+      behaviorPoints: 3,
+      total_incidents: 5,
+      attendance_incident_count: 3,
+      behavior_points: 3,
     });
     expect(result.unavailable).toMatchObject({
       reportEngine: { available: false },
@@ -27,6 +43,24 @@ describe('ParentReportsPresenter', () => {
       homework: { available: false },
       pickup: { available: false },
     });
+  });
+
+  it('adds discipline to report cards without changing legacy disciplinePercentage', () => {
+    const result = ParentReportsPresenter.presentList({ summary: summaryFixture() });
+
+    expect(result.reports[0].summary).toMatchObject({
+      academicPercentage: 80,
+      behaviorPoints: 3,
+      totalXp: 25,
+      disciplinePercentage: 76.92,
+      discipline: expect.objectContaining({
+        totalIncidents: 5,
+        attendanceIncidentCount: 3,
+        behaviorPoints: 3,
+      }),
+    });
+    expect(JSON.stringify(result)).not.toContain('disciplineScore');
+    expect(JSON.stringify(result)).not.toContain('combinedDiscipline');
   });
 
   it('does not expose internal, tenant, schedule, document, medical, or raw storage fields', () => {
@@ -44,6 +78,10 @@ describe('ParentReportsPresenter', () => {
       'bucket',
       'objectKey',
       'storageKey',
+      'reviewedById',
+      'submittedById',
+      'markedById',
+      'metadata',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
@@ -106,6 +144,19 @@ function summaryFixture(): ParentReportsSummaryReadModel {
       positivePoints: 5,
       negativePoints: -2,
       totalBehaviorPoints: 3,
+    },
+    discipline: {
+      totalIncidents: 5,
+      attendanceIncidentCount: 3,
+      absenceCount: 1,
+      lateCount: 1,
+      earlyLeaveCount: 1,
+      excusedCount: 0,
+      positiveCount: 1,
+      negativeCount: 1,
+      behaviorPoints: 3,
+      period: 'current_term',
+      dateText: 'current_term',
     },
     xp: {
       child,

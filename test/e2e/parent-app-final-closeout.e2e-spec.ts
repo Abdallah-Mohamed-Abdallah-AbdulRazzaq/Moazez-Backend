@@ -1298,8 +1298,24 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
         reportId: 'current-term-performance',
         type: 'performance',
         source: 'derived_current_school_data',
+        summary: expect.objectContaining({
+          disciplinePercentage: 33.33,
+          discipline: expect.objectContaining({
+            attendanceIncidentCount: 2,
+            absenceCount: 1,
+            lateCount: 1,
+            positiveCount: 1,
+            negativeCount: 1,
+            behaviorPoints: 3,
+            totalIncidents: 4,
+          }),
+        }),
       }),
     ]);
+    expect(JSON.stringify(list.body)).not.toContain('disciplineScore');
+    expect(JSON.stringify(list.body)).not.toContain(
+      'combinedDisciplinePercentage',
+    );
     expect(list.body.unavailable).toMatchObject({
       reportEngine: { available: false },
       pdfExport: { available: false },
@@ -1320,6 +1336,19 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     expect(summary.body).toMatchObject({
       academic: { percentage: 80 },
       behavior: { totalBehaviorPoints: 3 },
+      attendance: {
+        disciplinePercentage: 33.33,
+        discipline_percentage: 33.33,
+      },
+      discipline: {
+        attendanceIncidentCount: 2,
+        absenceCount: 1,
+        lateCount: 1,
+        positiveCount: 1,
+        negativeCount: 1,
+        behaviorPoints: 3,
+        totalIncidents: 4,
+      },
       xp: { totalXp: 25 },
       unavailable: {
         reportEngine: { available: false },
@@ -1328,6 +1357,10 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
         pickup: { available: false },
       },
     });
+    expect(JSON.stringify(summary.body)).not.toContain('disciplineScore');
+    expect(JSON.stringify(summary.body)).not.toContain(
+      'combinedDisciplinePercentage',
+    );
     assertNoForbiddenParentAppFields(summary.body);
   });
 

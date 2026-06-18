@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { DisciplineDerivedReadService } from '../../../discipline/application/discipline-derived-read.service';
+import type { DisciplineSummaryReadModel } from '../../../discipline/infrastructure/discipline-derived.repository';
 import type { ParentAppAccessibleChild } from '../../shared/parent-app.types';
 import {
   ParentProgressReadAdapter,
@@ -69,6 +71,7 @@ export interface ParentReportsSummaryReadModel {
   profile: ParentReportChildRecord;
   academic: ParentAcademicProgressReadModel;
   behavior: ParentBehaviorProgressReadModel;
+  discipline: DisciplineSummaryReadModel;
   xp: ParentXpProgressReadModel;
 }
 
@@ -81,6 +84,7 @@ export class ParentReportsReadAdapter {
   constructor(
     private readonly prisma: PrismaService,
     private readonly progressReadAdapter: ParentProgressReadAdapter,
+    private readonly disciplineReadService: DisciplineDerivedReadService,
   ) {}
 
   private get scopedPrisma(): PrismaService {
@@ -98,10 +102,18 @@ export class ParentReportsReadAdapter {
   async getReportsSummary(
     child: ParentAppAccessibleChild,
   ): Promise<ParentReportsSummaryReadModel> {
-    const [profile, academic, behavior, xp] = await Promise.all([
+    const [profile, academic, behavior, discipline, xp] = await Promise.all([
       this.findChildReportProfile(child),
       this.progressReadAdapter.getAcademicProgress(child),
       this.progressReadAdapter.getBehaviorProgress(child),
+      this.disciplineReadService.getSummary({
+        scope: {
+          studentId: child.studentId,
+          enrollmentId: child.enrollmentId,
+          academicYearId: child.academicYearId,
+          termId: child.termId,
+        },
+      }),
       this.progressReadAdapter.getXpProgress(child),
     ]);
 
@@ -110,6 +122,7 @@ export class ParentReportsReadAdapter {
       profile,
       academic,
       behavior,
+      discipline,
       xp,
     };
   }

@@ -10,11 +10,13 @@ import {
   ParentReportsUnavailableDto,
   ParentReportsXpSummaryDto,
 } from '../dto/parent-reports.dto';
+import { DisciplineSummaryDto } from '../../../discipline/dto/discipline-derived.dto';
 import type {
   ParentReportChildRecord,
   ParentReportsListReadModel,
   ParentReportsSummaryReadModel,
 } from '../infrastructure/parent-reports-read.adapter';
+import type { DisciplineSummaryReadModel } from '../../../discipline/infrastructure/discipline-derived.repository';
 import type {
   ParentAcademicProgressReadModel,
   ParentBehaviorProgressReadModel,
@@ -68,6 +70,7 @@ export class ParentReportsPresenter {
       academic: presentAcademic(result.academic),
       behavior: presentBehavior(result.behavior),
       attendance: presentAttendance(result.behavior),
+      discipline: presentDiscipline(result.discipline),
       xp: presentXp(result.xp),
       unavailable: UNAVAILABLE,
     };
@@ -88,6 +91,7 @@ function presentReportCard(
       behaviorPoints: result.behavior.totalBehaviorPoints,
       totalXp: result.xp.totalXp,
       disciplinePercentage: calculateDisciplinePercentage(result.behavior),
+      discipline: presentDiscipline(result.discipline),
     },
   };
 }
@@ -196,6 +200,34 @@ function presentXp(xp: ParentXpProgressReadModel): ParentReportsXpSummaryDto {
   };
 }
 
+function presentDiscipline(
+  discipline: DisciplineSummaryReadModel,
+): DisciplineSummaryDto {
+  return {
+    totalIncidents: discipline.totalIncidents,
+    attendanceIncidentCount: discipline.attendanceIncidentCount,
+    absenceCount: discipline.absenceCount,
+    lateCount: discipline.lateCount,
+    earlyLeaveCount: discipline.earlyLeaveCount,
+    excusedCount: discipline.excusedCount,
+    positiveCount: discipline.positiveCount,
+    negativeCount: discipline.negativeCount,
+    behaviorPoints: discipline.behaviorPoints,
+    period: discipline.period,
+    dateText: discipline.dateText,
+    total_incidents: discipline.totalIncidents,
+    attendance_incident_count: discipline.attendanceIncidentCount,
+    absence_count: discipline.absenceCount,
+    late_count: discipline.lateCount,
+    early_leave_count: discipline.earlyLeaveCount,
+    excused_count: discipline.excusedCount,
+    positive_count: discipline.positiveCount,
+    negative_count: discipline.negativeCount,
+    behavior_points: discipline.behaviorPoints,
+    date_text: discipline.dateText,
+  };
+}
+
 function buildBehaviorHighlights(
   behavior: ParentBehaviorProgressReadModel,
 ): ParentReportsBehaviorSummaryDto['highlights'] {
@@ -231,6 +263,7 @@ function calculateDisciplinePercentage(
     'attendanceCount' | 'absenceCount' | 'latenessCount'
   >,
 ): number | null {
+  // Backward-compatible legacy field: attendance present rate, not combined Discipline.
   const total =
     behavior.attendanceCount + behavior.absenceCount + behavior.latenessCount;
   if (total <= 0) return null;

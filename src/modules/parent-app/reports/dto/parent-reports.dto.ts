@@ -1,3 +1,5 @@
+import { DisciplineSummaryDto } from '../../../discipline/dto/discipline-derived.dto';
+
 export class ParentReportsChildDto {
   studentId!: string;
   enrollmentId!: string;
@@ -105,6 +107,7 @@ export class ParentReportCardDto {
     behaviorPoints: number;
     totalXp: number;
     disciplinePercentage: number | null;
+    discipline: DisciplineSummaryDto;
   };
 }
 
@@ -120,6 +123,7 @@ export class ParentReportsSummaryResponseDto {
   academic!: ParentReportsAcademicSummaryDto;
   behavior!: ParentReportsBehaviorSummaryDto;
   attendance!: ParentReportsAttendanceSummaryDto;
+  discipline!: DisciplineSummaryDto;
   xp!: ParentReportsXpSummaryDto;
   unavailable!: ParentReportsUnavailableDto;
 }

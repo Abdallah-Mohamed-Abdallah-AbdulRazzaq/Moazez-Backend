@@ -1466,8 +1466,28 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         reportId: 'current-term-performance',
         type: 'performance',
         source: 'derived_current_school_data',
+        summary: expect.objectContaining({
+          disciplinePercentage: 33.33,
+          discipline: expect.objectContaining({
+            attendanceIncidentCount: 2,
+            absenceCount: 1,
+            lateCount: 1,
+            earlyLeaveCount: 0,
+            excusedCount: 0,
+            positiveCount: 1,
+            negativeCount: 1,
+            behaviorPoints: 3,
+            totalIncidents: 4,
+          }),
+        }),
       }),
     ]);
+    expect(JSON.stringify(list.body)).not.toContain(draftBehaviorRecordAId);
+    expect(JSON.stringify(list.body)).not.toContain(draftAttendanceEntryAId);
+    expect(JSON.stringify(list.body)).not.toContain('disciplineScore');
+    expect(JSON.stringify(list.body)).not.toContain(
+      'combinedDisciplinePercentage',
+    );
     expect(list.body.unavailable).toMatchObject({
       reportEngine: { available: false },
       pdfExport: { available: false },
@@ -1488,6 +1508,24 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     expect(summary.body).toMatchObject({
       academic: { percentage: 80 },
       behavior: { totalBehaviorPoints: 3 },
+      attendance: {
+        presentCount: 1,
+        absenceCount: 1,
+        lateCount: 1,
+        disciplinePercentage: 33.33,
+        discipline_percentage: 33.33,
+      },
+      discipline: {
+        attendanceIncidentCount: 2,
+        absenceCount: 1,
+        lateCount: 1,
+        earlyLeaveCount: 0,
+        excusedCount: 0,
+        positiveCount: 1,
+        negativeCount: 1,
+        behaviorPoints: 3,
+        totalIncidents: 4,
+      },
       xp: { totalXp: 25 },
       unavailable: {
         reportEngine: { available: false },
@@ -1496,6 +1534,15 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         pickup: { available: false },
       },
     });
+    expect(JSON.stringify(summary.body)).not.toContain(draftBehaviorRecordAId);
+    expect(JSON.stringify(summary.body)).not.toContain(draftAttendanceEntryAId);
+    expect(JSON.stringify(summary.body)).not.toContain('disciplineScore');
+    expect(JSON.stringify(summary.body)).not.toContain(
+      'combinedDisciplinePercentage',
+    );
+    expect(JSON.stringify(summary.body)).not.toContain('reviewedById');
+    expect(JSON.stringify(summary.body)).not.toContain('submittedById');
+    expect(JSON.stringify(summary.body)).not.toContain('markedById');
     assertNoForbiddenParentAppFields(summary.body);
   });
 
