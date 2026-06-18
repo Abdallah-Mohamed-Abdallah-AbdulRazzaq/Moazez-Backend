@@ -328,6 +328,8 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   let draftAssessmentAId: string;
   let positiveBehaviorRecordAId: string;
   let negativeBehaviorRecordAId: string;
+  let draftBehaviorRecordAId: string;
+  let draftAttendanceEntryAId: string;
   let ownedTaskAId: string;
   let ownedTaskSubmissionAId: string;
   let sameSchoolUnlinkedTaskAId: string;
@@ -571,6 +573,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     draftAssessmentAId = featureFixture.draftAssessmentId;
     positiveBehaviorRecordAId = featureFixture.positiveBehaviorRecordId;
     negativeBehaviorRecordAId = featureFixture.negativeBehaviorRecordId;
+    draftBehaviorRecordAId = featureFixture.draftBehaviorRecordId;
     ownedScheduleEntryAId = await createParentScheduleFixture({
       schoolId: schoolAId,
       academicYearId: academicYearAId,
@@ -1274,6 +1277,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       totalBehaviorPoints: 3,
     });
     expect(JSON.stringify(list.body.summary)).not.toContain('xp');
+    expect(JSON.stringify(list.body)).not.toContain('attendance:');
     assertNoForbiddenParentAppFields(list.body);
 
     const summary = await request(app.getHttpServer())
@@ -1304,6 +1308,95 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       status: 'approved',
     });
     assertNoForbiddenParentAppFields(detail.body);
+
+    const discipline = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/discipline`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(discipline.body.child).toMatchObject({
+      studentId: ownedStudentAId,
+      enrollmentId: ownedEnrollmentAId,
+    });
+    expect(discipline.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: 'attendance',
+          itemType: 'absence',
+          status: 'submitted',
+          pointsDelta: 0,
+        }),
+        expect.objectContaining({
+          sourceType: 'attendance',
+          itemType: 'lateness',
+          status: 'submitted',
+          attendance: expect.objectContaining({
+            status: 'late',
+          }),
+        }),
+        expect.objectContaining({
+          id: `behavior:${positiveBehaviorRecordAId}`,
+          sourceType: 'behavior',
+          itemType: 'positive',
+          status: 'approved',
+          pointsDelta: 5,
+        }),
+        expect.objectContaining({
+          id: `behavior:${negativeBehaviorRecordAId}`,
+          sourceType: 'behavior',
+          itemType: 'negative',
+          status: 'approved',
+          pointsDelta: -2,
+        }),
+      ]),
+    );
+    expect(discipline.body.summary).toMatchObject({
+      attendanceIncidentCount: 2,
+      absenceCount: 1,
+      lateCount: 1,
+      earlyLeaveCount: 0,
+      excusedCount: 0,
+      positiveCount: 1,
+      negativeCount: 1,
+      behaviorPoints: 3,
+      totalIncidents: 4,
+    });
+    expect(JSON.stringify(discipline.body)).not.toContain(
+      draftBehaviorRecordAId,
+    );
+    expect(JSON.stringify(discipline.body)).not.toContain(
+      draftAttendanceEntryAId,
+    );
+    expect(JSON.stringify(discipline.body)).not.toContain('reviewedById');
+    expect(JSON.stringify(discipline.body)).not.toContain('submittedById');
+    expect(JSON.stringify(discipline.body)).not.toContain('markedById');
+    assertNoForbiddenParentAppFields(discipline.body);
+
+    const disciplineSummary = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/discipline/summary`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(disciplineSummary.body.child).toMatchObject({
+      studentId: ownedStudentAId,
+      enrollmentId: ownedEnrollmentAId,
+    });
+    expect(disciplineSummary.body.summary).toMatchObject({
+      attendanceIncidentCount: 2,
+      positiveCount: 1,
+      negativeCount: 1,
+      behaviorPoints: 3,
+      totalIncidents: 4,
+    });
+    expect(disciplineSummary.body.summary).not.toHaveProperty(
+      'disciplineScore',
+    );
+    expect(disciplineSummary.body.summary).not.toHaveProperty(
+      'disciplinePercentage',
+    );
+    assertNoForbiddenParentAppFields(disciplineSummary.body);
   });
 
   it('linked parent can read owned child progress overview, academic, behavior, and XP', async () => {
@@ -1783,6 +1876,8 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         'behavior',
         'behavior/summary',
         `behavior/${positiveBehaviorRecordAId}`,
+        'discipline',
+        'discipline/summary',
         'progress',
         'progress/academic',
         'progress/behavior',
@@ -1819,6 +1914,8 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         `children/${ownedStudentAId}/behavior`,
         `children/${ownedStudentAId}/behavior/summary`,
         `children/${ownedStudentAId}/behavior/${positiveBehaviorRecordAId}`,
+        `children/${ownedStudentAId}/discipline`,
+        `children/${ownedStudentAId}/discipline/summary`,
         `children/${ownedStudentAId}/progress`,
         `children/${ownedStudentAId}/progress/academic`,
         `children/${ownedStudentAId}/progress/behavior`,
@@ -1899,6 +1996,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     for (const path of [
       `children/${ownedStudentAId}/grades`,
       `children/${ownedStudentAId}/behavior`,
+      `children/${ownedStudentAId}/discipline`,
       `children/${ownedStudentAId}/progress`,
       `children/${ownedStudentAId}/reports`,
     ]) {
@@ -2714,6 +2812,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     draftAssessmentId: string;
     positiveBehaviorRecordId: string;
     negativeBehaviorRecordId: string;
+    draftBehaviorRecordId: string;
   }> {
     const subject = await prisma.subject.create({
       data: {
@@ -3032,6 +3131,12 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       periodKey: 'daily-late',
       status: AttendanceStatus.LATE,
     });
+    draftAttendanceEntryAId = await createAttendanceEntry({
+      date: new Date('2026-10-12T00:00:00.000Z'),
+      periodKey: 'daily-draft-hidden',
+      status: AttendanceStatus.ABSENT,
+      sessionStatus: AttendanceSessionStatus.DRAFT,
+    });
 
     const xpLedger = await prisma.xpLedger.create({
       data: {
@@ -3056,6 +3161,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       draftAssessmentId: draftAssessment.id,
       positiveBehaviorRecordId: positiveRecord.id,
       negativeBehaviorRecordId: negativeRecord.id,
+      draftBehaviorRecordId: draftRecord.id,
     };
   }
 
@@ -3193,7 +3299,10 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     date: Date;
     periodKey: string;
     status: AttendanceStatus;
-  }): Promise<void> {
+    sessionStatus?: AttendanceSessionStatus;
+  }): Promise<string> {
+    const sessionStatus =
+      params.sessionStatus ?? AttendanceSessionStatus.SUBMITTED;
     const session = await prisma.attendanceSession.create({
       data: {
         schoolId: schoolAId,
@@ -3206,9 +3315,13 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         mode: AttendanceMode.DAILY,
         periodKey: params.periodKey,
         periodLabelEn: params.periodKey,
-        status: AttendanceSessionStatus.SUBMITTED,
-        submittedAt: new Date(params.date.getTime() + 60 * 60 * 1000),
-        submittedById: teacherUserId,
+        status: sessionStatus,
+        ...(sessionStatus === AttendanceSessionStatus.SUBMITTED
+          ? {
+              submittedAt: new Date(params.date.getTime() + 60 * 60 * 1000),
+              submittedById: teacherUserId,
+            }
+          : {}),
       },
       select: { id: true },
     });
@@ -3227,6 +3340,8 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       select: { id: true },
     });
     createdAttendanceEntryIds.push(entry.id);
+
+    return entry.id;
   }
 
   async function login(email: string): Promise<{ accessToken: string }> {

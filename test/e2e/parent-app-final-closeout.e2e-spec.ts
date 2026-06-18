@@ -811,6 +811,8 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'GET /api/v1/parent/children/:studentId/behavior/summary',
       'GET /api/v1/parent/children/:studentId/calendar/events',
       'GET /api/v1/parent/children/:studentId/calendar/events/:eventId',
+      'GET /api/v1/parent/children/:studentId/discipline',
+      'GET /api/v1/parent/children/:studentId/discipline/summary',
       'GET /api/v1/parent/children/:studentId/grades',
       'GET /api/v1/parent/children/:studentId/grades/assessments/:assessmentId',
       'GET /api/v1/parent/children/:studentId/grades/summary',
@@ -1118,6 +1120,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       totalBehaviorPoints: 3,
     });
     expect(JSON.stringify(list.body.summary)).not.toContain('xp');
+    expect(JSON.stringify(list.body)).not.toContain('attendance:');
     assertNoForbiddenParentAppFields(list.body);
 
     const summary = await request(app.getHttpServer())
@@ -1148,6 +1151,84 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       status: 'approved',
     });
     assertNoForbiddenParentAppFields(detail.body);
+
+    const discipline = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/discipline`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(discipline.body.child).toMatchObject({
+      studentId: ownedStudentAId,
+      enrollmentId: ownedEnrollmentAId,
+    });
+    expect(discipline.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: 'attendance',
+          itemType: 'absence',
+          status: 'submitted',
+          pointsDelta: 0,
+        }),
+        expect.objectContaining({
+          sourceType: 'attendance',
+          itemType: 'lateness',
+          status: 'submitted',
+        }),
+        expect.objectContaining({
+          id: `behavior:${positiveBehaviorRecordAId}`,
+          sourceType: 'behavior',
+          itemType: 'positive',
+          status: 'approved',
+          pointsDelta: 5,
+        }),
+        expect.objectContaining({
+          id: `behavior:${negativeBehaviorRecordAId}`,
+          sourceType: 'behavior',
+          itemType: 'negative',
+          status: 'approved',
+          pointsDelta: -2,
+        }),
+      ]),
+    );
+    expect(discipline.body.summary).toMatchObject({
+      attendanceIncidentCount: 2,
+      absenceCount: 1,
+      lateCount: 1,
+      positiveCount: 1,
+      negativeCount: 1,
+      behaviorPoints: 3,
+      totalIncidents: 4,
+    });
+    expect(JSON.stringify(discipline.body)).not.toContain('reviewedById');
+    expect(JSON.stringify(discipline.body)).not.toContain('submittedById');
+    expect(JSON.stringify(discipline.body)).not.toContain('markedById');
+    assertNoForbiddenParentAppFields(discipline.body);
+
+    const disciplineSummary = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/discipline/summary`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(disciplineSummary.body.child).toMatchObject({
+      studentId: ownedStudentAId,
+      enrollmentId: ownedEnrollmentAId,
+    });
+    expect(disciplineSummary.body.summary).toMatchObject({
+      attendanceIncidentCount: 2,
+      positiveCount: 1,
+      negativeCount: 1,
+      behaviorPoints: 3,
+      totalIncidents: 4,
+    });
+    expect(disciplineSummary.body.summary).not.toHaveProperty(
+      'disciplineScore',
+    );
+    expect(disciplineSummary.body.summary).not.toHaveProperty(
+      'disciplinePercentage',
+    );
+    assertNoForbiddenParentAppFields(disciplineSummary.body);
   });
 
   it('linked parent can read owned child progress overview, academic, behavior, and XP', async () => {
@@ -1627,6 +1708,8 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
         'behavior',
         'behavior/summary',
         `behavior/${positiveBehaviorRecordAId}`,
+        'discipline',
+        'discipline/summary',
         'progress',
         'progress/academic',
         'progress/behavior',
@@ -1661,6 +1744,8 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
         `children/${ownedStudentAId}/behavior`,
         `children/${ownedStudentAId}/behavior/summary`,
         `children/${ownedStudentAId}/behavior/${positiveBehaviorRecordAId}`,
+        `children/${ownedStudentAId}/discipline`,
+        `children/${ownedStudentAId}/discipline/summary`,
         `children/${ownedStudentAId}/progress`,
         `children/${ownedStudentAId}/progress/academic`,
         `children/${ownedStudentAId}/progress/behavior`,
@@ -1745,6 +1830,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     for (const path of [
       `children/${ownedStudentAId}/grades`,
       `children/${ownedStudentAId}/behavior`,
+      `children/${ownedStudentAId}/discipline`,
       `children/${ownedStudentAId}/progress`,
       `children/${ownedStudentAId}/reports`,
     ]) {

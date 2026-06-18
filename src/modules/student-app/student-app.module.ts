@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
 import { CommunicationModule } from '../communication/communication.module';
+import { DisciplineModule } from '../discipline/discipline.module';
 import { GradesSubmissionsRepository } from '../grades/assessments/infrastructure/grades-submissions.repository';
 import { AuthModule } from '../iam/auth/auth.module';
 import { StudentAppAccessService } from './access/student-app-access.service';
@@ -19,6 +20,9 @@ import { StudentBehaviorReadAdapter } from './behavior/infrastructure/student-be
 import { GetStudentCalendarEventUseCase } from './calendar/application/get-student-calendar-event.use-case';
 import { ListStudentCalendarEventsUseCase } from './calendar/application/list-student-calendar-events.use-case';
 import { StudentCalendarController } from './calendar/controller/student-calendar.controller';
+import { GetStudentDisciplineSummaryUseCase } from './discipline/application/get-student-discipline-summary.use-case';
+import { ListStudentDisciplineUseCase } from './discipline/application/list-student-discipline.use-case';
+import { StudentDisciplineController } from './discipline/controller/student-discipline.controller';
 import { BulkSaveStudentExamAnswersUseCase } from './exams/application/bulk-save-student-exam-answers.use-case';
 import { GetStudentExamSubmissionUseCase } from './exams/application/get-student-exam-submission.use-case';
 import { GetStudentExamUseCase } from './exams/application/get-student-exam.use-case';
@@ -87,6 +91,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     AppCalendarReadModelModule,
     AuthModule,
     CommunicationModule,
+    DisciplineModule,
     StudentHomeworksModule,
   ],
   controllers: [
@@ -96,6 +101,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentGradesController,
     StudentExamsController,
     StudentBehaviorController,
+    StudentDisciplineController,
     StudentProgressController,
     StudentHeroController,
     StudentScheduleController,
@@ -133,6 +139,8 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     ListStudentBehaviorRecordsUseCase,
     GetStudentBehaviorSummaryUseCase,
     GetStudentBehaviorRecordUseCase,
+    ListStudentDisciplineUseCase,
+    GetStudentDisciplineSummaryUseCase,
     StudentProgressReadAdapter,
     GetStudentProgressUseCase,
     GetStudentAcademicProgressUseCase,

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
 import { CommunicationModule } from '../communication/communication.module';
+import { DisciplineModule } from '../discipline/discipline.module';
 import { ParentAppAccessService } from './access/parent-app-access.service';
 import { ParentAppGuardianReadAdapter } from './access/parent-app-guardian-read.adapter';
 import { GetParentAnnouncementUseCase } from './announcements/application/get-parent-announcement.use-case';
@@ -21,6 +22,9 @@ import { GetParentChildUseCase } from './children/application/get-parent-child.u
 import { ListParentChildrenUseCase } from './children/application/list-parent-children.use-case';
 import { ParentChildrenController } from './children/controller/parent-children.controller';
 import { ParentChildrenReadAdapter } from './children/infrastructure/parent-children-read.adapter';
+import { GetParentChildDisciplineSummaryUseCase } from './discipline/application/get-parent-child-discipline-summary.use-case';
+import { ListParentChildDisciplineUseCase } from './discipline/application/list-parent-child-discipline.use-case';
+import { ParentDisciplineController } from './discipline/controller/parent-discipline.controller';
 import { GetParentChildAssessmentGradeUseCase } from './grades/application/get-parent-child-assessment-grade.use-case';
 import { GetParentChildGradesSummaryUseCase } from './grades/application/get-parent-child-grades-summary.use-case';
 import { ListParentChildGradesUseCase } from './grades/application/list-parent-child-grades.use-case';
@@ -72,6 +76,7 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
   imports: [
     AppCalendarReadModelModule,
     CommunicationModule,
+    DisciplineModule,
     ParentHomeworksModule,
   ],
   controllers: [
@@ -80,6 +85,7 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ParentProfileController,
     ParentGradesController,
     ParentBehaviorController,
+    ParentDisciplineController,
     ParentProgressController,
     ParentReportsController,
     ParentScheduleController,
@@ -107,6 +113,8 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ListParentChildBehaviorUseCase,
     GetParentChildBehaviorSummaryUseCase,
     GetParentChildBehaviorRecordUseCase,
+    ListParentChildDisciplineUseCase,
+    GetParentChildDisciplineSummaryUseCase,
     ParentProgressReadAdapter,
     GetParentChildProgressUseCase,
     GetParentChildAcademicProgressUseCase,

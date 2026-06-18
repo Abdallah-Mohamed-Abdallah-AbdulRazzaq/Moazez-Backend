@@ -746,6 +746,8 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'GET /api/v1/student/behavior/summary',
       'GET /api/v1/student/calendar/events',
       'GET /api/v1/student/calendar/events/:eventId',
+      'GET /api/v1/student/discipline',
+      'GET /api/v1/student/discipline/summary',
       'GET /api/v1/student/exams',
       'GET /api/v1/student/exams/:assessmentId',
       'GET /api/v1/student/exams/:assessmentId/submission',
@@ -1162,6 +1164,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
     );
     expect(JSON.stringify(behavior.body)).not.toContain('reviewedById');
     expect(JSON.stringify(behavior.body)).not.toContain('reviewNote');
+    expect(JSON.stringify(behavior.body)).not.toContain('attendance:');
     expect(JSON.stringify(behavior.body)).not.toContain('xp');
     assertNoForbiddenStudentAppFields(behavior.body);
 
@@ -1189,6 +1192,83 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       status: 'approved',
     });
     assertNoForbiddenStudentAppFields(behaviorDetail.body);
+
+    const discipline = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/discipline`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(discipline.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: 'attendance',
+          itemType: 'absence',
+          status: 'submitted',
+          pointsDelta: 0,
+        }),
+        expect.objectContaining({
+          sourceType: 'attendance',
+          itemType: 'lateness',
+          status: 'submitted',
+        }),
+        expect.objectContaining({
+          id: `behavior:${ownPositiveBehaviorRecordId}`,
+          sourceType: 'behavior',
+          itemType: 'positive',
+          status: 'approved',
+          pointsDelta: 5,
+        }),
+        expect.objectContaining({
+          id: `behavior:${ownNegativeBehaviorRecordId}`,
+          sourceType: 'behavior',
+          itemType: 'negative',
+          status: 'approved',
+          pointsDelta: -2,
+        }),
+      ]),
+    );
+    expect(discipline.body.summary).toMatchObject({
+      attendanceIncidentCount: 2,
+      absenceCount: 1,
+      lateCount: 1,
+      positiveCount: 1,
+      negativeCount: 1,
+      behaviorPoints: 3,
+      totalIncidents: 4,
+    });
+    expect(JSON.stringify(discipline.body)).not.toContain(
+      ownDraftBehaviorRecordId,
+    );
+    expect(JSON.stringify(discipline.body)).not.toContain(
+      otherStudentBehaviorRecordId,
+    );
+    expect(JSON.stringify(discipline.body)).not.toContain(
+      tenantBBehaviorRecordId,
+    );
+    expect(JSON.stringify(discipline.body)).not.toContain('reviewedById');
+    expect(JSON.stringify(discipline.body)).not.toContain('submittedById');
+    expect(JSON.stringify(discipline.body)).not.toContain('markedById');
+    assertNoForbiddenStudentAppFields(discipline.body);
+
+    const disciplineSummary = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/discipline/summary`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(disciplineSummary.body.summary).toMatchObject({
+      attendanceIncidentCount: 2,
+      positiveCount: 1,
+      negativeCount: 1,
+      behaviorPoints: 3,
+      totalIncidents: 4,
+    });
+    expect(disciplineSummary.body.summary).not.toHaveProperty(
+      'disciplineScore',
+    );
+    expect(disciplineSummary.body.summary).not.toHaveProperty(
+      'disciplinePercentage',
+    );
+    assertNoForbiddenStudentAppFields(disciplineSummary.body);
 
     const progress = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/student/progress`)
@@ -1675,6 +1755,8 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
         'behavior',
         'behavior/summary',
         `behavior/${ownPositiveBehaviorRecordId}`,
+        'discipline',
+        'discipline/summary',
         'progress',
         'progress/academic',
         'progress/behavior',
@@ -1796,6 +1878,8 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
         'behavior',
         'behavior/summary',
         `behavior/${ownPositiveBehaviorRecordId}`,
+        'discipline',
+        'discipline/summary',
         'progress',
         'progress/academic',
         'progress/behavior',
