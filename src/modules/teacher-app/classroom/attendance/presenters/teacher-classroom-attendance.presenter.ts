@@ -11,9 +11,13 @@ import {
   TeacherClassroomAttendanceEntryResponseDto,
   TeacherClassroomAttendancePaginationDto,
   TeacherClassroomAttendanceRosterResponseDto,
+  TeacherClassroomAttendanceRosterStudentDto,
+  TeacherClassroomAttendanceSummaryDto,
   TeacherClassroomAttendanceSessionDto,
   TeacherClassroomAttendanceSessionResponseDto,
   TeacherClassroomAttendanceStatus,
+  TeacherClassroomAttendanceTodayResponseDto,
+  TeacherClassroomAttendanceTodaySessionDto,
 } from '../dto/teacher-classroom-attendance.dto';
 
 const DEFAULT_ROSTER_LIMIT = 20;
@@ -28,6 +32,12 @@ export interface TeacherClassroomAttendanceRosterPresenterInput {
     page?: number;
     limit?: number;
   };
+}
+
+export interface TeacherClassroomAttendanceTodayPresenterInput {
+  classId: string;
+  date: string;
+  roster: RollCallRosterResponseDto;
 }
 
 export class TeacherClassroomAttendancePresenter {
@@ -45,15 +55,7 @@ export class TeacherClassroomAttendancePresenter {
       session: input.roster.session
         ? presentSession(input.roster.session)
         : null,
-      students: paged.map((student) => ({
-        id: student.studentId,
-        displayName: student.name,
-        status: 'active',
-        attendanceStatus: toTeacherAttendanceStatus(student.currentStatus),
-        arrivalTime: null,
-        dismissalTime: null,
-        note: student.note,
-      })),
+      students: paged.map(presentRosterStudent),
       pagination: presentPagination({
         page,
         limit,
@@ -77,9 +79,28 @@ export class TeacherClassroomAttendancePresenter {
         attendanceStatus: toTeacherAttendanceStatus(entry.status),
         arrivalTime: null,
         dismissalTime: null,
+        lateMinutes: entry.lateMinutes,
+        earlyLeaveMinutes: entry.earlyLeaveMinutes,
+        excuseReason: entry.excuseReason,
         note: entry.note,
         markedAt: entry.markedAt,
       })),
+    };
+  }
+
+  static presentToday(
+    input: TeacherClassroomAttendanceTodayPresenterInput,
+  ): TeacherClassroomAttendanceTodayResponseDto {
+    const students = input.roster.items.map(presentRosterStudent);
+
+    return {
+      classId: input.classId,
+      date: normalizeDateOnly(input.date),
+      session: input.roster.session
+        ? presentTodaySession(input.roster.session)
+        : null,
+      summary: summarizeStudents(students),
+      students,
     };
   }
 }
@@ -97,6 +118,79 @@ function presentSession(session: {
         : 'draft',
     submittedAt: session.submittedAt,
   };
+}
+
+function presentTodaySession(session: {
+  id: string;
+  status: AttendanceSessionStatus;
+  submittedAt: string | null;
+}): TeacherClassroomAttendanceTodaySessionDto {
+  return {
+    ...presentSession(session),
+    mode: 'daily',
+  };
+}
+
+function presentRosterStudent(
+  student: RollCallRosterResponseDto['items'][number],
+): TeacherClassroomAttendanceRosterStudentDto {
+  return {
+    id: student.studentId,
+    displayName: student.name,
+    status: 'active',
+    attendanceStatus: toTeacherAttendanceStatus(student.currentStatus),
+    arrivalTime: null,
+    dismissalTime: null,
+    lateMinutes: student.lateMinutes,
+    earlyLeaveMinutes: student.earlyLeaveMinutes,
+    excuseReason: student.excuseReason,
+    note: student.note,
+  };
+}
+
+function summarizeStudents(
+  students: TeacherClassroomAttendanceRosterStudentDto[],
+): TeacherClassroomAttendanceSummaryDto {
+  const summary: TeacherClassroomAttendanceSummaryDto = {
+    totalCount: students.length,
+    presentCount: 0,
+    absentCount: 0,
+    lateCount: 0,
+    excusedCount: 0,
+    earlyLeaveCount: 0,
+    unmarkedCount: 0,
+    markedCount: 0,
+  };
+
+  for (const student of students) {
+    switch (student.attendanceStatus) {
+      case 'present':
+        summary.presentCount += 1;
+        summary.markedCount += 1;
+        break;
+      case 'absent':
+        summary.absentCount += 1;
+        summary.markedCount += 1;
+        break;
+      case 'late':
+        summary.lateCount += 1;
+        summary.markedCount += 1;
+        break;
+      case 'excused':
+        summary.excusedCount += 1;
+        summary.markedCount += 1;
+        break;
+      case 'early_leave':
+        summary.earlyLeaveCount += 1;
+        summary.markedCount += 1;
+        break;
+      case 'unmarked':
+        summary.unmarkedCount += 1;
+        break;
+    }
+  }
+
+  return summary;
 }
 
 function presentPagination(
@@ -133,7 +227,7 @@ function normalizeDateOnly(date: string): string {
 
 function toTeacherAttendanceStatus(
   status: AttendanceStatus | null | undefined,
-): TeacherClassroomAttendanceStatus | null {
+): TeacherClassroomAttendanceStatus {
   switch (status) {
     case AttendanceStatus.PRESENT:
       return 'present';
@@ -144,9 +238,10 @@ function toTeacherAttendanceStatus(
     case AttendanceStatus.EXCUSED:
       return 'excused';
     case AttendanceStatus.EARLY_LEAVE:
+      return 'early_leave';
     case AttendanceStatus.UNMARKED:
     case null:
     case undefined:
-      return null;
+      return 'unmarked';
   }
 }

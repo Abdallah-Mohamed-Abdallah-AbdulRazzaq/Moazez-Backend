@@ -14,15 +14,24 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-export const TEACHER_CLASSROOM_ATTENDANCE_STATUSES = [
+export const TEACHER_CLASSROOM_ATTENDANCE_WRITE_STATUSES = [
   'present',
   'absent',
   'late',
   'excused',
 ] as const;
 
+export const TEACHER_CLASSROOM_ATTENDANCE_READ_STATUSES = [
+  ...TEACHER_CLASSROOM_ATTENDANCE_WRITE_STATUSES,
+  'early_leave',
+  'unmarked',
+] as const;
+
+export type TeacherClassroomAttendanceWriteStatus =
+  (typeof TEACHER_CLASSROOM_ATTENDANCE_WRITE_STATUSES)[number];
+
 export type TeacherClassroomAttendanceStatus =
-  (typeof TEACHER_CLASSROOM_ATTENDANCE_STATUSES)[number];
+  (typeof TEACHER_CLASSROOM_ATTENDANCE_READ_STATUSES)[number];
 
 export type TeacherClassroomAttendanceSessionStatus = 'draft' | 'submitted';
 
@@ -68,8 +77,8 @@ export class UpdateTeacherClassroomAttendanceEntryDto {
   @IsUUID()
   studentId!: string;
 
-  @IsIn(TEACHER_CLASSROOM_ATTENDANCE_STATUSES)
-  status!: TeacherClassroomAttendanceStatus;
+  @IsIn(TEACHER_CLASSROOM_ATTENDANCE_WRITE_STATUSES)
+  status!: TeacherClassroomAttendanceWriteStatus;
 
   @IsOptional()
   @IsDateString()
@@ -103,9 +112,12 @@ export class TeacherClassroomAttendanceRosterStudentDto {
   id!: string;
   displayName!: string;
   status!: 'active';
-  attendanceStatus!: TeacherClassroomAttendanceStatus | null;
+  attendanceStatus!: TeacherClassroomAttendanceStatus;
   arrivalTime!: string | null;
   dismissalTime!: string | null;
+  lateMinutes!: number | null;
+  earlyLeaveMinutes!: number | null;
+  excuseReason!: string | null;
   note!: string | null;
 }
 
@@ -127,9 +139,12 @@ export class TeacherClassroomAttendanceEntryResponseDto {
   id!: string;
   studentId!: string;
   displayName!: string | null;
-  attendanceStatus!: TeacherClassroomAttendanceStatus | null;
+  attendanceStatus!: TeacherClassroomAttendanceStatus;
   arrivalTime!: string | null;
   dismissalTime!: string | null;
+  lateMinutes!: number | null;
+  earlyLeaveMinutes!: number | null;
+  excuseReason!: string | null;
   note!: string | null;
   markedAt!: string | null;
 }
@@ -139,4 +154,27 @@ export class TeacherClassroomAttendanceSessionResponseDto {
   date!: string;
   session!: TeacherClassroomAttendanceSessionDto;
   entries!: TeacherClassroomAttendanceEntryResponseDto[];
+}
+
+export class TeacherClassroomAttendanceTodaySessionDto extends TeacherClassroomAttendanceSessionDto {
+  mode!: 'daily';
+}
+
+export class TeacherClassroomAttendanceSummaryDto {
+  totalCount!: number;
+  presentCount!: number;
+  absentCount!: number;
+  lateCount!: number;
+  excusedCount!: number;
+  earlyLeaveCount!: number;
+  unmarkedCount!: number;
+  markedCount!: number;
+}
+
+export class TeacherClassroomAttendanceTodayResponseDto {
+  classId!: string;
+  date!: string;
+  session!: TeacherClassroomAttendanceTodaySessionDto | null;
+  summary!: TeacherClassroomAttendanceSummaryDto;
+  students!: TeacherClassroomAttendanceRosterStudentDto[];
 }

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AttendanceStatus,
   GradeAnswerCorrectionStatus,
   GradeAssessmentApprovalStatus,
   GradeAssessmentDeliveryMode,
@@ -474,6 +475,7 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
       'GET /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId',
       'GET /api/v1/teacher/classroom/:classId/attendance/roster',
       'GET /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId',
+      'GET /api/v1/teacher/classroom/:classId/attendance/today',
       'GET /api/v1/teacher/classroom/:classId/grades/assessments',
       'GET /api/v1/teacher/classroom/:classId/grades/assessments/:assessmentId',
       'GET /api/v1/teacher/classroom/:classId/grades/gradebook',
@@ -556,6 +558,7 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
       `/teacher/classroom/${ownFixture.allocationId}/schedule`,
       `/teacher/classroom/${ownFixture.allocationId}/timetable`,
       `/teacher/classroom/${ownFixture.allocationId}/attendance/scheduleId`,
+      `/teacher/classrooms/${ownFixture.allocationId}/attendance/today`,
       '/teacher/messages',
       '/teacher/settings',
       '/teacher/xp',
@@ -638,6 +641,40 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
       pagination: { total: ownFixture.studentIds.length },
     });
     expectSafeTeacherPayload(attendanceRoster.body);
+    expect(
+      attendanceRoster.body.students.map(
+        (student: { attendanceStatus: string }) => student.attendanceStatus,
+      ),
+    ).toEqual(['unmarked', 'unmarked']);
+
+    const attendanceTodayEmpty = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownFixture.allocationId}/attendance/today`,
+      )
+      .query({ date: attendanceDate })
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .expect(200);
+    expect(attendanceTodayEmpty.body).toMatchObject({
+      classId: ownFixture.allocationId,
+      date: attendanceDate,
+      session: null,
+      summary: {
+        totalCount: ownFixture.studentIds.length,
+        presentCount: 0,
+        absentCount: 0,
+        lateCount: 0,
+        excusedCount: 0,
+        earlyLeaveCount: 0,
+        unmarkedCount: ownFixture.studentIds.length,
+        markedCount: 0,
+      },
+    });
+    expect(
+      attendanceTodayEmpty.body.students.map(
+        (student: { attendanceStatus: string }) => student.attendanceStatus,
+      ),
+    ).toEqual(['unmarked', 'unmarked']);
+    expectSafeTeacherPayload(attendanceTodayEmpty.body);
 
     const resolvedSession = await request(app.getHttpServer())
       .post(
@@ -668,6 +705,21 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
     expect(emptySession.body.session.status).toBe('draft');
     expect(emptySession.body.entries).toEqual([]);
     expectSafeTeacherPayload(emptySession.body);
+
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownFixture.allocationId}/attendance/sessions/${sessionId}/entries`,
+      )
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .send({
+        entries: [
+          {
+            studentId: ownFixture.studentIds[0],
+            status: 'early_leave',
+          },
+        ],
+      })
+      .expect(400);
 
     const updatedAttendance = await request(app.getHttpServer())
       .put(
@@ -704,6 +756,74 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
       ]),
     );
     expectSafeTeacherPayload(updatedAttendance.body);
+
+    await prisma.attendanceEntry.updateMany({
+      where: {
+        schoolId: schoolAId,
+        sessionId,
+        studentId: ownFixture.studentIds[1],
+      },
+      data: {
+        status: AttendanceStatus.EARLY_LEAVE,
+        earlyLeaveMinutes: 25,
+        note: 'Early pickup',
+      },
+    });
+
+    const earlyLeaveSession = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownFixture.allocationId}/attendance/sessions/${sessionId}`,
+      )
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .expect(200);
+    expect(earlyLeaveSession.body.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          studentId: ownFixture.studentIds[1],
+          attendanceStatus: 'early_leave',
+          earlyLeaveMinutes: 25,
+          note: 'Early pickup',
+        }),
+      ]),
+    );
+    expectSafeTeacherPayload(earlyLeaveSession.body);
+
+    const attendanceTodayMarked = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownFixture.allocationId}/attendance/today`,
+      )
+      .query({ date: attendanceDate })
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .expect(200);
+    expect(attendanceTodayMarked.body).toMatchObject({
+      classId: ownFixture.allocationId,
+      date: attendanceDate,
+      session: {
+        id: sessionId,
+        status: 'draft',
+        mode: 'daily',
+      },
+      summary: {
+        totalCount: ownFixture.studentIds.length,
+        presentCount: 1,
+        absentCount: 0,
+        lateCount: 0,
+        excusedCount: 0,
+        earlyLeaveCount: 1,
+        unmarkedCount: 0,
+        markedCount: 2,
+      },
+    });
+    expect(attendanceTodayMarked.body.students).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: ownFixture.studentIds[1],
+          attendanceStatus: 'early_leave',
+          earlyLeaveMinutes: 25,
+        }),
+      ]),
+    );
+    expectSafeTeacherPayload(attendanceTodayMarked.body);
 
     const submittedAttendance = await request(app.getHttpServer())
       .post(
@@ -1541,7 +1661,13 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
 
   function expectSafeTeacherPayload(value: unknown): void {
     expectNoObjectKey(value, 'schoolId');
+    expectNoObjectKey(value, 'organizationId');
+    expectNoObjectKey(value, 'membershipId');
+    expectNoObjectKey(value, 'roleId');
+    expectNoObjectKey(value, 'deletedAt');
     expectNoObjectKey(value, 'scheduleId');
+    expectNoObjectKey(value, 'submittedById');
+    expectNoObjectKey(value, 'markedById');
   }
 
   function expectNoObjectKey(value: unknown, forbiddenKey: string): void {

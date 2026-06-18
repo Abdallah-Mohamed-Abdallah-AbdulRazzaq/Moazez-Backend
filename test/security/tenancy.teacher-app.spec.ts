@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AttendanceStatus,
   CommunicationConversationStatus,
   CommunicationConversationType,
   CommunicationMessageKind,
@@ -1384,10 +1385,43 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(
       response.body.students.map((student: { id: string }) => student.id),
     ).toEqual(ownStudentIds);
-    expect(json).not.toContain('schoolId');
-    expect(json).not.toContain('scheduleId');
+    expect(
+      response.body.students.map(
+        (student: { attendanceStatus: string }) => student.attendanceStatus,
+      ),
+    ).toEqual(['unmarked', 'unmarked']);
+    expectSafeTeacherAttendancePayload(response.body);
     expect(json).not.toContain('period');
     expect(json).not.toContain('timetable');
+
+    const todayResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/today`,
+      )
+      .query({ date: '2026-09-10' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(todayResponse.body).toMatchObject({
+      classId: ownAllocationId,
+      date: '2026-09-10',
+      session: null,
+      summary: {
+        totalCount: 2,
+        presentCount: 0,
+        absentCount: 0,
+        lateCount: 0,
+        excusedCount: 0,
+        earlyLeaveCount: 0,
+        unmarkedCount: 2,
+        markedCount: 0,
+      },
+    });
+    expect(
+      todayResponse.body.students.map(
+        (student: { attendanceStatus: string }) => student.attendanceStatus,
+      ),
+    ).toEqual(['unmarked', 'unmarked']);
+    expectSafeTeacherAttendancePayload(todayResponse.body);
   });
 
   it('teacher can resolve, update, and submit owned classroom attendance', async () => {
@@ -1414,6 +1448,17 @@ describe('Teacher App tenancy isolation (security)', () => {
     });
     expect(JSON.stringify(resolved.body)).not.toContain('schoolId');
     expect(JSON.stringify(resolved.body)).not.toContain('scheduleId');
+    expectSafeTeacherAttendancePayload(resolved.body);
+
+    await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/sessions/${sessionId}/entries`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        entries: [{ studentId: ownStudentIds[0], status: 'early_leave' }],
+      })
+      .expect(400);
 
     const updated = await request(app.getHttpServer())
       .put(
@@ -1444,6 +1489,20 @@ describe('Teacher App tenancy isolation (security)', () => {
     );
     expect(JSON.stringify(updated.body)).not.toContain('schoolId');
     expect(JSON.stringify(updated.body)).not.toContain('scheduleId');
+    expectSafeTeacherAttendancePayload(updated.body);
+
+    await prisma.attendanceEntry.updateMany({
+      where: {
+        schoolId: schoolAId,
+        sessionId,
+        studentId: ownStudentIds[1],
+      },
+      data: {
+        status: AttendanceStatus.EARLY_LEAVE,
+        earlyLeaveMinutes: 18,
+        note: 'Early pickup',
+      },
+    });
 
     const detail = await request(app.getHttpServer())
       .get(
@@ -1452,6 +1511,54 @@ describe('Teacher App tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
     expect(detail.body.entries).toHaveLength(2);
+    expect(detail.body.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          studentId: ownStudentIds[1],
+          attendanceStatus: 'early_leave',
+          earlyLeaveMinutes: 18,
+          note: 'Early pickup',
+        }),
+      ]),
+    );
+    expectSafeTeacherAttendancePayload(detail.body);
+
+    const today = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/today`,
+      )
+      .query({ date: '2026-09-10' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(today.body).toMatchObject({
+      classId: ownAllocationId,
+      date: '2026-09-10',
+      session: {
+        id: sessionId,
+        status: 'draft',
+        mode: 'daily',
+      },
+      summary: {
+        totalCount: 2,
+        presentCount: 1,
+        absentCount: 0,
+        lateCount: 0,
+        excusedCount: 0,
+        earlyLeaveCount: 1,
+        unmarkedCount: 0,
+        markedCount: 2,
+      },
+    });
+    expect(today.body.students).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: ownStudentIds[1],
+          attendanceStatus: 'early_leave',
+          earlyLeaveMinutes: 18,
+        }),
+      ]),
+    );
+    expectSafeTeacherAttendancePayload(today.body);
 
     const submitted = await request(app.getHttpServer())
       .post(
@@ -1467,6 +1574,7 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(submitted.body.session.submittedAt).toEqual(expect.any(String));
     expect(JSON.stringify(submitted.body)).not.toContain('schoolId');
     expect(JSON.stringify(submitted.body)).not.toContain('scheduleId');
+    expectSafeTeacherAttendancePayload(submitted.body);
   });
 
   it('teacher cannot update attendance for students outside the owned classroom', async () => {
@@ -2466,6 +2574,13 @@ describe('Teacher App tenancy isolation (security)', () => {
       .query({ date: '2026-09-10' })
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
+    const attendanceTodayResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${otherTeacherAllocationId}/attendance/today`,
+      )
+      .query({ date: '2026-09-10' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
     const attendanceResolveResponse = await request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/teacher/classroom/${otherTeacherAllocationId}/attendance/session/resolve`,
@@ -2474,6 +2589,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       .send({ date: '2026-09-10' })
       .expect(404);
     expect(attendanceRosterResponse.body?.error?.code).toBe(
+      'teacher_app.allocation.not_found',
+    );
+    expect(attendanceTodayResponse.body?.error?.code).toBe(
       'teacher_app.allocation.not_found',
     );
     expect(attendanceResolveResponse.body?.error?.code).toBe(
@@ -2586,7 +2704,17 @@ describe('Teacher App tenancy isolation (security)', () => {
       .query({ date: '2026-09-10' })
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
+    const attendanceTodayResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/classroom/${crossSchoolAllocationId}/attendance/today`,
+      )
+      .query({ date: '2026-09-10' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
     expect(attendanceRosterResponse.body?.error?.code).toBe(
+      'teacher_app.allocation.not_found',
+    );
+    expect(attendanceTodayResponse.body?.error?.code).toBe(
       'teacher_app.allocation.not_found',
     );
 
@@ -2774,6 +2902,13 @@ describe('Teacher App tenancy isolation (security)', () => {
       await request(app.getHttpServer())
         .get(
           `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/roster`,
+        )
+        .query({ date: '2026-09-10' })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/classroom/${ownAllocationId}/attendance/today`,
         )
         .query({ date: '2026-09-10' })
         .set('Authorization', `Bearer ${accessToken}`)
@@ -4048,6 +4183,34 @@ describe('Teacher App tenancy isolation (security)', () => {
       'sessionId',
       'refreshToken',
       'raw-storage-logo-should-not-be-returned',
+    ]) {
+      expect(json).not.toContain(forbidden);
+    }
+  }
+
+  function expectSafeTeacherAttendancePayload(value: unknown): void {
+    const json = JSON.stringify(value);
+
+    for (const forbidden of [
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'deletedAt',
+      'password',
+      'passwordHash',
+      'bucket',
+      'objectKey',
+      'signedUrl',
+      'raw-storage-key',
+      'private-bucket',
+      'raw metadata',
+      'metadata',
+      'submittedById',
+      'markedById',
+      'reviewedById',
+      'actorUserId',
+      'refreshToken',
     ]) {
       expect(json).not.toContain(forbidden);
     }

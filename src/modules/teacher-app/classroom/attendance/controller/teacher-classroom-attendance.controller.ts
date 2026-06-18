@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { GetTeacherClassroomAttendanceRosterUseCase } from '../application/get-teacher-classroom-attendance-roster.use-case';
 import { GetTeacherClassroomAttendanceSessionUseCase } from '../application/get-teacher-classroom-attendance-session.use-case';
+import { GetTeacherClassroomAttendanceTodayUseCase } from '../application/get-teacher-classroom-attendance-today.use-case';
 import { ResolveTeacherClassroomAttendanceSessionUseCase } from '../application/resolve-teacher-classroom-attendance-session.use-case';
 import { SubmitTeacherClassroomAttendanceSessionUseCase } from '../application/submit-teacher-classroom-attendance-session.use-case';
 import { UpdateTeacherClassroomAttendanceEntriesUseCase } from '../application/update-teacher-classroom-attendance-entries.use-case';
@@ -12,6 +13,7 @@ import {
   TeacherClassroomAttendanceRosterResponseDto,
   TeacherClassroomAttendanceSessionParamsDto,
   TeacherClassroomAttendanceSessionResponseDto,
+  TeacherClassroomAttendanceTodayResponseDto,
   UpdateTeacherClassroomAttendanceEntriesDto,
 } from '../dto/teacher-classroom-attendance.dto';
 
@@ -21,6 +23,7 @@ import {
 export class TeacherClassroomAttendanceController {
   constructor(
     private readonly getRosterUseCase: GetTeacherClassroomAttendanceRosterUseCase,
+    private readonly getTodayUseCase: GetTeacherClassroomAttendanceTodayUseCase,
     private readonly resolveSessionUseCase: ResolveTeacherClassroomAttendanceSessionUseCase,
     private readonly getSessionUseCase: GetTeacherClassroomAttendanceSessionUseCase,
     private readonly updateEntriesUseCase: UpdateTeacherClassroomAttendanceEntriesUseCase,
@@ -34,6 +37,15 @@ export class TeacherClassroomAttendanceController {
     @Query() query: GetTeacherClassroomAttendanceRosterQueryDto,
   ): Promise<TeacherClassroomAttendanceRosterResponseDto> {
     return this.getRosterUseCase.execute(params.classId, query);
+  }
+
+  @Get('today')
+  @ApiOkResponse({ type: TeacherClassroomAttendanceTodayResponseDto })
+  getToday(
+    @Param() params: TeacherClassroomAttendanceParamsDto,
+    @Query() query: GetTeacherClassroomAttendanceRosterQueryDto,
+  ): Promise<TeacherClassroomAttendanceTodayResponseDto> {
+    return this.getTodayUseCase.execute(params.classId, query);
   }
 
   @Post('session/resolve')

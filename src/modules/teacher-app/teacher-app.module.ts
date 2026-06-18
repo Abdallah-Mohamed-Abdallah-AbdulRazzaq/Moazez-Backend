@@ -12,6 +12,7 @@ import { ListTeacherCalendarEventsUseCase } from './calendar/application/list-te
 import { TeacherCalendarController } from './calendar/controller/teacher-calendar.controller';
 import { GetTeacherClassroomAttendanceRosterUseCase } from './classroom/attendance/application/get-teacher-classroom-attendance-roster.use-case';
 import { GetTeacherClassroomAttendanceSessionUseCase } from './classroom/attendance/application/get-teacher-classroom-attendance-session.use-case';
+import { GetTeacherClassroomAttendanceTodayUseCase } from './classroom/attendance/application/get-teacher-classroom-attendance-today.use-case';
 import { ResolveTeacherClassroomAttendanceSessionUseCase } from './classroom/attendance/application/resolve-teacher-classroom-attendance-session.use-case';
 import { SubmitTeacherClassroomAttendanceSessionUseCase } from './classroom/attendance/application/submit-teacher-classroom-attendance-session.use-case';
 import { UpdateTeacherClassroomAttendanceEntriesUseCase } from './classroom/attendance/application/update-teacher-classroom-attendance-entries.use-case';
@@ -140,6 +141,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     FinalizeTeacherClassroomSubmissionReviewUseCase,
     SyncTeacherClassroomSubmissionGradeItemUseCase,
     GetTeacherClassroomAttendanceRosterUseCase,
+    GetTeacherClassroomAttendanceTodayUseCase,
     ResolveTeacherClassroomAttendanceSessionUseCase,
     GetTeacherClassroomAttendanceSessionUseCase,
     UpdateTeacherClassroomAttendanceEntriesUseCase,

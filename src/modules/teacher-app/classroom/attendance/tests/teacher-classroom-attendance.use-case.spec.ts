@@ -14,6 +14,7 @@ import {
 import type { TeacherAppAllocationRecord } from '../../../shared/teacher-app.types';
 import { GetTeacherClassroomAttendanceRosterUseCase } from '../application/get-teacher-classroom-attendance-roster.use-case';
 import { GetTeacherClassroomAttendanceSessionUseCase } from '../application/get-teacher-classroom-attendance-session.use-case';
+import { GetTeacherClassroomAttendanceTodayUseCase } from '../application/get-teacher-classroom-attendance-today.use-case';
 import { ResolveTeacherClassroomAttendanceSessionUseCase } from '../application/resolve-teacher-classroom-attendance-session.use-case';
 import { SubmitTeacherClassroomAttendanceSessionUseCase } from '../application/submit-teacher-classroom-attendance-session.use-case';
 import { UpdateTeacherClassroomAttendanceEntriesUseCase } from '../application/update-teacher-classroom-attendance-entries.use-case';
@@ -91,11 +92,65 @@ describe('Teacher classroom attendance use-cases', () => {
       'student-1',
       'student-2',
     ]);
+    expect(result.students[1]).toMatchObject({
+      id: 'student-2',
+      attendanceStatus: 'unmarked',
+    });
     expect(json).not.toContain('student-outside');
     expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('submittedById');
+    expect(json).not.toContain('markedById');
     expect(json).not.toContain('scheduleId');
     expect(json).not.toContain('period');
     expect(json).not.toContain('timetable');
+  });
+
+  it('returns a read-only today model with explicit unmarked status and summary counts', async () => {
+    const { useCases, attendanceAdapter } = createUseCases();
+
+    const result = await useCases.getToday.execute('allocation-1', {
+      date: '2026-09-10',
+    });
+    const json = JSON.stringify(result);
+
+    expect(attendanceAdapter.getRoster).toHaveBeenCalledWith({
+      allocation: expect.objectContaining({
+        id: 'allocation-1',
+        classroomId: 'classroom-1',
+      }),
+      date: '2026-09-10',
+    });
+    expect(attendanceAdapter.resolveSession).not.toHaveBeenCalled();
+    expect(attendanceAdapter.updateEntries).not.toHaveBeenCalled();
+    expect(attendanceAdapter.submitSession).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      classId: 'allocation-1',
+      date: '2026-09-10',
+      session: {
+        id: 'session-1',
+        status: 'draft',
+        mode: 'daily',
+        submittedAt: null,
+      },
+      summary: {
+        totalCount: 2,
+        presentCount: 1,
+        absentCount: 0,
+        lateCount: 0,
+        excusedCount: 0,
+        earlyLeaveCount: 0,
+        unmarkedCount: 1,
+        markedCount: 1,
+      },
+    });
+    expect(result.students[1]).toMatchObject({
+      id: 'student-2',
+      attendanceStatus: 'unmarked',
+    });
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('submittedById');
+    expect(json).not.toContain('markedById');
+    expect(json).not.toContain('scheduleId');
   });
 
   it('resolves or creates a draft session for the owned classroom', async () => {
@@ -136,6 +191,9 @@ describe('Teacher classroom attendance use-cases', () => {
         attendanceStatus: 'present',
         arrivalTime: null,
         dismissalTime: null,
+        lateMinutes: null,
+        earlyLeaveMinutes: null,
+        excuseReason: null,
         note: 'Here',
         markedAt: '2026-09-10T08:00:00.000Z',
       },
@@ -258,6 +316,11 @@ function createUseCaseScenarios(): Array<{
         useCases.getRoster.execute('allocation-1', { date: '2026-09-10' }),
     },
     {
+      adapterMethod: 'getRoster',
+      execute: (useCases) =>
+        useCases.getToday.execute('allocation-1', { date: '2026-09-10' }),
+    },
+    {
       adapterMethod: 'resolveSession',
       execute: (useCases) =>
         useCases.resolveSession.execute('allocation-1', {
@@ -287,6 +350,7 @@ function createUseCaseScenarios(): Array<{
 function createUseCases(): {
   useCases: {
     getRoster: GetTeacherClassroomAttendanceRosterUseCase;
+    getToday: GetTeacherClassroomAttendanceTodayUseCase;
     resolveSession: ResolveTeacherClassroomAttendanceSessionUseCase;
     getSession: GetTeacherClassroomAttendanceSessionUseCase;
     updateEntries: UpdateTeacherClassroomAttendanceEntriesUseCase;
@@ -318,6 +382,10 @@ function createUseCases(): {
   return {
     useCases: {
       getRoster: new GetTeacherClassroomAttendanceRosterUseCase(
+        accessService,
+        attendanceAdapter,
+      ),
+      getToday: new GetTeacherClassroomAttendanceTodayUseCase(
         accessService,
         attendanceAdapter,
       ),
