@@ -1,6 +1,14 @@
-import { GradeAssessmentApprovalStatus, GradeItemStatus } from '@prisma/client';
+import {
+  GradeAssessmentApprovalStatus,
+  GradeAssessmentDeliveryMode,
+  GradeItemStatus,
+  GradeQuestionType,
+} from '@prisma/client';
 import {
   StudentAssessmentGradeDetailResponseDto,
+  StudentAssessmentGradeItemDto,
+  StudentAssessmentGradeQuestionDto,
+  StudentAssessmentGradeSubmissionDto,
   StudentGradeAcademicYearDto,
   StudentGradeAssessmentItemDto,
   StudentGradeBreakdownItemDto,
@@ -87,6 +95,16 @@ export class StudentGradesPresenter {
     const item = result.gradeItem;
     const score = decimalToNumber(item?.score);
     const maxScore = decimalToNumber(assessment.maxScore) ?? 0;
+    const grade: StudentAssessmentGradeItemDto = {
+      gradeItemId: item?.id ?? null,
+      status: item ? lowerEnum(item.status) : 'missing',
+      score,
+      maxScore,
+      percent: calculatePercent(score, maxScore),
+      comment: item?.comment ?? null,
+      enteredAt: nullableDate(item?.enteredAt ?? null),
+      isVirtualMissing: !item,
+    };
 
     return {
       assessment: {
@@ -105,28 +123,80 @@ export class StudentGradesPresenter {
         weight: decimalToNumber(assessment.weight) ?? 0,
         expectedTimeMinutes: assessment.expectedTimeMinutes,
       },
-      grade: {
-        gradeItemId: item?.id ?? null,
-        status: item ? lowerEnum(item.status) : 'missing',
-        score,
-        maxScore,
-        percent: calculatePercent(score, maxScore),
-        comment: item?.comment ?? null,
-        enteredAt: nullableDate(item?.enteredAt ?? null),
-        isVirtualMissing: !item,
-      },
+      grade,
+      gradeItem: grade,
       submission: result.submission
-        ? {
-            submissionId: result.submission.id,
-            status: lowerEnum(result.submission.status),
-            totalScore: decimalToNumber(result.submission.totalScore),
-            maxScore: decimalToNumber(result.submission.maxScore),
-            submittedAt: nullableDate(result.submission.submittedAt),
-            correctedAt: nullableDate(result.submission.correctedAt),
-          }
+        ? presentSubmission(
+            result.submission,
+            assessment.deliveryMode === GradeAssessmentDeliveryMode.QUESTION_BASED,
+          )
         : null,
+      questions: presentQuestions(assessment),
     };
   }
+}
+
+function presentQuestions(
+  assessment: StudentAssessmentGradeDetailReadResult['assessment'],
+): StudentAssessmentGradeQuestionDto[] {
+  if (assessment.deliveryMode !== GradeAssessmentDeliveryMode.QUESTION_BASED) {
+    return [];
+  }
+
+  return assessment.questions.map((question) => ({
+    id: question.id,
+    questionId: question.id,
+    type: presentQuestionType(question.type),
+    title: question.prompt,
+    body: question.promptAr ?? question.prompt,
+    points: decimalToNumber(question.points) ?? 0,
+    required: question.required,
+    sortOrder: question.sortOrder,
+    options: question.options.map((option) => ({
+      id: option.id,
+      optionId: option.id,
+      text: option.label,
+      textAr: option.labelAr,
+      label: option.label,
+      labelAr: option.labelAr,
+      value: option.value,
+      sortOrder: option.sortOrder,
+    })),
+  }));
+}
+
+function presentSubmission(
+  submission: NonNullable<StudentAssessmentGradeDetailReadResult['submission']>,
+  includeAnswers: boolean,
+): StudentAssessmentGradeSubmissionDto {
+  return {
+    submissionId: submission.id,
+    status: lowerEnum(submission.status),
+    totalScore: decimalToNumber(submission.totalScore),
+    maxScore: decimalToNumber(submission.maxScore),
+    submittedAt: nullableDate(submission.submittedAt),
+    correctedAt: nullableDate(submission.correctedAt),
+    answers: includeAnswers
+      ? submission.answers.map((answer) => ({
+          answerId: answer.id,
+          questionId: answer.questionId,
+          answerText: answer.answerText,
+          answerJson: sanitizeAnswerJson(answer.answerJson),
+          selectedOptions: answer.selectedOptions.map((selected) => ({
+            optionId: selected.optionId,
+            label: selected.option.label,
+            labelAr: selected.option.labelAr,
+            value: selected.option.value,
+          })),
+          correctionStatus: lowerEnum(answer.correctionStatus),
+          awardedPoints: decimalToNumber(answer.awardedPoints),
+          maxPoints: decimalToNumber(answer.maxPoints),
+          reviewerComment: answer.reviewerComment,
+          reviewerCommentAr: answer.reviewerCommentAr,
+          reviewedAt: nullableDate(answer.reviewedAt),
+        }))
+      : [],
+  };
 }
 
 function presentAssessmentItems(
@@ -377,6 +447,27 @@ function presentAssessmentStatus(assessment: {
   return lowerEnum(assessment.approvalStatus) as 'published' | 'approved';
 }
 
+function presentQuestionType(type: GradeQuestionType | string): string {
+  switch (type) {
+    case GradeQuestionType.MCQ_SINGLE:
+    case GradeQuestionType.MCQ_MULTI:
+      return 'multiple_choice';
+    case GradeQuestionType.TRUE_FALSE:
+      return 'true_false';
+    case GradeQuestionType.FILL_IN_BLANK:
+      return 'fill_blanks';
+    case GradeQuestionType.SHORT_ANSWER:
+    case GradeQuestionType.ESSAY:
+      return 'essay';
+    case GradeQuestionType.MATCHING:
+      return 'matching';
+    case GradeQuestionType.MEDIA:
+      return 'media';
+    default:
+      return lowerEnum(String(type));
+  }
+}
+
 function assessmentTitle(assessment: {
   titleEn: string | null;
   titleAr: string | null;
@@ -427,4 +518,37 @@ function ratingForPercentage(percentage: number | null): string | null {
 
 function roundTwo(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function sanitizeAnswerJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => sanitizeAnswerJson(item));
+  if (!value || typeof value !== 'object') return value ?? null;
+
+  const forbiddenKeys = new Set([
+    'answerKey',
+    'correctAnswer',
+    'correctAnswers',
+    'isCorrect',
+    'bucket',
+    'objectKey',
+    'storageKey',
+    'directUrl',
+    'signedUrl',
+    'fileUrl',
+    'url',
+    'metadata',
+    'rawMetadata',
+    'rawStorageMetadata',
+    'storageMetadata',
+    'storage',
+    'fileMetadata',
+    'rawAnswerMetadata',
+    'answerMetadata',
+  ]);
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !forbiddenKeys.has(key))
+      .map(([key, nestedValue]) => [key, sanitizeAnswerJson(nestedValue)]),
+  );
 }

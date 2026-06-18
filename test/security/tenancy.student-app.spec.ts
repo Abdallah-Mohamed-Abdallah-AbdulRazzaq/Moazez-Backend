@@ -1101,13 +1101,50 @@ describe('Student App Home/Profile routes (security)', () => {
         maxScore: 10,
         isVirtualMissing: false,
       },
+      gradeItem: {
+        score: 8,
+        maxScore: 10,
+        isVirtualMissing: false,
+      },
       submission: {
         submissionId: ownSubmissionId,
         status: 'submitted',
+        answers: [
+          expect.objectContaining({
+            answerText: 'A',
+            awardedPoints: 8,
+            maxPoints: 10,
+            selectedOptions: expect.arrayContaining([
+              expect.objectContaining({
+                label: 'Correct visible label',
+              }),
+            ]),
+          }),
+        ],
       },
+      questions: [
+        expect.objectContaining({
+          type: 'multiple_choice',
+          title: 'Choose the visible answer.',
+          points: 10,
+          options: expect.arrayContaining([
+            expect.objectContaining({
+              label: 'Correct visible label',
+              text: 'Correct visible label',
+              value: 'A',
+            }),
+          ]),
+        }),
+      ],
     });
     assertNoForbiddenStudentAppFields(assessmentGrade.body);
     assertNoAnswerKeysOrCorrectAnswers(assessmentGrade.body);
+    expect(JSON.stringify(assessmentGrade.body)).not.toContain(
+      'OTHER_STUDENT_HIDDEN_ANSWER',
+    );
+    expect(JSON.stringify(assessmentGrade.body)).not.toContain(
+      'OTHER_STUDENT_HIDDEN_JSON',
+    );
 
     const exams = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/student/exams`)
@@ -3275,6 +3312,39 @@ describe('Student App Home/Profile routes (security)', () => {
         optionId: correctOption.id,
       },
     });
+
+    const otherSubmission = await prisma.gradeSubmission.create({
+      data: {
+        schoolId,
+        assessmentId: assessment.id,
+        termId,
+        studentId: sameSchoolOtherStudentId,
+        enrollmentId: sameSchoolOtherEnrollmentId,
+        status: GradeSubmissionStatus.SUBMITTED,
+        startedAt: new Date('2026-10-04T09:00:00.000Z'),
+        submittedAt: new Date('2026-10-04T09:30:00.000Z'),
+        totalScore: 1,
+        maxScore: 10,
+      },
+      select: { id: true },
+    });
+    createdGradeSubmissionIds.push(otherSubmission.id);
+
+    const otherAnswer = await prisma.gradeSubmissionAnswer.create({
+      data: {
+        schoolId,
+        submissionId: otherSubmission.id,
+        assessmentId: assessment.id,
+        questionId: question.id,
+        studentId: sameSchoolOtherStudentId,
+        answerText: 'OTHER_STUDENT_HIDDEN_ANSWER',
+        answerJson: { selected: 'OTHER_STUDENT_HIDDEN_JSON' },
+        correctionStatus: GradeAnswerCorrectionStatus.PENDING,
+        maxPoints: 10,
+      },
+      select: { id: true },
+    });
+    createdGradeSubmissionAnswerIds.push(otherAnswer.id);
 
     return {
       assessmentId: assessment.id,

@@ -88,6 +88,37 @@ const STUDENT_GRADE_ASSESSMENT_ARGS =
     },
   });
 
+const STUDENT_GRADE_ASSESSMENT_DETAIL_ARGS =
+  Prisma.validator<Prisma.GradeAssessmentDefaultArgs>()({
+    select: {
+      ...STUDENT_GRADE_ASSESSMENT_ARGS.select,
+      questions: {
+        where: { deletedAt: null },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          type: true,
+          prompt: true,
+          promptAr: true,
+          points: true,
+          sortOrder: true,
+          required: true,
+          options: {
+            where: { deletedAt: null },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+            select: {
+              id: true,
+              label: true,
+              labelAr: true,
+              value: true,
+              sortOrder: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
 const STUDENT_GRADE_ITEM_ARGS =
   Prisma.validator<Prisma.GradeItemDefaultArgs>()({
     select: {
@@ -110,6 +141,35 @@ const STUDENT_GRADE_SUBMISSION_ARGS =
       maxScore: true,
       submittedAt: true,
       correctedAt: true,
+      answers: {
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          questionId: true,
+          answerText: true,
+          answerJson: true,
+          correctionStatus: true,
+          awardedPoints: true,
+          maxPoints: true,
+          reviewerComment: true,
+          reviewerCommentAr: true,
+          reviewedAt: true,
+          selectedOptions: {
+            orderBy: [{ createdAt: 'asc' }, { optionId: 'asc' }],
+            select: {
+              optionId: true,
+              option: {
+                select: {
+                  id: true,
+                  label: true,
+                  labelAr: true,
+                  value: true,
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -119,6 +179,8 @@ export type StudentGradesEnrollmentRecord = Prisma.EnrollmentGetPayload<
 export type StudentGradeAssessmentRecord = Prisma.GradeAssessmentGetPayload<
   typeof STUDENT_GRADE_ASSESSMENT_ARGS
 >;
+export type StudentGradeAssessmentDetailRecord =
+  Prisma.GradeAssessmentGetPayload<typeof STUDENT_GRADE_ASSESSMENT_DETAIL_ARGS>;
 export type StudentGradeItemRecord = Prisma.GradeItemGetPayload<
   typeof STUDENT_GRADE_ITEM_ARGS
 >;
@@ -137,7 +199,7 @@ export interface StudentGradesReadResult {
 
 export interface StudentAssessmentGradeDetailReadResult {
   enrollment: StudentGradesEnrollmentRecord;
-  assessment: StudentGradeAssessmentRecord;
+  assessment: StudentGradeAssessmentDetailRecord;
   gradeItem: StudentGradeItemRecord | null;
   submission: StudentGradeSubmissionRecord | null;
 }
@@ -225,7 +287,7 @@ export class StudentGradesReadAdapter {
         }),
         id: params.assessmentId,
       },
-      ...STUDENT_GRADE_ASSESSMENT_ARGS,
+      ...STUDENT_GRADE_ASSESSMENT_DETAIL_ARGS,
     });
 
     if (!assessment) return null;

@@ -230,6 +230,27 @@ export class StudentAssessmentGradeItemDto {
   isVirtualMissing!: boolean;
 }
 
+export class StudentAssessmentGradeSelectedOptionDto {
+  optionId!: string;
+  label!: string;
+  labelAr!: string | null;
+  value!: string | null;
+}
+
+export class StudentAssessmentGradeSubmissionAnswerDto {
+  answerId!: string;
+  questionId!: string;
+  answerText!: string | null;
+  answerJson!: unknown;
+  selectedOptions!: StudentAssessmentGradeSelectedOptionDto[];
+  correctionStatus!: string;
+  awardedPoints!: number | null;
+  maxPoints!: number | null;
+  reviewerComment!: string | null;
+  reviewerCommentAr!: string | null;
+  reviewedAt!: string | null;
+}
+
 export class StudentAssessmentGradeSubmissionDto {
   submissionId!: string;
   status!: string;
@@ -237,10 +258,36 @@ export class StudentAssessmentGradeSubmissionDto {
   maxScore!: number | null;
   submittedAt!: string | null;
   correctedAt!: string | null;
+  answers!: StudentAssessmentGradeSubmissionAnswerDto[];
+}
+
+export class StudentAssessmentGradeQuestionOptionDto {
+  id!: string;
+  optionId!: string;
+  text!: string;
+  textAr!: string | null;
+  label!: string;
+  labelAr!: string | null;
+  value!: string | null;
+  sortOrder!: number;
+}
+
+export class StudentAssessmentGradeQuestionDto {
+  id!: string;
+  questionId!: string;
+  type!: string;
+  title!: string;
+  body!: string;
+  points!: number;
+  required!: boolean;
+  sortOrder!: number;
+  options!: StudentAssessmentGradeQuestionOptionDto[];
 }
 
 export class StudentAssessmentGradeDetailResponseDto {
   assessment!: StudentAssessmentGradeAssessmentDto;
   grade!: StudentAssessmentGradeItemDto;
+  gradeItem!: StudentAssessmentGradeItemDto;
   submission!: StudentAssessmentGradeSubmissionDto | null;
+  questions!: StudentAssessmentGradeQuestionDto[];
 }

@@ -75,6 +75,43 @@ describe('StudentGradesReadAdapter', () => {
       assessmentId: 'assessment-1',
     });
 
+    const assessmentQuery = scopedGradeAssessmentMocks.findFirst.mock.calls[0][0];
+    expect(assessmentQuery.select.questions).toMatchObject({
+      where: { deletedAt: null },
+      select: {
+        id: true,
+        type: true,
+        prompt: true,
+        promptAr: true,
+        points: true,
+        sortOrder: true,
+        required: true,
+      },
+    });
+    expect(assessmentQuery.select.questions.select).not.toHaveProperty(
+      'answerKey',
+    );
+    expect(assessmentQuery.select.questions.select).not.toHaveProperty(
+      'metadata',
+    );
+    expect(assessmentQuery.select.questions.select.options.select).toMatchObject(
+      {
+        id: true,
+        label: true,
+        labelAr: true,
+        value: true,
+        sortOrder: true,
+      },
+    );
+    expect(
+      assessmentQuery.select.questions.select.options.select,
+    ).not.toHaveProperty('isCorrect');
+    expect(
+      assessmentQuery.select.questions.select.options.select,
+    ).not.toHaveProperty('schoolId');
+    expect(
+      assessmentQuery.select.questions.select.options.select,
+    ).not.toHaveProperty('deletedAt');
     expect(scopedGradeItemMocks.findFirst.mock.calls[0][0].where).toEqual({
       assessmentId: 'assessment-1',
       studentId: 'student-1',
@@ -84,6 +121,37 @@ describe('StudentGradesReadAdapter', () => {
       studentId: 'student-1',
       enrollmentId: 'enrollment-1',
     });
+    const submissionSelect =
+      scopedGradeSubmissionMocks.findFirst.mock.calls[0][0].select;
+    expect(submissionSelect.answers.select).toMatchObject({
+      id: true,
+      questionId: true,
+      answerText: true,
+      answerJson: true,
+      correctionStatus: true,
+      awardedPoints: true,
+      maxPoints: true,
+      reviewerComment: true,
+      reviewerCommentAr: true,
+      reviewedAt: true,
+    });
+    expect(submissionSelect).not.toHaveProperty('schoolId');
+    expect(submissionSelect).not.toHaveProperty('reviewedById');
+    expect(submissionSelect).not.toHaveProperty('metadata');
+    expect(submissionSelect.answers.select).not.toHaveProperty('schoolId');
+    expect(submissionSelect.answers.select).not.toHaveProperty('studentId');
+    expect(submissionSelect.answers.select).not.toHaveProperty('reviewedById');
+    expect(
+      submissionSelect.answers.select.selectedOptions.select.option.select,
+    ).toEqual({
+      id: true,
+      label: true,
+      labelAr: true,
+      value: true,
+    });
+    expect(
+      submissionSelect.answers.select.selectedOptions.select.option.select,
+    ).not.toHaveProperty('isCorrect');
   });
 
   it('performs no mutations or platform bypass calls', async () => {

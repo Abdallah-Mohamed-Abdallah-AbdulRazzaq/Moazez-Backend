@@ -74,7 +74,7 @@ describe('Student Grades use-cases', () => {
     ).rejects.toMatchObject({ httpStatus: 404 });
   });
 
-  it('returns safe assessment grade details without answer data', async () => {
+  it('returns enriched safe assessment grade details with current-student answers', async () => {
     const { assessmentUseCase, readAdapter } = createUseCasesWithValidAccess();
     readAdapter.findAssessmentGrade.mockResolvedValue(
       assessmentGradeReadResultFixture(),
@@ -94,13 +94,51 @@ describe('Student Grades use-cases', () => {
         maxScore: 10,
         isVirtualMissing: false,
       },
+      gradeItem: {
+        gradeItemId: 'grade-item-1',
+        score: 8,
+        maxScore: 10,
+      },
       submission: {
         submissionId: 'submission-1',
         status: 'submitted',
+        answers: [
+          expect.objectContaining({
+            answerId: 'answer-1',
+            questionId: 'question-1',
+            answerText: 'A',
+            selectedOptions: [
+              {
+                optionId: 'option-1',
+                label: 'Option A',
+                labelAr: null,
+                value: 'A',
+              },
+            ],
+          }),
+        ],
       },
+      questions: [
+        expect.objectContaining({
+          questionId: 'question-1',
+          type: 'multiple_choice',
+          options: [
+            expect.objectContaining({
+              optionId: 'option-1',
+              label: 'Option A',
+            }),
+          ],
+        }),
+      ],
     });
     expect(serialized).not.toContain('answerKey');
     expect(serialized).not.toContain('correctAnswer');
+    expect(serialized).not.toContain('correctAnswers');
+    expect(serialized).not.toContain('isCorrect');
+    expect(serialized).not.toContain('reviewedById');
+    expect(serialized).not.toContain('bucket');
+    expect(serialized).not.toContain('objectKey');
+    expect(serialized).not.toContain('signedUrl');
     expect(serialized).not.toContain('schoolId');
     expect(serialized).not.toContain('organizationId');
     expect(serialized).not.toContain('scheduleId');
@@ -211,6 +249,43 @@ function assessmentGradeReadResultFixture(): StudentAssessmentGradeDetailReadRes
       maxScore: 10,
       submittedAt: new Date('2026-10-04T08:30:00.000Z'),
       correctedAt: new Date('2026-10-05T08:00:00.000Z'),
+      reviewedById: 'reviewer-hidden',
+      answers: [
+        {
+          id: 'answer-1',
+          questionId: 'question-1',
+          answerText: 'A',
+          answerJson: {
+            selected: 'A',
+            answerKey: 'hidden-answer-key',
+            correctAnswer: 'A',
+            correctAnswers: ['A'],
+            isCorrect: true,
+            bucket: 'raw-bucket',
+            objectKey: 'raw-object-key',
+            signedUrl: 'https://raw-storage.invalid/file',
+          },
+          correctionStatus: 'CORRECTED',
+          awardedPoints: 8,
+          maxPoints: 10,
+          reviewerComment: 'Visible review comment',
+          reviewerCommentAr: null,
+          reviewedById: 'reviewer-hidden',
+          reviewedAt: new Date('2026-10-05T08:00:00.000Z'),
+          selectedOptions: [
+            {
+              optionId: 'option-1',
+              option: {
+                id: 'option-1',
+                label: 'Option A',
+                labelAr: null,
+                value: 'A',
+                isCorrect: true,
+              },
+            },
+          ],
+        },
+      ],
     },
   } as unknown as StudentAssessmentGradeDetailReadResult;
 }
@@ -261,6 +336,28 @@ function assessmentFixture() {
     expectedTimeMinutes: 30,
     approvalStatus: 'PUBLISHED',
     lockedAt: null,
+    questions: [
+      {
+        id: 'question-1',
+        type: 'MCQ_SINGLE',
+        prompt: 'Pick A',
+        promptAr: null,
+        points: 10,
+        sortOrder: 1,
+        required: true,
+        answerKey: { correctOption: 'option-1' },
+        options: [
+          {
+            id: 'option-1',
+            label: 'Option A',
+            labelAr: null,
+            value: 'A',
+            sortOrder: 1,
+            isCorrect: true,
+          },
+        ],
+      },
+    ],
     subject: {
       id: 'subject-1',
       nameAr: 'Math AR',

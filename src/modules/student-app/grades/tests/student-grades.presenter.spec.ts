@@ -104,18 +104,67 @@ describe('StudentGradesPresenter', () => {
     });
   });
 
-  it('presents safe assessment grade detail without answers or keys', () => {
+  it('presents enriched safe assessment grade detail with own answers and questions', () => {
     const result = StudentGradesPresenter.presentAssessmentGradeDetail(
       assessmentDetailFixture(),
     );
     const serialized = JSON.stringify(result);
 
+    expect(result.gradeItem).toEqual(result.grade);
+    expect(result.questions).toEqual([
+      expect.objectContaining({
+        id: 'question-1',
+        questionId: 'question-1',
+        type: 'multiple_choice',
+        title: 'Pick A',
+        points: 10,
+        required: true,
+        sortOrder: 1,
+        options: [
+          expect.objectContaining({
+            id: 'option-1',
+            optionId: 'option-1',
+            text: 'Option A',
+            label: 'Option A',
+            value: 'A',
+            sortOrder: 1,
+          }),
+        ],
+      }),
+    ]);
     expect(result.submission).toMatchObject({
       submissionId: 'submission-1',
       status: 'submitted',
+      answers: [
+        expect.objectContaining({
+          answerId: 'answer-1',
+          questionId: 'question-1',
+          answerText: 'A',
+          answerJson: {
+            selected: 'A',
+            nested: { kept: true },
+            list: [{ kept: 'yes' }],
+          },
+          selectedOptions: [
+            {
+              optionId: 'option-1',
+              label: 'Option A',
+              labelAr: null,
+              value: 'A',
+            },
+          ],
+          correctionStatus: 'corrected',
+          awardedPoints: 8,
+          maxPoints: 10,
+          reviewerComment: 'Visible review comment',
+          reviewerCommentAr: null,
+          reviewedAt: '2026-10-05T08:00:00.000Z',
+        }),
+      ],
     });
     expect(serialized).not.toContain('answerKey');
     expect(serialized).not.toContain('correctAnswer');
+    expect(serialized).not.toContain('correctAnswers');
     expect(serialized).not.toContain('schoolId');
     expect(serialized).not.toContain('organizationId');
     expect(serialized).not.toContain('membershipId');
@@ -123,8 +172,21 @@ describe('StudentGradesPresenter', () => {
     expect(serialized).not.toContain('isCorrect');
     expect(serialized).not.toContain('objectKey');
     expect(serialized).not.toContain('bucket');
+    expect(serialized).not.toContain('storageKey');
+    expect(serialized).not.toContain('signedUrl');
+    expect(serialized).not.toContain('reviewedById');
     expect(serialized).not.toContain('deletedAt');
     expect(serialized).not.toContain('scheduleId');
+  });
+
+  it('keeps score-only assessment details free of question solving data', () => {
+    const fixture = assessmentDetailFixture();
+    (fixture.assessment as { deliveryMode: string }).deliveryMode = 'SCORE_ONLY';
+    const result = StudentGradesPresenter.presentAssessmentGradeDetail(fixture);
+
+    expect(result.assessment.deliveryMode).toBe('score_only');
+    expect(result.questions).toEqual([]);
+    expect(result.submission?.answers).toEqual([]);
   });
 });
 
@@ -168,6 +230,54 @@ function assessmentDetailFixture(): StudentAssessmentGradeDetailReadResult {
       maxScore: 10,
       submittedAt: new Date('2026-10-04T08:30:00.000Z'),
       correctedAt: new Date('2026-10-05T08:00:00.000Z'),
+      reviewedById: 'reviewer-hidden',
+      answers: [
+        {
+          id: 'answer-1',
+          questionId: 'question-1',
+          answerText: 'A',
+          answerJson: {
+            selected: 'A',
+            answerKey: 'hidden-answer-key',
+            correctAnswer: 'A',
+            correctAnswers: ['A'],
+            isCorrect: true,
+            bucket: 'raw-bucket',
+            objectKey: 'raw-object-key',
+            storageKey: 'raw-storage-key',
+            signedUrl: 'https://raw-storage.invalid/file',
+            nested: {
+              kept: true,
+              correctAnswer: 'nested-hidden-answer',
+            },
+            list: [
+              {
+                kept: 'yes',
+                isCorrect: false,
+              },
+            ],
+          },
+          correctionStatus: 'CORRECTED',
+          awardedPoints: 8,
+          maxPoints: 10,
+          reviewerComment: 'Visible review comment',
+          reviewerCommentAr: null,
+          reviewedById: 'reviewer-hidden',
+          reviewedAt: new Date('2026-10-05T08:00:00.000Z'),
+          selectedOptions: [
+            {
+              optionId: 'option-1',
+              option: {
+                id: 'option-1',
+                label: 'Option A',
+                labelAr: null,
+                value: 'A',
+                isCorrect: true,
+              },
+            },
+          ],
+        },
+      ],
     },
   } as unknown as StudentAssessmentGradeDetailReadResult;
 }
@@ -208,6 +318,28 @@ function assessmentFixture() {
     expectedTimeMinutes: 30,
     approvalStatus: 'PUBLISHED',
     lockedAt: null,
+    questions: [
+      {
+        id: 'question-1',
+        type: 'MCQ_SINGLE',
+        prompt: 'Pick A',
+        promptAr: null,
+        points: 10,
+        sortOrder: 1,
+        required: true,
+        answerKey: { correctOption: 'option-1' },
+        options: [
+          {
+            id: 'option-1',
+            label: 'Option A',
+            labelAr: null,
+            value: 'A',
+            sortOrder: 1,
+            isCorrect: true,
+          },
+        ],
+      },
+    ],
     subject: {
       id: 'subject-1',
       nameAr: 'Math AR',
