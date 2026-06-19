@@ -12,11 +12,19 @@ import type {
   StudentAppContext,
   StudentAppCurrentStudentWithEnrollment,
 } from '../../shared/student-app.types';
+import {
+  CompleteHeroMissionUseCase,
+  CompleteHeroObjectiveUseCase,
+  StartHeroMissionUseCase,
+} from '../../../reinforcement/hero-journey/application/hero-journey-progress.use-cases';
+import { CompleteStudentHeroMissionUseCase } from '../application/complete-student-hero-mission.use-case';
+import { CompleteStudentHeroObjectiveUseCase } from '../application/complete-student-hero-objective.use-case';
 import { GetStudentHeroMissionUseCase } from '../application/get-student-hero-mission.use-case';
 import { GetStudentHeroOverviewUseCase } from '../application/get-student-hero-overview.use-case';
 import { GetStudentHeroProgressUseCase } from '../application/get-student-hero-progress.use-case';
 import { ListStudentHeroBadgesUseCase } from '../application/list-student-hero-badges.use-case';
 import { ListStudentHeroMissionsUseCase } from '../application/list-student-hero-missions.use-case';
+import { StartStudentHeroMissionUseCase } from '../application/start-student-hero-mission.use-case';
 import {
   StudentHeroReadAdapter,
   type StudentHeroMissionDetailReadModel,
@@ -105,6 +113,163 @@ describe('Student Hero use-cases', () => {
       missionUseCase.execute('outside-mission'),
     ).rejects.toMatchObject({ httpStatus: 404 });
   });
+
+  it('starts the current student own visible mission through Hero Journey core', async () => {
+    const { startMissionUseCase, readAdapter, startHeroMissionUseCase } =
+      createUseCasesWithValidAccess();
+    readAdapter.findMission
+      .mockResolvedValueOnce(missionDetailFixture({ progress: null }))
+      .mockResolvedValueOnce(
+        missionDetailFixture({
+          progress: progressRecordFixture({
+            status: HeroMissionProgressStatus.IN_PROGRESS,
+            progressPercent: 0,
+            completedAt: null,
+            objectiveProgress: [],
+          }),
+        }),
+      );
+    startHeroMissionUseCase.execute.mockResolvedValue({} as never);
+
+    const result = await startMissionUseCase.execute('mission-1');
+
+    expect(startHeroMissionUseCase.execute).toHaveBeenCalledWith(
+      'student-1',
+      'mission-1',
+      { enrollmentId: 'enrollment-1' },
+    );
+    expect(result).toMatchObject({
+      missionId: 'mission-1',
+      progressStatus: 'in_progress',
+      progress: {
+        progressId: 'progress-1',
+        progressPercent: 0,
+        completedAt: null,
+      },
+    });
+    assertNoForbiddenHeroFields(result);
+  });
+
+  it('completes the current student own started mission through Hero Journey core', async () => {
+    const { completeMissionUseCase, readAdapter, completeHeroMissionUseCase } =
+      createUseCasesWithValidAccess();
+    readAdapter.findMission
+      .mockResolvedValueOnce(
+        missionDetailFixture({
+          progress: progressRecordFixture({
+            status: HeroMissionProgressStatus.IN_PROGRESS,
+            progressPercent: 100,
+            completedAt: null,
+          }),
+        }),
+      )
+      .mockResolvedValueOnce(missionDetailFixture());
+    completeHeroMissionUseCase.execute.mockResolvedValue({} as never);
+
+    const result = await completeMissionUseCase.execute('mission-1');
+
+    expect(completeHeroMissionUseCase.execute).toHaveBeenCalledWith(
+      'progress-1',
+      {},
+    );
+    expect(result).toMatchObject({
+      missionId: 'mission-1',
+      progressStatus: 'completed',
+      progress: {
+        progressId: 'progress-1',
+        progressPercent: 100,
+      },
+    });
+    assertNoForbiddenHeroFields(result);
+  });
+
+  it('completes the current student own mission objective through Hero Journey core', async () => {
+    const {
+      completeObjectiveUseCase,
+      readAdapter,
+      completeHeroObjectiveUseCase,
+    } = createUseCasesWithValidAccess();
+    readAdapter.findMission
+      .mockResolvedValueOnce(
+        missionDetailFixture({
+          progress: progressRecordFixture({
+            status: HeroMissionProgressStatus.IN_PROGRESS,
+            progressPercent: 0,
+            completedAt: null,
+            objectiveProgress: [],
+          }),
+        }),
+      )
+      .mockResolvedValueOnce(
+        missionDetailFixture({
+          progress: progressRecordFixture({
+            status: HeroMissionProgressStatus.IN_PROGRESS,
+            progressPercent: 100,
+            completedAt: null,
+          }),
+        }),
+      );
+    completeHeroObjectiveUseCase.execute.mockResolvedValue({} as never);
+
+    const result = await completeObjectiveUseCase.execute({
+      missionId: 'mission-1',
+      objectiveId: 'objective-1',
+    });
+
+    expect(completeHeroObjectiveUseCase.execute).toHaveBeenCalledWith(
+      'progress-1',
+      'objective-1',
+      {},
+    );
+    expect(result.objectives).toEqual([
+      expect.objectContaining({
+        id: 'objective-1',
+        isCompleted: true,
+      }),
+    ]);
+    assertNoForbiddenHeroFields(result);
+  });
+
+  it('does not delegate start when the mission is not visible to the current student', async () => {
+    const { startMissionUseCase, readAdapter, startHeroMissionUseCase } =
+      createUseCasesWithValidAccess();
+    readAdapter.findMission.mockResolvedValue(null);
+
+    await expect(startMissionUseCase.execute('outside-mission')).rejects.toMatchObject(
+      { httpStatus: 404 },
+    );
+    expect(startHeroMissionUseCase.execute).not.toHaveBeenCalled();
+  });
+
+  it('does not delegate mission completion without current student progress', async () => {
+    const { completeMissionUseCase, readAdapter, completeHeroMissionUseCase } =
+      createUseCasesWithValidAccess();
+    readAdapter.findMission.mockResolvedValue(
+      missionDetailFixture({ progress: null }),
+    );
+
+    await expect(
+      completeMissionUseCase.execute('mission-1'),
+    ).rejects.toMatchObject({ httpStatus: 404 });
+    expect(completeHeroMissionUseCase.execute).not.toHaveBeenCalled();
+  });
+
+  it('does not delegate objective completion for objectives outside the mission', async () => {
+    const {
+      completeObjectiveUseCase,
+      readAdapter,
+      completeHeroObjectiveUseCase,
+    } = createUseCasesWithValidAccess();
+    readAdapter.findMission.mockResolvedValue(missionDetailFixture());
+
+    await expect(
+      completeObjectiveUseCase.execute({
+        missionId: 'mission-1',
+        objectiveId: 'outside-objective',
+      }),
+    ).rejects.toMatchObject({ httpStatus: 404 });
+    expect(completeHeroObjectiveUseCase.execute).not.toHaveBeenCalled();
+  });
 });
 
 function createUseCases(): {
@@ -113,8 +278,14 @@ function createUseCases(): {
   badgesUseCase: ListStudentHeroBadgesUseCase;
   missionsUseCase: ListStudentHeroMissionsUseCase;
   missionUseCase: GetStudentHeroMissionUseCase;
+  startMissionUseCase: StartStudentHeroMissionUseCase;
+  completeMissionUseCase: CompleteStudentHeroMissionUseCase;
+  completeObjectiveUseCase: CompleteStudentHeroObjectiveUseCase;
   accessService: jest.Mocked<StudentAppAccessService>;
   readAdapter: jest.Mocked<StudentHeroReadAdapter>;
+  startHeroMissionUseCase: jest.Mocked<StartHeroMissionUseCase>;
+  completeHeroMissionUseCase: jest.Mocked<CompleteHeroMissionUseCase>;
+  completeHeroObjectiveUseCase: jest.Mocked<CompleteHeroObjectiveUseCase>;
 } {
   const accessService = {
     getCurrentStudentWithEnrollment: jest.fn(),
@@ -126,6 +297,15 @@ function createUseCases(): {
     listMissions: jest.fn(),
     findMission: jest.fn(),
   } as unknown as jest.Mocked<StudentHeroReadAdapter>;
+  const startHeroMissionUseCase = {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<StartHeroMissionUseCase>;
+  const completeHeroMissionUseCase = {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<CompleteHeroMissionUseCase>;
+  const completeHeroObjectiveUseCase = {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<CompleteHeroObjectiveUseCase>;
 
   return {
     overviewUseCase: new GetStudentHeroOverviewUseCase(
@@ -145,8 +325,26 @@ function createUseCases(): {
       accessService,
       readAdapter,
     ),
+    startMissionUseCase: new StartStudentHeroMissionUseCase(
+      accessService,
+      readAdapter,
+      startHeroMissionUseCase,
+    ),
+    completeMissionUseCase: new CompleteStudentHeroMissionUseCase(
+      accessService,
+      readAdapter,
+      completeHeroMissionUseCase,
+    ),
+    completeObjectiveUseCase: new CompleteStudentHeroObjectiveUseCase(
+      accessService,
+      readAdapter,
+      completeHeroObjectiveUseCase,
+    ),
     accessService,
     readAdapter,
+    startHeroMissionUseCase,
+    completeHeroMissionUseCase,
+    completeHeroObjectiveUseCase,
   };
 }
 
@@ -237,10 +435,15 @@ function missionsFixture(): StudentHeroMissionsReadModel {
   };
 }
 
-function missionDetailFixture(): StudentHeroMissionDetailReadModel {
+function missionDetailFixture(
+  overrides: Partial<StudentHeroMissionDetailReadModel> = {},
+): StudentHeroMissionDetailReadModel {
   return {
-    mission: missionFixture(),
-    progress: progressRecordFixture(),
+    mission: overrides.mission ?? missionFixture(),
+    progress:
+      Object.prototype.hasOwnProperty.call(overrides, 'progress')
+        ? (overrides.progress ?? null)
+        : progressRecordFixture(),
   };
 }
 
@@ -280,8 +483,10 @@ function missionFixture() {
   };
 }
 
-function progressRecordFixture() {
-  return {
+function progressRecordFixture(
+  overrides: Partial<NonNullable<StudentHeroMissionDetailReadModel['progress']>> = {},
+) {
+  const base = {
     id: 'progress-1',
     missionId: 'mission-1',
     status: HeroMissionProgressStatus.COMPLETED,
@@ -295,6 +500,11 @@ function progressRecordFixture() {
         completedAt: new Date('2026-10-02T08:00:00.000Z'),
       },
     ],
+  };
+  return {
+    ...base,
+    ...overrides,
+    objectiveProgress: overrides.objectiveProgress ?? base.objectiveProgress,
   };
 }
 
@@ -313,4 +523,28 @@ function badgeFixture() {
       descriptionAr: null,
     },
   };
+}
+
+function assertNoForbiddenHeroFields(value: unknown): void {
+  const serialized = JSON.stringify(value);
+  for (const forbidden of [
+    'schoolId',
+    'organizationId',
+    'membershipId',
+    'roleId',
+    'deletedAt',
+    'enrollmentId',
+    'studentId',
+    'awardedById',
+    'createdById',
+    'updatedById',
+    'xpLedger',
+    'RewardRedemption',
+    'BehaviorPointLedger',
+    'bucket',
+    'objectKey',
+    'signedUrl',
+  ]) {
+    expect(serialized).not.toContain(forbidden);
+  }
 }

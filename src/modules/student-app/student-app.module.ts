@@ -4,6 +4,7 @@ import { CommunicationModule } from '../communication/communication.module';
 import { DisciplineModule } from '../discipline/discipline.module';
 import { GradesSubmissionsRepository } from '../grades/assessments/infrastructure/grades-submissions.repository';
 import { AuthModule } from '../iam/auth/auth.module';
+import { HeroJourneyModule } from '../reinforcement/hero-journey/hero-journey.module';
 import { ReviewsModule } from '../reinforcement/reviews/reviews.module';
 import { StudentAppAccessService } from './access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from './access/student-app-student-read.adapter';
@@ -75,10 +76,13 @@ import { GetStudentDailyScheduleUseCase } from './schedule/application/get-stude
 import { GetStudentWeeklyScheduleUseCase } from './schedule/application/get-student-weekly-schedule.use-case';
 import { StudentScheduleController } from './schedule/controller/student-schedule.controller';
 import { StudentScheduleReadAdapter } from './schedule/infrastructure/student-schedule-read.adapter';
+import { CompleteStudentHeroMissionUseCase } from './hero/application/complete-student-hero-mission.use-case';
+import { CompleteStudentHeroObjectiveUseCase } from './hero/application/complete-student-hero-objective.use-case';
 import { GetStudentSubjectUseCase } from './subjects/application/get-student-subject.use-case';
 import { ListStudentSubjectsUseCase } from './subjects/application/list-student-subjects.use-case';
 import { StudentSubjectsController } from './subjects/controller/student-subjects.controller';
 import { StudentSubjectsReadAdapter } from './subjects/infrastructure/student-subjects-read.adapter';
+import { StartStudentHeroMissionUseCase } from './hero/application/start-student-hero-mission.use-case';
 import { GetStudentTaskSubmissionUseCase } from './tasks/application/get-student-task-submission.use-case';
 import { GetStudentTaskUseCase } from './tasks/application/get-student-task.use-case';
 import { GetStudentTasksSummaryUseCase } from './tasks/application/get-student-tasks-summary.use-case';
@@ -94,6 +98,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     AuthModule,
     CommunicationModule,
     DisciplineModule,
+    HeroJourneyModule,
     ReviewsModule,
     StudentHomeworksModule,
   ],
@@ -158,6 +163,9 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     ListStudentHeroBadgesUseCase,
     ListStudentHeroMissionsUseCase,
     GetStudentHeroMissionUseCase,
+    StartStudentHeroMissionUseCase,
+    CompleteStudentHeroMissionUseCase,
+    CompleteStudentHeroObjectiveUseCase,
     StudentTasksReadAdapter,
     ListStudentTasksUseCase,
     GetStudentTasksSummaryUseCase,

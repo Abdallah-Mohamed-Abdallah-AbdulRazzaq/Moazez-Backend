@@ -83,5 +83,10 @@ import { HeroJourneyRewardsRepository } from './infrastructure/hero-journey-rewa
     GetHeroClassroomSummaryUseCase,
     GetHeroBadgesSummaryUseCase,
   ],
+  exports: [
+    StartHeroMissionUseCase,
+    CompleteHeroObjectiveUseCase,
+    CompleteHeroMissionUseCase,
+  ],
 })
 export class HeroJourneyModule {}

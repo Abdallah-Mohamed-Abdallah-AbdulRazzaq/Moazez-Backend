@@ -1,5 +1,13 @@
 import { Transform, Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import {
+  IsEmpty,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
 
 export const STUDENT_HERO_PROGRESS_STATUSES = [
   'not_started',
@@ -37,6 +45,12 @@ export class StudentHeroMissionsQueryDto {
   @Min(1)
   @Max(100)
   limit?: number;
+}
+
+export class StudentHeroActionDto {
+  @IsOptional()
+  @IsEmpty()
+  readonly __empty?: never;
 }
 
 export class StudentHeroUnsupportedDto {

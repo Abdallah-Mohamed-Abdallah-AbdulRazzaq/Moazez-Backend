@@ -252,9 +252,17 @@ describe('Student App Home/Profile routes (security)', () => {
   let otherStudentBehaviorRecordId: string;
   let tenantBBehaviorRecordId: string;
   let heroMissionId: string;
+  let heroObjectiveId: string;
   let heroProgressId: string;
   let otherHeroProgressId: string;
   let heroBadgeId: string;
+  let startableHeroMissionId: string;
+  let completableHeroMissionId: string;
+  let objectiveActionHeroMissionId: string;
+  let objectiveActionHeroObjectiveId: string;
+  let objectiveActionHeroProgressId: string;
+  let otherOnlyHeroMissionId: string;
+  let otherOnlyHeroObjectiveId: string;
   let tenantBHeroMissionId: string;
   let ownTaskId: string;
   let ownTaskSubmissionId: string;
@@ -524,9 +532,17 @@ describe('Student App Home/Profile routes (security)', () => {
       otherEnrollmentId: otherStudentFixture.enrollmentId,
     });
     heroMissionId = heroFixture.missionId;
+    heroObjectiveId = heroFixture.objectiveId;
     heroProgressId = heroFixture.progressId;
     otherHeroProgressId = heroFixture.otherProgressId;
     heroBadgeId = heroFixture.badgeId;
+    startableHeroMissionId = heroFixture.startableMissionId;
+    completableHeroMissionId = heroFixture.completableMissionId;
+    objectiveActionHeroMissionId = heroFixture.objectiveActionMissionId;
+    objectiveActionHeroObjectiveId = heroFixture.objectiveActionObjectiveId;
+    objectiveActionHeroProgressId = heroFixture.objectiveActionProgressId;
+    otherOnlyHeroMissionId = heroFixture.otherOnlyMissionId;
+    otherOnlyHeroObjectiveId = heroFixture.otherOnlyObjectiveId;
 
     const assessmentFixture = await createAssessmentFixture();
     ownAssessmentId = assessmentFixture.assessmentId;
@@ -638,6 +654,14 @@ describe('Student App Home/Profile routes (security)', () => {
       });
       await prisma.heroStudentBadge.deleteMany({
         where: { id: { in: createdHeroStudentBadgeIds } },
+      });
+      await prisma.heroJourneyEvent.deleteMany({
+        where: {
+          OR: [
+            { missionId: { in: createdHeroMissionIds } },
+            { missionProgressId: { in: createdHeroMissionProgressIds } },
+          ],
+        },
       });
       await prisma.heroMissionObjectiveProgress.deleteMany({
         where: { id: { in: createdHeroMissionObjectiveProgressIds } },
@@ -1481,7 +1505,9 @@ describe('Student App Home/Profile routes (security)', () => {
       .expect(200);
 
     expect(heroProgress.body.summary).toMatchObject({
-      total: 1,
+      total: 5,
+      notStarted: 2,
+      inProgress: 2,
       completed: 1,
     });
     expect(JSON.stringify(heroProgress.body)).toContain(heroProgressId);
@@ -1550,6 +1576,166 @@ describe('Student App Home/Profile routes (security)', () => {
       },
     });
     assertNoForbiddenStudentAppFields(heroMission.body);
+  });
+
+  it('allows linked student to mutate own hero missions through core only', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+    const beforeCounts = {
+      xpLedger: await prisma.xpLedger.count(),
+      behaviorPointLedger: await prisma.behaviorPointLedger.count(),
+      rewardRedemption: await prisma.rewardRedemption.count(),
+      heroStudentBadge: await prisma.heroStudentBadge.count(),
+    };
+
+    const startResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/hero/missions/${startableHeroMissionId}/start`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(200);
+
+    expect(startResponse.body).toMatchObject({
+      missionId: startableHeroMissionId,
+      progressStatus: 'in_progress',
+      progress: {
+        progressId: expect.any(String),
+        progressPercent: 0,
+        completedAt: null,
+      },
+    });
+    assertNoForbiddenStudentAppFields(startResponse.body);
+    createdHeroMissionProgressIds.push(startResponse.body.progress.progressId);
+
+    const duplicateStart = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/hero/missions/${startableHeroMissionId}/start`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(200);
+
+    expect(duplicateStart.body.progress.progressId).toBe(
+      startResponse.body.progress.progressId,
+    );
+    expect(
+      await prisma.heroMissionProgress.count({
+        where: {
+          missionId: startableHeroMissionId,
+          studentId: linkedStudentId,
+        },
+      }),
+    ).toBe(1);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/hero/missions/${startableHeroMissionId}/start`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        studentId: '11111111-1111-4111-8111-111111111111',
+        progressId: startResponse.body.progress.progressId,
+        status: 'completed',
+        xpAmount: 999,
+        rewardId: '22222222-2222-4222-8222-222222222222',
+      })
+      .expect(400);
+
+    const objectiveResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/student/hero/missions/${objectiveActionHeroMissionId}/objectives/${objectiveActionHeroObjectiveId}/complete`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(200);
+
+    expect(objectiveResponse.body).toMatchObject({
+      missionId: objectiveActionHeroMissionId,
+      progressStatus: 'in_progress',
+      progress: {
+        progressId: objectiveActionHeroProgressId,
+        progressPercent: 100,
+      },
+    });
+    expect(objectiveResponse.body.objectives).toEqual([
+      expect.objectContaining({
+        id: objectiveActionHeroObjectiveId,
+        isCompleted: true,
+      }),
+    ]);
+    assertNoForbiddenStudentAppFields(objectiveResponse.body);
+    const objectiveProgress =
+      await prisma.heroMissionObjectiveProgress.findFirst({
+        where: {
+          missionProgressId: objectiveActionHeroProgressId,
+          objectiveId: objectiveActionHeroObjectiveId,
+        },
+        select: { id: true },
+      });
+    expect(objectiveProgress).not.toBeNull();
+    if (objectiveProgress) {
+      createdHeroMissionObjectiveProgressIds.push(objectiveProgress.id);
+    }
+
+    const completeResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/student/hero/missions/${completableHeroMissionId}/complete`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(200);
+
+    expect(completeResponse.body).toMatchObject({
+      missionId: completableHeroMissionId,
+      progressStatus: 'completed',
+      progress: {
+        progressPercent: 100,
+      },
+    });
+    assertNoForbiddenStudentAppFields(completeResponse.body);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/student/hero/missions/${completableHeroMissionId}/complete`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(409);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/hero/missions/${tenantBHeroMissionId}/start`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/student/hero/missions/${tenantBHeroMissionId}/complete`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/student/hero/missions/${otherOnlyHeroMissionId}/complete`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/student/hero/missions/${otherOnlyHeroMissionId}/objectives/${otherOnlyHeroObjectiveId}/complete`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(404);
+
+    expect(await prisma.xpLedger.count()).toBe(beforeCounts.xpLedger);
+    expect(await prisma.behaviorPointLedger.count()).toBe(
+      beforeCounts.behaviorPointLedger,
+    );
+    expect(await prisma.rewardRedemption.count()).toBe(
+      beforeCounts.rewardRedemption,
+    );
+    expect(await prisma.heroStudentBadge.count()).toBe(
+      beforeCounts.heroStudentBadge,
+    );
   });
 
   it('allows a linked student to read own tasks and submissions only', async () => {
@@ -2048,6 +2234,18 @@ describe('Student App Home/Profile routes (security)', () => {
           .expect(403);
       }
 
+      for (const path of [
+        `hero/missions/${startableHeroMissionId}/start`,
+        `hero/missions/${completableHeroMissionId}/complete`,
+        `hero/missions/${objectiveActionHeroMissionId}/objectives/${objectiveActionHeroObjectiveId}/complete`,
+      ]) {
+        await request(app.getHttpServer())
+          .post(`${GLOBAL_PREFIX}/student/${path}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({})
+          .expect(403);
+      }
+
       await request(app.getHttpServer())
         .post(
           `${GLOBAL_PREFIX}/student/tasks/${ownSubmittableTaskId}/stages/${ownSubmittableStageId}/submit`,
@@ -2179,9 +2377,6 @@ describe('Student App Home/Profile routes (security)', () => {
       `behavior/records/${ownPositiveBehaviorRecordId}/submit`,
       `behavior/records/${ownPositiveBehaviorRecordId}/approve`,
       `behavior/records/${ownPositiveBehaviorRecordId}/reject`,
-      `hero/missions/${heroMissionId}/start`,
-      `hero/missions/${heroMissionId}/complete`,
-      `hero/missions/${heroMissionId}/objectives/objective-1/complete`,
       `hero/badges/${heroBadgeId}/award`,
       'hero/rewards/redeem',
       'rewards/redemptions',
@@ -3228,9 +3423,17 @@ describe('Student App Home/Profile routes (security)', () => {
     otherEnrollmentId: string;
   }): Promise<{
     missionId: string;
+    objectiveId: string;
     progressId: string;
     otherProgressId: string;
     badgeId: string;
+    startableMissionId: string;
+    completableMissionId: string;
+    objectiveActionMissionId: string;
+    objectiveActionObjectiveId: string;
+    objectiveActionProgressId: string;
+    otherOnlyMissionId: string;
+    otherOnlyObjectiveId: string;
   }> {
     const badge = await prisma.heroBadge.create({
       data: {
@@ -3243,6 +3446,52 @@ describe('Student App Home/Profile routes (security)', () => {
       select: { id: true },
     });
     createdHeroBadgeIds.push(badge.id);
+
+    const createPublishedMission = async (params: {
+      title: string;
+      sortOrder: number;
+      rewardXp?: number;
+    }): Promise<{ missionId: string; objectiveId: string }> => {
+      const mission = await prisma.heroMission.create({
+        data: {
+          schoolId,
+          academicYearId,
+          termId,
+          stageId,
+          subjectId,
+          titleEn: `${testSuffix} ${params.title}`,
+          briefEn: 'Student App hero action mission.',
+          requiredLevel: 1,
+          rewardXp: params.rewardXp ?? 0,
+          badgeRewardId: badge.id,
+          status: HeroMissionStatus.PUBLISHED,
+          positionX: params.sortOrder * 10,
+          positionY: params.sortOrder * 10,
+          sortOrder: params.sortOrder,
+          publishedAt: new Date('2026-09-20T08:00:00.000Z'),
+          publishedById: linkedStudentUserId,
+          createdById: linkedStudentUserId,
+        },
+        select: { id: true },
+      });
+      createdHeroMissionIds.push(mission.id);
+
+      const objective = await prisma.heroMissionObjective.create({
+        data: {
+          schoolId,
+          missionId: mission.id,
+          type: HeroMissionObjectiveType.QUIZ,
+          titleEn: `${testSuffix} ${params.title} Objective`,
+          subtitleEn: 'Complete the action objective.',
+          sortOrder: 1,
+          isRequired: true,
+        },
+        select: { id: true },
+      });
+      createdHeroMissionObjectiveIds.push(objective.id);
+
+      return { missionId: mission.id, objectiveId: objective.id };
+    };
 
     const mission = await prisma.heroMission.create({
       data: {
@@ -3375,11 +3624,100 @@ describe('Student App Home/Profile routes (security)', () => {
     });
     createdRewardRedemptionIds.push(redemption.id);
 
+    const startableMission = await createPublishedMission({
+      title: 'Startable Hero Mission',
+      sortOrder: 2,
+    });
+    const completableMission = await createPublishedMission({
+      title: 'Completable Hero Mission',
+      sortOrder: 3,
+    });
+    const completableProgress = await prisma.heroMissionProgress.create({
+      data: {
+        schoolId,
+        missionId: completableMission.missionId,
+        studentId: linkedStudentId,
+        enrollmentId: linkedEnrollmentId,
+        academicYearId,
+        termId,
+        status: HeroMissionProgressStatus.IN_PROGRESS,
+        progressPercent: 100,
+        startedAt: new Date('2026-10-03T08:00:00.000Z'),
+        lastActivityAt: new Date('2026-10-03T09:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdHeroMissionProgressIds.push(completableProgress.id);
+    const completableObjectiveProgress =
+      await prisma.heroMissionObjectiveProgress.create({
+        data: {
+          schoolId,
+          missionProgressId: completableProgress.id,
+          objectiveId: completableMission.objectiveId,
+          completedAt: new Date('2026-10-03T09:00:00.000Z'),
+          completedById: linkedStudentUserId,
+        },
+        select: { id: true },
+      });
+    createdHeroMissionObjectiveProgressIds.push(
+      completableObjectiveProgress.id,
+    );
+
+    const objectiveActionMission = await createPublishedMission({
+      title: 'Objective Action Hero Mission',
+      sortOrder: 4,
+    });
+    const objectiveActionProgress = await prisma.heroMissionProgress.create({
+      data: {
+        schoolId,
+        missionId: objectiveActionMission.missionId,
+        studentId: linkedStudentId,
+        enrollmentId: linkedEnrollmentId,
+        academicYearId,
+        termId,
+        status: HeroMissionProgressStatus.IN_PROGRESS,
+        progressPercent: 0,
+        startedAt: new Date('2026-10-04T08:00:00.000Z'),
+        lastActivityAt: new Date('2026-10-04T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdHeroMissionProgressIds.push(objectiveActionProgress.id);
+
+    const otherOnlyMission = await createPublishedMission({
+      title: 'Other Student Only Hero Mission',
+      sortOrder: 5,
+    });
+    const otherOnlyProgress = await prisma.heroMissionProgress.create({
+      data: {
+        schoolId,
+        missionId: otherOnlyMission.missionId,
+        studentId: params.otherStudentId,
+        enrollmentId: params.otherEnrollmentId,
+        academicYearId,
+        termId,
+        status: HeroMissionProgressStatus.IN_PROGRESS,
+        progressPercent: 0,
+        startedAt: new Date('2026-10-05T08:00:00.000Z'),
+        lastActivityAt: new Date('2026-10-05T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdHeroMissionProgressIds.push(otherOnlyProgress.id);
+
     return {
       missionId: mission.id,
+      objectiveId: objective.id,
       progressId: progress.id,
       otherProgressId: otherProgress.id,
       badgeId: badge.id,
+      startableMissionId: startableMission.missionId,
+      completableMissionId: completableMission.missionId,
+      objectiveActionMissionId: objectiveActionMission.missionId,
+      objectiveActionObjectiveId: objectiveActionMission.objectiveId,
+      objectiveActionProgressId: objectiveActionProgress.id,
+      otherOnlyMissionId: otherOnlyMission.missionId,
+      otherOnlyObjectiveId: otherOnlyMission.objectiveId,
     };
   }
 

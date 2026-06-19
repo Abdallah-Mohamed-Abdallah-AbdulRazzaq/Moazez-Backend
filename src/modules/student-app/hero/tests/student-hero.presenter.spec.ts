@@ -33,10 +33,19 @@ describe('StudentHeroPresenter', () => {
     ]);
     expect(serialized).not.toContain('schoolId');
     expect(serialized).not.toContain('organizationId');
+    expect(serialized).not.toContain('membershipId');
+    expect(serialized).not.toContain('roleId');
+    expect(serialized).not.toContain('deletedAt');
+    expect(serialized).not.toContain('enrollmentId');
     expect(serialized).not.toContain('scheduleId');
     expect(serialized).not.toContain('assetPath');
+    expect(serialized).not.toContain('fileId');
     expect(serialized).not.toContain('storageKey');
     expect(serialized).not.toContain('objectKey');
+    expect(serialized).not.toContain('bucket');
+    expect(serialized).not.toContain('signedUrl');
+    expect(serialized).not.toContain('RewardRedemption');
+    expect(serialized).not.toContain('BehaviorPointLedger');
   });
 
   it('presents mission details without starting, completing, granting XP, or awarding badges', () => {
@@ -71,6 +80,18 @@ describe('StudentHeroPresenter', () => {
     expect(serialized).not.toContain('redeem');
     expect(serialized).not.toContain('schoolId');
     expect(serialized).not.toContain('organizationId');
+    expect(serialized).not.toContain('membershipId');
+    expect(serialized).not.toContain('roleId');
+    expect(serialized).not.toContain('deletedAt');
+    expect(serialized).not.toContain('enrollmentId');
+    expect(serialized).not.toContain('awardedById');
+    expect(serialized).not.toContain('createdById');
+    expect(serialized).not.toContain('updatedById');
+    expect(serialized).not.toContain('xpLedger');
+    expect(serialized).not.toContain('rewardRedemption');
+    expect(serialized).not.toContain('BehaviorPointLedger');
+    expect(serialized).not.toContain('bucket');
+    expect(serialized).not.toContain('signedUrl');
   });
 
   it('uses published mission visibility and read-only progress status for mission lists', () => {
