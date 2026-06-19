@@ -32,8 +32,12 @@ describe('StudentTasksPresenter', () => {
     expect(serialized).not.toContain('schoolId');
     expect(serialized).not.toContain('organizationId');
     expect(serialized).not.toContain('scheduleId');
+    expect(serialized).not.toContain('submittedById');
+    expect(serialized).not.toContain('reviewedById');
     expect(serialized).not.toContain('bucket');
     expect(serialized).not.toContain('objectKey');
+    expect(serialized).not.toContain('signedUrl');
+    expect(serialized).not.toContain('unsafe-storage');
     expect(serialized).not.toContain('storageKey');
   });
 });

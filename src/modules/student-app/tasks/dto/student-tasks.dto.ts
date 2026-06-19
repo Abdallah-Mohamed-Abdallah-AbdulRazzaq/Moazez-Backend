@@ -4,6 +4,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -21,6 +22,11 @@ export type StudentTaskStatus = (typeof STUDENT_TASK_STATUSES)[number];
 function toLowerOptionalString(value: unknown): unknown {
   if (value === undefined || value === null || value === '') return undefined;
   return typeof value === 'string' ? value.trim().toLowerCase() : value;
+}
+
+function toTrimmedOptionalString(value: unknown): unknown {
+  if (value === undefined || value === null || value === '') return undefined;
+  return typeof value === 'string' ? value.trim() : value;
 }
 
 export class StudentTasksQueryDto {
@@ -46,6 +52,19 @@ export class StudentTasksQueryDto {
   @Min(1)
   @Max(100)
   limit?: number;
+}
+
+export class SubmitStudentTaskStageDto {
+  @IsOptional()
+  @Transform(({ value }) => toTrimmedOptionalString(value))
+  @IsString()
+  @MaxLength(4000)
+  proofText?: string | null;
+
+  @IsOptional()
+  @Transform(({ value }) => toTrimmedOptionalString(value))
+  @IsUUID()
+  proofFileId?: string | null;
 }
 
 export class StudentTaskRewardDto {

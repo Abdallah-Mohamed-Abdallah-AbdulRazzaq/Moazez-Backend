@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  FileVisibility,
   Prisma,
   ReinforcementSubmissionStatus,
   ReinforcementTaskStatus,
@@ -19,6 +20,15 @@ const SAFE_PROOF_FILE_SELECT = {
   originalName: true,
   mimeType: true,
   sizeBytes: true,
+} satisfies Prisma.FileSelect;
+
+const STUDENT_PROOF_FILE_AUTH_SELECT = {
+  id: true,
+  originalName: true,
+  mimeType: true,
+  sizeBytes: true,
+  visibility: true,
+  createdAt: true,
 } satisfies Prisma.FileSelect;
 
 const STUDENT_TASK_SUBMISSION_SELECT = {
@@ -116,6 +126,10 @@ export type StudentTaskSubmissionReadModel =
   Prisma.ReinforcementSubmissionGetPayload<
     typeof STUDENT_TASK_SUBMISSION_ARGS
   >;
+
+export type StudentProofFileReadModel = Prisma.FileGetPayload<{
+  select: typeof STUDENT_PROOF_FILE_AUTH_SELECT;
+}>;
 
 export interface StudentTasksListReadModel {
   items: StudentTaskAssignmentReadModel[];
@@ -247,6 +261,22 @@ export class StudentTasksReadAdapter {
         enrollmentId: params.context.enrollmentId,
       },
       ...STUDENT_TASK_SUBMISSION_ARGS,
+    });
+  }
+
+  findOwnedProofFile(params: {
+    context: StudentAppContext;
+    proofFileId: string;
+  }): Promise<StudentProofFileReadModel | null> {
+    return this.scopedPrisma.file.findFirst({
+      where: {
+        id: params.proofFileId,
+        organizationId: params.context.organizationId,
+        schoolId: params.context.schoolId,
+        uploaderId: params.context.studentUserId,
+        visibility: FileVisibility.PRIVATE,
+      },
+      select: STUDENT_PROOF_FILE_AUTH_SELECT,
     });
   }
 }

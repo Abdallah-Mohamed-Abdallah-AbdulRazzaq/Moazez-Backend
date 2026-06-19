@@ -258,6 +258,8 @@ describe('Student App Home/Profile routes (security)', () => {
   let tenantBHeroMissionId: string;
   let ownTaskId: string;
   let ownTaskSubmissionId: string;
+  let ownSubmittableTaskId: string;
+  let ownSubmittableStageId: string;
   let sameSchoolOtherTaskId: string;
   let sameSchoolOtherTaskSubmissionId: string;
   let tenantBTaskId: string;
@@ -573,6 +575,8 @@ describe('Student App Home/Profile routes (security)', () => {
     });
     ownTaskId = taskFixture.taskId;
     ownTaskSubmissionId = taskFixture.submissionId;
+    ownSubmittableTaskId = taskFixture.submittableTaskId;
+    ownSubmittableStageId = taskFixture.submittableStageId;
     sameSchoolOtherTaskId = taskFixture.otherTaskId;
     sameSchoolOtherTaskSubmissionId = taskFixture.otherSubmissionId;
 
@@ -833,7 +837,7 @@ describe('Student App Home/Profile routes (security)', () => {
     });
     expect(home.body.summaries).toMatchObject({
       subjectsCount: 1,
-      pendingTasksCount: 1,
+      pendingTasksCount: 2,
       totalXp: 25,
       behaviorPoints: null,
     });
@@ -1627,6 +1631,67 @@ describe('Student App Home/Profile routes (security)', () => {
     });
     assertNoForbiddenStudentAppFields(submission.body);
 
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/student/tasks/${ownSubmittableTaskId}/stages/${ownSubmittableStageId}/submit`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        proofText: 'Student proof',
+        studentId: linkedStudentId,
+      })
+      .expect(400);
+
+    const [xpBefore, behaviorBefore, redemptionBefore] = await Promise.all([
+      prisma.xpLedger.count({ where: { studentId: linkedStudentId } }),
+      prisma.behaviorPointLedger.count({
+        where: { studentId: linkedStudentId },
+      }),
+      prisma.rewardRedemption.count({ where: { studentId: linkedStudentId } }),
+    ]);
+
+    const submitted = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/student/tasks/${ownSubmittableTaskId}/stages/${ownSubmittableStageId}/submit`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ proofText: '  Student text proof  ' })
+      .expect(200);
+
+    expect(submitted.body.submission).toMatchObject({
+      status: 'submitted',
+      proofText: 'Student text proof',
+      proofFile: null,
+    });
+    assertNoForbiddenStudentAppFields(submitted.body);
+    createdTaskSubmissionIds.push(submitted.body.submission.submissionId);
+
+    await expect(
+      prisma.reinforcementSubmission.findFirstOrThrow({
+        where: {
+          id: submitted.body.submission.submissionId,
+          taskId: ownSubmittableTaskId,
+          stageId: ownSubmittableStageId,
+          studentId: linkedStudentId,
+          enrollmentId: linkedEnrollmentId,
+          submittedById: linkedStudentUserId,
+        },
+        select: { proofText: true },
+      }),
+    ).resolves.toEqual({ proofText: 'Student text proof' });
+
+    await expect(
+      Promise.all([
+        prisma.xpLedger.count({ where: { studentId: linkedStudentId } }),
+        prisma.behaviorPointLedger.count({
+          where: { studentId: linkedStudentId },
+        }),
+        prisma.rewardRedemption.count({
+          where: { studentId: linkedStudentId },
+        }),
+      ]),
+    ).resolves.toEqual([xpBefore, behaviorBefore, redemptionBefore]);
+
     for (const path of [
       `student/tasks/${sameSchoolOtherTaskId}`,
       `student/tasks/${sameSchoolOtherTaskId}/submissions`,
@@ -1648,6 +1713,16 @@ describe('Student App Home/Profile routes (security)', () => {
       .get(`${GLOBAL_PREFIX}/student/tasks/${ownTaskId}`)
       .set('Authorization', `Bearer ${otherStudentToken}`)
       .expect(404);
+
+    for (const taskId of [sameSchoolOtherTaskId, tenantBTaskId]) {
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/student/tasks/${taskId}/stages/${ownSubmittableStageId}/submit`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ proofText: 'blocked' })
+        .expect(404);
+    }
   });
 
   it('allows a linked student to use participant conversations only', async () => {
@@ -1974,6 +2049,14 @@ describe('Student App Home/Profile routes (security)', () => {
       }
 
       await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/student/tasks/${ownSubmittableTaskId}/stages/${ownSubmittableStageId}/submit`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ proofText: 'blocked' })
+        .expect(403);
+
+      await request(app.getHttpServer())
         .put(
           `${GLOBAL_PREFIX}/student/exams/${ownNoSubmissionAssessmentId}/submission/answers`,
         )
@@ -2102,7 +2185,6 @@ describe('Student App Home/Profile routes (security)', () => {
       `hero/badges/${heroBadgeId}/award`,
       'hero/rewards/redeem',
       'rewards/redemptions',
-      `tasks/${ownTaskId}/stages/student-stage/submit`,
       'messages/contacts',
       'messages/conversations',
       `messages/conversations/${ownConversationId}/attachments`,
@@ -2488,6 +2570,8 @@ describe('Student App Home/Profile routes (security)', () => {
   }): Promise<{
     taskId: string;
     submissionId: string;
+    submittableTaskId: string;
+    submittableStageId: string;
     otherTaskId: string;
     otherSubmissionId: string;
   }> {
@@ -2572,6 +2656,53 @@ describe('Student App Home/Profile routes (security)', () => {
     });
     createdTaskSubmissionIds.push(submission.id);
 
+    const submittableTask = await prisma.reinforcementTask.create({
+      data: {
+        schoolId,
+        academicYearId,
+        termId,
+        subjectId,
+        titleEn: `${testSuffix} Student Submittable Task`,
+        descriptionEn: 'Student app submission mutation task.',
+        source: ReinforcementSource.TEACHER,
+        status: ReinforcementTaskStatus.NOT_COMPLETED,
+        dueDate: new Date('2026-10-20T08:00:00.000Z'),
+        assignedById: params.teacherUserId,
+        assignedByName: 'StudentApp Teacher',
+        createdById: params.teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdTaskIds.push(submittableTask.id);
+
+    const submittableStage = await prisma.reinforcementTaskStage.create({
+      data: {
+        schoolId,
+        taskId: submittableTask.id,
+        sortOrder: 1,
+        titleEn: `${testSuffix} Text proof stage`,
+        proofType: ReinforcementProofType.NONE,
+        requiresApproval: true,
+      },
+      select: { id: true },
+    });
+    createdTaskStageIds.push(submittableStage.id);
+
+    const submittableAssignment = await prisma.reinforcementAssignment.create({
+      data: {
+        schoolId,
+        taskId: submittableTask.id,
+        academicYearId,
+        termId,
+        studentId: linkedStudentId,
+        enrollmentId: linkedEnrollmentId,
+        status: ReinforcementTaskStatus.NOT_COMPLETED,
+        progress: 0,
+      },
+      select: { id: true },
+    });
+    createdAssignmentIds.push(submittableAssignment.id);
+
     const otherTask = await prisma.reinforcementTask.create({
       data: {
         schoolId,
@@ -2632,6 +2763,8 @@ describe('Student App Home/Profile routes (security)', () => {
     return {
       taskId: task.id,
       submissionId: submission.id,
+      submittableTaskId: submittableTask.id,
+      submittableStageId: submittableStage.id,
       otherTaskId: otherTask.id,
       otherSubmissionId: otherSubmission.id,
     };

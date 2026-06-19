@@ -4,6 +4,7 @@ import { CommunicationModule } from '../communication/communication.module';
 import { DisciplineModule } from '../discipline/discipline.module';
 import { GradesSubmissionsRepository } from '../grades/assessments/infrastructure/grades-submissions.repository';
 import { AuthModule } from '../iam/auth/auth.module';
+import { ReviewsModule } from '../reinforcement/reviews/reviews.module';
 import { StudentAppAccessService } from './access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from './access/student-app-student-read.adapter';
 import { GetStudentAnnouncementUseCase } from './announcements/application/get-student-announcement.use-case';
@@ -83,6 +84,7 @@ import { GetStudentTaskUseCase } from './tasks/application/get-student-task.use-
 import { GetStudentTasksSummaryUseCase } from './tasks/application/get-student-tasks-summary.use-case';
 import { ListStudentTaskSubmissionsUseCase } from './tasks/application/list-student-task-submissions.use-case';
 import { ListStudentTasksUseCase } from './tasks/application/list-student-tasks.use-case';
+import { SubmitStudentTaskStageUseCase } from './tasks/application/submit-student-task-stage.use-case';
 import { StudentTasksController } from './tasks/controller/student-tasks.controller';
 import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-read.adapter';
 
@@ -92,6 +94,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     AuthModule,
     CommunicationModule,
     DisciplineModule,
+    ReviewsModule,
     StudentHomeworksModule,
   ],
   controllers: [
@@ -161,6 +164,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     GetStudentTaskUseCase,
     ListStudentTaskSubmissionsUseCase,
     GetStudentTaskSubmissionUseCase,
+    SubmitStudentTaskStageUseCase,
     StudentMessagesReadAdapter,
     ListStudentMessageConversationsUseCase,
     GetStudentMessageConversationUseCase,

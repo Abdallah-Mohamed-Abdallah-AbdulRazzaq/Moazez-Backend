@@ -1,11 +1,23 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { GetStudentTaskSubmissionUseCase } from '../application/get-student-task-submission.use-case';
 import { GetStudentTaskUseCase } from '../application/get-student-task.use-case';
 import { GetStudentTasksSummaryUseCase } from '../application/get-student-tasks-summary.use-case';
 import { ListStudentTaskSubmissionsUseCase } from '../application/list-student-task-submissions.use-case';
 import { ListStudentTasksUseCase } from '../application/list-student-tasks.use-case';
+import { SubmitStudentTaskStageUseCase } from '../application/submit-student-task-stage.use-case';
 import {
+  SubmitStudentTaskStageDto,
   StudentTaskResponseDto,
   StudentTasksListResponseDto,
   StudentTasksQueryDto,
@@ -24,6 +36,7 @@ export class StudentTasksController {
     private readonly getStudentTaskUseCase: GetStudentTaskUseCase,
     private readonly listStudentTaskSubmissionsUseCase: ListStudentTaskSubmissionsUseCase,
     private readonly getStudentTaskSubmissionUseCase: GetStudentTaskSubmissionUseCase,
+    private readonly submitStudentTaskStageUseCase: SubmitStudentTaskStageUseCase,
   ) {}
 
   @Get()
@@ -65,6 +78,21 @@ export class StudentTasksController {
     return this.getStudentTaskSubmissionUseCase.execute({
       taskId,
       submissionId,
+    });
+  }
+
+  @Post(':taskId/stages/:stageId/submit')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: StudentTaskSubmissionResponseDto })
+  submitStage(
+    @Param('taskId', new ParseUUIDPipe()) taskId: string,
+    @Param('stageId', new ParseUUIDPipe()) stageId: string,
+    @Body() dto: SubmitStudentTaskStageDto,
+  ): Promise<StudentTaskSubmissionResponseDto> {
+    return this.submitStudentTaskStageUseCase.execute({
+      taskId,
+      stageId,
+      dto,
     });
   }
 }

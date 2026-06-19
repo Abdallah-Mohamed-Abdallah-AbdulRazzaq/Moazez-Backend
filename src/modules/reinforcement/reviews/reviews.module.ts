@@ -20,6 +20,7 @@ import { ReinforcementReviewsRepository } from './infrastructure/reinforcement-r
     RejectReinforcementSubmissionUseCase,
   ],
   exports: [
+    SubmitReinforcementStageUseCase,
     ApproveReinforcementSubmissionUseCase,
     RejectReinforcementSubmissionUseCase,
   ],

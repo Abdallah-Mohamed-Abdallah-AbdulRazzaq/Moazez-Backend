@@ -1,4 +1,5 @@
 import {
+  FileVisibility,
   ReinforcementTaskStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
@@ -72,6 +73,37 @@ describe('StudentTasksReadAdapter', () => {
     expect(submissionMocks.delete).not.toHaveBeenCalled();
     expect(platformBypass).not.toHaveBeenCalled();
   });
+
+  it('validates proof files by current student uploader without selecting storage internals', async () => {
+    const {
+      adapter,
+      fileMocks,
+      xpLedgerMocks,
+      behaviorPointLedgerMocks,
+      rewardRedemptionMocks,
+    } = createAdapter();
+    fileMocks.findFirst.mockResolvedValue(null);
+
+    await adapter.findOwnedProofFile({
+      context: contextFixture(),
+      proofFileId: 'file-1',
+    });
+
+    const query = fileMocks.findFirst.mock.calls[0][0];
+    expect(query.where).toMatchObject({
+      id: 'file-1',
+      organizationId: 'org-1',
+      schoolId: 'school-1',
+      uploaderId: 'student-user-1',
+      visibility: FileVisibility.PRIVATE,
+    });
+    expect(JSON.stringify(query.select)).not.toContain('bucket');
+    expect(JSON.stringify(query.select)).not.toContain('objectKey');
+    expect(JSON.stringify(query.select)).not.toContain('metadata');
+    expect(xpLedgerMocks.create).not.toHaveBeenCalled();
+    expect(behaviorPointLedgerMocks.create).not.toHaveBeenCalled();
+    expect(rewardRedemptionMocks.create).not.toHaveBeenCalled();
+  });
 });
 
 function modelMocks() {
@@ -90,16 +122,28 @@ function createAdapter(): {
   adapter: StudentTasksReadAdapter;
   assignmentMocks: ReturnType<typeof modelMocks>;
   submissionMocks: ReturnType<typeof modelMocks>;
+  fileMocks: ReturnType<typeof modelMocks>;
+  xpLedgerMocks: ReturnType<typeof modelMocks>;
+  behaviorPointLedgerMocks: ReturnType<typeof modelMocks>;
+  rewardRedemptionMocks: ReturnType<typeof modelMocks>;
   platformBypass: jest.Mock;
 } {
   const assignmentMocks = modelMocks();
   const submissionMocks = modelMocks();
+  const fileMocks = modelMocks();
+  const xpLedgerMocks = modelMocks();
+  const behaviorPointLedgerMocks = modelMocks();
+  const rewardRedemptionMocks = modelMocks();
   const platformBypass = jest.fn();
   const prisma = {
     platformBypass,
     scoped: {
       reinforcementAssignment: assignmentMocks,
       reinforcementSubmission: submissionMocks,
+      file: fileMocks,
+      xpLedger: xpLedgerMocks,
+      behaviorPointLedger: behaviorPointLedgerMocks,
+      rewardRedemption: rewardRedemptionMocks,
     },
   } as unknown as PrismaService;
 
@@ -107,6 +151,10 @@ function createAdapter(): {
     adapter: new StudentTasksReadAdapter(prisma),
     assignmentMocks,
     submissionMocks,
+    fileMocks,
+    xpLedgerMocks,
+    behaviorPointLedgerMocks,
+    rewardRedemptionMocks,
     platformBypass,
   };
 }
