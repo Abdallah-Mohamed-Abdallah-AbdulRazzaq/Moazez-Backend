@@ -21,7 +21,6 @@ const PARENT_PROFILE_IDENTITY_ARGS = Prisma.validator<Prisma.UserDefaultArgs>()(
 const PARENT_PROFILE_GUARDIAN_ARGS =
   Prisma.validator<Prisma.GuardianDefaultArgs>()({
     select: {
-      id: true,
       relation: true,
       isPrimary: true,
     },

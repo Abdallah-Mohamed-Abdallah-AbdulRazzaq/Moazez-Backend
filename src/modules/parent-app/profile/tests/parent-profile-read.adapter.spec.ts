@@ -35,7 +35,6 @@ describe('ParentProfileReadAdapter', () => {
     });
     expect(query.where).not.toHaveProperty('schoolId');
     expect(query.select).toEqual({
-      id: true,
       relation: true,
       isPrimary: true,
     });

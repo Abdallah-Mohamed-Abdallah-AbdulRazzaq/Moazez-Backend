@@ -46,7 +46,6 @@ describe('GetParentProfileUseCase', () => {
     });
     expect(result.guardians).toEqual([
       {
-        guardianId: 'guardian-1',
         relationship: 'mother',
         isPrimary: true,
       },
@@ -81,6 +80,7 @@ describe('GetParentProfileUseCase', () => {
     for (const forbidden of [
       'schoolId',
       'organizationId',
+      'guardianId',
       'scheduleId',
       'unrelated',
       'private-phone',
@@ -170,7 +170,6 @@ function parentIdentityFixture(): ParentProfileIdentityRecord {
 
 function guardianFixture(): ParentProfileGuardianRecord {
   return {
-    id: 'guardian-1',
     relation: 'mother',
     isPrimary: true,
   };

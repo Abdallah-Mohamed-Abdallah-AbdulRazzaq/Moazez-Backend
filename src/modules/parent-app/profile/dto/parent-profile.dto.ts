@@ -9,7 +9,6 @@ export class ParentProfileParentDto {
 }
 
 export class ParentProfileGuardianDto {
-  guardianId!: string;
   relationship!: string;
   isPrimary!: boolean;
 }

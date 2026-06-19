@@ -876,8 +876,23 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'POST /api/v1/parent/children/:studentId/tasks/:taskId/approve',
       'POST /api/v1/parent/children/:studentId/tasks/:taskId/reject',
       'POST /api/v1/parent/children/:studentId/tasks/:taskId/complete',
+      'POST /api/v1/parent/children/:studentId/homeworks/:homeworkId/submission/save',
+      'POST /api/v1/parent/children/:studentId/homeworks/:homeworkId/submission/submit',
+      'POST /api/v1/parent/children/:studentId/homeworks/:homeworkId/submit',
+      'PATCH /api/v1/parent/children/:studentId/homeworks/:homeworkId',
+      'POST /api/v1/parent/children/:studentId/grades',
+      'POST /api/v1/parent/children/:studentId/grades/assessments/:assessmentId/submission/submit',
+      'POST /api/v1/parent/children/:studentId/exams/:assessmentId/submission/submit',
+      'POST /api/v1/parent/children/:studentId/exams/:assessmentId/submit',
+      'POST /api/v1/parent/children/:studentId/attendance',
+      'PATCH /api/v1/parent/children/:studentId/attendance/:entryId',
+      'POST /api/v1/parent/children/:studentId/behavior',
+      'POST /api/v1/parent/children/:studentId/behavior/:recordId/approve',
+      'POST /api/v1/parent/children/:studentId/discipline',
+      'POST /api/v1/parent/children/:studentId/reports/generate',
       'POST /api/v1/parent/children/:studentId/hero/missions/:missionId/start',
       'POST /api/v1/parent/children/:studentId/hero/missions/:missionId/complete',
+      'POST /api/v1/parent/children/:studentId/hero/missions/:missionId/objectives/:objectiveId/complete',
       'POST /api/v1/parent/children/:studentId/rewards/:rewardId/redeem',
       'POST /api/v1/parent/children/:studentId/xp/grants/manual',
       'POST /api/v1/parent/children/:studentId/progress/xp/grants/manual',
@@ -1014,7 +1029,6 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     });
     expect(profile.body.guardians).toEqual([
       {
-        guardianId: guardianAId,
         relationship: 'mother',
         isPrimary: true,
       },
@@ -1785,6 +1799,12 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
         'progress/academic',
         'progress/behavior',
         'progress/xp',
+        'hero',
+        'hero/progress',
+        'hero/badges',
+        'hero/missions',
+        'rewards',
+        'rewards/redemptions',
         'reports',
         'reports/summary',
         'tasks',
@@ -1821,6 +1841,12 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
         `children/${ownedStudentAId}/progress/academic`,
         `children/${ownedStudentAId}/progress/behavior`,
         `children/${ownedStudentAId}/progress/xp`,
+        `children/${ownedStudentAId}/hero`,
+        `children/${ownedStudentAId}/hero/progress`,
+        `children/${ownedStudentAId}/hero/badges`,
+        `children/${ownedStudentAId}/hero/missions`,
+        `children/${ownedStudentAId}/rewards`,
+        `children/${ownedStudentAId}/rewards/redemptions`,
         `children/${ownedStudentAId}/reports`,
         `children/${ownedStudentAId}/reports/summary`,
         `children/${ownedStudentAId}/tasks`,
@@ -1996,6 +2022,62 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       {
         method: 'post' as const,
         path: `children/${ownedStudentAId}/tasks/${ownedTaskAId}/complete`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/homeworks/f0000000-0000-4000-8000-000000000010/submission/save`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/homeworks/f0000000-0000-4000-8000-000000000010/submission/submit`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/homeworks/f0000000-0000-4000-8000-000000000010/submit`,
+      },
+      {
+        method: 'patch' as const,
+        path: `children/${ownedStudentAId}/homeworks/f0000000-0000-4000-8000-000000000010`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/grades`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/grades/assessments/${ownedAssessmentAId}/submission/submit`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/exams/${ownedAssessmentAId}/submission/submit`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/exams/${ownedAssessmentAId}/submit`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/attendance`,
+      },
+      {
+        method: 'patch' as const,
+        path: `children/${ownedStudentAId}/attendance/f0000000-0000-4000-8000-000000000011`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/behavior`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/behavior/${positiveBehaviorRecordAId}/approve`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/discipline`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/reports/generate`,
       },
       { method: 'post' as const, path: 'announcements' },
       {
@@ -3160,6 +3242,14 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     for (const forbidden of [
       'schoolId',
       'organizationId',
+      'membershipId',
+      'roleId',
+      'deletedAt',
+      'guardianId',
+      'parentId',
+      'studentGuardianId',
+      'createdById',
+      'updatedById',
       'scheduleId',
       'raw-parent-logo-should-not-be-returned',
       'medical',
@@ -3175,6 +3265,11 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'bucket',
       'objectKey',
       'storageKey',
+      'signedUrl',
+      'wallet',
+      'finance',
+      'marketplace',
+      'payment',
       'applicationId',
     ]) {
       expect(serialized).not.toContain(forbidden);

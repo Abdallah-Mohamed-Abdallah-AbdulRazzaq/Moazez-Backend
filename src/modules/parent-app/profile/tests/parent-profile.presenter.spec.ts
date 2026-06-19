@@ -27,7 +27,6 @@ describe('ParentProfilePresenter', () => {
       },
       guardians: [
         {
-          guardianId: 'guardian-1',
           relationship: 'mother',
           isPrimary: true,
         },
@@ -62,6 +61,7 @@ describe('ParentProfilePresenter', () => {
     for (const forbidden of [
       'schoolId',
       'organizationId',
+      'guardianId',
       'scheduleId',
       'medical',
       'document',
@@ -92,7 +92,6 @@ function parentIdentityFixture(): ParentProfileIdentityRecord {
 
 function guardianFixture(): ParentProfileGuardianRecord {
   return {
-    id: 'guardian-1',
     relation: 'mother',
     isPrimary: true,
   };

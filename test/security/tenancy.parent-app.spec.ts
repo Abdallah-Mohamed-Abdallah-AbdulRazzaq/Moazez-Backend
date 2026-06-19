@@ -1200,7 +1200,6 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     });
     expect(profile.body.guardians).toEqual([
       {
-        guardianId: guardianAId,
         relationship: 'mother',
         isPrimary: true,
       },
@@ -2391,6 +2390,62 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       },
       {
         method: 'post' as const,
+        path: `children/${ownedStudentAId}/homeworks/f0000000-0000-4000-8000-000000000010/submission/save`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/homeworks/f0000000-0000-4000-8000-000000000010/submission/submit`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/homeworks/f0000000-0000-4000-8000-000000000010/submit`,
+      },
+      {
+        method: 'patch' as const,
+        path: `children/${ownedStudentAId}/homeworks/f0000000-0000-4000-8000-000000000010`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/grades`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/grades/assessments/${ownedAssessmentAId}/submission/submit`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/exams/${ownedAssessmentAId}/submission/submit`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/exams/${ownedAssessmentAId}/submit`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/attendance`,
+      },
+      {
+        method: 'patch' as const,
+        path: `children/${ownedStudentAId}/attendance/${draftAttendanceEntryAId}`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/behavior`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/behavior/${positiveBehaviorRecordAId}/approve`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/discipline`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/reports/generate`,
+      },
+      {
+        method: 'post' as const,
         path: `children/${ownedStudentAId}/hero/missions/${ownedHeroMissionAId}/start`,
       },
       {
@@ -2455,6 +2510,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     }
 
     for (const route of [
+      `tasks/${ownedTaskAId}/stages/${ownedTaskStageAId}/submit`,
       `hero/missions/${ownedHeroMissionAId}/start`,
       `hero/missions/${ownedHeroMissionAId}/complete`,
       `rewards/${ownedRewardAId}/redeem`,
@@ -4064,6 +4120,14 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     for (const forbidden of [
       'schoolId',
       'organizationId',
+      'membershipId',
+      'roleId',
+      'deletedAt',
+      'guardianId',
+      'parentId',
+      'studentGuardianId',
+      'createdById',
+      'updatedById',
       'scheduleId',
       'raw-parent-logo-should-not-be-returned',
       'medical',
@@ -4079,6 +4143,11 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       'bucket',
       'objectKey',
       'storageKey',
+      'signedUrl',
+      'wallet',
+      'finance',
+      'marketplace',
+      'payment',
       'applicationId',
     ]) {
       expect(serialized).not.toContain(forbidden);

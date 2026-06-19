@@ -26,7 +26,6 @@ export class ParentProfilePresenter {
         avatarUrl: null,
       },
       guardians: input.guardians.map((guardian) => ({
-        guardianId: guardian.id,
         relationship: guardian.relation,
         isPrimary: guardian.isPrimary,
       })),
