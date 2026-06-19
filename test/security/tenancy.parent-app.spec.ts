@@ -26,9 +26,16 @@ import {
   GradeQuestionType,
   GradeScopeType,
   GradeSubmissionStatus,
+  HeroMissionObjectiveType,
+  HeroMissionProgressStatus,
+  HeroMissionStatus,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
+  RewardCatalogItemStatus,
+  RewardCatalogItemType,
+  RewardRedemptionRequestSource,
+  RewardRedemptionStatus,
   SchoolStatus,
   StudentEnrollmentStatus,
   StudentStatus,
@@ -299,6 +306,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   let schoolBId: string;
   let academicYearAId: string;
   let termAId: string;
+  let stageAId: string;
   let gradeAId: string;
   let sectionAId: string;
   let classroomAId: string;
@@ -336,6 +344,15 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   let sameSchoolUnlinkedTaskSubmissionAId: string;
   let crossSchoolTaskId: string;
   let crossSchoolTaskSubmissionId: string;
+  let ownedHeroMissionAId: string;
+  let hiddenHeroMissionAId: string;
+  let ownedHeroBadgeAId: string;
+  let ownedRewardAId: string;
+  let hiddenRewardAId: string;
+  let crossSchoolRewardId: string;
+  let ownedRewardRedemptionAId: string;
+  let sameSchoolUnlinkedRewardRedemptionAId: string;
+  let crossSchoolRewardRedemptionId: string;
   let ownConversationAId: string;
   let ownConversationHiddenMessageAId: string;
   let nonParticipantConversationAId: string;
@@ -362,6 +379,15 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   const createdGradeSubmissionIds: string[] = [];
   const createdGradeSubmissionAnswerIds: string[] = [];
   const createdXpLedgerIds: string[] = [];
+  const createdHeroBadgeIds: string[] = [];
+  const createdHeroMissionIds: string[] = [];
+  const createdHeroMissionObjectiveIds: string[] = [];
+  const createdHeroMissionProgressIds: string[] = [];
+  const createdHeroMissionObjectiveProgressIds: string[] = [];
+  const createdHeroStudentBadgeIds: string[] = [];
+  const createdHeroJourneyEventIds: string[] = [];
+  const createdRewardCatalogItemIds: string[] = [];
+  const createdRewardRedemptionIds: string[] = [];
   const createdReinforcementSubmissionIds: string[] = [];
   const createdReinforcementStageIds: string[] = [];
   const createdReinforcementAssignmentIds: string[] = [];
@@ -500,6 +526,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     });
     academicYearAId = academicA.academicYearId;
     termAId = academicA.termId;
+    stageAId = academicA.stageId;
     gradeAId = academicA.gradeId;
     sectionAId = academicA.sectionId;
     classroomAId = academicA.classroomId;
@@ -674,6 +701,25 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     outOfAudienceAnnouncementAId = sprint9EFixture.outOfAudienceAnnouncementId;
     crossSchoolAnnouncementId = sprint9EFixture.crossSchoolAnnouncementId;
 
+    const reinforcementReadsFixture =
+      await createParentReinforcementReadFixture({
+        crossSchoolAcademicYearId: academicB.academicYearId,
+        crossSchoolTermId: academicB.termId,
+        crossSchoolStageId: academicB.stageId,
+      });
+    ownedHeroMissionAId = reinforcementReadsFixture.ownedHeroMissionId;
+    hiddenHeroMissionAId = reinforcementReadsFixture.hiddenHeroMissionId;
+    ownedHeroBadgeAId = reinforcementReadsFixture.ownedHeroBadgeId;
+    ownedRewardAId = reinforcementReadsFixture.ownedRewardId;
+    hiddenRewardAId = reinforcementReadsFixture.hiddenRewardId;
+    crossSchoolRewardId = reinforcementReadsFixture.crossSchoolRewardId;
+    ownedRewardRedemptionAId =
+      reinforcementReadsFixture.ownedRewardRedemptionId;
+    sameSchoolUnlinkedRewardRedemptionAId =
+      reinforcementReadsFixture.sameSchoolUnlinkedRewardRedemptionId;
+    crossSchoolRewardRedemptionId =
+      reinforcementReadsFixture.crossSchoolRewardRedemptionId;
+
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -791,6 +837,33 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       });
       await prisma.xpLedger.deleteMany({
         where: { id: { in: createdXpLedgerIds } },
+      });
+      await prisma.heroMissionObjectiveProgress.deleteMany({
+        where: { id: { in: createdHeroMissionObjectiveProgressIds } },
+      });
+      await prisma.heroStudentBadge.deleteMany({
+        where: { id: { in: createdHeroStudentBadgeIds } },
+      });
+      await prisma.heroJourneyEvent.deleteMany({
+        where: { id: { in: createdHeroJourneyEventIds } },
+      });
+      await prisma.heroMissionProgress.deleteMany({
+        where: { id: { in: createdHeroMissionProgressIds } },
+      });
+      await prisma.heroMissionObjective.deleteMany({
+        where: { id: { in: createdHeroMissionObjectiveIds } },
+      });
+      await prisma.heroMission.deleteMany({
+        where: { id: { in: createdHeroMissionIds } },
+      });
+      await prisma.heroBadge.deleteMany({
+        where: { id: { in: createdHeroBadgeIds } },
+      });
+      await prisma.rewardRedemption.deleteMany({
+        where: { id: { in: createdRewardRedemptionIds } },
+      });
+      await prisma.rewardCatalogItem.deleteMany({
+        where: { id: { in: createdRewardCatalogItemIds } },
       });
       await prisma.reinforcementSubmission.deleteMany({
         where: { id: { in: createdReinforcementSubmissionIds } },
@@ -1416,7 +1489,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       totalBehaviorPoints: 3,
     });
     expect(overview.body.xp).toMatchObject({
-      totalXp: 25,
+      totalXp: 35,
       currentLevel: null,
       rank: null,
       tier: null,
@@ -1450,7 +1523,145 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/progress/xp`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
-    expect(xp.body.totalXp).toBe(25);
+    expect(xp.body.totalXp).toBe(35);
+  });
+
+  it('linked parent can read owned child hero, XP-backed rewards, and redemptions without writes', async () => {
+    const { accessToken } = await login(parentEmail);
+    const beforeCounts = await readParentReinforcementWriteCounts();
+
+    const hero = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/hero`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(hero.body.child.studentId).toBe(ownedStudentAId);
+    expect(hero.body.stats.currentXp).toBe(35);
+    expect(hero.body.progress.missions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          missionId: ownedHeroMissionAId,
+          status: 'completed',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(hero.body)).not.toContain(hiddenHeroMissionAId);
+    assertNoForbiddenParentReinforcementFields(hero.body);
+
+    const heroProgress = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/hero/progress`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(heroProgress.body.summary.completed).toBe(1);
+    assertNoForbiddenParentReinforcementFields(heroProgress.body);
+
+    const missions = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/hero/missions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(missions.body.missions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ missionId: ownedHeroMissionAId }),
+      ]),
+    );
+    expect(JSON.stringify(missions.body)).not.toContain(hiddenHeroMissionAId);
+    assertNoForbiddenParentReinforcementFields(missions.body);
+
+    const missionDetail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/hero/missions/${ownedHeroMissionAId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(missionDetail.body.missionId).toBe(ownedHeroMissionAId);
+    expect(missionDetail.body.objectives).toEqual([
+      expect.objectContaining({ isCompleted: true }),
+    ]);
+    assertNoForbiddenParentReinforcementFields(missionDetail.body);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/hero/missions/${hiddenHeroMissionAId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    const badges = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/hero/badges`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(badges.body.badges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ badgeId: ownedHeroBadgeAId }),
+      ]),
+    );
+    assertNoForbiddenParentReinforcementFields(badges.body);
+
+    const rewards = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/rewards`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(rewards.body.xp.totalEarnedXp).toBe(35);
+    expect(rewards.body.rewards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rewardId: ownedRewardAId,
+          isRedeemable: true,
+          insufficientXp: false,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(rewards.body)).not.toContain(hiddenRewardAId);
+    expect(JSON.stringify(rewards.body)).not.toContain(crossSchoolRewardId);
+    assertNoForbiddenParentReinforcementFields(rewards.body);
+
+    const rewardDetail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/rewards/${ownedRewardAId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(rewardDetail.body.reward.rewardId).toBe(ownedRewardAId);
+    assertNoForbiddenParentReinforcementFields(rewardDetail.body);
+
+    const redemptions = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/rewards/redemptions`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(redemptions.body.redemptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ redemptionId: ownedRewardRedemptionAId }),
+      ]),
+    );
+    expect(JSON.stringify(redemptions.body)).not.toContain(
+      sameSchoolUnlinkedRewardRedemptionAId,
+    );
+    expect(JSON.stringify(redemptions.body)).not.toContain(
+      crossSchoolRewardRedemptionId,
+    );
+    assertNoForbiddenParentReinforcementFields(redemptions.body);
+
+    const redemptionDetail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/rewards/redemptions/${ownedRewardRedemptionAId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(redemptionDetail.body.redemption.redemptionId).toBe(
+      ownedRewardRedemptionAId,
+    );
+    assertNoForbiddenParentReinforcementFields(redemptionDetail.body);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/rewards/redemptions/${sameSchoolUnlinkedRewardRedemptionAId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    const afterCounts = await readParentReinforcementWriteCounts();
+    expect(afterCounts).toEqual(beforeCounts);
   });
 
   it('linked parent can read owned child reports list and summary', async () => {
@@ -1526,7 +1737,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         behaviorPoints: 3,
         totalIncidents: 4,
       },
-      xp: { totalXp: 25 },
+      xp: { totalXp: 35 },
       unavailable: {
         reportEngine: { available: false },
         schedule: { available: false },
@@ -1929,6 +2140,15 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         'progress/academic',
         'progress/behavior',
         'progress/xp',
+        'hero',
+        'hero/progress',
+        'hero/badges',
+        'hero/missions',
+        `hero/missions/${ownedHeroMissionAId}`,
+        'rewards',
+        `rewards/${ownedRewardAId}`,
+        'rewards/redemptions',
+        `rewards/redemptions/${ownedRewardRedemptionAId}`,
         'reports',
         'reports/summary',
         'schedule/today',
@@ -1967,6 +2187,15 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         `children/${ownedStudentAId}/progress/academic`,
         `children/${ownedStudentAId}/progress/behavior`,
         `children/${ownedStudentAId}/progress/xp`,
+        `children/${ownedStudentAId}/hero`,
+        `children/${ownedStudentAId}/hero/progress`,
+        `children/${ownedStudentAId}/hero/badges`,
+        `children/${ownedStudentAId}/hero/missions`,
+        `children/${ownedStudentAId}/hero/missions/${ownedHeroMissionAId}`,
+        `children/${ownedStudentAId}/rewards`,
+        `children/${ownedStudentAId}/rewards/${ownedRewardAId}`,
+        `children/${ownedStudentAId}/rewards/redemptions`,
+        `children/${ownedStudentAId}/rewards/redemptions/${ownedRewardRedemptionAId}`,
         `children/${ownedStudentAId}/reports`,
         `children/${ownedStudentAId}/reports/summary`,
         `children/${ownedStudentAId}/schedule/today`,
@@ -2046,6 +2275,8 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       `children/${ownedStudentAId}/discipline`,
       `children/${ownedStudentAId}/progress`,
       `children/${ownedStudentAId}/reports`,
+      `children/${ownedStudentAId}/hero`,
+      `children/${ownedStudentAId}/rewards`,
     ]) {
       for (const method of ['post', 'put', 'patch', 'delete'] as const) {
         await request(app.getHttpServer())
@@ -2119,6 +2350,26 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         method: 'post' as const,
         path: `children/${ownedStudentAId}/tasks/${ownedTaskAId}/submit`,
       },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/hero/missions/${ownedHeroMissionAId}/start`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/hero/missions/${ownedHeroMissionAId}/complete`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/hero/missions/${ownedHeroMissionAId}/objectives/f0000000-0000-4000-8000-000000000001/complete`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/rewards/${ownedRewardAId}/redeem`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/progress/xp/grants/manual`,
+      },
       { method: 'post' as const, path: 'announcements' },
       {
         method: 'patch' as const,
@@ -2162,6 +2413,18 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .send({})
         .expect(404);
+    }
+
+    for (const route of [
+      `hero/missions/${ownedHeroMissionAId}/start`,
+      `hero/missions/${ownedHeroMissionAId}/complete`,
+      `rewards/${ownedRewardAId}/redeem`,
+    ]) {
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/student/${route}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(403);
     }
   });
 
@@ -2311,6 +2574,291 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       audienceAnnouncementId,
       outOfAudienceAnnouncementId,
       crossSchoolAnnouncementId,
+    };
+  }
+
+  async function createParentReinforcementReadFixture(params: {
+    crossSchoolAcademicYearId: string;
+    crossSchoolTermId: string;
+    crossSchoolStageId: string;
+  }): Promise<{
+    ownedHeroMissionId: string;
+    hiddenHeroMissionId: string;
+    ownedHeroBadgeId: string;
+    ownedRewardId: string;
+    hiddenRewardId: string;
+    crossSchoolRewardId: string;
+    ownedRewardRedemptionId: string;
+    sameSchoolUnlinkedRewardRedemptionId: string;
+    crossSchoolRewardRedemptionId: string;
+  }> {
+    const badge = await prisma.heroBadge.create({
+      data: {
+        schoolId: schoolAId,
+        slug: `${testSuffix}-parent-hero-badge`,
+        nameEn: `${testSuffix} Parent Hero Badge`,
+        descriptionEn: 'Visible parent hero badge',
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    createdHeroBadgeIds.push(badge.id);
+
+    const mission = await prisma.heroMission.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        stageId: stageAId,
+        subjectId: subjectAId,
+        titleEn: `${testSuffix} Parent Hero Mission`,
+        briefEn: 'Visible parent hero mission brief',
+        requiredLevel: 1,
+        rewardXp: 10,
+        badgeRewardId: badge.id,
+        status: HeroMissionStatus.PUBLISHED,
+        publishedAt: new Date('2026-10-15T08:00:00.000Z'),
+        publishedById: teacherUserId,
+        createdById: teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdHeroMissionIds.push(mission.id);
+
+    const hiddenMission = await prisma.heroMission.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        stageId: stageAId,
+        subjectId: subjectAId,
+        titleEn: `${testSuffix} Hidden Parent Hero Mission`,
+        briefEn: 'Hidden draft mission brief',
+        requiredLevel: 1,
+        rewardXp: 99,
+        status: HeroMissionStatus.DRAFT,
+        createdById: teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdHeroMissionIds.push(hiddenMission.id);
+
+    const crossSchoolMission = await prisma.heroMission.create({
+      data: {
+        schoolId: schoolBId,
+        academicYearId: params.crossSchoolAcademicYearId,
+        termId: params.crossSchoolTermId,
+        stageId: params.crossSchoolStageId,
+        titleEn: `${testSuffix} Cross School Parent Hero Mission`,
+        briefEn: 'Cross school mission brief',
+        requiredLevel: 1,
+        rewardXp: 10,
+        status: HeroMissionStatus.PUBLISHED,
+        publishedAt: new Date('2026-10-15T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdHeroMissionIds.push(crossSchoolMission.id);
+
+    const objective = await prisma.heroMissionObjective.create({
+      data: {
+        schoolId: schoolAId,
+        missionId: mission.id,
+        type: HeroMissionObjectiveType.MANUAL,
+        titleEn: 'Visible parent objective',
+        subtitleEn: 'Read-only objective status',
+        sortOrder: 1,
+        isRequired: true,
+      },
+      select: { id: true },
+    });
+    createdHeroMissionObjectiveIds.push(objective.id);
+
+    const progress = await prisma.heroMissionProgress.create({
+      data: {
+        schoolId: schoolAId,
+        missionId: mission.id,
+        studentId: ownedStudentAId,
+        enrollmentId: ownedEnrollmentAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        status: HeroMissionProgressStatus.COMPLETED,
+        progressPercent: 100,
+        startedAt: new Date('2026-10-15T08:00:00.000Z'),
+        completedAt: new Date('2026-10-16T08:00:00.000Z'),
+        lastActivityAt: new Date('2026-10-16T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdHeroMissionProgressIds.push(progress.id);
+
+    const objectiveProgress =
+      await prisma.heroMissionObjectiveProgress.create({
+        data: {
+          schoolId: schoolAId,
+          missionProgressId: progress.id,
+          objectiveId: objective.id,
+          completedAt: new Date('2026-10-16T08:00:00.000Z'),
+          completedById: teacherUserId,
+        },
+        select: { id: true },
+      });
+    createdHeroMissionObjectiveProgressIds.push(objectiveProgress.id);
+
+    const studentBadge = await prisma.heroStudentBadge.create({
+      data: {
+        schoolId: schoolAId,
+        studentId: ownedStudentAId,
+        badgeId: badge.id,
+        missionId: mission.id,
+        missionProgressId: progress.id,
+        earnedAt: new Date('2026-10-16T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdHeroStudentBadgeIds.push(studentBadge.id);
+
+    const heroXpLedger = await prisma.xpLedger.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        studentId: ownedStudentAId,
+        enrollmentId: ownedEnrollmentAId,
+        sourceType: XpSourceType.HERO_MISSION,
+        sourceId: mission.id,
+        amount: 10,
+        reason: 'Parent App hero XP fixture',
+      },
+      select: { id: true },
+    });
+    createdXpLedgerIds.push(heroXpLedger.id);
+
+    const rewardImageFileId = await createFile({
+      marker: 'parent-reward-image',
+      schoolId: schoolAId,
+      organizationId: organizationAId,
+      originalName: `${testSuffix}-parent-reward.png`,
+      mimeType: 'image/png',
+      sizeBytes: 2048,
+    });
+
+    const reward = await prisma.rewardCatalogItem.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        titleEn: `${testSuffix} Parent Reward`,
+        descriptionEn: 'Visible parent reward',
+        type: RewardCatalogItemType.PRIVILEGE,
+        status: RewardCatalogItemStatus.PUBLISHED,
+        minTotalXp: 10,
+        isUnlimited: true,
+        imageFileId: rewardImageFileId,
+        publishedAt: new Date('2026-10-17T08:00:00.000Z'),
+        publishedById: teacherUserId,
+        createdById: teacherUserId,
+        metadata: { internal: 'hidden-reward-metadata' },
+      },
+      select: { id: true },
+    });
+    createdRewardCatalogItemIds.push(reward.id);
+
+    const hiddenReward = await prisma.rewardCatalogItem.create({
+      data: {
+        schoolId: schoolAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        titleEn: `${testSuffix} Hidden Parent Reward`,
+        descriptionEn: 'Hidden draft parent reward',
+        type: RewardCatalogItemType.PRIVILEGE,
+        status: RewardCatalogItemStatus.DRAFT,
+        minTotalXp: 1,
+        isUnlimited: true,
+        createdById: teacherUserId,
+      },
+      select: { id: true },
+    });
+    createdRewardCatalogItemIds.push(hiddenReward.id);
+
+    const crossSchoolReward = await prisma.rewardCatalogItem.create({
+      data: {
+        schoolId: schoolBId,
+        academicYearId: params.crossSchoolAcademicYearId,
+        termId: params.crossSchoolTermId,
+        titleEn: `${testSuffix} Cross School Parent Reward`,
+        descriptionEn: 'Cross school reward',
+        type: RewardCatalogItemType.PRIVILEGE,
+        status: RewardCatalogItemStatus.PUBLISHED,
+        minTotalXp: 1,
+        isUnlimited: true,
+        publishedAt: new Date('2026-10-17T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdRewardCatalogItemIds.push(crossSchoolReward.id);
+
+    const redemption = await prisma.rewardRedemption.create({
+      data: {
+        schoolId: schoolAId,
+        catalogItemId: reward.id,
+        studentId: ownedStudentAId,
+        enrollmentId: ownedEnrollmentAId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        status: RewardRedemptionStatus.REQUESTED,
+        requestSource: RewardRedemptionRequestSource.STUDENT_APP,
+        requestedById: studentUserId,
+        requestedAt: new Date('2026-10-18T08:00:00.000Z'),
+        requestNoteEn: 'Visible redemption note',
+        eligibilitySnapshot: { internal: 'hidden-eligibility' },
+      },
+      select: { id: true },
+    });
+    createdRewardRedemptionIds.push(redemption.id);
+
+    const sameSchoolUnlinkedRedemption = await prisma.rewardRedemption.create({
+      data: {
+        schoolId: schoolAId,
+        catalogItemId: reward.id,
+        studentId: sameSchoolUnlinkedStudentId,
+        enrollmentId: sameSchoolUnlinkedEnrollmentId,
+        academicYearId: academicYearAId,
+        termId: termAId,
+        status: RewardRedemptionStatus.APPROVED,
+        requestSource: RewardRedemptionRequestSource.STUDENT_APP,
+        requestedAt: new Date('2026-10-18T09:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdRewardRedemptionIds.push(sameSchoolUnlinkedRedemption.id);
+
+    const crossSchoolRedemption = await prisma.rewardRedemption.create({
+      data: {
+        schoolId: schoolBId,
+        catalogItemId: crossSchoolReward.id,
+        studentId: crossSchoolLinkedStudentId,
+        enrollmentId: crossSchoolLinkedEnrollmentId,
+        academicYearId: params.crossSchoolAcademicYearId,
+        termId: params.crossSchoolTermId,
+        status: RewardRedemptionStatus.REQUESTED,
+        requestSource: RewardRedemptionRequestSource.STUDENT_APP,
+        requestedAt: new Date('2026-10-18T10:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    createdRewardRedemptionIds.push(crossSchoolRedemption.id);
+
+    return {
+      ownedHeroMissionId: mission.id,
+      hiddenHeroMissionId: hiddenMission.id,
+      ownedHeroBadgeId: badge.id,
+      ownedRewardId: reward.id,
+      hiddenRewardId: hiddenReward.id,
+      crossSchoolRewardId: crossSchoolReward.id,
+      ownedRewardRedemptionId: redemption.id,
+      sameSchoolUnlinkedRewardRedemptionId: sameSchoolUnlinkedRedemption.id,
+      crossSchoolRewardRedemptionId: crossSchoolRedemption.id,
     };
   }
 
@@ -2661,6 +3209,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   }): Promise<{
     academicYearId: string;
     termId: string;
+    stageId: string;
     gradeId: string;
     sectionId: string;
     classroomId: string;
@@ -2742,6 +3291,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     return {
       academicYearId: year.id,
       termId: term.id,
+      stageId: stage.id,
       gradeId: grade.id,
       sectionId: section.id,
       classroomId: classroom.id,
@@ -3400,6 +3950,54 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     return { accessToken: response.body.accessToken };
   }
 
+  async function readParentReinforcementWriteCounts(): Promise<{
+    xpLedger: number;
+    behaviorPointLedger: number;
+    rewardRedemption: number;
+    heroMissionProgress: number;
+    heroMissionObjectiveProgress: number;
+    heroStudentBadge: number;
+    heroJourneyEvent: number;
+    reinforcementSubmission: number;
+    homeworkSubmission: number;
+  }> {
+    const [
+      xpLedger,
+      behaviorPointLedger,
+      rewardRedemption,
+      heroMissionProgress,
+      heroMissionObjectiveProgress,
+      heroStudentBadge,
+      heroJourneyEvent,
+      reinforcementSubmission,
+      homeworkSubmission,
+    ] = await Promise.all([
+      prisma.xpLedger.count({ where: { schoolId: schoolAId } }),
+      prisma.behaviorPointLedger.count({ where: { schoolId: schoolAId } }),
+      prisma.rewardRedemption.count({ where: { schoolId: schoolAId } }),
+      prisma.heroMissionProgress.count({ where: { schoolId: schoolAId } }),
+      prisma.heroMissionObjectiveProgress.count({
+        where: { schoolId: schoolAId },
+      }),
+      prisma.heroStudentBadge.count({ where: { schoolId: schoolAId } }),
+      prisma.heroJourneyEvent.count({ where: { schoolId: schoolAId } }),
+      prisma.reinforcementSubmission.count({ where: { schoolId: schoolAId } }),
+      prisma.homeworkSubmission.count({ where: { schoolId: schoolAId } }),
+    ]);
+
+    return {
+      xpLedger,
+      behaviorPointLedger,
+      rewardRedemption,
+      heroMissionProgress,
+      heroMissionObjectiveProgress,
+      heroStudentBadge,
+      heroJourneyEvent,
+      reinforcementSubmission,
+      homeworkSubmission,
+    };
+  }
+
   function assertNoForbiddenParentAppFields(body: unknown): void {
     const serialized = JSON.stringify(body);
     for (const forbidden of [
@@ -3421,6 +4019,49 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       'objectKey',
       'storageKey',
       'applicationId',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  }
+
+  function assertNoForbiddenParentReinforcementFields(body: unknown): void {
+    const serialized = JSON.stringify(body);
+    for (const forbidden of [
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'deletedAt',
+      'enrollmentId',
+      'guardianId',
+      'parentId',
+      'studentGuardianId',
+      'createdById',
+      'updatedById',
+      'awardedById',
+      'requestedById',
+      'approvedById',
+      'rejectedById',
+      'fulfilledById',
+      'cancelledById',
+      'xpLedgerId',
+      'ledgerEntryId',
+      'sourceId',
+      'dedupeKey',
+      'eligibilitySnapshot',
+      'metadata',
+      'BehaviorPointLedger',
+      'wallet',
+      'finance',
+      'marketplace',
+      'payment',
+      'bucket',
+      'objectKey',
+      'storageKey',
+      'signedUrl',
+      'unsafe storage URL',
+      'hidden-eligibility',
+      'hidden-reward-metadata',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }

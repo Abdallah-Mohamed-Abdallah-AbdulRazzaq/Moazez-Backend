@@ -34,6 +34,13 @@ import { GetParentHomeUseCase } from './home/application/get-parent-home.use-cas
 import { ParentHomeController } from './home/controller/parent-home.controller';
 import { ParentHomeReadAdapter } from './home/infrastructure/parent-home-read.adapter';
 import { ParentHomeworksModule } from './homeworks/parent-homeworks.module';
+import { GetParentChildHeroMissionUseCase } from './hero/application/get-parent-child-hero-mission.use-case';
+import { GetParentChildHeroOverviewUseCase } from './hero/application/get-parent-child-hero-overview.use-case';
+import { GetParentChildHeroProgressUseCase } from './hero/application/get-parent-child-hero-progress.use-case';
+import { ListParentChildHeroBadgesUseCase } from './hero/application/list-parent-child-hero-badges.use-case';
+import { ListParentChildHeroMissionsUseCase } from './hero/application/list-parent-child-hero-missions.use-case';
+import { ParentHeroController } from './hero/controller/parent-hero.controller';
+import { ParentHeroReadAdapter } from './hero/infrastructure/parent-hero-read.adapter';
 import { GetParentChildLessonDetailUseCase } from './lessons/application/get-parent-child-lesson-detail.use-case';
 import { GetParentChildLessonsTodayUseCase } from './lessons/application/get-parent-child-lessons-today.use-case';
 import { GetParentChildLessonsWeekUseCase } from './lessons/application/get-parent-child-lessons-week.use-case';
@@ -55,6 +62,12 @@ import { GetParentChildProgressUseCase } from './progress/application/get-parent
 import { GetParentChildXpProgressUseCase } from './progress/application/get-parent-child-xp-progress.use-case';
 import { ParentProgressController } from './progress/controller/parent-progress.controller';
 import { ParentProgressReadAdapter } from './progress/infrastructure/parent-progress-read.adapter';
+import { GetParentChildRewardRedemptionUseCase } from './rewards/application/get-parent-child-reward-redemption.use-case';
+import { GetParentChildRewardUseCase } from './rewards/application/get-parent-child-reward.use-case';
+import { ListParentChildRewardRedemptionsUseCase } from './rewards/application/list-parent-child-reward-redemptions.use-case';
+import { ListParentChildRewardsUseCase } from './rewards/application/list-parent-child-rewards.use-case';
+import { ParentRewardsController } from './rewards/controller/parent-rewards.controller';
+import { ParentRewardsReadAdapter } from './rewards/infrastructure/parent-rewards-read.adapter';
 import { GetParentChildReportsSummaryUseCase } from './reports/application/get-parent-child-reports-summary.use-case';
 import { ListParentChildReportsUseCase } from './reports/application/list-parent-child-reports.use-case';
 import { ParentReportsController } from './reports/controller/parent-reports.controller';
@@ -94,6 +107,8 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ParentAnnouncementsController,
     ParentCalendarController,
     ParentChildLessonsController,
+    ParentHeroController,
+    ParentRewardsController,
   ],
   providers: [
     ParentAppAccessService,
@@ -120,6 +135,17 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     GetParentChildAcademicProgressUseCase,
     GetParentChildBehaviorProgressUseCase,
     GetParentChildXpProgressUseCase,
+    ParentHeroReadAdapter,
+    GetParentChildHeroOverviewUseCase,
+    GetParentChildHeroProgressUseCase,
+    ListParentChildHeroBadgesUseCase,
+    ListParentChildHeroMissionsUseCase,
+    GetParentChildHeroMissionUseCase,
+    ParentRewardsReadAdapter,
+    ListParentChildRewardsUseCase,
+    GetParentChildRewardUseCase,
+    ListParentChildRewardRedemptionsUseCase,
+    GetParentChildRewardRedemptionUseCase,
     ParentReportsReadAdapter,
     ListParentChildReportsUseCase,
     GetParentChildReportsSummaryUseCase,
