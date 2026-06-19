@@ -304,6 +304,16 @@ describe('Student App Home/Profile routes (security)', () => {
   let sectionId: string;
   let ownSubjectAllocationId: string;
   let teacherUserId: string;
+  let ownRewardId: string;
+  let redeemableRewardId: string;
+  let insufficientRewardId: string;
+  let draftRewardId: string;
+  let archivedRewardId: string;
+  let outOfStockRewardId: string;
+  let ownRewardRedemptionId: string;
+  let sameSchoolOtherRewardRedemptionId: string;
+  let tenantBRewardId: string;
+  let tenantBRewardRedemptionId: string;
 
   const testSuffix = `student-app-security-${Date.now()}`;
   const createdUserIds: string[] = [];
@@ -582,6 +592,8 @@ describe('Student App Home/Profile routes (security)', () => {
     tenantBHeroMissionId = tenantBFixture.heroMissionId;
     tenantBTaskId = tenantBFixture.taskId;
     tenantBTaskSubmissionId = tenantBFixture.taskSubmissionId;
+    tenantBRewardId = tenantBFixture.rewardId;
+    tenantBRewardRedemptionId = tenantBFixture.rewardRedemptionId;
 
     const taskFixture = await createStudentTaskFixture({
       teacherUserId,
@@ -626,6 +638,20 @@ describe('Student App Home/Profile routes (security)', () => {
       select: { id: true },
     });
     createdXpLedgerIds.push(xpLedger.id);
+
+    const rewardFixture = await createStudentRewardFixture({
+      otherStudentId: sameSchoolOtherStudentId,
+      otherEnrollmentId: sameSchoolOtherEnrollmentId,
+    });
+    ownRewardId = rewardFixture.ownRewardId;
+    redeemableRewardId = rewardFixture.redeemableRewardId;
+    insufficientRewardId = rewardFixture.insufficientRewardId;
+    draftRewardId = rewardFixture.draftRewardId;
+    archivedRewardId = rewardFixture.archivedRewardId;
+    outOfStockRewardId = rewardFixture.outOfStockRewardId;
+    ownRewardRedemptionId = rewardFixture.ownRedemptionId;
+    sameSchoolOtherRewardRedemptionId =
+      rewardFixture.sameSchoolOtherRedemptionId;
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -1491,7 +1517,7 @@ describe('Student App Home/Profile routes (security)', () => {
       totalHeroXp: 0,
       completedMissions: 1,
       rewardRedemptions: {
-        requested: 1,
+        requested: 2,
         approved: 0,
         fulfilled: 0,
       },
@@ -1732,6 +1758,187 @@ describe('Student App Home/Profile routes (security)', () => {
     );
     expect(await prisma.rewardRedemption.count()).toBe(
       beforeCounts.rewardRedemption,
+    );
+    expect(await prisma.heroStudentBadge.count()).toBe(
+      beforeCounts.heroStudentBadge,
+    );
+  });
+
+  it('allows linked student to list and redeem app-safe rewards only', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+
+    const rewards = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/rewards`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(rewards.body.xp).toEqual({ totalEarnedXp: 25 });
+    expect(rewards.body.rewards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          rewardId: ownRewardId,
+          isRedeemable: true,
+          insufficientXp: false,
+        }),
+        expect.objectContaining({
+          rewardId: redeemableRewardId,
+          isRedeemable: true,
+          insufficientXp: false,
+        }),
+        expect.objectContaining({
+          rewardId: insufficientRewardId,
+          isRedeemable: false,
+          insufficientXp: true,
+          availabilityStatus: 'insufficient_xp',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(rewards.body)).not.toContain(draftRewardId);
+    expect(JSON.stringify(rewards.body)).not.toContain(archivedRewardId);
+    expect(JSON.stringify(rewards.body)).not.toContain(outOfStockRewardId);
+    expect(JSON.stringify(rewards.body)).not.toContain(tenantBRewardId);
+    assertNoForbiddenStudentRewardsFields(rewards.body);
+
+    const rewardDetail = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/rewards/${ownRewardId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(rewardDetail.body.reward).toMatchObject({
+      rewardId: ownRewardId,
+      type: 'privilege',
+      requiredXp: 10,
+    });
+    assertNoForbiddenStudentRewardsFields(rewardDetail.body);
+
+    for (const rewardId of [
+      draftRewardId,
+      archivedRewardId,
+      outOfStockRewardId,
+      tenantBRewardId,
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/rewards/${rewardId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+
+    const redemptions = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/rewards/redemptions`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(redemptions.body.redemptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          redemptionId: ownRewardRedemptionId,
+          status: 'requested',
+          requestSource: 'student_app',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(redemptions.body)).not.toContain(
+      sameSchoolOtherRewardRedemptionId,
+    );
+    expect(JSON.stringify(redemptions.body)).not.toContain(
+      tenantBRewardRedemptionId,
+    );
+    assertNoForbiddenStudentRewardsFields(redemptions.body);
+
+    const ownRedemption = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/rewards/redemptions/${ownRewardRedemptionId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(ownRedemption.body.redemption).toMatchObject({
+      redemptionId: ownRewardRedemptionId,
+      reward: expect.objectContaining({ rewardId: ownRewardId }),
+      status: 'requested',
+    });
+    assertNoForbiddenStudentRewardsFields(ownRedemption.body);
+
+    for (const redemptionId of [
+      sameSchoolOtherRewardRedemptionId,
+      tenantBRewardRedemptionId,
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/rewards/redemptions/${redemptionId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/rewards/${redeemableRewardId}/redeem`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        studentId: linkedStudentId,
+        enrollmentId: linkedEnrollmentId,
+        status: 'approved',
+        costXp: 1,
+        xpBalance: 999,
+        approvedById: linkedStudentUserId,
+      })
+      .expect(400);
+
+    const beforeCounts = {
+      xpLedger: await prisma.xpLedger.count(),
+      behaviorPointLedger: await prisma.behaviorPointLedger.count(),
+      rewardRedemption: await prisma.rewardRedemption.count(),
+      heroMissionProgress: await prisma.heroMissionProgress.count(),
+      heroStudentBadge: await prisma.heroStudentBadge.count(),
+    };
+
+    const redeemed = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/rewards/${redeemableRewardId}/redeem`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ note: '  Student reward request  ' })
+      .expect(200);
+
+    expect(redeemed.body.redemption).toMatchObject({
+      redemptionId: expect.any(String),
+      reward: expect.objectContaining({ rewardId: redeemableRewardId }),
+      status: 'requested',
+      requestSource: 'student_app',
+      note: 'Student reward request',
+      nextAction: 'await_review',
+    });
+    assertNoForbiddenStudentRewardsFields(redeemed.body);
+    createdRewardRedemptionIds.push(redeemed.body.redemption.redemptionId);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/rewards/${redeemableRewardId}/redeem`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(409);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/rewards/${insufficientRewardId}/redeem`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(422);
+
+    for (const rewardId of [
+      draftRewardId,
+      archivedRewardId,
+      outOfStockRewardId,
+      tenantBRewardId,
+    ]) {
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/student/rewards/${rewardId}/redeem`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(404);
+    }
+
+    expect(await prisma.xpLedger.count()).toBe(beforeCounts.xpLedger);
+    expect(await prisma.behaviorPointLedger.count()).toBe(
+      beforeCounts.behaviorPointLedger,
+    );
+    expect(await prisma.rewardRedemption.count()).toBe(
+      beforeCounts.rewardRedemption + 1,
+    );
+    expect(await prisma.heroMissionProgress.count()).toBe(
+      beforeCounts.heroMissionProgress,
     );
     expect(await prisma.heroStudentBadge.count()).toBe(
       beforeCounts.heroStudentBadge,
@@ -2197,6 +2404,10 @@ describe('Student App Home/Profile routes (security)', () => {
         'progress/academic',
         'progress/behavior',
         'progress/xp',
+        'rewards',
+        `rewards/${ownRewardId}`,
+        'rewards/redemptions',
+        `rewards/redemptions/${ownRewardRedemptionId}`,
         'hero',
         'hero/progress',
         'hero/badges',
@@ -2233,6 +2444,12 @@ describe('Student App Home/Profile routes (security)', () => {
           .send({ body: 'blocked' })
           .expect(403);
       }
+
+      await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/student/rewards/${redeemableRewardId}/redeem`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(403);
 
       for (const path of [
         `hero/missions/${startableHeroMissionId}/start`,
@@ -2962,6 +3179,153 @@ describe('Student App Home/Profile routes (security)', () => {
       submittableStageId: submittableStage.id,
       otherTaskId: otherTask.id,
       otherSubmissionId: otherSubmission.id,
+    };
+  }
+
+  async function createStudentRewardFixture(params: {
+    otherStudentId: string;
+    otherEnrollmentId: string;
+  }): Promise<{
+    ownRewardId: string;
+    redeemableRewardId: string;
+    insufficientRewardId: string;
+    draftRewardId: string;
+    archivedRewardId: string;
+    outOfStockRewardId: string;
+    ownRedemptionId: string;
+    sameSchoolOtherRedemptionId: string;
+  }> {
+    async function createReward(input: {
+      suffix: string;
+      status: RewardCatalogItemStatus;
+      minTotalXp?: number;
+      isUnlimited?: boolean;
+      stockQuantity?: number | null;
+      stockRemaining?: number | null;
+    }): Promise<string> {
+      const reward = await prisma.rewardCatalogItem.create({
+        data: {
+          schoolId,
+          academicYearId,
+          termId,
+          titleEn: `${testSuffix} ${input.suffix} Reward`,
+          descriptionEn: `${input.suffix} reward description.`,
+          type: RewardCatalogItemType.PRIVILEGE,
+          status: input.status,
+          minTotalXp: input.minTotalXp ?? null,
+          isUnlimited: input.isUnlimited ?? true,
+          stockQuantity: input.stockQuantity ?? null,
+          stockRemaining: input.stockRemaining ?? null,
+          publishedAt:
+            input.status === RewardCatalogItemStatus.PUBLISHED
+              ? new Date('2026-09-25T08:00:00.000Z')
+              : null,
+          publishedById:
+            input.status === RewardCatalogItemStatus.PUBLISHED
+              ? linkedStudentUserId
+              : null,
+          archivedAt:
+            input.status === RewardCatalogItemStatus.ARCHIVED
+              ? new Date('2026-09-26T08:00:00.000Z')
+              : null,
+          archivedById:
+            input.status === RewardCatalogItemStatus.ARCHIVED
+              ? linkedStudentUserId
+              : null,
+          createdById: linkedStudentUserId,
+          metadata: {
+            internalPolicy: 'hidden',
+            wallet: 'not-v1',
+            payment: 'not-v1',
+          },
+        },
+        select: { id: true },
+      });
+      createdRewardCatalogItemIds.push(reward.id);
+      return reward.id;
+    }
+
+    const ownRewardId = await createReward({
+      suffix: 'Own',
+      status: RewardCatalogItemStatus.PUBLISHED,
+      minTotalXp: 10,
+    });
+    const redeemableRewardId = await createReward({
+      suffix: 'Redeemable',
+      status: RewardCatalogItemStatus.PUBLISHED,
+      minTotalXp: 10,
+    });
+    const insufficientRewardId = await createReward({
+      suffix: 'Insufficient XP',
+      status: RewardCatalogItemStatus.PUBLISHED,
+      minTotalXp: 9999,
+    });
+    const draftRewardId = await createReward({
+      suffix: 'Draft',
+      status: RewardCatalogItemStatus.DRAFT,
+      minTotalXp: 1,
+    });
+    const archivedRewardId = await createReward({
+      suffix: 'Archived',
+      status: RewardCatalogItemStatus.ARCHIVED,
+      minTotalXp: 1,
+    });
+    const outOfStockRewardId = await createReward({
+      suffix: 'Out Of Stock',
+      status: RewardCatalogItemStatus.PUBLISHED,
+      minTotalXp: 1,
+      isUnlimited: false,
+      stockQuantity: 1,
+      stockRemaining: 0,
+    });
+
+    const ownRedemption = await prisma.rewardRedemption.create({
+      data: {
+        schoolId,
+        catalogItemId: ownRewardId,
+        studentId: linkedStudentId,
+        enrollmentId: linkedEnrollmentId,
+        academicYearId,
+        termId,
+        status: RewardRedemptionStatus.REQUESTED,
+        requestSource: RewardRedemptionRequestSource.STUDENT_APP,
+        requestedById: linkedStudentUserId,
+        requestNoteEn: 'Visible student request note',
+        eligibilitySnapshot: {
+          totalEarnedXp: 25,
+          internalPolicy: 'hidden',
+        },
+        metadata: { rewardLedgerInternal: 'hidden' },
+      },
+      select: { id: true },
+    });
+    createdRewardRedemptionIds.push(ownRedemption.id);
+
+    const sameSchoolOtherRedemption = await prisma.rewardRedemption.create({
+      data: {
+        schoolId,
+        catalogItemId: ownRewardId,
+        studentId: params.otherStudentId,
+        enrollmentId: params.otherEnrollmentId,
+        academicYearId,
+        termId,
+        status: RewardRedemptionStatus.REQUESTED,
+        requestSource: RewardRedemptionRequestSource.STUDENT_APP,
+        requestedById: sameSchoolOtherStudentUserId,
+      },
+      select: { id: true },
+    });
+    createdRewardRedemptionIds.push(sameSchoolOtherRedemption.id);
+
+    return {
+      ownRewardId,
+      redeemableRewardId,
+      insufficientRewardId,
+      draftRewardId,
+      archivedRewardId,
+      outOfStockRewardId,
+      ownRedemptionId: ownRedemption.id,
+      sameSchoolOtherRedemptionId: sameSchoolOtherRedemption.id,
     };
   }
 
@@ -4133,6 +4497,8 @@ describe('Student App Home/Profile routes (security)', () => {
     taskSubmissionId: string;
     conversationId: string;
     announcementId: string;
+    rewardId: string;
+    rewardRedemptionId: string;
   }> {
     const organization = await prisma.organization.create({
       data: {
@@ -4452,6 +4818,41 @@ describe('Student App Home/Profile routes (security)', () => {
     });
     createdAnnouncementIds.push(announcement.id);
 
+    const reward = await prisma.rewardCatalogItem.create({
+      data: {
+        schoolId: school.id,
+        academicYearId: year.id,
+        termId: term.id,
+        titleEn: `${testSuffix} Tenant B Reward`,
+        descriptionEn: 'Hidden tenant reward.',
+        type: RewardCatalogItemType.DIGITAL,
+        status: RewardCatalogItemStatus.PUBLISHED,
+        minTotalXp: 1,
+        isUnlimited: true,
+        publishedAt: new Date('2026-09-25T08:00:00.000Z'),
+        publishedById: studentUserId,
+        createdById: studentUserId,
+      },
+      select: { id: true },
+    });
+    createdRewardCatalogItemIds.push(reward.id);
+
+    const rewardRedemption = await prisma.rewardRedemption.create({
+      data: {
+        schoolId: school.id,
+        catalogItemId: reward.id,
+        studentId: student.id,
+        enrollmentId: enrollment.id,
+        academicYearId: year.id,
+        termId: term.id,
+        status: RewardRedemptionStatus.REQUESTED,
+        requestSource: RewardRedemptionRequestSource.STUDENT_APP,
+        requestedById: studentUserId,
+      },
+      select: { id: true },
+    });
+    createdRewardRedemptionIds.push(rewardRedemption.id);
+
     return {
       subjectId: subject.id,
       assessmentId: assessment.id,
@@ -4463,6 +4864,8 @@ describe('Student App Home/Profile routes (security)', () => {
       taskSubmissionId: submission.id,
       conversationId: conversation.id,
       announcementId: announcement.id,
+      rewardId: reward.id,
+      rewardRedemptionId: rewardRedemption.id,
     };
   }
 
@@ -4532,6 +4935,47 @@ describe('Student App Home/Profile routes (security)', () => {
       'raw-object-key',
       'raw-bucket',
       'https://raw-storage.invalid/file',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  }
+
+  function assertNoForbiddenStudentRewardsFields(body: unknown): void {
+    const serialized = JSON.stringify(body);
+    for (const forbidden of [
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'deletedAt',
+      'studentId',
+      'enrollmentId',
+      'createdById',
+      'updatedById',
+      'approvedById',
+      'rejectedById',
+      'fulfilledById',
+      'cancelledById',
+      'requestedById',
+      'reviewedById',
+      'XP ledger internals',
+      'xpLedgerId',
+      'ledgerEntryId',
+      'RewardRedemption internals',
+      'eligibilitySnapshot',
+      'metadata',
+      'internalPolicy',
+      'rewardLedgerInternal',
+      'BehaviorPointLedger',
+      'wallet',
+      'finance',
+      'marketplace',
+      'payment',
+      'objectKey',
+      'bucket',
+      'raw metadata',
+      'signedUrl',
+      'unsafe storage URL',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }

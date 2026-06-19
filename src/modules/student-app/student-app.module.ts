@@ -6,6 +6,7 @@ import { GradesSubmissionsRepository } from '../grades/assessments/infrastructur
 import { AuthModule } from '../iam/auth/auth.module';
 import { HeroJourneyModule } from '../reinforcement/hero-journey/hero-journey.module';
 import { ReviewsModule } from '../reinforcement/reviews/reviews.module';
+import { RewardsModule } from '../reinforcement/rewards/rewards.module';
 import { StudentAppAccessService } from './access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from './access/student-app-student-read.adapter';
 import { GetStudentAnnouncementUseCase } from './announcements/application/get-student-announcement.use-case';
@@ -72,6 +73,13 @@ import { GetStudentProgressUseCase } from './progress/application/get-student-pr
 import { GetStudentXpProgressUseCase } from './progress/application/get-student-xp-progress.use-case';
 import { StudentProgressController } from './progress/controller/student-progress.controller';
 import { StudentProgressReadAdapter } from './progress/infrastructure/student-progress-read.adapter';
+import { GetStudentRewardRedemptionUseCase } from './rewards/application/get-student-reward-redemption.use-case';
+import { GetStudentRewardUseCase } from './rewards/application/get-student-reward.use-case';
+import { ListStudentRewardRedemptionsUseCase } from './rewards/application/list-student-reward-redemptions.use-case';
+import { ListStudentRewardsUseCase } from './rewards/application/list-student-rewards.use-case';
+import { RedeemStudentRewardUseCase } from './rewards/application/redeem-student-reward.use-case';
+import { StudentRewardsController } from './rewards/controller/student-rewards.controller';
+import { StudentRewardsReadAdapter } from './rewards/infrastructure/student-rewards-read.adapter';
 import { GetStudentDailyScheduleUseCase } from './schedule/application/get-student-daily-schedule.use-case';
 import { GetStudentWeeklyScheduleUseCase } from './schedule/application/get-student-weekly-schedule.use-case';
 import { StudentScheduleController } from './schedule/controller/student-schedule.controller';
@@ -100,6 +108,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     DisciplineModule,
     HeroJourneyModule,
     ReviewsModule,
+    RewardsModule,
     StudentHomeworksModule,
   ],
   controllers: [
@@ -118,6 +127,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentAnnouncementsController,
     StudentCalendarController,
     StudentLessonsController,
+    StudentRewardsController,
   ],
   providers: [
     StudentAppAccessService,
@@ -154,6 +164,12 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     GetStudentAcademicProgressUseCase,
     GetStudentBehaviorProgressUseCase,
     GetStudentXpProgressUseCase,
+    StudentRewardsReadAdapter,
+    ListStudentRewardsUseCase,
+    GetStudentRewardUseCase,
+    ListStudentRewardRedemptionsUseCase,
+    GetStudentRewardRedemptionUseCase,
+    RedeemStudentRewardUseCase,
     StudentScheduleReadAdapter,
     GetStudentDailyScheduleUseCase,
     GetStudentWeeklyScheduleUseCase,

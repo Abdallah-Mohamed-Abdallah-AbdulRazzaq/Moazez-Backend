@@ -57,5 +57,6 @@ import { RewardRedemptionsRepository } from './infrastructure/reward-redemptions
     GetStudentRewardsSummaryUseCase,
     GetRewardCatalogSummaryUseCase,
   ],
+  exports: [CreateRewardRedemptionUseCase],
 })
 export class RewardsModule {}
