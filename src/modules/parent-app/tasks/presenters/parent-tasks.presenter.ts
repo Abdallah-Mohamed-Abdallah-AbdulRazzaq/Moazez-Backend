@@ -84,13 +84,10 @@ export class ParentTasksPresenter {
 
 function presentChild(child: {
   studentId: string;
-  enrollmentId: string;
 }): ParentTaskChildDto {
   return {
     studentId: child.studentId,
-    enrollmentId: child.enrollmentId,
     student_id: child.studentId,
-    enrollment_id: child.enrollmentId,
   };
 }
 
@@ -113,6 +110,8 @@ function presentTaskDetail(
 
       return {
         id: stage.id,
+        stageId: stage.id,
+        stage_id: stage.id,
         title: stage.titleEn ?? stage.titleAr ?? null,
         description: stage.descriptionEn ?? stage.descriptionAr ?? null,
         sortOrder: stage.sortOrder,
@@ -142,13 +141,18 @@ function presentTaskCard(
   const subjectName = task.subject ? displayName(task.subject) : null;
   const dueDate = presentNullableDate(task.dueDate);
   const status = presentTaskStatus(assignment.status);
+  const latestSubmission = assignment.submissions[0] ?? null;
+  const progressPercent = normalizeProgressPercent(assignment.progress);
+  const completedStageCount = countCompletedStages(assignment.submissions);
+  const stageCount = task.stages.length;
+  const latestActivityAt = presentNullableDate(
+    latestActivityDate(assignment, latestSubmission),
+  );
 
   return {
     id: task.id,
     taskId: task.id,
     task_id: task.id,
-    assignmentId: assignment.id,
-    assignment_id: assignment.id,
     child: presentChild(assignment),
     title: task.titleEn ?? task.titleAr ?? null,
     description: task.descriptionEn ?? task.descriptionAr ?? null,
@@ -162,6 +166,20 @@ function presentTaskCard(
       label: rewardLabel,
     },
     progress: normalizeProgress(assignment.progress),
+    progressPercent,
+    progress_percent: progressPercent,
+    stageCount,
+    stage_count: stageCount,
+    completedStageCount,
+    completed_stage_count: completedStageCount,
+    submissionStatus: latestSubmission
+      ? latestSubmission.status.toLowerCase()
+      : null,
+    submission_status: latestSubmission
+      ? latestSubmission.status.toLowerCase()
+      : null,
+    reviewStatus: presentReviewStatus(latestSubmission),
+    review_status: presentReviewStatus(latestSubmission),
     dueDate,
     due_date: dueDate,
     subject: task.subject
@@ -174,6 +192,8 @@ function presentTaskCard(
     subject_name: subjectName,
     assignedAt: assignment.assignedAt.toISOString(),
     assigned_at: assignment.assignedAt.toISOString(),
+    latestActivityAt,
+    latest_activity_at: latestActivityAt,
   };
 }
 
@@ -182,6 +202,8 @@ function presentSubmission(
 ): ParentTaskStageSubmissionDto {
   return {
     submissionId: submission.id,
+    stageId: submission.stageId,
+    stage_id: submission.stageId,
     status: submission.status.toLowerCase(),
     submittedAt: presentNullableDate(submission.submittedAt),
     reviewedAt: presentNullableDate(submission.reviewedAt),
@@ -190,8 +212,12 @@ function presentSubmission(
       ? {
           fileId: submission.proofFile.id,
           filename: submission.proofFile.originalName,
+          originalName: submission.proofFile.originalName,
           mimeType: submission.proofFile.mimeType,
           size: submission.proofFile.sizeBytes.toString(),
+          sizeBytes: submission.proofFile.sizeBytes.toString(),
+          visibility: submission.proofFile.visibility.toLowerCase(),
+          createdAt: submission.proofFile.createdAt.toISOString(),
         }
       : null,
   };
@@ -202,6 +228,8 @@ function presentSummary(
 ): ParentTasksSummaryDto {
   return {
     total: summary.total,
+    activeCount: summary.pending + summary.inProgress + summary.underReview,
+    active_count: summary.pending + summary.inProgress + summary.underReview,
     pending: summary.pending,
     inProgress: summary.inProgress,
     in_progress: summary.inProgress,
@@ -209,7 +237,54 @@ function presentSummary(
     under_review: summary.underReview,
     completed: summary.completed,
     overdue: summary.overdue,
+    completionRate:
+      summary.total > 0 ? roundTwo(summary.completed / summary.total) : 0,
+    completion_rate:
+      summary.total > 0 ? roundTwo(summary.completed / summary.total) : 0,
   };
+}
+
+function countCompletedStages(
+  submissions: ParentTaskAssignmentReadModel['submissions'],
+): number {
+  return new Set(
+    submissions
+      .filter(
+        (submission) =>
+          submission.status === ReinforcementSubmissionStatus.APPROVED,
+      )
+      .map((submission) => submission.stageId),
+  ).size;
+}
+
+function presentReviewStatus(
+  submission: ParentTaskSubmissionReadModel | null,
+): string | null {
+  if (!submission) return null;
+  switch (submission.status) {
+    case ReinforcementSubmissionStatus.APPROVED:
+      return 'approved';
+    case ReinforcementSubmissionStatus.REJECTED:
+      return 'rejected';
+    case ReinforcementSubmissionStatus.PENDING:
+      return 'pending';
+    case ReinforcementSubmissionStatus.SUBMITTED:
+      return 'pending_review';
+  }
+}
+
+function latestActivityDate(
+  assignment: ParentTaskAssignmentReadModel,
+  latestSubmission: ParentTaskSubmissionReadModel | null,
+): Date | null {
+  return (
+    latestSubmission?.reviewedAt ??
+    latestSubmission?.submittedAt ??
+    assignment.completedAt ??
+    assignment.startedAt ??
+    assignment.assignedAt ??
+    null
+  );
 }
 
 function presentTaskStatus(
@@ -235,6 +310,14 @@ function presentProofType(type: ReinforcementProofType): string {
 
 function normalizeProgress(progress: number): number {
   return Math.min(Math.max(progress, 0), 100) / 100;
+}
+
+function normalizeProgressPercent(progress: number): number {
+  return Math.round(Math.min(Math.max(progress, 0), 100));
+}
+
+function roundTwo(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function displayName(node: { nameEn: string; nameAr: string }): string {

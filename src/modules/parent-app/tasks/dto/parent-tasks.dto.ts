@@ -50,9 +50,7 @@ export class ParentTasksQueryDto {
 
 export class ParentTaskChildDto {
   studentId!: string;
-  enrollmentId!: string;
   student_id!: string;
-  enrollment_id!: string;
 }
 
 export class ParentTaskRewardDto {
@@ -70,12 +68,18 @@ export class ParentTaskSubjectDto {
 export class ParentTaskProofFileDto {
   fileId!: string;
   filename!: string;
+  originalName!: string;
   mimeType!: string;
   size!: string;
+  sizeBytes!: string;
+  visibility!: string;
+  createdAt!: string;
 }
 
 export class ParentTaskStageSubmissionDto {
   submissionId!: string;
+  stageId!: string;
+  stage_id!: string;
   status!: string;
   submittedAt!: string | null;
   reviewedAt!: string | null;
@@ -85,6 +89,8 @@ export class ParentTaskStageSubmissionDto {
 
 export class ParentTaskStageDto {
   id!: string;
+  stageId!: string;
+  stage_id!: string;
   title!: string | null;
   description!: string | null;
   sortOrder!: number;
@@ -101,8 +107,6 @@ export class ParentTaskCardDto {
   id!: string;
   taskId!: string;
   task_id!: string;
-  assignmentId!: string;
-  assignment_id!: string;
   child!: ParentTaskChildDto;
   title!: string | null;
   description!: string | null;
@@ -112,12 +116,24 @@ export class ParentTaskCardDto {
   reinforcer_value!: string | null;
   reward!: ParentTaskRewardDto;
   progress!: number;
+  progressPercent!: number;
+  progress_percent!: number;
+  stageCount!: number;
+  stage_count!: number;
+  completedStageCount!: number;
+  completed_stage_count!: number;
+  submissionStatus!: string | null;
+  submission_status!: string | null;
+  reviewStatus!: string | null;
+  review_status!: string | null;
   dueDate!: string | null;
   due_date!: string | null;
   subject!: ParentTaskSubjectDto | null;
   subject_name!: string | null;
   assignedAt!: string;
   assigned_at!: string;
+  latestActivityAt!: string | null;
+  latest_activity_at!: string | null;
 }
 
 export class ParentTaskDetailDto extends ParentTaskCardDto {
@@ -127,6 +143,8 @@ export class ParentTaskDetailDto extends ParentTaskCardDto {
 
 export class ParentTasksSummaryDto {
   total!: number;
+  activeCount!: number;
+  active_count!: number;
   pending!: number;
   inProgress!: number;
   in_progress!: number;
@@ -134,6 +152,8 @@ export class ParentTasksSummaryDto {
   under_review!: number;
   completed!: number;
   overdue!: number;
+  completionRate!: number;
+  completion_rate!: number;
 }
 
 export class ParentTasksPaginationDto {

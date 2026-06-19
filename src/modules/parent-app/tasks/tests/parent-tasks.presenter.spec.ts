@@ -1,4 +1,5 @@
 import {
+  FileVisibility,
   ReinforcementProofType,
   ReinforcementSource,
   ReinforcementSubmissionStatus,
@@ -14,19 +15,45 @@ describe('ParentTasksPresenter', () => {
 
     expect(result.task).toMatchObject({
       taskId: 'task-1',
-      assignmentId: 'assignment-1',
       status: 'under_review',
       progress: 0.5,
+      progressPercent: 50,
+      stageCount: 1,
+      completedStageCount: 0,
+      submissionStatus: 'submitted',
+      reviewStatus: 'pending_review',
+    });
+    expect(result.task.child).toEqual({
+      studentId: 'student-1',
+      student_id: 'student-1',
+    });
+    expect(result.task.stages[0]).toMatchObject({
+      id: 'stage-1',
+      stageId: 'stage-1',
+      stage_id: 'stage-1',
+    });
+    expect(result.task.stages[0].submission).toMatchObject({
+      submissionId: 'submission-1',
+      stageId: 'stage-1',
+      stage_id: 'stage-1',
     });
     expect(result.task.stages[0].submission?.proofFile).toEqual({
       fileId: 'file-1',
       filename: 'proof.pdf',
+      originalName: 'proof.pdf',
       mimeType: 'application/pdf',
       size: '1234',
+      sizeBytes: '1234',
+      visibility: 'private',
+      createdAt: '2026-01-02T00:00:00.000Z',
     });
     for (const forbidden of [
       'schoolId',
       'organizationId',
+      'enrollmentId',
+      'enrollment_id',
+      'assignmentId',
+      'assignment_id',
       'scheduleId',
       'bucket',
       'objectKey',
@@ -103,6 +130,8 @@ function assignmentFixture(): ParentTaskAssignmentReadModel {
           originalName: 'proof.pdf',
           mimeType: 'application/pdf',
           sizeBytes: BigInt(1234),
+          visibility: FileVisibility.PRIVATE,
+          createdAt: new Date('2026-01-02T00:00:00.000Z'),
         },
       },
     ],

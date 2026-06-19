@@ -324,6 +324,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
   let positiveBehaviorRecordAId: string;
   let negativeBehaviorRecordAId: string;
   let ownedTaskAId: string;
+  let ownedTaskStageAId: string;
   let ownedTaskSubmissionAId: string;
   let sameSchoolUnlinkedTaskAId: string;
   let sameSchoolUnlinkedTaskSubmissionAId: string;
@@ -593,6 +594,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       crossSchoolClassroomId: academicB.classroomId,
     });
     ownedTaskAId = sprint9EFixture.ownedTaskId;
+    ownedTaskStageAId = sprint9EFixture.ownedTaskStageId;
     ownedTaskSubmissionAId = sprint9EFixture.ownedTaskSubmissionId;
     sameSchoolUnlinkedTaskAId = sprint9EFixture.sameSchoolUnlinkedTaskId;
     sameSchoolUnlinkedTaskSubmissionAId =
@@ -867,9 +869,13 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'POST /api/v1/parent/messages/conversations/:conversationId/audio',
       'POST /api/v1/parent/children/:studentId/tasks',
       'POST /api/v1/parent/children/:studentId/tasks/:taskId/submit',
+      'POST /api/v1/parent/children/:studentId/tasks/:taskId/stages/:stageId/submit',
       'PATCH /api/v1/parent/children/:studentId/tasks/:taskId',
       'POST /api/v1/parent/children/:studentId/tasks/:taskId/cancel',
       'POST /api/v1/parent/children/:studentId/tasks/:taskId/review',
+      'POST /api/v1/parent/children/:studentId/tasks/:taskId/approve',
+      'POST /api/v1/parent/children/:studentId/tasks/:taskId/reject',
+      'POST /api/v1/parent/children/:studentId/tasks/:taskId/complete',
       'POST /api/v1/parent/children/:studentId/hero/missions/:missionId/start',
       'POST /api/v1/parent/children/:studentId/hero/missions/:missionId/complete',
       'POST /api/v1/parent/children/:studentId/rewards/:rewardId/redeem',
@@ -1388,18 +1394,22 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
 
     expect(list.body.child).toMatchObject({
       studentId: ownedStudentAId,
-      enrollmentId: ownedEnrollmentAId,
     });
     expect(list.body.tasks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           taskId: ownedTaskAId,
           status: 'under_review',
+          progressPercent: 50,
+          stageCount: 1,
+          submissionStatus: 'submitted',
+          reviewStatus: 'pending_review',
         }),
       ]),
     );
     expect(JSON.stringify(list.body)).not.toContain(sameSchoolUnlinkedTaskAId);
     expect(JSON.stringify(list.body)).not.toContain(crossSchoolTaskId);
+    assertNoForbiddenParentTaskFields(list.body);
     assertNoForbiddenParentAppFields(list.body);
 
     const summary = await request(app.getHttpServer())
@@ -1409,8 +1419,11 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
 
     expect(summary.body.summary).toMatchObject({
       total: 1,
+      activeCount: 1,
       underReview: 1,
+      completionRate: 0,
     });
+    assertNoForbiddenParentTaskFields(summary.body);
     assertNoForbiddenParentAppFields(summary.body);
 
     const detail = await request(app.getHttpServer())
@@ -1432,17 +1445,24 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     expect(detail.body.task.stages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          stageId: ownedTaskStageAId,
           proofType: 'image',
           submission: expect.objectContaining({
             submissionId: ownedTaskSubmissionAId,
+            stageId: ownedTaskStageAId,
             proofFile: expect.objectContaining({
               filename: `${testSuffix}-owned-proof.png`,
+              originalName: `${testSuffix}-owned-proof.png`,
               mimeType: 'image/png',
+              visibility: 'private',
+              createdAt: expect.any(String),
             }),
           }),
         }),
       ]),
     );
+    expect(JSON.stringify(detail.body)).not.toContain('downloadPath');
+    assertNoForbiddenParentTaskFields(detail.body);
     assertNoForbiddenParentAppFields(detail.body);
 
     const submissions = await request(app.getHttpServer())
@@ -1455,6 +1475,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     expect(submissions.body.submissions).toEqual([
       expect.objectContaining({
         submissionId: ownedTaskSubmissionAId,
+        stageId: ownedTaskStageAId,
         status: 'submitted',
       }),
     ]);
@@ -1464,6 +1485,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     expect(JSON.stringify(submissions.body)).not.toContain(
       crossSchoolTaskSubmissionId,
     );
+    assertNoForbiddenParentTaskFields(submissions.body);
     assertNoForbiddenParentAppFields(submissions.body);
 
     const submissionDetail = await request(app.getHttpServer())
@@ -1475,9 +1497,11 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
 
     expect(submissionDetail.body.submission).toMatchObject({
       submissionId: ownedTaskSubmissionAId,
+      stageId: ownedTaskStageAId,
       status: 'submitted',
       proofText: 'Visible parent proof',
     });
+    assertNoForbiddenParentTaskFields(submissionDetail.body);
     assertNoForbiddenParentAppFields(submissionDetail.body);
 
     for (const inaccessibleTaskId of [
@@ -1953,6 +1977,26 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
         method: 'post' as const,
         path: `children/${ownedStudentAId}/tasks/${ownedTaskAId}/submit`,
       },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/tasks/${ownedTaskAId}/stages/${ownedTaskStageAId}/submit`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/tasks/${ownedTaskAId}/review`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/tasks/${ownedTaskAId}/approve`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/tasks/${ownedTaskAId}/reject`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/tasks/${ownedTaskAId}/complete`,
+      },
       { method: 'post' as const, path: 'announcements' },
       {
         method: 'patch' as const,
@@ -2012,6 +2056,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     crossSchoolClassroomId: string;
   }): Promise<{
     ownedTaskId: string;
+    ownedTaskStageId: string;
     ownedTaskSubmissionId: string;
     sameSchoolUnlinkedTaskId: string;
     sameSchoolUnlinkedTaskSubmissionId: string;
@@ -2140,6 +2185,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
 
     return {
       ownedTaskId: ownedTask.taskId,
+      ownedTaskStageId: ownedTask.stageId,
       ownedTaskSubmissionId: ownedTask.submissionId,
       sameSchoolUnlinkedTaskId: sameSchoolUnlinkedTask.taskId,
       sameSchoolUnlinkedTaskSubmissionId: sameSchoolUnlinkedTask.submissionId,
@@ -2191,7 +2237,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     studentId: string;
     enrollmentId: string;
     status: ReinforcementTaskStatus;
-  }): Promise<{ taskId: string; submissionId: string }> {
+  }): Promise<{ taskId: string; stageId: string; submissionId: string }> {
     const proofFileId = await createFile({
       marker: `task-proof-${params.marker}`,
       schoolId: params.schoolId,
@@ -2289,7 +2335,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     });
     createdReinforcementSubmissionIds.push(submission.id);
 
-    return { taskId: task.id, submissionId: submission.id };
+    return { taskId: task.id, stageId: stage.id, submissionId: submission.id };
   }
 
   async function createConversation(params: {
@@ -3130,6 +3176,51 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'objectKey',
       'storageKey',
       'applicationId',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  }
+
+  function assertNoForbiddenParentTaskFields(body: unknown): void {
+    const serialized = JSON.stringify(body);
+    for (const forbidden of [
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'deletedAt',
+      'enrollmentId',
+      'enrollment_id',
+      'assignmentId',
+      'assignment_id',
+      'guardianId',
+      'parentId',
+      'studentGuardianId',
+      'submittedById',
+      'reviewedById',
+      'approvedById',
+      'rejectedById',
+      'createdById',
+      'updatedById',
+      'xpLedgerId',
+      'ledgerEntryId',
+      'sourceId',
+      'dedupeKey',
+      'RewardRedemption',
+      'BehaviorPointLedger',
+      'metadata',
+      'bucket',
+      'objectKey',
+      'storageKey',
+      'signedUrl',
+      'wallet',
+      'finance',
+      'marketplace',
+      'payment',
+      'hidden-task-metadata',
+      'hidden-assignment-metadata',
+      'hidden-stage-metadata',
+      'hidden-submission-metadata',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }

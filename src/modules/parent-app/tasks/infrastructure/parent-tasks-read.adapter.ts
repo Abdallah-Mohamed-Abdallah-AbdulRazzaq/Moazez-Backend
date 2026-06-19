@@ -19,6 +19,8 @@ const SAFE_PROOF_FILE_SELECT = {
   originalName: true,
   mimeType: true,
   sizeBytes: true,
+  visibility: true,
+  createdAt: true,
 } satisfies Prisma.FileSelect;
 
 const PARENT_TASK_SUBMISSION_SELECT = {

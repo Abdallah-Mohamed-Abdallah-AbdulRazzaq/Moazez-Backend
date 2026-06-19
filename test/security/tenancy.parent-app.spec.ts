@@ -339,6 +339,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   let draftBehaviorRecordAId: string;
   let draftAttendanceEntryAId: string;
   let ownedTaskAId: string;
+  let ownedTaskStageAId: string;
   let ownedTaskSubmissionAId: string;
   let sameSchoolUnlinkedTaskAId: string;
   let sameSchoolUnlinkedTaskSubmissionAId: string;
@@ -685,6 +686,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       crossSchoolClassroomId: academicB.classroomId,
     });
     ownedTaskAId = sprint9EFixture.ownedTaskId;
+    ownedTaskStageAId = sprint9EFixture.ownedTaskStageId;
     ownedTaskSubmissionAId = sprint9EFixture.ownedTaskSubmissionId;
     sameSchoolUnlinkedTaskAId = sprint9EFixture.sameSchoolUnlinkedTaskId;
     sameSchoolUnlinkedTaskSubmissionAId =
@@ -1759,6 +1761,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
 
   it('linked parent can read owned child tasks and submissions only', async () => {
     const { accessToken } = await login(parentEmail);
+    const beforeCounts = await readParentReinforcementWriteCounts();
 
     const list = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/tasks`)
@@ -1767,19 +1770,22 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
 
     expect(list.body.child).toMatchObject({
       studentId: ownedStudentAId,
-      enrollmentId: ownedEnrollmentAId,
     });
     expect(list.body.tasks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           taskId: ownedTaskAId,
           status: 'under_review',
+          progressPercent: 50,
+          stageCount: 1,
+          submissionStatus: 'submitted',
+          reviewStatus: 'pending_review',
         }),
       ]),
     );
     expect(JSON.stringify(list.body)).not.toContain(sameSchoolUnlinkedTaskAId);
     expect(JSON.stringify(list.body)).not.toContain(crossSchoolTaskId);
-    assertNoForbiddenParentAppFields(list.body);
+    assertNoForbiddenParentReinforcementFields(list.body);
 
     const summary = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/tasks/summary`)
@@ -1788,9 +1794,11 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
 
     expect(summary.body.summary).toMatchObject({
       total: 1,
+      activeCount: 1,
       underReview: 1,
+      completionRate: 0,
     });
-    assertNoForbiddenParentAppFields(summary.body);
+    assertNoForbiddenParentReinforcementFields(summary.body);
 
     const detail = await request(app.getHttpServer())
       .get(
@@ -1811,18 +1819,24 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     expect(detail.body.task.stages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          stageId: ownedTaskStageAId,
           proofType: 'image',
           submission: expect.objectContaining({
             submissionId: ownedTaskSubmissionAId,
+            stageId: ownedTaskStageAId,
             proofFile: expect.objectContaining({
               filename: `${testSuffix}-owned-proof.png`,
+              originalName: `${testSuffix}-owned-proof.png`,
               mimeType: 'image/png',
+              visibility: 'private',
+              createdAt: expect.any(String),
             }),
           }),
         }),
       ]),
     );
-    assertNoForbiddenParentAppFields(detail.body);
+    expect(JSON.stringify(detail.body)).not.toContain('downloadPath');
+    assertNoForbiddenParentReinforcementFields(detail.body);
 
     const submissions = await request(app.getHttpServer())
       .get(
@@ -1834,6 +1848,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     expect(submissions.body.submissions).toEqual([
       expect.objectContaining({
         submissionId: ownedTaskSubmissionAId,
+        stageId: ownedTaskStageAId,
         status: 'submitted',
       }),
     ]);
@@ -1843,7 +1858,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     expect(JSON.stringify(submissions.body)).not.toContain(
       crossSchoolTaskSubmissionId,
     );
-    assertNoForbiddenParentAppFields(submissions.body);
+    assertNoForbiddenParentReinforcementFields(submissions.body);
 
     const submissionDetail = await request(app.getHttpServer())
       .get(
@@ -1854,10 +1869,11 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
 
     expect(submissionDetail.body.submission).toMatchObject({
       submissionId: ownedTaskSubmissionAId,
+      stageId: ownedTaskStageAId,
       status: 'submitted',
       proofText: 'Visible parent proof',
     });
-    assertNoForbiddenParentAppFields(submissionDetail.body);
+    assertNoForbiddenParentReinforcementFields(submissionDetail.body);
 
     for (const inaccessibleTaskId of [
       sameSchoolUnlinkedTaskAId,
@@ -1870,6 +1886,9 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(404);
     }
+
+    const afterCounts = await readParentReinforcementWriteCounts();
+    expect(afterCounts).toEqual(beforeCounts);
   });
 
   it('linked parent can use only own existing message conversations', async () => {
@@ -2352,6 +2371,26 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       },
       {
         method: 'post' as const,
+        path: `children/${ownedStudentAId}/tasks/${ownedTaskAId}/stages/${ownedTaskStageAId}/submit`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/tasks/${ownedTaskAId}/review`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/tasks/${ownedTaskAId}/approve`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/tasks/${ownedTaskAId}/reject`,
+      },
+      {
+        method: 'post' as const,
+        path: `children/${ownedStudentAId}/tasks/${ownedTaskAId}/complete`,
+      },
+      {
+        method: 'post' as const,
         path: `children/${ownedStudentAId}/hero/missions/${ownedHeroMissionAId}/start`,
       },
       {
@@ -2434,6 +2473,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     crossSchoolClassroomId: string;
   }): Promise<{
     ownedTaskId: string;
+    ownedTaskStageId: string;
     ownedTaskSubmissionId: string;
     sameSchoolUnlinkedTaskId: string;
     sameSchoolUnlinkedTaskSubmissionId: string;
@@ -2562,6 +2602,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
 
     return {
       ownedTaskId: ownedTask.taskId,
+      ownedTaskStageId: ownedTask.stageId,
       ownedTaskSubmissionId: ownedTask.submissionId,
       sameSchoolUnlinkedTaskId: sameSchoolUnlinkedTask.taskId,
       sameSchoolUnlinkedTaskSubmissionId: sameSchoolUnlinkedTask.submissionId,
@@ -2898,7 +2939,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     studentId: string;
     enrollmentId: string;
     status: ReinforcementTaskStatus;
-  }): Promise<{ taskId: string; submissionId: string }> {
+  }): Promise<{ taskId: string; stageId: string; submissionId: string }> {
     const proofFileId = await createFile({
       marker: `task-proof-${params.marker}`,
       schoolId: params.schoolId,
@@ -2996,7 +3037,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     });
     createdReinforcementSubmissionIds.push(submission.id);
 
-    return { taskId: task.id, submissionId: submission.id };
+    return { taskId: task.id, stageId: stage.id, submissionId: submission.id };
   }
 
   async function createConversation(params: {
@@ -3951,6 +3992,9 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   }
 
   async function readParentReinforcementWriteCounts(): Promise<{
+    reinforcementTask: number;
+    reinforcementAssignment: number;
+    reinforcementStage: number;
     xpLedger: number;
     behaviorPointLedger: number;
     rewardRedemption: number;
@@ -3959,9 +4003,14 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     heroStudentBadge: number;
     heroJourneyEvent: number;
     reinforcementSubmission: number;
+    reinforcementReview: number;
     homeworkSubmission: number;
+    file: number;
   }> {
     const [
+      reinforcementTask,
+      reinforcementAssignment,
+      reinforcementStage,
       xpLedger,
       behaviorPointLedger,
       rewardRedemption,
@@ -3970,8 +4019,13 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       heroStudentBadge,
       heroJourneyEvent,
       reinforcementSubmission,
+      reinforcementReview,
       homeworkSubmission,
+      file,
     ] = await Promise.all([
+      prisma.reinforcementTask.count({ where: { schoolId: schoolAId } }),
+      prisma.reinforcementAssignment.count({ where: { schoolId: schoolAId } }),
+      prisma.reinforcementTaskStage.count({ where: { schoolId: schoolAId } }),
       prisma.xpLedger.count({ where: { schoolId: schoolAId } }),
       prisma.behaviorPointLedger.count({ where: { schoolId: schoolAId } }),
       prisma.rewardRedemption.count({ where: { schoolId: schoolAId } }),
@@ -3982,10 +4036,15 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       prisma.heroStudentBadge.count({ where: { schoolId: schoolAId } }),
       prisma.heroJourneyEvent.count({ where: { schoolId: schoolAId } }),
       prisma.reinforcementSubmission.count({ where: { schoolId: schoolAId } }),
+      prisma.reinforcementReview.count({ where: { schoolId: schoolAId } }),
       prisma.homeworkSubmission.count({ where: { schoolId: schoolAId } }),
+      prisma.file.count({ where: { schoolId: schoolAId } }),
     ]);
 
     return {
+      reinforcementTask,
+      reinforcementAssignment,
+      reinforcementStage,
       xpLedger,
       behaviorPointLedger,
       rewardRedemption,
@@ -3994,7 +4053,9 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       heroStudentBadge,
       heroJourneyEvent,
       reinforcementSubmission,
+      reinforcementReview,
       homeworkSubmission,
+      file,
     };
   }
 
@@ -4033,9 +4094,14 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       'roleId',
       'deletedAt',
       'enrollmentId',
+      'enrollment_id',
       'guardianId',
       'parentId',
       'studentGuardianId',
+      'assignmentId',
+      'assignment_id',
+      'submittedById',
+      'reviewedById',
       'createdById',
       'updatedById',
       'awardedById',

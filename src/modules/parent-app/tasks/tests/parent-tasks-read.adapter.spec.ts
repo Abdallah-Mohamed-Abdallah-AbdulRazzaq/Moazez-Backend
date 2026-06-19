@@ -27,6 +27,30 @@ describe('ParentTasksReadAdapter', () => {
     expect(assignmentMocks.findMany.mock.calls[0][0].where).not.toHaveProperty(
       'schoolId',
     );
+    expect(
+      assignmentMocks.findMany.mock.calls[0][0].select.submissions.select
+        .proofFile.select,
+    ).toEqual({
+      id: true,
+      originalName: true,
+      mimeType: true,
+      sizeBytes: true,
+      visibility: true,
+      createdAt: true,
+    });
+    for (const forbidden of [
+      'bucket',
+      'objectKey',
+      'storageKey',
+      'metadata',
+      'signedUrl',
+      'uploaderId',
+    ]) {
+      expect(
+        assignmentMocks.findMany.mock.calls[0][0].select.submissions.select
+          .proofFile.select,
+      ).not.toHaveProperty(forbidden);
+    }
   });
 
   it('performs no task/submission mutations or platform bypass calls', async () => {
