@@ -50,9 +50,14 @@ describe('TeacherTasksPresenter', () => {
       downloadPath: '/api/v1/files/file-1/download',
     });
     expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('organizationId');
+    expect(json).not.toContain('membershipId');
+    expect(json).not.toContain('roleId');
+    expect(json).not.toContain('deletedAt');
     expect(json).not.toContain('scheduleId');
     expect(json).not.toContain('bucket');
     expect(json).not.toContain('objectKey');
+    expect(json).not.toContain('signedUrl');
     expect(json).not.toContain('raw-storage-key');
     expect(json).not.toContain('metadata');
   });
@@ -108,6 +113,13 @@ describe('TeacherTasksPresenter', () => {
       'inProgress',
       'underReview',
       'completed',
+    ]);
+    expect(result.rewardTypes).toEqual([
+      'none',
+      'moral',
+      'financial',
+      'points',
+      'xp',
     ]);
   });
 });

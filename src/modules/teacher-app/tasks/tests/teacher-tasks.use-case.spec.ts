@@ -172,6 +172,13 @@ describe('Teacher Tasks use cases', () => {
         classIds: ['allocation-1'],
       },
     ]);
+    expect(selectors.rewardTypes).toEqual([
+      'none',
+      'moral',
+      'financial',
+      'points',
+      'xp',
+    ]);
     expect(json).not.toContain('schoolId');
     expect(json).not.toContain('scheduleId');
   });

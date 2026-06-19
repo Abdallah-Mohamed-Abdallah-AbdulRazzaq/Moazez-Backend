@@ -131,7 +131,7 @@ export class TeacherTasksPresenter {
       })),
       statuses: ['pending', 'inProgress', 'underReview', 'completed'],
       proofTypes: ['image', 'document', 'none'],
-      rewardTypes: ['moral', 'financial'],
+      rewardTypes: ['none', 'moral', 'financial', 'points', 'xp'],
     };
   }
 

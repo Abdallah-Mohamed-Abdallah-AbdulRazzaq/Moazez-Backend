@@ -152,6 +152,81 @@ describe('CreateTeacherTaskUseCase', () => {
     expect(coreCreateUseCase.execute).not.toHaveBeenCalled();
   });
 
+  it('ignores subjectName for persistence and derives subject context from allocations', async () => {
+    const { useCase, coreCreateUseCase } = createUseCase();
+
+    await useCase.execute(
+      validCreateDto({
+        subjectName: 'Injected display subject',
+      }),
+    );
+
+    const payload = coreCreateUseCase.execute.mock.calls[0][0];
+    expect(payload).toEqual(
+      expect.objectContaining({
+        academicYearId: 'year-1',
+        termId: 'term-1',
+        subjectId: 'subject-1',
+      }),
+    );
+    expect(payload).not.toHaveProperty('subjectName');
+  });
+
+  it('maps approved Teacher reward types to safe core task metadata only', async () => {
+    const cases = [
+      {
+        reward: { type: TeacherTaskCreateRewardType.NONE },
+        expected: {
+          rewardType: null,
+          rewardValue: null,
+          rewardLabelEn: null,
+        },
+      },
+      {
+        reward: { type: TeacherTaskCreateRewardType.MORAL },
+        expected: {
+          rewardType: ReinforcementRewardType.MORAL,
+          rewardValue: null,
+          rewardLabelEn: null,
+        },
+      },
+      {
+        reward: { type: TeacherTaskCreateRewardType.FINANCIAL, value: 100 },
+        expected: {
+          rewardType: ReinforcementRewardType.FINANCIAL,
+          rewardValue: 100,
+          rewardLabelEn: null,
+        },
+      },
+      {
+        reward: { type: TeacherTaskCreateRewardType.POINTS, value: 5 },
+        expected: {
+          rewardType: ReinforcementRewardType.MORAL,
+          rewardValue: 5,
+          rewardLabelEn: '5 points',
+        },
+      },
+      {
+        reward: { type: TeacherTaskCreateRewardType.XP, value: 10 },
+        expected: {
+          rewardType: ReinforcementRewardType.XP,
+          rewardValue: 10,
+          rewardLabelEn: '10 XP',
+        },
+      },
+    ];
+
+    for (const item of cases) {
+      const { useCase, coreCreateUseCase } = createUseCase();
+
+      await useCase.execute(validCreateDto({ reward: item.reward }));
+
+      expect(coreCreateUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining(item.expected),
+      );
+    }
+  });
+
   it('delegates creation once boundaries pass and returns the safe Teacher App presenter shape', async () => {
     const { useCase } = createUseCase();
 
@@ -181,7 +256,12 @@ describe('CreateTeacherTaskUseCase', () => {
     expect(json).not.toContain('scheduleId');
     expect(json).not.toContain('bucket');
     expect(json).not.toContain('objectKey');
+    expect(json).not.toContain('signedUrl');
     expect(json).not.toContain('raw-storage-key');
+    expect(json).not.toContain('organizationId');
+    expect(json).not.toContain('membershipId');
+    expect(json).not.toContain('roleId');
+    expect(json).not.toContain('deletedAt');
   });
 });
 
@@ -241,6 +321,7 @@ function validCreateDto(overrides?: {
   classIds?: string[];
   studentIds?: string[];
   reward?: { type: TeacherTaskCreateRewardType; value?: number };
+  subjectName?: string;
   stages?: Array<{
     title: string;
     proofType?: TeacherTaskCreateProofType;
@@ -255,6 +336,7 @@ function validCreateDto(overrides?: {
     reward: overrides?.reward ?? {
       type: TeacherTaskCreateRewardType.NONE,
     },
+    subjectName: overrides?.subjectName,
     stages: overrides?.stages ?? [
       {
         title: 'Stage one',
