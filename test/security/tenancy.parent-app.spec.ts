@@ -64,6 +64,7 @@ import {
   setActor,
 } from '../../src/common/context/request-context';
 import { AppModule } from '../../src/app.module';
+import { StorageService } from '../../src/infrastructure/storage/storage.service';
 import { ParentAppAccessService } from '../../src/modules/parent-app/access/parent-app-access.service';
 import { ParentAppGuardianReadAdapter } from '../../src/modules/parent-app/access/parent-app-guardian-read.adapter';
 import {
@@ -299,6 +300,7 @@ function enrollmentFixture(
 describe('Parent App Home/Children/Profile routes (security)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
+  let storageService: StorageService | undefined;
 
   let organizationAId: string;
   let organizationBId: string;
@@ -341,10 +343,15 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   let ownedTaskAId: string;
   let ownedTaskStageAId: string;
   let ownedTaskSubmissionAId: string;
+  let ownedTaskProofFileAId: string;
+  let secondOwnedTaskProofFileAId: string;
   let sameSchoolUnlinkedTaskAId: string;
   let sameSchoolUnlinkedTaskSubmissionAId: string;
+  let sameSchoolUnlinkedTaskProofFileAId: string;
   let crossSchoolTaskId: string;
   let crossSchoolTaskSubmissionId: string;
+  let crossSchoolTaskProofFileId: string;
+  let arbitraryPrivateFileAId: string;
   let ownedHeroMissionAId: string;
   let hiddenHeroMissionAId: string;
   let ownedHeroBadgeAId: string;
@@ -403,6 +410,8 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   const createdCommunicationParticipantIds: string[] = [];
   const createdCommunicationConversationIds: string[] = [];
   const createdFileIds: string[] = [];
+  const createdStoredObjects: { bucket: string; objectKey: string }[] = [];
+  const createdStoredObjectKeys = new Set<string>();
   const createdTimetablePublicationIds: string[] = [];
   const createdTimetableEntryIds: string[] = [];
   const createdTimetablePeriodIds: string[] = [];
@@ -688,11 +697,18 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     ownedTaskAId = sprint9EFixture.ownedTaskId;
     ownedTaskStageAId = sprint9EFixture.ownedTaskStageId;
     ownedTaskSubmissionAId = sprint9EFixture.ownedTaskSubmissionId;
+    ownedTaskProofFileAId = sprint9EFixture.ownedTaskProofFileId;
+    secondOwnedTaskProofFileAId =
+      sprint9EFixture.secondOwnedTaskProofFileId;
     sameSchoolUnlinkedTaskAId = sprint9EFixture.sameSchoolUnlinkedTaskId;
     sameSchoolUnlinkedTaskSubmissionAId =
       sprint9EFixture.sameSchoolUnlinkedTaskSubmissionId;
+    sameSchoolUnlinkedTaskProofFileAId =
+      sprint9EFixture.sameSchoolUnlinkedTaskProofFileId;
     crossSchoolTaskId = sprint9EFixture.crossSchoolTaskId;
     crossSchoolTaskSubmissionId = sprint9EFixture.crossSchoolTaskSubmissionId;
+    crossSchoolTaskProofFileId = sprint9EFixture.crossSchoolTaskProofFileId;
+    arbitraryPrivateFileAId = sprint9EFixture.arbitraryPrivateFileId;
     ownConversationAId = sprint9EFixture.ownConversationId;
     ownConversationHiddenMessageAId =
       sprint9EFixture.ownConversationHiddenMessageId;
@@ -742,6 +758,8 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       }),
     );
     await app.init();
+    storageService = app.get(StorageService);
+    await ensureCreatedFileObjects();
   });
 
   afterAll(async () => {
@@ -885,6 +903,9 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       await prisma.file.deleteMany({
         where: { id: { in: createdFileIds } },
       });
+      for (const object of createdStoredObjects) {
+        await storageService?.deleteObject(object).catch(() => undefined);
+      }
       await prisma.timetableEntry.deleteMany({
         where: { id: { in: createdTimetableEntryIds } },
       });
@@ -1824,18 +1845,60 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
             submissionId: ownedTaskSubmissionAId,
             stageId: ownedTaskStageAId,
             proofFile: expect.objectContaining({
+              fileId: ownedTaskProofFileAId,
               filename: `${testSuffix}-owned-proof.png`,
               originalName: `${testSuffix}-owned-proof.png`,
               mimeType: 'image/png',
               visibility: 'private',
               createdAt: expect.any(String),
+              downloadPath: `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/files/${ownedTaskProofFileAId}/download`,
             }),
           }),
         }),
       ]),
     );
-    expect(JSON.stringify(detail.body)).not.toContain('downloadPath');
     assertNoForbiddenParentReinforcementFields(detail.body);
+
+    const proofDownload = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/files/${ownedTaskProofFileAId}/download`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .redirects(0)
+      .expect(307);
+
+    expect(proofDownload.headers.location).toEqual(expect.any(String));
+    expect(proofDownload.headers.location).toContain('X-Amz-Expires=300');
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/files/${ownedTaskProofFileAId}/download`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .redirects(0)
+      .expect(403);
+
+    for (const blockedRoute of [
+      `${GLOBAL_PREFIX}/parent/children/${sameSchoolUnlinkedStudentId}/files/${sameSchoolUnlinkedTaskProofFileAId}/download`,
+      `${GLOBAL_PREFIX}/parent/children/${crossSchoolLinkedStudentId}/files/${crossSchoolTaskProofFileId}/download`,
+      `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/files/${secondOwnedTaskProofFileAId}/download`,
+      `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/files/${arbitraryPrivateFileAId}/download`,
+    ]) {
+      await request(app.getHttpServer())
+        .get(blockedRoute)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .redirects(0)
+        .expect(404);
+    }
+
+    for (const actorEmail of [adminEmail, teacherEmail, studentEmail]) {
+      const actor = await login(actorEmail);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/parent/children/${ownedStudentAId}/files/${ownedTaskProofFileAId}/download`,
+        )
+        .set('Authorization', `Bearer ${actor.accessToken}`)
+        .redirects(0)
+        .expect(403);
+    }
 
     const submissions = await request(app.getHttpServer())
       .get(
@@ -2531,10 +2594,15 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     ownedTaskId: string;
     ownedTaskStageId: string;
     ownedTaskSubmissionId: string;
+    ownedTaskProofFileId: string;
+    secondOwnedTaskProofFileId: string;
     sameSchoolUnlinkedTaskId: string;
     sameSchoolUnlinkedTaskSubmissionId: string;
+    sameSchoolUnlinkedTaskProofFileId: string;
     crossSchoolTaskId: string;
     crossSchoolTaskSubmissionId: string;
+    crossSchoolTaskProofFileId: string;
+    arbitraryPrivateFileId: string;
     ownConversationId: string;
     ownConversationHiddenMessageId: string;
     nonParticipantConversationId: string;
@@ -2551,6 +2619,16 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       subjectId: subjectAId,
       studentId: ownedStudentAId,
       enrollmentId: ownedEnrollmentAId,
+      status: ReinforcementTaskStatus.UNDER_REVIEW,
+    });
+    const secondOwnedTask = await createReinforcementTaskForStudent({
+      marker: 'second-owned',
+      schoolId: schoolAId,
+      academicYearId: academicYearAId,
+      termId: termAId,
+      subjectId: subjectAId,
+      studentId: secondOwnedStudentAId,
+      enrollmentId: secondOwnedEnrollmentAId,
       status: ReinforcementTaskStatus.UNDER_REVIEW,
     });
     const sameSchoolUnlinkedTask = await createReinforcementTaskForStudent({
@@ -2572,6 +2650,14 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       studentId: crossSchoolLinkedStudentId,
       enrollmentId: crossSchoolLinkedEnrollmentId,
       status: ReinforcementTaskStatus.UNDER_REVIEW,
+    });
+    const arbitraryPrivateFileId = await createFile({
+      marker: 'parent-arbitrary-private',
+      schoolId: schoolAId,
+      organizationId: organizationAId,
+      originalName: `${testSuffix}-arbitrary-private.pdf`,
+      mimeType: 'application/pdf',
+      sizeBytes: 512,
     });
 
     const ownConversationId = await createConversation({
@@ -2660,10 +2746,15 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       ownedTaskId: ownedTask.taskId,
       ownedTaskStageId: ownedTask.stageId,
       ownedTaskSubmissionId: ownedTask.submissionId,
+      ownedTaskProofFileId: ownedTask.proofFileId,
+      secondOwnedTaskProofFileId: secondOwnedTask.proofFileId,
       sameSchoolUnlinkedTaskId: sameSchoolUnlinkedTask.taskId,
       sameSchoolUnlinkedTaskSubmissionId: sameSchoolUnlinkedTask.submissionId,
+      sameSchoolUnlinkedTaskProofFileId: sameSchoolUnlinkedTask.proofFileId,
       crossSchoolTaskId: crossSchoolTask.taskId,
       crossSchoolTaskSubmissionId: crossSchoolTask.submissionId,
+      crossSchoolTaskProofFileId: crossSchoolTask.proofFileId,
+      arbitraryPrivateFileId,
       ownConversationId,
       ownConversationHiddenMessageId: hiddenMessageId,
       nonParticipantConversationId,
@@ -2967,13 +3058,23 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     mimeType: string;
     sizeBytes: number;
   }): Promise<string> {
+    const bucket = `${testSuffix}-private`;
+    const objectKey = `${params.marker}/raw-object-key`;
+    if (storageService) {
+      await saveTestObject({
+        bucket,
+        objectKey,
+        mimeType: params.mimeType,
+      });
+    }
+
     const file = await prisma.file.create({
       data: {
         organizationId: params.organizationId,
         schoolId: params.schoolId,
         uploaderId: teacherUserId,
-        bucket: `${testSuffix}-private`,
-        objectKey: `${params.marker}/raw-object-key`,
+        bucket,
+        objectKey,
         originalName: params.originalName,
         mimeType: params.mimeType,
         sizeBytes: BigInt(params.sizeBytes),
@@ -2986,6 +3087,46 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     return file.id;
   }
 
+  async function ensureCreatedFileObjects(): Promise<void> {
+    const files = await prisma.file.findMany({
+      where: { id: { in: createdFileIds } },
+      select: { bucket: true, objectKey: true, mimeType: true },
+    });
+
+    for (const file of files) {
+      await saveTestObject({
+        bucket: file.bucket,
+        objectKey: file.objectKey,
+        mimeType: file.mimeType,
+      });
+    }
+  }
+
+  async function saveTestObject(params: {
+    bucket: string;
+    objectKey: string;
+    mimeType: string;
+  }): Promise<void> {
+    if (!storageService) return;
+
+    await storageService.saveObject({
+      bucket: params.bucket,
+      objectKey: params.objectKey,
+      body: Buffer.from(`${testSuffix}:${params.objectKey}`),
+      visibility: FileVisibility.PRIVATE,
+      contentType: params.mimeType,
+    });
+
+    const storedObjectKey = `${params.bucket}\0${params.objectKey}`;
+    if (!createdStoredObjectKeys.has(storedObjectKey)) {
+      createdStoredObjectKeys.add(storedObjectKey);
+      createdStoredObjects.push({
+        bucket: params.bucket,
+        objectKey: params.objectKey,
+      });
+    }
+  }
+
   async function createReinforcementTaskForStudent(params: {
     marker: string;
     schoolId: string;
@@ -2995,7 +3136,12 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     studentId: string;
     enrollmentId: string;
     status: ReinforcementTaskStatus;
-  }): Promise<{ taskId: string; stageId: string; submissionId: string }> {
+  }): Promise<{
+    taskId: string;
+    stageId: string;
+    submissionId: string;
+    proofFileId: string;
+  }> {
     const proofFileId = await createFile({
       marker: `task-proof-${params.marker}`,
       schoolId: params.schoolId,
@@ -3093,7 +3239,12 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     });
     createdReinforcementSubmissionIds.push(submission.id);
 
-    return { taskId: task.id, stageId: stage.id, submissionId: submission.id };
+    return {
+      taskId: task.id,
+      stageId: stage.id,
+      submissionId: submission.id,
+      proofFileId,
+    };
   }
 
   async function createConversation(params: {

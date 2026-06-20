@@ -46,6 +46,7 @@ describe('ParentTasksPresenter', () => {
       sizeBytes: '1234',
       visibility: 'private',
       createdAt: '2026-01-02T00:00:00.000Z',
+      downloadPath: '/api/v1/parent/children/student-1/files/file-1/download',
     });
     for (const forbidden of [
       'schoolId',

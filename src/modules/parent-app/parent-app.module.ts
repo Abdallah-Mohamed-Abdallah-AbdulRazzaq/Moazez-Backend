@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { DisciplineModule } from '../discipline/discipline.module';
@@ -30,6 +31,9 @@ import { GetParentChildGradesSummaryUseCase } from './grades/application/get-par
 import { ListParentChildGradesUseCase } from './grades/application/list-parent-child-grades.use-case';
 import { ParentGradesController } from './grades/controller/parent-grades.controller';
 import { ParentGradesReadAdapter } from './grades/infrastructure/parent-grades-read.adapter';
+import { GetParentChildFileDownloadUrlUseCase } from './files/application/get-parent-child-file-download-url.use-case';
+import { ParentFilesController } from './files/controller/parent-files.controller';
+import { ParentFilesReadAdapter } from './files/infrastructure/parent-files-read.adapter';
 import { GetParentHomeUseCase } from './home/application/get-parent-home.use-case';
 import { ParentHomeController } from './home/controller/parent-home.controller';
 import { ParentHomeReadAdapter } from './home/infrastructure/parent-home-read.adapter';
@@ -91,6 +95,7 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     CommunicationModule,
     DisciplineModule,
     ParentHomeworksModule,
+    StorageModule,
   ],
   controllers: [
     ParentHomeController,
@@ -109,6 +114,7 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ParentChildLessonsController,
     ParentHeroController,
     ParentRewardsController,
+    ParentFilesController,
   ],
   providers: [
     ParentAppAccessService,
@@ -146,6 +152,8 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     GetParentChildRewardUseCase,
     ListParentChildRewardRedemptionsUseCase,
     GetParentChildRewardRedemptionUseCase,
+    ParentFilesReadAdapter,
+    GetParentChildFileDownloadUrlUseCase,
     ParentReportsReadAdapter,
     ListParentChildReportsUseCase,
     GetParentChildReportsSummaryUseCase,

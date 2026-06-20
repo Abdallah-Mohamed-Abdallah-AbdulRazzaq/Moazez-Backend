@@ -218,6 +218,7 @@ function presentSubmission(
           sizeBytes: submission.proofFile.sizeBytes.toString(),
           visibility: submission.proofFile.visibility.toLowerCase(),
           createdAt: submission.proofFile.createdAt.toISOString(),
+          downloadPath: `/api/v1/parent/children/${submission.studentId}/files/${submission.proofFile.id}/download`,
         }
       : null,
   };

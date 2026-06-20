@@ -74,6 +74,7 @@ export class ParentTaskProofFileDto {
   sizeBytes!: string;
   visibility!: string;
   createdAt!: string;
+  downloadPath!: string;
 }
 
 export class ParentTaskStageSubmissionDto {
