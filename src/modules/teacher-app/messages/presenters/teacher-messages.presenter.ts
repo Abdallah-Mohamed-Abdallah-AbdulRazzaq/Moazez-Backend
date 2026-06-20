@@ -217,7 +217,7 @@ function presentMessage(params: {
     createdAt: params.message.sentAt.toISOString(),
     reactions: visible ? presentReactions(params.message, params.teacherUserId) : [],
     attachments: visible ? presentAttachments(params.message) : [],
-    readCount: params.message._count.reads,
+    readCount: countReadUsersExcludingSender(params.message),
   };
 }
 
@@ -327,4 +327,13 @@ function fullName(user: { firstName: string; lastName: string }): string {
 
 function presentNullableDate(value: Date | null): string | null {
   return value ? value.toISOString() : null;
+}
+
+function countReadUsersExcludingSender(message: {
+  senderUserId: string | null;
+  reads: Array<{ userId: string }>;
+}): number {
+  return message.reads.filter(
+    (read) => !message.senderUserId || read.userId !== message.senderUserId,
+  ).length;
 }

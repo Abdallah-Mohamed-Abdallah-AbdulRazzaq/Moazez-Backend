@@ -76,6 +76,22 @@ describe('communication message presenter', () => {
     expect(json).not.toContain('must not leak');
   });
 
+  it('computes readCount from readers other than the sender', () => {
+    const presented = presentCommunicationMessage(
+      messageRecord({
+        senderUserId: 'sender-1',
+        reads: [
+          { userId: 'sender-1' },
+          { userId: 'reader-1' },
+          { userId: 'reader-2' },
+        ],
+        _count: { reads: 3 },
+      }),
+    );
+
+    expect(presented.readCount).toBe(2);
+  });
+
   it('summarizes audits without storing full message body', () => {
     const summary = summarizeCommunicationMessageForAudit(
       messageRecord({ body: 'Sensitive chat body' }),
@@ -114,6 +130,7 @@ function messageRecord(
     createdAt: new Date('2026-05-02T08:00:00.000Z'),
     updatedAt: new Date('2026-05-02T08:30:00.000Z'),
     _count: { reads: 0 },
+    reads: [],
     ...(overrides ?? {}),
   };
 }

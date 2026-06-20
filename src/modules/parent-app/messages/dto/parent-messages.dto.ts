@@ -204,6 +204,8 @@ export class ParentMessageDto {
   time!: string;
   isRead!: boolean;
   is_read!: boolean;
+  readCount!: number;
+  read_count!: number;
   audio_url!: null;
   audio_duration!: null;
 }

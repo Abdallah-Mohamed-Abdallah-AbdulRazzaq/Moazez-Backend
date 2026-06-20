@@ -70,6 +70,54 @@ describe('StudentMessagesPresenter', () => {
     expect(serialized).not.toContain('objectKey');
     expect(serialized).not.toContain('attachments');
   });
+
+  it('adds readCount aliases and ignores sender self-read rows', () => {
+    const result = StudentMessagesPresenter.presentMessageList({
+      result: {
+        conversationId: 'conversation-1',
+        items: [
+          {
+            ...messageFixture({
+              id: 'own-message',
+              body: 'own',
+            }),
+            senderUserId: 'student-user-1',
+            reads: [
+              { userId: 'student-user-1' },
+              { userId: 'teacher-user-1' },
+            ],
+            _count: { reads: 2 },
+          },
+          {
+            ...messageFixture({
+              id: 'self-only-message',
+              body: 'self only',
+            }),
+            senderUserId: 'student-user-1',
+            reads: [{ userId: 'student-user-1' }],
+            _count: { reads: 1 },
+          },
+        ] as any,
+        total: 2,
+        page: 1,
+        limit: 50,
+      },
+      studentUserId: 'student-user-1',
+    });
+
+    expect(result.messages[0]).toMatchObject({
+      readCount: 1,
+      read_count: 1,
+      isRead: true,
+      is_read: true,
+    });
+    expect(result.messages[1]).toMatchObject({
+      readCount: 0,
+      read_count: 0,
+      isRead: false,
+      is_read: false,
+    });
+  });
 });
 
 function conversationFixture() {

@@ -84,6 +84,7 @@ describe('Student Messages use-cases', () => {
       conversationId: 'conversation-1',
       readAt: '2026-01-01T08:00:00.000Z',
       markedCount: 1,
+      messages: [{ messageId: 'message-1', readCount: 1 }],
     });
 
     await readUseCase.execute('conversation-1');

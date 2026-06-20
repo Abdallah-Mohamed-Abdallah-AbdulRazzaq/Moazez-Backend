@@ -38,6 +38,11 @@ const COMMUNICATION_MESSAGE_ARGS =
           reads: true,
         },
       },
+      reads: {
+        select: {
+          userId: true,
+        },
+      },
     },
   });
 
@@ -102,6 +107,21 @@ export type CommunicationMessageReadRecord =
     typeof COMMUNICATION_MESSAGE_READ_ARGS
   >;
 
+export interface CommunicationMessageReadResult {
+  id: string | null;
+  schoolId: string;
+  conversationId: string;
+  messageId: string;
+  userId: string;
+  readAt: Date;
+  metadata: Prisma.JsonValue | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+  readCount: number;
+  wasCreated: boolean;
+  isSenderRead: boolean;
+}
+
 export interface CommunicationMessageListFilters {
   kind?: CommunicationMessageKind;
   status?: CommunicationMessageStatus;
@@ -153,6 +173,10 @@ export interface CommunicationConversationReadResult {
   conversationId: string;
   readAt: Date;
   markedCount: number;
+  messages: Array<{
+    messageId: string;
+    readCount: number;
+  }>;
 }
 
 export interface CommunicationReadSummaryResult {
@@ -344,8 +368,49 @@ export class CommunicationMessageRepository {
     userId: string;
     participantId: string;
     readAt: Date;
-  }): Promise<CommunicationMessageReadRecord> {
+  }): Promise<CommunicationMessageReadResult> {
     return this.scopedPrisma.$transaction(async (tx) => {
+      const message = await tx.communicationMessage.findFirst({
+        where: {
+          id: input.messageId,
+          conversationId: input.conversationId,
+        },
+        select: {
+          id: true,
+          senderUserId: true,
+        },
+      });
+
+      if (!message) {
+        throw new Error('Communication message read target was not found');
+      }
+
+      const isSenderRead =
+        message.senderUserId !== null && message.senderUserId === input.userId;
+      if (isSenderRead) {
+        const readCount =
+          await this.countMessageReadsExcludingSenderInTransaction(
+            tx,
+            input.messageId,
+            message.senderUserId,
+          );
+
+        return {
+          id: null,
+          schoolId: input.schoolId,
+          conversationId: input.conversationId,
+          messageId: input.messageId,
+          userId: input.userId,
+          readAt: input.readAt,
+          metadata: null,
+          createdAt: null,
+          updatedAt: null,
+          readCount,
+          wasCreated: false,
+          isSenderRead: true,
+        };
+      }
+
       const existing = await tx.communicationMessageRead.findFirst({
         where: {
           messageId: input.messageId,
@@ -354,6 +419,7 @@ export class CommunicationMessageRepository {
         select: { id: true },
       });
 
+      const wasCreated = !existing;
       const readId = existing
         ? await this.updateReadInTransaction(tx, existing.id, input.readAt)
         : await this.createReadInTransaction(tx, input);
@@ -364,7 +430,21 @@ export class CommunicationMessageRepository {
         readAt: input.readAt,
       });
 
-      return this.findReadInTransaction(tx, readId);
+      const [read, readCount] = await Promise.all([
+        this.findReadInTransaction(tx, readId),
+        this.countMessageReadsExcludingSenderInTransaction(
+          tx,
+          input.messageId,
+          message.senderUserId,
+        ),
+      ]);
+
+      return {
+        ...read,
+        readCount,
+        wasCreated,
+        isSenderRead: false,
+      };
     });
   }
 
@@ -380,6 +460,10 @@ export class CommunicationMessageRepository {
         where: {
           conversationId: input.conversationId,
           status: CommunicationMessageStatus.SENT,
+          OR: [
+            { senderUserId: null },
+            { senderUserId: { not: input.userId } },
+          ],
           reads: {
             none: {
               userId: input.userId,
@@ -387,7 +471,7 @@ export class CommunicationMessageRepository {
           },
         },
         orderBy: [{ sentAt: 'asc' }, { id: 'asc' }],
-        select: { id: true },
+        select: { id: true, senderUserId: true },
       });
 
       if (unreadMessages.length > 0) {
@@ -402,6 +486,12 @@ export class CommunicationMessageRepository {
           skipDuplicates: true,
         });
       }
+
+      const messages =
+        await this.countMessagesReadsExcludingSendersInTransaction(
+          tx,
+          unreadMessages,
+        );
 
       const latestMessage = await tx.communicationMessage.findFirst({
         where: {
@@ -423,7 +513,8 @@ export class CommunicationMessageRepository {
       return {
         conversationId: input.conversationId,
         readAt: input.readAt,
-        markedCount: unreadMessages.length,
+        markedCount: messages.length,
+        messages,
       };
     });
   }
@@ -448,9 +539,10 @@ export class CommunicationMessageRepository {
         skip: (page - 1) * limit,
         select: {
           id: true,
-          _count: {
+          senderUserId: true,
+          reads: {
             select: {
-              reads: true,
+              userId: true,
             },
           },
         },
@@ -465,7 +557,7 @@ export class CommunicationMessageRepository {
       page,
       items: messages.map((message) => ({
         messageId: message.id,
-        readCount: message._count.reads,
+        readCount: countReadUsersExcludingSender(message),
       })),
     };
   }
@@ -575,6 +667,56 @@ export class CommunicationMessageRepository {
     return read;
   }
 
+  private countMessageReadsExcludingSenderInTransaction(
+    tx: Prisma.TransactionClient,
+    messageId: string,
+    senderUserId: string | null,
+  ): Promise<number> {
+    return tx.communicationMessageRead.count({
+      where: {
+        messageId,
+        ...(senderUserId ? { userId: { not: senderUserId } } : {}),
+      },
+    });
+  }
+
+  private async countMessagesReadsExcludingSendersInTransaction(
+    tx: Prisma.TransactionClient,
+    messages: Array<{ id: string; senderUserId: string | null }>,
+  ): Promise<Array<{ messageId: string; readCount: number }>> {
+    if (messages.length === 0) return [];
+
+    const senderByMessageId = new Map(
+      messages.map((message) => [message.id, message.senderUserId]),
+    );
+    const countsByMessageId = new Map(
+      messages.map((message) => [message.id, 0]),
+    );
+    const reads = await tx.communicationMessageRead.findMany({
+      where: {
+        messageId: { in: messages.map((message) => message.id) },
+      },
+      select: {
+        messageId: true,
+        userId: true,
+      },
+    });
+
+    for (const read of reads) {
+      const senderUserId = senderByMessageId.get(read.messageId);
+      if (senderUserId && read.userId === senderUserId) continue;
+      countsByMessageId.set(
+        read.messageId,
+        (countsByMessageId.get(read.messageId) ?? 0) + 1,
+      );
+    }
+
+    return messages.map((message) => ({
+      messageId: message.id,
+      readCount: countsByMessageId.get(message.id) ?? 0,
+    }));
+  }
+
   private createAuditLogInTransaction(
     tx: Prisma.TransactionClient,
     entry: CommunicationMessageAuditInput,
@@ -636,4 +778,13 @@ function toNullableJson(
   if (value === undefined) return undefined;
   if (value === null) return Prisma.JsonNull;
   return value as Prisma.InputJsonValue;
+}
+
+function countReadUsersExcludingSender(message: {
+  senderUserId: string | null;
+  reads: Array<{ userId: string }>;
+}): number {
+  return message.reads.filter(
+    (read) => !message.senderUserId || read.userId !== message.senderUserId,
+  ).length;
 }

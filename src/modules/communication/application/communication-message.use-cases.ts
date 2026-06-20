@@ -371,7 +371,9 @@ export class MarkCommunicationMessageReadUseCase {
         readAt: new Date(),
       });
 
-    this.realtimeEvents?.publishMessageRead(scope.schoolId, read);
+    if (!read.isSenderRead) {
+      this.realtimeEvents?.publishMessageRead(scope.schoolId, read);
+    }
 
     return presentCommunicationMessageReadReceipt(read);
   }

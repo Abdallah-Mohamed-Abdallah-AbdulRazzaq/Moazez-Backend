@@ -166,6 +166,22 @@ describe('TeacherMessagesPresenter', () => {
     expect(json).not.toContain('raw-storage');
     expect(json).not.toContain('metadata');
   });
+
+  it('computes readCount from readers other than the sender', () => {
+    const result = TeacherMessagesPresenter.presentMessage({
+      message: messageFixture({
+        reads: [
+          { userId: TEACHER_ID },
+          { userId: 'parent-1' },
+          { userId: 'student-1' },
+        ],
+        _count: { reads: 3 },
+      }),
+      teacherUserId: TEACHER_ID,
+    });
+
+    expect(result.message.readCount).toBe(2);
+  });
 });
 
 function conversationFixture(): TeacherMessageConversationRecord {
@@ -244,6 +260,7 @@ function messageFixture(
     },
     reactions: [],
     attachments: [],
+    reads: [],
     _count: { reads: 0 },
     ...overrides,
   } as unknown as TeacherMessageRecord;

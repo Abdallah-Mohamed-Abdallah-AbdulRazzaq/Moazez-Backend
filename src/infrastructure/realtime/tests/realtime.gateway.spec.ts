@@ -208,13 +208,16 @@ describe('RealtimeGateway', () => {
   });
 
   it('joins authorized sockets to the expected conversation room', async () => {
+    const publisher = publisherMock();
+    const presenceService = presenceServiceMock();
+    const typingService = typingServiceMock();
     const gateway = new RealtimeGateway(
       authServiceMock(),
       accessServiceMock(),
-      publisherMock(),
+      publisher,
       configServiceMock(),
-      presenceServiceMock(),
-      typingServiceMock(),
+      presenceService,
+      typingService,
     );
     const client = socketMock(authenticatedSocketData());
 
@@ -227,6 +230,12 @@ describe('RealtimeGateway', () => {
     expect(client.join).toHaveBeenCalledWith(
       'school:school-1:conversation:conversation-1',
     );
+    expect(publisher.publishToConversation).not.toHaveBeenCalled();
+    expect(publisher.publishToUser).not.toHaveBeenCalled();
+    expect(publisher.publishToSchool).not.toHaveBeenCalled();
+    expect(presenceService.registerSocket).not.toHaveBeenCalled();
+    expect(typingService.startTyping).not.toHaveBeenCalled();
+    expect(typingService.stopTyping).not.toHaveBeenCalled();
   });
 
   it('leaves the expected conversation room for authenticated sockets', async () => {
@@ -368,10 +377,13 @@ function accessServiceMock(
   } as unknown as jest.Mocked<RealtimeCommunicationAccessService>;
 }
 
-function publisherMock(): RealtimePublisherService {
+function publisherMock(): jest.Mocked<RealtimePublisherService> {
   return {
     bindServer: jest.fn(),
-  } as unknown as RealtimePublisherService;
+    publishToSchool: jest.fn().mockReturnValue(true),
+    publishToUser: jest.fn().mockReturnValue(true),
+    publishToConversation: jest.fn().mockReturnValue(true),
+  } as unknown as jest.Mocked<RealtimePublisherService>;
 }
 
 function presenceServiceMock(): jest.Mocked<RealtimePresenceService> {

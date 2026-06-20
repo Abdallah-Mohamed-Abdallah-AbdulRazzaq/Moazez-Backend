@@ -1,6 +1,6 @@
 import {
   CommunicationConversationReadResult,
-  CommunicationMessageReadRecord,
+  CommunicationMessageReadResult,
   CommunicationReadSummaryResult,
 } from '../infrastructure/communication-message.repository';
 import {
@@ -20,6 +20,7 @@ describe('communication message read presenter', () => {
       messageId: 'message-1',
       userId: 'actor-1',
       readAt: '2026-05-02T09:00:00.000Z',
+      readCount: 2,
     });
     expect(json).not.toContain('schoolId');
     expect(json).not.toContain('school-1');
@@ -31,11 +32,13 @@ describe('communication message read presenter', () => {
         conversationId: 'conversation-1',
         readAt: new Date('2026-05-02T09:00:00.000Z'),
         markedCount: 2,
+        messages: [{ messageId: 'message-1', readCount: 3 }],
       }),
     ).toEqual({
       conversationId: 'conversation-1',
       readAt: '2026-05-02T09:00:00.000Z',
       markedCount: 2,
+      messages: [{ messageId: 'message-1', readCount: 3 }],
     });
 
     expect(
@@ -56,7 +59,7 @@ describe('communication message read presenter', () => {
   });
 });
 
-function readRecord(): CommunicationMessageReadRecord {
+function readRecord(): CommunicationMessageReadResult {
   return {
     id: 'read-1',
     schoolId: 'school-1',
@@ -67,5 +70,8 @@ function readRecord(): CommunicationMessageReadRecord {
     metadata: null,
     createdAt: new Date('2026-05-02T09:00:00.000Z'),
     updatedAt: new Date('2026-05-02T09:00:00.000Z'),
+    readCount: 2,
+    wasCreated: true,
+    isSenderRead: false,
   };
 }

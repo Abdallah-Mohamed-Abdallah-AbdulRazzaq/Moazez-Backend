@@ -1,11 +1,11 @@
 import {
   CommunicationConversationReadResult,
-  CommunicationMessageReadRecord,
+  CommunicationMessageReadResult,
   CommunicationReadSummaryResult,
 } from '../infrastructure/communication-message.repository';
 
 export function presentCommunicationMessageReadReceipt(
-  read: CommunicationMessageReadRecord,
+  read: CommunicationMessageReadResult,
 ) {
   return {
     id: read.id,
@@ -13,8 +13,9 @@ export function presentCommunicationMessageReadReceipt(
     messageId: read.messageId,
     userId: read.userId,
     readAt: read.readAt.toISOString(),
-    createdAt: read.createdAt.toISOString(),
-    updatedAt: read.updatedAt.toISOString(),
+    readCount: read.readCount,
+    createdAt: presentNullableDate(read.createdAt),
+    updatedAt: presentNullableDate(read.updatedAt),
   };
 }
 
@@ -25,6 +26,7 @@ export function presentCommunicationConversationReadResult(
     conversationId: result.conversationId,
     readAt: result.readAt.toISOString(),
     markedCount: result.markedCount,
+    messages: result.messages,
   };
 }
 
@@ -38,4 +40,8 @@ export function presentCommunicationReadSummary(
     limit: result.limit,
     page: result.page,
   };
+}
+
+function presentNullableDate(value: Date | null): string | null {
+  return value ? value.toISOString() : null;
 }

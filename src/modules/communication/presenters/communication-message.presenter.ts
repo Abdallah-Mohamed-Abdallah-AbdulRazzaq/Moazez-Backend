@@ -63,7 +63,7 @@ export function presentCommunicationMessage(
     createdAt: message.createdAt.toISOString(),
     updatedAt: message.updatedAt.toISOString(),
     metadata: sanitizeCommunicationMessageMetadata(message.metadata),
-    readCount: message._count.reads,
+    readCount: countReadUsersExcludingSender(message),
   };
 }
 
@@ -158,4 +158,13 @@ function presentEnum(value: string): string {
 
 function presentNullableDate(value: Date | null): string | null {
   return value ? value.toISOString() : null;
+}
+
+function countReadUsersExcludingSender(message: {
+  senderUserId: string | null;
+  reads: Array<{ userId: string }>;
+}): number {
+  return message.reads.filter(
+    (read) => !message.senderUserId || read.userId !== message.senderUserId,
+  ).length;
 }

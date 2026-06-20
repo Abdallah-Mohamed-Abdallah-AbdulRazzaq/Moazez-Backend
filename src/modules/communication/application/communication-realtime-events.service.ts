@@ -5,7 +5,7 @@ import { RealtimePublisherService } from '../../../infrastructure/realtime/realt
 import { CommunicationMessageAttachmentRecord } from '../infrastructure/communication-message-attachment.repository';
 import {
   CommunicationConversationReadResult,
-  CommunicationMessageReadRecord,
+  CommunicationMessageReadResult,
   CommunicationMessageRecord,
 } from '../infrastructure/communication-message.repository';
 import { CommunicationModerationMessageRecord } from '../infrastructure/communication-moderation.repository';
@@ -96,7 +96,7 @@ export class CommunicationRealtimeEventsService {
 
   publishMessageRead(
     schoolId: string,
-    read: CommunicationMessageReadRecord,
+    read: CommunicationMessageReadResult,
   ): void {
     if (
       !hasRequiredIds(
@@ -118,6 +118,7 @@ export class CommunicationRealtimeEventsService {
         messageId: read.messageId,
         readerId: read.userId,
         readAt: read.readAt.toISOString(),
+        readCount: read.readCount,
         eventAt: eventTimestamp(),
       },
     );
@@ -147,6 +148,7 @@ export class CommunicationRealtimeEventsService {
         readerId: params.readerId,
         readAt: params.result.readAt.toISOString(),
         markedCount: params.result.markedCount,
+        messages: params.result.messages,
         eventAt: eventTimestamp(),
       },
     );

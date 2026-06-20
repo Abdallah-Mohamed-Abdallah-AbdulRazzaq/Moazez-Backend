@@ -237,6 +237,7 @@ function createUseCases(): {
         conversationId: CONVERSATION_ID,
         readAt: '2026-09-18T10:00:00.000Z',
         markedCount: 2,
+        messages: [{ messageId: 'message-1', readCount: 1 }],
       }),
     ),
   } as unknown as jest.Mocked<MarkCommunicationConversationReadUseCase>;
@@ -349,6 +350,7 @@ function messageFixture(
     },
     reactions: [],
     attachments: [],
+    reads: [],
     _count: { reads: 0 },
     ...overrides,
   } as unknown as TeacherMessageRecord;

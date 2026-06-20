@@ -12,6 +12,7 @@ import {
   RequestContext,
   runWithRequestContext,
 } from '../../../common/context/request-context';
+import { NotFoundDomainException } from '../../../common/exceptions/domain-exception';
 import {
   CreateCommunicationMessageUseCase,
   DeleteCommunicationMessageUseCase,
@@ -39,7 +40,7 @@ import {
   CommunicationMessageAuditInput,
   CommunicationMessageConversationAccessRecord,
   CommunicationMessageParticipantAccessRecord,
-  CommunicationMessageReadRecord,
+  CommunicationMessageReadResult,
   CommunicationMessageRecord,
   CommunicationMessageRepository,
 } from '../infrastructure/communication-message.repository';
@@ -249,6 +250,7 @@ describe('communication message use cases', () => {
       createCurrentSchoolMessage: jest.fn().mockResolvedValue(
         messageRecord({
           body: 'Created message',
+          clientMessageId: 'client-1',
           metadata: { source: 'unit', body: 'blocked metadata' },
         }),
       ),
@@ -260,7 +262,10 @@ describe('communication message use cases', () => {
         repository,
         policyRepositoryMock(),
         new CommunicationRealtimeEventsService(publisher),
-      ).execute(CONVERSATION_ID, { body: 'Created message' }),
+      ).execute(CONVERSATION_ID, {
+        body: 'Created message',
+        clientMessageId: 'client-1',
+      }),
     );
 
     expect(publisher.publishToConversation).toHaveBeenCalledWith(
@@ -273,6 +278,7 @@ describe('communication message use cases', () => {
         message: expect.objectContaining({
           id: MESSAGE_ID,
           body: 'Created message',
+          clientMessageId: 'client-1',
           metadata: { source: 'unit' },
         }),
       }),
@@ -497,6 +503,42 @@ describe('communication message use cases', () => {
     expect(repository.createAuditLog).not.toHaveBeenCalled();
   });
 
+  it('mark message read treats missing scoped messages as not found', async () => {
+    const repository = repositoryMock({
+      findCurrentSchoolMessageById: jest.fn().mockResolvedValue(null),
+    });
+    let error: unknown;
+
+    try {
+      await withScope(() =>
+        new MarkCommunicationMessageReadUseCase(repository).execute(MESSAGE_ID),
+      );
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(NotFoundDomainException);
+    expect(repository.markCurrentSchoolMessageRead).not.toHaveBeenCalled();
+  });
+
+  it('mark message read rejects actors who are not conversation participants', async () => {
+    const repository = repositoryMock({
+      findActiveParticipantForActor: jest.fn().mockResolvedValue(null),
+    });
+    let error: unknown;
+
+    try {
+      await withScope(() =>
+        new MarkCommunicationMessageReadUseCase(repository).execute(MESSAGE_ID),
+      );
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(CommunicationConversationNotMemberException);
+    expect(repository.markCurrentSchoolMessageRead).not.toHaveBeenCalled();
+  });
+
   it('mark message read publishes message.read and still does not audit', async () => {
     const repository = repositoryMock({
       markCurrentSchoolMessageRead: jest.fn().mockResolvedValue(readRecord()),
@@ -519,18 +561,55 @@ describe('communication message use cases', () => {
         messageId: MESSAGE_ID,
         readerId: ACTOR_ID,
         readAt: '2026-05-02T09:00:00.000Z',
+        readCount: 1,
         eventAt: expect.any(String),
       }),
     );
     expect(repository.createAuditLog).not.toHaveBeenCalled();
   });
 
-  it('mark conversation read returns compact markedCount', async () => {
+  it('does not publish message.read when sender marks their own message read', async () => {
+    const repository = repositoryMock({
+      markCurrentSchoolMessageRead: jest.fn().mockResolvedValue(
+        readRecord({
+          id: null,
+          readCount: 2,
+          createdAt: null,
+          updatedAt: null,
+          isSenderRead: true,
+        }),
+      ),
+    });
+    const publisher = realtimePublisherMock();
+
+    const result = await withScope(() =>
+      new MarkCommunicationMessageReadUseCase(
+        repository,
+        new CommunicationRealtimeEventsService(publisher),
+      ).execute(MESSAGE_ID),
+    );
+
+    expect(result).toMatchObject({
+      id: null,
+      messageId: MESSAGE_ID,
+      userId: ACTOR_ID,
+      readCount: 2,
+      createdAt: null,
+      updatedAt: null,
+    });
+    expect(publisher.publishToConversation).not.toHaveBeenCalled();
+  });
+
+  it('mark conversation read returns affected message counts', async () => {
     const repository = repositoryMock({
       markCurrentSchoolConversationRead: jest.fn().mockResolvedValue({
         conversationId: CONVERSATION_ID,
         readAt: new Date('2026-05-02T09:00:00.000Z'),
         markedCount: 2,
+        messages: [
+          { messageId: 'message-1', readCount: 1 },
+          { messageId: 'message-2', readCount: 3 },
+        ],
       }),
     });
 
@@ -545,16 +624,24 @@ describe('communication message use cases', () => {
       conversationId: CONVERSATION_ID,
       readAt: '2026-05-02T09:00:00.000Z',
       markedCount: 2,
+      messages: [
+        { messageId: 'message-1', readCount: 1 },
+        { messageId: 'message-2', readCount: 3 },
+      ],
     });
     expect(repository.createAuditLog).not.toHaveBeenCalled();
   });
 
-  it('mark conversation read publishes markedCount', async () => {
+  it('mark conversation read publishes markedCount and affected message counts', async () => {
     const repository = repositoryMock({
       markCurrentSchoolConversationRead: jest.fn().mockResolvedValue({
         conversationId: CONVERSATION_ID,
         readAt: new Date('2026-05-02T09:00:00.000Z'),
         markedCount: 2,
+        messages: [
+          { messageId: 'message-1', readCount: 1 },
+          { messageId: 'message-2', readCount: 3 },
+        ],
       }),
     });
     const publisher = realtimePublisherMock();
@@ -575,6 +662,10 @@ describe('communication message use cases', () => {
         readerId: ACTOR_ID,
         readAt: '2026-05-02T09:00:00.000Z',
         markedCount: 2,
+        messages: [
+          { messageId: 'message-1', readCount: 1 },
+          { messageId: 'message-2', readCount: 3 },
+        ],
         eventAt: expect.any(String),
       }),
     );
@@ -638,6 +729,7 @@ function repositoryMock(
       conversationId: CONVERSATION_ID,
       readAt: new Date('2026-05-02T09:00:00.000Z'),
       markedCount: 1,
+      messages: [{ messageId: MESSAGE_ID, readCount: 1 }],
     }),
     loadCurrentSchoolConversationReadSummary: jest.fn().mockResolvedValue({
       conversationId: CONVERSATION_ID,
@@ -736,13 +828,14 @@ function messageRecord(
     createdAt: new Date('2026-05-02T08:00:00.000Z'),
     updatedAt: new Date('2026-05-02T08:00:00.000Z'),
     _count: { reads: 0 },
+    reads: [],
     ...(overrides ?? {}),
   };
 }
 
 function readRecord(
-  overrides?: Partial<CommunicationMessageReadRecord>,
-): CommunicationMessageReadRecord {
+  overrides?: Partial<CommunicationMessageReadResult>,
+): CommunicationMessageReadResult {
   return {
     id: 'read-1',
     schoolId: SCHOOL_ID,
@@ -753,6 +846,9 @@ function readRecord(
     metadata: null,
     createdAt: new Date('2026-05-02T09:00:00.000Z'),
     updatedAt: new Date('2026-05-02T09:00:00.000Z'),
+    readCount: 1,
+    wasCreated: true,
+    isSenderRead: false,
     ...(overrides ?? {}),
   };
 }

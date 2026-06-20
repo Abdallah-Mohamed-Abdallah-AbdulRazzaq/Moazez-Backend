@@ -50,6 +50,57 @@ describe('ParentMessagesPresenter', () => {
       expect(serialized).not.toContain(forbidden);
     }
   });
+
+  it('adds readCount aliases and ignores sender self-read rows', () => {
+    const ownMessage = ParentMessagesPresenter.presentMessage({
+      message: messageFixture({
+        senderUserId: 'parent-user-1',
+        reads: [
+          { userId: 'parent-user-1' },
+          { userId: 'teacher-user-1' },
+        ],
+        _count: { reads: 2 },
+      }),
+      parentUserId: 'parent-user-1',
+    });
+    const receivedMessage = ParentMessagesPresenter.presentMessage({
+      message: messageFixture({
+        senderUserId: 'teacher-user-1',
+        reads: [{ userId: 'parent-user-1' }],
+        _count: { reads: 1 },
+      }),
+      parentUserId: 'parent-user-1',
+    });
+
+    expect(ownMessage.message).toMatchObject({
+      readCount: 1,
+      read_count: 1,
+      isRead: true,
+      is_read: true,
+    });
+    expect(receivedMessage.message).toMatchObject({
+      readCount: 1,
+      read_count: 1,
+      isRead: true,
+      is_read: true,
+    });
+  });
+
+  it('keeps own sent messages unread when only the sender has a historical read row', () => {
+    const ownMessage = ParentMessagesPresenter.presentMessage({
+      message: messageFixture({
+        senderUserId: 'parent-user-1',
+        reads: [{ userId: 'parent-user-1' }],
+        _count: { reads: 1 },
+      }),
+      parentUserId: 'parent-user-1',
+    });
+
+    expect(ownMessage.message.readCount).toBe(0);
+    expect(ownMessage.message.read_count).toBe(0);
+    expect(ownMessage.message.isRead).toBe(false);
+    expect(ownMessage.message.is_read).toBe(false);
+  });
 });
 
 function messageFixture(

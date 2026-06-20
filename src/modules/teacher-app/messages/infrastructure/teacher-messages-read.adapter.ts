@@ -75,6 +75,11 @@ const MESSAGE_SELECT = {
       },
     },
   },
+  reads: {
+    select: {
+      userId: true,
+    },
+  },
   _count: {
     select: {
       reads: true,

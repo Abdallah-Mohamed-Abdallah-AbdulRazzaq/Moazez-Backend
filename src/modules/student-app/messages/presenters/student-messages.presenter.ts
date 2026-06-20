@@ -213,8 +213,8 @@ function presentMessage(params: {
   const readByStudent = params.message.reads.some(
     (read) => read.userId === params.studentUserId,
   );
-  const isRead =
-    senderType === 'me' ? params.message._count.reads > 0 : readByStudent;
+  const readCount = countReadUsersExcludingSender(params.message);
+  const isRead = senderType === 'me' ? readCount > 0 : readByStudent;
 
   return {
     id: params.message.id,
@@ -247,6 +247,8 @@ function presentMessage(params: {
     time: createdAt.slice(11, 16),
     isRead,
     is_read: isRead,
+    readCount,
+    read_count: readCount,
     audio_url: null,
     audio_duration: null,
   };
@@ -336,4 +338,13 @@ function fullName(user: { firstName: string; lastName: string }): string {
 
 function presentNullableDate(value: Date | null): string | null {
   return value ? value.toISOString() : null;
+}
+
+function countReadUsersExcludingSender(message: {
+  senderUserId: string | null;
+  reads: Array<{ userId: string }>;
+}): number {
+  return message.reads.filter(
+    (read) => !message.senderUserId || read.userId !== message.senderUserId,
+  ).length;
 }
