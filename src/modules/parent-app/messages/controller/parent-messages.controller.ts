@@ -13,6 +13,10 @@ import {
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import {
+  GetParentMessageInfoUseCase,
+  GetParentMessageReadersUseCase,
+} from '../application/get-parent-message-info.use-cases';
 import { GetParentMessageConversationUseCase } from '../application/get-parent-message-conversation.use-case';
 import { ListParentConversationMessagesUseCase } from '../application/list-parent-conversation-messages.use-case';
 import { ListParentMessageConversationsUseCase } from '../application/list-parent-message-conversations.use-case';
@@ -24,8 +28,11 @@ import {
   ParentConversationMessageResponseDto,
   ParentConversationMessagesResponseDto,
   ParentConversationReadResponseDto,
+  ParentMessageInfoResponseDto,
   ParentMessageConversationResponseDto,
   ParentMessageConversationsResponseDto,
+  ParentMessageReadersQueryDto,
+  ParentMessageReadersResponseDto,
   SendParentConversationMessageDto,
 } from '../dto/parent-messages.dto';
 
@@ -39,6 +46,8 @@ export class ParentMessagesController {
     private readonly listParentConversationMessagesUseCase: ListParentConversationMessagesUseCase,
     private readonly sendParentConversationMessageUseCase: SendParentConversationMessageUseCase,
     private readonly markParentConversationReadUseCase: MarkParentConversationReadUseCase,
+    private readonly getParentMessageReadersUseCase: GetParentMessageReadersUseCase,
+    private readonly getParentMessageInfoUseCase: GetParentMessageInfoUseCase,
   ) {}
 
   @Get('conversations')
@@ -65,6 +74,34 @@ export class ParentMessagesController {
   ): Promise<ParentConversationMessagesResponseDto> {
     return this.listParentConversationMessagesUseCase.execute({
       conversationId,
+      query,
+    });
+  }
+
+  @Get('conversations/:conversationId/messages/:messageId/readers')
+  @ApiOkResponse({ type: ParentMessageReadersResponseDto })
+  getMessageReaders(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Query() query: ParentMessageReadersQueryDto,
+  ): Promise<ParentMessageReadersResponseDto> {
+    return this.getParentMessageReadersUseCase.execute({
+      conversationId,
+      messageId,
+      query,
+    });
+  }
+
+  @Get('conversations/:conversationId/messages/:messageId/info')
+  @ApiOkResponse({ type: ParentMessageInfoResponseDto })
+  getMessageInfo(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Query() query: ParentMessageReadersQueryDto,
+  ): Promise<ParentMessageInfoResponseDto> {
+    return this.getParentMessageInfoUseCase.execute({
+      conversationId,
+      messageId,
       query,
     });
   }

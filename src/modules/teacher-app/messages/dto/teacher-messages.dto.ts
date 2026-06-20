@@ -43,6 +43,11 @@ export class TeacherMessageConversationParamsDto {
   conversationId!: string;
 }
 
+export class TeacherMessageInfoParamsDto extends TeacherMessageConversationParamsDto {
+  @IsUUID()
+  messageId!: string;
+}
+
 export class ListTeacherMessageConversationsQueryDto {
   @IsOptional()
   @IsIn(TEACHER_MESSAGE_CONVERSATION_TYPES)
@@ -100,6 +105,22 @@ export class ListTeacherConversationMessagesQueryDto {
   page?: number;
 }
 
+export class TeacherMessageReadersQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  page?: number;
+}
+
 export class SendTeacherConversationMessageDto {
   @IsString()
   @MaxLength(20000)
@@ -121,6 +142,14 @@ export class TeacherMessageSenderDto {
   displayName!: string | null;
   userType!: string | null;
   isMe!: boolean;
+}
+
+export class TeacherMessageReaderDto {
+  userId!: string;
+  displayName!: string;
+  userType!: string;
+  isMe!: boolean;
+  readAt!: string;
 }
 
 export class TeacherMessageReactionSummaryDto {
@@ -241,4 +270,35 @@ export class TeacherConversationReadResponseDto {
   conversationId!: string;
   readAt!: string;
   markedCount!: number;
+}
+
+export class TeacherMessageReadersResponseDto {
+  messageId!: string;
+  conversationId!: string;
+  readCount!: number;
+  participantsCount!: number;
+  fullyRead!: boolean;
+  readers!: TeacherMessageReaderDto[];
+  pagination!: TeacherMessagePaginationDto;
+}
+
+export class TeacherMessageInfoMessageDto {
+  messageId!: string;
+  conversationId!: string;
+  sender!: TeacherMessageSenderDto;
+  type!: string;
+  status!: string;
+  body!: string | null;
+  content!: string | null;
+  createdAt!: string;
+  readCount!: number;
+}
+
+export class TeacherMessageInfoResponseDto {
+  message!: TeacherMessageInfoMessageDto;
+  readers!: TeacherMessageReaderDto[];
+  readCount!: number;
+  participantsCount!: number;
+  fullyRead!: boolean;
+  pagination!: TeacherMessagePaginationDto;
 }

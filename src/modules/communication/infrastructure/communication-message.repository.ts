@@ -88,6 +88,63 @@ const COMMUNICATION_MESSAGE_READ_ARGS =
     },
   });
 
+const ACTIVE_MESSAGE_READER_PARTICIPANT_STATUSES = [
+  CommunicationParticipantStatus.ACTIVE,
+  CommunicationParticipantStatus.MUTED,
+] as const;
+
+const COMMUNICATION_MESSAGE_READER_USER_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  userType: true,
+  status: true,
+} satisfies Prisma.UserSelect;
+
+const COMMUNICATION_MESSAGE_INFO_ARGS =
+  Prisma.validator<Prisma.CommunicationMessageDefaultArgs>()({
+    select: {
+      id: true,
+      conversationId: true,
+      senderUserId: true,
+      kind: true,
+      status: true,
+      body: true,
+      clientMessageId: true,
+      replyToMessageId: true,
+      editedAt: true,
+      hiddenAt: true,
+      deletedAt: true,
+      sentAt: true,
+      createdAt: true,
+      updatedAt: true,
+      senderUser: {
+        select: COMMUNICATION_MESSAGE_READER_USER_SELECT,
+      },
+    },
+  });
+
+const COMMUNICATION_MESSAGE_READER_PARTICIPANT_ARGS =
+  Prisma.validator<Prisma.CommunicationConversationParticipantDefaultArgs>()({
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      user: {
+        select: COMMUNICATION_MESSAGE_READER_USER_SELECT,
+      },
+    },
+  });
+
+const COMMUNICATION_MESSAGE_READER_READ_ARGS =
+  Prisma.validator<Prisma.CommunicationMessageReadDefaultArgs>()({
+    select: {
+      id: true,
+      userId: true,
+      readAt: true,
+    },
+  });
+
 export type CommunicationMessageRecord = Prisma.CommunicationMessageGetPayload<
   typeof COMMUNICATION_MESSAGE_ARGS
 >;
@@ -106,6 +163,23 @@ export type CommunicationMessageReadRecord =
   Prisma.CommunicationMessageReadGetPayload<
     typeof COMMUNICATION_MESSAGE_READ_ARGS
   >;
+
+export type CommunicationMessageInfoRecord =
+  Prisma.CommunicationMessageGetPayload<
+    typeof COMMUNICATION_MESSAGE_INFO_ARGS
+  >;
+
+export type CommunicationMessageReaderParticipantRecord =
+  Prisma.CommunicationConversationParticipantGetPayload<
+    typeof COMMUNICATION_MESSAGE_READER_PARTICIPANT_ARGS
+  >;
+
+export interface CommunicationMessageReaderCardRecord {
+  id: string;
+  userId: string;
+  readAt: Date;
+  user: CommunicationMessageReaderParticipantRecord['user'];
+}
 
 export interface CommunicationMessageReadResult {
   id: string | null;
@@ -185,6 +259,17 @@ export interface CommunicationReadSummaryResult {
     messageId: string;
     readCount: number;
   }>;
+  total: number;
+  limit: number;
+  page: number;
+}
+
+export interface CommunicationMessageReadersResult {
+  message: CommunicationMessageInfoRecord;
+  readers: CommunicationMessageReaderCardRecord[];
+  readCount: number;
+  participantsCount: number;
+  fullyRead: boolean;
   total: number;
   limit: number;
   page: number;
@@ -562,6 +647,83 @@ export class CommunicationMessageRepository {
     };
   }
 
+  async loadCurrentSchoolMessageReaders(input: {
+    messageId: string;
+    limit?: number;
+    page?: number;
+  }): Promise<CommunicationMessageReadersResult | null> {
+    const limit = resolveLimit(input.limit, 50);
+    const page = resolvePage(input.page);
+    const message = await this.scopedPrisma.communicationMessage.findFirst({
+      where: { id: input.messageId },
+      ...COMMUNICATION_MESSAGE_INFO_ARGS,
+    });
+
+    if (!message) return null;
+
+    const participants =
+      await this.scopedPrisma.communicationConversationParticipant.findMany({
+        where: {
+          conversationId: message.conversationId,
+          status: { in: [...ACTIVE_MESSAGE_READER_PARTICIPANT_STATUSES] },
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        ...COMMUNICATION_MESSAGE_READER_PARTICIPANT_ARGS,
+      });
+
+    const participantByUserId = new Map(
+      participants.map((participant) => [participant.userId, participant]),
+    );
+    const readerUserIds = participants
+      .map((participant) => participant.userId)
+      .filter(
+        (userId) => !message.senderUserId || userId !== message.senderUserId,
+      );
+    const readWhere: Prisma.CommunicationMessageReadWhereInput = {
+      messageId: message.id,
+      userId: { in: readerUserIds },
+    };
+
+    const [reads, total] = await Promise.all([
+      this.scopedPrisma.communicationMessageRead.findMany({
+        where: readWhere,
+        orderBy: [{ readAt: 'asc' }, { id: 'asc' }],
+        take: limit,
+        skip: (page - 1) * limit,
+        ...COMMUNICATION_MESSAGE_READER_READ_ARGS,
+      }),
+      this.scopedPrisma.communicationMessageRead.count({ where: readWhere }),
+    ]);
+
+    const readers = reads
+      .map((read) => {
+        const participant = participantByUserId.get(read.userId);
+        if (!participant) return null;
+
+        return {
+          id: read.id,
+          userId: read.userId,
+          readAt: read.readAt,
+          user: participant.user,
+        };
+      })
+      .filter(
+        (reader): reader is CommunicationMessageReaderCardRecord =>
+          reader !== null,
+      );
+
+    return {
+      message,
+      readers,
+      readCount: total,
+      participantsCount: participants.length,
+      fullyRead: participants.length > 0 ? total + 1 >= participants.length : false,
+      total,
+      limit,
+      page,
+    };
+  }
+
   private buildMessageWhere(
     conversationId: string,
     filters: CommunicationMessageListFilters,
@@ -787,4 +949,14 @@ function countReadUsersExcludingSender(message: {
   return message.reads.filter(
     (read) => !message.senderUserId || read.userId !== message.senderUserId,
   ).length;
+}
+
+function resolveLimit(limit: number | undefined, fallback: number): number {
+  if (!limit || Number.isNaN(limit)) return fallback;
+  return Math.min(Math.max(Math.trunc(limit), 1), 100);
+}
+
+function resolvePage(page?: number): number {
+  if (!page || Number.isNaN(page)) return 1;
+  return Math.max(Math.trunc(page), 1);
 }

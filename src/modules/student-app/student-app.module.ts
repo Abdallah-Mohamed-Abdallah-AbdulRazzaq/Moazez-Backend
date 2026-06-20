@@ -57,6 +57,10 @@ import { GetStudentLessonsTodayUseCase } from './lessons/application/get-student
 import { GetStudentLessonsWeekUseCase } from './lessons/application/get-student-lessons-week.use-case';
 import { StudentLessonsController } from './lessons/controller/student-lessons.controller';
 import { StudentLessonsReadAdapter } from './lessons/infrastructure/student-lessons-read.adapter';
+import {
+  GetStudentMessageInfoUseCase,
+  GetStudentMessageReadersUseCase,
+} from './messages/application/get-student-message-info.use-cases';
 import { GetStudentMessageConversationUseCase } from './messages/application/get-student-message-conversation.use-case';
 import { ListStudentConversationMessagesUseCase } from './messages/application/list-student-conversation-messages.use-case';
 import { ListStudentMessageConversationsUseCase } from './messages/application/list-student-message-conversations.use-case';
@@ -205,6 +209,8 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     ListStudentConversationMessagesUseCase,
     SendStudentConversationMessageUseCase,
     MarkStudentConversationReadUseCase,
+    GetStudentMessageReadersUseCase,
+    GetStudentMessageInfoUseCase,
     ListStudentNotificationsUseCase,
     GetStudentNotificationUseCase,
     GetStudentNotificationsSummaryUseCase,

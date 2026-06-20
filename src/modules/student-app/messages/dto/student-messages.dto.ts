@@ -103,6 +103,22 @@ export class ListStudentConversationMessagesQueryDto {
   page?: number;
 }
 
+export class StudentMessageReadersQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  page?: number;
+}
+
 export class SendStudentConversationMessageDto {
   @IsString()
   @IsNotEmpty()
@@ -121,6 +137,19 @@ export class StudentMessageSenderDto {
   displayName!: string | null;
   userType!: string | null;
   isMe!: boolean;
+}
+
+export class StudentMessageReaderDto {
+  userId!: string;
+  user_id!: string;
+  displayName!: string;
+  display_name!: string;
+  userType!: string;
+  user_type!: string;
+  isMe!: boolean;
+  is_me!: boolean;
+  readAt!: string;
+  read_at!: string;
 }
 
 export class StudentConversationLastMessageDto {
@@ -251,4 +280,47 @@ export class StudentConversationReadResponseDto {
   read_at!: string;
   markedCount!: number;
   marked_count!: number;
+}
+
+export class StudentMessageReadersResponseDto {
+  messageId!: string;
+  message_id!: string;
+  conversationId!: string;
+  conversation_id!: string;
+  readCount!: number;
+  read_count!: number;
+  participantsCount!: number;
+  participants_count!: number;
+  fullyRead!: boolean;
+  fully_read!: boolean;
+  readers!: StudentMessageReaderDto[];
+  pagination!: StudentMessagePaginationDto;
+}
+
+export class StudentMessageInfoMessageDto {
+  messageId!: string;
+  message_id!: string;
+  conversationId!: string;
+  conversation_id!: string;
+  sender!: StudentMessageSenderDto;
+  type!: string;
+  status!: string;
+  body!: string | null;
+  content!: string | null;
+  createdAt!: string;
+  created_at!: string;
+  readCount!: number;
+  read_count!: number;
+}
+
+export class StudentMessageInfoResponseDto {
+  message!: StudentMessageInfoMessageDto;
+  readers!: StudentMessageReaderDto[];
+  readCount!: number;
+  read_count!: number;
+  participantsCount!: number;
+  participants_count!: number;
+  fullyRead!: boolean;
+  fully_read!: boolean;
+  pagination!: StudentMessagePaginationDto;
 }

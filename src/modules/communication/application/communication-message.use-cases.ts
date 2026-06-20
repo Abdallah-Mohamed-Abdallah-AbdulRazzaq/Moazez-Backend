@@ -35,6 +35,7 @@ import {
   CreateCommunicationMessageDto,
   ListCommunicationMessagesQueryDto,
   MarkConversationReadDto,
+  MessageReadersQueryDto,
   ReadSummaryQueryDto,
   UpdateCommunicationMessageDto,
 } from '../dto/communication-message.dto';
@@ -53,6 +54,8 @@ import {
 } from '../presenters/communication-message.presenter';
 import {
   presentCommunicationConversationReadResult,
+  presentCommunicationMessageInfo,
+  presentCommunicationMessageReaders,
   presentCommunicationMessageReadReceipt,
   presentCommunicationReadSummary,
 } from '../presenters/communication-message-read.presenter';
@@ -221,6 +224,40 @@ export class GetCommunicationMessageUseCase {
     });
 
     return presentCommunicationMessage(message);
+  }
+}
+
+@Injectable()
+export class GetCommunicationMessageReadersUseCase {
+  constructor(
+    private readonly communicationMessageRepository: CommunicationMessageRepository,
+  ) {}
+
+  async execute(messageId: string, query: MessageReadersQueryDto = {}) {
+    const { result, scope } = await loadReadersResultForActor({
+      repository: this.communicationMessageRepository,
+      messageId,
+      query,
+    });
+
+    return presentCommunicationMessageReaders(result, scope.actorId);
+  }
+}
+
+@Injectable()
+export class GetCommunicationMessageInfoUseCase {
+  constructor(
+    private readonly communicationMessageRepository: CommunicationMessageRepository,
+  ) {}
+
+  async execute(messageId: string, query: MessageReadersQueryDto = {}) {
+    const { result, scope } = await loadReadersResultForActor({
+      repository: this.communicationMessageRepository,
+      messageId,
+      query,
+    });
+
+    return presentCommunicationMessageInfo(result, scope.actorId);
   }
 }
 
@@ -496,6 +533,34 @@ async function requireReplyTarget(params: {
   }
 
   return message;
+}
+
+async function loadReadersResultForActor(params: {
+  repository: CommunicationMessageRepository;
+  messageId: string;
+  query: MessageReadersQueryDto;
+}) {
+  const scope = requireCommunicationScope();
+  const message = await requireMessage(params.repository, params.messageId);
+  await assertActorCanViewConversation({
+    repository: params.repository,
+    conversationId: message.conversationId,
+    actorId: scope.actorId,
+  });
+
+  const result = await params.repository.loadCurrentSchoolMessageReaders({
+    messageId: message.id,
+    limit: params.query.limit,
+    page: params.query.page,
+  });
+
+  if (!result) {
+    throw new NotFoundDomainException('Message not found', {
+      messageId: params.messageId,
+    });
+  }
+
+  return { result, scope };
 }
 
 async function requireActorParticipant(params: {

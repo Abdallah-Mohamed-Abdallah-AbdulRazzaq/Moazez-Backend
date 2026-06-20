@@ -13,6 +13,10 @@ import {
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import {
+  GetStudentMessageInfoUseCase,
+  GetStudentMessageReadersUseCase,
+} from '../application/get-student-message-info.use-cases';
 import { GetStudentMessageConversationUseCase } from '../application/get-student-message-conversation.use-case';
 import { ListStudentConversationMessagesUseCase } from '../application/list-student-conversation-messages.use-case';
 import { ListStudentMessageConversationsUseCase } from '../application/list-student-message-conversations.use-case';
@@ -25,8 +29,11 @@ import {
   StudentConversationMessageResponseDto,
   StudentConversationMessagesResponseDto,
   StudentConversationReadResponseDto,
+  StudentMessageInfoResponseDto,
   StudentMessageConversationResponseDto,
   StudentMessageConversationsResponseDto,
+  StudentMessageReadersQueryDto,
+  StudentMessageReadersResponseDto,
 } from '../dto/student-messages.dto';
 
 @ApiTags('student-app')
@@ -39,6 +46,8 @@ export class StudentMessagesController {
     private readonly listStudentConversationMessagesUseCase: ListStudentConversationMessagesUseCase,
     private readonly sendStudentConversationMessageUseCase: SendStudentConversationMessageUseCase,
     private readonly markStudentConversationReadUseCase: MarkStudentConversationReadUseCase,
+    private readonly getStudentMessageReadersUseCase: GetStudentMessageReadersUseCase,
+    private readonly getStudentMessageInfoUseCase: GetStudentMessageInfoUseCase,
   ) {}
 
   @Get('conversations')
@@ -65,6 +74,34 @@ export class StudentMessagesController {
   ): Promise<StudentConversationMessagesResponseDto> {
     return this.listStudentConversationMessagesUseCase.execute({
       conversationId,
+      query,
+    });
+  }
+
+  @Get('conversations/:conversationId/messages/:messageId/readers')
+  @ApiOkResponse({ type: StudentMessageReadersResponseDto })
+  getMessageReaders(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Query() query: StudentMessageReadersQueryDto,
+  ): Promise<StudentMessageReadersResponseDto> {
+    return this.getStudentMessageReadersUseCase.execute({
+      conversationId,
+      messageId,
+      query,
+    });
+  }
+
+  @Get('conversations/:conversationId/messages/:messageId/info')
+  @ApiOkResponse({ type: StudentMessageInfoResponseDto })
+  getMessageInfo(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Query() query: StudentMessageReadersQueryDto,
+  ): Promise<StudentMessageInfoResponseDto> {
+    return this.getStudentMessageInfoUseCase.execute({
+      conversationId,
+      messageId,
       query,
     });
   }

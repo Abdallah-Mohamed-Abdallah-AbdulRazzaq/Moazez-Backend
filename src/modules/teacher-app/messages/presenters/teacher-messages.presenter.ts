@@ -1,12 +1,18 @@
 import {
+  CommunicationMessageInfoResponse,
+  CommunicationMessageReadersResponse,
+} from '../../../communication/presenters/communication-message-read.presenter';
+import {
   TeacherConversationMessageResponseDto,
   TeacherConversationMessagesResponseDto,
   TeacherConversationReadResponseDto,
+  TeacherMessageInfoResponseDto,
   TeacherMessageConversationCardDto,
   TeacherMessageConversationDetailDto,
   TeacherMessageConversationResponseDto,
   TeacherMessageConversationsResponseDto,
   TeacherMessageDto,
+  TeacherMessageReadersResponseDto,
 } from '../dto/teacher-messages.dto';
 import type {
   TeacherMessageConversationListResult,
@@ -106,6 +112,18 @@ export class TeacherMessagesPresenter {
       readAt: result.readAt,
       markedCount: result.markedCount,
     };
+  }
+
+  static presentMessageReaders(
+    result: CommunicationMessageReadersResponse,
+  ): TeacherMessageReadersResponseDto {
+    return result;
+  }
+
+  static presentMessageInfo(
+    result: CommunicationMessageInfoResponse,
+  ): TeacherMessageInfoResponseDto {
+    return result;
   }
 }
 

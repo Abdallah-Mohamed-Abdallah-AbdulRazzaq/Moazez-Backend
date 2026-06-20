@@ -1,10 +1,16 @@
 import {
   CreateCommunicationMessageUseCase,
+  GetCommunicationMessageInfoUseCase,
+  GetCommunicationMessageReadersUseCase,
   MarkCommunicationConversationReadUseCase,
 } from '../../../communication/application/communication-message.use-cases';
 import { ParentAppAccessService } from '../../access/parent-app-access.service';
 import { ParentAppRequiredParentException } from '../../shared/parent-app-errors';
 import type { ParentAppContext } from '../../shared/parent-app.types';
+import {
+  GetParentMessageInfoUseCase,
+  GetParentMessageReadersUseCase,
+} from '../application/get-parent-message-info.use-cases';
 import { ListParentMessageConversationsUseCase } from '../application/list-parent-message-conversations.use-case';
 import { MarkParentConversationReadUseCase } from '../application/mark-parent-conversation-read.use-case';
 import { SendParentConversationMessageUseCase } from '../application/send-parent-conversation-message.use-case';
@@ -46,9 +52,13 @@ describe('Parent Messages use-cases', () => {
     const {
       sendUseCase,
       markReadUseCase,
+      readersUseCase,
+      infoUseCase,
       readAdapter,
       createMessageUseCase,
       markConversationReadUseCase,
+      getMessageReadersUseCase,
+      getMessageInfoUseCase,
     } = createUseCasesWithValidAccess();
     readAdapter.findConversationForParent.mockResolvedValue(null);
 
@@ -61,8 +71,22 @@ describe('Parent Messages use-cases', () => {
     await expect(
       markReadUseCase.execute('conversation-1'),
     ).rejects.toMatchObject({ code: 'not_found' });
+    await expect(
+      readersUseCase.execute({
+        conversationId: 'conversation-1',
+        messageId: 'message-1',
+      }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    await expect(
+      infoUseCase.execute({
+        conversationId: 'conversation-1',
+        messageId: 'message-1',
+      }),
+    ).rejects.toMatchObject({ code: 'not_found' });
     expect(createMessageUseCase.execute).not.toHaveBeenCalled();
     expect(markConversationReadUseCase.execute).not.toHaveBeenCalled();
+    expect(getMessageReadersUseCase.execute).not.toHaveBeenCalled();
+    expect(getMessageInfoUseCase.execute).not.toHaveBeenCalled();
   });
 
   it('sends text-only messages through Communication core after parent participant check', async () => {
@@ -84,16 +108,90 @@ describe('Parent Messages use-cases', () => {
       { type: 'text', body: 'Hello parent chat' },
     );
   });
+
+  it('returns parent message readers with dual aliases and no ownership override', async () => {
+    const { readersUseCase, readAdapter, getMessageReadersUseCase } =
+      createUseCasesWithValidAccess();
+    readAdapter.findConversationForParent.mockResolvedValue(
+      conversationFixture(),
+    );
+    readAdapter.findMessageForParent.mockResolvedValue(messageFixture());
+    getMessageReadersUseCase.execute.mockResolvedValue(coreReadersFixture());
+
+    const result = await readersUseCase.execute({
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+      query: { limit: 10 },
+    });
+
+    expect(getMessageReadersUseCase.execute).toHaveBeenCalledWith(
+      'message-1',
+      { limit: 10 },
+    );
+    expect(result).toMatchObject({
+      messageId: 'message-1',
+      message_id: 'message-1',
+      readCount: 2,
+      read_count: 2,
+      participantsCount: 3,
+      participants_count: 3,
+      fullyRead: true,
+      fully_read: true,
+      readers: [
+        {
+          userId: 'reader-1',
+          user_id: 'reader-1',
+          displayName: 'Mona Parent',
+          display_name: 'Mona Parent',
+          isMe: false,
+          is_me: false,
+        },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain('schoolId');
+    expect(JSON.stringify(result)).not.toContain('recipientUserId');
+  });
+
+  it('returns parent message info through the same safe core read model', async () => {
+    const { infoUseCase, readAdapter, getMessageInfoUseCase } =
+      createUseCasesWithValidAccess();
+    readAdapter.findConversationForParent.mockResolvedValue(
+      conversationFixture(),
+    );
+    readAdapter.findMessageForParent.mockResolvedValue(messageFixture());
+    getMessageInfoUseCase.execute.mockResolvedValue(coreInfoFixture());
+
+    const result = await infoUseCase.execute({
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+    });
+
+    expect(getMessageInfoUseCase.execute).toHaveBeenCalledWith(
+      'message-1',
+      undefined,
+    );
+    expect(result.message).toMatchObject({
+      messageId: 'message-1',
+      message_id: 'message-1',
+      body: 'Hello',
+      readCount: 2,
+      read_count: 2,
+    });
+  });
 });
 
 function createUseCases(): {
   listUseCase: ListParentMessageConversationsUseCase;
   sendUseCase: SendParentConversationMessageUseCase;
   markReadUseCase: MarkParentConversationReadUseCase;
+  readersUseCase: GetParentMessageReadersUseCase;
+  infoUseCase: GetParentMessageInfoUseCase;
   accessService: jest.Mocked<ParentAppAccessService>;
   readAdapter: jest.Mocked<ParentMessagesReadAdapter>;
   createMessageUseCase: jest.Mocked<CreateCommunicationMessageUseCase>;
   markConversationReadUseCase: jest.Mocked<MarkCommunicationConversationReadUseCase>;
+  getMessageReadersUseCase: jest.Mocked<GetCommunicationMessageReadersUseCase>;
+  getMessageInfoUseCase: jest.Mocked<GetCommunicationMessageInfoUseCase>;
 } {
   const accessService = {
     assertCurrentParent: jest.fn(),
@@ -111,6 +209,12 @@ function createUseCases(): {
   const markConversationReadUseCase = {
     execute: jest.fn(),
   } as unknown as jest.Mocked<MarkCommunicationConversationReadUseCase>;
+  const getMessageReadersUseCase = {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<GetCommunicationMessageReadersUseCase>;
+  const getMessageInfoUseCase = {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<GetCommunicationMessageInfoUseCase>;
 
   return {
     listUseCase: new ListParentMessageConversationsUseCase(
@@ -127,10 +231,22 @@ function createUseCases(): {
       readAdapter,
       markConversationReadUseCase,
     ),
+    readersUseCase: new GetParentMessageReadersUseCase(
+      accessService,
+      readAdapter,
+      getMessageReadersUseCase,
+    ),
+    infoUseCase: new GetParentMessageInfoUseCase(
+      accessService,
+      readAdapter,
+      getMessageInfoUseCase,
+    ),
     accessService,
     readAdapter,
     createMessageUseCase,
     markConversationReadUseCase,
+    getMessageReadersUseCase,
+    getMessageInfoUseCase,
   };
 }
 
@@ -197,5 +313,55 @@ function messageFixture() {
     },
     reads: [],
     _count: { reads: 0 },
+  };
+}
+
+function coreReadersFixture() {
+  return {
+    messageId: 'message-1',
+    conversationId: 'conversation-1',
+    readCount: 2,
+    participantsCount: 3,
+    fullyRead: true,
+    readers: [
+      {
+        userId: 'reader-1',
+        displayName: 'Mona Parent',
+        userType: 'parent',
+        isMe: false,
+        readAt: '2026-05-02T09:00:00.000Z',
+      },
+    ],
+    pagination: {
+      page: 1,
+      limit: 50,
+      total: 2,
+    },
+  };
+}
+
+function coreInfoFixture() {
+  return {
+    message: {
+      messageId: 'message-1',
+      conversationId: 'conversation-1',
+      sender: {
+        userId: 'parent-user-1',
+        displayName: 'Mona Parent',
+        userType: 'parent',
+        isMe: true,
+      },
+      type: 'text',
+      status: 'sent',
+      body: 'Hello',
+      content: 'Hello',
+      createdAt: '2026-05-02T08:00:00.000Z',
+      readCount: 2,
+    },
+    readers: coreReadersFixture().readers,
+    readCount: 2,
+    participantsCount: 3,
+    fullyRead: true,
+    pagination: coreReadersFixture().pagination,
   };
 }

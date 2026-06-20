@@ -14,7 +14,9 @@ import { RequiredPermissions } from '../../../common/decorators/required-permiss
 import {
   CreateCommunicationMessageUseCase,
   DeleteCommunicationMessageUseCase,
+  GetCommunicationMessageInfoUseCase,
   GetCommunicationMessageUseCase,
+  GetCommunicationMessageReadersUseCase,
   GetCommunicationReadSummaryUseCase,
   ListCommunicationMessagesUseCase,
   MarkCommunicationConversationReadUseCase,
@@ -23,8 +25,11 @@ import {
 } from '../application/communication-message.use-cases';
 import {
   CreateCommunicationMessageDto,
+  CommunicationMessageInfoResponseDto,
+  CommunicationMessageReadersResponseDto,
   ListCommunicationMessagesQueryDto,
   MarkConversationReadDto,
+  MessageReadersQueryDto,
   ReadSummaryQueryDto,
   UpdateCommunicationMessageDto,
 } from '../dto/communication-message.dto';
@@ -42,6 +47,8 @@ export class CommunicationMessageController {
     private readonly markCommunicationMessageReadUseCase: MarkCommunicationMessageReadUseCase,
     private readonly markCommunicationConversationReadUseCase: MarkCommunicationConversationReadUseCase,
     private readonly getCommunicationReadSummaryUseCase: GetCommunicationReadSummaryUseCase,
+    private readonly getCommunicationMessageReadersUseCase: GetCommunicationMessageReadersUseCase,
+    private readonly getCommunicationMessageInfoUseCase: GetCommunicationMessageInfoUseCase,
   ) {}
 
   @Get('conversations/:conversationId/messages')
@@ -96,6 +103,27 @@ export class CommunicationMessageController {
   @RequiredPermissions('communication.messages.view')
   getMessage(@Param('messageId', new ParseUUIDPipe()) messageId: string) {
     return this.getCommunicationMessageUseCase.execute(messageId);
+  }
+
+  @Get('messages/:messageId/readers')
+  @RequiredPermissions('communication.messages.view')
+  getMessageReaders(
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Query() query: MessageReadersQueryDto,
+  ): Promise<CommunicationMessageReadersResponseDto> {
+    return this.getCommunicationMessageReadersUseCase.execute(
+      messageId,
+      query,
+    );
+  }
+
+  @Get('messages/:messageId/info')
+  @RequiredPermissions('communication.messages.view')
+  getMessageInfo(
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Query() query: MessageReadersQueryDto,
+  ): Promise<CommunicationMessageInfoResponseDto> {
+    return this.getCommunicationMessageInfoUseCase.execute(messageId, query);
   }
 
   @Patch('messages/:messageId')

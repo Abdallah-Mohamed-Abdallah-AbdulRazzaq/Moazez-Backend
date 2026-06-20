@@ -1216,6 +1216,39 @@ describe('Communication policy tenancy isolation (security)', () => {
     expect(JSON.stringify(readSummary.body)).not.toContain('schoolId');
     expect(JSON.stringify(readSummary.body)).not.toContain('firstName');
 
+    const readers = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageId}/readers`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(readers.body).toMatchObject({
+      messageId,
+      conversationId: conversationAId,
+      readCount: expect.any(Number),
+      participantsCount: expect.any(Number),
+      fullyRead: expect.any(Boolean),
+      readers: expect.any(Array),
+    });
+    expect(JSON.stringify(readers.body)).not.toContain('schoolId');
+    expect(JSON.stringify(readers.body)).not.toContain('roleId');
+    expect(JSON.stringify(readers.body)).not.toContain('metadata');
+
+    const info = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageId}/info`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(info.body).toMatchObject({
+      message: {
+        messageId,
+        conversationId: conversationAId,
+        readCount: expect.any(Number),
+      },
+      readCount: expect.any(Number),
+      participantsCount: expect.any(Number),
+      fullyRead: expect.any(Boolean),
+    });
+    expect(JSON.stringify(info.body)).not.toContain('schoolId');
+    expect(JSON.stringify(info.body)).not.toContain('metadata');
+
     const deleted = await request(app.getHttpServer())
       .delete(`${GLOBAL_PREFIX}/communication/messages/${messageId}`)
       .set('Authorization', `Bearer ${accessToken}`)
@@ -1259,6 +1292,14 @@ describe('Communication policy tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageBId}/readers`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageBId}/info`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
       .get(
         `${GLOBAL_PREFIX}/communication/conversations/${conversationBId}/messages`,
       )
@@ -1287,6 +1328,14 @@ describe('Communication policy tenancy isolation (security)', () => {
       .expect(403);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/readers`)
+      .set('Authorization', `Bearer ${noAccess.accessToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/info`)
       .set('Authorization', `Bearer ${noAccess.accessToken}`)
       .expect(403);
     await request(app.getHttpServer())
@@ -1472,6 +1521,20 @@ describe('Communication policy tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${messageActor.accessToken}`)
       .expect(403);
     expect(nonParticipantRead.body.error.code).toBe(
+      'communication.conversation.not_member',
+    );
+    const nonParticipantReaders = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/readers`)
+      .set('Authorization', `Bearer ${messageActor.accessToken}`)
+      .expect(403);
+    expect(nonParticipantReaders.body.error.code).toBe(
+      'communication.conversation.not_member',
+    );
+    const nonParticipantInfo = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/messages/${messageAId}/info`)
+      .set('Authorization', `Bearer ${messageActor.accessToken}`)
+      .expect(403);
+    expect(nonParticipantInfo.body.error.code).toBe(
       'communication.conversation.not_member',
     );
 

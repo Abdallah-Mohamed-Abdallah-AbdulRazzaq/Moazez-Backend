@@ -1,13 +1,19 @@
 import { CommunicationMessageStatus } from '@prisma/client';
+import type {
+  CommunicationMessageInfoResponse,
+  CommunicationMessageReadersResponse,
+} from '../../../communication/presenters/communication-message-read.presenter';
 import {
   ParentConversationMessageResponseDto,
   ParentConversationMessagesResponseDto,
   ParentConversationReadResponseDto,
+  ParentMessageInfoResponseDto,
   ParentMessageConversationCardDto,
   ParentMessageConversationDetailDto,
   ParentMessageConversationResponseDto,
   ParentMessageConversationsResponseDto,
   ParentMessageDto,
+  ParentMessageReadersResponseDto,
 } from '../dto/parent-messages.dto';
 import type {
   ParentMessageConversationListResult,
@@ -92,6 +98,74 @@ export class ParentMessagesPresenter {
       read_at: result.readAt,
       markedCount: result.markedCount,
       marked_count: result.markedCount,
+    };
+  }
+
+  static presentMessageReaders(
+    result: CommunicationMessageReadersResponse,
+  ): ParentMessageReadersResponseDto {
+    return {
+      messageId: result.messageId,
+      message_id: result.messageId,
+      conversationId: result.conversationId,
+      conversation_id: result.conversationId,
+      readCount: result.readCount,
+      read_count: result.readCount,
+      participantsCount: result.participantsCount,
+      participants_count: result.participantsCount,
+      fullyRead: result.fullyRead,
+      fully_read: result.fullyRead,
+      readers: result.readers.map((reader) => ({
+        userId: reader.userId,
+        user_id: reader.userId,
+        displayName: reader.displayName,
+        display_name: reader.displayName,
+        userType: reader.userType,
+        user_type: reader.userType,
+        isMe: reader.isMe,
+        is_me: reader.isMe,
+        readAt: reader.readAt,
+        read_at: reader.readAt,
+      })),
+      pagination: result.pagination,
+    };
+  }
+
+  static presentMessageInfo(
+    result: CommunicationMessageInfoResponse,
+  ): ParentMessageInfoResponseDto {
+    return {
+      message: {
+        messageId: result.message.messageId,
+        message_id: result.message.messageId,
+        conversationId: result.message.conversationId,
+        conversation_id: result.message.conversationId,
+        sender: result.message.sender,
+        type: result.message.type,
+        status: result.message.status,
+        body: result.message.body,
+        content: result.message.content,
+        createdAt: result.message.createdAt,
+        created_at: result.message.createdAt,
+        readCount: result.message.readCount,
+        read_count: result.message.readCount,
+      },
+      readers: this.presentMessageReaders({
+        messageId: result.message.messageId,
+        conversationId: result.message.conversationId,
+        readCount: result.readCount,
+        participantsCount: result.participantsCount,
+        fullyRead: result.fullyRead,
+        readers: result.readers,
+        pagination: result.pagination,
+      }).readers,
+      readCount: result.readCount,
+      read_count: result.readCount,
+      participantsCount: result.participantsCount,
+      participants_count: result.participantsCount,
+      fullyRead: result.fullyRead,
+      fully_read: result.fullyRead,
+      pagination: result.pagination,
     };
   }
 }

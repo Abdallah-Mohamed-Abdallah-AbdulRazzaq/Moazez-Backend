@@ -12,8 +12,16 @@ import type {
   StudentAppContext,
   StudentAppCurrentStudentWithEnrollment,
 } from '../../shared/student-app.types';
-import { CreateCommunicationMessageUseCase } from '../../../communication/application/communication-message.use-cases';
-import { MarkCommunicationConversationReadUseCase } from '../../../communication/application/communication-message.use-cases';
+import {
+  CreateCommunicationMessageUseCase,
+  GetCommunicationMessageInfoUseCase,
+  GetCommunicationMessageReadersUseCase,
+  MarkCommunicationConversationReadUseCase,
+} from '../../../communication/application/communication-message.use-cases';
+import {
+  GetStudentMessageInfoUseCase,
+  GetStudentMessageReadersUseCase,
+} from '../application/get-student-message-info.use-cases';
 import { ListStudentMessageConversationsUseCase } from '../application/list-student-message-conversations.use-case';
 import { ListStudentConversationMessagesUseCase } from '../application/list-student-conversation-messages.use-case';
 import { SendStudentConversationMessageUseCase } from '../application/send-student-conversation-message.use-case';
@@ -93,6 +101,59 @@ describe('Student Messages use-cases', () => {
       'conversation-1',
     );
   });
+
+  it('returns student message readers with dual aliases after message visibility passes', async () => {
+    const { readersUseCase, readAdapter, getMessageReadersUseCase } =
+      createUseCasesWithValidAccess();
+    readAdapter.findConversationForStudent.mockResolvedValue(
+      conversationFixture() as any,
+    );
+    readAdapter.findMessageForStudent.mockResolvedValue(messageFixture() as any);
+    getMessageReadersUseCase.execute.mockResolvedValue(coreReadersFixture());
+
+    const result = await readersUseCase.execute({
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+      query: { page: 1 },
+    });
+
+    expect(getMessageReadersUseCase.execute).toHaveBeenCalledWith(
+      'message-1',
+      { page: 1 },
+    );
+    expect(result).toMatchObject({
+      message_id: 'message-1',
+      read_count: 2,
+      participants_count: 3,
+      fully_read: true,
+      readers: [
+        {
+          user_id: 'reader-1',
+          display_name: 'Mona Parent',
+          user_type: 'parent',
+          is_me: false,
+        },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain('schoolId');
+  });
+
+  it('does not delegate student message info when the message is not visible', async () => {
+    const { infoUseCase, readAdapter, getMessageInfoUseCase } =
+      createUseCasesWithValidAccess();
+    readAdapter.findConversationForStudent.mockResolvedValue(
+      conversationFixture() as any,
+    );
+    readAdapter.findMessageForStudent.mockResolvedValue(null);
+
+    await expect(
+      infoUseCase.execute({
+        conversationId: 'conversation-1',
+        messageId: 'missing-message',
+      }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(getMessageInfoUseCase.execute).not.toHaveBeenCalled();
+  });
 });
 
 function createUseCases(): {
@@ -100,10 +161,14 @@ function createUseCases(): {
   messagesUseCase: ListStudentConversationMessagesUseCase;
   sendUseCase: SendStudentConversationMessageUseCase;
   readUseCase: MarkStudentConversationReadUseCase;
+  readersUseCase: GetStudentMessageReadersUseCase;
+  infoUseCase: GetStudentMessageInfoUseCase;
   accessService: jest.Mocked<StudentAppAccessService>;
   readAdapter: jest.Mocked<StudentMessagesReadAdapter>;
   createCommunicationMessageUseCase: jest.Mocked<CreateCommunicationMessageUseCase>;
   markCommunicationConversationReadUseCase: jest.Mocked<MarkCommunicationConversationReadUseCase>;
+  getMessageReadersUseCase: jest.Mocked<GetCommunicationMessageReadersUseCase>;
+  getMessageInfoUseCase: jest.Mocked<GetCommunicationMessageInfoUseCase>;
 } {
   const accessService = {
     getCurrentStudentWithEnrollment: jest.fn(),
@@ -121,6 +186,12 @@ function createUseCases(): {
   const markCommunicationConversationReadUseCase = {
     execute: jest.fn(),
   } as unknown as jest.Mocked<MarkCommunicationConversationReadUseCase>;
+  const getMessageReadersUseCase = {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<GetCommunicationMessageReadersUseCase>;
+  const getMessageInfoUseCase = {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<GetCommunicationMessageInfoUseCase>;
 
   return {
     listUseCase: new ListStudentMessageConversationsUseCase(
@@ -141,10 +212,22 @@ function createUseCases(): {
       readAdapter,
       markCommunicationConversationReadUseCase,
     ),
+    readersUseCase: new GetStudentMessageReadersUseCase(
+      accessService,
+      readAdapter,
+      getMessageReadersUseCase,
+    ),
+    infoUseCase: new GetStudentMessageInfoUseCase(
+      accessService,
+      readAdapter,
+      getMessageInfoUseCase,
+    ),
     accessService,
     readAdapter,
     createCommunicationMessageUseCase,
     markCommunicationConversationReadUseCase,
+    getMessageReadersUseCase,
+    getMessageInfoUseCase,
   };
 }
 
@@ -235,6 +318,30 @@ function messageFixture() {
       lastName: 'User',
       userType: UserType.STUDENT,
       status: UserStatus.ACTIVE,
+    },
+  };
+}
+
+function coreReadersFixture() {
+  return {
+    messageId: 'message-1',
+    conversationId: 'conversation-1',
+    readCount: 2,
+    participantsCount: 3,
+    fullyRead: true,
+    readers: [
+      {
+        userId: 'reader-1',
+        displayName: 'Mona Parent',
+        userType: 'parent',
+        isMe: false,
+        readAt: '2026-05-02T09:00:00.000Z',
+      },
+    ],
+    pagination: {
+      page: 1,
+      limit: 50,
+      total: 2,
     },
   };
 }

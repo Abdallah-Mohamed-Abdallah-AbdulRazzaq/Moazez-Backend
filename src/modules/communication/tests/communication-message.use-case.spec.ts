@@ -5,6 +5,7 @@ import {
   CommunicationMessageStatus,
   CommunicationParticipantRole,
   CommunicationParticipantStatus,
+  UserStatus,
   UserType,
 } from '@prisma/client';
 import {
@@ -16,7 +17,9 @@ import { NotFoundDomainException } from '../../../common/exceptions/domain-excep
 import {
   CreateCommunicationMessageUseCase,
   DeleteCommunicationMessageUseCase,
+  GetCommunicationMessageInfoUseCase,
   GetCommunicationMessageUseCase,
+  GetCommunicationMessageReadersUseCase,
   GetCommunicationReadSummaryUseCase,
   ListCommunicationMessagesUseCase,
   MarkCommunicationConversationReadUseCase,
@@ -40,6 +43,7 @@ import {
   CommunicationMessageAuditInput,
   CommunicationMessageConversationAccessRecord,
   CommunicationMessageParticipantAccessRecord,
+  CommunicationMessageReadersResult,
   CommunicationMessageReadResult,
   CommunicationMessageRecord,
   CommunicationMessageRepository,
@@ -695,6 +699,114 @@ describe('communication message use cases', () => {
     expect(json).not.toContain('firstName');
     expect(repository.createAuditLog).not.toHaveBeenCalled();
   });
+
+  it('message readers returns safe cards for participants', async () => {
+    const repository = repositoryMock({
+      loadCurrentSchoolMessageReaders: jest
+        .fn()
+        .mockResolvedValue(messageReadersResult()),
+    });
+
+    const result = await withScope(() =>
+      new GetCommunicationMessageReadersUseCase(repository).execute(
+        MESSAGE_ID,
+        { limit: 25, page: 1 },
+      ),
+    );
+
+    expect(repository.loadCurrentSchoolMessageReaders).toHaveBeenCalledWith({
+      messageId: MESSAGE_ID,
+      limit: 25,
+      page: 1,
+    });
+    expect(result).toMatchObject({
+      messageId: MESSAGE_ID,
+      conversationId: CONVERSATION_ID,
+      readCount: 2,
+      participantsCount: 3,
+      fullyRead: true,
+      readers: [
+        {
+          userId: 'reader-1',
+          displayName: 'Mona Parent',
+          userType: 'parent',
+          isMe: false,
+        },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain('schoolId');
+    expect(repository.createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('message readers allows elevated viewers without participant membership', async () => {
+    const repository = repositoryMock({
+      findActiveParticipantForActor: jest.fn().mockResolvedValue(null),
+      loadCurrentSchoolMessageReaders: jest
+        .fn()
+        .mockResolvedValue(messageReadersResult()),
+    });
+
+    await withScope(
+      () =>
+        new GetCommunicationMessageReadersUseCase(repository).execute(
+          MESSAGE_ID,
+          {},
+        ),
+      ['communication.admin.view'],
+    );
+
+    expect(repository.loadCurrentSchoolMessageReaders).toHaveBeenCalled();
+  });
+
+  it('message readers rejects non-participant actors without elevated access', async () => {
+    const repository = repositoryMock({
+      findActiveParticipantForActor: jest.fn().mockResolvedValue(null),
+      loadCurrentSchoolMessageReaders: jest
+        .fn()
+        .mockResolvedValue(messageReadersResult()),
+    });
+
+    await expect(
+      withScope(() =>
+        new GetCommunicationMessageReadersUseCase(repository).execute(
+          MESSAGE_ID,
+          {},
+        ),
+      ),
+    ).rejects.toBeInstanceOf(CommunicationConversationNotMemberException);
+    expect(repository.loadCurrentSchoolMessageReaders).not.toHaveBeenCalled();
+  });
+
+  it('message info wraps the safe message preview and readers', async () => {
+    const repository = repositoryMock({
+      loadCurrentSchoolMessageReaders: jest
+        .fn()
+        .mockResolvedValue(
+          messageReadersResult({
+            message: {
+              ...messageReadersResult().message,
+              status: CommunicationMessageStatus.HIDDEN,
+              hiddenAt: new Date('2026-05-02T10:00:00.000Z'),
+              body: 'hidden body',
+            },
+          }),
+        ),
+    });
+
+    const result = await withScope(() =>
+      new GetCommunicationMessageInfoUseCase(repository).execute(MESSAGE_ID),
+    );
+
+    expect(result.message).toMatchObject({
+      messageId: MESSAGE_ID,
+      conversationId: CONVERSATION_ID,
+      status: 'hidden',
+      body: null,
+      content: null,
+      readCount: 2,
+    });
+    expect(JSON.stringify(result)).not.toContain('hidden body');
+  });
 });
 
 function repositoryMock(
@@ -738,6 +850,9 @@ function repositoryMock(
       limit: 50,
       page: 1,
     }),
+    loadCurrentSchoolMessageReaders: jest
+      .fn()
+      .mockResolvedValue(messageReadersResult()),
     createAuditLog: jest.fn(),
     createReaction: jest.fn(),
     createAttachment: jest.fn(),
@@ -849,6 +964,57 @@ function readRecord(
     readCount: 1,
     wasCreated: true,
     isSenderRead: false,
+    ...(overrides ?? {}),
+  };
+}
+
+function messageReadersResult(
+  overrides?: Partial<CommunicationMessageReadersResult>,
+): CommunicationMessageReadersResult {
+  return {
+    message: {
+      id: MESSAGE_ID,
+      conversationId: CONVERSATION_ID,
+      senderUserId: ACTOR_ID,
+      kind: CommunicationMessageKind.TEXT,
+      status: CommunicationMessageStatus.SENT,
+      body: 'Hello',
+      clientMessageId: 'client-1',
+      replyToMessageId: null,
+      editedAt: null,
+      hiddenAt: null,
+      deletedAt: null,
+      sentAt: new Date('2026-05-02T08:00:00.000Z'),
+      createdAt: new Date('2026-05-02T08:00:00.000Z'),
+      updatedAt: new Date('2026-05-02T08:00:00.000Z'),
+      senderUser: {
+        id: ACTOR_ID,
+        firstName: 'Sara',
+        lastName: 'Sender',
+        userType: UserType.TEACHER,
+        status: UserStatus.ACTIVE,
+      },
+    },
+    readers: [
+      {
+        id: 'read-1',
+        userId: 'reader-1',
+        readAt: new Date('2026-05-02T09:00:00.000Z'),
+        user: {
+          id: 'reader-1',
+          firstName: 'Mona',
+          lastName: 'Parent',
+          userType: UserType.PARENT,
+          status: UserStatus.ACTIVE,
+        },
+      },
+    ],
+    readCount: 2,
+    participantsCount: 3,
+    fullyRead: true,
+    total: 2,
+    limit: 50,
+    page: 1,
     ...(overrides ?? {}),
   };
 }

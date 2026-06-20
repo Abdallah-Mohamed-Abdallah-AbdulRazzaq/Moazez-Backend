@@ -1,3 +1,10 @@
+import {
+  CommunicationMessageKind,
+  CommunicationMessageStatus,
+  CommunicationParticipantStatus,
+  UserStatus,
+  UserType,
+} from '@prisma/client';
 import { CommunicationMessageRepository } from '../infrastructure/communication-message.repository';
 
 const SCHOOL_ID = 'school-1';
@@ -238,6 +245,91 @@ describe('CommunicationMessageRepository read receipts', () => {
 
     expect(result.items).toEqual([{ messageId: MESSAGE_ID, readCount: 2 }]);
   });
+
+  it('loads paginated readers through active/muted participants and excludes sender rows', async () => {
+    const tx = transactionMock();
+    const { repository, scopedPrisma } = repositoryMock(tx);
+    scopedPrisma.communicationMessage.findFirst.mockResolvedValue({
+      id: MESSAGE_ID,
+      conversationId: CONVERSATION_ID,
+      senderUserId: SENDER_ID,
+      kind: CommunicationMessageKind.TEXT,
+      status: CommunicationMessageStatus.SENT,
+      body: 'Hello',
+      clientMessageId: null,
+      replyToMessageId: null,
+      editedAt: null,
+      hiddenAt: null,
+      deletedAt: null,
+      sentAt: READ_AT,
+      createdAt: READ_AT,
+      updatedAt: READ_AT,
+      senderUser: userRow(SENDER_ID, 'Sara', 'Sender', UserType.TEACHER),
+    });
+    scopedPrisma.communicationConversationParticipant.findMany.mockResolvedValue([
+      participantRow(SENDER_ID, CommunicationParticipantStatus.ACTIVE),
+      participantRow(ACTOR_ID, CommunicationParticipantStatus.ACTIVE),
+      participantRow('reader-2', CommunicationParticipantStatus.MUTED),
+    ]);
+    scopedPrisma.communicationMessageRead.findMany.mockResolvedValue([
+      {
+        id: 'read-1',
+        userId: ACTOR_ID,
+        readAt: READ_AT,
+      },
+      {
+        id: 'read-2',
+        userId: 'reader-2',
+        readAt: new Date('2026-05-02T09:05:00.000Z'),
+      },
+    ]);
+    scopedPrisma.communicationMessageRead.count.mockResolvedValue(2);
+
+    const result = await repository.loadCurrentSchoolMessageReaders({
+      messageId: MESSAGE_ID,
+      limit: 25,
+      page: 2,
+    });
+
+    expect(
+      scopedPrisma.communicationConversationParticipant.findMany,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          conversationId: CONVERSATION_ID,
+          status: {
+            in: [
+              CommunicationParticipantStatus.ACTIVE,
+              CommunicationParticipantStatus.MUTED,
+            ],
+          },
+        },
+      }),
+    );
+    expect(scopedPrisma.communicationMessageRead.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          messageId: MESSAGE_ID,
+          userId: { in: [ACTOR_ID, 'reader-2'] },
+        },
+        orderBy: [{ readAt: 'asc' }, { id: 'asc' }],
+        take: 25,
+        skip: 25,
+      }),
+    );
+    expect(result).toMatchObject({
+      readCount: 2,
+      participantsCount: 3,
+      fullyRead: true,
+      total: 2,
+      limit: 25,
+      page: 2,
+      readers: [
+        { id: 'read-1', userId: ACTOR_ID },
+        { id: 'read-2', userId: 'reader-2' },
+      ],
+    });
+  });
 });
 
 function repositoryMock(tx: ReturnType<typeof transactionMock>) {
@@ -246,6 +338,14 @@ function repositoryMock(tx: ReturnType<typeof transactionMock>) {
       callback(tx),
     ),
     communicationMessage: {
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+    },
+    communicationConversationParticipant: {
+      findMany: jest.fn(),
+    },
+    communicationMessageRead: {
       findMany: jest.fn(),
       count: jest.fn(),
     },
@@ -291,5 +391,37 @@ function readRow() {
     metadata: null,
     createdAt: READ_AT,
     updatedAt: READ_AT,
+  };
+}
+
+function participantRow(
+  userId: string,
+  status: CommunicationParticipantStatus,
+) {
+  return {
+    id: `participant-${userId}`,
+    userId,
+    status,
+    user: userRow(
+      userId,
+      userId === ACTOR_ID ? 'Mona' : 'Ahmed',
+      userId === ACTOR_ID ? 'Parent' : 'Teacher',
+      userId === ACTOR_ID ? UserType.PARENT : UserType.TEACHER,
+    ),
+  };
+}
+
+function userRow(
+  id: string,
+  firstName: string,
+  lastName: string,
+  userType: UserType,
+) {
+  return {
+    id,
+    firstName,
+    lastName,
+    userType,
+    status: UserStatus.ACTIVE,
   };
 }

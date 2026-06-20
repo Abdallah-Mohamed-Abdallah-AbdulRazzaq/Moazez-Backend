@@ -123,3 +123,71 @@ export class ReadSummaryQueryDto {
   @Max(10000)
   page?: number;
 }
+
+export class MessageReadersQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  page?: number;
+}
+
+export class CommunicationMessageReaderDto {
+  userId!: string;
+  displayName!: string;
+  userType!: string;
+  isMe!: boolean;
+  readAt!: string;
+}
+
+export class CommunicationMessageReadersPaginationDto {
+  page!: number;
+  limit!: number;
+  total!: number;
+}
+
+export class CommunicationMessageReadersResponseDto {
+  messageId!: string;
+  conversationId!: string;
+  readCount!: number;
+  participantsCount!: number;
+  fullyRead!: boolean;
+  readers!: CommunicationMessageReaderDto[];
+  pagination!: CommunicationMessageReadersPaginationDto;
+}
+
+export class CommunicationMessageInfoSenderDto {
+  userId!: string | null;
+  displayName!: string | null;
+  userType!: string | null;
+  isMe!: boolean;
+}
+
+export class CommunicationMessageInfoMessageDto {
+  messageId!: string;
+  conversationId!: string;
+  sender!: CommunicationMessageInfoSenderDto;
+  type!: string;
+  status!: string;
+  body!: string | null;
+  content!: string | null;
+  createdAt!: string;
+  readCount!: number;
+}
+
+export class CommunicationMessageInfoResponseDto {
+  message!: CommunicationMessageInfoMessageDto;
+  readers!: CommunicationMessageReaderDto[];
+  readCount!: number;
+  participantsCount!: number;
+  fullyRead!: boolean;
+  pagination!: CommunicationMessageReadersPaginationDto;
+}

@@ -1,5 +1,9 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  GetTeacherMessageInfoUseCase,
+  GetTeacherMessageReadersUseCase,
+} from '../application/get-teacher-message-info.use-cases';
 import { GetTeacherMessageConversationUseCase } from '../application/get-teacher-message-conversation.use-case';
 import { ListTeacherConversationMessagesUseCase } from '../application/list-teacher-conversation-messages.use-case';
 import { ListTeacherMessageConversationsUseCase } from '../application/list-teacher-message-conversations.use-case';
@@ -12,9 +16,13 @@ import {
   TeacherConversationMessageResponseDto,
   TeacherConversationMessagesResponseDto,
   TeacherConversationReadResponseDto,
+  TeacherMessageInfoParamsDto,
+  TeacherMessageInfoResponseDto,
   TeacherMessageConversationParamsDto,
   TeacherMessageConversationResponseDto,
   TeacherMessageConversationsResponseDto,
+  TeacherMessageReadersQueryDto,
+  TeacherMessageReadersResponseDto,
 } from '../dto/teacher-messages.dto';
 
 @ApiTags('teacher-app')
@@ -27,6 +35,8 @@ export class TeacherMessagesController {
     private readonly listTeacherConversationMessagesUseCase: ListTeacherConversationMessagesUseCase,
     private readonly sendTeacherConversationMessageUseCase: SendTeacherConversationMessageUseCase,
     private readonly markTeacherConversationReadUseCase: MarkTeacherConversationReadUseCase,
+    private readonly getTeacherMessageReadersUseCase: GetTeacherMessageReadersUseCase,
+    private readonly getTeacherMessageInfoUseCase: GetTeacherMessageInfoUseCase,
   ) {}
 
   @Get('conversations')
@@ -57,6 +67,32 @@ export class TeacherMessagesController {
       params.conversationId,
       query,
     );
+  }
+
+  @Get('conversations/:conversationId/messages/:messageId/readers')
+  @ApiOkResponse({ type: TeacherMessageReadersResponseDto })
+  getMessageReaders(
+    @Param() params: TeacherMessageInfoParamsDto,
+    @Query() query: TeacherMessageReadersQueryDto,
+  ): Promise<TeacherMessageReadersResponseDto> {
+    return this.getTeacherMessageReadersUseCase.execute({
+      conversationId: params.conversationId,
+      messageId: params.messageId,
+      query,
+    });
+  }
+
+  @Get('conversations/:conversationId/messages/:messageId/info')
+  @ApiOkResponse({ type: TeacherMessageInfoResponseDto })
+  getMessageInfo(
+    @Param() params: TeacherMessageInfoParamsDto,
+    @Query() query: TeacherMessageReadersQueryDto,
+  ): Promise<TeacherMessageInfoResponseDto> {
+    return this.getTeacherMessageInfoUseCase.execute({
+      conversationId: params.conversationId,
+      messageId: params.messageId,
+      query,
+    });
   }
 
   @Post('conversations/:conversationId/messages')

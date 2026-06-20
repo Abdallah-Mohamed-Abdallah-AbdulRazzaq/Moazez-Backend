@@ -50,6 +50,10 @@ import { GetParentChildLessonsTodayUseCase } from './lessons/application/get-par
 import { GetParentChildLessonsWeekUseCase } from './lessons/application/get-parent-child-lessons-week.use-case';
 import { ParentChildLessonsController } from './lessons/controller/parent-child-lessons.controller';
 import { ParentChildLessonsReadAdapter } from './lessons/infrastructure/parent-child-lessons-read.adapter';
+import {
+  GetParentMessageInfoUseCase,
+  GetParentMessageReadersUseCase,
+} from './messages/application/get-parent-message-info.use-cases';
 import { GetParentMessageConversationUseCase } from './messages/application/get-parent-message-conversation.use-case';
 import { ListParentConversationMessagesUseCase } from './messages/application/list-parent-conversation-messages.use-case';
 import { ListParentMessageConversationsUseCase } from './messages/application/list-parent-message-conversations.use-case';
@@ -183,6 +187,8 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ListParentConversationMessagesUseCase,
     SendParentConversationMessageUseCase,
     MarkParentConversationReadUseCase,
+    GetParentMessageReadersUseCase,
+    GetParentMessageInfoUseCase,
     ListParentNotificationsUseCase,
     GetParentNotificationUseCase,
     GetParentNotificationsSummaryUseCase,

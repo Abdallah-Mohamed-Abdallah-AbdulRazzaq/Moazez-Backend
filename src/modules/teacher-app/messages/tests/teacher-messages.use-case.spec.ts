@@ -9,9 +9,18 @@ import {
   UserStatus,
   UserType,
 } from '@prisma/client';
-import { CreateCommunicationMessageUseCase, MarkCommunicationConversationReadUseCase } from '../../../communication/application/communication-message.use-cases';
+import {
+  CreateCommunicationMessageUseCase,
+  GetCommunicationMessageInfoUseCase,
+  GetCommunicationMessageReadersUseCase,
+  MarkCommunicationConversationReadUseCase,
+} from '../../../communication/application/communication-message.use-cases';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
 import { TeacherAppRequiredTeacherException } from '../../shared/teacher-app.errors';
+import {
+  GetTeacherMessageInfoUseCase,
+  GetTeacherMessageReadersUseCase,
+} from '../application/get-teacher-message-info.use-cases';
 import { GetTeacherMessageConversationUseCase } from '../application/get-teacher-message-conversation.use-case';
 import { ListTeacherConversationMessagesUseCase } from '../application/list-teacher-conversation-messages.use-case';
 import { ListTeacherMessageConversationsUseCase } from '../application/list-teacher-message-conversations.use-case';
@@ -175,6 +184,57 @@ describe('Teacher Messages use cases', () => {
       CONVERSATION_ID,
     );
   });
+
+  it('message readers returns camelCase response after teacher message visibility passes', async () => {
+    const {
+      readersUseCase,
+      messagesReadAdapter,
+      getCommunicationMessageReadersUseCase,
+    } = createUseCases();
+    getCommunicationMessageReadersUseCase.execute.mockResolvedValue(
+      coreReadersFixture(),
+    );
+
+    const result = await readersUseCase.execute({
+      conversationId: CONVERSATION_ID,
+      messageId: 'message-1',
+      query: { limit: 10 },
+    });
+
+    expect(messagesReadAdapter.findConversationForTeacher).toHaveBeenCalledWith({
+      conversationId: CONVERSATION_ID,
+      teacherUserId: TEACHER_ID,
+    });
+    expect(getCommunicationMessageReadersUseCase.execute).toHaveBeenCalledWith(
+      'message-1',
+      { limit: 10 },
+    );
+    expect(result).toMatchObject({
+      messageId: 'message-1',
+      readCount: 2,
+      participantsCount: 3,
+      fullyRead: true,
+      readers: [{ userId: 'reader-1', displayName: 'Mona Parent' }],
+    });
+    expect(JSON.stringify(result)).not.toContain('schoolId');
+  });
+
+  it('message info is not delegated for inaccessible teacher messages', async () => {
+    const {
+      infoUseCase,
+      messagesReadAdapter,
+      getCommunicationMessageInfoUseCase,
+    } = createUseCases();
+    messagesReadAdapter.findMessageForTeacher.mockResolvedValueOnce(null);
+
+    await expect(
+      infoUseCase.execute({
+        conversationId: CONVERSATION_ID,
+        messageId: 'missing-message',
+      }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(getCommunicationMessageInfoUseCase.execute).not.toHaveBeenCalled();
+  });
 });
 
 function createUseCases(): {
@@ -183,10 +243,14 @@ function createUseCases(): {
   listMessagesUseCase: ListTeacherConversationMessagesUseCase;
   sendUseCase: SendTeacherConversationMessageUseCase;
   readUseCase: MarkTeacherConversationReadUseCase;
+  readersUseCase: GetTeacherMessageReadersUseCase;
+  infoUseCase: GetTeacherMessageInfoUseCase;
   accessService: jest.Mocked<TeacherAppAccessService>;
   messagesReadAdapter: jest.Mocked<TeacherMessagesReadAdapter>;
   createCommunicationMessageUseCase: jest.Mocked<CreateCommunicationMessageUseCase>;
   markCommunicationConversationReadUseCase: jest.Mocked<MarkCommunicationConversationReadUseCase>;
+  getCommunicationMessageReadersUseCase: jest.Mocked<GetCommunicationMessageReadersUseCase>;
+  getCommunicationMessageInfoUseCase: jest.Mocked<GetCommunicationMessageInfoUseCase>;
 } {
   const conversation = conversationFixture();
   const message = messageFixture();
@@ -241,6 +305,12 @@ function createUseCases(): {
       }),
     ),
   } as unknown as jest.Mocked<MarkCommunicationConversationReadUseCase>;
+  const getCommunicationMessageReadersUseCase = {
+    execute: jest.fn(() => Promise.resolve(coreReadersFixture())),
+  } as unknown as jest.Mocked<GetCommunicationMessageReadersUseCase>;
+  const getCommunicationMessageInfoUseCase = {
+    execute: jest.fn(() => Promise.resolve(coreInfoFixture())),
+  } as unknown as jest.Mocked<GetCommunicationMessageInfoUseCase>;
 
   return {
     listConversationsUseCase: new ListTeacherMessageConversationsUseCase(
@@ -265,10 +335,22 @@ function createUseCases(): {
       messagesReadAdapter,
       markCommunicationConversationReadUseCase,
     ),
+    readersUseCase: new GetTeacherMessageReadersUseCase(
+      accessService,
+      messagesReadAdapter,
+      getCommunicationMessageReadersUseCase,
+    ),
+    infoUseCase: new GetTeacherMessageInfoUseCase(
+      accessService,
+      messagesReadAdapter,
+      getCommunicationMessageInfoUseCase,
+    ),
     accessService,
     messagesReadAdapter,
     createCommunicationMessageUseCase,
     markCommunicationConversationReadUseCase,
+    getCommunicationMessageReadersUseCase,
+    getCommunicationMessageInfoUseCase,
   };
 }
 
@@ -354,4 +436,54 @@ function messageFixture(
     _count: { reads: 0 },
     ...overrides,
   } as unknown as TeacherMessageRecord;
+}
+
+function coreReadersFixture() {
+  return {
+    messageId: 'message-1',
+    conversationId: CONVERSATION_ID,
+    readCount: 2,
+    participantsCount: 3,
+    fullyRead: true,
+    readers: [
+      {
+        userId: 'reader-1',
+        displayName: 'Mona Parent',
+        userType: 'parent',
+        isMe: false,
+        readAt: '2026-05-02T09:00:00.000Z',
+      },
+    ],
+    pagination: {
+      page: 1,
+      limit: 50,
+      total: 2,
+    },
+  };
+}
+
+function coreInfoFixture() {
+  return {
+    message: {
+      messageId: 'message-1',
+      conversationId: CONVERSATION_ID,
+      sender: {
+        userId: TEACHER_ID,
+        displayName: 'Test Teacher',
+        userType: 'teacher',
+        isMe: true,
+      },
+      type: 'text',
+      status: 'sent',
+      body: 'Hello',
+      content: 'Hello',
+      createdAt: '2026-05-02T08:00:00.000Z',
+      readCount: 2,
+    },
+    readers: coreReadersFixture().readers,
+    readCount: 2,
+    participantsCount: 3,
+    fullyRead: true,
+    pagination: coreReadersFixture().pagination,
+  };
 }

@@ -46,6 +46,10 @@ import { GetTeacherLessonPreparationWeekUseCase } from './lesson-preparation/app
 import { UpdateTeacherLessonPreparationStatusUseCase } from './lesson-preparation/application/update-teacher-lesson-preparation-status.use-case';
 import { TeacherLessonPreparationController } from './lesson-preparation/controller/teacher-lesson-preparation.controller';
 import { TeacherLessonPreparationReadAdapter } from './lesson-preparation/infrastructure/teacher-lesson-preparation-read.adapter';
+import {
+  GetTeacherMessageInfoUseCase,
+  GetTeacherMessageReadersUseCase,
+} from './messages/application/get-teacher-message-info.use-cases';
 import { GetTeacherMessageConversationUseCase } from './messages/application/get-teacher-message-conversation.use-case';
 import { ListTeacherConversationMessagesUseCase } from './messages/application/list-teacher-conversation-messages.use-case';
 import { ListTeacherMessageConversationsUseCase } from './messages/application/list-teacher-message-conversations.use-case';
@@ -178,6 +182,8 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     ListTeacherConversationMessagesUseCase,
     SendTeacherConversationMessageUseCase,
     MarkTeacherConversationReadUseCase,
+    GetTeacherMessageReadersUseCase,
+    GetTeacherMessageInfoUseCase,
     ListTeacherNotificationsUseCase,
     GetTeacherNotificationUseCase,
     GetTeacherNotificationsSummaryUseCase,

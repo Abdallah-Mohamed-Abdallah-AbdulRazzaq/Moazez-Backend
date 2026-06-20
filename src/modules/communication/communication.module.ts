@@ -56,7 +56,9 @@ import {
 import {
   CreateCommunicationMessageUseCase,
   DeleteCommunicationMessageUseCase,
+  GetCommunicationMessageInfoUseCase,
   GetCommunicationMessageUseCase,
+  GetCommunicationMessageReadersUseCase,
   GetCommunicationReadSummaryUseCase,
   ListCommunicationMessagesUseCase,
   MarkCommunicationConversationReadUseCase,
@@ -190,6 +192,8 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     ListCommunicationMessagesUseCase,
     CreateCommunicationMessageUseCase,
     GetCommunicationMessageUseCase,
+    GetCommunicationMessageReadersUseCase,
+    GetCommunicationMessageInfoUseCase,
     UpdateCommunicationMessageUseCase,
     DeleteCommunicationMessageUseCase,
     MarkCommunicationMessageReadUseCase,
@@ -229,6 +233,8 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
   ],
   exports: [
     CreateCommunicationMessageUseCase,
+    GetCommunicationMessageReadersUseCase,
+    GetCommunicationMessageInfoUseCase,
     MarkCommunicationConversationReadUseCase,
     CommunicationAppNotificationCenterService,
   ],
