@@ -94,6 +94,7 @@ import {
   UpsertCommunicationMessageReactionUseCase,
 } from './application/communication-reaction.use-cases';
 import { CommunicationRealtimeEventsService } from './application/communication-realtime-events.service';
+import { CommunicationAppNotificationCenterService } from './application/communication-app-notification-center.service';
 import {
   CreateCommunicationUserRestrictionUseCase,
   ListCommunicationUserRestrictionsUseCase,
@@ -224,10 +225,12 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     CommunicationNotificationQueueService,
     CommunicationNotificationGenerationWorker,
     CommunicationRealtimeEventsService,
+    CommunicationAppNotificationCenterService,
   ],
   exports: [
     CreateCommunicationMessageUseCase,
     MarkCommunicationConversationReadUseCase,
+    CommunicationAppNotificationCenterService,
   ],
 })
 export class CommunicationModule {}

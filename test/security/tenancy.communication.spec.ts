@@ -35,6 +35,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
+import { REALTIME_SERVER_EVENTS } from '../../src/infrastructure/realtime/realtime-event-names';
 import { RealtimePublisherService } from '../../src/infrastructure/realtime/realtime-publisher.service';
 
 const GLOBAL_PREFIX = '/api/v1';
@@ -4273,7 +4274,47 @@ describe('Communication announcement tenancy isolation (security)', () => {
         },
       }),
     ).resolves.toBe(0);
-    expect(publishToUserSpy).not.toHaveBeenCalled();
+    expect(publishToUserSpy).toHaveBeenCalledTimes(
+      expectedRecipientUserIds.length,
+    );
+    expect(
+      new Set(
+        publishToUserSpy.mock.calls.map(
+          ([schoolId, recipientUserId, eventName]) =>
+            `${schoolId}:${recipientUserId}:${eventName}`,
+        ),
+      ),
+    ).toEqual(
+      new Set(
+        expectedRecipientUserIds.map(
+          (recipientUserId) =>
+            `${schoolAId}:${recipientUserId}:${REALTIME_SERVER_EVENTS.COMMUNICATION_NOTIFICATION_CREATED}`,
+        ),
+      ),
+    );
+    for (const [, , , payload] of publishToUserSpy.mock.calls) {
+      const payloadJson = JSON.stringify(payload);
+      expect(payload).toMatchObject({
+        notification: {
+          notificationId: expect.any(String),
+          type: 'announcement_published',
+          sourceModule: 'announcements',
+          sourceId: created.body.id,
+          priority: 'high',
+          status: 'unread',
+          deepLink: {
+            type: 'announcement',
+            announcementId: created.body.id,
+          },
+        },
+        eventAt: expect.any(String),
+      });
+      expect(payloadJson).not.toContain('recipientUserId');
+      expect(payloadJson).not.toContain('schoolId');
+      expect(payloadJson).not.toContain('actorUserId');
+      expect(payloadJson).not.toContain('deliveries');
+      expect(payloadJson).not.toContain('metadata');
+    }
     expect(publishToSchoolSpy).not.toHaveBeenCalled();
 
     addJobSpy.mockRestore();

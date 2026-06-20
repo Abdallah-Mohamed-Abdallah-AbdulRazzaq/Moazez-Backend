@@ -3,11 +3,16 @@ import {
   CommunicationAnnouncementPriority,
   CommunicationAnnouncementStatus,
   CommunicationNotificationPriority,
+  CommunicationNotificationSourceModule,
+  CommunicationNotificationStatus,
+  CommunicationNotificationType,
   UserType,
 } from '@prisma/client';
+import { CommunicationRealtimeEventsService } from '../application/communication-realtime-events.service';
 import { CommunicationNotificationGenerationService } from '../application/communication-notification-generation.service';
 import {
   CommunicationAnnouncementForNotificationGeneration,
+  CommunicationGeneratedNotificationRecord,
   CommunicationNotificationGenerationRepository,
 } from '../infrastructure/communication-notification-generation.repository';
 
@@ -18,6 +23,7 @@ const ACTOR_ID = 'actor-1';
 
 describe('CommunicationNotificationGenerationService', () => {
   it('generates announcement notifications for resolved recipients with safe content', async () => {
+    const realtime = realtimeMock();
     const repository = repositoryMock({
       resolveCurrentSchoolAnnouncementRecipientUserIds: jest
         .fn()
@@ -30,11 +36,19 @@ describe('CommunicationNotificationGenerationService', () => {
           existingNotificationCount: 0,
           createdDeliveryCount: 2,
           existingDeliveryCount: 0,
+          createdNotifications: [
+            generatedNotificationRecord({ recipientUserId: 'user-1' }),
+            generatedNotificationRecord({
+              id: 'notification-2',
+              recipientUserId: 'user-2',
+            }),
+          ],
         }),
     });
 
     const result = await new CommunicationNotificationGenerationService(
       repository,
+      realtime,
     ).generateForPublishedAnnouncement(jobData());
 
     expect(result).toMatchObject({
@@ -59,9 +73,25 @@ describe('CommunicationNotificationGenerationService', () => {
         now: expect.any(Date),
       }),
     );
+    expect(realtime.publishNotificationCreated).toHaveBeenCalledTimes(2);
+    expect(realtime.publishNotificationCreated).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      expect.objectContaining({
+        id: 'notification-1',
+        recipientUserId: 'user-1',
+      }),
+    );
+    expect(realtime.publishNotificationCreated).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      expect.objectContaining({
+        id: 'notification-2',
+        recipientUserId: 'user-2',
+      }),
+    );
   });
 
   it('skips missing or unpublished announcements', async () => {
+    const realtime = realtimeMock();
     const repository = repositoryMock({
       findPublishedCurrentSchoolAnnouncementForNotificationGeneration: jest
         .fn()
@@ -70,6 +100,7 @@ describe('CommunicationNotificationGenerationService', () => {
 
     const result = await new CommunicationNotificationGenerationService(
       repository,
+      realtime,
     ).generateForPublishedAnnouncement(jobData());
 
     expect(result).toMatchObject({
@@ -82,9 +113,11 @@ describe('CommunicationNotificationGenerationService', () => {
     expect(
       repository.createMissingAnnouncementPublishedNotifications,
     ).not.toHaveBeenCalled();
+    expect(realtime.publishNotificationCreated).not.toHaveBeenCalled();
   });
 
   it('skips published announcements with no safely resolved recipients', async () => {
+    const realtime = realtimeMock();
     const repository = repositoryMock({
       resolveCurrentSchoolAnnouncementRecipientUserIds: jest
         .fn()
@@ -93,6 +126,7 @@ describe('CommunicationNotificationGenerationService', () => {
 
     const result = await new CommunicationNotificationGenerationService(
       repository,
+      realtime,
     ).generateForPublishedAnnouncement(jobData());
 
     expect(result).toMatchObject({
@@ -103,9 +137,11 @@ describe('CommunicationNotificationGenerationService', () => {
     expect(
       repository.createMissingAnnouncementPublishedNotifications,
     ).not.toHaveBeenCalled();
+    expect(realtime.publishNotificationCreated).not.toHaveBeenCalled();
   });
 
   it('returns existing counts on retry without treating them as new notifications', async () => {
+    const realtime = realtimeMock();
     const repository = repositoryMock({
       createMissingAnnouncementPublishedNotifications: jest
         .fn()
@@ -115,11 +151,13 @@ describe('CommunicationNotificationGenerationService', () => {
           existingNotificationCount: 2,
           createdDeliveryCount: 0,
           existingDeliveryCount: 2,
+          createdNotifications: [],
         }),
     });
 
     const result = await new CommunicationNotificationGenerationService(
       repository,
+      realtime,
     ).generateForPublishedAnnouncement(jobData());
 
     expect(result).toMatchObject({
@@ -128,6 +166,7 @@ describe('CommunicationNotificationGenerationService', () => {
       createdDeliveryCount: 0,
       existingDeliveryCount: 2,
     });
+    expect(realtime.publishNotificationCreated).not.toHaveBeenCalled();
   });
 });
 
@@ -149,10 +188,18 @@ function repositoryMock(
         existingNotificationCount: 0,
         createdDeliveryCount: 2,
         existingDeliveryCount: 0,
+        createdNotifications: [generatedNotificationRecord()],
       }),
     ...(overrides ?? {}),
   } as unknown as CommunicationNotificationGenerationRepository &
     Record<string, jest.Mock>;
+}
+
+function realtimeMock(): CommunicationRealtimeEventsService &
+  Record<string, jest.Mock> {
+  return {
+    publishNotificationCreated: jest.fn(),
+  } as unknown as CommunicationRealtimeEventsService & Record<string, jest.Mock>;
 }
 
 function announcementRecord(): CommunicationAnnouncementForNotificationGeneration {
@@ -179,5 +226,30 @@ function jobData() {
     announcementId: ANNOUNCEMENT_ID,
     actorUserId: ACTOR_ID,
     actorUserType: UserType.SCHOOL_USER,
+  };
+}
+
+function generatedNotificationRecord(
+  overrides?: Partial<CommunicationGeneratedNotificationRecord>,
+): CommunicationGeneratedNotificationRecord {
+  return {
+    id: 'notification-1',
+    schoolId: SCHOOL_ID,
+    recipientUserId: 'user-1',
+    actorUserId: ACTOR_ID,
+    sourceModule: CommunicationNotificationSourceModule.ANNOUNCEMENTS,
+    sourceType: 'announcement',
+    sourceId: ANNOUNCEMENT_ID,
+    type: CommunicationNotificationType.ANNOUNCEMENT_PUBLISHED,
+    title: 'Published announcement',
+    body: 'Body with spacing',
+    priority: CommunicationNotificationPriority.HIGH,
+    status: CommunicationNotificationStatus.UNREAD,
+    readAt: null,
+    archivedAt: null,
+    expiresAt: null,
+    createdAt: new Date('2026-05-03T09:01:00.000Z'),
+    updatedAt: new Date('2026-05-03T09:01:00.000Z'),
+    ...(overrides ?? {}),
   };
 }

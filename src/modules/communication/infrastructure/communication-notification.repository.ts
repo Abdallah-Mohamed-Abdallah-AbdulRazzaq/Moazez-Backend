@@ -154,6 +154,14 @@ export class CommunicationNotificationRepository {
     return { items, total, limit, page };
   }
 
+  countCurrentSchoolNotifications(input: {
+    filters: CommunicationNotificationListFilters;
+  }): Promise<number> {
+    return this.scopedPrisma.communicationNotification.count({
+      where: this.buildNotificationWhere(input.filters),
+    });
+  }
+
   findCurrentSchoolNotificationById(
     notificationId: string,
   ): Promise<CommunicationNotificationDetailRecord | null> {

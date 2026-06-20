@@ -57,6 +57,15 @@ import { MarkParentConversationReadUseCase } from './messages/application/mark-p
 import { SendParentConversationMessageUseCase } from './messages/application/send-parent-conversation-message.use-case';
 import { ParentMessagesController } from './messages/controller/parent-messages.controller';
 import { ParentMessagesReadAdapter } from './messages/infrastructure/parent-messages-read.adapter';
+import {
+  ArchiveParentNotificationUseCase,
+  GetParentNotificationUseCase,
+  GetParentNotificationsSummaryUseCase,
+  ListParentNotificationsUseCase,
+  MarkAllParentNotificationsReadUseCase,
+  MarkParentNotificationReadUseCase,
+} from './notifications/application/parent-notifications.use-cases';
+import { ParentNotificationsController } from './notifications/controller/parent-notifications.controller';
 import { GetParentProfileUseCase } from './profile/application/get-parent-profile.use-case';
 import { ParentProfileController } from './profile/controller/parent-profile.controller';
 import { ParentProfileReadAdapter } from './profile/infrastructure/parent-profile-read.adapter';
@@ -109,6 +118,7 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ParentScheduleController,
     ParentTasksController,
     ParentMessagesController,
+    ParentNotificationsController,
     ParentAnnouncementsController,
     ParentCalendarController,
     ParentChildLessonsController,
@@ -173,6 +183,12 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ListParentConversationMessagesUseCase,
     SendParentConversationMessageUseCase,
     MarkParentConversationReadUseCase,
+    ListParentNotificationsUseCase,
+    GetParentNotificationUseCase,
+    GetParentNotificationsSummaryUseCase,
+    MarkParentNotificationReadUseCase,
+    MarkAllParentNotificationsReadUseCase,
+    ArchiveParentNotificationUseCase,
     ParentAnnouncementsReadAdapter,
     ListParentAnnouncementsUseCase,
     GetParentAnnouncementUseCase,

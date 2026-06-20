@@ -2374,7 +2374,6 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       'homeworks',
       'pickup',
       'messages',
-      'notifications',
       'grades',
       'behavior',
       'progress',

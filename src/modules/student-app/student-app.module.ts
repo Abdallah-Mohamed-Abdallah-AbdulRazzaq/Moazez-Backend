@@ -64,6 +64,15 @@ import { MarkStudentConversationReadUseCase } from './messages/application/mark-
 import { SendStudentConversationMessageUseCase } from './messages/application/send-student-conversation-message.use-case';
 import { StudentMessagesController } from './messages/controller/student-messages.controller';
 import { StudentMessagesReadAdapter } from './messages/infrastructure/student-messages-read.adapter';
+import {
+  ArchiveStudentNotificationUseCase,
+  GetStudentNotificationUseCase,
+  GetStudentNotificationsSummaryUseCase,
+  ListStudentNotificationsUseCase,
+  MarkAllStudentNotificationsReadUseCase,
+  MarkStudentNotificationReadUseCase,
+} from './notifications/application/student-notifications.use-cases';
+import { StudentNotificationsController } from './notifications/controller/student-notifications.controller';
 import { GetStudentProfileUseCase } from './profile/application/get-student-profile.use-case';
 import { StudentProfileController } from './profile/controller/student-profile.controller';
 import { StudentProfileReadAdapter } from './profile/infrastructure/student-profile-read.adapter';
@@ -124,6 +133,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentScheduleController,
     StudentTasksController,
     StudentMessagesController,
+    StudentNotificationsController,
     StudentAnnouncementsController,
     StudentCalendarController,
     StudentLessonsController,
@@ -195,6 +205,12 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     ListStudentConversationMessagesUseCase,
     SendStudentConversationMessageUseCase,
     MarkStudentConversationReadUseCase,
+    ListStudentNotificationsUseCase,
+    GetStudentNotificationUseCase,
+    GetStudentNotificationsSummaryUseCase,
+    MarkStudentNotificationReadUseCase,
+    MarkAllStudentNotificationsReadUseCase,
+    ArchiveStudentNotificationUseCase,
     StudentAnnouncementsReadAdapter,
     ListStudentAnnouncementsUseCase,
     GetStudentAnnouncementUseCase,

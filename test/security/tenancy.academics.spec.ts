@@ -1929,7 +1929,7 @@ describe('Academics tenancy isolation (security)', () => {
       .expect(403);
   });
 
-  it('does not add Homework, Pickup, or app notification routes from timetable work', async () => {
+  it('does not add Homework or Pickup routes from timetable work and keeps app routes actor-scoped', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     await request(app.getHttpServer())
@@ -1947,6 +1947,6 @@ describe('Academics tenancy isolation (security)', () => {
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/parent/notifications`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
+      .expect(403);
   });
 });

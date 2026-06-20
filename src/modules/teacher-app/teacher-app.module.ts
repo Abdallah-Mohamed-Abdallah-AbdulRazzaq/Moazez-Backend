@@ -56,6 +56,15 @@ import { TeacherMessagesReadAdapter } from './messages/infrastructure/teacher-me
 import { GetTeacherClassDetailUseCase } from './my-classes/application/get-teacher-class-detail.use-case';
 import { ListTeacherClassesUseCase } from './my-classes/application/list-teacher-classes.use-case';
 import { TeacherMyClassesController } from './my-classes/controller/teacher-my-classes.controller';
+import {
+  ArchiveTeacherNotificationUseCase,
+  GetTeacherNotificationUseCase,
+  GetTeacherNotificationsSummaryUseCase,
+  ListTeacherNotificationsUseCase,
+  MarkAllTeacherNotificationsReadUseCase,
+  MarkTeacherNotificationReadUseCase,
+} from './notifications/application/teacher-notifications.use-cases';
+import { TeacherNotificationsController } from './notifications/controller/teacher-notifications.controller';
 import { GetTeacherEmploymentProfileUseCase } from './profile/application/get-teacher-employment-profile.use-case';
 import { GetTeacherProfileUseCase } from './profile/application/get-teacher-profile.use-case';
 import { TeacherProfileController } from './profile/controller/teacher-profile.controller';
@@ -111,6 +120,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     TeacherTasksController,
     TeacherXpController,
     TeacherMessagesController,
+    TeacherNotificationsController,
     TeacherProfileController,
     TeacherSettingsController,
     TeacherScheduleController,
@@ -168,6 +178,12 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     ListTeacherConversationMessagesUseCase,
     SendTeacherConversationMessageUseCase,
     MarkTeacherConversationReadUseCase,
+    ListTeacherNotificationsUseCase,
+    GetTeacherNotificationUseCase,
+    GetTeacherNotificationsSummaryUseCase,
+    MarkTeacherNotificationReadUseCase,
+    MarkAllTeacherNotificationsReadUseCase,
+    ArchiveTeacherNotificationUseCase,
     TeacherProfileReadAdapter,
     GetTeacherProfileUseCase,
     GetTeacherEmploymentProfileUseCase,

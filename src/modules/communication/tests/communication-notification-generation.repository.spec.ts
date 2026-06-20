@@ -12,6 +12,7 @@ import {
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import {
   CommunicationAnnouncementForNotificationGeneration,
+  CommunicationGeneratedNotificationRecord,
   CommunicationNotificationGenerationRepository,
 } from '../infrastructure/communication-notification-generation.repository';
 
@@ -100,7 +101,7 @@ describe('CommunicationNotificationGenerationRepository', () => {
           .mockResolvedValue([
             { id: 'existing-notification-1', recipientUserId: 'user-1' },
           ]),
-        create: jest.fn().mockResolvedValue({ id: 'new-notification-1' }),
+        create: jest.fn().mockResolvedValue(generatedNotificationRecord()),
       },
       communicationNotificationDelivery: {
         findMany: jest
@@ -136,6 +137,7 @@ describe('CommunicationNotificationGenerationRepository', () => {
       existingNotificationCount: 1,
       createdDeliveryCount: 1,
       existingDeliveryCount: 1,
+      createdNotifications: [generatedNotificationRecord()],
     });
     expect(tx.communicationNotification.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -146,6 +148,15 @@ describe('CommunicationNotificationGenerationRepository', () => {
           sourceId: 'announcement-1',
           type: CommunicationNotificationType.ANNOUNCEMENT_PUBLISHED,
           status: CommunicationNotificationStatus.UNREAD,
+        }),
+        select: expect.objectContaining({
+          id: true,
+          recipientUserId: true,
+          sourceModule: true,
+          sourceId: true,
+          type: true,
+          status: true,
+          createdAt: true,
         }),
       }),
     );
@@ -180,6 +191,31 @@ function announcementRecord(
     createdById: 'creator-1',
     publishedById: 'actor-1',
     audiences: [],
+    ...(overrides ?? {}),
+  };
+}
+
+function generatedNotificationRecord(
+  overrides?: Partial<CommunicationGeneratedNotificationRecord>,
+): CommunicationGeneratedNotificationRecord {
+  return {
+    id: 'new-notification-1',
+    schoolId: 'school-1',
+    recipientUserId: 'user-2',
+    actorUserId: 'actor-1',
+    sourceModule: CommunicationNotificationSourceModule.ANNOUNCEMENTS,
+    sourceType: 'communication_announcement',
+    sourceId: 'announcement-1',
+    type: CommunicationNotificationType.ANNOUNCEMENT_PUBLISHED,
+    title: 'Announcement',
+    body: 'Preview',
+    priority: CommunicationNotificationPriority.NORMAL,
+    status: CommunicationNotificationStatus.UNREAD,
+    readAt: null,
+    archivedAt: null,
+    expiresAt: null,
+    createdAt: new Date('2026-05-03T09:00:00.000Z'),
+    updatedAt: new Date('2026-05-03T09:00:00.000Z'),
     ...(overrides ?? {}),
   };
 }

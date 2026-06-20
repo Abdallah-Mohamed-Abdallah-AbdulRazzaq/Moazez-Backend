@@ -9,11 +9,13 @@ import {
   mapAnnouncementPriorityToNotificationPriority,
 } from '../domain/communication-notification-generation-domain';
 import { CommunicationNotificationGenerationRepository } from '../infrastructure/communication-notification-generation.repository';
+import { CommunicationRealtimeEventsService } from './communication-realtime-events.service';
 
 @Injectable()
 export class CommunicationNotificationGenerationService {
   constructor(
     private readonly communicationNotificationGenerationRepository: CommunicationNotificationGenerationRepository,
+    private readonly communicationRealtimeEventsService: CommunicationRealtimeEventsService,
   ) {}
 
   async generateForPublishedAnnouncement(
@@ -44,7 +46,7 @@ export class CommunicationNotificationGenerationService {
       });
     }
 
-    const result =
+    const { createdNotifications, ...result } =
       await this.communicationNotificationGenerationRepository.createMissingAnnouncementPublishedNotifications(
         {
           schoolId: input.schoolId,
@@ -68,6 +70,13 @@ export class CommunicationNotificationGenerationService {
           now: new Date(),
         },
       );
+
+    for (const notification of createdNotifications) {
+      this.communicationRealtimeEventsService.publishNotificationCreated(
+        input.schoolId,
+        notification,
+      );
+    }
 
     return {
       announcementId: announcement.id,

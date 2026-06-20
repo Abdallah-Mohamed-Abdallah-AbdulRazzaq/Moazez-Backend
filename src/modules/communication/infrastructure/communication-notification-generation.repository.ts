@@ -51,10 +51,35 @@ const COMMUNICATION_ANNOUNCEMENT_FOR_NOTIFICATION_GENERATION_ARGS =
     },
   });
 
+const GENERATED_NOTIFICATION_SELECT = {
+  id: true,
+  schoolId: true,
+  recipientUserId: true,
+  actorUserId: true,
+  sourceModule: true,
+  sourceType: true,
+  sourceId: true,
+  type: true,
+  title: true,
+  body: true,
+  priority: true,
+  status: true,
+  readAt: true,
+  archivedAt: true,
+  expiresAt: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.CommunicationNotificationSelect;
+
 export type CommunicationAnnouncementForNotificationGeneration =
   Prisma.CommunicationAnnouncementGetPayload<
     typeof COMMUNICATION_ANNOUNCEMENT_FOR_NOTIFICATION_GENERATION_ARGS
   >;
+
+export type CommunicationGeneratedNotificationRecord =
+  Prisma.CommunicationNotificationGetPayload<{
+    select: typeof GENERATED_NOTIFICATION_SELECT;
+  }>;
 
 export interface CommunicationAnnouncementNotificationCreateInput {
   schoolId: string;
@@ -75,6 +100,7 @@ export interface CommunicationAnnouncementNotificationCreateResult {
   existingNotificationCount: number;
   createdDeliveryCount: number;
   existingDeliveryCount: number;
+  createdNotifications: CommunicationGeneratedNotificationRecord[];
 }
 
 interface AudienceTargetIds {
@@ -143,6 +169,7 @@ export class CommunicationNotificationGenerationRepository {
         existingNotificationCount: 0,
         createdDeliveryCount: 0,
         existingDeliveryCount: 0,
+        createdNotifications: [],
       };
     }
 
@@ -169,7 +196,8 @@ export class CommunicationNotificationGenerationRepository {
           (notification) => notification.recipientUserId,
         ),
       );
-      const createdNotificationIds: string[] = [];
+      const createdNotifications: CommunicationGeneratedNotificationRecord[] =
+        [];
 
       for (const recipientUserId of recipientUserIds) {
         if (existingRecipientIds.has(recipientUserId)) continue;
@@ -190,14 +218,14 @@ export class CommunicationNotificationGenerationRepository {
             expiresAt: input.expiresAt,
             metadata: input.metadata as Prisma.InputJsonValue,
           },
-          select: { id: true },
+          select: GENERATED_NOTIFICATION_SELECT,
         });
-        createdNotificationIds.push(created.id);
+        createdNotifications.push(created);
       }
 
       const notificationIds = [
         ...existingNotifications.map((notification) => notification.id),
-        ...createdNotificationIds,
+        ...createdNotifications.map((notification) => notification.id),
       ];
       const existingDeliveries =
         await tx.communicationNotificationDelivery.findMany({
@@ -230,10 +258,11 @@ export class CommunicationNotificationGenerationRepository {
 
       return {
         recipientCount: recipientUserIds.length,
-        createdNotificationCount: createdNotificationIds.length,
+        createdNotificationCount: createdNotifications.length,
         existingNotificationCount: existingNotifications.length,
         createdDeliveryCount: missingDeliveryNotificationIds.length,
         existingDeliveryCount: existingDeliveries.length,
+        createdNotifications,
       };
     });
   }

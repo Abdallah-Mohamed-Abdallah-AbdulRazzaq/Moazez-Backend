@@ -8,8 +8,10 @@ import {
   CommunicationMessageReadResult,
   CommunicationMessageRecord,
 } from '../infrastructure/communication-message.repository';
+import { CommunicationGeneratedNotificationRecord } from '../infrastructure/communication-notification-generation.repository';
 import { CommunicationModerationMessageRecord } from '../infrastructure/communication-moderation.repository';
 import { CommunicationMessageReactionRecord } from '../infrastructure/communication-reaction.repository';
+import { presentCommunicationRealtimeNotification } from '../presenters/communication-app-notification.presenter';
 import { presentCommunicationMessageAttachment } from '../presenters/communication-message-attachment.presenter';
 import { presentCommunicationMessage } from '../presenters/communication-message.presenter';
 import { presentModerationMessageMetadata } from '../presenters/communication-moderation.presenter';
@@ -149,6 +151,25 @@ export class CommunicationRealtimeEventsService {
         readAt: params.result.readAt.toISOString(),
         markedCount: params.result.markedCount,
         messages: params.result.messages,
+        eventAt: eventTimestamp(),
+      },
+    );
+  }
+
+  publishNotificationCreated(
+    schoolId: string,
+    notification: CommunicationGeneratedNotificationRecord,
+  ): void {
+    if (!hasRequiredIds(schoolId, notification.recipientUserId, notification.id)) {
+      return;
+    }
+
+    this.publisher.publishToUser(
+      schoolId,
+      notification.recipientUserId,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_NOTIFICATION_CREATED,
+      {
+        notification: presentCommunicationRealtimeNotification(notification),
         eventAt: eventTimestamp(),
       },
     );

@@ -2708,7 +2708,6 @@ describe('Student App Home/Profile routes (security)', () => {
       `homeworks/${ownTaskId}/questions`,
       `homeworks/${ownTaskId}/attachments`,
       'pickup',
-      'notifications',
       'messages/contacts',
       'messages/new',
       `messages/conversations/${ownConversationId}/participants`,
