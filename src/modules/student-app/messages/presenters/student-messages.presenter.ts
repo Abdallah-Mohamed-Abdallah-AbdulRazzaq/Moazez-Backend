@@ -102,7 +102,15 @@ function presentConversationCard(params: {
   unreadCount: number;
 }): StudentMessageConversationCardDto {
   const lastMessage = params.conversation.messages[0] ?? null;
+  const lastMessagePreview = lastMessage
+    ? presentLastMessage({
+        message: lastMessage,
+        studentUserId: params.studentUserId,
+      })
+    : null;
   const type = params.conversation.type.toLowerCase();
+  const participantsCount = params.conversation.participants.length;
+  const isGroup = isGroupConversationType(type, { participantsCount });
   const displayName = conversationDisplayName(
     params.conversation,
     params.studentUserId,
@@ -120,25 +128,17 @@ function presentConversationCard(params: {
     display_name: displayName,
     status: params.conversation.status.toLowerCase(),
     category: categoryForConversationType(type),
-    isGroup: params.conversation.participants.length > 2,
-    is_group: params.conversation.participants.length > 2,
+    isGroup,
+    is_group: isGroup,
     avatar_url: null,
-    lastMessage: lastMessage
-      ? presentLastMessage({
-          message: lastMessage,
-          studentUserId: params.studentUserId,
-        })
-      : null,
-    last_message: lastMessage
-      ? presentLastMessage({
-          message: lastMessage,
-          studentUserId: params.studentUserId,
-        })
-      : null,
+    lastMessage: lastMessagePreview,
+    last_message: lastMessagePreview,
     unreadCount: params.unreadCount,
     unread_count: params.unreadCount,
-    participantsCount: params.conversation.participants.length,
-    participants_count: params.conversation.participants.length,
+    participantsCount,
+    participants_count: participantsCount,
+    lastMessageReadCount: lastMessagePreview?.readCount ?? 0,
+    last_message_read_count: lastMessagePreview?.readCount ?? 0,
     lastActivityAt,
     last_activity_at: lastActivityAt,
     updatedAt,
@@ -191,13 +191,21 @@ function presentLastMessage(params: {
   const message = presentMessage(params);
 
   return {
+    id: message.id,
     messageId: message.messageId,
+    message_id: message.message_id,
     sender: message.sender,
+    senderType: message.senderType,
+    sender_type: message.sender_type,
     type: message.type,
     status: message.status,
+    text: message.text,
     body: message.body,
     content: message.content,
+    readCount: message.readCount,
+    read_count: message.read_count,
     createdAt: message.createdAt,
+    created_at: message.created_at,
   };
 }
 
@@ -297,6 +305,27 @@ function categoryForConversationType(type: string): string {
     case 'direct':
     default:
       return 'direct';
+  }
+}
+
+function isGroupConversationType(
+  type: string,
+  params: { participantsCount: number },
+): boolean {
+  switch (type) {
+    case 'group':
+    case 'classroom':
+    case 'grade':
+    case 'section':
+    case 'stage':
+    case 'school_wide':
+      return true;
+    case 'support':
+      return params.participantsCount > 2;
+    case 'system':
+    case 'direct':
+    default:
+      return false;
   }
 }
 

@@ -115,21 +115,29 @@ function presentConversationCard(params: {
   unreadCount: number;
 }): TeacherMessageConversationCardDto {
   const lastMessage = params.conversation.messages[0] ?? null;
+  const lastMessagePreview = lastMessage
+    ? presentLastMessage({
+        message: lastMessage,
+        teacherUserId: params.teacherUserId,
+      })
+    : null;
+  const type = params.conversation.type.toLowerCase();
+  const participantsCount = params.conversation.participants.length;
 
   return {
     conversationId: params.conversation.id,
-    type: params.conversation.type.toLowerCase(),
+    type,
     title: conversationTitle(params.conversation),
-    displayName: conversationDisplayName(params.conversation, params.teacherUserId),
+    displayName: conversationDisplayName(
+      params.conversation,
+      params.teacherUserId,
+    ),
     status: params.conversation.status.toLowerCase(),
-    lastMessage: lastMessage
-      ? presentLastMessage({
-          message: lastMessage,
-          teacherUserId: params.teacherUserId,
-        })
-      : null,
+    isGroup: isGroupConversationType(type, { participantsCount }),
+    lastMessage: lastMessagePreview,
     unreadCount: params.unreadCount,
-    participantsCount: params.conversation.participants.length,
+    participantsCount,
+    lastMessageReadCount: lastMessagePreview?.readCount ?? 0,
     lastActivityAt: presentNullableDate(params.conversation.lastMessageAt),
     updatedAt: params.conversation.updatedAt.toISOString(),
   };
@@ -150,7 +158,10 @@ function presentConversationDetail(params: {
     conversationId: params.conversation.id,
     type: params.conversation.type.toLowerCase(),
     title: conversationTitle(params.conversation),
-    displayName: conversationDisplayName(params.conversation, params.teacherUserId),
+    displayName: conversationDisplayName(
+      params.conversation,
+      params.teacherUserId,
+    ),
     status: params.conversation.status.toLowerCase(),
     readOnly: metadata?.isReadOnly === true,
     pinned: metadata?.isPinned === true,
@@ -177,14 +188,20 @@ function presentLastMessage(params: {
   teacherUserId: string;
 }) {
   const message = presentMessage(params);
+  const senderType: 'me' | 'other' =
+    params.message.senderUserId === params.teacherUserId ? 'me' : 'other';
 
   return {
+    id: message.messageId,
     messageId: message.messageId,
     sender: message.sender,
+    senderType,
     type: message.type,
     status: message.status,
+    text: message.body,
     body: message.body,
     content: message.content,
+    readCount: message.readCount,
     createdAt: message.createdAt,
   };
 }
@@ -215,7 +232,9 @@ function presentMessage(params: {
     replyToMessageId: params.message.replyToMessageId,
     editedAt: presentNullableDate(params.message.editedAt),
     createdAt: params.message.sentAt.toISOString(),
-    reactions: visible ? presentReactions(params.message, params.teacherUserId) : [],
+    reactions: visible
+      ? presentReactions(params.message, params.teacherUserId)
+      : [],
     attachments: visible ? presentAttachments(params.message) : [],
     readCount: countReadUsersExcludingSender(params.message),
   };
@@ -287,6 +306,27 @@ function conversationDisplayName(
   }
 
   return 'Conversation';
+}
+
+function isGroupConversationType(
+  type: string,
+  params: { participantsCount: number },
+): boolean {
+  switch (type) {
+    case 'group':
+    case 'classroom':
+    case 'grade':
+    case 'section':
+    case 'stage':
+    case 'school_wide':
+      return true;
+    case 'support':
+      return params.participantsCount > 2;
+    case 'system':
+    case 'direct':
+    default:
+      return false;
+  }
 }
 
 function summarizeUnread(

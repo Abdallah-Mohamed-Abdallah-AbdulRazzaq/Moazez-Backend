@@ -124,13 +124,21 @@ export class ParentMessageSenderDto {
 }
 
 export class ParentConversationLastMessageDto {
+  id!: string;
   messageId!: string;
+  message_id!: string;
   sender!: ParentMessageSenderDto;
+  senderType!: 'me' | 'other';
+  sender_type!: 'me' | 'other';
   type!: string;
   status!: string;
+  text!: string | null;
   body!: string | null;
   content!: string | null;
+  readCount!: number;
+  read_count!: number;
   createdAt!: string;
+  created_at!: string;
 }
 
 export class ParentMessageConversationCardDto {
@@ -152,6 +160,8 @@ export class ParentMessageConversationCardDto {
   unread_count!: number;
   participantsCount!: number;
   participants_count!: number;
+  lastMessageReadCount!: number;
+  last_message_read_count!: number;
   lastActivityAt!: string | null;
   last_activity_at!: string | null;
   updatedAt!: string;

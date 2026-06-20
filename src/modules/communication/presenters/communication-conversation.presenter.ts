@@ -23,6 +23,12 @@ export interface CommunicationConversationResponse {
   isPinned: boolean;
   lastMessageAt: string | null;
   participantCount: number;
+  activeParticipantsCount: number;
+  participantsCount: number;
+  unreadCount: number | null;
+  isGroup: boolean;
+  lastMessage: CommunicationConversationLastMessageResponse | null;
+  lastMessageReadCount: number | null;
   participantSummary?: ParticipantCountsSummary;
   createdById: string | null;
   createdAt: string;
@@ -30,6 +36,23 @@ export interface CommunicationConversationResponse {
   archivedAt: string | null;
   closedAt: string | null;
   metadata: Record<string, unknown> | null;
+}
+
+export interface CommunicationConversationLastMessageResponse {
+  id: string;
+  messageId: string;
+  conversationId: string;
+  senderUserId: string | null;
+  type: string;
+  status: string;
+  body: string | null;
+  content: string | null;
+  clientMessageId: string | null;
+  replyToMessageId: string | null;
+  readCount: number;
+  sentAt: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export function presentCommunicationConversationList(params: {
@@ -55,13 +78,24 @@ export function presentCommunicationConversation(
   options?: { participantSummary?: ParticipantCountsSummary },
 ): CommunicationConversationResponse {
   const metadata = sanitizeConversationMetadata(conversation.metadata);
+  const lastMessage = conversation.messages[0]
+    ? presentConversationLastMessage(conversation.messages[0])
+    : null;
+  const activeParticipantsCount = conversation.participants.length;
+  const participantsCount =
+    options?.participantSummary?.active !== undefined ||
+    options?.participantSummary?.muted !== undefined
+      ? (options.participantSummary.active ?? 0) +
+        (options.participantSummary.muted ?? 0)
+      : activeParticipantsCount;
 
   return {
     id: conversation.id,
     type: presentEnum(conversation.type),
     status: presentEnum(conversation.status),
     title: conversation.titleEn ?? conversation.titleAr ?? null,
-    description: conversation.descriptionEn ?? conversation.descriptionAr ?? null,
+    description:
+      conversation.descriptionEn ?? conversation.descriptionAr ?? null,
     avatarFileId: conversation.avatarFileId,
     academicYearId: conversation.academicYearId,
     termId: conversation.termId,
@@ -76,6 +110,14 @@ export function presentCommunicationConversation(
     lastMessageAt: presentNullableDate(conversation.lastMessageAt),
     participantCount:
       options?.participantSummary?.total ?? conversation._count.participants,
+    activeParticipantsCount,
+    participantsCount,
+    unreadCount: null,
+    isGroup: isGroupConversationType(presentEnum(conversation.type), {
+      participantsCount,
+    }),
+    lastMessage,
+    lastMessageReadCount: lastMessage?.readCount ?? null,
     ...(options?.participantSummary
       ? { participantSummary: options.participantSummary }
       : {}),
@@ -96,7 +138,8 @@ export function summarizeCommunicationConversationForAudit(
     type: presentEnum(conversation.type),
     status: presentEnum(conversation.status),
     title: conversation.titleEn ?? conversation.titleAr ?? null,
-    description: conversation.descriptionEn ?? conversation.descriptionAr ?? null,
+    description:
+      conversation.descriptionEn ?? conversation.descriptionAr ?? null,
     avatarFileId: conversation.avatarFileId,
     academicYearId: conversation.academicYearId,
     termId: conversation.termId,
@@ -153,6 +196,72 @@ function sanitizeMetadataValue(
   }
 
   return output;
+}
+
+function presentConversationLastMessage(
+  message: CommunicationConversationRecord['messages'][number],
+): CommunicationConversationLastMessageResponse {
+  const body = shouldHideMessageBody(message) ? null : message.body;
+
+  return {
+    id: message.id,
+    messageId: message.id,
+    conversationId: message.conversationId,
+    senderUserId: message.senderUserId,
+    type: presentEnum(message.kind),
+    status: presentEnum(message.status),
+    body,
+    content: body,
+    clientMessageId: message.clientMessageId,
+    replyToMessageId: message.replyToMessageId,
+    readCount: countReadUsersExcludingSender(message),
+    sentAt: message.sentAt.toISOString(),
+    createdAt: message.createdAt.toISOString(),
+    updatedAt: message.updatedAt.toISOString(),
+  };
+}
+
+function isGroupConversationType(
+  type: string,
+  params: { participantsCount: number },
+): boolean {
+  switch (type) {
+    case 'group':
+    case 'classroom':
+    case 'grade':
+    case 'section':
+    case 'stage':
+    case 'school_wide':
+      return true;
+    case 'support':
+      return params.participantsCount > 2;
+    case 'system':
+    case 'direct':
+    default:
+      return false;
+  }
+}
+
+function shouldHideMessageBody(message: {
+  status: string;
+  hiddenAt: Date | null;
+  deletedAt: Date | null;
+}): boolean {
+  return (
+    message.status === 'HIDDEN' ||
+    message.status === 'DELETED' ||
+    Boolean(message.hiddenAt) ||
+    Boolean(message.deletedAt)
+  );
+}
+
+function countReadUsersExcludingSender(message: {
+  senderUserId: string | null;
+  reads: Array<{ userId: string }>;
+}): number {
+  return message.reads.filter(
+    (read) => !message.senderUserId || read.userId !== message.senderUserId,
+  ).length;
 }
 
 function presentEnum(value: string): string {

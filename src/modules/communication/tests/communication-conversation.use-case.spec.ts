@@ -239,10 +239,12 @@ describe('communication conversation use cases', () => {
         .mockResolvedValueOnce(active)
         .mockResolvedValueOnce(active)
         .mockResolvedValueOnce(closed),
-      archiveCurrentSchoolConversation: jest.fn().mockImplementation((input) => {
-        audits.push(input.buildAuditEntry(archived));
-        return Promise.resolve(archived);
-      }),
+      archiveCurrentSchoolConversation: jest
+        .fn()
+        .mockImplementation((input) => {
+          audits.push(input.buildAuditEntry(archived));
+          return Promise.resolve(archived);
+        }),
       closeCurrentSchoolConversation: jest.fn().mockImplementation((input) => {
         audits.push(input.buildAuditEntry(closed));
         return Promise.resolve(closed);
@@ -339,7 +341,8 @@ function repositoryMock(
     createInvite: jest.fn(),
     createJoinRequest: jest.fn(),
     ...(overrides ?? {}),
-  } as unknown as CommunicationConversationRepository & Record<string, jest.Mock>;
+  } as unknown as CommunicationConversationRepository &
+    Record<string, jest.Mock>;
 }
 
 function policyRepositoryMock(
@@ -382,6 +385,8 @@ function conversationRecord(
     updatedAt: new Date('2026-05-02T08:30:00.000Z'),
     deletedAt: null,
     _count: { participants: 1 },
+    participants: [],
+    messages: [],
     ...(overrides ?? {}),
   };
 }

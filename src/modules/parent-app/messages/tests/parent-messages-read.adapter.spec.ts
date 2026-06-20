@@ -4,7 +4,7 @@ import { ParentMessagesReadAdapter } from '../infrastructure/parent-messages-rea
 describe('ParentMessagesReadAdapter', () => {
   it('uses scoped Prisma and active parent participant filters for conversations', async () => {
     const { adapter, conversationMocks, messageMocks } = createAdapter();
-    conversationMocks.findMany.mockResolvedValue([]);
+    conversationMocks.findMany.mockResolvedValue([{ id: 'conversation-1' }]);
     conversationMocks.count.mockResolvedValue(0);
     messageMocks.groupBy.mockResolvedValue([]);
 
@@ -13,7 +13,10 @@ describe('ParentMessagesReadAdapter', () => {
       filters: { search: 'teacher' },
     });
 
-    expect(conversationMocks.findMany.mock.calls[0][0].where).toMatchObject({
+    const query = conversationMocks.findMany.mock.calls[0][0];
+    const selectJson = JSON.stringify(query.select);
+
+    expect(query.where).toMatchObject({
       deletedAt: null,
       participants: {
         some: {
@@ -21,9 +24,11 @@ describe('ParentMessagesReadAdapter', () => {
         },
       },
     });
-    expect(
-      conversationMocks.findMany.mock.calls[0][0].where,
-    ).not.toHaveProperty('schoolId');
+    expect(query.where).not.toHaveProperty('schoolId');
+    expect(selectJson).toContain('participants');
+    expect(selectJson).toContain('messages');
+    expect(selectJson).toContain('reads');
+    expect(messageMocks.groupBy).toHaveBeenCalledTimes(1);
   });
 
   it('does not create conversations, participants, attachments, or bypass scope', async () => {

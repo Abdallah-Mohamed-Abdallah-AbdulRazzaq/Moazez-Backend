@@ -3,6 +3,7 @@ import {
   AuditOutcome,
   CommunicationConversationStatus,
   CommunicationConversationType,
+  CommunicationMessageStatus,
   CommunicationParticipantRole,
   CommunicationParticipantStatus,
   Prisma,
@@ -15,6 +16,33 @@ import {
   summarizeConversationCounts,
   summarizeParticipantCounts,
 } from '../domain/communication-conversation-domain';
+
+const ACTIVE_PARTICIPANT_STATUSES = [
+  CommunicationParticipantStatus.ACTIVE,
+  CommunicationParticipantStatus.MUTED,
+] as const;
+
+const COMMUNICATION_CONVERSATION_LAST_MESSAGE_SELECT = {
+  id: true,
+  conversationId: true,
+  senderUserId: true,
+  kind: true,
+  status: true,
+  body: true,
+  clientMessageId: true,
+  replyToMessageId: true,
+  editedAt: true,
+  hiddenAt: true,
+  deletedAt: true,
+  sentAt: true,
+  createdAt: true,
+  updatedAt: true,
+  reads: {
+    select: {
+      userId: true,
+    },
+  },
+} satisfies Prisma.CommunicationMessageSelect;
 
 const COMMUNICATION_CONVERSATION_ARGS =
   Prisma.validator<Prisma.CommunicationConversationDefaultArgs>()({
@@ -50,6 +78,26 @@ const COMMUNICATION_CONVERSATION_ARGS =
           participants: true,
         },
       },
+      participants: {
+        where: { status: { in: [...ACTIVE_PARTICIPANT_STATUSES] } },
+        select: {
+          id: true,
+        },
+      },
+      messages: {
+        where: {
+          status: {
+            in: [
+              CommunicationMessageStatus.SENT,
+              CommunicationMessageStatus.HIDDEN,
+              CommunicationMessageStatus.DELETED,
+            ],
+          },
+        },
+        orderBy: [{ sentAt: 'desc' }, { id: 'asc' }],
+        take: 1,
+        select: COMMUNICATION_CONVERSATION_LAST_MESSAGE_SELECT,
+      },
     },
   });
 
@@ -57,13 +105,12 @@ const CONTEXT_ID_ARGS = { select: { id: true } } satisfies {
   select: { id: true };
 };
 
-const TERM_CONTEXT_ARGS =
-  Prisma.validator<Prisma.TermDefaultArgs>()({
-    select: {
-      id: true,
-      academicYearId: true,
-    },
-  });
+const TERM_CONTEXT_ARGS = Prisma.validator<Prisma.TermDefaultArgs>()({
+  select: {
+    id: true,
+    academicYearId: true,
+  },
+});
 
 export type CommunicationConversationRecord =
   Prisma.CommunicationConversationGetPayload<
@@ -484,7 +531,9 @@ export class CommunicationConversationRepository {
     });
 
     if (!conversation) {
-      throw new Error('Communication conversation mutation result was not found');
+      throw new Error(
+        'Communication conversation mutation result was not found',
+      );
     }
 
     return conversation;
@@ -510,9 +559,7 @@ export class CommunicationConversationRepository {
         before: entry.before
           ? (entry.before as Prisma.InputJsonValue)
           : undefined,
-        after: entry.after
-          ? (entry.after as Prisma.InputJsonValue)
-          : undefined,
+        after: entry.after ? (entry.after as Prisma.InputJsonValue) : undefined,
       },
     });
   }

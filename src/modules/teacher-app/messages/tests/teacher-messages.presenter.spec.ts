@@ -44,6 +44,14 @@ describe('TeacherMessagesPresenter', () => {
       displayName: 'Mona Parent',
       unreadCount: 2,
       participantsCount: 2,
+      isGroup: false,
+      lastMessageReadCount: 0,
+    });
+    expect(list.conversations[0].lastMessage).toMatchObject({
+      id: 'message-1',
+      messageId: 'message-1',
+      senderType: 'me',
+      readCount: 0,
     });
     expect(detail.conversation.ownReadState).toEqual({
       lastReadMessageId: 'message-0',
@@ -65,6 +73,87 @@ describe('TeacherMessagesPresenter', () => {
     expect(json).not.toContain('scheduleId');
     expect(json).not.toContain('mutedUntil');
     expect(json).not.toContain('email');
+  });
+
+  it('presents teacher list enrichment with group mapping and sender-excluded reads', () => {
+    const list = TeacherMessagesPresenter.presentConversationList({
+      result: {
+        items: [
+          conversationFixture({
+            type: CommunicationConversationType.SECTION,
+            participants: [
+              participantFixture(
+                TEACHER_ID,
+                'Test',
+                'Teacher',
+                UserType.TEACHER,
+              ),
+              participantFixture(
+                'parent-1',
+                'Mona',
+                'Parent',
+                UserType.PARENT,
+                CommunicationParticipantStatus.MUTED,
+              ),
+            ],
+            messages: [
+              messageFixture({
+                senderUserId: 'parent-1',
+                body: 'Section update',
+                reads: [{ userId: 'parent-1' }, { userId: TEACHER_ID }],
+                _count: { reads: 2 },
+              }),
+            ],
+          }),
+        ],
+        total: 1,
+        page: 1,
+        limit: 20,
+        unreadCounts: new Map([[CONVERSATION_ID, 5]]),
+      },
+      teacherUserId: TEACHER_ID,
+    });
+    const card = list.conversations[0];
+
+    expect(card).toMatchObject({
+      isGroup: true,
+      unreadCount: 5,
+      participantsCount: 2,
+      lastMessageReadCount: 1,
+    });
+    expect(card.lastMessage).toMatchObject({
+      senderType: 'other',
+      text: 'Section update',
+      body: 'Section update',
+      readCount: 1,
+    });
+  });
+
+  it('hides hidden teacher last-message body without leaking raw text', () => {
+    const list = TeacherMessagesPresenter.presentConversationList({
+      result: {
+        items: [
+          conversationFixture({
+            messages: [
+              messageFixture({
+                status: CommunicationMessageStatus.HIDDEN,
+                body: 'hidden teacher list body',
+                hiddenAt: new Date('2026-09-18T10:05:00.000Z'),
+              }),
+            ],
+          }),
+        ],
+        total: 1,
+        page: 1,
+        limit: 20,
+        unreadCounts: new Map(),
+      },
+      teacherUserId: TEACHER_ID,
+    });
+
+    expect(list.conversations[0].lastMessage?.body).toBeNull();
+    expect(list.conversations[0].lastMessage?.content).toBeNull();
+    expect(JSON.stringify(list)).not.toContain('hidden teacher list body');
   });
 
   it('hides hidden and deleted message bodies and does not expose moderation fields', () => {
@@ -184,7 +273,9 @@ describe('TeacherMessagesPresenter', () => {
   });
 });
 
-function conversationFixture(): TeacherMessageConversationRecord {
+function conversationFixture(
+  overrides?: Partial<TeacherMessageConversationRecord>,
+): TeacherMessageConversationRecord {
   const now = new Date('2026-09-18T09:00:00.000Z');
   return {
     id: CONVERSATION_ID,
@@ -203,6 +294,7 @@ function conversationFixture(): TeacherMessageConversationRecord {
       participantFixture('parent-1', 'Mona', 'Parent', UserType.PARENT),
     ],
     messages: [messageFixture()],
+    ...(overrides ?? {}),
   } as unknown as TeacherMessageConversationRecord;
 }
 
@@ -211,13 +303,14 @@ function participantFixture(
   firstName: string,
   lastName: string,
   userType: UserType,
+  status: CommunicationParticipantStatus = CommunicationParticipantStatus.ACTIVE,
 ) {
   return {
     id: `participant-${userId}`,
     conversationId: CONVERSATION_ID,
     userId,
     role: CommunicationParticipantRole.MEMBER,
-    status: CommunicationParticipantStatus.ACTIVE,
+    status,
     lastReadMessageId: userId === TEACHER_ID ? 'message-0' : null,
     lastReadAt:
       userId === TEACHER_ID ? new Date('2026-09-18T09:30:00.000Z') : null,

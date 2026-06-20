@@ -124,13 +124,21 @@ export class StudentMessageSenderDto {
 }
 
 export class StudentConversationLastMessageDto {
+  id!: string;
   messageId!: string;
+  message_id!: string;
   sender!: StudentMessageSenderDto;
+  senderType!: 'me' | 'other';
+  sender_type!: 'me' | 'other';
   type!: string;
   status!: string;
+  text!: string | null;
   body!: string | null;
   content!: string | null;
+  readCount!: number;
+  read_count!: number;
   createdAt!: string;
+  created_at!: string;
 }
 
 export class StudentMessageConversationCardDto {
@@ -152,6 +160,8 @@ export class StudentMessageConversationCardDto {
   unread_count!: number;
   participantsCount!: number;
   participants_count!: number;
+  lastMessageReadCount!: number;
+  last_message_read_count!: number;
   lastActivityAt!: string | null;
   last_activity_at!: string | null;
   updatedAt!: string;

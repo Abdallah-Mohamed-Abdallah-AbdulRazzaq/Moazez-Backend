@@ -11,7 +11,7 @@ import { StudentMessagesReadAdapter } from '../infrastructure/student-messages-r
 describe('StudentMessagesReadAdapter', () => {
   it('lists only active participant conversations for the current student user', async () => {
     const { adapter, conversationMocks, messageMocks } = createAdapter();
-    conversationMocks.findMany.mockResolvedValue([]);
+    conversationMocks.findMany.mockResolvedValue([{ id: 'conversation-1' }]);
     conversationMocks.count.mockResolvedValue(0);
     messageMocks.groupBy.mockResolvedValue([]);
 
@@ -25,6 +25,7 @@ describe('StudentMessagesReadAdapter', () => {
     });
 
     const query = conversationMocks.findMany.mock.calls[0][0];
+    const selectJson = JSON.stringify(query.select);
     expect(query.where).toMatchObject({
       type: CommunicationConversationType.DIRECT,
       status: CommunicationConversationStatus.ACTIVE,
@@ -42,6 +43,10 @@ describe('StudentMessagesReadAdapter', () => {
       },
     });
     expect(query.where).not.toHaveProperty('schoolId');
+    expect(selectJson).toContain('participants');
+    expect(selectJson).toContain('messages');
+    expect(selectJson).toContain('reads');
+    expect(messageMocks.groupBy).toHaveBeenCalledTimes(1);
   });
 
   it('lists messages inside an already authorized conversation only', async () => {

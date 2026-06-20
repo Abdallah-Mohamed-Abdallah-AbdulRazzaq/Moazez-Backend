@@ -61,7 +61,17 @@ describe('StudentMessagesPresenter', () => {
     expect(result.conversations[0]).toMatchObject({
       conversationId: 'conversation-1',
       unreadCount: 2,
+      participantsCount: 2,
+      isGroup: false,
+      lastMessageReadCount: 0,
       avatar_url: null,
+    });
+    expect(result.conversations[0].lastMessage).toMatchObject({
+      id: 'message-1',
+      message_id: 'message-1',
+      readCount: 0,
+      read_count: 0,
+      created_at: '2026-01-01T08:00:00.000Z',
     });
     expect(serialized).not.toContain('schoolId');
     expect(serialized).not.toContain('organizationId');
@@ -69,6 +79,88 @@ describe('StudentMessagesPresenter', () => {
     expect(serialized).not.toContain('bucket');
     expect(serialized).not.toContain('objectKey');
     expect(serialized).not.toContain('attachments');
+  });
+
+  it('presents student list enrichment with group mapping and sender-excluded last-message reads', () => {
+    const result = StudentMessagesPresenter.presentConversationList({
+      result: {
+        items: [
+          conversationFixture({
+            type: CommunicationConversationType.GRADE,
+            participants: [
+              participantFixture('student-user-1', UserType.STUDENT),
+              participantFixture(
+                'teacher-user-1',
+                UserType.TEACHER,
+                CommunicationParticipantStatus.MUTED,
+              ),
+            ],
+            messages: [
+              messageFixture({
+                id: 'message-1',
+                body: 'Grade update',
+                reads: [
+                  { userId: 'teacher-user-1' },
+                  { userId: 'student-user-1' },
+                ],
+                _count: { reads: 2 },
+              }),
+            ],
+          }) as any,
+        ],
+        total: 1,
+        page: 1,
+        limit: 20,
+        unreadCounts: new Map([['conversation-1', 4]]),
+      },
+      studentUserId: 'student-user-1',
+    });
+    const card = result.conversations[0];
+
+    expect(card).toMatchObject({
+      isGroup: true,
+      is_group: true,
+      participantsCount: 2,
+      participants_count: 2,
+      unreadCount: 4,
+      unread_count: 4,
+      lastMessageReadCount: 1,
+      last_message_read_count: 1,
+    });
+    expect(card.lastMessage).toMatchObject({
+      senderType: 'other',
+      sender_type: 'other',
+      text: 'Grade update',
+      readCount: 1,
+      read_count: 1,
+    });
+  });
+
+  it('hides hidden student last-message body without leaking raw text', () => {
+    const result = StudentMessagesPresenter.presentConversationList({
+      result: {
+        items: [
+          conversationFixture({
+            messages: [
+              messageFixture({
+                id: 'message-hidden',
+                status: CommunicationMessageStatus.HIDDEN,
+                body: 'hidden student list body',
+              }),
+            ],
+          }) as any,
+        ],
+        total: 1,
+        page: 1,
+        limit: 20,
+        unreadCounts: new Map(),
+      },
+      studentUserId: 'student-user-1',
+    });
+
+    expect(result.conversations[0].lastMessage?.body).toBeNull();
+    expect(result.conversations[0].lastMessage?.content).toBeNull();
+    expect(JSON.stringify(result)).not.toContain('hidden student list body');
   });
 
   it('adds readCount aliases and ignores sender self-read rows', () => {
@@ -82,10 +174,7 @@ describe('StudentMessagesPresenter', () => {
               body: 'own',
             }),
             senderUserId: 'student-user-1',
-            reads: [
-              { userId: 'student-user-1' },
-              { userId: 'teacher-user-1' },
-            ],
+            reads: [{ userId: 'student-user-1' }, { userId: 'teacher-user-1' }],
             _count: { reads: 2 },
           },
           {
@@ -120,7 +209,7 @@ describe('StudentMessagesPresenter', () => {
   });
 });
 
-function conversationFixture() {
+function conversationFixture(overrides?: Record<string, unknown>) {
   return {
     id: 'conversation-1',
     type: CommunicationConversationType.DIRECT,
@@ -138,16 +227,21 @@ function conversationFixture() {
       participantFixture('teacher-user-1', UserType.TEACHER),
     ],
     messages: [messageFixture({ id: 'message-1', body: 'Hello' })],
+    ...(overrides ?? {}),
   };
 }
 
-function participantFixture(userId: string, userType: UserType) {
+function participantFixture(
+  userId: string,
+  userType: UserType,
+  status: CommunicationParticipantStatus = CommunicationParticipantStatus.ACTIVE,
+) {
   return {
     id: `participant-${userId}`,
     conversationId: 'conversation-1',
     userId,
     role: CommunicationParticipantRole.MEMBER,
-    status: CommunicationParticipantStatus.ACTIVE,
+    status,
     lastReadMessageId: null,
     lastReadAt: null,
     createdAt: new Date('2026-01-01T08:00:00.000Z'),
@@ -166,11 +260,14 @@ function messageFixture(params: {
   id: string;
   status?: CommunicationMessageStatus;
   body?: string;
+  senderUserId?: string;
+  reads?: Array<{ userId: string }>;
+  _count?: { reads: number };
 }) {
   return {
     id: params.id,
     conversationId: 'conversation-1',
-    senderUserId: 'teacher-user-1',
+    senderUserId: params.senderUserId ?? 'teacher-user-1',
     kind: CommunicationMessageKind.TEXT,
     status: params.status ?? CommunicationMessageStatus.SENT,
     body: params.body ?? 'Hello',
@@ -194,7 +291,7 @@ function messageFixture(params: {
       userType: UserType.TEACHER,
       status: UserStatus.ACTIVE,
     },
-    reads: [],
-    _count: { reads: 0 },
+    reads: params.reads ?? [],
+    _count: params._count ?? { reads: 0 },
   };
 }

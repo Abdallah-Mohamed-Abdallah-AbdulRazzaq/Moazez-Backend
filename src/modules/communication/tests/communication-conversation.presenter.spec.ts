@@ -1,6 +1,8 @@
 import {
   CommunicationConversationStatus,
   CommunicationConversationType,
+  CommunicationMessageKind,
+  CommunicationMessageStatus,
 } from '@prisma/client';
 import {
   presentCommunicationConversation,
@@ -96,6 +98,93 @@ describe('communication conversation presenter', () => {
     expect(result.items).toEqual([]);
     expect(result.summary.total).toBe(0);
   });
+
+  it('adds safe core list enrichment without changing the wrapper contract', () => {
+    const result = presentCommunicationConversationList({
+      items: [
+        conversationRecord({
+          type: CommunicationConversationType.GROUP,
+          _count: { participants: 4 },
+          participants: [
+            { id: 'participant-active' },
+            { id: 'participant-muted' },
+          ],
+          messages: [
+            messageRecord({
+              reads: [{ userId: 'sender-user-1' }, { userId: 'reader-user-1' }],
+            }),
+          ],
+        }),
+      ],
+      total: 1,
+      limit: 50,
+      page: 1,
+      summary: {
+        total: 1,
+        active: 1,
+        archived: 0,
+        closed: 0,
+        direct: 0,
+        group: 1,
+        classroom: 0,
+        grade: 0,
+        section: 0,
+        stage: 0,
+        schoolWide: 0,
+        support: 0,
+        system: 0,
+      },
+    });
+    const item = result.items[0];
+    const serialized = JSON.stringify(item);
+
+    expect(result).toMatchObject({
+      total: 1,
+      limit: 50,
+      page: 1,
+      summary: expect.objectContaining({ group: 1 }),
+    });
+    expect(item).toMatchObject({
+      participantCount: 4,
+      activeParticipantsCount: 2,
+      participantsCount: 2,
+      unreadCount: null,
+      isGroup: true,
+      lastMessageReadCount: 1,
+    });
+    expect(item.lastMessage).toMatchObject({
+      id: 'message-1',
+      messageId: 'message-1',
+      body: 'Visible text',
+      content: 'Visible text',
+      clientMessageId: 'client-message-1',
+      readCount: 1,
+    });
+    expect(serialized).not.toContain('schoolId');
+    expect(serialized).not.toContain('hiddenReason');
+  });
+
+  it('hides hidden or deleted core last-message body while keeping read counts', () => {
+    const hidden = presentCommunicationConversation(
+      conversationRecord({
+        messages: [
+          messageRecord({
+            status: CommunicationMessageStatus.HIDDEN,
+            hiddenAt: new Date('2026-05-02T09:00:00.000Z'),
+            body: 'hidden body',
+            reads: [{ userId: 'reader-user-1' }],
+          }),
+        ],
+      }),
+    );
+
+    expect(hidden.lastMessage).toMatchObject({
+      body: null,
+      content: null,
+      readCount: 1,
+    });
+    expect(JSON.stringify(hidden)).not.toContain('hidden body');
+  });
 });
 
 function conversationRecord(
@@ -129,6 +218,31 @@ function conversationRecord(
     updatedAt: new Date('2026-05-02T08:30:00.000Z'),
     deletedAt: null,
     _count: { participants: 1 },
+    participants: [],
+    messages: [],
+    ...(overrides ?? {}),
+  };
+}
+
+function messageRecord(
+  overrides?: Partial<CommunicationConversationRecord['messages'][number]>,
+): CommunicationConversationRecord['messages'][number] {
+  return {
+    id: 'message-1',
+    conversationId: 'conversation-1',
+    senderUserId: 'sender-user-1',
+    kind: CommunicationMessageKind.TEXT,
+    status: CommunicationMessageStatus.SENT,
+    body: 'Visible text',
+    clientMessageId: 'client-message-1',
+    replyToMessageId: null,
+    editedAt: null,
+    hiddenAt: null,
+    deletedAt: null,
+    sentAt: new Date('2026-05-02T09:00:00.000Z'),
+    createdAt: new Date('2026-05-02T09:00:00.000Z'),
+    updatedAt: new Date('2026-05-02T09:00:00.000Z'),
+    reads: [],
     ...(overrides ?? {}),
   };
 }

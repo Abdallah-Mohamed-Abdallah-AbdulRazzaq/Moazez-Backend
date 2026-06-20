@@ -159,12 +159,16 @@ export class TeacherMessageDto {
 }
 
 export class TeacherMessageLastMessageDto {
+  id!: string;
   messageId!: string;
   sender!: TeacherMessageSenderDto;
+  senderType!: 'me' | 'other';
   type!: string;
   status!: string;
+  text!: string | null;
   body!: string | null;
   content!: string | null;
+  readCount!: number;
   createdAt!: string;
 }
 
@@ -174,9 +178,11 @@ export class TeacherMessageConversationCardDto {
   title!: string | null;
   displayName!: string;
   status!: string;
+  isGroup!: boolean;
   lastMessage!: TeacherMessageLastMessageDto | null;
   unreadCount!: number;
   participantsCount!: number;
+  lastMessageReadCount!: number;
   lastActivityAt!: string | null;
   updatedAt!: string;
 }

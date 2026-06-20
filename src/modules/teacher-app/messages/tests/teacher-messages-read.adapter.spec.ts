@@ -11,7 +11,9 @@ import { TeacherMessagesReadAdapter } from '../infrastructure/teacher-messages-r
 describe('TeacherMessagesReadAdapter', () => {
   it('lists only current teacher participant conversations through scoped Prisma without hand-crafted schoolId', async () => {
     const { adapter, prismaMocks } = createAdapter();
-    prismaMocks.communicationConversation.findMany.mockResolvedValue([]);
+    prismaMocks.communicationConversation.findMany.mockResolvedValue([
+      { id: 'conversation-1' },
+    ]);
     prismaMocks.communicationConversation.count.mockResolvedValue(0);
     prismaMocks.communicationMessage.groupBy.mockResolvedValue([]);
 
@@ -26,7 +28,9 @@ describe('TeacherMessagesReadAdapter', () => {
       },
     });
 
-    const query = prismaMocks.communicationConversation.findMany.mock.calls[0][0];
+    const query =
+      prismaMocks.communicationConversation.findMany.mock.calls[0][0];
+    const selectJson = JSON.stringify(query.select);
     const whereJson = JSON.stringify(query.where);
 
     expect(query.take).toBe(10);
@@ -48,6 +52,10 @@ describe('TeacherMessagesReadAdapter', () => {
     });
     expect(whereJson).toContain('Mona');
     expect(query.where).not.toHaveProperty('schoolId');
+    expect(selectJson).toContain('participants');
+    expect(selectJson).toContain('messages');
+    expect(selectJson).toContain('reads');
+    expect(prismaMocks.communicationMessage.groupBy).toHaveBeenCalledTimes(1);
   });
 
   it('validates conversation detail by teacher participant access', async () => {
@@ -170,7 +178,9 @@ describe('TeacherMessagesReadAdapter', () => {
     expect(prismaMocks.communicationConversation.update).not.toHaveBeenCalled();
     expect(prismaMocks.communicationMessage.create).not.toHaveBeenCalled();
     expect(prismaMocks.communicationMessage.update).not.toHaveBeenCalled();
-    expect(prismaMocks.communicationConversationParticipant.create).not.toHaveBeenCalled();
+    expect(
+      prismaMocks.communicationConversationParticipant.create,
+    ).not.toHaveBeenCalled();
   });
 });
 
