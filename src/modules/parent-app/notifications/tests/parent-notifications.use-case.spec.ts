@@ -43,7 +43,18 @@ describe('Parent notifications use cases', () => {
       notificationCenter,
     } = createUseCasesWithValidAccess();
 
-    await listUseCase.execute({ status: 'unread', limit: 10 });
+    const query = {
+      status: 'unread',
+      createdFrom: '2026-06-21T00:00:00.000Z',
+      createdTo: '2026-06-22T00:00:00.000Z',
+      unreadOnly: 'true',
+      category: 'announcement',
+      sourceModule: 'announcements',
+      groupBy: 'category',
+      limit: 10,
+    };
+
+    await listUseCase.execute(query);
     await summaryUseCase.execute();
     await getUseCase.execute('notification-1');
     await markReadUseCase.execute('notification-1');
@@ -52,7 +63,7 @@ describe('Parent notifications use cases', () => {
 
     expect(notificationCenter.listForActor).toHaveBeenCalledWith({
       recipientUserId: 'parent-user-1',
-      query: { status: 'unread', limit: 10 },
+      query,
       aliasStyle: 'dual',
     });
     expect(notificationCenter.summaryForActor).toHaveBeenCalledWith({
@@ -128,6 +139,57 @@ describe('Parent notifications use cases', () => {
         {
           status: 'unread',
           recipientUserId: 'other-user-1',
+        },
+        metadata,
+      ),
+    ).rejects.toBeDefined();
+  });
+
+  it('list query DTO accepts Phase B filters and rejects unsafe values', async () => {
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    });
+    const metadata: ArgumentMetadata = {
+      type: 'query',
+      metatype: ListParentNotificationsQueryDto,
+      data: '',
+    };
+
+    await expect(
+      pipe.transform(
+        {
+          createdFrom: '2026-06-21T00:00:00.000Z',
+          createdTo: '2026-06-22T00:00:00.000Z',
+          unreadOnly: 'TRUE',
+          category: 'ANNOUNCEMENT',
+          sourceModule: 'communication',
+          groupBy: 'sourceModule',
+        },
+        metadata,
+      ),
+    ).resolves.toMatchObject({
+      createdFrom: '2026-06-21T00:00:00.000Z',
+      createdTo: '2026-06-22T00:00:00.000Z',
+      unreadOnly: 'true',
+      category: 'announcement',
+      sourceModule: 'communication',
+      groupBy: 'sourceModule',
+    });
+    await expect(
+      pipe.transform(
+        {
+          category: 'attendance',
+          groupBy: 'recipientUserId',
+        },
+        metadata,
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      pipe.transform(
+        {
+          createdFrom: 'not-a-date',
         },
         metadata,
       ),

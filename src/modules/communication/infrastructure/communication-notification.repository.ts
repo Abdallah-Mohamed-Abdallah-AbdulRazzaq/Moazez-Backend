@@ -91,6 +91,7 @@ export interface CommunicationNotificationListFilters {
   sourceId?: string;
   createdFrom?: Date;
   createdTo?: Date;
+  createdToExclusive?: Date;
   limit?: number;
   page?: number;
 }
@@ -214,16 +215,18 @@ export class CommunicationNotificationRepository {
     recipientUserId: string;
     readAt: Date;
   }): Promise<CommunicationNotificationReadAllResult> {
-    const result = await this.scopedPrisma.communicationNotification.updateMany({
-      where: {
-        recipientUserId: input.recipientUserId,
-        status: CommunicationNotificationStatus.UNREAD,
+    const result = await this.scopedPrisma.communicationNotification.updateMany(
+      {
+        where: {
+          recipientUserId: input.recipientUserId,
+          status: CommunicationNotificationStatus.UNREAD,
+        },
+        data: {
+          status: CommunicationNotificationStatus.READ,
+          readAt: input.readAt,
+        },
       },
-      data: {
-        status: CommunicationNotificationStatus.READ,
-        readAt: input.readAt,
-      },
-    });
+    );
 
     return { markedCount: result.count, readAt: input.readAt };
   }
@@ -243,7 +246,9 @@ export class CommunicationNotificationRepository {
       });
 
       if (!current) {
-        throw new Error('Communication notification archive target was not found');
+        throw new Error(
+          'Communication notification archive target was not found',
+        );
       }
 
       if (
@@ -306,16 +311,18 @@ export class CommunicationNotificationRepository {
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.priority ? { priority: filters.priority } : {}),
       ...(filters.type ? { type: filters.type } : {}),
-      ...(filters.sourceModule
-        ? { sourceModule: filters.sourceModule }
-        : {}),
+      ...(filters.sourceModule ? { sourceModule: filters.sourceModule } : {}),
       ...(filters.sourceType ? { sourceType: filters.sourceType } : {}),
       ...(filters.sourceId ? { sourceId: filters.sourceId } : {}),
-      ...(filters.createdFrom || filters.createdTo
+      ...(filters.createdFrom || filters.createdTo || filters.createdToExclusive
         ? {
             createdAt: {
               ...(filters.createdFrom ? { gte: filters.createdFrom } : {}),
-              ...(filters.createdTo ? { lte: filters.createdTo } : {}),
+              ...(filters.createdToExclusive
+                ? { lt: filters.createdToExclusive }
+                : filters.createdTo
+                  ? { lte: filters.createdTo }
+                  : {}),
             },
           }
         : {}),
@@ -356,7 +363,9 @@ export class CommunicationNotificationRepository {
     });
 
     if (!notification) {
-      throw new Error('Communication notification mutation result was not found');
+      throw new Error(
+        'Communication notification mutation result was not found',
+      );
     }
 
     return notification;

@@ -45,7 +45,17 @@ describe('Teacher notifications use cases', () => {
       notificationCenter,
     } = createUseCases();
 
-    await listUseCase.execute({ sourceModule: 'communication', limit: 10 });
+    const query = {
+      createdFrom: '2026-06-21T00:00:00.000Z',
+      createdTo: '2026-06-22T00:00:00.000Z',
+      unreadOnly: 'true',
+      category: 'message_received',
+      sourceModule: 'communication',
+      groupBy: 'sourceModule',
+      limit: 10,
+    };
+
+    await listUseCase.execute(query);
     await summaryUseCase.execute();
     await getUseCase.execute('notification-1');
     await markReadUseCase.execute('notification-1');
@@ -54,7 +64,7 @@ describe('Teacher notifications use cases', () => {
 
     expect(notificationCenter.listForActor).toHaveBeenCalledWith({
       recipientUserId: 'teacher-user-1',
-      query: { sourceModule: 'communication', limit: 10 },
+      query,
       aliasStyle: 'camel',
     });
     expect(notificationCenter.summaryForActor).toHaveBeenCalledWith({
@@ -130,6 +140,56 @@ describe('Teacher notifications use cases', () => {
         {
           status: 'unread',
           recipientUserId: 'other-user-1',
+        },
+        metadata,
+      ),
+    ).rejects.toBeDefined();
+  });
+
+  it('list query DTO accepts Phase B filters and rejects unsafe values', async () => {
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    });
+    const metadata: ArgumentMetadata = {
+      type: 'query',
+      metatype: ListTeacherNotificationsQueryDto,
+      data: '',
+    };
+
+    await expect(
+      pipe.transform(
+        {
+          createdFrom: '2026-06-21T00:00:00.000Z',
+          createdTo: '2026-06-22T00:00:00.000Z',
+          unreadOnly: 'TRUE',
+          category: 'ANNOUNCEMENT_PUBLISHED',
+          sourceModule: 'announcements',
+          groupBy: 'sourceModule',
+        },
+        metadata,
+      ),
+    ).resolves.toMatchObject({
+      createdFrom: '2026-06-21T00:00:00.000Z',
+      createdTo: '2026-06-22T00:00:00.000Z',
+      unreadOnly: 'true',
+      category: 'announcement_published',
+      sourceModule: 'announcements',
+      groupBy: 'sourceModule',
+    });
+    await expect(
+      pipe.transform(
+        {
+          category: 'system_alert',
+        },
+        metadata,
+      ),
+    ).rejects.toBeDefined();
+    await expect(
+      pipe.transform(
+        {
+          groupBy: 'recipientUserId',
         },
         metadata,
       ),

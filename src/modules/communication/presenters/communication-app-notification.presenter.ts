@@ -27,9 +27,17 @@ export interface CommunicationAppNotificationPresenterOptions {
   aliasStyle: CommunicationAppNotificationAliasStyle;
 }
 
+export interface CommunicationAppNotificationGroup {
+  key: string;
+  label: string;
+  count: number;
+  unreadCount: number;
+}
+
 export function presentCommunicationAppNotificationList(params: {
   result: CommunicationNotificationListResult;
   unreadCount: number;
+  groups?: CommunicationAppNotificationGroup[];
   options: CommunicationAppNotificationPresenterOptions;
 }) {
   const summary = presentCommunicationAppNotificationSummary({
@@ -37,7 +45,7 @@ export function presentCommunicationAppNotificationList(params: {
     options: params.options,
   });
 
-  return {
+  const response = {
     notifications: params.result.items.map((notification) =>
       presentCommunicationAppNotification(notification, params.options),
     ),
@@ -47,6 +55,15 @@ export function presentCommunicationAppNotificationList(params: {
       total: params.result.total,
     },
     summary,
+  };
+
+  if (!params.groups) return response;
+
+  return {
+    ...response,
+    groups: params.groups.map((group) =>
+      presentCommunicationAppNotificationGroup(group, params.options),
+    ),
   };
 }
 
@@ -94,6 +111,25 @@ export function presentCommunicationAppNotificationReadAllResult(
     ...response,
     marked_count: result.markedCount,
     read_at: readAt,
+  };
+}
+
+function presentCommunicationAppNotificationGroup(
+  group: CommunicationAppNotificationGroup,
+  options: CommunicationAppNotificationPresenterOptions,
+) {
+  const base = {
+    key: group.key,
+    label: group.label,
+    count: group.count,
+    unreadCount: group.unreadCount,
+  };
+
+  if (options.aliasStyle !== 'dual') return base;
+
+  return {
+    ...base,
+    unread_count: group.unreadCount,
   };
 }
 
@@ -146,10 +182,7 @@ export function presentCommunicationAppNotification(
 function buildDeepLink(
   notification: AppNotificationRecord,
 ): CommunicationAppNotificationDeepLink | null {
-  if (
-    notification.type === 'ANNOUNCEMENT_PUBLISHED' &&
-    notification.sourceId
-  ) {
+  if (notification.type === 'ANNOUNCEMENT_PUBLISHED' && notification.sourceId) {
     return {
       type: 'announcement',
       announcementId: notification.sourceId,

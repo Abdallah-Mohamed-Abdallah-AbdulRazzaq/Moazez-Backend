@@ -48,6 +48,23 @@ export const COMMUNICATION_NOTIFICATION_TYPES = [
   'system_alert',
 ] as const;
 
+export const COMMUNICATION_APP_NOTIFICATION_CATEGORIES = [
+  'message_received',
+  'announcement',
+  'announcement_published',
+] as const;
+
+export const COMMUNICATION_APP_NOTIFICATION_GROUP_BY_VALUES = [
+  'category',
+  'sourceModule',
+  'day',
+] as const;
+
+export const COMMUNICATION_APP_NOTIFICATION_BOOLEAN_VALUES = [
+  'true',
+  'false',
+] as const;
+
 export const COMMUNICATION_NOTIFICATION_DELIVERY_CHANNELS = [
   'in_app',
   'email',

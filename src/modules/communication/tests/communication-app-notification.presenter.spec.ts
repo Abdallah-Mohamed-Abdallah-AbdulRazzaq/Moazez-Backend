@@ -106,6 +106,77 @@ describe('communication app notification presenter', () => {
     expect(json).not.toContain('metadata');
   });
 
+  it('presents safe notification groups with dual aliases only when requested', () => {
+    const dual = presentCommunicationAppNotificationList({
+      result: {
+        items: [],
+        total: 10,
+        limit: 5,
+        page: 1,
+      },
+      unreadCount: 3,
+      groups: [
+        {
+          key: 'message_received',
+          label: 'Messages',
+          count: 5,
+          unreadCount: 2,
+        },
+      ],
+      options: { aliasStyle: 'dual' },
+    });
+    const camel = presentCommunicationAppNotificationList({
+      result: {
+        items: [],
+        total: 10,
+        limit: 5,
+        page: 1,
+      },
+      unreadCount: 3,
+      groups: [
+        {
+          key: 'announcement',
+          label: 'Announcements',
+          count: 5,
+          unreadCount: 1,
+        },
+      ],
+      options: { aliasStyle: 'camel' },
+    });
+    const withoutGroups = presentCommunicationAppNotificationList({
+      result: {
+        items: [],
+        total: 10,
+        limit: 5,
+        page: 1,
+      },
+      unreadCount: 3,
+      options: { aliasStyle: 'dual' },
+    });
+
+    expect(dual.groups).toEqual([
+      {
+        key: 'message_received',
+        label: 'Messages',
+        count: 5,
+        unreadCount: 2,
+        unread_count: 2,
+      },
+    ]);
+    expect(camel.groups).toEqual([
+      {
+        key: 'announcement',
+        label: 'Announcements',
+        count: 5,
+        unreadCount: 1,
+      },
+    ]);
+    expect(camel.groups?.[0]).not.toHaveProperty('unread_count');
+    expect(withoutGroups).not.toHaveProperty('groups');
+    expect(JSON.stringify(dual.groups)).not.toContain('recipientUserId');
+    expect(JSON.stringify(dual.groups)).not.toContain('schoolId');
+  });
+
   it('uses the same safe contract for detail and read-all responses', () => {
     expect(
       presentCommunicationAppNotificationDetail({
