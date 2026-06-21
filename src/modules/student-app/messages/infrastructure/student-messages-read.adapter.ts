@@ -18,6 +18,15 @@ const ACTIVE_PARTICIPANT_STATUSES = [
   CommunicationParticipantStatus.MUTED,
 ] as const;
 
+const SAFE_MESSAGE_FILE_SELECT = {
+  id: true,
+  originalName: true,
+  mimeType: true,
+  sizeBytes: true,
+  visibility: true,
+  createdAt: true,
+} satisfies Prisma.FileSelect;
+
 const MESSAGE_USER_SELECT = {
   id: true,
   firstName: true,
@@ -42,6 +51,20 @@ const MESSAGE_SELECT = {
   updatedAt: true,
   senderUser: {
     select: MESSAGE_USER_SELECT,
+  },
+  attachments: {
+    where: { deletedAt: null },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    select: {
+      id: true,
+      fileId: true,
+      caption: true,
+      sortOrder: true,
+      createdAt: true,
+      file: {
+        select: SAFE_MESSAGE_FILE_SELECT,
+      },
+    },
   },
   reads: {
     select: {

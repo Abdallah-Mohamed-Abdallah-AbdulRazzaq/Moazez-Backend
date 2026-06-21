@@ -246,10 +246,13 @@ describe('TeacherMessagesPresenter', () => {
       expect.objectContaining({
         attachmentId: 'attachment-1',
         fileId: 'file-1',
+        displayName: 'worksheet.pdf',
         originalName: 'worksheet.pdf',
+        mediaKind: 'file',
         downloadPath: '/api/v1/files/file-1/download',
       }),
     ]);
+    expect(result.message.attachmentsCount).toBe(1);
     expect(json).not.toContain('bucket');
     expect(json).not.toContain('objectKey');
     expect(json).not.toContain('raw-storage');

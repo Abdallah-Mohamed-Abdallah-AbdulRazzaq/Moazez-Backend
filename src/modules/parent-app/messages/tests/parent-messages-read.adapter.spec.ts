@@ -15,6 +15,9 @@ describe('ParentMessagesReadAdapter', () => {
 
     const query = conversationMocks.findMany.mock.calls[0][0];
     const selectJson = JSON.stringify(query.select);
+    const attachmentFileSelectJson = JSON.stringify(
+      query.select.messages.select.attachments.select.file.select,
+    );
 
     expect(query.where).toMatchObject({
       deletedAt: null,
@@ -27,7 +30,13 @@ describe('ParentMessagesReadAdapter', () => {
     expect(query.where).not.toHaveProperty('schoolId');
     expect(selectJson).toContain('participants');
     expect(selectJson).toContain('messages');
+    expect(selectJson).toContain('attachments');
+    expect(selectJson).toContain('originalName');
+    expect(selectJson).toContain('mimeType');
     expect(selectJson).toContain('reads');
+    expect(attachmentFileSelectJson).not.toContain('bucket');
+    expect(attachmentFileSelectJson).not.toContain('objectKey');
+    expect(attachmentFileSelectJson).not.toContain('metadata');
     expect(messageMocks.groupBy).toHaveBeenCalledTimes(1);
   });
 

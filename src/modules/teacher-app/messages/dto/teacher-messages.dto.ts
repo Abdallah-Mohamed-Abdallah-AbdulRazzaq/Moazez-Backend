@@ -162,9 +162,11 @@ export class TeacherMessageReactionSummaryDto {
 export class TeacherMessageAttachmentSummaryDto {
   attachmentId!: string;
   fileId!: string;
+  displayName!: string | null;
   originalName!: string | null;
   mimeType!: string | null;
   sizeBytes!: string;
+  mediaKind!: string;
   visibility!: string;
   caption!: string | null;
   sortOrder!: number;
@@ -184,6 +186,7 @@ export class TeacherMessageDto {
   createdAt!: string;
   reactions!: TeacherMessageReactionSummaryDto[];
   attachments!: TeacherMessageAttachmentSummaryDto[];
+  attachmentsCount!: number;
   readCount!: number;
 }
 
@@ -198,6 +201,7 @@ export class TeacherMessageLastMessageDto {
   body!: string | null;
   content!: string | null;
   readCount!: number;
+  attachmentsCount!: number;
   createdAt!: string;
 }
 

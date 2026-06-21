@@ -3,6 +3,7 @@ import type {
   CommunicationMessageInfoResponse,
   CommunicationMessageReadersResponse,
 } from '../../../communication/presenters/communication-message-read.presenter';
+import { presentCommunicationAppMessageAttachments } from '../../../communication/presenters/communication-app-message-attachment.presenter';
 import {
   ParentConversationMessageResponseDto,
   ParentConversationMessagesResponseDto,
@@ -278,6 +279,8 @@ function presentLastMessage(params: {
     content: message.content,
     readCount: message.readCount,
     read_count: message.read_count,
+    attachmentsCount: message.attachmentsCount,
+    attachments_count: message.attachments_count,
     createdAt: message.createdAt,
     created_at: message.created_at,
   };
@@ -297,6 +300,12 @@ function presentMessage(params: {
   );
   const readCount = countReadUsersExcludingSender(params.message);
   const isRead = senderType === 'me' ? readCount > 0 : readByParent;
+  const messageAttachments = params.message.attachments ?? [];
+  const attachments = visible
+    ? presentCommunicationAppMessageAttachments(messageAttachments, {
+        aliasStyle: 'dual',
+      })
+    : [];
 
   return {
     id: params.message.id,
@@ -331,6 +340,9 @@ function presentMessage(params: {
     is_read: isRead,
     readCount,
     read_count: readCount,
+    attachments,
+    attachmentsCount: attachments.length,
+    attachments_count: attachments.length,
     audio_url: null,
     audio_duration: null,
   };

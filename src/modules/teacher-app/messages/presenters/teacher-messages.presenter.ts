@@ -2,6 +2,7 @@ import {
   CommunicationMessageInfoResponse,
   CommunicationMessageReadersResponse,
 } from '../../../communication/presenters/communication-message-read.presenter';
+import { presentCommunicationAppMessageAttachments } from '../../../communication/presenters/communication-app-message-attachment.presenter';
 import {
   TeacherConversationMessageResponseDto,
   TeacherConversationMessagesResponseDto,
@@ -220,6 +221,7 @@ function presentLastMessage(params: {
     body: message.body,
     content: message.content,
     readCount: message.readCount,
+    attachmentsCount: message.attachmentsCount,
     createdAt: message.createdAt,
   };
 }
@@ -230,6 +232,7 @@ function presentMessage(params: {
 }): TeacherMessageDto {
   const visible = isVisibleMessage(params.message);
   const body = visible ? params.message.body : null;
+  const attachments = visible ? presentAttachments(params.message) : [];
 
   return {
     messageId: params.message.id,
@@ -253,7 +256,8 @@ function presentMessage(params: {
     reactions: visible
       ? presentReactions(params.message, params.teacherUserId)
       : [],
-    attachments: visible ? presentAttachments(params.message) : [],
+    attachments,
+    attachmentsCount: attachments.length,
     readCount: countReadUsersExcludingSender(params.message),
   };
 }
@@ -286,17 +290,16 @@ function presentReactions(
 }
 
 function presentAttachments(message: TeacherMessageRecord) {
-  return message.attachments.map((attachment) => ({
-    attachmentId: attachment.id,
-    fileId: attachment.fileId,
-    originalName: attachment.file.originalName,
-    mimeType: attachment.file.mimeType,
-    sizeBytes: attachment.file.sizeBytes.toString(),
-    visibility: attachment.file.visibility.toLowerCase(),
-    caption: attachment.caption,
-    sortOrder: attachment.sortOrder,
-    downloadPath: `/api/v1/files/${attachment.fileId}/download`,
-    createdAt: attachment.createdAt.toISOString(),
+  const messageAttachments = message.attachments ?? [];
+  const safeAttachments = presentCommunicationAppMessageAttachments(
+    messageAttachments,
+    { aliasStyle: 'camel' },
+  );
+
+  return safeAttachments.map((attachment, index) => ({
+    ...attachment,
+    originalName: messageAttachments[index].file.originalName,
+    visibility: messageAttachments[index].file.visibility.toLowerCase(),
   }));
 }
 

@@ -20,21 +20,29 @@ describe('ParentMessagesPresenter', () => {
       message: messageFixture({
         status: CommunicationMessageStatus.HIDDEN,
         hiddenAt: new Date('2026-01-01T00:01:00.000Z'),
-      }),
+        attachments: [attachmentFixture()],
+      } as Partial<ParentMessageRecord>),
       parentUserId: 'parent-user-1',
     });
     const deleted = ParentMessagesPresenter.presentMessage({
       message: messageFixture({
         status: CommunicationMessageStatus.DELETED,
         deletedAt: new Date('2026-01-01T00:02:00.000Z'),
-      }),
+        attachments: [attachmentFixture()],
+      } as Partial<ParentMessageRecord>),
       parentUserId: 'parent-user-1',
     });
 
     expect(hidden.message.body).toBeNull();
     expect(hidden.message.content).toBeNull();
+    expect(hidden.message.attachments).toEqual([]);
+    expect(hidden.message.attachmentsCount).toBe(0);
+    expect(hidden.message.attachments_count).toBe(0);
     expect(deleted.message.body).toBeNull();
     expect(deleted.message.content).toBeNull();
+    expect(deleted.message.attachments).toEqual([]);
+    expect(deleted.message.attachmentsCount).toBe(0);
+    expect(deleted.message.attachments_count).toBe(0);
   });
 
   it('does not expose internal moderation, report, tenant, schedule, or storage fields', () => {
@@ -119,6 +127,8 @@ describe('ParentMessagesPresenter', () => {
       content: 'Visible text',
       readCount: 1,
       read_count: 1,
+      attachmentsCount: 0,
+      attachments_count: 0,
       created_at: '2026-01-01T00:00:00.000Z',
     });
     expect(card.last_message).toEqual(card.lastMessage);
@@ -187,6 +197,53 @@ describe('ParentMessagesPresenter', () => {
       isRead: true,
       is_read: true,
     });
+  });
+
+  it('presents safe attachment metadata with dual aliases', () => {
+    const result = ParentMessagesPresenter.presentMessage({
+      message: messageFixture({
+        attachments: [attachmentFixture()],
+      } as Partial<ParentMessageRecord>),
+      parentUserId: 'parent-user-1',
+    });
+    const serialized = JSON.stringify(result);
+
+    expect(result.message.attachments).toEqual([
+      expect.objectContaining({
+        attachmentId: 'attachment-1',
+        attachment_id: 'attachment-1',
+        fileId: 'file-1',
+        file_id: 'file-1',
+        displayName: 'photo.jpg',
+        display_name: 'photo.jpg',
+        mimeType: 'image/jpeg',
+        mime_type: 'image/jpeg',
+        sizeBytes: '123456',
+        size_bytes: '123456',
+        mediaKind: 'image',
+        media_kind: 'image',
+        caption: 'Photo caption',
+        sortOrder: 0,
+        sort_order: 0,
+        downloadPath: '/api/v1/files/file-1/download',
+        download_path: '/api/v1/files/file-1/download',
+      }),
+    ]);
+    expect(result.message.attachmentsCount).toBe(1);
+    expect(result.message.attachments_count).toBe(1);
+    for (const forbidden of [
+      'uploadedById',
+      'createdById',
+      'schoolId',
+      'organizationId',
+      'bucket',
+      'objectKey',
+      'storageKey',
+      'signedUrl',
+      'metadata',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
   });
 
   it('keeps own sent messages unread when only the sender has a historical read row', () => {
@@ -279,8 +336,32 @@ function messageFixture(
       userType: 'PARENT',
       status: 'ACTIVE',
     },
+    attachments: [],
     reads: [],
     _count: { reads: 0 },
     ...overrides,
   } as unknown as ParentMessageRecord;
+}
+
+function attachmentFixture() {
+  return {
+    id: 'attachment-1',
+    fileId: 'file-1',
+    uploadedById: 'uploader-1',
+    createdById: 'creator-1',
+    caption: 'Photo caption',
+    sortOrder: 0,
+    createdAt: new Date('2026-01-01T00:03:00.000Z'),
+    file: {
+      id: 'file-1',
+      originalName: 'photo.jpg',
+      mimeType: 'image/jpeg',
+      sizeBytes: BigInt(123456),
+      bucket: 'private-bucket',
+      objectKey: 'objects/file-1',
+      storageKey: 'storage/file-1',
+      signedUrl: 'https://storage.example/file-1',
+      metadata: { provider: 's3' },
+    },
+  };
 }

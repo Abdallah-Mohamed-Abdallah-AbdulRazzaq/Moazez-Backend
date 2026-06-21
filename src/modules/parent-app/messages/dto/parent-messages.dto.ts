@@ -152,6 +152,28 @@ export class ParentMessageReaderDto {
   read_at!: string;
 }
 
+export class ParentMessageAttachmentDto {
+  attachmentId!: string;
+  attachment_id!: string;
+  fileId!: string;
+  file_id!: string;
+  displayName!: string | null;
+  display_name!: string | null;
+  mimeType!: string | null;
+  mime_type!: string | null;
+  sizeBytes!: string;
+  size_bytes!: string;
+  mediaKind!: string;
+  media_kind!: string;
+  caption!: string | null;
+  sortOrder!: number;
+  sort_order!: number;
+  createdAt!: string;
+  created_at!: string;
+  downloadPath!: string;
+  download_path!: string;
+}
+
 export class ParentConversationLastMessageDto {
   id!: string;
   messageId!: string;
@@ -166,6 +188,8 @@ export class ParentConversationLastMessageDto {
   content!: string | null;
   readCount!: number;
   read_count!: number;
+  attachmentsCount!: number;
+  attachments_count!: number;
   createdAt!: string;
   created_at!: string;
 }
@@ -245,6 +269,9 @@ export class ParentMessageDto {
   is_read!: boolean;
   readCount!: number;
   read_count!: number;
+  attachments!: ParentMessageAttachmentDto[];
+  attachmentsCount!: number;
+  attachments_count!: number;
   audio_url!: null;
   audio_duration!: null;
 }

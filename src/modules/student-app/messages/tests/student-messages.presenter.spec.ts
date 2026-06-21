@@ -20,11 +20,13 @@ describe('StudentMessagesPresenter', () => {
             id: 'message-hidden',
             status: CommunicationMessageStatus.HIDDEN,
             body: 'hidden raw body',
+            attachments: [attachmentFixture()],
           }),
           messageFixture({
             id: 'message-deleted',
             status: CommunicationMessageStatus.DELETED,
             body: 'deleted raw body',
+            attachments: [attachmentFixture()],
           }),
           messageFixture({
             id: 'message-visible',
@@ -42,10 +44,14 @@ describe('StudentMessagesPresenter', () => {
 
     expect(serialized).not.toContain('hidden raw body');
     expect(serialized).not.toContain('deleted raw body');
+    expect(result.messages[0].attachments).toEqual([]);
+    expect(result.messages[0].attachmentsCount).toBe(0);
+    expect(result.messages[0].attachments_count).toBe(0);
+    expect(result.messages[1].attachments).toEqual([]);
     expect(serialized).toContain('visible body');
   });
 
-  it('presents conversations without attachments, storage keys, or school ids', () => {
+  it('presents conversations without storage keys or school ids', () => {
     const result = StudentMessagesPresenter.presentConversationList({
       result: {
         items: [conversationFixture() as any],
@@ -71,6 +77,8 @@ describe('StudentMessagesPresenter', () => {
       message_id: 'message-1',
       readCount: 0,
       read_count: 0,
+      attachmentsCount: 0,
+      attachments_count: 0,
       created_at: '2026-01-01T08:00:00.000Z',
     });
     expect(serialized).not.toContain('schoolId');
@@ -78,7 +86,59 @@ describe('StudentMessagesPresenter', () => {
     expect(serialized).not.toContain('scheduleId');
     expect(serialized).not.toContain('bucket');
     expect(serialized).not.toContain('objectKey');
-    expect(serialized).not.toContain('attachments');
+  });
+
+  it('presents safe attachment metadata with dual aliases', () => {
+    const result = StudentMessagesPresenter.presentMessageList({
+      result: {
+        conversationId: 'conversation-1',
+        items: [
+          messageFixture({
+            id: 'message-with-attachment',
+            attachments: [attachmentFixture()],
+          }),
+        ] as any,
+        total: 1,
+        page: 1,
+        limit: 50,
+      },
+      studentUserId: 'student-user-1',
+    });
+    const serialized = JSON.stringify(result);
+
+    expect(result.messages[0].attachments).toEqual([
+      expect.objectContaining({
+        attachmentId: 'attachment-1',
+        attachment_id: 'attachment-1',
+        fileId: 'file-1',
+        file_id: 'file-1',
+        displayName: 'voice-note.mp3',
+        display_name: 'voice-note.mp3',
+        mimeType: 'audio/mpeg',
+        mime_type: 'audio/mpeg',
+        sizeBytes: '98765',
+        size_bytes: '98765',
+        mediaKind: 'audio',
+        media_kind: 'audio',
+        downloadPath: '/api/v1/files/file-1/download',
+        download_path: '/api/v1/files/file-1/download',
+      }),
+    ]);
+    expect(result.messages[0].attachmentsCount).toBe(1);
+    expect(result.messages[0].attachments_count).toBe(1);
+    for (const forbidden of [
+      'uploadedById',
+      'createdById',
+      'schoolId',
+      'organizationId',
+      'bucket',
+      'objectKey',
+      'storageKey',
+      'signedUrl',
+      'metadata',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
   });
 
   it('presents student list enrichment with group mapping and sender-excluded last-message reads', () => {
@@ -263,6 +323,7 @@ function messageFixture(params: {
   senderUserId?: string;
   reads?: Array<{ userId: string }>;
   _count?: { reads: number };
+  attachments?: unknown[];
 }) {
   return {
     id: params.id,
@@ -292,6 +353,30 @@ function messageFixture(params: {
       status: UserStatus.ACTIVE,
     },
     reads: params.reads ?? [],
+    attachments: params.attachments ?? [],
     _count: params._count ?? { reads: 0 },
+  };
+}
+
+function attachmentFixture() {
+  return {
+    id: 'attachment-1',
+    fileId: 'file-1',
+    uploadedById: 'uploader-1',
+    createdById: 'creator-1',
+    caption: null,
+    sortOrder: 0,
+    createdAt: new Date('2026-01-01T08:03:00.000Z'),
+    file: {
+      id: 'file-1',
+      originalName: 'voice-note.mp3',
+      mimeType: 'audio/mpeg',
+      sizeBytes: BigInt(98765),
+      bucket: 'private-bucket',
+      objectKey: 'objects/file-1',
+      storageKey: 'storage/file-1',
+      signedUrl: 'https://storage.example/file-1',
+      metadata: { provider: 's3' },
+    },
   };
 }
