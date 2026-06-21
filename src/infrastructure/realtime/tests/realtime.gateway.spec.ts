@@ -52,6 +52,7 @@ describe('RealtimeGateway', () => {
       roleId: 'role-1',
       permissions: ['communication.messages.view'],
       sessionId: 'session-1',
+      actor: actorCard(),
     };
     const authService = {
       authenticate: jest.fn().mockResolvedValue(authenticated),
@@ -96,6 +97,7 @@ describe('RealtimeGateway', () => {
       schoolId: 'school-1',
       userId: 'user-1',
       socketId: 'socket-1',
+      actor: actorCard(),
     });
   });
 
@@ -138,6 +140,7 @@ describe('RealtimeGateway', () => {
       schoolId: 'school-1',
       userId: 'user-1',
       socketId: 'socket-1',
+      actor: actorCard(),
     });
   });
 
@@ -299,6 +302,7 @@ describe('RealtimeGateway', () => {
       conversationId: 'conversation-1',
       userId: 'user-1',
       permissions: ['communication.messages.view'],
+      actor: actorCard(),
     });
   });
 
@@ -323,6 +327,7 @@ describe('RealtimeGateway', () => {
       conversationId: 'conversation-1',
       userId: 'user-1',
       permissions: ['communication.messages.view'],
+      actor: actorCard(),
     });
   });
 });
@@ -355,6 +360,7 @@ function authenticatedContext() {
     roleId: 'role-1',
     permissions: ['communication.messages.view'],
     sessionId: 'session-1',
+    actor: actorCard(),
   };
 }
 
@@ -373,6 +379,7 @@ function accessServiceMock(
   return {
     canJoinConversationRoom: jest.fn().mockResolvedValue(true),
     isOnlinePresenceEnabled: jest.fn().mockResolvedValue(true),
+    listPresenceConversationIdsForActor: jest.fn(),
     ...(overrides ?? {}),
   } as unknown as jest.Mocked<RealtimeCommunicationAccessService>;
 }
@@ -406,4 +413,12 @@ function configServiceMock(): ConfigService {
   return {
     get: jest.fn(),
   } as unknown as ConfigService;
+}
+
+function actorCard() {
+  return {
+    displayName: 'Test User',
+    userType: 'admin' as const,
+    avatarUrl: null,
+  };
 }

@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { WsException } from '@nestjs/websockets';
 import { RealtimeCommunicationAccessService } from './realtime-communication-access.service';
+import {
+  normalizeRealtimeActorCard,
+  RealtimeActorCard,
+} from './realtime-actor-card';
 import { REALTIME_SERVER_EVENTS } from './realtime-event-names';
 import { RealtimePublisherService } from './realtime-publisher.service';
 import { RealtimeStateStoreService } from './realtime-state-store.service';
@@ -12,11 +16,13 @@ export interface RealtimeTypingCommandInput {
   conversationId: string;
   userId: string;
   permissions: string[];
+  actor: RealtimeActorCard;
 }
 
 export interface RealtimeTypingStartedPayload {
   conversationId: string;
   userId: string;
+  actor: RealtimeActorCard;
   startedAt: string;
   expiresAt: string;
 }
@@ -24,6 +30,7 @@ export interface RealtimeTypingStartedPayload {
 export interface RealtimeTypingStoppedPayload {
   conversationId: string;
   userId: string;
+  actor: RealtimeActorCard;
   stoppedAt: string;
 }
 
@@ -49,6 +56,7 @@ export class RealtimeTypingService {
     const payload: RealtimeTypingStartedPayload = {
       conversationId: input.conversationId,
       userId: input.userId,
+      actor: normalizeRealtimeActorCard(input.actor),
       startedAt: typingState.startedAt,
       expiresAt: typingState.expiresAt,
     };
@@ -77,6 +85,7 @@ export class RealtimeTypingService {
     const payload: RealtimeTypingStoppedPayload = {
       conversationId: input.conversationId,
       userId: input.userId,
+      actor: normalizeRealtimeActorCard(input.actor),
       stoppedAt: new Date().toISOString(),
     };
 

@@ -58,10 +58,17 @@ describe('RealtimeTypingService', () => {
     expect(payload).toEqual({
       conversationId: 'conversation-1',
       userId: 'user-1',
+      actor: {
+        displayName: 'Test Teacher',
+        userType: 'teacher',
+        avatarUrl: null,
+      },
       startedAt: '2026-05-03T10:00:00.000Z',
       expiresAt: '2026-05-03T10:00:08.000Z',
     });
     expect(payload).not.toHaveProperty('schoolId');
+    expect(payload).not.toHaveProperty('membershipId');
+    expect(payload).not.toHaveProperty('roleId');
     expect(payload).not.toHaveProperty('body');
     expect(publisher.publishToConversation).toHaveBeenCalledWith(
       'school-1',
@@ -87,9 +94,16 @@ describe('RealtimeTypingService', () => {
     expect(payload).toEqual({
       conversationId: 'conversation-1',
       userId: 'user-1',
+      actor: {
+        displayName: 'Test Teacher',
+        userType: 'teacher',
+        avatarUrl: null,
+      },
       stoppedAt: '2026-05-03T10:00:10.000Z',
     });
     expect(payload).not.toHaveProperty('schoolId');
+    expect(payload).not.toHaveProperty('membershipId');
+    expect(payload).not.toHaveProperty('roleId');
     expect(payload).not.toHaveProperty('body');
     expect(publisher.publishToConversation).toHaveBeenCalledWith(
       'school-1',
@@ -146,6 +160,11 @@ function commandInput() {
     conversationId: 'conversation-1',
     userId: 'user-1',
     permissions: ['communication.messages.view'],
+    actor: {
+      displayName: 'Test Teacher',
+      userType: 'teacher',
+      avatarUrl: null,
+    },
   };
 }
 
@@ -175,6 +194,7 @@ function accessServiceMock(
   return {
     canJoinConversationRoom: jest.fn().mockResolvedValue(true),
     isOnlinePresenceEnabled: jest.fn(),
+    listPresenceConversationIdsForActor: jest.fn(),
     ...(overrides ?? {}),
   } as unknown as jest.Mocked<RealtimeCommunicationAccessService>;
 }

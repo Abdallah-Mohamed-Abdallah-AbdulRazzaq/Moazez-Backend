@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { CommunicationParticipantStatus } from '@prisma/client';
+import {
+  CommunicationConversationStatus,
+  CommunicationParticipantStatus,
+} from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 
 const CONVERSATION_ROOM_VIEW_PERMISSIONS = new Set([
@@ -66,5 +69,25 @@ export class RealtimeCommunicationAccessService {
     if (!policy) return true;
 
     return policy.isEnabled && policy.allowOnlinePresence;
+  }
+
+  async listPresenceConversationIdsForActor(input: {
+    actorId: string;
+  }): Promise<string[]> {
+    const participants =
+      await this.scopedPrisma.communicationConversationParticipant.findMany({
+        where: {
+          userId: input.actorId,
+          status: { in: [...PARTICIPANT_READ_STATUSES] },
+          conversation: {
+            status: CommunicationConversationStatus.ACTIVE,
+            deletedAt: null,
+          },
+        },
+        select: { conversationId: true },
+        orderBy: { conversationId: 'asc' },
+      });
+
+    return participants.map((participant) => participant.conversationId);
   }
 }

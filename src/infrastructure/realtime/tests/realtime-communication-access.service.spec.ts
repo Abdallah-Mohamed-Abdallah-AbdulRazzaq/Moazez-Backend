@@ -1,4 +1,7 @@
-import { CommunicationParticipantStatus } from '@prisma/client';
+import {
+  CommunicationConversationStatus,
+  CommunicationParticipantStatus,
+} from '@prisma/client';
 import type { PrismaService } from '../../database/prisma.service';
 import { RealtimeCommunicationAccessService } from '../realtime-communication-access.service';
 
@@ -119,6 +122,42 @@ describe('RealtimeCommunicationAccessService', () => {
 
     await expect(service.isOnlinePresenceEnabled()).resolves.toBe(true);
   });
+
+  it('lists only active conversation ids for conversation-scoped presence', async () => {
+    const scoped = scopedPrismaMock({
+      conversation: null,
+      participant: null,
+      presenceParticipants: [
+        { conversationId: 'conversation-1' },
+        { conversationId: 'conversation-2' },
+      ],
+    });
+    const service = new RealtimeCommunicationAccessService(prismaMock(scoped));
+
+    await expect(
+      service.listPresenceConversationIdsForActor({ actorId: 'user-1' }),
+    ).resolves.toEqual(['conversation-1', 'conversation-2']);
+
+    expect(
+      scoped.communicationConversationParticipant.findMany,
+    ).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-1',
+        status: {
+          in: [
+            CommunicationParticipantStatus.ACTIVE,
+            CommunicationParticipantStatus.MUTED,
+          ],
+        },
+        conversation: {
+          status: CommunicationConversationStatus.ACTIVE,
+          deletedAt: null,
+        },
+      },
+      select: { conversationId: true },
+      orderBy: { conversationId: 'asc' },
+    });
+  });
 });
 
 function prismaMock(scoped: unknown): PrismaService {
@@ -131,6 +170,7 @@ function scopedPrismaMock(input: {
   conversation: { id: string } | null;
   participant: { status: CommunicationParticipantStatus } | null;
   policy?: { isEnabled: boolean; allowOnlinePresence: boolean } | null;
+  presenceParticipants?: Array<{ conversationId: string }>;
 }) {
   return {
     communicationConversation: {
@@ -138,6 +178,7 @@ function scopedPrismaMock(input: {
     },
     communicationConversationParticipant: {
       findFirst: jest.fn().mockResolvedValue(input.participant),
+      findMany: jest.fn().mockResolvedValue(input.presenceParticipants ?? []),
     },
     communicationPolicy: {
       findFirst: jest.fn().mockResolvedValue(input.policy ?? null),

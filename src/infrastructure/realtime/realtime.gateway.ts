@@ -90,6 +90,7 @@ export class RealtimeGateway
             schoolId: authenticated.schoolId,
             userId: authenticated.actorId,
             socketId: client.id,
+            actor: authenticated.actor,
           });
         }
       });
@@ -175,6 +176,7 @@ export class RealtimeGateway
         conversationId,
         userId: context.actorId,
         permissions: context.permissions,
+        actor: context.actor,
       });
 
       return { ok: true };
@@ -194,6 +196,7 @@ export class RealtimeGateway
         conversationId,
         userId: context.actorId,
         permissions: context.permissions,
+        actor: context.actor,
       });
 
       return { ok: true };
@@ -338,6 +341,7 @@ export class RealtimeGateway
       !data.organizationId ||
       !data.roleId ||
       !data.sessionId ||
+      !data.actor ||
       !Array.isArray(data.permissions)
     ) {
       throw new WsException({ code: 'realtime.auth.required' });
@@ -352,6 +356,7 @@ export class RealtimeGateway
       roleId: data.roleId,
       permissions: data.permissions,
       sessionId: data.sessionId,
+      actor: data.actor,
     };
   }
 
@@ -373,16 +378,20 @@ export class RealtimeGateway
     return normalized;
   }
 
-  private extractPresenceInput(
-    client: RealtimeSocket,
-  ): { schoolId: string; userId: string; socketId: string } | null {
+  private extractPresenceInput(client: RealtimeSocket): {
+    schoolId: string;
+    userId: string;
+    socketId: string;
+    actor: RealtimeAuthenticatedContext['actor'];
+  } | null {
     const schoolId = this.normalizeOptionalId(client.data.schoolId);
     const userId = this.normalizeOptionalId(client.data.actorId);
     const socketId = this.normalizeOptionalId(client.id);
+    const actor = client.data.actor;
 
-    if (!schoolId || !userId || !socketId) return null;
+    if (!schoolId || !userId || !socketId || !actor) return null;
 
-    return { schoolId, userId, socketId };
+    return { schoolId, userId, socketId, actor };
   }
 
   private normalizeOptionalId(value: unknown): string | null {

@@ -14,6 +14,7 @@ import {
   TokenService,
 } from '../../modules/iam/auth/domain/token.service';
 import { AuthRepository } from '../../modules/iam/auth/infrastructure/auth.repository';
+import { buildRealtimeActorCard } from './realtime-actor-card';
 import type {
   RealtimeAuthenticatedContext,
   RealtimeSocket,
@@ -74,6 +75,11 @@ export class RealtimeAuthService {
       roleId: membership.roleId,
       permissions,
       sessionId: payload.sid,
+      actor: buildRealtimeActorCard({
+        firstName: user.firstName,
+        lastName: user.lastName,
+        userType: user.userType,
+      }),
     };
   }
 

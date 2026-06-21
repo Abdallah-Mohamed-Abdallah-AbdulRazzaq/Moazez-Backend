@@ -1,4 +1,9 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import {
+  normalizeRealtimeActorCard,
+  RealtimeActorCard,
+} from './realtime-actor-card';
+import { RealtimeCommunicationAccessService } from './realtime-communication-access.service';
 import { REALTIME_SERVER_EVENTS } from './realtime-event-names';
 import type {
   RealtimePresenceEventPayload,
@@ -14,6 +19,7 @@ interface RealtimePresenceSocketInput {
   schoolId?: string | null;
   userId?: string | null;
   socketId?: string | null;
+  actor?: RealtimeActorCard | null;
 }
 
 @Injectable()
@@ -28,6 +34,7 @@ export class RealtimePresenceService implements OnModuleDestroy {
   constructor(
     private readonly stateStore: RealtimeStateStoreService,
     private readonly publisher: RealtimePublisherService,
+    private readonly communicationAccessService: RealtimeCommunicationAccessService,
   ) {
     this.refreshTimer = setInterval(
       () => void this.refreshLocalPresence(),
@@ -58,6 +65,7 @@ export class RealtimePresenceService implements OnModuleDestroy {
       userId: normalized.userId,
       online: true,
       updatedAt: result.updatedAt,
+      actor: normalized.actor,
     });
   }
 
@@ -83,6 +91,7 @@ export class RealtimePresenceService implements OnModuleDestroy {
       userId: normalized.userId,
       online: false,
       updatedAt: result.updatedAt,
+      actor: normalized.actor,
     });
   }
 
@@ -101,19 +110,41 @@ export class RealtimePresenceService implements OnModuleDestroy {
     userId: string;
     online: boolean;
     updatedAt: string;
-  }): RealtimePresenceEventPayload {
+    actor: RealtimeActorCard;
+  }): Promise<RealtimePresenceEventPayload> {
     const payload: RealtimePresenceEventPayload = {
       userId: input.userId,
       status: input.online ? 'online' : 'offline',
       online: input.online,
       updatedAt: input.updatedAt,
+      actor: normalizeRealtimeActorCard(input.actor),
     };
 
-    this.publisher.publishToSchool(
-      input.schoolId,
-      REALTIME_SERVER_EVENTS.COMMUNICATION_PRESENCE_USER_UPDATED,
-      payload,
-    );
+    return this.publishPresenceToConversationRooms(input, payload);
+  }
+
+  private async publishPresenceToConversationRooms(
+    input: {
+      schoolId: string;
+      userId: string;
+    },
+    payload: RealtimePresenceEventPayload,
+  ): Promise<RealtimePresenceEventPayload> {
+    const conversationIds =
+      await this.communicationAccessService.listPresenceConversationIdsForActor(
+        {
+          actorId: input.userId,
+        },
+      );
+
+    for (const conversationId of conversationIds) {
+      this.publisher.publishToConversation(
+        input.schoolId,
+        conversationId,
+        REALTIME_SERVER_EVENTS.COMMUNICATION_PRESENCE_USER_UPDATED,
+        payload,
+      );
+    }
 
     return payload;
   }
@@ -140,16 +171,24 @@ export class RealtimePresenceService implements OnModuleDestroy {
   }
 }
 
-function normalizePresenceSocketInput(
-  input: RealtimePresenceSocketInput,
-): { schoolId: string; userId: string; socketId: string } | null {
+function normalizePresenceSocketInput(input: RealtimePresenceSocketInput): {
+  schoolId: string;
+  userId: string;
+  socketId: string;
+  actor: RealtimeActorCard;
+} | null {
   const schoolId = normalizeOptionalId(input.schoolId);
   const userId = normalizeOptionalId(input.userId);
   const socketId = normalizeOptionalId(input.socketId);
 
   if (!schoolId || !userId || !socketId) return null;
 
-  return { schoolId, userId, socketId };
+  return {
+    schoolId,
+    userId,
+    socketId,
+    actor: normalizeRealtimeActorCard(input.actor),
+  };
 }
 
 function normalizeOptionalId(value?: string | null): string | null {

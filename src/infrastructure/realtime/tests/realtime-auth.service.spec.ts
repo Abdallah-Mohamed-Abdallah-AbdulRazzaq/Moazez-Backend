@@ -93,6 +93,11 @@ describe('RealtimeAuthService', () => {
             'communication.messages.view',
           ],
           sessionId: 'session-1',
+          actor: {
+            displayName: 'Test User',
+            userType: 'admin',
+            avatarUrl: null,
+          },
         });
         expect(getRequestContext()).toMatchObject({
           actor: { id: 'user-1', userType: UserType.SCHOOL_USER },
@@ -144,6 +149,8 @@ function accessPayload() {
 function userWithMembership(schoolId: string | null) {
   return {
     id: 'user-1',
+    firstName: 'Test',
+    lastName: 'User',
     userType: UserType.SCHOOL_USER,
     memberships: [
       {
