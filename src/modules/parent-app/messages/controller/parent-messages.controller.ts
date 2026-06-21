@@ -24,14 +24,21 @@ import { GetParentMessageConversationUseCase } from '../application/get-parent-m
 import { ListParentConversationMessagesUseCase } from '../application/list-parent-conversation-messages.use-case';
 import { ListParentMessageConversationsUseCase } from '../application/list-parent-message-conversations.use-case';
 import { MarkParentConversationReadUseCase } from '../application/mark-parent-conversation-read.use-case';
+import {
+  CreateParentMessageConversationUseCase,
+  ListParentMessageContactsUseCase,
+} from '../application/parent-message-contacts.use-cases';
 import { SendParentConversationMessageUseCase } from '../application/send-parent-conversation-message.use-case';
 import {
+  CreateParentMessageConversationDto,
   ListParentConversationMessagesQueryDto,
+  ListParentMessageContactsQueryDto,
   ListParentMessageConversationsQueryDto,
   ParentConversationMessageResponseDto,
   ParentConversationMessagesResponseDto,
   ParentConversationReadResponseDto,
   ParentMessageInfoResponseDto,
+  ParentMessageContactsResponseDto,
   ParentMessageConversationResponseDto,
   ParentMessageConversationsResponseDto,
   ParentMessageReadersQueryDto,
@@ -52,7 +59,17 @@ export class ParentMessagesController {
     private readonly getParentMessageReadersUseCase: GetParentMessageReadersUseCase,
     private readonly getParentMessageInfoUseCase: GetParentMessageInfoUseCase,
     private readonly getParentMessageAttachmentDownloadUrlUseCase: GetParentMessageAttachmentDownloadUrlUseCase,
+    private readonly listParentMessageContactsUseCase: ListParentMessageContactsUseCase,
+    private readonly createParentMessageConversationUseCase: CreateParentMessageConversationUseCase,
   ) {}
+
+  @Get('contacts')
+  @ApiOkResponse({ type: ParentMessageContactsResponseDto })
+  listContacts(
+    @Query() query: ListParentMessageContactsQueryDto,
+  ): Promise<ParentMessageContactsResponseDto> {
+    return this.listParentMessageContactsUseCase.execute(query);
+  }
 
   @Get('conversations')
   @ApiOkResponse({ type: ParentMessageConversationsResponseDto })
@@ -115,7 +132,8 @@ export class ParentMessagesController {
   )
   @Redirect(undefined, 307)
   @ApiTemporaryRedirectResponse({
-    description: 'Redirects to an authorized temporary attachment download URL.',
+    description:
+      'Redirects to an authorized temporary attachment download URL.',
   })
   async downloadAttachment(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
@@ -152,6 +170,14 @@ export class ParentMessagesController {
         mode: 'preview',
       }),
     };
+  }
+
+  @Post('conversations')
+  @ApiCreatedResponse({ type: ParentMessageConversationResponseDto })
+  createConversation(
+    @Body() body: CreateParentMessageConversationDto,
+  ): Promise<ParentMessageConversationResponseDto> {
+    return this.createParentMessageConversationUseCase.execute(body);
   }
 
   @Post('conversations/:conversationId/messages')

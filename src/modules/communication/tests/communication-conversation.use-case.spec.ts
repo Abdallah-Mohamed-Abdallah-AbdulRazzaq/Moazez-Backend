@@ -13,6 +13,7 @@ import {
   ArchiveCommunicationConversationUseCase,
   CloseCommunicationConversationUseCase,
   CreateCommunicationConversationUseCase,
+  CreateOrReuseCommunicationDirectConversationUseCase,
   GetCommunicationConversationUseCase,
   ListCommunicationConversationsUseCase,
   ReopenCommunicationConversationUseCase,
@@ -174,6 +175,78 @@ describe('communication conversation use cases', () => {
     expect(repository.createJoinRequest).not.toHaveBeenCalled();
   });
 
+  it('create-or-reuse direct conversation uses scope, target user, and create audit only for new conversations', async () => {
+    let audit: CommunicationConversationAuditInput | undefined;
+    const created = conversationRecord({
+      id: 'direct-conversation-1',
+      type: CommunicationConversationType.DIRECT,
+    });
+    const repository = repositoryMock({
+      createOrReuseCurrentSchoolDirectConversation: jest
+        .fn()
+        .mockImplementation((input) => {
+          audit = input.buildAuditEntry(created, true);
+          return Promise.resolve({ conversation: created, wasCreated: true });
+        }),
+    });
+    const policyRepository = policyRepositoryMock({
+      findCurrentSchoolPolicy: jest.fn().mockResolvedValue(null),
+    });
+    const useCase = new CreateOrReuseCommunicationDirectConversationUseCase(
+      repository,
+      policyRepository,
+    );
+
+    const result = await withScope(() =>
+      useCase.execute({ targetUserId: 'target-user-1' }),
+    );
+
+    expect(result).toEqual({
+      conversationId: 'direct-conversation-1',
+      wasCreated: true,
+    });
+    expect(
+      repository.createOrReuseCurrentSchoolDirectConversation,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schoolId: SCHOOL_ID,
+        actorId: ACTOR_ID,
+        targetUserId: 'target-user-1',
+      }),
+    );
+    expect(audit).toMatchObject({
+      actorId: ACTOR_ID,
+      userType: UserType.SCHOOL_USER,
+      organizationId: ORGANIZATION_ID,
+      schoolId: SCHOOL_ID,
+      action: 'communication.conversation.create',
+      resourceType: 'communication_conversation',
+      resourceId: 'direct-conversation-1',
+      outcome: AuditOutcome.SUCCESS,
+      after: expect.objectContaining({
+        changedFields: ['type', 'participants'],
+      }),
+    });
+    expect(repository.createInvite).not.toHaveBeenCalled();
+    expect(repository.createJoinRequest).not.toHaveBeenCalled();
+  });
+
+  it('create-or-reuse direct conversation rejects actor self-targets before repository writes', async () => {
+    const repository = repositoryMock();
+    const policyRepository = policyRepositoryMock();
+    const useCase = new CreateOrReuseCommunicationDirectConversationUseCase(
+      repository,
+      policyRepository,
+    );
+
+    await expect(
+      withScope(() => useCase.execute({ targetUserId: ACTOR_ID })),
+    ).rejects.toMatchObject({ code: 'validation.failed' });
+    expect(
+      repository.createOrReuseCurrentSchoolDirectConversation,
+    ).not.toHaveBeenCalled();
+  });
+
   it('update audits mutation and does not create messages', async () => {
     let audit: CommunicationConversationAuditInput | undefined;
     const existing = conversationRecord();
@@ -301,6 +374,12 @@ function repositoryMock(
     createCurrentSchoolConversation: jest
       .fn()
       .mockResolvedValue(conversationRecord()),
+    createOrReuseCurrentSchoolDirectConversation: jest.fn().mockResolvedValue({
+      conversation: conversationRecord({
+        type: CommunicationConversationType.DIRECT,
+      }),
+      wasCreated: true,
+    }),
     updateCurrentSchoolConversation: jest
       .fn()
       .mockResolvedValue(conversationRecord()),

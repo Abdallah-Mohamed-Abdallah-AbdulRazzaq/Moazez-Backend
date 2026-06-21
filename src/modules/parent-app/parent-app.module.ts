@@ -59,6 +59,10 @@ import { GetParentMessageConversationUseCase } from './messages/application/get-
 import { ListParentConversationMessagesUseCase } from './messages/application/list-parent-conversation-messages.use-case';
 import { ListParentMessageConversationsUseCase } from './messages/application/list-parent-message-conversations.use-case';
 import { MarkParentConversationReadUseCase } from './messages/application/mark-parent-conversation-read.use-case';
+import {
+  CreateParentMessageConversationUseCase,
+  ListParentMessageContactsUseCase,
+} from './messages/application/parent-message-contacts.use-cases';
 import { SendParentConversationMessageUseCase } from './messages/application/send-parent-conversation-message.use-case';
 import { ParentMessagesController } from './messages/controller/parent-messages.controller';
 import { ParentMessagesReadAdapter } from './messages/infrastructure/parent-messages-read.adapter';
@@ -183,6 +187,8 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ListParentChildTaskSubmissionsUseCase,
     GetParentChildTaskSubmissionUseCase,
     ParentMessagesReadAdapter,
+    ListParentMessageContactsUseCase,
+    CreateParentMessageConversationUseCase,
     ListParentMessageConversationsUseCase,
     GetParentMessageConversationUseCase,
     ListParentConversationMessagesUseCase,

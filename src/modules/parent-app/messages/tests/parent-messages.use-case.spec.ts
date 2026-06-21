@@ -1,3 +1,4 @@
+import { CreateOrReuseCommunicationDirectConversationUseCase } from '../../../communication/application/communication-conversation.use-cases';
 import {
   CreateCommunicationMessageUseCase,
   GetCommunicationMessageInfoUseCase,
@@ -15,6 +16,10 @@ import {
 import { GetParentMessageAttachmentDownloadUrlUseCase } from '../application/get-parent-message-attachment-download-url.use-case';
 import { ListParentMessageConversationsUseCase } from '../application/list-parent-message-conversations.use-case';
 import { MarkParentConversationReadUseCase } from '../application/mark-parent-conversation-read.use-case';
+import {
+  CreateParentMessageConversationUseCase,
+  ListParentMessageContactsUseCase,
+} from '../application/parent-message-contacts.use-cases';
 import { SendParentConversationMessageUseCase } from '../application/send-parent-conversation-message.use-case';
 import {
   ParentMessagesReadAdapter,
@@ -48,6 +53,112 @@ describe('Parent Messages use-cases', () => {
       parentUserId: 'parent-user-1',
       filters: { search: 'teacher' },
     });
+  });
+
+  it('lists authorized parent contacts with dual aliases and no unsafe fields', async () => {
+    const { contactsUseCase, readAdapter } = createUseCasesWithValidAccess();
+    readAdapter.listContactsForParent.mockResolvedValue({
+      items: [
+        {
+          contactId: 'teacher:teacher-user-1',
+          targetUserId: 'teacher-user-1',
+          displayName: 'Test Teacher',
+          role: 'teacher',
+          avatarUrl: null,
+          subtitle: 'Math - Grade 4',
+          conversationId: 'conversation-1',
+          canMessage: true,
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    const result = await contactsUseCase.execute({
+      q: 'test',
+      role: 'teacher',
+      limit: 20,
+    });
+
+    expect(readAdapter.listContactsForParent).toHaveBeenCalledWith({
+      context: contextFixture(),
+      filters: { q: 'test', role: 'teacher', limit: 20 },
+    });
+    expect(result.contacts).toEqual([
+      expect.objectContaining({
+        contactId: 'teacher:teacher-user-1',
+        contact_id: 'teacher:teacher-user-1',
+        displayName: 'Test Teacher',
+        display_name: 'Test Teacher',
+        conversationId: 'conversation-1',
+        conversation_id: 'conversation-1',
+        canMessage: true,
+        can_message: true,
+      }),
+    ]);
+    const json = JSON.stringify(result);
+    expect(json).not.toContain('targetUserId');
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('membershipId');
+  });
+
+  it('creates or reuses parent direct conversation only after authorized contact resolution', async () => {
+    const {
+      createConversationUseCase,
+      readAdapter,
+      createDirectConversationUseCase,
+    } = createUseCasesWithValidAccess();
+    readAdapter.findContactForParent.mockResolvedValue({
+      contactId: 'teacher:teacher-user-1',
+      targetUserId: 'teacher-user-1',
+      displayName: 'Test Teacher',
+      role: 'teacher',
+      avatarUrl: null,
+      subtitle: 'Math',
+      conversationId: null,
+      canMessage: true,
+    });
+    createDirectConversationUseCase.execute.mockResolvedValue({
+      conversationId: 'conversation-1',
+      wasCreated: true,
+    });
+    readAdapter.findConversationForParent.mockResolvedValue(
+      conversationDetailFixture(),
+    );
+    readAdapter.countUnreadMessagesForConversation.mockResolvedValue(0);
+
+    const result = await createConversationUseCase.execute({
+      contactId: 'teacher:teacher-user-1',
+    });
+
+    expect(readAdapter.findContactForParent).toHaveBeenCalledWith({
+      context: contextFixture(),
+      contactId: 'teacher:teacher-user-1',
+    });
+    expect(createDirectConversationUseCase.execute).toHaveBeenCalledWith({
+      targetUserId: 'teacher-user-1',
+    });
+    expect(result.conversation).toMatchObject({
+      conversationId: 'conversation-1',
+      conversation_id: 'conversation-1',
+      isGroup: false,
+      is_group: false,
+    });
+  });
+
+  it('blocks parent direct conversation creation for unauthorized contact ids', async () => {
+    const {
+      createConversationUseCase,
+      readAdapter,
+      createDirectConversationUseCase,
+    } = createUseCasesWithValidAccess();
+    readAdapter.findContactForParent.mockResolvedValue(null);
+
+    await expect(
+      createConversationUseCase.execute({ contactId: 'teacher:foreign' }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(createDirectConversationUseCase.execute).not.toHaveBeenCalled();
   });
 
   it('returns safe 404 before send/read delegation for non-participant conversations', async () => {
@@ -209,10 +320,9 @@ describe('Parent Messages use-cases', () => {
       query: { limit: 10 },
     });
 
-    expect(getMessageReadersUseCase.execute).toHaveBeenCalledWith(
-      'message-1',
-      { limit: 10 },
-    );
+    expect(getMessageReadersUseCase.execute).toHaveBeenCalledWith('message-1', {
+      limit: 10,
+    });
     expect(result).toMatchObject({
       messageId: 'message-1',
       message_id: 'message-1',
@@ -319,6 +429,8 @@ describe('Parent Messages use-cases', () => {
 
 function createUseCases(): {
   listUseCase: ListParentMessageConversationsUseCase;
+  contactsUseCase: ListParentMessageContactsUseCase;
+  createConversationUseCase: CreateParentMessageConversationUseCase;
   sendUseCase: SendParentConversationMessageUseCase;
   markReadUseCase: MarkParentConversationReadUseCase;
   readersUseCase: GetParentMessageReadersUseCase;
@@ -326,6 +438,7 @@ function createUseCases(): {
   attachmentDownloadUseCase: GetParentMessageAttachmentDownloadUrlUseCase;
   accessService: jest.Mocked<ParentAppAccessService>;
   readAdapter: jest.Mocked<ParentMessagesReadAdapter>;
+  createDirectConversationUseCase: jest.Mocked<CreateOrReuseCommunicationDirectConversationUseCase>;
   createMessageUseCase: jest.Mocked<CreateCommunicationMessageUseCase>;
   markConversationReadUseCase: jest.Mocked<MarkCommunicationConversationReadUseCase>;
   getMessageReadersUseCase: jest.Mocked<GetCommunicationMessageReadersUseCase>;
@@ -337,11 +450,16 @@ function createUseCases(): {
   } as unknown as jest.Mocked<ParentAppAccessService>;
   const readAdapter = {
     listConversations: jest.fn(),
+    listContactsForParent: jest.fn(),
+    findContactForParent: jest.fn(),
     getUnreadSummary: jest.fn(),
     findConversationForParent: jest.fn(),
     findMessageForParent: jest.fn(),
     countUnreadMessagesForConversation: jest.fn(),
   } as unknown as jest.Mocked<ParentMessagesReadAdapter>;
+  const createDirectConversationUseCase = {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<CreateOrReuseCommunicationDirectConversationUseCase>;
   const createMessageUseCase = {
     execute: jest.fn(),
   } as unknown as jest.Mocked<CreateCommunicationMessageUseCase>;
@@ -362,6 +480,15 @@ function createUseCases(): {
     listUseCase: new ListParentMessageConversationsUseCase(
       accessService,
       readAdapter,
+    ),
+    contactsUseCase: new ListParentMessageContactsUseCase(
+      accessService,
+      readAdapter,
+    ),
+    createConversationUseCase: new CreateParentMessageConversationUseCase(
+      accessService,
+      readAdapter,
+      createDirectConversationUseCase,
     ),
     sendUseCase: new SendParentConversationMessageUseCase(
       accessService,
@@ -390,6 +517,7 @@ function createUseCases(): {
     ),
     accessService,
     readAdapter,
+    createDirectConversationUseCase,
     createMessageUseCase,
     markConversationReadUseCase,
     getMessageReadersUseCase,
@@ -434,6 +562,62 @@ function conversationFixture() {
     messages: [],
     updatedAt: new Date(),
     createdAt: new Date(),
+  };
+}
+
+function conversationDetailFixture() {
+  const now = new Date('2026-01-01T08:00:00.000Z');
+  return {
+    id: 'conversation-1',
+    type: 'DIRECT',
+    status: 'ACTIVE',
+    titleEn: null,
+    titleAr: null,
+    descriptionEn: null,
+    descriptionAr: null,
+    lastMessageAt: null,
+    metadata: null,
+    createdAt: now,
+    updatedAt: now,
+    participants: [
+      {
+        id: 'participant-parent',
+        conversationId: 'conversation-1',
+        userId: 'parent-user-1',
+        role: 'OWNER',
+        status: 'ACTIVE',
+        lastReadMessageId: null,
+        lastReadAt: null,
+        createdAt: now,
+        updatedAt: now,
+        user: {
+          id: 'parent-user-1',
+          firstName: 'Mona',
+          lastName: 'Parent',
+          userType: 'PARENT',
+          status: 'ACTIVE',
+        },
+      },
+      {
+        id: 'participant-teacher',
+        conversationId: 'conversation-1',
+        userId: 'teacher-user-1',
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        lastReadMessageId: null,
+        lastReadAt: null,
+        createdAt: now,
+        updatedAt: now,
+        user: {
+          id: 'teacher-user-1',
+          firstName: 'Test',
+          lastName: 'Teacher',
+          userType: 'TEACHER',
+          status: 'ACTIVE',
+        },
+      },
+    ],
+    messages: [],
   };
 }
 

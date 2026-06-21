@@ -4,7 +4,10 @@ import {
   CommunicationConversationStatus,
   CommunicationConversationType,
 } from '@prisma/client';
-import { NotFoundDomainException } from '../../../common/exceptions/domain-exception';
+import {
+  NotFoundDomainException,
+  ValidationDomainException,
+} from '../../../common/exceptions/domain-exception';
 import {
   CommunicationScope,
   requireCommunicationScope,
@@ -159,6 +162,54 @@ export class CreateCommunicationConversationUseCase {
       );
 
     return presentCommunicationConversation(conversation);
+  }
+}
+
+@Injectable()
+export class CreateOrReuseCommunicationDirectConversationUseCase {
+  constructor(
+    private readonly communicationConversationRepository: CommunicationConversationRepository,
+    private readonly communicationPolicyRepository: CommunicationPolicyRepository,
+  ) {}
+
+  async execute(command: {
+    targetUserId: string;
+  }): Promise<{ conversationId: string; wasCreated: boolean }> {
+    const scope = requireCommunicationScope();
+
+    if (command.targetUserId === scope.actorId) {
+      throw new ValidationDomainException(
+        'Direct conversation target must differ from the actor',
+        { targetUserId: command.targetUserId },
+      );
+    }
+
+    const policy =
+      await this.communicationPolicyRepository.findCurrentSchoolPolicy();
+    assertConversationCreateAllowedByPolicy(
+      policy ?? buildDefaultCommunicationPolicy(),
+    );
+
+    const result =
+      await this.communicationConversationRepository.createOrReuseCurrentSchoolDirectConversation(
+        {
+          schoolId: scope.schoolId,
+          actorId: scope.actorId,
+          targetUserId: command.targetUserId,
+          buildAuditEntry: (conversation) =>
+            buildCommunicationConversationAuditEntry({
+              scope,
+              action: 'communication.conversation.create',
+              conversation,
+              changedFields: ['type', 'participants'],
+            }),
+        },
+      );
+
+    return {
+      conversationId: result.conversation.id,
+      wasCreated: result.wasCreated,
+    };
   }
 }
 
@@ -465,11 +516,14 @@ function buildConversationMetadataUpdateData(
     hasOwn(command, 'isReadOnly') ||
     hasOwn(command, 'isPinned')
   ) {
-    data.metadata = mergeConversationMetadata(asPlainMetadata(existing.metadata), {
-      metadata: command.metadata,
-      isReadOnly: command.isReadOnly,
-      isPinned: command.isPinned,
-    });
+    data.metadata = mergeConversationMetadata(
+      asPlainMetadata(existing.metadata),
+      {
+        metadata: command.metadata,
+        isReadOnly: command.isReadOnly,
+        isPinned: command.isPinned,
+      },
+    );
   }
 
   return data;

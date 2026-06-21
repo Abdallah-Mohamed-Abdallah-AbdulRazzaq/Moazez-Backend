@@ -32,6 +32,7 @@ import {
   ArchiveCommunicationConversationUseCase,
   CloseCommunicationConversationUseCase,
   CreateCommunicationConversationUseCase,
+  CreateOrReuseCommunicationDirectConversationUseCase,
   GetCommunicationConversationUseCase,
   ListCommunicationConversationsUseCase,
   ReopenCommunicationConversationUseCase,
@@ -171,6 +172,7 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     DeleteCommunicationAnnouncementAttachmentUseCase,
     ListCommunicationConversationsUseCase,
     CreateCommunicationConversationUseCase,
+    CreateOrReuseCommunicationDirectConversationUseCase,
     GetCommunicationConversationUseCase,
     UpdateCommunicationConversationUseCase,
     ArchiveCommunicationConversationUseCase,
@@ -235,6 +237,7 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     CommunicationAppNotificationCenterService,
   ],
   exports: [
+    CreateOrReuseCommunicationDirectConversationUseCase,
     CreateCommunicationMessageUseCase,
     GetCommunicationMessageAttachmentDownloadUrlUseCase,
     GetCommunicationMessageReadersUseCase,

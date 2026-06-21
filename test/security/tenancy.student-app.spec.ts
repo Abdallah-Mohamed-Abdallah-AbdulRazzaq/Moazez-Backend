@@ -1624,7 +1624,9 @@ describe('Student App Home/Profile routes (security)', () => {
     };
 
     const startResponse = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/student/hero/missions/${startableHeroMissionId}/start`)
+      .post(
+        `${GLOBAL_PREFIX}/student/hero/missions/${startableHeroMissionId}/start`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({})
       .expect(200);
@@ -1642,7 +1644,9 @@ describe('Student App Home/Profile routes (security)', () => {
     createdHeroMissionProgressIds.push(startResponse.body.progress.progressId);
 
     const duplicateStart = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/student/hero/missions/${startableHeroMissionId}/start`)
+      .post(
+        `${GLOBAL_PREFIX}/student/hero/missions/${startableHeroMissionId}/start`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({})
       .expect(200);
@@ -1660,7 +1664,9 @@ describe('Student App Home/Profile routes (security)', () => {
     ).toBe(1);
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/student/hero/missions/${startableHeroMissionId}/start`)
+      .post(
+        `${GLOBAL_PREFIX}/student/hero/missions/${startableHeroMissionId}/start`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
         studentId: '11111111-1111-4111-8111-111111111111',
@@ -1733,7 +1739,9 @@ describe('Student App Home/Profile routes (security)', () => {
       .expect(409);
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/student/hero/missions/${tenantBHeroMissionId}/start`)
+      .post(
+        `${GLOBAL_PREFIX}/student/hero/missions/${tenantBHeroMissionId}/start`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({})
       .expect(404);
@@ -1856,7 +1864,9 @@ describe('Student App Home/Profile routes (security)', () => {
     assertNoForbiddenStudentRewardsFields(redemptions.body);
 
     const ownRedemption = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/student/rewards/redemptions/${ownRewardRedemptionId}`)
+      .get(
+        `${GLOBAL_PREFIX}/student/rewards/redemptions/${ownRewardRedemptionId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
@@ -2206,6 +2216,20 @@ describe('Student App Home/Profile routes (security)', () => {
       markedCount: expect.any(Number),
     });
     assertNoForbiddenStudentAppFields(read.body);
+
+    const contacts = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/messages/contacts`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(contacts.body.contacts).toEqual(expect.any(Array));
+    assertNoForbiddenStudentAppFields(contacts.body);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/messages/conversations`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ contactId: 'teacher:00000000-0000-4000-8000-000000000000' })
+      .expect(404);
 
     for (const path of [
       `student/messages/conversations/${sameSchoolOtherConversationId}`,
@@ -2608,7 +2632,6 @@ describe('Student App Home/Profile routes (security)', () => {
       'hero/rewards/redeem',
       'rewards/redemptions',
       'messages/contacts',
-      'messages/conversations',
       `messages/conversations/${ownConversationId}/attachments`,
       `messages/conversations/${ownConversationId}/audio`,
       'announcements',
@@ -2718,7 +2741,6 @@ describe('Student App Home/Profile routes (security)', () => {
       `homeworks/${ownTaskId}/questions`,
       `homeworks/${ownTaskId}/attachments`,
       'pickup',
-      'messages/contacts',
       'messages/new',
       `messages/conversations/${ownConversationId}/participants`,
       `messages/conversations/${ownConversationId}/invites`,

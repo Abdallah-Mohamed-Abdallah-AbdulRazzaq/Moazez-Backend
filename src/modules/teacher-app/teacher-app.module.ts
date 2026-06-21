@@ -56,6 +56,10 @@ import { ListTeacherConversationMessagesUseCase } from './messages/application/l
 import { ListTeacherMessageConversationsUseCase } from './messages/application/list-teacher-message-conversations.use-case';
 import { MarkTeacherConversationReadUseCase } from './messages/application/mark-teacher-conversation-read.use-case';
 import { SendTeacherConversationMessageUseCase } from './messages/application/send-teacher-conversation-message.use-case';
+import {
+  CreateTeacherMessageConversationUseCase,
+  ListTeacherMessageContactsUseCase,
+} from './messages/application/teacher-message-contacts.use-cases';
 import { TeacherMessagesController } from './messages/controller/teacher-messages.controller';
 import { TeacherMessagesReadAdapter } from './messages/infrastructure/teacher-messages-read.adapter';
 import { GetTeacherClassDetailUseCase } from './my-classes/application/get-teacher-class-detail.use-case';
@@ -178,6 +182,8 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     GetTeacherStudentXpUseCase,
     ListTeacherStudentXpHistoryUseCase,
     TeacherMessagesReadAdapter,
+    ListTeacherMessageContactsUseCase,
+    CreateTeacherMessageConversationUseCase,
     ListTeacherMessageConversationsUseCase,
     GetTeacherMessageConversationUseCase,
     ListTeacherConversationMessagesUseCase,

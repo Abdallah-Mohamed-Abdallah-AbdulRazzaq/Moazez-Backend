@@ -67,6 +67,10 @@ import { ListStudentConversationMessagesUseCase } from './messages/application/l
 import { ListStudentMessageConversationsUseCase } from './messages/application/list-student-message-conversations.use-case';
 import { MarkStudentConversationReadUseCase } from './messages/application/mark-student-conversation-read.use-case';
 import { SendStudentConversationMessageUseCase } from './messages/application/send-student-conversation-message.use-case';
+import {
+  CreateStudentMessageConversationUseCase,
+  ListStudentMessageContactsUseCase,
+} from './messages/application/student-message-contacts.use-cases';
 import { StudentMessagesController } from './messages/controller/student-messages.controller';
 import { StudentMessagesReadAdapter } from './messages/infrastructure/student-messages-read.adapter';
 import {
@@ -205,6 +209,8 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     GetStudentTaskSubmissionUseCase,
     SubmitStudentTaskStageUseCase,
     StudentMessagesReadAdapter,
+    ListStudentMessageContactsUseCase,
+    CreateStudentMessageConversationUseCase,
     ListStudentMessageConversationsUseCase,
     GetStudentMessageConversationUseCase,
     ListStudentConversationMessagesUseCase,

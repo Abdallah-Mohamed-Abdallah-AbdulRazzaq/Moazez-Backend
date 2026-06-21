@@ -9,6 +9,7 @@ import {
   UserStatus,
   UserType,
 } from '@prisma/client';
+import { CreateOrReuseCommunicationDirectConversationUseCase } from '../../../communication/application/communication-conversation.use-cases';
 import {
   CreateCommunicationMessageUseCase,
   GetCommunicationMessageInfoUseCase,
@@ -28,6 +29,10 @@ import { ListTeacherConversationMessagesUseCase } from '../application/list-teac
 import { ListTeacherMessageConversationsUseCase } from '../application/list-teacher-message-conversations.use-case';
 import { MarkTeacherConversationReadUseCase } from '../application/mark-teacher-conversation-read.use-case';
 import { SendTeacherConversationMessageUseCase } from '../application/send-teacher-conversation-message.use-case';
+import {
+  CreateTeacherMessageConversationUseCase,
+  ListTeacherMessageContactsUseCase,
+} from '../application/teacher-message-contacts.use-cases';
 import { SendTeacherConversationMessageDto } from '../dto/teacher-messages.dto';
 import {
   TeacherMessageConversationRecord,
@@ -76,14 +81,126 @@ describe('Teacher Messages use cases', () => {
     });
   });
 
+  it('lists teacher contacts only through owned allocation classrooms', async () => {
+    const { contactsUseCase, accessService, messagesReadAdapter } =
+      createUseCases();
+    messagesReadAdapter.listContactsForTeacher.mockResolvedValue({
+      items: [
+        {
+          contactId: 'student:student-1',
+          targetUserId: 'student-user-1',
+          displayName: 'Student User',
+          role: 'student',
+          avatarUrl: null,
+          subtitle: 'Student - Grade 4',
+          conversationId: null,
+          canMessage: true,
+        },
+        {
+          contactId: 'guardian:guardian-1',
+          targetUserId: 'parent-user-1',
+          displayName: 'Mona Parent',
+          role: 'parent',
+          avatarUrl: null,
+          subtitle: 'Mother of Student User',
+          conversationId: 'conversation-2',
+          canMessage: true,
+        },
+      ],
+      total: 2,
+      page: 1,
+      limit: 20,
+    });
+
+    const result = await contactsUseCase.execute({
+      q: 'mon',
+      limit: 20,
+    });
+
+    expect(accessService.listOwnedTeacherAllocations).toHaveBeenCalled();
+    expect(messagesReadAdapter.listContactsForTeacher).toHaveBeenCalledWith({
+      context: expect.objectContaining({ teacherUserId: TEACHER_ID }),
+      classroomIds: ['classroom-1'],
+      filters: { q: 'mon', limit: 20 },
+    });
+    expect(result.contacts).toEqual([
+      expect.objectContaining({
+        contactId: 'student:student-1',
+        displayName: 'Student User',
+        canMessage: true,
+      }),
+      expect.objectContaining({
+        contactId: 'guardian:guardian-1',
+        displayName: 'Mona Parent',
+        conversationId: 'conversation-2',
+      }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain('targetUserId');
+    expect(JSON.stringify(result)).not.toContain('membershipId');
+  });
+
+  it('creates or reuses teacher direct conversation with an authorized guardian contact', async () => {
+    const {
+      createConversationUseCase,
+      messagesReadAdapter,
+      createDirectConversationUseCase,
+    } = createUseCases();
+    messagesReadAdapter.findContactForTeacher.mockResolvedValue({
+      contactId: 'guardian:guardian-1',
+      targetUserId: 'parent-user-1',
+      displayName: 'Mona Parent',
+      role: 'parent',
+      avatarUrl: null,
+      subtitle: 'Mother of Student User',
+      conversationId: null,
+      canMessage: true,
+    });
+    createDirectConversationUseCase.execute.mockResolvedValue({
+      conversationId: CONVERSATION_ID,
+      wasCreated: false,
+    });
+
+    const result = await createConversationUseCase.execute({
+      contactId: 'guardian:guardian-1',
+    });
+
+    expect(messagesReadAdapter.findContactForTeacher).toHaveBeenCalledWith({
+      context: expect.objectContaining({ teacherUserId: TEACHER_ID }),
+      classroomIds: ['classroom-1'],
+      contactId: 'guardian:guardian-1',
+    });
+    expect(createDirectConversationUseCase.execute).toHaveBeenCalledWith({
+      targetUserId: 'parent-user-1',
+    });
+    expect(result.conversation).toMatchObject({
+      conversationId: CONVERSATION_ID,
+      type: 'direct',
+    });
+  });
+
+  it('blocks teacher direct conversation creation for unauthorized contacts', async () => {
+    const {
+      createConversationUseCase,
+      messagesReadAdapter,
+      createDirectConversationUseCase,
+    } = createUseCases();
+    messagesReadAdapter.findContactForTeacher.mockResolvedValue(null);
+
+    await expect(
+      createConversationUseCase.execute({ contactId: 'student:foreign' }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(createDirectConversationUseCase.execute).not.toHaveBeenCalled();
+  });
+
   it('conversation detail rejects non-participant and cross-school conversations safely', async () => {
     const { detailUseCase, messagesReadAdapter } = createUseCases();
     messagesReadAdapter.findConversationForTeacher.mockResolvedValueOnce(null);
 
-    await expect(detailUseCase.execute('same-school-not-participant')).rejects
-      .toMatchObject({
-        code: 'not_found',
-      });
+    await expect(
+      detailUseCase.execute('same-school-not-participant'),
+    ).rejects.toMatchObject({
+      code: 'not_found',
+    });
 
     messagesReadAdapter.findConversationForTeacher.mockResolvedValueOnce(null);
 
@@ -96,16 +213,20 @@ describe('Teacher Messages use cases', () => {
     const { listMessagesUseCase, messagesReadAdapter } = createUseCases();
     messagesReadAdapter.findConversationForTeacher.mockResolvedValueOnce(null);
 
-    await expect(listMessagesUseCase.execute(CONVERSATION_ID, {})).rejects
-      .toMatchObject({
-        code: 'not_found',
-      });
+    await expect(
+      listMessagesUseCase.execute(CONVERSATION_ID, {}),
+    ).rejects.toMatchObject({
+      code: 'not_found',
+    });
     expect(messagesReadAdapter.listMessages).not.toHaveBeenCalled();
   });
 
   it('send rejects non-participant conversations before delegating to Communication core', async () => {
-    const { sendUseCase, messagesReadAdapter, createCommunicationMessageUseCase } =
-      createUseCases();
+    const {
+      sendUseCase,
+      messagesReadAdapter,
+      createCommunicationMessageUseCase,
+    } = createUseCases();
     messagesReadAdapter.findConversationForTeacher.mockResolvedValueOnce(null);
 
     await expect(
@@ -115,8 +236,11 @@ describe('Teacher Messages use cases', () => {
   });
 
   it('send delegates text messages to Communication core after access validation', async () => {
-    const { sendUseCase, messagesReadAdapter, createCommunicationMessageUseCase } =
-      createUseCases();
+    const {
+      sendUseCase,
+      messagesReadAdapter,
+      createCommunicationMessageUseCase,
+    } = createUseCases();
 
     const result = await sendUseCase.execute(CONVERSATION_ID, {
       body: 'Hello class',
@@ -127,10 +251,12 @@ describe('Teacher Messages use cases', () => {
       messageId: 'message-1',
       body: 'Hello',
     });
-    expect(messagesReadAdapter.findConversationForTeacher).toHaveBeenCalledWith({
-      conversationId: CONVERSATION_ID,
-      teacherUserId: TEACHER_ID,
-    });
+    expect(messagesReadAdapter.findConversationForTeacher).toHaveBeenCalledWith(
+      {
+        conversationId: CONVERSATION_ID,
+        teacherUserId: TEACHER_ID,
+      },
+    );
     expect(createCommunicationMessageUseCase.execute).toHaveBeenCalledWith(
       CONVERSATION_ID,
       {
@@ -146,8 +272,11 @@ describe('Teacher Messages use cases', () => {
   });
 
   it('send delegates voice media messages and returns camelCase safe attachments', async () => {
-    const { sendUseCase, messagesReadAdapter, createCommunicationMessageUseCase } =
-      createUseCases();
+    const {
+      sendUseCase,
+      messagesReadAdapter,
+      createCommunicationMessageUseCase,
+    } = createUseCases();
     messagesReadAdapter.findMessageForTeacher.mockResolvedValueOnce(
       messageFixture({
         kind: CommunicationMessageKind.AUDIO,
@@ -270,9 +399,9 @@ describe('Teacher Messages use cases', () => {
       readAt: '2026-09-18T10:00:00.000Z',
       markedCount: 2,
     });
-    expect(markCommunicationConversationReadUseCase.execute).toHaveBeenCalledWith(
-      CONVERSATION_ID,
-    );
+    expect(
+      markCommunicationConversationReadUseCase.execute,
+    ).toHaveBeenCalledWith(CONVERSATION_ID);
   });
 
   it('message readers returns camelCase response after teacher message visibility passes', async () => {
@@ -291,10 +420,12 @@ describe('Teacher Messages use cases', () => {
       query: { limit: 10 },
     });
 
-    expect(messagesReadAdapter.findConversationForTeacher).toHaveBeenCalledWith({
-      conversationId: CONVERSATION_ID,
-      teacherUserId: TEACHER_ID,
-    });
+    expect(messagesReadAdapter.findConversationForTeacher).toHaveBeenCalledWith(
+      {
+        conversationId: CONVERSATION_ID,
+        teacherUserId: TEACHER_ID,
+      },
+    );
     expect(getCommunicationMessageReadersUseCase.execute).toHaveBeenCalledWith(
       'message-1',
       { limit: 10 },
@@ -327,10 +458,8 @@ describe('Teacher Messages use cases', () => {
   });
 
   it('resolves teacher attachment download after app conversation and message checks', async () => {
-    const {
-      attachmentDownloadUseCase,
-      getAttachmentDownloadUrlUseCase,
-    } = createUseCases();
+    const { attachmentDownloadUseCase, getAttachmentDownloadUrlUseCase } =
+      createUseCases();
     getAttachmentDownloadUrlUseCase.execute.mockResolvedValueOnce(
       'https://storage.example/teacher-signed-download',
     );
@@ -373,6 +502,8 @@ describe('Teacher Messages use cases', () => {
 
 function createUseCases(): {
   listConversationsUseCase: ListTeacherMessageConversationsUseCase;
+  contactsUseCase: ListTeacherMessageContactsUseCase;
+  createConversationUseCase: CreateTeacherMessageConversationUseCase;
   detailUseCase: GetTeacherMessageConversationUseCase;
   listMessagesUseCase: ListTeacherConversationMessagesUseCase;
   sendUseCase: SendTeacherConversationMessageUseCase;
@@ -382,6 +513,7 @@ function createUseCases(): {
   attachmentDownloadUseCase: GetTeacherMessageAttachmentDownloadUrlUseCase;
   accessService: jest.Mocked<TeacherAppAccessService>;
   messagesReadAdapter: jest.Mocked<TeacherMessagesReadAdapter>;
+  createDirectConversationUseCase: jest.Mocked<CreateOrReuseCommunicationDirectConversationUseCase>;
   createCommunicationMessageUseCase: jest.Mocked<CreateCommunicationMessageUseCase>;
   markCommunicationConversationReadUseCase: jest.Mocked<MarkCommunicationConversationReadUseCase>;
   getCommunicationMessageReadersUseCase: jest.Mocked<GetCommunicationMessageReadersUseCase>;
@@ -399,6 +531,21 @@ function createUseCases(): {
       roleId: 'role-1',
       permissions: [],
     })),
+    listOwnedTeacherAllocations: jest.fn(() =>
+      Promise.resolve([
+        {
+          id: 'allocation-1',
+          schoolId: 'school-1',
+          teacherUserId: TEACHER_ID,
+          subjectId: 'subject-1',
+          classroomId: 'classroom-1',
+          termId: 'term-1',
+          subject: null,
+          classroom: null,
+          term: null,
+        },
+      ]),
+    ),
   } as unknown as jest.Mocked<TeacherAppAccessService>;
   const messagesReadAdapter = {
     listConversations: jest.fn(() =>
@@ -410,6 +557,15 @@ function createUseCases(): {
         unreadCounts: new Map([[CONVERSATION_ID, 1]]),
       }),
     ),
+    listContactsForTeacher: jest.fn(() =>
+      Promise.resolve({
+        items: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+      }),
+    ),
+    findContactForTeacher: jest.fn(() => Promise.resolve(null)),
     getUnreadSummary: jest.fn(() =>
       Promise.resolve({
         unreadConversationsCount: 1,
@@ -428,6 +584,14 @@ function createUseCases(): {
     ),
     findMessageForTeacher: jest.fn(() => Promise.resolve(message)),
   } as unknown as jest.Mocked<TeacherMessagesReadAdapter>;
+  const createDirectConversationUseCase = {
+    execute: jest.fn(() =>
+      Promise.resolve({
+        conversationId: CONVERSATION_ID,
+        wasCreated: true,
+      }),
+    ),
+  } as unknown as jest.Mocked<CreateOrReuseCommunicationDirectConversationUseCase>;
   const createCommunicationMessageUseCase = {
     execute: jest.fn(() => Promise.resolve({ id: 'message-1' })),
   } as unknown as jest.Mocked<CreateCommunicationMessageUseCase>;
@@ -458,6 +622,15 @@ function createUseCases(): {
       accessService,
       messagesReadAdapter,
     ),
+    contactsUseCase: new ListTeacherMessageContactsUseCase(
+      accessService,
+      messagesReadAdapter,
+    ),
+    createConversationUseCase: new CreateTeacherMessageConversationUseCase(
+      accessService,
+      messagesReadAdapter,
+      createDirectConversationUseCase,
+    ),
     detailUseCase: new GetTeacherMessageConversationUseCase(
       accessService,
       messagesReadAdapter,
@@ -486,13 +659,15 @@ function createUseCases(): {
       messagesReadAdapter,
       getCommunicationMessageInfoUseCase,
     ),
-    attachmentDownloadUseCase: new GetTeacherMessageAttachmentDownloadUrlUseCase(
-      accessService,
-      messagesReadAdapter,
-      getAttachmentDownloadUrlUseCase,
-    ),
+    attachmentDownloadUseCase:
+      new GetTeacherMessageAttachmentDownloadUrlUseCase(
+        accessService,
+        messagesReadAdapter,
+        getAttachmentDownloadUrlUseCase,
+      ),
     accessService,
     messagesReadAdapter,
+    createDirectConversationUseCase,
     createCommunicationMessageUseCase,
     markCommunicationConversationReadUseCase,
     getCommunicationMessageReadersUseCase,

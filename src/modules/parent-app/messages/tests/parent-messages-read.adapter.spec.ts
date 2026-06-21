@@ -63,6 +63,78 @@ describe('ParentMessagesReadAdapter', () => {
     }
     expect(platformBypass).not.toHaveBeenCalled();
   });
+
+  it('discovers parent contacts only through linked child classroom allocations', async () => {
+    const { adapter, conversationMocks, teacherAllocationMocks } =
+      createAdapter();
+    teacherAllocationMocks.findMany.mockResolvedValue([
+      {
+        teacherUserId: 'teacher-user-1',
+        subject: { nameEn: 'Math', nameAr: null },
+        classroom: { nameEn: 'Grade 4', nameAr: null },
+        teacherUser: {
+          id: 'teacher-user-1',
+          firstName: 'Test',
+          lastName: 'Teacher',
+          userType: 'TEACHER',
+          status: 'ACTIVE',
+        },
+      },
+    ]);
+    conversationMocks.findMany.mockResolvedValue([
+      {
+        id: 'conversation-1',
+        participants: [
+          { userId: 'parent-user-1' },
+          { userId: 'teacher-user-1' },
+        ],
+      },
+    ]);
+
+    const result = await adapter.listContactsForParent({
+      context: {
+        parentUserId: 'parent-user-1',
+        schoolId: 'school-1',
+        organizationId: 'org-1',
+        membershipId: 'membership-1',
+        roleId: 'role-1',
+        permissions: [],
+        guardianIds: ['guardian-1'],
+        children: [
+          {
+            studentId: 'student-1',
+            enrollmentId: 'enrollment-1',
+            classroomId: 'classroom-1',
+            academicYearId: 'year-1',
+            termId: 'term-1',
+          },
+        ],
+      },
+      filters: { q: 'test' },
+    });
+
+    const query = teacherAllocationMocks.findMany.mock.calls[0][0];
+    expect(query.where).toMatchObject({
+      classroomId: { in: ['classroom-1'] },
+      teacherUserId: { not: 'parent-user-1' },
+      teacherUser: {
+        is: expect.objectContaining({
+          userType: 'TEACHER',
+          status: 'ACTIVE',
+          deletedAt: null,
+        }),
+      },
+    });
+    expect(JSON.stringify(query.where)).toContain('test');
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        contactId: 'teacher:teacher-user-1',
+        targetUserId: 'teacher-user-1',
+        displayName: 'Test Teacher',
+        conversationId: 'conversation-1',
+      }),
+    ]);
+  });
 });
 
 function modelMocks() {
@@ -83,6 +155,7 @@ function createAdapter(): {
   adapter: ParentMessagesReadAdapter;
   conversationMocks: ReturnType<typeof modelMocks>;
   messageMocks: ReturnType<typeof modelMocks>;
+  teacherAllocationMocks: ReturnType<typeof modelMocks>;
   mutationMocks: Record<string, jest.Mock>;
   platformBypass: jest.Mock;
 } {
@@ -90,6 +163,7 @@ function createAdapter(): {
   const messageMocks = modelMocks();
   const participantMocks = modelMocks();
   const attachmentMocks = modelMocks();
+  const teacherAllocationMocks = modelMocks();
   const platformBypass = jest.fn();
   const prisma = {
     platformBypass,
@@ -98,6 +172,7 @@ function createAdapter(): {
       communicationMessage: messageMocks,
       communicationConversationParticipant: participantMocks,
       communicationMessageAttachment: attachmentMocks,
+      teacherSubjectAllocation: teacherAllocationMocks,
     },
   } as unknown as PrismaService;
 
@@ -105,6 +180,7 @@ function createAdapter(): {
     adapter: new ParentMessagesReadAdapter(prisma),
     conversationMocks,
     messageMocks,
+    teacherAllocationMocks,
     mutationMocks: {
       conversationCreate: conversationMocks.create,
       participantCreate: participantMocks.create,

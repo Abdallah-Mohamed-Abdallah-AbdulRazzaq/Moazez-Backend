@@ -108,6 +108,65 @@ describe('StudentMessagesReadAdapter', () => {
       },
     });
   });
+
+  it('discovers student contacts only through current classroom teacher allocations', async () => {
+    const { adapter, conversationMocks, teacherAllocationMocks } =
+      createAdapter();
+    teacherAllocationMocks.findMany.mockResolvedValue([
+      {
+        teacherUserId: 'teacher-user-1',
+        subject: { nameEn: 'Science', nameAr: null },
+        classroom: { nameEn: 'Grade 5', nameAr: null },
+        teacherUser: {
+          id: 'teacher-user-1',
+          firstName: 'Sara',
+          lastName: 'Teacher',
+          userType: 'TEACHER',
+          status: 'ACTIVE',
+        },
+      },
+    ]);
+    conversationMocks.findMany.mockResolvedValue([]);
+
+    const result = await adapter.listContactsForStudent({
+      context: {
+        studentUserId: 'student-user-1',
+        studentId: 'student-1',
+        enrollmentId: 'enrollment-1',
+        classroomId: 'classroom-1',
+        academicYearId: 'year-1',
+        termId: 'term-1',
+        schoolId: 'school-1',
+        organizationId: 'org-1',
+        membershipId: 'membership-1',
+        roleId: 'role-1',
+        permissions: [],
+      },
+      filters: { q: 'sara' },
+    });
+
+    const query = teacherAllocationMocks.findMany.mock.calls[0][0];
+    expect(query.where).toMatchObject({
+      classroomId: 'classroom-1',
+      teacherUserId: { not: 'student-user-1' },
+      teacherUser: {
+        is: expect.objectContaining({
+          userType: 'TEACHER',
+          status: 'ACTIVE',
+          deletedAt: null,
+        }),
+      },
+    });
+    expect(JSON.stringify(query.where)).toContain('sara');
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        contactId: 'teacher:teacher-user-1',
+        targetUserId: 'teacher-user-1',
+        displayName: 'Sara Teacher',
+        conversationId: null,
+      }),
+    ]);
+  });
 });
 
 function modelMocks() {
@@ -126,16 +185,19 @@ function createAdapter(): {
   adapter: StudentMessagesReadAdapter;
   conversationMocks: ReturnType<typeof modelMocks>;
   messageMocks: ReturnType<typeof modelMocks>;
+  teacherAllocationMocks: ReturnType<typeof modelMocks>;
   platformBypass: jest.Mock;
 } {
   const conversationMocks = modelMocks();
   const messageMocks = modelMocks();
+  const teacherAllocationMocks = modelMocks();
   const platformBypass = jest.fn();
   const prisma = {
     platformBypass,
     scoped: {
       communicationConversation: conversationMocks,
       communicationMessage: messageMocks,
+      teacherSubjectAllocation: teacherAllocationMocks,
     },
   } as unknown as PrismaService;
 
@@ -143,6 +205,7 @@ function createAdapter(): {
     adapter: new StudentMessagesReadAdapter(prisma),
     conversationMocks,
     messageMocks,
+    teacherAllocationMocks,
     platformBypass,
   };
 }

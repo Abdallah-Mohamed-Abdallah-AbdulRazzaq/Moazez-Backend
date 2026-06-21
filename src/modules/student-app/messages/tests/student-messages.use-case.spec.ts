@@ -1,4 +1,6 @@
 import {
+  CommunicationConversationStatus,
+  CommunicationConversationType,
   CommunicationMessageKind,
   CommunicationMessageStatus,
   StudentEnrollmentStatus,
@@ -12,6 +14,7 @@ import type {
   StudentAppContext,
   StudentAppCurrentStudentWithEnrollment,
 } from '../../shared/student-app.types';
+import { CreateOrReuseCommunicationDirectConversationUseCase } from '../../../communication/application/communication-conversation.use-cases';
 import {
   CreateCommunicationMessageUseCase,
   GetCommunicationMessageInfoUseCase,
@@ -28,6 +31,10 @@ import { ListStudentMessageConversationsUseCase } from '../application/list-stud
 import { ListStudentConversationMessagesUseCase } from '../application/list-student-conversation-messages.use-case';
 import { SendStudentConversationMessageUseCase } from '../application/send-student-conversation-message.use-case';
 import { MarkStudentConversationReadUseCase } from '../application/mark-student-conversation-read.use-case';
+import {
+  CreateStudentMessageConversationUseCase,
+  ListStudentMessageContactsUseCase,
+} from '../application/student-message-contacts.use-cases';
 import { StudentMessagesReadAdapter } from '../infrastructure/student-messages-read.adapter';
 
 describe('Student Messages use-cases', () => {
@@ -54,18 +61,17 @@ describe('Student Messages use-cases', () => {
   });
 
   it('delegates text sends to Communication core after visibility passes', async () => {
-    const {
-      sendUseCase,
-      readAdapter,
-      createCommunicationMessageUseCase,
-    } = createUseCasesWithValidAccess();
+    const { sendUseCase, readAdapter, createCommunicationMessageUseCase } =
+      createUseCasesWithValidAccess();
     readAdapter.findConversationForStudent.mockResolvedValue(
       conversationFixture() as any,
     );
     createCommunicationMessageUseCase.execute.mockResolvedValue({
       id: 'message-1',
     });
-    readAdapter.findMessageForStudent.mockResolvedValue(messageFixture() as any);
+    readAdapter.findMessageForStudent.mockResolvedValue(
+      messageFixture() as any,
+    );
 
     await sendUseCase.execute({
       conversationId: 'conversation-1',
@@ -81,12 +87,107 @@ describe('Student Messages use-cases', () => {
     );
   });
 
-  it('delegates file sends to Communication core and returns safe dual-alias attachments', async () => {
+  it('lists authorized student contacts with dual aliases and no unsafe fields', async () => {
+    const { contactsUseCase, readAdapter } = createUseCasesWithValidAccess();
+    readAdapter.listContactsForStudent.mockResolvedValue({
+      items: [
+        {
+          contactId: 'teacher:teacher-user-1',
+          targetUserId: 'teacher-user-1',
+          displayName: 'Test Teacher',
+          role: 'teacher',
+          avatarUrl: null,
+          subtitle: 'Math - Grade 4',
+          conversationId: null,
+          canMessage: true,
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 20,
+    });
+
+    const result = await contactsUseCase.execute({
+      q: 'test',
+      role: 'teacher',
+      limit: 20,
+    });
+
+    expect(readAdapter.listContactsForStudent).toHaveBeenCalledWith({
+      context: contextFixture(),
+      filters: { q: 'test', role: 'teacher', limit: 20 },
+    });
+    expect(result.contacts).toEqual([
+      expect.objectContaining({
+        contactId: 'teacher:teacher-user-1',
+        contact_id: 'teacher:teacher-user-1',
+        displayName: 'Test Teacher',
+        display_name: 'Test Teacher',
+        canMessage: true,
+        can_message: true,
+      }),
+    ]);
+    const json = JSON.stringify(result);
+    expect(json).not.toContain('targetUserId');
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('membershipId');
+  });
+
+  it('creates or reuses student direct conversation only for an authorized contact', async () => {
     const {
-      sendUseCase,
+      createConversationUseCase,
       readAdapter,
-      createCommunicationMessageUseCase,
+      createDirectConversationUseCase,
     } = createUseCasesWithValidAccess();
+    readAdapter.findContactForStudent.mockResolvedValue({
+      contactId: 'teacher:teacher-user-1',
+      targetUserId: 'teacher-user-1',
+      displayName: 'Test Teacher',
+      role: 'teacher',
+      avatarUrl: null,
+      subtitle: 'Math',
+      conversationId: null,
+      canMessage: true,
+    });
+    createDirectConversationUseCase.execute.mockResolvedValue({
+      conversationId: 'conversation-1',
+      wasCreated: true,
+    });
+    readAdapter.findConversationForStudent.mockResolvedValue(
+      conversationDetailFixture() as any,
+    );
+    readAdapter.countUnreadMessagesForConversation.mockResolvedValue(0);
+
+    const result = await createConversationUseCase.execute({
+      contactId: 'teacher:teacher-user-1',
+    });
+
+    expect(createDirectConversationUseCase.execute).toHaveBeenCalledWith({
+      targetUserId: 'teacher-user-1',
+    });
+    expect(result.conversation).toMatchObject({
+      conversation_id: 'conversation-1',
+      is_group: false,
+    });
+  });
+
+  it('blocks student direct conversation creation for unauthorized contact ids', async () => {
+    const {
+      createConversationUseCase,
+      readAdapter,
+      createDirectConversationUseCase,
+    } = createUseCasesWithValidAccess();
+    readAdapter.findContactForStudent.mockResolvedValue(null);
+
+    await expect(
+      createConversationUseCase.execute({ contactId: 'teacher:foreign' }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(createDirectConversationUseCase.execute).not.toHaveBeenCalled();
+  });
+
+  it('delegates file sends to Communication core and returns safe dual-alias attachments', async () => {
+    const { sendUseCase, readAdapter, createCommunicationMessageUseCase } =
+      createUseCasesWithValidAccess();
     readAdapter.findConversationForStudent.mockResolvedValue(
       conversationFixture() as any,
     );
@@ -173,9 +274,9 @@ describe('Student Messages use-cases', () => {
 
     await readUseCase.execute('conversation-1');
 
-    expect(markCommunicationConversationReadUseCase.execute).toHaveBeenCalledWith(
-      'conversation-1',
-    );
+    expect(
+      markCommunicationConversationReadUseCase.execute,
+    ).toHaveBeenCalledWith('conversation-1');
   });
 
   it('returns student message readers with dual aliases after message visibility passes', async () => {
@@ -184,7 +285,9 @@ describe('Student Messages use-cases', () => {
     readAdapter.findConversationForStudent.mockResolvedValue(
       conversationFixture() as any,
     );
-    readAdapter.findMessageForStudent.mockResolvedValue(messageFixture() as any);
+    readAdapter.findMessageForStudent.mockResolvedValue(
+      messageFixture() as any,
+    );
     getMessageReadersUseCase.execute.mockResolvedValue(coreReadersFixture());
 
     const result = await readersUseCase.execute({
@@ -193,10 +296,9 @@ describe('Student Messages use-cases', () => {
       query: { page: 1 },
     });
 
-    expect(getMessageReadersUseCase.execute).toHaveBeenCalledWith(
-      'message-1',
-      { page: 1 },
-    );
+    expect(getMessageReadersUseCase.execute).toHaveBeenCalledWith('message-1', {
+      page: 1,
+    });
     expect(result).toMatchObject({
       message_id: 'message-1',
       read_count: 2,
@@ -240,7 +342,9 @@ describe('Student Messages use-cases', () => {
     readAdapter.findConversationForStudent.mockResolvedValue(
       conversationFixture() as any,
     );
-    readAdapter.findMessageForStudent.mockResolvedValue(messageFixture() as any);
+    readAdapter.findMessageForStudent.mockResolvedValue(
+      messageFixture() as any,
+    );
     getAttachmentDownloadUrlUseCase.execute.mockResolvedValue(
       'https://storage.example/student-signed-download',
     );
@@ -287,6 +391,8 @@ describe('Student Messages use-cases', () => {
 function createUseCases(): {
   listUseCase: ListStudentMessageConversationsUseCase;
   messagesUseCase: ListStudentConversationMessagesUseCase;
+  contactsUseCase: ListStudentMessageContactsUseCase;
+  createConversationUseCase: CreateStudentMessageConversationUseCase;
   sendUseCase: SendStudentConversationMessageUseCase;
   readUseCase: MarkStudentConversationReadUseCase;
   readersUseCase: GetStudentMessageReadersUseCase;
@@ -294,6 +400,7 @@ function createUseCases(): {
   attachmentDownloadUseCase: GetStudentMessageAttachmentDownloadUrlUseCase;
   accessService: jest.Mocked<StudentAppAccessService>;
   readAdapter: jest.Mocked<StudentMessagesReadAdapter>;
+  createDirectConversationUseCase: jest.Mocked<CreateOrReuseCommunicationDirectConversationUseCase>;
   createCommunicationMessageUseCase: jest.Mocked<CreateCommunicationMessageUseCase>;
   markCommunicationConversationReadUseCase: jest.Mocked<MarkCommunicationConversationReadUseCase>;
   getMessageReadersUseCase: jest.Mocked<GetCommunicationMessageReadersUseCase>;
@@ -305,11 +412,17 @@ function createUseCases(): {
   } as unknown as jest.Mocked<StudentAppAccessService>;
   const readAdapter = {
     listConversations: jest.fn(),
+    listContactsForStudent: jest.fn(),
+    findContactForStudent: jest.fn(),
     getUnreadSummary: jest.fn(),
     findConversationForStudent: jest.fn(),
     listMessages: jest.fn(),
     findMessageForStudent: jest.fn(),
+    countUnreadMessagesForConversation: jest.fn(),
   } as unknown as jest.Mocked<StudentMessagesReadAdapter>;
+  const createDirectConversationUseCase = {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<CreateOrReuseCommunicationDirectConversationUseCase>;
   const createCommunicationMessageUseCase = {
     execute: jest.fn(),
   } as unknown as jest.Mocked<CreateCommunicationMessageUseCase>;
@@ -335,6 +448,15 @@ function createUseCases(): {
       accessService,
       readAdapter,
     ),
+    contactsUseCase: new ListStudentMessageContactsUseCase(
+      accessService,
+      readAdapter,
+    ),
+    createConversationUseCase: new CreateStudentMessageConversationUseCase(
+      accessService,
+      readAdapter,
+      createDirectConversationUseCase,
+    ),
     sendUseCase: new SendStudentConversationMessageUseCase(
       accessService,
       readAdapter,
@@ -355,13 +477,15 @@ function createUseCases(): {
       readAdapter,
       getMessageInfoUseCase,
     ),
-    attachmentDownloadUseCase: new GetStudentMessageAttachmentDownloadUrlUseCase(
-      accessService,
-      readAdapter,
-      getAttachmentDownloadUrlUseCase,
-    ),
+    attachmentDownloadUseCase:
+      new GetStudentMessageAttachmentDownloadUrlUseCase(
+        accessService,
+        readAdapter,
+        getAttachmentDownloadUrlUseCase,
+      ),
     accessService,
     readAdapter,
+    createDirectConversationUseCase,
     createCommunicationMessageUseCase,
     markCommunicationConversationReadUseCase,
     getMessageReadersUseCase,
@@ -430,6 +554,62 @@ function conversationFixture() {
   return {
     id: 'conversation-1',
     participants: [],
+    messages: [],
+  };
+}
+
+function conversationDetailFixture() {
+  const now = new Date('2026-01-01T08:00:00.000Z');
+  return {
+    id: 'conversation-1',
+    type: CommunicationConversationType.DIRECT,
+    status: CommunicationConversationStatus.ACTIVE,
+    titleEn: null,
+    titleAr: null,
+    descriptionEn: null,
+    descriptionAr: null,
+    lastMessageAt: null,
+    metadata: null,
+    createdAt: now,
+    updatedAt: now,
+    participants: [
+      {
+        id: 'participant-student',
+        conversationId: 'conversation-1',
+        userId: 'student-user-1',
+        role: 'OWNER',
+        status: 'ACTIVE',
+        lastReadMessageId: null,
+        lastReadAt: null,
+        createdAt: now,
+        updatedAt: now,
+        user: {
+          id: 'student-user-1',
+          firstName: 'Student',
+          lastName: 'User',
+          userType: UserType.STUDENT,
+          status: UserStatus.ACTIVE,
+        },
+      },
+      {
+        id: 'participant-teacher',
+        conversationId: 'conversation-1',
+        userId: 'teacher-user-1',
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        lastReadMessageId: null,
+        lastReadAt: null,
+        createdAt: now,
+        updatedAt: now,
+        user: {
+          id: 'teacher-user-1',
+          firstName: 'Test',
+          lastName: 'Teacher',
+          userType: UserType.TEACHER,
+          status: UserStatus.ACTIVE,
+        },
+      },
+    ],
     messages: [],
   };
 }

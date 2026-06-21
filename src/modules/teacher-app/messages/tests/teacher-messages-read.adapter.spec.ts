@@ -182,6 +182,114 @@ describe('TeacherMessagesReadAdapter', () => {
       prismaMocks.communicationConversationParticipant.create,
     ).not.toHaveBeenCalled();
   });
+
+  it('discovers teacher contacts only through owned classroom ids', async () => {
+    const { adapter, prismaMocks } = createAdapter();
+    prismaMocks.enrollment.findMany.mockResolvedValue([
+      {
+        student: {
+          id: 'student-1',
+          firstName: 'Student',
+          lastName: 'User',
+          userId: 'student-user-1',
+          user: {
+            id: 'student-user-1',
+            firstName: 'Student',
+            lastName: 'User',
+            userType: 'STUDENT',
+            status: 'ACTIVE',
+          },
+        },
+        classroom: { nameEn: 'Grade 4', nameAr: null },
+      },
+    ]);
+    prismaMocks.studentGuardian.findMany.mockResolvedValue([
+      {
+        guardian: {
+          id: 'guardian-1',
+          firstName: 'Mona',
+          lastName: 'Parent',
+          relation: 'Mother',
+          userId: 'parent-user-1',
+          user: {
+            id: 'parent-user-1',
+            firstName: 'Mona',
+            lastName: 'Parent',
+            userType: 'PARENT',
+            status: 'ACTIVE',
+          },
+        },
+        student: {
+          firstName: 'Student',
+          lastName: 'User',
+        },
+      },
+    ]);
+    prismaMocks.communicationConversation.findMany.mockResolvedValue([]);
+
+    const result = await adapter.listContactsForTeacher({
+      context: {
+        teacherUserId: 'teacher-1',
+        schoolId: 'school-1',
+        organizationId: 'org-1',
+        membershipId: 'membership-1',
+        roleId: 'role-1',
+        permissions: [],
+      },
+      classroomIds: ['classroom-1'],
+      filters: { q: 'mona' },
+    });
+
+    expect(
+      prismaMocks.enrollment.findMany.mock.calls[0][0].where,
+    ).toMatchObject({
+      classroomId: { in: ['classroom-1'] },
+      student: {
+        is: expect.objectContaining({
+          status: 'ACTIVE',
+          deletedAt: null,
+        }),
+      },
+    });
+    expect(
+      prismaMocks.studentGuardian.findMany.mock.calls[0][0].where,
+    ).toMatchObject({
+      student: {
+        is: expect.objectContaining({
+          enrollments: {
+            some: expect.objectContaining({
+              classroomId: { in: ['classroom-1'] },
+            }),
+          },
+        }),
+      },
+      guardian: {
+        is: expect.objectContaining({
+          deletedAt: null,
+          userId: { not: null },
+        }),
+      },
+    });
+    expect(
+      JSON.stringify(
+        prismaMocks.studentGuardian.findMany.mock.calls[0][0].where,
+      ),
+    ).toContain('mona');
+    expect(result.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          contactId: 'student:student-1',
+          targetUserId: 'student-user-1',
+          role: 'student',
+        }),
+        expect.objectContaining({
+          contactId: 'guardian:guardian-1',
+          targetUserId: 'parent-user-1',
+          role: 'parent',
+        }),
+      ]),
+    );
+  });
 });
 
 function createAdapter(): {
@@ -205,6 +313,12 @@ function createAdapter(): {
     communicationConversationParticipant: {
       create: jest.Mock;
     };
+    enrollment: {
+      findMany: jest.Mock;
+    };
+    studentGuardian: {
+      findMany: jest.Mock;
+    };
   };
 } {
   const prismaMocks = {
@@ -225,6 +339,12 @@ function createAdapter(): {
     },
     communicationConversationParticipant: {
       create: jest.fn(),
+    },
+    enrollment: {
+      findMany: jest.fn(),
+    },
+    studentGuardian: {
+      findMany: jest.fn(),
     },
   };
   const prisma = {

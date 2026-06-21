@@ -49,6 +49,12 @@ export const PARENT_MESSAGE_SEND_TYPES = [
   'video',
 ] as const;
 
+export const PARENT_MESSAGE_CONTACT_ROLES = [
+  'teacher',
+  'student',
+  'parent',
+] as const;
+
 function toLowerOptionalString(value: unknown): unknown {
   if (value === undefined || value === null || value === '') return undefined;
   return typeof value === 'string' ? value.trim().toLowerCase() : value;
@@ -130,6 +136,38 @@ export class ParentMessageReadersQueryDto {
   page?: number;
 }
 
+export class ListParentMessageContactsQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  q?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => toLowerOptionalString(value))
+  @IsIn(PARENT_MESSAGE_CONTACT_ROLES)
+  role?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  page?: number;
+}
+
+export class CreateParentMessageConversationDto {
+  @IsString()
+  @MaxLength(128)
+  contactId!: string;
+}
+
 export class SendParentConversationMessageAttachmentDto {
   @IsUUID()
   fileId!: string;
@@ -193,6 +231,26 @@ export class ParentMessagePaginationDto {
   page!: number;
   limit!: number;
   total!: number;
+}
+
+export class ParentMessageContactDto {
+  contactId!: string;
+  contact_id!: string;
+  displayName!: string;
+  display_name!: string;
+  role!: string;
+  avatarUrl!: string | null;
+  avatar_url!: string | null;
+  subtitle!: string | null;
+  conversationId!: string | null;
+  conversation_id!: string | null;
+  canMessage!: boolean;
+  can_message!: boolean;
+}
+
+export class ParentMessageContactsResponseDto {
+  contacts!: ParentMessageContactDto[];
+  pagination!: ParentMessagePaginationDto;
 }
 
 export class ParentMessageSenderDto {

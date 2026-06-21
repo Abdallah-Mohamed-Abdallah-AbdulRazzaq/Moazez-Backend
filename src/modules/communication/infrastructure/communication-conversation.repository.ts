@@ -170,6 +170,11 @@ export interface CommunicationConversationCreateData {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface CommunicationDirectConversationCreateOrReuseResult {
+  conversation: CommunicationConversationRecord;
+  wasCreated: boolean;
+}
+
 export interface CommunicationConversationUpdateData {
   titleEn?: string | null;
   descriptionEn?: string | null;
@@ -271,6 +276,76 @@ export class CommunicationConversationRepository {
       );
 
       return conversation;
+    });
+  }
+
+  async createOrReuseCurrentSchoolDirectConversation(input: {
+    schoolId: string;
+    actorId: string;
+    targetUserId: string;
+    buildAuditEntry: (
+      conversation: CommunicationConversationRecord,
+      wasCreated: boolean,
+    ) => CommunicationConversationAuditInput;
+  }): Promise<CommunicationDirectConversationCreateOrReuseResult> {
+    return this.scopedPrisma.$transaction(async (tx) => {
+      const existingConversationId =
+        await this.findActiveDirectConversationIdForPairInTransaction(tx, {
+          schoolId: input.schoolId,
+          actorId: input.actorId,
+          targetUserId: input.targetUserId,
+        });
+
+      if (existingConversationId) {
+        const conversation = await this.findConversationInTransaction(
+          tx,
+          existingConversationId,
+        );
+
+        return { conversation, wasCreated: false };
+      }
+
+      const created = await tx.communicationConversation.create({
+        data: {
+          schoolId: input.schoolId,
+          type: CommunicationConversationType.DIRECT,
+          status: CommunicationConversationStatus.ACTIVE,
+          createdById: input.actorId,
+          metadata: Prisma.JsonNull,
+        },
+        select: { id: true },
+      });
+
+      await tx.communicationConversationParticipant.createMany({
+        data: [
+          {
+            schoolId: input.schoolId,
+            conversationId: created.id,
+            userId: input.actorId,
+            role: CommunicationParticipantRole.OWNER,
+            status: CommunicationParticipantStatus.ACTIVE,
+          },
+          {
+            schoolId: input.schoolId,
+            conversationId: created.id,
+            userId: input.targetUserId,
+            role: CommunicationParticipantRole.MEMBER,
+            status: CommunicationParticipantStatus.ACTIVE,
+          },
+        ],
+        skipDuplicates: true,
+      });
+
+      const conversation = await this.findConversationInTransaction(
+        tx,
+        created.id,
+      );
+      await this.createAuditLogInTransaction(
+        tx,
+        input.buildAuditEntry(conversation, true),
+      );
+
+      return { conversation, wasCreated: true };
     });
   }
 
@@ -519,6 +594,62 @@ export class CommunicationConversationRepository {
         status: CommunicationParticipantStatus.ACTIVE,
       },
     });
+  }
+
+  private async findActiveDirectConversationIdForPairInTransaction(
+    tx: Prisma.TransactionClient,
+    input: {
+      schoolId: string;
+      actorId: string;
+      targetUserId: string;
+    },
+  ): Promise<string | null> {
+    const candidates = await tx.communicationConversation.findMany({
+      where: {
+        schoolId: input.schoolId,
+        type: CommunicationConversationType.DIRECT,
+        deletedAt: null,
+        participants: {
+          some: {
+            userId: input.actorId,
+            status: { in: [...ACTIVE_PARTICIPANT_STATUSES] },
+          },
+        },
+        AND: [
+          {
+            participants: {
+              some: {
+                userId: input.targetUserId,
+                status: { in: [...ACTIVE_PARTICIPANT_STATUSES] },
+              },
+            },
+          },
+        ],
+      },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        participants: {
+          where: { status: { in: [...ACTIVE_PARTICIPANT_STATUSES] } },
+          select: { userId: true },
+        },
+      },
+    });
+
+    for (const candidate of candidates) {
+      const activeParticipantIds = new Set(
+        candidate.participants.map((participant) => participant.userId),
+      );
+      if (
+        activeParticipantIds.size === 2 &&
+        activeParticipantIds.has(input.actorId) &&
+        activeParticipantIds.has(input.targetUserId)
+      ) {
+        return candidate.id;
+      }
+    }
+
+    return null;
   }
 
   private async findConversationInTransaction(

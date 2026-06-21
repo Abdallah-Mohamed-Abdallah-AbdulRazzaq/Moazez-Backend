@@ -698,8 +698,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     ownedTaskStageAId = sprint9EFixture.ownedTaskStageId;
     ownedTaskSubmissionAId = sprint9EFixture.ownedTaskSubmissionId;
     ownedTaskProofFileAId = sprint9EFixture.ownedTaskProofFileId;
-    secondOwnedTaskProofFileAId =
-      sprint9EFixture.secondOwnedTaskProofFileId;
+    secondOwnedTaskProofFileAId = sprint9EFixture.secondOwnedTaskProofFileId;
     sameSchoolUnlinkedTaskAId = sprint9EFixture.sameSchoolUnlinkedTaskId;
     sameSchoolUnlinkedTaskSubmissionAId =
       sprint9EFixture.sameSchoolUnlinkedTaskSubmissionId;
@@ -2065,6 +2064,20 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     });
     assertNoForbiddenParentAppFields(read.body);
 
+    const contacts = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/messages/contacts`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(contacts.body.contacts).toEqual(expect.any(Array));
+    assertNoForbiddenParentAppFields(contacts.body);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/parent/messages/conversations`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ contactId: 'teacher:00000000-0000-4000-8000-000000000000' })
+      .expect(404);
+
     for (const inaccessibleConversationId of [
       nonParticipantConversationAId,
       crossSchoolConversationId,
@@ -2414,8 +2427,6 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     }
 
     for (const route of [
-      { method: 'get' as const, path: 'messages/contacts' },
-      { method: 'post' as const, path: 'messages/conversations' },
       {
         method: 'post' as const,
         path: `messages/conversations/${ownConversationAId}/attachments`,
@@ -2889,17 +2900,16 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     });
     createdHeroMissionProgressIds.push(progress.id);
 
-    const objectiveProgress =
-      await prisma.heroMissionObjectiveProgress.create({
-        data: {
-          schoolId: schoolAId,
-          missionProgressId: progress.id,
-          objectiveId: objective.id,
-          completedAt: new Date('2026-10-16T08:00:00.000Z'),
-          completedById: teacherUserId,
-        },
-        select: { id: true },
-      });
+    const objectiveProgress = await prisma.heroMissionObjectiveProgress.create({
+      data: {
+        schoolId: schoolAId,
+        missionProgressId: progress.id,
+        objectiveId: objective.id,
+        completedAt: new Date('2026-10-16T08:00:00.000Z'),
+        completedById: teacherUserId,
+      },
+      select: { id: true },
+    });
     createdHeroMissionObjectiveProgressIds.push(objectiveProgress.id);
 
     const studentBadge = await prisma.heroStudentBadge.create({

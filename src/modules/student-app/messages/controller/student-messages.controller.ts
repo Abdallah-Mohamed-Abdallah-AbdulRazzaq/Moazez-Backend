@@ -26,13 +26,20 @@ import { ListStudentMessageConversationsUseCase } from '../application/list-stud
 import { MarkStudentConversationReadUseCase } from '../application/mark-student-conversation-read.use-case';
 import { SendStudentConversationMessageUseCase } from '../application/send-student-conversation-message.use-case';
 import {
+  CreateStudentMessageConversationUseCase,
+  ListStudentMessageContactsUseCase,
+} from '../application/student-message-contacts.use-cases';
+import {
+  CreateStudentMessageConversationDto,
   ListStudentConversationMessagesQueryDto,
+  ListStudentMessageContactsQueryDto,
   ListStudentMessageConversationsQueryDto,
   SendStudentConversationMessageDto,
   StudentConversationMessageResponseDto,
   StudentConversationMessagesResponseDto,
   StudentConversationReadResponseDto,
   StudentMessageInfoResponseDto,
+  StudentMessageContactsResponseDto,
   StudentMessageConversationResponseDto,
   StudentMessageConversationsResponseDto,
   StudentMessageReadersQueryDto,
@@ -52,7 +59,17 @@ export class StudentMessagesController {
     private readonly getStudentMessageReadersUseCase: GetStudentMessageReadersUseCase,
     private readonly getStudentMessageInfoUseCase: GetStudentMessageInfoUseCase,
     private readonly getStudentMessageAttachmentDownloadUrlUseCase: GetStudentMessageAttachmentDownloadUrlUseCase,
+    private readonly listStudentMessageContactsUseCase: ListStudentMessageContactsUseCase,
+    private readonly createStudentMessageConversationUseCase: CreateStudentMessageConversationUseCase,
   ) {}
+
+  @Get('contacts')
+  @ApiOkResponse({ type: StudentMessageContactsResponseDto })
+  listContacts(
+    @Query() query: ListStudentMessageContactsQueryDto,
+  ): Promise<StudentMessageContactsResponseDto> {
+    return this.listStudentMessageContactsUseCase.execute(query);
+  }
 
   @Get('conversations')
   @ApiOkResponse({ type: StudentMessageConversationsResponseDto })
@@ -115,7 +132,8 @@ export class StudentMessagesController {
   )
   @Redirect(undefined, 307)
   @ApiTemporaryRedirectResponse({
-    description: 'Redirects to an authorized temporary attachment download URL.',
+    description:
+      'Redirects to an authorized temporary attachment download URL.',
   })
   async downloadAttachment(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
@@ -152,6 +170,14 @@ export class StudentMessagesController {
         mode: 'preview',
       }),
     };
+  }
+
+  @Post('conversations')
+  @ApiCreatedResponse({ type: StudentMessageConversationResponseDto })
+  createConversation(
+    @Body() body: CreateStudentMessageConversationDto,
+  ): Promise<StudentMessageConversationResponseDto> {
+    return this.createStudentMessageConversationUseCase.execute(body);
   }
 
   @Post('conversations/:conversationId/messages')

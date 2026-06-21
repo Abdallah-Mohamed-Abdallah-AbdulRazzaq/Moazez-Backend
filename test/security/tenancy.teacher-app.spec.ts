@@ -1076,6 +1076,20 @@ describe('Teacher App tenancy isolation (security)', () => {
       readAt: expect.any(String),
       markedCount: expect.any(Number),
     });
+
+    const contacts = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/messages/contacts`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(contacts.body.contacts).toEqual(expect.any(Array));
+    expectSafeTeacherTaskPayload(contacts.body);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/messages/conversations`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ contactId: 'student:00000000-0000-4000-8000-000000000000' })
+      .expect(404);
   });
 
   it('same-school non-participant teacher cannot access message conversation operations', async () => {
@@ -3278,18 +3292,9 @@ describe('Teacher App tenancy isolation (security)', () => {
       .expect(403);
   });
 
-  it('does not register Teacher Message contact discovery, creation, attachment, or audio routes', async () => {
+  it('does not register Teacher Message attachment or audio creation routes', async () => {
     const { accessToken } = await login(teacherAEmail);
 
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/teacher/messages/contacts`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/teacher/messages/conversations`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ participantIds: [parentUserId] })
-      .expect(404);
     await request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/attachments`,
