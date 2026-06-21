@@ -293,7 +293,14 @@ function presentAttachments(message: TeacherMessageRecord) {
   const messageAttachments = message.attachments ?? [];
   const safeAttachments = presentCommunicationAppMessageAttachments(
     messageAttachments,
-    { aliasStyle: 'camel' },
+    {
+      aliasStyle: 'camel',
+      authorizedRoute: {
+        surface: 'teacher',
+        conversationId: message.conversationId,
+        messageId: message.id,
+      },
+    },
   );
 
   return safeAttachments.map((attachment, index) => ({

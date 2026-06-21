@@ -15,12 +15,14 @@ import {
   GetCommunicationMessageReadersUseCase,
   MarkCommunicationConversationReadUseCase,
 } from '../../../communication/application/communication-message.use-cases';
+import { GetCommunicationMessageAttachmentDownloadUrlUseCase } from '../../../communication/application/communication-message-attachment-download.use-case';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
 import { TeacherAppRequiredTeacherException } from '../../shared/teacher-app.errors';
 import {
   GetTeacherMessageInfoUseCase,
   GetTeacherMessageReadersUseCase,
 } from '../application/get-teacher-message-info.use-cases';
+import { GetTeacherMessageAttachmentDownloadUrlUseCase } from '../application/get-teacher-message-attachment-download-url.use-case';
 import { GetTeacherMessageConversationUseCase } from '../application/get-teacher-message-conversation.use-case';
 import { ListTeacherConversationMessagesUseCase } from '../application/list-teacher-conversation-messages.use-case';
 import { ListTeacherMessageConversationsUseCase } from '../application/list-teacher-message-conversations.use-case';
@@ -323,6 +325,50 @@ describe('Teacher Messages use cases', () => {
     ).rejects.toMatchObject({ code: 'not_found' });
     expect(getCommunicationMessageInfoUseCase.execute).not.toHaveBeenCalled();
   });
+
+  it('resolves teacher attachment download after app conversation and message checks', async () => {
+    const {
+      attachmentDownloadUseCase,
+      getAttachmentDownloadUrlUseCase,
+    } = createUseCases();
+    getAttachmentDownloadUrlUseCase.execute.mockResolvedValueOnce(
+      'https://storage.example/teacher-signed-download',
+    );
+
+    const result = await attachmentDownloadUseCase.execute({
+      conversationId: CONVERSATION_ID,
+      messageId: 'message-1',
+      attachmentId: 'attachment-1',
+      mode: 'download',
+    });
+
+    expect(result).toBe('https://storage.example/teacher-signed-download');
+    expect(getAttachmentDownloadUrlUseCase.execute).toHaveBeenCalledWith({
+      conversationId: CONVERSATION_ID,
+      messageId: 'message-1',
+      attachmentId: 'attachment-1',
+      mode: 'download',
+    });
+  });
+
+  it('does not delegate teacher attachment preview for inaccessible messages', async () => {
+    const {
+      attachmentDownloadUseCase,
+      messagesReadAdapter,
+      getAttachmentDownloadUrlUseCase,
+    } = createUseCases();
+    messagesReadAdapter.findMessageForTeacher.mockResolvedValueOnce(null);
+
+    await expect(
+      attachmentDownloadUseCase.execute({
+        conversationId: CONVERSATION_ID,
+        messageId: 'missing-message',
+        attachmentId: 'attachment-1',
+        mode: 'preview',
+      }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(getAttachmentDownloadUrlUseCase.execute).not.toHaveBeenCalled();
+  });
 });
 
 function createUseCases(): {
@@ -333,12 +379,14 @@ function createUseCases(): {
   readUseCase: MarkTeacherConversationReadUseCase;
   readersUseCase: GetTeacherMessageReadersUseCase;
   infoUseCase: GetTeacherMessageInfoUseCase;
+  attachmentDownloadUseCase: GetTeacherMessageAttachmentDownloadUrlUseCase;
   accessService: jest.Mocked<TeacherAppAccessService>;
   messagesReadAdapter: jest.Mocked<TeacherMessagesReadAdapter>;
   createCommunicationMessageUseCase: jest.Mocked<CreateCommunicationMessageUseCase>;
   markCommunicationConversationReadUseCase: jest.Mocked<MarkCommunicationConversationReadUseCase>;
   getCommunicationMessageReadersUseCase: jest.Mocked<GetCommunicationMessageReadersUseCase>;
   getCommunicationMessageInfoUseCase: jest.Mocked<GetCommunicationMessageInfoUseCase>;
+  getAttachmentDownloadUrlUseCase: jest.Mocked<GetCommunicationMessageAttachmentDownloadUrlUseCase>;
 } {
   const conversation = conversationFixture();
   const message = messageFixture();
@@ -399,6 +447,11 @@ function createUseCases(): {
   const getCommunicationMessageInfoUseCase = {
     execute: jest.fn(() => Promise.resolve(coreInfoFixture())),
   } as unknown as jest.Mocked<GetCommunicationMessageInfoUseCase>;
+  const getAttachmentDownloadUrlUseCase = {
+    execute: jest.fn(() =>
+      Promise.resolve('https://storage.example/teacher-signed-download'),
+    ),
+  } as unknown as jest.Mocked<GetCommunicationMessageAttachmentDownloadUrlUseCase>;
 
   return {
     listConversationsUseCase: new ListTeacherMessageConversationsUseCase(
@@ -433,12 +486,18 @@ function createUseCases(): {
       messagesReadAdapter,
       getCommunicationMessageInfoUseCase,
     ),
+    attachmentDownloadUseCase: new GetTeacherMessageAttachmentDownloadUrlUseCase(
+      accessService,
+      messagesReadAdapter,
+      getAttachmentDownloadUrlUseCase,
+    ),
     accessService,
     messagesReadAdapter,
     createCommunicationMessageUseCase,
     markCommunicationConversationReadUseCase,
     getCommunicationMessageReadersUseCase,
     getCommunicationMessageInfoUseCase,
+    getAttachmentDownloadUrlUseCase,
   };
 }
 

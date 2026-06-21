@@ -61,6 +61,7 @@ import {
   GetStudentMessageInfoUseCase,
   GetStudentMessageReadersUseCase,
 } from './messages/application/get-student-message-info.use-cases';
+import { GetStudentMessageAttachmentDownloadUrlUseCase } from './messages/application/get-student-message-attachment-download-url.use-case';
 import { GetStudentMessageConversationUseCase } from './messages/application/get-student-message-conversation.use-case';
 import { ListStudentConversationMessagesUseCase } from './messages/application/list-student-conversation-messages.use-case';
 import { ListStudentMessageConversationsUseCase } from './messages/application/list-student-message-conversations.use-case';
@@ -211,6 +212,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     MarkStudentConversationReadUseCase,
     GetStudentMessageReadersUseCase,
     GetStudentMessageInfoUseCase,
+    GetStudentMessageAttachmentDownloadUrlUseCase,
     ListStudentNotificationsUseCase,
     GetStudentNotificationUseCase,
     GetStudentNotificationsSummaryUseCase,

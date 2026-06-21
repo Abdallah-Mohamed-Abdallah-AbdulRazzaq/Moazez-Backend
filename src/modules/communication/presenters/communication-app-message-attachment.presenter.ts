@@ -1,4 +1,5 @@
 export type CommunicationAppAttachmentAliasStyle = 'camel' | 'dual';
+export type CommunicationAppAttachmentSurface = 'parent' | 'student' | 'teacher';
 
 export type CommunicationAppAttachmentMediaKind =
   | 'image'
@@ -30,6 +31,8 @@ export interface CommunicationAppAttachmentCamelResponse {
   sortOrder: number;
   createdAt: string;
   downloadPath: string;
+  authorizedDownloadPath?: string;
+  previewPath?: string;
 }
 
 export interface CommunicationAppAttachmentDualResponse
@@ -43,6 +46,8 @@ export interface CommunicationAppAttachmentDualResponse
   sort_order: number;
   created_at: string;
   download_path: string;
+  authorized_download_path?: string;
+  preview_path?: string;
 }
 
 export type CommunicationAppAttachmentResponse =
@@ -51,19 +56,19 @@ export type CommunicationAppAttachmentResponse =
 
 export function presentCommunicationAppMessageAttachments(
   attachments: CommunicationAppAttachmentRecord[],
-  params: { aliasStyle: 'camel' },
+  params: CommunicationAppAttachmentPresenterParams & { aliasStyle: 'camel' },
 ): CommunicationAppAttachmentCamelResponse[];
 export function presentCommunicationAppMessageAttachments(
   attachments: CommunicationAppAttachmentRecord[],
-  params: { aliasStyle: 'dual' },
+  params: CommunicationAppAttachmentPresenterParams & { aliasStyle: 'dual' },
 ): CommunicationAppAttachmentDualResponse[];
 export function presentCommunicationAppMessageAttachments(
   attachments: CommunicationAppAttachmentRecord[],
-  params: { aliasStyle: CommunicationAppAttachmentAliasStyle },
+  params: CommunicationAppAttachmentPresenterParams,
 ): CommunicationAppAttachmentResponse[];
 export function presentCommunicationAppMessageAttachments(
   attachments: CommunicationAppAttachmentRecord[],
-  params: { aliasStyle: CommunicationAppAttachmentAliasStyle },
+  params: CommunicationAppAttachmentPresenterParams,
 ): CommunicationAppAttachmentResponse[] {
   return attachments.map((attachment) =>
     presentCommunicationAppMessageAttachment(attachment, params),
@@ -72,19 +77,19 @@ export function presentCommunicationAppMessageAttachments(
 
 export function presentCommunicationAppMessageAttachment(
   attachment: CommunicationAppAttachmentRecord,
-  params: { aliasStyle: 'camel' },
+  params: CommunicationAppAttachmentPresenterParams & { aliasStyle: 'camel' },
 ): CommunicationAppAttachmentCamelResponse;
 export function presentCommunicationAppMessageAttachment(
   attachment: CommunicationAppAttachmentRecord,
-  params: { aliasStyle: 'dual' },
+  params: CommunicationAppAttachmentPresenterParams & { aliasStyle: 'dual' },
 ): CommunicationAppAttachmentDualResponse;
 export function presentCommunicationAppMessageAttachment(
   attachment: CommunicationAppAttachmentRecord,
-  params: { aliasStyle: CommunicationAppAttachmentAliasStyle },
+  params: CommunicationAppAttachmentPresenterParams,
 ): CommunicationAppAttachmentResponse;
 export function presentCommunicationAppMessageAttachment(
   attachment: CommunicationAppAttachmentRecord,
-  params: { aliasStyle: CommunicationAppAttachmentAliasStyle },
+  params: CommunicationAppAttachmentPresenterParams,
 ): CommunicationAppAttachmentResponse {
   const camel: CommunicationAppAttachmentCamelResponse = {
     attachmentId: attachment.id,
@@ -102,6 +107,15 @@ export function presentCommunicationAppMessageAttachment(
       attachment.fileId,
     ),
   };
+  const authorizedPath = buildCommunicationAppAttachmentAuthorizedPaths(
+    attachment.id,
+    params.authorizedRoute,
+  );
+
+  if (authorizedPath) {
+    camel.authorizedDownloadPath = authorizedPath.downloadPath;
+    camel.previewPath = authorizedPath.previewPath;
+  }
 
   if (params.aliasStyle === 'camel') {
     return camel;
@@ -118,6 +132,10 @@ export function presentCommunicationAppMessageAttachment(
     sort_order: camel.sortOrder,
     created_at: camel.createdAt,
     download_path: camel.downloadPath,
+    ...(camel.authorizedDownloadPath
+      ? { authorized_download_path: camel.authorizedDownloadPath }
+      : {}),
+    ...(camel.previewPath ? { preview_path: camel.previewPath } : {}),
   };
 }
 
@@ -137,4 +155,34 @@ export function buildCommunicationAppAttachmentDownloadPath(
   fileId: string,
 ): string {
   return `/api/v1/files/${fileId}/download`;
+}
+
+export interface CommunicationAppAttachmentPresenterParams {
+  aliasStyle: CommunicationAppAttachmentAliasStyle;
+  authorizedRoute?: {
+    surface: CommunicationAppAttachmentSurface;
+    conversationId: string;
+    messageId: string;
+  };
+}
+
+export function buildCommunicationAppAttachmentAuthorizedPaths(
+  attachmentId: string,
+  route: CommunicationAppAttachmentPresenterParams['authorizedRoute'],
+):
+  | {
+      downloadPath: string;
+      previewPath: string;
+    }
+  | null {
+  if (!route) return null;
+
+  const basePath =
+    `/api/v1/${route.surface}/messages/conversations/${route.conversationId}` +
+    `/messages/${route.messageId}/attachments/${attachmentId}`;
+
+  return {
+    downloadPath: `${basePath}/download`,
+    previewPath: `${basePath}/preview`,
+  };
 }

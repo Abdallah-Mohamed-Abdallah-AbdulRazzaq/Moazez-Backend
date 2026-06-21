@@ -54,6 +54,7 @@ import {
   GetParentMessageInfoUseCase,
   GetParentMessageReadersUseCase,
 } from './messages/application/get-parent-message-info.use-cases';
+import { GetParentMessageAttachmentDownloadUrlUseCase } from './messages/application/get-parent-message-attachment-download-url.use-case';
 import { GetParentMessageConversationUseCase } from './messages/application/get-parent-message-conversation.use-case';
 import { ListParentConversationMessagesUseCase } from './messages/application/list-parent-conversation-messages.use-case';
 import { ListParentMessageConversationsUseCase } from './messages/application/list-parent-message-conversations.use-case';
@@ -189,6 +190,7 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     MarkParentConversationReadUseCase,
     GetParentMessageReadersUseCase,
     GetParentMessageInfoUseCase,
+    GetParentMessageAttachmentDownloadUrlUseCase,
     ListParentNotificationsUseCase,
     GetParentNotificationUseCase,
     GetParentNotificationsSummaryUseCase,

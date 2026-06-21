@@ -4,6 +4,7 @@ import {
   GetCommunicationMessageReadersUseCase,
   MarkCommunicationConversationReadUseCase,
 } from '../../../communication/application/communication-message.use-cases';
+import { GetCommunicationMessageAttachmentDownloadUrlUseCase } from '../../../communication/application/communication-message-attachment-download.use-case';
 import { ParentAppAccessService } from '../../access/parent-app-access.service';
 import { ParentAppRequiredParentException } from '../../shared/parent-app-errors';
 import type { ParentAppContext } from '../../shared/parent-app.types';
@@ -11,6 +12,7 @@ import {
   GetParentMessageInfoUseCase,
   GetParentMessageReadersUseCase,
 } from '../application/get-parent-message-info.use-cases';
+import { GetParentMessageAttachmentDownloadUrlUseCase } from '../application/get-parent-message-attachment-download-url.use-case';
 import { ListParentMessageConversationsUseCase } from '../application/list-parent-message-conversations.use-case';
 import { MarkParentConversationReadUseCase } from '../application/mark-parent-conversation-read.use-case';
 import { SendParentConversationMessageUseCase } from '../application/send-parent-conversation-message.use-case';
@@ -54,11 +56,13 @@ describe('Parent Messages use-cases', () => {
       markReadUseCase,
       readersUseCase,
       infoUseCase,
+      attachmentDownloadUseCase,
       readAdapter,
       createMessageUseCase,
       markConversationReadUseCase,
       getMessageReadersUseCase,
       getMessageInfoUseCase,
+      getAttachmentDownloadUrlUseCase,
     } = createUseCasesWithValidAccess();
     readAdapter.findConversationForParent.mockResolvedValue(null);
 
@@ -83,10 +87,19 @@ describe('Parent Messages use-cases', () => {
         messageId: 'message-1',
       }),
     ).rejects.toMatchObject({ code: 'not_found' });
+    await expect(
+      attachmentDownloadUseCase.execute({
+        conversationId: 'conversation-1',
+        messageId: 'message-1',
+        attachmentId: 'attachment-1',
+        mode: 'download',
+      }),
+    ).rejects.toMatchObject({ code: 'not_found' });
     expect(createMessageUseCase.execute).not.toHaveBeenCalled();
     expect(markConversationReadUseCase.execute).not.toHaveBeenCalled();
     expect(getMessageReadersUseCase.execute).not.toHaveBeenCalled();
     expect(getMessageInfoUseCase.execute).not.toHaveBeenCalled();
+    expect(getAttachmentDownloadUrlUseCase.execute).not.toHaveBeenCalled();
   });
 
   it('sends text messages through Communication core after parent participant check', async () => {
@@ -250,6 +263,58 @@ describe('Parent Messages use-cases', () => {
       read_count: 2,
     });
   });
+
+  it('resolves parent message attachment download after app visibility checks', async () => {
+    const {
+      attachmentDownloadUseCase,
+      readAdapter,
+      getAttachmentDownloadUrlUseCase,
+    } = createUseCasesWithValidAccess();
+    readAdapter.findConversationForParent.mockResolvedValue(
+      conversationFixture(),
+    );
+    readAdapter.findMessageForParent.mockResolvedValue(messageFixture());
+    getAttachmentDownloadUrlUseCase.execute.mockResolvedValue(
+      'https://storage.example/signed-download',
+    );
+
+    const result = await attachmentDownloadUseCase.execute({
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+      attachmentId: 'attachment-1',
+      mode: 'preview',
+    });
+
+    expect(result).toBe('https://storage.example/signed-download');
+    expect(getAttachmentDownloadUrlUseCase.execute).toHaveBeenCalledWith({
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+      attachmentId: 'attachment-1',
+      mode: 'preview',
+    });
+  });
+
+  it('does not delegate parent attachment download when message mismatches conversation', async () => {
+    const {
+      attachmentDownloadUseCase,
+      readAdapter,
+      getAttachmentDownloadUrlUseCase,
+    } = createUseCasesWithValidAccess();
+    readAdapter.findConversationForParent.mockResolvedValue(
+      conversationFixture(),
+    );
+    readAdapter.findMessageForParent.mockResolvedValue(null);
+
+    await expect(
+      attachmentDownloadUseCase.execute({
+        conversationId: 'conversation-1',
+        messageId: 'foreign-message',
+        attachmentId: 'attachment-1',
+        mode: 'download',
+      }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(getAttachmentDownloadUrlUseCase.execute).not.toHaveBeenCalled();
+  });
 });
 
 function createUseCases(): {
@@ -258,12 +323,14 @@ function createUseCases(): {
   markReadUseCase: MarkParentConversationReadUseCase;
   readersUseCase: GetParentMessageReadersUseCase;
   infoUseCase: GetParentMessageInfoUseCase;
+  attachmentDownloadUseCase: GetParentMessageAttachmentDownloadUrlUseCase;
   accessService: jest.Mocked<ParentAppAccessService>;
   readAdapter: jest.Mocked<ParentMessagesReadAdapter>;
   createMessageUseCase: jest.Mocked<CreateCommunicationMessageUseCase>;
   markConversationReadUseCase: jest.Mocked<MarkCommunicationConversationReadUseCase>;
   getMessageReadersUseCase: jest.Mocked<GetCommunicationMessageReadersUseCase>;
   getMessageInfoUseCase: jest.Mocked<GetCommunicationMessageInfoUseCase>;
+  getAttachmentDownloadUrlUseCase: jest.Mocked<GetCommunicationMessageAttachmentDownloadUrlUseCase>;
 } {
   const accessService = {
     assertCurrentParent: jest.fn(),
@@ -287,6 +354,9 @@ function createUseCases(): {
   const getMessageInfoUseCase = {
     execute: jest.fn(),
   } as unknown as jest.Mocked<GetCommunicationMessageInfoUseCase>;
+  const getAttachmentDownloadUrlUseCase = {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<GetCommunicationMessageAttachmentDownloadUrlUseCase>;
 
   return {
     listUseCase: new ListParentMessageConversationsUseCase(
@@ -313,12 +383,18 @@ function createUseCases(): {
       readAdapter,
       getMessageInfoUseCase,
     ),
+    attachmentDownloadUseCase: new GetParentMessageAttachmentDownloadUrlUseCase(
+      accessService,
+      readAdapter,
+      getAttachmentDownloadUrlUseCase,
+    ),
     accessService,
     readAdapter,
     createMessageUseCase,
     markConversationReadUseCase,
     getMessageReadersUseCase,
     getMessageInfoUseCase,
+    getAttachmentDownloadUrlUseCase,
   };
 }
 

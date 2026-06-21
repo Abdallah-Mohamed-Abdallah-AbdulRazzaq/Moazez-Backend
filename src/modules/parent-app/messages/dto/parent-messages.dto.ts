@@ -235,6 +235,10 @@ export class ParentMessageAttachmentDto {
   created_at!: string;
   downloadPath!: string;
   download_path!: string;
+  authorizedDownloadPath?: string;
+  authorized_download_path?: string;
+  previewPath?: string;
+  preview_path?: string;
 }
 
 export class ParentConversationLastMessageDto {

@@ -122,6 +122,14 @@ describe('StudentMessagesPresenter', () => {
         media_kind: 'audio',
         downloadPath: '/api/v1/files/file-1/download',
         download_path: '/api/v1/files/file-1/download',
+        authorizedDownloadPath:
+          '/api/v1/student/messages/conversations/conversation-1/messages/message-with-attachment/attachments/attachment-1/download',
+        authorized_download_path:
+          '/api/v1/student/messages/conversations/conversation-1/messages/message-with-attachment/attachments/attachment-1/download',
+        previewPath:
+          '/api/v1/student/messages/conversations/conversation-1/messages/message-with-attachment/attachments/attachment-1/preview',
+        preview_path:
+          '/api/v1/student/messages/conversations/conversation-1/messages/message-with-attachment/attachments/attachment-1/preview',
       }),
     ]);
     expect(result.messages[0].attachmentsCount).toBe(1);

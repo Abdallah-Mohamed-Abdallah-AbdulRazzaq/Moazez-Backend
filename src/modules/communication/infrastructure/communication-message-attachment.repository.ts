@@ -79,6 +79,39 @@ const COMMUNICATION_ATTACHMENT_FILE_REFERENCE_ARGS =
     },
   });
 
+const COMMUNICATION_ATTACHMENT_DOWNLOAD_ARGS =
+  Prisma.validator<Prisma.CommunicationMessageAttachmentDefaultArgs>()({
+    select: {
+      id: true,
+      schoolId: true,
+      conversationId: true,
+      messageId: true,
+      fileId: true,
+      deletedAt: true,
+      message: {
+        select: {
+          id: true,
+          conversationId: true,
+          status: true,
+          hiddenAt: true,
+          deletedAt: true,
+        },
+      },
+      file: {
+        select: {
+          id: true,
+          schoolId: true,
+          bucket: true,
+          objectKey: true,
+          originalName: true,
+          mimeType: true,
+          visibility: true,
+          deletedAt: true,
+        },
+      },
+    },
+  });
+
 export type CommunicationMessageAttachmentRecord =
   Prisma.CommunicationMessageAttachmentGetPayload<
     typeof COMMUNICATION_ATTACHMENT_ARGS
@@ -96,6 +129,11 @@ export type CommunicationMessageAttachmentParticipantAccessRecord =
 
 export type CommunicationMessageAttachmentFileReference =
   Prisma.FileGetPayload<typeof COMMUNICATION_ATTACHMENT_FILE_REFERENCE_ARGS>;
+
+export type CommunicationMessageAttachmentDownloadRecord =
+  Prisma.CommunicationMessageAttachmentGetPayload<
+    typeof COMMUNICATION_ATTACHMENT_DOWNLOAD_ARGS
+  >;
 
 export interface CommunicationMessageAttachmentListResult {
   messageId: string;
@@ -183,6 +221,22 @@ export class CommunicationMessageAttachmentRepository {
         messageId: input.messageId,
       },
       ...COMMUNICATION_ATTACHMENT_ARGS,
+    });
+  }
+
+  findCurrentSchoolMessageAttachmentForDownload(input: {
+    conversationId: string;
+    messageId: string;
+    attachmentId: string;
+  }): Promise<CommunicationMessageAttachmentDownloadRecord | null> {
+    return this.scopedPrisma.communicationMessageAttachment.findFirst({
+      where: {
+        id: input.attachmentId,
+        messageId: input.messageId,
+        conversationId: input.conversationId,
+        deletedAt: null,
+      },
+      ...COMMUNICATION_ATTACHMENT_DOWNLOAD_ARGS,
     });
   }
 

@@ -304,6 +304,11 @@ function presentMessage(params: {
   const attachments = visible
     ? presentCommunicationAppMessageAttachments(messageAttachments, {
         aliasStyle: 'dual',
+        authorizedRoute: {
+          surface: 'student',
+          conversationId: params.message.conversationId,
+          messageId: params.message.id,
+        },
       })
     : [];
 

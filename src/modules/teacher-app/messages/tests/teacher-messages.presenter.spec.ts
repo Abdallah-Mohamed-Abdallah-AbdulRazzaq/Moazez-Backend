@@ -250,6 +250,10 @@ describe('TeacherMessagesPresenter', () => {
         originalName: 'worksheet.pdf',
         mediaKind: 'file',
         downloadPath: '/api/v1/files/file-1/download',
+        authorizedDownloadPath:
+          '/api/v1/teacher/messages/conversations/conversation-1/messages/message-1/attachments/attachment-1/download',
+        previewPath:
+          '/api/v1/teacher/messages/conversations/conversation-1/messages/message-1/attachments/attachment-1/preview',
       }),
     ]);
     expect(result.message.attachmentsCount).toBe(1);

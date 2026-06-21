@@ -100,4 +100,42 @@ describe('Communication app message attachment presenter', () => {
     expect(result).not.toHaveProperty('attachment_id');
     expect(result).not.toHaveProperty('download_path');
   });
+
+  it('adds app-specific authorized paths when route context is provided', () => {
+    const result = presentCommunicationAppMessageAttachment(
+      {
+        id: 'attachment-1',
+        fileId: 'file-1',
+        caption: null,
+        sortOrder: 0,
+        createdAt: new Date('2026-06-21T10:00:00.000Z'),
+        file: {
+          originalName: 'photo.jpg',
+          mimeType: 'image/jpeg',
+          sizeBytes: 99,
+        },
+      },
+      {
+        aliasStyle: 'dual',
+        authorizedRoute: {
+          surface: 'parent',
+          conversationId: 'conversation-1',
+          messageId: 'message-1',
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      downloadPath: '/api/v1/files/file-1/download',
+      download_path: '/api/v1/files/file-1/download',
+      authorizedDownloadPath:
+        '/api/v1/parent/messages/conversations/conversation-1/messages/message-1/attachments/attachment-1/download',
+      authorized_download_path:
+        '/api/v1/parent/messages/conversations/conversation-1/messages/message-1/attachments/attachment-1/download',
+      previewPath:
+        '/api/v1/parent/messages/conversations/conversation-1/messages/message-1/attachments/attachment-1/preview',
+      preview_path:
+        '/api/v1/parent/messages/conversations/conversation-1/messages/message-1/attachments/attachment-1/preview',
+    });
+  });
 });

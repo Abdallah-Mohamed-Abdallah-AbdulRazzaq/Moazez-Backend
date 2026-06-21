@@ -50,6 +50,7 @@ import {
   GetTeacherMessageInfoUseCase,
   GetTeacherMessageReadersUseCase,
 } from './messages/application/get-teacher-message-info.use-cases';
+import { GetTeacherMessageAttachmentDownloadUrlUseCase } from './messages/application/get-teacher-message-attachment-download-url.use-case';
 import { GetTeacherMessageConversationUseCase } from './messages/application/get-teacher-message-conversation.use-case';
 import { ListTeacherConversationMessagesUseCase } from './messages/application/list-teacher-conversation-messages.use-case';
 import { ListTeacherMessageConversationsUseCase } from './messages/application/list-teacher-message-conversations.use-case';
@@ -184,6 +185,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     MarkTeacherConversationReadUseCase,
     GetTeacherMessageReadersUseCase,
     GetTeacherMessageInfoUseCase,
+    GetTeacherMessageAttachmentDownloadUrlUseCase,
     ListTeacherNotificationsUseCase,
     GetTeacherNotificationUseCase,
     GetTeacherNotificationsSummaryUseCase,

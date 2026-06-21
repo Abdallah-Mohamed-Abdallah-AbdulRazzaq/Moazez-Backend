@@ -18,6 +18,8 @@ import {
   GetCommunicationMessageReadersUseCase,
   MarkCommunicationConversationReadUseCase,
 } from '../../../communication/application/communication-message.use-cases';
+import { GetCommunicationMessageAttachmentDownloadUrlUseCase } from '../../../communication/application/communication-message-attachment-download.use-case';
+import { GetStudentMessageAttachmentDownloadUrlUseCase } from '../application/get-student-message-attachment-download-url.use-case';
 import {
   GetStudentMessageInfoUseCase,
   GetStudentMessageReadersUseCase,
@@ -228,6 +230,58 @@ describe('Student Messages use-cases', () => {
     ).rejects.toMatchObject({ code: 'not_found' });
     expect(getMessageInfoUseCase.execute).not.toHaveBeenCalled();
   });
+
+  it('resolves student attachment preview only after message visibility passes', async () => {
+    const {
+      attachmentDownloadUseCase,
+      readAdapter,
+      getAttachmentDownloadUrlUseCase,
+    } = createUseCasesWithValidAccess();
+    readAdapter.findConversationForStudent.mockResolvedValue(
+      conversationFixture() as any,
+    );
+    readAdapter.findMessageForStudent.mockResolvedValue(messageFixture() as any);
+    getAttachmentDownloadUrlUseCase.execute.mockResolvedValue(
+      'https://storage.example/student-signed-download',
+    );
+
+    const result = await attachmentDownloadUseCase.execute({
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+      attachmentId: 'attachment-1',
+      mode: 'preview',
+    });
+
+    expect(result).toBe('https://storage.example/student-signed-download');
+    expect(getAttachmentDownloadUrlUseCase.execute).toHaveBeenCalledWith({
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+      attachmentId: 'attachment-1',
+      mode: 'preview',
+    });
+  });
+
+  it('does not delegate student attachment download for message mismatch', async () => {
+    const {
+      attachmentDownloadUseCase,
+      readAdapter,
+      getAttachmentDownloadUrlUseCase,
+    } = createUseCasesWithValidAccess();
+    readAdapter.findConversationForStudent.mockResolvedValue(
+      conversationFixture() as any,
+    );
+    readAdapter.findMessageForStudent.mockResolvedValue(null);
+
+    await expect(
+      attachmentDownloadUseCase.execute({
+        conversationId: 'conversation-1',
+        messageId: 'foreign-message',
+        attachmentId: 'attachment-1',
+        mode: 'download',
+      }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(getAttachmentDownloadUrlUseCase.execute).not.toHaveBeenCalled();
+  });
 });
 
 function createUseCases(): {
@@ -237,12 +291,14 @@ function createUseCases(): {
   readUseCase: MarkStudentConversationReadUseCase;
   readersUseCase: GetStudentMessageReadersUseCase;
   infoUseCase: GetStudentMessageInfoUseCase;
+  attachmentDownloadUseCase: GetStudentMessageAttachmentDownloadUrlUseCase;
   accessService: jest.Mocked<StudentAppAccessService>;
   readAdapter: jest.Mocked<StudentMessagesReadAdapter>;
   createCommunicationMessageUseCase: jest.Mocked<CreateCommunicationMessageUseCase>;
   markCommunicationConversationReadUseCase: jest.Mocked<MarkCommunicationConversationReadUseCase>;
   getMessageReadersUseCase: jest.Mocked<GetCommunicationMessageReadersUseCase>;
   getMessageInfoUseCase: jest.Mocked<GetCommunicationMessageInfoUseCase>;
+  getAttachmentDownloadUrlUseCase: jest.Mocked<GetCommunicationMessageAttachmentDownloadUrlUseCase>;
 } {
   const accessService = {
     getCurrentStudentWithEnrollment: jest.fn(),
@@ -266,6 +322,9 @@ function createUseCases(): {
   const getMessageInfoUseCase = {
     execute: jest.fn(),
   } as unknown as jest.Mocked<GetCommunicationMessageInfoUseCase>;
+  const getAttachmentDownloadUrlUseCase = {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<GetCommunicationMessageAttachmentDownloadUrlUseCase>;
 
   return {
     listUseCase: new ListStudentMessageConversationsUseCase(
@@ -296,12 +355,18 @@ function createUseCases(): {
       readAdapter,
       getMessageInfoUseCase,
     ),
+    attachmentDownloadUseCase: new GetStudentMessageAttachmentDownloadUrlUseCase(
+      accessService,
+      readAdapter,
+      getAttachmentDownloadUrlUseCase,
+    ),
     accessService,
     readAdapter,
     createCommunicationMessageUseCase,
     markCommunicationConversationReadUseCase,
     getMessageReadersUseCase,
     getMessageInfoUseCase,
+    getAttachmentDownloadUrlUseCase,
   };
 }
 

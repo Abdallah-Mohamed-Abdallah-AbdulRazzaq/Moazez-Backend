@@ -227,6 +227,14 @@ describe('ParentMessagesPresenter', () => {
         sort_order: 0,
         downloadPath: '/api/v1/files/file-1/download',
         download_path: '/api/v1/files/file-1/download',
+        authorizedDownloadPath:
+          '/api/v1/parent/messages/conversations/conversation-1/messages/message-1/attachments/attachment-1/download',
+        authorized_download_path:
+          '/api/v1/parent/messages/conversations/conversation-1/messages/message-1/attachments/attachment-1/download',
+        previewPath:
+          '/api/v1/parent/messages/conversations/conversation-1/messages/message-1/attachments/attachment-1/preview',
+        preview_path:
+          '/api/v1/parent/messages/conversations/conversation-1/messages/message-1/attachments/attachment-1/preview',
       }),
     ]);
     expect(result.message.attachmentsCount).toBe(1);

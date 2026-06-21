@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { QueueModule } from '../../infrastructure/queue/queue.module';
 import { RealtimeModule } from '../../infrastructure/realtime/realtime.module';
+import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { AuthModule } from '../iam/auth/auth.module';
 import {
   ArchiveCommunicationAnnouncementUseCase,
@@ -70,6 +71,7 @@ import {
   LinkCommunicationMessageAttachmentUseCase,
   ListCommunicationMessageAttachmentsUseCase,
 } from './application/communication-message-attachment.use-cases';
+import { GetCommunicationMessageAttachmentDownloadUrlUseCase } from './application/communication-message-attachment-download.use-case';
 import {
   CreateCommunicationUserBlockUseCase,
   DeleteCommunicationUserBlockUseCase,
@@ -127,7 +129,7 @@ import { CommunicationRestrictionRepository } from './infrastructure/communicati
 import { CommunicationNotificationRepository } from './infrastructure/communication-notification.repository';
 
 @Module({
-  imports: [AuthModule, QueueModule, RealtimeModule],
+  imports: [AuthModule, QueueModule, RealtimeModule, StorageModule],
   controllers: [
     CommunicationPolicyController,
     CommunicationAnnouncementController,
@@ -203,6 +205,7 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     UpsertCommunicationMessageReactionUseCase,
     DeleteCommunicationMessageReactionUseCase,
     ListCommunicationMessageAttachmentsUseCase,
+    GetCommunicationMessageAttachmentDownloadUrlUseCase,
     LinkCommunicationMessageAttachmentUseCase,
     DeleteCommunicationMessageAttachmentUseCase,
     CreateCommunicationMessageReportUseCase,
@@ -233,6 +236,7 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
   ],
   exports: [
     CreateCommunicationMessageUseCase,
+    GetCommunicationMessageAttachmentDownloadUrlUseCase,
     GetCommunicationMessageReadersUseCase,
     GetCommunicationMessageInfoUseCase,
     MarkCommunicationConversationReadUseCase,

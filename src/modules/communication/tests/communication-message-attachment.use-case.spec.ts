@@ -17,6 +17,7 @@ import {
   LinkCommunicationMessageAttachmentUseCase,
   ListCommunicationMessageAttachmentsUseCase,
 } from '../application/communication-message-attachment.use-cases';
+import { GetCommunicationMessageAttachmentDownloadUrlUseCase } from '../application/communication-message-attachment-download.use-case';
 import {
   CommunicationConversationArchivedException,
   CommunicationConversationClosedException,
@@ -72,6 +73,100 @@ describe('communication message attachment use cases', () => {
       fileId: FILE_ID,
     });
     expect(repository.createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('resolves authorized download URLs without returning storage metadata', async () => {
+    const repository = repositoryMock({
+      findCurrentSchoolMessageAttachmentForDownload: jest
+        .fn()
+        .mockResolvedValue(downloadRecord()),
+    });
+    const storage = storageMock();
+
+    const result = await withScope(() =>
+      new GetCommunicationMessageAttachmentDownloadUrlUseCase(
+        repository,
+        storage as any,
+      ).execute({
+        conversationId: CONVERSATION_ID,
+        messageId: MESSAGE_ID,
+        attachmentId: ATTACHMENT_ID,
+        mode: 'download',
+      }),
+    );
+
+    expect(result).toBe('https://storage.example/signed-download');
+    expect(storage.createDownloadUrl).toHaveBeenCalledWith({
+      bucket: 'private-bucket',
+      objectKey: 'objects/file-1',
+      expiresInSeconds: 300,
+      downloadFileName: 'worksheet.pdf',
+    });
+    expect(JSON.stringify({ result })).not.toContain('objectKey');
+    expect(JSON.stringify({ result })).not.toContain('bucket');
+  });
+
+  it('rejects mismatched, hidden, deleted, or cross-school attachment files', async () => {
+    const storage = storageMock();
+    const useCase = (record: unknown) =>
+      new GetCommunicationMessageAttachmentDownloadUrlUseCase(
+        repositoryMock({
+          findCurrentSchoolMessageAttachmentForDownload: jest
+            .fn()
+            .mockResolvedValue(record),
+        }),
+        storage as any,
+      );
+
+    await expect(
+      withScope(() =>
+        useCase(null).execute({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          attachmentId: ATTACHMENT_ID,
+          mode: 'download',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'not_found' });
+
+    await expect(
+      withScope(() =>
+        useCase(
+          downloadRecord({
+            message: {
+              ...downloadRecord().message,
+              status: CommunicationMessageStatus.HIDDEN,
+              hiddenAt: new Date('2026-05-02T08:30:00.000Z'),
+            },
+          }),
+        ).execute({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          attachmentId: ATTACHMENT_ID,
+          mode: 'preview',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'not_found' });
+
+    await expect(
+      withScope(() =>
+        useCase(
+          downloadRecord({
+            file: {
+              ...downloadRecord().file,
+              schoolId: 'other-school',
+            },
+          }),
+        ).execute({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          attachmentId: ATTACHMENT_ID,
+          mode: 'download',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'not_found' });
+
+    expect(storage.createDownloadUrl).not.toHaveBeenCalled();
   });
 
   it('attachment link rejects when policy is disabled', async () => {
@@ -368,6 +463,9 @@ function repositoryMock(
     findCurrentSchoolMessageAttachment: jest
       .fn()
       .mockResolvedValue(attachmentRecord()),
+    findCurrentSchoolMessageAttachmentForDownload: jest
+      .fn()
+      .mockResolvedValue(downloadRecord()),
     linkCurrentSchoolMessageAttachment: jest
       .fn()
       .mockResolvedValue(attachmentRecord()),
@@ -386,6 +484,14 @@ function repositoryMock(
     ...(overrides ?? {}),
   } as unknown as CommunicationMessageAttachmentRepository &
     Record<string, jest.Mock>;
+}
+
+function storageMock() {
+  return {
+    createDownloadUrl: jest
+      .fn()
+      .mockResolvedValue('https://storage.example/signed-download'),
+  };
 }
 
 function policyRepositoryMock(
@@ -484,6 +590,35 @@ function attachmentRecord(
     updatedAt: new Date('2026-05-02T08:00:00.000Z'),
     deletedAt: null,
     file: fileRecord(),
+    ...(overrides ?? {}),
+  };
+}
+
+function downloadRecord(overrides?: Record<string, unknown>) {
+  return {
+    id: ATTACHMENT_ID,
+    schoolId: SCHOOL_ID,
+    conversationId: CONVERSATION_ID,
+    messageId: MESSAGE_ID,
+    fileId: FILE_ID,
+    deletedAt: null,
+    message: {
+      id: MESSAGE_ID,
+      conversationId: CONVERSATION_ID,
+      status: CommunicationMessageStatus.SENT,
+      hiddenAt: null,
+      deletedAt: null,
+    },
+    file: {
+      id: FILE_ID,
+      schoolId: SCHOOL_ID,
+      bucket: 'private-bucket',
+      objectKey: 'objects/file-1',
+      originalName: 'worksheet.pdf',
+      mimeType: 'application/pdf',
+      visibility: FileVisibility.PRIVATE,
+      deletedAt: null,
+    },
     ...(overrides ?? {}),
   };
 }

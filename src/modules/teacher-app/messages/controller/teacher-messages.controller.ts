@@ -1,5 +1,21 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Redirect,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiTags,
+  ApiTemporaryRedirectResponse,
+} from '@nestjs/swagger';
+import { GetTeacherMessageAttachmentDownloadUrlUseCase } from '../application/get-teacher-message-attachment-download-url.use-case';
 import {
   GetTeacherMessageInfoUseCase,
   GetTeacherMessageReadersUseCase,
@@ -37,6 +53,7 @@ export class TeacherMessagesController {
     private readonly markTeacherConversationReadUseCase: MarkTeacherConversationReadUseCase,
     private readonly getTeacherMessageReadersUseCase: GetTeacherMessageReadersUseCase,
     private readonly getTeacherMessageInfoUseCase: GetTeacherMessageInfoUseCase,
+    private readonly getTeacherMessageAttachmentDownloadUrlUseCase: GetTeacherMessageAttachmentDownloadUrlUseCase,
   ) {}
 
   @Get('conversations')
@@ -93,6 +110,50 @@ export class TeacherMessagesController {
       messageId: params.messageId,
       query,
     });
+  }
+
+  @Get(
+    'conversations/:conversationId/messages/:messageId/attachments/:attachmentId/download',
+  )
+  @Redirect(undefined, 307)
+  @ApiTemporaryRedirectResponse({
+    description: 'Redirects to an authorized temporary attachment download URL.',
+  })
+  async downloadAttachment(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+  ): Promise<{ url: string }> {
+    return {
+      url: await this.getTeacherMessageAttachmentDownloadUrlUseCase.execute({
+        conversationId,
+        messageId,
+        attachmentId,
+        mode: 'download',
+      }),
+    };
+  }
+
+  @Get(
+    'conversations/:conversationId/messages/:messageId/attachments/:attachmentId/preview',
+  )
+  @Redirect(undefined, 307)
+  @ApiTemporaryRedirectResponse({
+    description: 'Redirects to an authorized temporary attachment preview URL.',
+  })
+  async previewAttachment(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+  ): Promise<{ url: string }> {
+    return {
+      url: await this.getTeacherMessageAttachmentDownloadUrlUseCase.execute({
+        conversationId,
+        messageId,
+        attachmentId,
+        mode: 'preview',
+      }),
+    };
   }
 
   @Post('conversations/:conversationId/messages')

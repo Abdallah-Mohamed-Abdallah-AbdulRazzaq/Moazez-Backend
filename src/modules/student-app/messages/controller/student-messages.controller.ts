@@ -6,13 +6,16 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Redirect,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiTags,
+  ApiTemporaryRedirectResponse,
 } from '@nestjs/swagger';
+import { GetStudentMessageAttachmentDownloadUrlUseCase } from '../application/get-student-message-attachment-download-url.use-case';
 import {
   GetStudentMessageInfoUseCase,
   GetStudentMessageReadersUseCase,
@@ -48,6 +51,7 @@ export class StudentMessagesController {
     private readonly markStudentConversationReadUseCase: MarkStudentConversationReadUseCase,
     private readonly getStudentMessageReadersUseCase: GetStudentMessageReadersUseCase,
     private readonly getStudentMessageInfoUseCase: GetStudentMessageInfoUseCase,
+    private readonly getStudentMessageAttachmentDownloadUrlUseCase: GetStudentMessageAttachmentDownloadUrlUseCase,
   ) {}
 
   @Get('conversations')
@@ -104,6 +108,50 @@ export class StudentMessagesController {
       messageId,
       query,
     });
+  }
+
+  @Get(
+    'conversations/:conversationId/messages/:messageId/attachments/:attachmentId/download',
+  )
+  @Redirect(undefined, 307)
+  @ApiTemporaryRedirectResponse({
+    description: 'Redirects to an authorized temporary attachment download URL.',
+  })
+  async downloadAttachment(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+  ): Promise<{ url: string }> {
+    return {
+      url: await this.getStudentMessageAttachmentDownloadUrlUseCase.execute({
+        conversationId,
+        messageId,
+        attachmentId,
+        mode: 'download',
+      }),
+    };
+  }
+
+  @Get(
+    'conversations/:conversationId/messages/:messageId/attachments/:attachmentId/preview',
+  )
+  @Redirect(undefined, 307)
+  @ApiTemporaryRedirectResponse({
+    description: 'Redirects to an authorized temporary attachment preview URL.',
+  })
+  async previewAttachment(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+  ): Promise<{ url: string }> {
+    return {
+      url: await this.getStudentMessageAttachmentDownloadUrlUseCase.execute({
+        conversationId,
+        messageId,
+        attachmentId,
+        mode: 'preview',
+      }),
+    };
   }
 
   @Post('conversations/:conversationId/messages')
