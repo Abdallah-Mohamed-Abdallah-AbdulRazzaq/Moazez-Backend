@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { UserType } from '@prisma/client';
 import { Worker } from 'bullmq';
 import {
@@ -13,7 +13,9 @@ import {
 } from '../domain/communication-notification-generation-domain';
 
 @Injectable()
-export class CommunicationNotificationGenerationWorker implements OnModuleInit {
+export class CommunicationNotificationGenerationWorker
+  implements OnModuleInit, OnModuleDestroy
+{
   private worker: Worker<
     CommunicationAnnouncementNotificationGenerationJobData,
     void,
@@ -49,5 +51,10 @@ export class CommunicationNotificationGenerationWorker implements OnModuleInit {
         this.generationService.generateForPublishedAnnouncement(job.data),
       );
     });
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.worker?.close();
+    this.worker = null;
   }
 }

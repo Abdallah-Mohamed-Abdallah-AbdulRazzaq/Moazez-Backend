@@ -5,6 +5,16 @@ import { RollCallModule } from '../attendance/roll-call/roll-call.module';
 import { AssessmentsModule } from '../grades/assessments/assessments.module';
 import { ReviewsModule } from '../reinforcement/reviews/reviews.module';
 import { TasksModule } from '../reinforcement/tasks/tasks.module';
+import {
+  ArchiveTeacherAnnouncementUseCase,
+  CreateTeacherAnnouncementUseCase,
+  GetTeacherAnnouncementUseCase,
+  ListTeacherAnnouncementsUseCase,
+  PublishTeacherAnnouncementUseCase,
+  UpdateTeacherAnnouncementUseCase,
+} from './announcements/application/teacher-announcements.use-cases';
+import { TeacherAnnouncementsController } from './announcements/controller/teacher-announcements.controller';
+import { TeacherAnnouncementsReadAdapter } from './announcements/infrastructure/teacher-announcements-read.adapter';
 import { TeacherAppAccessService } from './access/teacher-app-access.service';
 import { TeacherAppAllocationReadAdapter } from './access/teacher-app-allocation-read.adapter';
 import { GetTeacherCalendarEventUseCase } from './calendar/application/get-teacher-calendar-event.use-case';
@@ -130,6 +140,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     TeacherXpController,
     TeacherMessagesController,
     TeacherNotificationsController,
+    TeacherAnnouncementsController,
     TeacherProfileController,
     TeacherSettingsController,
     TeacherScheduleController,
@@ -198,6 +209,13 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     MarkTeacherNotificationReadUseCase,
     MarkAllTeacherNotificationsReadUseCase,
     ArchiveTeacherNotificationUseCase,
+    TeacherAnnouncementsReadAdapter,
+    ListTeacherAnnouncementsUseCase,
+    GetTeacherAnnouncementUseCase,
+    CreateTeacherAnnouncementUseCase,
+    UpdateTeacherAnnouncementUseCase,
+    PublishTeacherAnnouncementUseCase,
+    ArchiveTeacherAnnouncementUseCase,
     TeacherProfileReadAdapter,
     GetTeacherProfileUseCase,
     GetTeacherEmploymentProfileUseCase,

@@ -237,6 +237,10 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     CommunicationAppNotificationCenterService,
   ],
   exports: [
+    CreateCommunicationAnnouncementUseCase,
+    UpdateCommunicationAnnouncementUseCase,
+    PublishCommunicationAnnouncementUseCase,
+    ArchiveCommunicationAnnouncementUseCase,
     CreateOrReuseCommunicationDirectConversationUseCase,
     CreateCommunicationMessageUseCase,
     GetCommunicationMessageAttachmentDownloadUrlUseCase,
