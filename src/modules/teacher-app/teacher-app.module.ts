@@ -77,11 +77,13 @@ import { ListTeacherClassesUseCase } from './my-classes/application/list-teacher
 import { TeacherMyClassesController } from './my-classes/controller/teacher-my-classes.controller';
 import {
   ArchiveTeacherNotificationUseCase,
+  GetTeacherNotificationPreferencesUseCase,
   GetTeacherNotificationUseCase,
   GetTeacherNotificationsSummaryUseCase,
   ListTeacherNotificationsUseCase,
   MarkAllTeacherNotificationsReadUseCase,
   MarkTeacherNotificationReadUseCase,
+  UpdateTeacherNotificationPreferencesUseCase,
 } from './notifications/application/teacher-notifications.use-cases';
 import { TeacherNotificationsController } from './notifications/controller/teacher-notifications.controller';
 import { GetTeacherEmploymentProfileUseCase } from './profile/application/get-teacher-employment-profile.use-case';
@@ -209,6 +211,8 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     MarkTeacherNotificationReadUseCase,
     MarkAllTeacherNotificationsReadUseCase,
     ArchiveTeacherNotificationUseCase,
+    GetTeacherNotificationPreferencesUseCase,
+    UpdateTeacherNotificationPreferencesUseCase,
     TeacherAnnouncementsReadAdapter,
     ListTeacherAnnouncementsUseCase,
     GetTeacherAnnouncementUseCase,

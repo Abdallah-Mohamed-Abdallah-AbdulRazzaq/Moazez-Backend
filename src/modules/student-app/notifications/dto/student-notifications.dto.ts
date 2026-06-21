@@ -6,6 +6,7 @@ import {
   COMMUNICATION_NOTIFICATION_STATUSES,
   COMMUNICATION_NOTIFICATION_TYPES,
 } from '../../../communication/dto/communication-notification.dto';
+import { UpdateCommunicationNotificationPreferencesDto } from '../../../communication/dto/communication-notification-preference.dto';
 
 function toLowerOptionalString(value: unknown): unknown {
   if (value === undefined || value === null || value === '') return undefined;
@@ -104,3 +105,19 @@ export class StudentNotificationsReadAllResponseDto {
   readAt!: string;
   read_at!: string;
 }
+
+export class StudentNotificationPreferenceDto {
+  category!: string;
+  label!: string;
+  description!: string;
+  inAppEnabled!: boolean;
+  in_app_enabled!: boolean;
+  canChange!: boolean;
+  can_change!: boolean;
+}
+
+export class StudentNotificationPreferencesResponseDto {
+  preferences!: StudentNotificationPreferenceDto[];
+}
+
+export class UpdateStudentNotificationPreferencesDto extends UpdateCommunicationNotificationPreferencesDto {}

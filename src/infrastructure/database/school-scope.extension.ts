@@ -134,6 +134,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'CommunicationAnnouncementAttachment',
   'CommunicationNotification',
   'CommunicationNotificationDelivery',
+  'CommunicationNotificationPreference',
 ]);
 
 // Models that use soft delete (have a deletedAt column). Read operations

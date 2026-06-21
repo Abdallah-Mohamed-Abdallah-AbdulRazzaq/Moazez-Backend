@@ -68,11 +68,13 @@ import { ParentMessagesController } from './messages/controller/parent-messages.
 import { ParentMessagesReadAdapter } from './messages/infrastructure/parent-messages-read.adapter';
 import {
   ArchiveParentNotificationUseCase,
+  GetParentNotificationPreferencesUseCase,
   GetParentNotificationUseCase,
   GetParentNotificationsSummaryUseCase,
   ListParentNotificationsUseCase,
   MarkAllParentNotificationsReadUseCase,
   MarkParentNotificationReadUseCase,
+  UpdateParentNotificationPreferencesUseCase,
 } from './notifications/application/parent-notifications.use-cases';
 import { ParentNotificationsController } from './notifications/controller/parent-notifications.controller';
 import { GetParentProfileUseCase } from './profile/application/get-parent-profile.use-case';
@@ -203,6 +205,8 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     MarkParentNotificationReadUseCase,
     MarkAllParentNotificationsReadUseCase,
     ArchiveParentNotificationUseCase,
+    GetParentNotificationPreferencesUseCase,
+    UpdateParentNotificationPreferencesUseCase,
     ParentAnnouncementsReadAdapter,
     ListParentAnnouncementsUseCase,
     GetParentAnnouncementUseCase,

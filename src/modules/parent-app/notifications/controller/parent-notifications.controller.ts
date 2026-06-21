@@ -1,4 +1,13 @@
-import { Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -7,18 +16,22 @@ import {
 } from '@nestjs/swagger';
 import {
   ArchiveParentNotificationUseCase,
+  GetParentNotificationPreferencesUseCase,
   GetParentNotificationUseCase,
   GetParentNotificationsSummaryUseCase,
   ListParentNotificationsUseCase,
   MarkAllParentNotificationsReadUseCase,
   MarkParentNotificationReadUseCase,
+  UpdateParentNotificationPreferencesUseCase,
 } from '../application/parent-notifications.use-cases';
 import {
   ListParentNotificationsQueryDto,
+  ParentNotificationPreferencesResponseDto,
   ParentNotificationResponseDto,
   ParentNotificationsListResponseDto,
   ParentNotificationsReadAllResponseDto,
   ParentNotificationsSummaryDto,
+  UpdateParentNotificationPreferencesDto,
 } from '../dto/parent-notifications.dto';
 
 @ApiTags('parent-app')
@@ -32,6 +45,8 @@ export class ParentNotificationsController {
     private readonly markParentNotificationReadUseCase: MarkParentNotificationReadUseCase,
     private readonly markAllParentNotificationsReadUseCase: MarkAllParentNotificationsReadUseCase,
     private readonly archiveParentNotificationUseCase: ArchiveParentNotificationUseCase,
+    private readonly getParentNotificationPreferencesUseCase: GetParentNotificationPreferencesUseCase,
+    private readonly updateParentNotificationPreferencesUseCase: UpdateParentNotificationPreferencesUseCase,
   ) {}
 
   @Get()
@@ -52,6 +67,20 @@ export class ParentNotificationsController {
   @ApiCreatedResponse({ type: ParentNotificationsReadAllResponseDto })
   markAllRead(): Promise<ParentNotificationsReadAllResponseDto> {
     return this.markAllParentNotificationsReadUseCase.execute();
+  }
+
+  @Get('preferences')
+  @ApiOkResponse({ type: ParentNotificationPreferencesResponseDto })
+  getPreferences(): Promise<ParentNotificationPreferencesResponseDto> {
+    return this.getParentNotificationPreferencesUseCase.execute();
+  }
+
+  @Patch('preferences')
+  @ApiOkResponse({ type: ParentNotificationPreferencesResponseDto })
+  updatePreferences(
+    @Body() body: UpdateParentNotificationPreferencesDto,
+  ): Promise<ParentNotificationPreferencesResponseDto> {
+    return this.updateParentNotificationPreferencesUseCase.execute(body);
   }
 
   @Get(':notificationId')

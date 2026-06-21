@@ -1,17 +1,23 @@
 import { ArgumentMetadata, ValidationPipe } from '@nestjs/common';
 import { CommunicationAppNotificationCenterService } from '../../../communication/application/communication-app-notification-center.service';
+import { CommunicationNotificationPreferenceService } from '../../../communication/application/communication-notification-preference.service';
 import { ParentAppAccessService } from '../../access/parent-app-access.service';
 import { ParentAppRequiredParentException } from '../../shared/parent-app-errors';
 import type { ParentAppContext } from '../../shared/parent-app.types';
 import {
   ArchiveParentNotificationUseCase,
+  GetParentNotificationPreferencesUseCase,
   GetParentNotificationUseCase,
   GetParentNotificationsSummaryUseCase,
   ListParentNotificationsUseCase,
   MarkAllParentNotificationsReadUseCase,
   MarkParentNotificationReadUseCase,
+  UpdateParentNotificationPreferencesUseCase,
 } from '../application/parent-notifications.use-cases';
-import { ListParentNotificationsQueryDto } from '../dto/parent-notifications.dto';
+import {
+  ListParentNotificationsQueryDto,
+  UpdateParentNotificationPreferencesDto,
+} from '../dto/parent-notifications.dto';
 
 describe('Parent notifications use cases', () => {
   it('rejects non-parent actors through ParentAppAccessService', async () => {
@@ -74,6 +80,37 @@ describe('Parent notifications use cases', () => {
     });
   });
 
+  it('delegates preferences get/update for the current parent only', async () => {
+    const {
+      getPreferencesUseCase,
+      updatePreferencesUseCase,
+      preferenceService,
+    } = createUseCasesWithValidAccess();
+
+    await getPreferencesUseCase.execute();
+    await updatePreferencesUseCase.execute({
+      preferences: [
+        { category: 'message_received', inAppEnabled: false },
+        { category: 'announcement', in_app_enabled: true },
+      ],
+    });
+
+    expect(preferenceService.getPreferencesForActor).toHaveBeenCalledWith({
+      schoolId: 'school-1',
+      userId: 'parent-user-1',
+      aliasStyle: 'dual',
+    });
+    expect(preferenceService.updatePreferencesForActor).toHaveBeenCalledWith({
+      schoolId: 'school-1',
+      userId: 'parent-user-1',
+      aliasStyle: 'dual',
+      preferences: [
+        { category: 'message_received', inAppEnabled: false },
+        { category: 'announcement', in_app_enabled: true },
+      ],
+    });
+  });
+
   it('list query DTO rejects recipientUserId ownership override attempts', async () => {
     const pipe = new ValidationPipe({
       whitelist: true,
@@ -96,6 +133,34 @@ describe('Parent notifications use cases', () => {
       ),
     ).rejects.toBeDefined();
   });
+
+  it('preference update DTO rejects user ownership override attempts', async () => {
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    });
+    const metadata: ArgumentMetadata = {
+      type: 'body',
+      metatype: UpdateParentNotificationPreferencesDto,
+      data: '',
+    };
+
+    await expect(
+      pipe.transform(
+        {
+          userId: 'other-user-1',
+          preferences: [
+            {
+              category: 'message_received',
+              inAppEnabled: false,
+            },
+          ],
+        },
+        metadata,
+      ),
+    ).rejects.toBeDefined();
+  });
 });
 
 function createUseCases(): {
@@ -105,13 +170,17 @@ function createUseCases(): {
   markReadUseCase: MarkParentNotificationReadUseCase;
   markAllReadUseCase: MarkAllParentNotificationsReadUseCase;
   archiveUseCase: ArchiveParentNotificationUseCase;
+  getPreferencesUseCase: GetParentNotificationPreferencesUseCase;
+  updatePreferencesUseCase: UpdateParentNotificationPreferencesUseCase;
   accessService: jest.Mocked<ParentAppAccessService>;
   notificationCenter: jest.Mocked<CommunicationAppNotificationCenterService>;
+  preferenceService: jest.Mocked<CommunicationNotificationPreferenceService>;
 } {
   const accessService = {
     assertCurrentParent: jest.fn(),
   } as unknown as jest.Mocked<ParentAppAccessService>;
   const notificationCenter = notificationCenterMock();
+  const preferenceService = preferenceServiceMock();
 
   return {
     listUseCase: new ListParentNotificationsUseCase(
@@ -138,8 +207,17 @@ function createUseCases(): {
       accessService,
       notificationCenter,
     ),
+    getPreferencesUseCase: new GetParentNotificationPreferencesUseCase(
+      accessService,
+      preferenceService,
+    ),
+    updatePreferencesUseCase: new UpdateParentNotificationPreferencesUseCase(
+      accessService,
+      preferenceService,
+    ),
     accessService,
     notificationCenter,
+    preferenceService,
   };
 }
 
@@ -158,6 +236,15 @@ function notificationCenterMock(): jest.Mocked<CommunicationAppNotificationCente
     markAllReadForActor: jest.fn().mockResolvedValue({ markedCount: 0 }),
     archiveForActor: jest.fn().mockResolvedValue({ notification: {} }),
   } as unknown as jest.Mocked<CommunicationAppNotificationCenterService>;
+}
+
+function preferenceServiceMock(): jest.Mocked<CommunicationNotificationPreferenceService> {
+  return {
+    getPreferencesForActor: jest.fn().mockResolvedValue({ preferences: [] }),
+    updatePreferencesForActor: jest.fn().mockResolvedValue({ preferences: [] }),
+    shouldCreateInAppNotification: jest.fn().mockResolvedValue(true),
+    filterInAppEnabledRecipientUserIds: jest.fn(),
+  } as unknown as jest.Mocked<CommunicationNotificationPreferenceService>;
 }
 
 function contextFixture(): ParentAppContext {

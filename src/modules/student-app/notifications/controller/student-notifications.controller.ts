@@ -1,4 +1,13 @@
-import { Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -7,18 +16,22 @@ import {
 } from '@nestjs/swagger';
 import {
   ArchiveStudentNotificationUseCase,
+  GetStudentNotificationPreferencesUseCase,
   GetStudentNotificationUseCase,
   GetStudentNotificationsSummaryUseCase,
   ListStudentNotificationsUseCase,
   MarkAllStudentNotificationsReadUseCase,
   MarkStudentNotificationReadUseCase,
+  UpdateStudentNotificationPreferencesUseCase,
 } from '../application/student-notifications.use-cases';
 import {
   ListStudentNotificationsQueryDto,
+  StudentNotificationPreferencesResponseDto,
   StudentNotificationResponseDto,
   StudentNotificationsListResponseDto,
   StudentNotificationsReadAllResponseDto,
   StudentNotificationsSummaryDto,
+  UpdateStudentNotificationPreferencesDto,
 } from '../dto/student-notifications.dto';
 
 @ApiTags('student-app')
@@ -32,6 +45,8 @@ export class StudentNotificationsController {
     private readonly markStudentNotificationReadUseCase: MarkStudentNotificationReadUseCase,
     private readonly markAllStudentNotificationsReadUseCase: MarkAllStudentNotificationsReadUseCase,
     private readonly archiveStudentNotificationUseCase: ArchiveStudentNotificationUseCase,
+    private readonly getStudentNotificationPreferencesUseCase: GetStudentNotificationPreferencesUseCase,
+    private readonly updateStudentNotificationPreferencesUseCase: UpdateStudentNotificationPreferencesUseCase,
   ) {}
 
   @Get()
@@ -52,6 +67,20 @@ export class StudentNotificationsController {
   @ApiCreatedResponse({ type: StudentNotificationsReadAllResponseDto })
   markAllRead(): Promise<StudentNotificationsReadAllResponseDto> {
     return this.markAllStudentNotificationsReadUseCase.execute();
+  }
+
+  @Get('preferences')
+  @ApiOkResponse({ type: StudentNotificationPreferencesResponseDto })
+  getPreferences(): Promise<StudentNotificationPreferencesResponseDto> {
+    return this.getStudentNotificationPreferencesUseCase.execute();
+  }
+
+  @Patch('preferences')
+  @ApiOkResponse({ type: StudentNotificationPreferencesResponseDto })
+  updatePreferences(
+    @Body() body: UpdateStudentNotificationPreferencesDto,
+  ): Promise<StudentNotificationPreferencesResponseDto> {
+    return this.updateStudentNotificationPreferencesUseCase.execute(body);
   }
 
   @Get(':notificationId')

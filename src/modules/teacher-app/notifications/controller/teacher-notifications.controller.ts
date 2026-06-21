@@ -1,4 +1,13 @@
-import { Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -7,18 +16,22 @@ import {
 } from '@nestjs/swagger';
 import {
   ArchiveTeacherNotificationUseCase,
+  GetTeacherNotificationPreferencesUseCase,
   GetTeacherNotificationUseCase,
   GetTeacherNotificationsSummaryUseCase,
   ListTeacherNotificationsUseCase,
   MarkAllTeacherNotificationsReadUseCase,
   MarkTeacherNotificationReadUseCase,
+  UpdateTeacherNotificationPreferencesUseCase,
 } from '../application/teacher-notifications.use-cases';
 import {
   ListTeacherNotificationsQueryDto,
+  TeacherNotificationPreferencesResponseDto,
   TeacherNotificationResponseDto,
   TeacherNotificationsListResponseDto,
   TeacherNotificationsReadAllResponseDto,
   TeacherNotificationsSummaryDto,
+  UpdateTeacherNotificationPreferencesDto,
 } from '../dto/teacher-notifications.dto';
 
 @ApiTags('teacher-app')
@@ -32,6 +45,8 @@ export class TeacherNotificationsController {
     private readonly markTeacherNotificationReadUseCase: MarkTeacherNotificationReadUseCase,
     private readonly markAllTeacherNotificationsReadUseCase: MarkAllTeacherNotificationsReadUseCase,
     private readonly archiveTeacherNotificationUseCase: ArchiveTeacherNotificationUseCase,
+    private readonly getTeacherNotificationPreferencesUseCase: GetTeacherNotificationPreferencesUseCase,
+    private readonly updateTeacherNotificationPreferencesUseCase: UpdateTeacherNotificationPreferencesUseCase,
   ) {}
 
   @Get()
@@ -52,6 +67,20 @@ export class TeacherNotificationsController {
   @ApiCreatedResponse({ type: TeacherNotificationsReadAllResponseDto })
   markAllRead(): Promise<TeacherNotificationsReadAllResponseDto> {
     return this.markAllTeacherNotificationsReadUseCase.execute();
+  }
+
+  @Get('preferences')
+  @ApiOkResponse({ type: TeacherNotificationPreferencesResponseDto })
+  getPreferences(): Promise<TeacherNotificationPreferencesResponseDto> {
+    return this.getTeacherNotificationPreferencesUseCase.execute();
+  }
+
+  @Patch('preferences')
+  @ApiOkResponse({ type: TeacherNotificationPreferencesResponseDto })
+  updatePreferences(
+    @Body() body: UpdateTeacherNotificationPreferencesDto,
+  ): Promise<TeacherNotificationPreferencesResponseDto> {
+    return this.updateTeacherNotificationPreferencesUseCase.execute(body);
   }
 
   @Get(':notificationId')

@@ -6,6 +6,7 @@ import {
   COMMUNICATION_NOTIFICATION_STATUSES,
   COMMUNICATION_NOTIFICATION_TYPES,
 } from '../../../communication/dto/communication-notification.dto';
+import { UpdateCommunicationNotificationPreferencesDto } from '../../../communication/dto/communication-notification-preference.dto';
 
 export class ListTeacherNotificationsQueryDto {
   @IsOptional()
@@ -85,3 +86,17 @@ export class TeacherNotificationsReadAllResponseDto {
   markedCount!: number;
   readAt!: string;
 }
+
+export class TeacherNotificationPreferenceDto {
+  category!: string;
+  label!: string;
+  description!: string;
+  inAppEnabled!: boolean;
+  canChange!: boolean;
+}
+
+export class TeacherNotificationPreferencesResponseDto {
+  preferences!: TeacherNotificationPreferenceDto[];
+}
+
+export class UpdateTeacherNotificationPreferencesDto extends UpdateCommunicationNotificationPreferencesDto {}

@@ -1,12 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { CommunicationAppNotificationCenterService } from '../../../communication/application/communication-app-notification-center.service';
+import { CommunicationNotificationPreferenceService } from '../../../communication/application/communication-notification-preference.service';
 import { StudentAppAccessService } from '../../access/student-app-access.service';
 import {
   ListStudentNotificationsQueryDto,
   StudentNotificationResponseDto,
+  StudentNotificationPreferencesResponseDto,
   StudentNotificationsListResponseDto,
   StudentNotificationsReadAllResponseDto,
   StudentNotificationsSummaryDto,
+  UpdateStudentNotificationPreferencesDto,
 } from '../dto/student-notifications.dto';
 
 const STUDENT_NOTIFICATION_ALIAS_STYLE = 'dual' as const;
@@ -122,5 +125,46 @@ export class ArchiveStudentNotificationUseCase {
       notificationId,
       aliasStyle: STUDENT_NOTIFICATION_ALIAS_STYLE,
     }) as Promise<StudentNotificationResponseDto>;
+  }
+}
+
+@Injectable()
+export class GetStudentNotificationPreferencesUseCase {
+  constructor(
+    private readonly accessService: StudentAppAccessService,
+    private readonly preferenceService: CommunicationNotificationPreferenceService,
+  ) {}
+
+  async execute(): Promise<StudentNotificationPreferencesResponseDto> {
+    const { context } =
+      await this.accessService.getCurrentStudentWithEnrollment();
+
+    return this.preferenceService.getPreferencesForActor({
+      schoolId: context.schoolId,
+      userId: context.studentUserId,
+      aliasStyle: STUDENT_NOTIFICATION_ALIAS_STYLE,
+    }) as Promise<StudentNotificationPreferencesResponseDto>;
+  }
+}
+
+@Injectable()
+export class UpdateStudentNotificationPreferencesUseCase {
+  constructor(
+    private readonly accessService: StudentAppAccessService,
+    private readonly preferenceService: CommunicationNotificationPreferenceService,
+  ) {}
+
+  async execute(
+    dto: UpdateStudentNotificationPreferencesDto,
+  ): Promise<StudentNotificationPreferencesResponseDto> {
+    const { context } =
+      await this.accessService.getCurrentStudentWithEnrollment();
+
+    return this.preferenceService.updatePreferencesForActor({
+      schoolId: context.schoolId,
+      userId: context.studentUserId,
+      preferences: dto.preferences,
+      aliasStyle: STUDENT_NOTIFICATION_ALIAS_STYLE,
+    }) as Promise<StudentNotificationPreferencesResponseDto>;
   }
 }

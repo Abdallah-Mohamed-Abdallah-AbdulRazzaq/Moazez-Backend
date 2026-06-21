@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { CommunicationAppNotificationCenterService } from '../../../communication/application/communication-app-notification-center.service';
+import { CommunicationNotificationPreferenceService } from '../../../communication/application/communication-notification-preference.service';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
-import { ListTeacherNotificationsQueryDto } from '../dto/teacher-notifications.dto';
+import {
+  ListTeacherNotificationsQueryDto,
+  TeacherNotificationPreferencesResponseDto,
+  UpdateTeacherNotificationPreferencesDto,
+} from '../dto/teacher-notifications.dto';
 
 const TEACHER_NOTIFICATION_ALIAS_STYLE = 'camel' as const;
 
@@ -108,5 +113,44 @@ export class ArchiveTeacherNotificationUseCase {
       notificationId,
       aliasStyle: TEACHER_NOTIFICATION_ALIAS_STYLE,
     });
+  }
+}
+
+@Injectable()
+export class GetTeacherNotificationPreferencesUseCase {
+  constructor(
+    private readonly accessService: TeacherAppAccessService,
+    private readonly preferenceService: CommunicationNotificationPreferenceService,
+  ) {}
+
+  execute(): Promise<TeacherNotificationPreferencesResponseDto> {
+    const context = this.accessService.assertCurrentTeacher();
+
+    return this.preferenceService.getPreferencesForActor({
+      schoolId: context.schoolId,
+      userId: context.teacherUserId,
+      aliasStyle: TEACHER_NOTIFICATION_ALIAS_STYLE,
+    }) as Promise<TeacherNotificationPreferencesResponseDto>;
+  }
+}
+
+@Injectable()
+export class UpdateTeacherNotificationPreferencesUseCase {
+  constructor(
+    private readonly accessService: TeacherAppAccessService,
+    private readonly preferenceService: CommunicationNotificationPreferenceService,
+  ) {}
+
+  execute(
+    dto: UpdateTeacherNotificationPreferencesDto,
+  ): Promise<TeacherNotificationPreferencesResponseDto> {
+    const context = this.accessService.assertCurrentTeacher();
+
+    return this.preferenceService.updatePreferencesForActor({
+      schoolId: context.schoolId,
+      userId: context.teacherUserId,
+      preferences: dto.preferences,
+      aliasStyle: TEACHER_NOTIFICATION_ALIAS_STYLE,
+    }) as Promise<TeacherNotificationPreferencesResponseDto>;
   }
 }

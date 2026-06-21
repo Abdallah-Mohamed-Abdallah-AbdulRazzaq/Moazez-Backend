@@ -955,6 +955,13 @@ enum CommunicationNotificationType {
   @@map("communication_notification_type")
 }
 
+enum CommunicationNotificationPreferenceCategory {
+  MESSAGE_RECEIVED
+  ANNOUNCEMENT
+
+  @@map("communication_notification_preference_category")
+}
+
 enum CommunicationNotificationDeliveryChannel {
   IN_APP
   EMAIL
@@ -1257,6 +1264,7 @@ model School {
   communicationAnnouncementAttachments  CommunicationAnnouncementAttachment[]
   communicationNotifications            CommunicationNotification[]
   communicationNotificationDeliveries   CommunicationNotificationDelivery[]
+  communicationNotificationPreferences  CommunicationNotificationPreference[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -1449,6 +1457,7 @@ model User {
   communicationAnnouncementAttachmentsCreated    CommunicationAnnouncementAttachment[]  @relation("CommunicationAnnouncementAttachmentsCreatedByUser")
   communicationNotificationsReceived             CommunicationNotification[]            @relation("CommunicationNotificationsRecipientUser")
   communicationNotificationsActed                CommunicationNotification[]            @relation("CommunicationNotificationsActorUser")
+  communicationNotificationPreferences           CommunicationNotificationPreference[]   @relation("CommunicationNotificationPreferencesUser")
   schoolEmailDeliveryRecipients                  SchoolEmailDeliveryRecipient[]         @relation("SchoolEmailDeliveryRecipientsUser")
 
   @@index([userType])
@@ -5799,6 +5808,27 @@ model CommunicationNotificationDelivery {
   @@index([status])
   @@index([providerMessageId])
   @@map("communication_notification_deliveries")
+}
+
+model CommunicationNotificationPreference {
+  id           String                                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId     String                                      @map("school_id") @db.Uuid
+  userId       String                                      @map("user_id") @db.Uuid
+  category     CommunicationNotificationPreferenceCategory
+  inAppEnabled Boolean                                     @default(true) @map("in_app_enabled")
+  createdAt    DateTime                                    @default(now()) @map("created_at")
+  updatedAt    DateTime                                    @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  user   User   @relation("CommunicationNotificationPreferencesUser", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([id, schoolId], map: "communication_notification_preferences_id_school_id_key")
+  @@unique([schoolId, userId, category], map: "comm_notif_pref_school_user_category_key")
+  @@index([schoolId])
+  @@index([userId])
+  @@index([schoolId, userId], map: "communication_notification_preferences_school_user_idx")
+  @@index([category])
+  @@map("communication_notification_preferences")
 }
 
 // ============================================================

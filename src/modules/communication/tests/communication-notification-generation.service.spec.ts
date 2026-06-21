@@ -16,6 +16,7 @@ import {
 } from '@prisma/client';
 import { CommunicationRealtimeEventsService } from '../application/communication-realtime-events.service';
 import { CommunicationNotificationGenerationService } from '../application/communication-notification-generation.service';
+import { CommunicationNotificationPreferenceService } from '../application/communication-notification-preference.service';
 import {
   CommunicationAnnouncementForNotificationGeneration,
   CommunicationGeneratedNotificationRecord,
@@ -55,7 +56,7 @@ describe('CommunicationNotificationGenerationService', () => {
         }),
     });
 
-    const result = await new CommunicationNotificationGenerationService(
+    const result = await createGenerationService(
       repository,
       realtime,
     ).generateForPublishedAnnouncement(jobData());
@@ -107,7 +108,7 @@ describe('CommunicationNotificationGenerationService', () => {
         .mockResolvedValue(null),
     });
 
-    const result = await new CommunicationNotificationGenerationService(
+    const result = await createGenerationService(
       repository,
       realtime,
     ).generateForPublishedAnnouncement(jobData());
@@ -133,7 +134,7 @@ describe('CommunicationNotificationGenerationService', () => {
         .mockResolvedValue([]),
     });
 
-    const result = await new CommunicationNotificationGenerationService(
+    const result = await createGenerationService(
       repository,
       realtime,
     ).generateForPublishedAnnouncement(jobData());
@@ -164,7 +165,7 @@ describe('CommunicationNotificationGenerationService', () => {
         }),
     });
 
-    const result = await new CommunicationNotificationGenerationService(
+    const result = await createGenerationService(
       repository,
       realtime,
     ).generateForPublishedAnnouncement(jobData());
@@ -226,7 +227,7 @@ describe('CommunicationNotificationGenerationService', () => {
       }),
     });
 
-    const result = await new CommunicationNotificationGenerationService(
+    const result = await createGenerationService(
       repository,
       realtime,
     ).generateForMessageCreated({
@@ -302,7 +303,7 @@ describe('CommunicationNotificationGenerationService', () => {
       }),
     });
 
-    await new CommunicationNotificationGenerationService(
+    await createGenerationService(
       repository,
       realtime,
     ).generateForMessageCreated({
@@ -327,7 +328,7 @@ describe('CommunicationNotificationGenerationService', () => {
       resolveCurrentSchoolMessageRecipientUserIds: jest.fn().mockReturnValue([]),
     });
 
-    const result = await new CommunicationNotificationGenerationService(
+    const result = await createGenerationService(
       repository,
       realtime,
     ).generateForMessageCreated({
@@ -363,7 +364,7 @@ describe('CommunicationNotificationGenerationService', () => {
       }),
     });
 
-    const result = await new CommunicationNotificationGenerationService(
+    const result = await createGenerationService(
       repository,
       realtime,
     ).generateForMessageCreated({
@@ -380,6 +381,165 @@ describe('CommunicationNotificationGenerationService', () => {
       skippedReason: null,
     });
     expect(realtime.publishNotificationCreated).not.toHaveBeenCalled();
+  });
+
+  it('filters message recipients by notification preferences before persistence and realtime', async () => {
+    const realtime = realtimeMock();
+    const repository = repositoryMock({
+      findSentCurrentSchoolMessageForNotificationGeneration: jest
+        .fn()
+        .mockResolvedValue(messageRecord()),
+      resolveCurrentSchoolMessageRecipientUserIds: jest
+        .fn()
+        .mockReturnValue(['recipient-1', 'recipient-2']),
+      createMissingMessageNotifications: jest.fn().mockResolvedValue({
+        recipientCount: 1,
+        createdNotificationCount: 1,
+        existingNotificationCount: 0,
+        createdDeliveryCount: 1,
+        existingDeliveryCount: 0,
+        createdNotifications: [
+          generatedNotificationRecord({
+            id: 'message-notification-2',
+            recipientUserId: 'recipient-2',
+            sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+            sourceType: 'communication_message',
+            sourceId: MESSAGE_ID,
+            type: CommunicationNotificationType.MESSAGE_RECEIVED,
+          }),
+        ],
+      }),
+    });
+    const preferences = preferenceMock({
+      filterInAppEnabledRecipientUserIds: jest
+        .fn()
+        .mockResolvedValue(['recipient-2']),
+    });
+
+    const result = await createGenerationService(
+      repository,
+      realtime,
+      preferences,
+    ).generateForMessageCreated({
+      schoolId: SCHOOL_ID,
+      messageId: MESSAGE_ID,
+      actorUserId: ACTOR_ID,
+    });
+
+    expect(
+      preferences.filterInAppEnabledRecipientUserIds,
+    ).toHaveBeenCalledWith({
+      schoolId: SCHOOL_ID,
+      recipientUserIds: ['recipient-1', 'recipient-2'],
+      category: 'MESSAGE_RECEIVED',
+    });
+    expect(repository.createMissingMessageNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipientUserIds: ['recipient-2'],
+      }),
+    );
+    expect(result).toMatchObject({
+      recipientCount: 1,
+      createdNotificationCount: 1,
+      skippedReason: null,
+    });
+    expect(realtime.publishNotificationCreated).toHaveBeenCalledTimes(1);
+    expect(realtime.publishNotificationCreated).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      expect.objectContaining({ recipientUserId: 'recipient-2' }),
+    );
+  });
+
+  it('skips message notification rows and realtime when all recipients disable the category', async () => {
+    const realtime = realtimeMock();
+    const repository = repositoryMock({
+      findSentCurrentSchoolMessageForNotificationGeneration: jest
+        .fn()
+        .mockResolvedValue(messageRecord()),
+      resolveCurrentSchoolMessageRecipientUserIds: jest
+        .fn()
+        .mockReturnValue(['recipient-1']),
+    });
+    const preferences = preferenceMock({
+      filterInAppEnabledRecipientUserIds: jest.fn().mockResolvedValue([]),
+    });
+
+    const result = await createGenerationService(
+      repository,
+      realtime,
+      preferences,
+    ).generateForMessageCreated({
+      schoolId: SCHOOL_ID,
+      messageId: MESSAGE_ID,
+      actorUserId: ACTOR_ID,
+    });
+
+    expect(result).toMatchObject({
+      messageId: MESSAGE_ID,
+      skippedReason: 'all_recipients_disabled_preferences',
+    });
+    expect(repository.createMissingMessageNotifications).not.toHaveBeenCalled();
+    expect(realtime.publishNotificationCreated).not.toHaveBeenCalled();
+  });
+
+  it('filters announcement recipients by notification preferences before persistence and realtime', async () => {
+    const realtime = realtimeMock();
+    const repository = repositoryMock({
+      resolveCurrentSchoolAnnouncementRecipientUserIds: jest
+        .fn()
+        .mockResolvedValue(['user-1', 'user-2']),
+      createMissingAnnouncementPublishedNotifications: jest
+        .fn()
+        .mockResolvedValue({
+          recipientCount: 1,
+          createdNotificationCount: 1,
+          existingNotificationCount: 0,
+          createdDeliveryCount: 1,
+          existingDeliveryCount: 0,
+          createdNotifications: [
+            generatedNotificationRecord({
+              id: 'announcement-notification-2',
+              recipientUserId: 'user-2',
+            }),
+          ],
+        }),
+    });
+    const preferences = preferenceMock({
+      filterInAppEnabledRecipientUserIds: jest
+        .fn()
+        .mockResolvedValue(['user-2']),
+    });
+
+    const result = await createGenerationService(
+      repository,
+      realtime,
+      preferences,
+    ).generateForPublishedAnnouncement(jobData());
+
+    expect(
+      preferences.filterInAppEnabledRecipientUserIds,
+    ).toHaveBeenCalledWith({
+      schoolId: SCHOOL_ID,
+      recipientUserIds: ['user-1', 'user-2'],
+      category: 'ANNOUNCEMENT',
+    });
+    expect(
+      repository.createMissingAnnouncementPublishedNotifications,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipientUserIds: ['user-2'],
+      }),
+    );
+    expect(result).toMatchObject({
+      recipientCount: 1,
+      createdNotificationCount: 1,
+      skippedReason: null,
+    });
+    expect(realtime.publishNotificationCreated).toHaveBeenCalledTimes(1);
+    expect(realtime.publishNotificationCreated).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      expect.objectContaining({ recipientUserId: 'user-2' }),
+    );
   });
 });
 
@@ -427,6 +587,33 @@ function realtimeMock(): CommunicationRealtimeEventsService &
   return {
     publishNotificationCreated: jest.fn(),
   } as unknown as CommunicationRealtimeEventsService & Record<string, jest.Mock>;
+}
+
+function createGenerationService(
+  repository: CommunicationNotificationGenerationRepository,
+  realtime: CommunicationRealtimeEventsService,
+  preferences = preferenceMock(),
+): CommunicationNotificationGenerationService {
+  return new CommunicationNotificationGenerationService(
+    repository,
+    realtime,
+    preferences,
+  );
+}
+
+function preferenceMock(
+  overrides?: Record<string, unknown>,
+): CommunicationNotificationPreferenceService & Record<string, jest.Mock> {
+  return {
+    filterInAppEnabledRecipientUserIds: jest.fn(async (params) =>
+      params.recipientUserIds,
+    ),
+    shouldCreateInAppNotification: jest.fn().mockResolvedValue(true),
+    getPreferencesForActor: jest.fn(),
+    updatePreferencesForActor: jest.fn(),
+    ...(overrides ?? {}),
+  } as unknown as CommunicationNotificationPreferenceService &
+    Record<string, jest.Mock>;
 }
 
 function announcementRecord(): CommunicationAnnouncementForNotificationGeneration {

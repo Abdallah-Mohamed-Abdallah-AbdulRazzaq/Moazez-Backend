@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  CommunicationNotificationPreferenceCategory,
   CommunicationNotificationPriority,
   CommunicationNotificationType,
 } from '@prisma/client';
@@ -19,12 +20,14 @@ import {
 } from '../domain/communication-notification-generation-domain';
 import { CommunicationNotificationGenerationRepository } from '../infrastructure/communication-notification-generation.repository';
 import { CommunicationRealtimeEventsService } from './communication-realtime-events.service';
+import { CommunicationNotificationPreferenceService } from './communication-notification-preference.service';
 
 @Injectable()
 export class CommunicationNotificationGenerationService {
   constructor(
     private readonly communicationNotificationGenerationRepository: CommunicationNotificationGenerationRepository,
     private readonly communicationRealtimeEventsService: CommunicationRealtimeEventsService,
+    private readonly communicationNotificationPreferenceService: CommunicationNotificationPreferenceService,
   ) {}
 
   async generateForPublishedAnnouncement(
@@ -55,12 +58,28 @@ export class CommunicationNotificationGenerationService {
       });
     }
 
+    const preferenceEnabledRecipientUserIds =
+      await this.communicationNotificationPreferenceService.filterInAppEnabledRecipientUserIds(
+        {
+          schoolId: input.schoolId,
+          recipientUserIds,
+          category: CommunicationNotificationPreferenceCategory.ANNOUNCEMENT,
+        },
+      );
+
+    if (preferenceEnabledRecipientUserIds.length === 0) {
+      return buildSkippedAnnouncementNotificationGenerationResult({
+        announcementId: announcement.id,
+        reason: 'all_recipients_disabled_preferences',
+      });
+    }
+
     const { createdNotifications, ...result } =
       await this.communicationNotificationGenerationRepository.createMissingAnnouncementPublishedNotifications(
         {
           schoolId: input.schoolId,
           announcementId: announcement.id,
-          recipientUserIds,
+          recipientUserIds: preferenceEnabledRecipientUserIds,
           actorUserId:
             announcement.publishedById ??
             announcement.createdById ??
@@ -129,13 +148,30 @@ export class CommunicationNotificationGenerationService {
       });
     }
 
+    const preferenceEnabledRecipientUserIds =
+      await this.communicationNotificationPreferenceService.filterInAppEnabledRecipientUserIds(
+        {
+          schoolId: input.schoolId,
+          recipientUserIds,
+          category:
+            CommunicationNotificationPreferenceCategory.MESSAGE_RECEIVED,
+        },
+      );
+
+    if (preferenceEnabledRecipientUserIds.length === 0) {
+      return buildSkippedMessageNotificationGenerationResult({
+        messageId: message.id,
+        reason: 'all_recipients_disabled_preferences',
+      });
+    }
+
     const { createdNotifications, ...result } =
       await this.communicationNotificationGenerationRepository.createMissingMessageNotifications(
         {
           schoolId: input.schoolId,
           messageId: message.id,
           conversationId: message.conversationId,
-          recipientUserIds,
+          recipientUserIds: preferenceEnabledRecipientUserIds,
           actorUserId: message.senderUserId ?? input.actorUserId,
           title: 'New message',
           body: buildMessageNotificationPreview({

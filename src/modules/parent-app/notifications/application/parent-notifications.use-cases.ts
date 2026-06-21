@@ -1,12 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { CommunicationAppNotificationCenterService } from '../../../communication/application/communication-app-notification-center.service';
+import { CommunicationNotificationPreferenceService } from '../../../communication/application/communication-notification-preference.service';
 import { ParentAppAccessService } from '../../access/parent-app-access.service';
 import {
   ListParentNotificationsQueryDto,
   ParentNotificationResponseDto,
+  ParentNotificationPreferencesResponseDto,
   ParentNotificationsListResponseDto,
   ParentNotificationsReadAllResponseDto,
   ParentNotificationsSummaryDto,
+  UpdateParentNotificationPreferencesDto,
 } from '../dto/parent-notifications.dto';
 
 const PARENT_NOTIFICATION_ALIAS_STYLE = 'dual' as const;
@@ -116,5 +119,44 @@ export class ArchiveParentNotificationUseCase {
       notificationId,
       aliasStyle: PARENT_NOTIFICATION_ALIAS_STYLE,
     }) as Promise<ParentNotificationResponseDto>;
+  }
+}
+
+@Injectable()
+export class GetParentNotificationPreferencesUseCase {
+  constructor(
+    private readonly accessService: ParentAppAccessService,
+    private readonly preferenceService: CommunicationNotificationPreferenceService,
+  ) {}
+
+  async execute(): Promise<ParentNotificationPreferencesResponseDto> {
+    const context = await this.accessService.assertCurrentParent();
+
+    return this.preferenceService.getPreferencesForActor({
+      schoolId: context.schoolId,
+      userId: context.parentUserId,
+      aliasStyle: PARENT_NOTIFICATION_ALIAS_STYLE,
+    }) as Promise<ParentNotificationPreferencesResponseDto>;
+  }
+}
+
+@Injectable()
+export class UpdateParentNotificationPreferencesUseCase {
+  constructor(
+    private readonly accessService: ParentAppAccessService,
+    private readonly preferenceService: CommunicationNotificationPreferenceService,
+  ) {}
+
+  async execute(
+    dto: UpdateParentNotificationPreferencesDto,
+  ): Promise<ParentNotificationPreferencesResponseDto> {
+    const context = await this.accessService.assertCurrentParent();
+
+    return this.preferenceService.updatePreferencesForActor({
+      schoolId: context.schoolId,
+      userId: context.parentUserId,
+      preferences: dto.preferences,
+      aliasStyle: PARENT_NOTIFICATION_ALIAS_STYLE,
+    }) as Promise<ParentNotificationPreferencesResponseDto>;
   }
 }

@@ -75,11 +75,13 @@ import { StudentMessagesController } from './messages/controller/student-message
 import { StudentMessagesReadAdapter } from './messages/infrastructure/student-messages-read.adapter';
 import {
   ArchiveStudentNotificationUseCase,
+  GetStudentNotificationPreferencesUseCase,
   GetStudentNotificationUseCase,
   GetStudentNotificationsSummaryUseCase,
   ListStudentNotificationsUseCase,
   MarkAllStudentNotificationsReadUseCase,
   MarkStudentNotificationReadUseCase,
+  UpdateStudentNotificationPreferencesUseCase,
 } from './notifications/application/student-notifications.use-cases';
 import { StudentNotificationsController } from './notifications/controller/student-notifications.controller';
 import { GetStudentProfileUseCase } from './profile/application/get-student-profile.use-case';
@@ -225,6 +227,8 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     MarkStudentNotificationReadUseCase,
     MarkAllStudentNotificationsReadUseCase,
     ArchiveStudentNotificationUseCase,
+    GetStudentNotificationPreferencesUseCase,
+    UpdateStudentNotificationPreferencesUseCase,
     StudentAnnouncementsReadAdapter,
     ListStudentAnnouncementsUseCase,
     GetStudentAnnouncementUseCase,
