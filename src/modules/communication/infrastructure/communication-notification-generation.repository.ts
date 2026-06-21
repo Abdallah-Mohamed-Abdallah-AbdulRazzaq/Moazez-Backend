@@ -2,12 +2,17 @@ import { Injectable } from '@nestjs/common';
 import {
   CommunicationAnnouncementAudienceType,
   CommunicationAnnouncementStatus,
+  CommunicationConversationStatus,
+  CommunicationMessageKind,
+  CommunicationMessageStatus,
   CommunicationNotificationDeliveryChannel,
   CommunicationNotificationDeliveryStatus,
   CommunicationNotificationPriority,
   CommunicationNotificationSourceModule,
   CommunicationNotificationStatus,
   CommunicationNotificationType,
+  CommunicationParticipantRole,
+  CommunicationParticipantStatus,
   MembershipStatus,
   Prisma,
   StudentEnrollmentStatus,
@@ -17,6 +22,7 @@ import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import {
   COMMUNICATION_ANNOUNCEMENT_NOTIFICATION_SOURCE_TYPE,
   COMMUNICATION_IN_APP_NOTIFICATION_PROVIDER,
+  COMMUNICATION_MESSAGE_NOTIFICATION_SOURCE_TYPE,
   deduplicateRecipientUserIds,
 } from '../domain/communication-notification-generation-domain';
 
@@ -67,13 +73,60 @@ const GENERATED_NOTIFICATION_SELECT = {
   readAt: true,
   archivedAt: true,
   expiresAt: true,
+  metadata: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.CommunicationNotificationSelect;
 
+const COMMUNICATION_MESSAGE_FOR_NOTIFICATION_GENERATION_ARGS =
+  Prisma.validator<Prisma.CommunicationMessageDefaultArgs>()({
+    select: {
+      id: true,
+      schoolId: true,
+      conversationId: true,
+      senderUserId: true,
+      kind: true,
+      status: true,
+      body: true,
+      hiddenAt: true,
+      deletedAt: true,
+      sentAt: true,
+      createdAt: true,
+      conversation: {
+        select: {
+          id: true,
+          status: true,
+          deletedAt: true,
+          participants: {
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            select: {
+              id: true,
+              userId: true,
+              role: true,
+              status: true,
+              mutedUntil: true,
+              user: {
+                select: {
+                  id: true,
+                  status: true,
+                  deletedAt: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
 export type CommunicationAnnouncementForNotificationGeneration =
   Prisma.CommunicationAnnouncementGetPayload<
     typeof COMMUNICATION_ANNOUNCEMENT_FOR_NOTIFICATION_GENERATION_ARGS
+  >;
+
+export type CommunicationMessageForNotificationGeneration =
+  Prisma.CommunicationMessageGetPayload<
+    typeof COMMUNICATION_MESSAGE_FOR_NOTIFICATION_GENERATION_ARGS
   >;
 
 export type CommunicationGeneratedNotificationRecord =
@@ -95,6 +148,29 @@ export interface CommunicationAnnouncementNotificationCreateInput {
 }
 
 export interface CommunicationAnnouncementNotificationCreateResult {
+  recipientCount: number;
+  createdNotificationCount: number;
+  existingNotificationCount: number;
+  createdDeliveryCount: number;
+  existingDeliveryCount: number;
+  createdNotifications: CommunicationGeneratedNotificationRecord[];
+}
+
+export interface CommunicationMessageNotificationCreateInput {
+  schoolId: string;
+  messageId: string;
+  conversationId: string;
+  recipientUserIds: string[];
+  actorUserId: string | null;
+  title: string;
+  body: string;
+  type: CommunicationNotificationType;
+  priority: CommunicationNotificationPriority;
+  metadata: Record<string, unknown>;
+  now: Date;
+}
+
+export interface CommunicationMessageNotificationCreateResult {
   recipientCount: number;
   createdNotificationCount: number;
   existingNotificationCount: number;
@@ -133,6 +209,25 @@ export class CommunicationNotificationGenerationRepository {
     });
   }
 
+  findSentCurrentSchoolMessageForNotificationGeneration(
+    messageId: string,
+  ): Promise<CommunicationMessageForNotificationGeneration | null> {
+    return this.scopedPrisma.communicationMessage.findFirst({
+      where: {
+        id: messageId,
+        status: CommunicationMessageStatus.SENT,
+        hiddenAt: null,
+        deletedAt: null,
+        kind: { not: CommunicationMessageKind.SYSTEM },
+        conversation: {
+          status: CommunicationConversationStatus.ACTIVE,
+          deletedAt: null,
+        },
+      },
+      ...COMMUNICATION_MESSAGE_FOR_NOTIFICATION_GENERATION_ARGS,
+    });
+  }
+
   async resolveCurrentSchoolAnnouncementRecipientUserIds(
     announcement: CommunicationAnnouncementForNotificationGeneration,
   ): Promise<string[]> {
@@ -153,6 +248,43 @@ export class CommunicationNotificationGenerationRepository {
     );
 
     return this.filterActiveCurrentSchoolUserIds(candidateUserIds);
+  }
+
+  resolveCurrentSchoolMessageRecipientUserIds(
+    message: CommunicationMessageForNotificationGeneration,
+    now = new Date(),
+  ): string[] {
+    if (!message.senderUserId) return [];
+    if (message.status !== CommunicationMessageStatus.SENT) return [];
+    if (message.kind === CommunicationMessageKind.SYSTEM) return [];
+    if (message.hiddenAt || message.deletedAt) return [];
+    if (message.conversation.status !== CommunicationConversationStatus.ACTIVE) {
+      return [];
+    }
+    if (message.conversation.deletedAt) return [];
+
+    return deduplicateRecipientUserIds(
+      message.conversation.participants
+        .filter((participant) => participant.userId !== message.senderUserId)
+        .filter(
+          (participant) =>
+            participant.status === CommunicationParticipantStatus.ACTIVE,
+        )
+        .filter(
+          (participant) =>
+            !participant.mutedUntil || participant.mutedUntil <= now,
+        )
+        .filter(
+          (participant) =>
+            participant.role !== CommunicationParticipantRole.SYSTEM,
+        )
+        .filter(
+          (participant) =>
+            participant.user.status === UserStatus.ACTIVE &&
+            participant.user.deletedAt === null,
+        )
+        .map((participant) => participant.userId),
+    );
   }
 
   async createMissingAnnouncementPublishedNotifications(
@@ -216,6 +348,117 @@ export class CommunicationNotificationGenerationRepository {
             priority: input.priority,
             status: CommunicationNotificationStatus.UNREAD,
             expiresAt: input.expiresAt,
+            metadata: input.metadata as Prisma.InputJsonValue,
+          },
+          select: GENERATED_NOTIFICATION_SELECT,
+        });
+        createdNotifications.push(created);
+      }
+
+      const notificationIds = [
+        ...existingNotifications.map((notification) => notification.id),
+        ...createdNotifications.map((notification) => notification.id),
+      ];
+      const existingDeliveries =
+        await tx.communicationNotificationDelivery.findMany({
+          where: {
+            notificationId: { in: notificationIds },
+            channel: CommunicationNotificationDeliveryChannel.IN_APP,
+          },
+          select: { notificationId: true },
+        });
+      const notificationIdsWithDelivery = new Set(
+        existingDeliveries.map((delivery) => delivery.notificationId),
+      );
+      const missingDeliveryNotificationIds = notificationIds.filter(
+        (notificationId) => !notificationIdsWithDelivery.has(notificationId),
+      );
+
+      if (missingDeliveryNotificationIds.length > 0) {
+        await tx.communicationNotificationDelivery.createMany({
+          data: missingDeliveryNotificationIds.map((notificationId) => ({
+            schoolId: input.schoolId,
+            notificationId,
+            channel: CommunicationNotificationDeliveryChannel.IN_APP,
+            status: CommunicationNotificationDeliveryStatus.DELIVERED,
+            provider: COMMUNICATION_IN_APP_NOTIFICATION_PROVIDER,
+            attemptedAt: input.now,
+            deliveredAt: input.now,
+          })),
+        });
+      }
+
+      return {
+        recipientCount: recipientUserIds.length,
+        createdNotificationCount: createdNotifications.length,
+        existingNotificationCount: existingNotifications.length,
+        createdDeliveryCount: missingDeliveryNotificationIds.length,
+        existingDeliveryCount: existingDeliveries.length,
+        createdNotifications,
+      };
+    });
+  }
+
+  async createMissingMessageNotifications(
+    input: CommunicationMessageNotificationCreateInput,
+  ): Promise<CommunicationMessageNotificationCreateResult> {
+    const recipientUserIds = deduplicateRecipientUserIds(
+      input.recipientUserIds,
+    );
+
+    if (recipientUserIds.length === 0) {
+      return {
+        recipientCount: 0,
+        createdNotificationCount: 0,
+        existingNotificationCount: 0,
+        createdDeliveryCount: 0,
+        existingDeliveryCount: 0,
+        createdNotifications: [],
+      };
+    }
+
+    return this.scopedPrisma.$transaction(async (tx) => {
+      await this.lockMessageGenerationInTransaction(tx, {
+        schoolId: input.schoolId,
+        messageId: input.messageId,
+      });
+
+      const existingNotifications = await tx.communicationNotification.findMany(
+        {
+          where: {
+            recipientUserId: { in: recipientUserIds },
+            sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+            sourceType: COMMUNICATION_MESSAGE_NOTIFICATION_SOURCE_TYPE,
+            sourceId: input.messageId,
+            type: input.type,
+          },
+          select: { id: true, recipientUserId: true },
+        },
+      );
+      const existingRecipientIds = new Set(
+        existingNotifications.map(
+          (notification) => notification.recipientUserId,
+        ),
+      );
+      const createdNotifications: CommunicationGeneratedNotificationRecord[] =
+        [];
+
+      for (const recipientUserId of recipientUserIds) {
+        if (existingRecipientIds.has(recipientUserId)) continue;
+
+        const created = await tx.communicationNotification.create({
+          data: {
+            schoolId: input.schoolId,
+            recipientUserId,
+            actorUserId: input.actorUserId,
+            sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+            sourceType: COMMUNICATION_MESSAGE_NOTIFICATION_SOURCE_TYPE,
+            sourceId: input.messageId,
+            type: input.type,
+            title: input.title,
+            body: input.body,
+            priority: input.priority,
+            status: CommunicationNotificationStatus.UNREAD,
             metadata: input.metadata as Prisma.InputJsonValue,
           },
           select: GENERATED_NOTIFICATION_SELECT,
@@ -460,6 +703,16 @@ export class CommunicationNotificationGenerationRepository {
     input: { schoolId: string; announcementId: string },
   ): Promise<void> {
     const lockKey = `communication:announcement-notifications:${input.schoolId}:${input.announcementId}`;
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
+    `;
+  }
+
+  private async lockMessageGenerationInTransaction(
+    tx: Prisma.TransactionClient,
+    input: { schoolId: string; messageId: string },
+  ): Promise<void> {
+    const lockKey = `communication:message-notifications:${input.schoolId}:${input.messageId}`;
     await tx.$executeRaw`
       SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))
     `;

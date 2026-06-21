@@ -4,6 +4,7 @@ import {
   CommunicationNotificationListResult,
   CommunicationNotificationReadAllResult,
 } from '../infrastructure/communication-notification.repository';
+import { COMMUNICATION_MESSAGE_NOTIFICATION_SOURCE_TYPE } from '../domain/communication-notification-generation-domain';
 
 type AppNotificationRecord =
   | CommunicationNotificationListRecord
@@ -11,10 +12,16 @@ type AppNotificationRecord =
 
 export type CommunicationAppNotificationAliasStyle = 'dual' | 'camel';
 
-export interface CommunicationAppNotificationDeepLink {
-  type: 'announcement';
-  announcementId: string;
-}
+export type CommunicationAppNotificationDeepLink =
+  | {
+      type: 'announcement';
+      announcementId: string;
+    }
+  | {
+      type: 'conversation_message';
+      conversationId: string;
+      messageId: string;
+    };
 
 export interface CommunicationAppNotificationPresenterOptions {
   aliasStyle: CommunicationAppNotificationAliasStyle;
@@ -149,6 +156,25 @@ function buildDeepLink(
     };
   }
 
+  if (
+    (notification.type === 'MESSAGE_RECEIVED' ||
+      notification.type === 'MESSAGE_MENTION') &&
+    notification.sourceType === COMMUNICATION_MESSAGE_NOTIFICATION_SOURCE_TYPE
+  ) {
+    const metadata = asRecord(notification.metadata);
+    const conversationId = readString(metadata?.conversationId);
+    const messageId =
+      notification.sourceId ?? readString(metadata?.messageId) ?? null;
+
+    if (conversationId && messageId) {
+      return {
+        type: 'conversation_message',
+        conversationId,
+        messageId,
+      };
+    }
+  }
+
   return null;
 }
 
@@ -158,4 +184,15 @@ function presentEnum(value: string): string {
 
 function presentNullableDate(value: Date | null): string | null {
   return value ? value.toISOString() : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function readString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }

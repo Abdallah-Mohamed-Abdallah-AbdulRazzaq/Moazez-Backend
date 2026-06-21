@@ -34,10 +34,25 @@ describe('CommunicationAppNotificationCenterService', () => {
     });
 
     expect(result).toMatchObject({
-      notifications: [{ notificationId: NOTIFICATION_ID }],
+      notifications: [
+        {
+          notificationId: NOTIFICATION_ID,
+          deepLink: {
+            type: 'conversation_message',
+            conversationId: 'conversation-1',
+            messageId: 'message-1',
+          },
+          deep_link: {
+            type: 'conversation_message',
+            conversationId: 'conversation-1',
+            messageId: 'message-1',
+          },
+        },
+      ],
       pagination: { page: 1, limit: 20, total: 1 },
       summary: { unreadCount: 4, unread_count: 4 },
     });
+    expect(JSON.stringify(result)).not.toContain('metadata');
     expect(repository.listCurrentSchoolNotifications).toHaveBeenCalledWith({
       filters: expect.objectContaining({
         recipientUserId: ACTOR_ID,
@@ -190,8 +205,8 @@ function notificationListRecord(
     recipientUserId: ACTOR_ID,
     actorUserId: null,
     sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
-    sourceType: 'message',
-    sourceId: 'source-1',
+    sourceType: 'communication_message',
+    sourceId: 'message-1',
     type: CommunicationNotificationType.MESSAGE_RECEIVED,
     title: 'Notification title',
     body: 'Notification body',
@@ -200,6 +215,10 @@ function notificationListRecord(
     readAt: null,
     archivedAt: null,
     expiresAt: null,
+    metadata: {
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+    },
     createdAt: new Date('2026-05-03T08:00:00.000Z'),
     updatedAt: new Date('2026-05-03T08:30:00.000Z'),
     ...(overrides ?? {}),

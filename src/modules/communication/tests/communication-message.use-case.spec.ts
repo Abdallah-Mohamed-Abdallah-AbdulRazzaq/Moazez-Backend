@@ -56,6 +56,7 @@ import {
 } from '../infrastructure/communication-message.repository';
 import { CommunicationPolicyRepository } from '../infrastructure/communication-policy.repository';
 import { CommunicationRealtimeEventsService } from '../application/communication-realtime-events.service';
+import { CommunicationNotificationGenerationService } from '../application/communication-notification-generation.service';
 import { REALTIME_SERVER_EVENTS } from '../../../infrastructure/realtime/realtime-event-names';
 import { RealtimePublisherService } from '../../../infrastructure/realtime/realtime-publisher.service';
 
@@ -586,6 +587,96 @@ describe('communication message use cases', () => {
       attachmentsCount: 1,
     });
     expect(publisher.publishToConversation).not.toHaveBeenCalled();
+  });
+
+  it('send generates message notifications only after a new message is persisted', async () => {
+    const repository = repositoryMock({
+      createCurrentSchoolMessage: jest.fn().mockResolvedValue({
+        message: messageRecord({
+          id: MESSAGE_ID,
+          body: 'Created message',
+          clientMessageId: 'client-1',
+        }),
+        wasCreated: true,
+      }),
+    });
+    const publisher = realtimePublisherMock();
+    const notifications = notificationGenerationMock();
+
+    await withScope(() =>
+      new CreateCommunicationMessageUseCase(
+        repository,
+        policyRepositoryMock(),
+        new CommunicationRealtimeEventsService(publisher),
+        notifications,
+      ).execute(CONVERSATION_ID, {
+        body: 'Created message',
+        clientMessageId: 'client-1',
+      }),
+    );
+
+    expect(notifications.generateForMessageCreated).toHaveBeenCalledWith({
+      schoolId: SCHOOL_ID,
+      messageId: MESSAGE_ID,
+      actorUserId: ACTOR_ID,
+    });
+    expect(publisher.publishToConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it('send does not generate message notifications for an idempotent existing message result', async () => {
+    const repository = repositoryMock({
+      createCurrentSchoolMessage: jest.fn().mockResolvedValue({
+        message: messageRecord({
+          id: MESSAGE_ID,
+          clientMessageId: 'client-1',
+        }),
+        wasCreated: false,
+      }),
+    });
+    const notifications = notificationGenerationMock();
+
+    await withScope(() =>
+      new CreateCommunicationMessageUseCase(
+        repository,
+        policyRepositoryMock(),
+        undefined,
+        notifications,
+      ).execute(CONVERSATION_ID, {
+        body: 'Created message',
+        clientMessageId: 'client-1',
+      }),
+    );
+
+    expect(notifications.generateForMessageCreated).not.toHaveBeenCalled();
+  });
+
+  it('send keeps the created message response if notification generation fails', async () => {
+    const repository = repositoryMock({
+      createCurrentSchoolMessage: jest.fn().mockResolvedValue({
+        message: messageRecord({ body: 'Created message' }),
+        wasCreated: true,
+      }),
+    });
+    const notifications = notificationGenerationMock({
+      generateForMessageCreated: jest
+        .fn()
+        .mockRejectedValue(new Error('notification generation unavailable')),
+    });
+
+    const result = await withScope(() =>
+      new CreateCommunicationMessageUseCase(
+        repository,
+        policyRepositoryMock(),
+        undefined,
+        notifications,
+      ).execute(CONVERSATION_ID, { body: 'Created message' }),
+    );
+
+    expect(result).toMatchObject({
+      id: MESSAGE_ID,
+      body: 'Created message',
+    });
+    expect(notifications.generateForMessageCreated).toHaveBeenCalledTimes(1);
   });
 
   it('does not publish message.created when persistence fails', async () => {
@@ -1188,6 +1279,24 @@ function realtimePublisherMock(): jest.Mocked<RealtimePublisherService> {
     publishToUser: jest.fn().mockReturnValue(true),
     publishToConversation: jest.fn().mockReturnValue(true),
   } as unknown as jest.Mocked<RealtimePublisherService>;
+}
+
+function notificationGenerationMock(
+  overrides?: Record<string, unknown>,
+): jest.Mocked<CommunicationNotificationGenerationService> {
+  return {
+    generateForPublishedAnnouncement: jest.fn(),
+    generateForMessageCreated: jest.fn().mockResolvedValue({
+      messageId: MESSAGE_ID,
+      recipientCount: 1,
+      createdNotificationCount: 1,
+      existingNotificationCount: 0,
+      createdDeliveryCount: 1,
+      existingDeliveryCount: 0,
+      skippedReason: null,
+    }),
+    ...(overrides ?? {}),
+  } as unknown as jest.Mocked<CommunicationNotificationGenerationService>;
 }
 
 function conversationRecord(

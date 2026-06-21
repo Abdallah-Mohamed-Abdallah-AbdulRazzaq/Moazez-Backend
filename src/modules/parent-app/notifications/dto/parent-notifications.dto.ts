@@ -50,7 +50,9 @@ export class ListParentNotificationsQueryDto {
 
 export class ParentNotificationDeepLinkDto {
   type!: string;
-  announcementId!: string;
+  announcementId?: string;
+  conversationId?: string;
+  messageId?: string;
 }
 
 export class ParentNotificationDto {

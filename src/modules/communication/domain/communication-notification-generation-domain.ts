@@ -1,6 +1,7 @@
 import {
   CommunicationAnnouncementAudienceType,
   CommunicationAnnouncementPriority,
+  CommunicationMessageKind,
   CommunicationNotificationPriority,
   UserType,
 } from '@prisma/client';
@@ -11,9 +12,12 @@ export const COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_GENERATE_JOB_NAME =
   'communication.announcement.notifications.generate';
 export const COMMUNICATION_ANNOUNCEMENT_NOTIFICATION_SOURCE_TYPE =
   'communication_announcement';
+export const COMMUNICATION_MESSAGE_NOTIFICATION_SOURCE_TYPE =
+  'communication_message';
 export const COMMUNICATION_IN_APP_NOTIFICATION_PROVIDER = 'in_app';
 
 const ANNOUNCEMENT_NOTIFICATION_PREVIEW_MAX_LENGTH = 240;
+const MESSAGE_NOTIFICATION_PREVIEW_MAX_LENGTH = 160;
 
 export interface CommunicationAnnouncementNotificationGenerationJobData {
   schoolId: string;
@@ -25,6 +29,22 @@ export interface CommunicationAnnouncementNotificationGenerationJobData {
 
 export interface CommunicationAnnouncementNotificationGenerationResult {
   announcementId: string;
+  recipientCount: number;
+  createdNotificationCount: number;
+  existingNotificationCount: number;
+  createdDeliveryCount: number;
+  existingDeliveryCount: number;
+  skippedReason: string | null;
+}
+
+export interface CommunicationMessageNotificationGenerationInput {
+  schoolId: string;
+  messageId: string;
+  actorUserId: string | null;
+}
+
+export interface CommunicationMessageNotificationGenerationResult {
+  messageId: string;
   recipientCount: number;
   createdNotificationCount: number;
   existingNotificationCount: number;
@@ -47,6 +67,33 @@ export function buildAnnouncementNotificationPreview(body: string): string {
   }
 
   return `${preview.slice(0, ANNOUNCEMENT_NOTIFICATION_PREVIEW_MAX_LENGTH - 3)}...`;
+}
+
+export function buildMessageNotificationPreview(input: {
+  kind: CommunicationMessageKind;
+  body: string | null;
+}): string {
+  switch (input.kind) {
+    case CommunicationMessageKind.IMAGE:
+      return 'Photo';
+    case CommunicationMessageKind.VIDEO:
+      return 'Video';
+    case CommunicationMessageKind.FILE:
+      return 'File';
+    case CommunicationMessageKind.AUDIO:
+      return 'Voice message';
+    case CommunicationMessageKind.SYSTEM:
+      return 'New message';
+    case CommunicationMessageKind.TEXT: {
+      const preview = (input.body ?? '').replace(/\s+/g, ' ').trim();
+      if (preview.length === 0) return 'New message';
+      if (preview.length <= MESSAGE_NOTIFICATION_PREVIEW_MAX_LENGTH) {
+        return preview;
+      }
+
+      return `${preview.slice(0, MESSAGE_NOTIFICATION_PREVIEW_MAX_LENGTH - 3)}...`;
+    }
+  }
 }
 
 export function deduplicateRecipientUserIds(userIds: string[]): string[] {
@@ -80,12 +127,39 @@ export function buildAnnouncementNotificationMetadata(input: {
   };
 }
 
+export function buildMessageNotificationMetadata(input: {
+  conversationId: string;
+  messageId: string;
+  sentAt: Date;
+}): Record<string, unknown> {
+  return {
+    conversationId: input.conversationId,
+    messageId: input.messageId,
+    sentAt: input.sentAt.toISOString(),
+  };
+}
+
 export function buildSkippedAnnouncementNotificationGenerationResult(input: {
   announcementId: string;
   reason: string;
 }): CommunicationAnnouncementNotificationGenerationResult {
   return {
     announcementId: input.announcementId,
+    recipientCount: 0,
+    createdNotificationCount: 0,
+    existingNotificationCount: 0,
+    createdDeliveryCount: 0,
+    existingDeliveryCount: 0,
+    skippedReason: input.reason,
+  };
+}
+
+export function buildSkippedMessageNotificationGenerationResult(input: {
+  messageId: string;
+  reason: string;
+}): CommunicationMessageNotificationGenerationResult {
+  return {
+    messageId: input.messageId,
     recipientCount: 0,
     createdNotificationCount: 0,
     existingNotificationCount: 0,

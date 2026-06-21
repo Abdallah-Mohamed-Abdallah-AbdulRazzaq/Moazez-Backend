@@ -933,6 +933,16 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       await prisma.teacherSubjectAllocation.deleteMany({
         where: { id: { in: createdAllocationIds } },
       });
+      await prisma.communicationNotificationDelivery.deleteMany({
+        where: {
+          notification: {
+            recipientUserId: { in: createdUserIds },
+          },
+        },
+      });
+      await prisma.communicationNotification.deleteMany({
+        where: { recipientUserId: { in: createdUserIds } },
+      });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });

@@ -49,6 +49,7 @@ const COMMUNICATION_NOTIFICATION_LIST_ARGS =
       readAt: true,
       archivedAt: true,
       expiresAt: true,
+      metadata: true,
       createdAt: true,
       updatedAt: true,
     },

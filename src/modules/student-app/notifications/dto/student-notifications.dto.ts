@@ -50,7 +50,9 @@ export class ListStudentNotificationsQueryDto {
 
 export class StudentNotificationDeepLinkDto {
   type!: string;
-  announcementId!: string;
+  announcementId?: string;
+  conversationId?: string;
+  messageId?: string;
 }
 
 export class StudentNotificationDto {

@@ -72,8 +72,14 @@ describe('communication app notification presenter', () => {
   it('presents camel-only realtime payloads without app aliases or internal fields', () => {
     const presented = presentCommunicationRealtimeNotification(
       notificationListRecord({
+        sourceType: 'communication_message',
+        sourceId: 'message-1',
         status: CommunicationNotificationStatus.READ,
         readAt: new Date('2026-05-03T10:00:00.000Z'),
+        metadata: {
+          conversationId: 'conversation-1',
+          messageId: 'message-1',
+        },
       }),
     );
     const json = JSON.stringify(presented);
@@ -82,16 +88,22 @@ describe('communication app notification presenter', () => {
       notificationId: 'notification-1',
       type: 'message_received',
       sourceModule: 'communication',
-      sourceId: 'source-1',
+      sourceId: 'message-1',
       status: 'read',
       readAt: '2026-05-03T10:00:00.000Z',
       archivedAt: null,
       createdAt: '2026-05-03T08:00:00.000Z',
+      deepLink: {
+        type: 'conversation_message',
+        conversationId: 'conversation-1',
+        messageId: 'message-1',
+      },
     });
     expect(json).not.toContain('notification_id');
     expect(json).not.toContain('recipientUserId');
     expect(json).not.toContain('schoolId');
     expect(json).not.toContain('deliveries');
+    expect(json).not.toContain('metadata');
   });
 
   it('uses the same safe contract for detail and read-all responses', () => {
@@ -143,6 +155,7 @@ function notificationListRecord(
     readAt: null,
     archivedAt: null,
     expiresAt: null,
+    metadata: null,
     createdAt: new Date('2026-05-03T08:00:00.000Z'),
     updatedAt: new Date('2026-05-03T08:30:00.000Z'),
     ...(overrides ?? {}),

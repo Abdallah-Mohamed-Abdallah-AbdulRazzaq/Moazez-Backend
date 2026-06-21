@@ -64,6 +64,53 @@ describe('CommunicationRealtimeEventsService', () => {
 
     expect(publisher.publishToUser).not.toHaveBeenCalled();
   });
+
+  it('publishes message notification.created with a safe conversation message deep link', () => {
+    const publisher = publisherMock();
+
+    new CommunicationRealtimeEventsService(publisher).publishNotificationCreated(
+      'school-1',
+      generatedNotificationRecord({
+        sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+        sourceType: 'communication_message',
+        sourceId: 'message-1',
+        type: CommunicationNotificationType.MESSAGE_RECEIVED,
+        title: 'New message',
+        body: 'Message preview',
+        metadata: {
+          conversationId: 'conversation-1',
+          messageId: 'message-1',
+        },
+      }),
+    );
+
+    expect(publisher.publishToUser).toHaveBeenCalledWith(
+      'school-1',
+      'recipient-1',
+      REALTIME_SERVER_EVENTS.COMMUNICATION_NOTIFICATION_CREATED,
+      {
+        notification: expect.objectContaining({
+          notificationId: 'notification-1',
+          type: 'message_received',
+          sourceModule: 'communication',
+          sourceId: 'message-1',
+          title: 'New message',
+          body: 'Message preview',
+          deepLink: {
+            type: 'conversation_message',
+            conversationId: 'conversation-1',
+            messageId: 'message-1',
+          },
+        }),
+        eventAt: expect.any(String),
+      },
+    );
+    expect(publisher.publishToSchool).not.toHaveBeenCalled();
+    expect(publisher.publishToConversation).not.toHaveBeenCalled();
+
+    const payload = publisher.publishToUser.mock.calls[0][3];
+    expect(JSON.stringify(payload)).not.toContain('metadata');
+  });
 });
 
 function publisherMock(): RealtimePublisherService & Record<string, jest.Mock> {
@@ -93,6 +140,7 @@ function generatedNotificationRecord(
     readAt: null,
     archivedAt: null,
     expiresAt: null,
+    metadata: null,
     createdAt: new Date('2026-05-03T08:00:00.000Z'),
     updatedAt: new Date('2026-05-03T08:30:00.000Z'),
     ...(overrides ?? {}),

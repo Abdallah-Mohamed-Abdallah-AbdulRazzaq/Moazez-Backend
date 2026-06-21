@@ -2,17 +2,24 @@ import {
   CommunicationAnnouncementAudienceType,
   CommunicationAnnouncementPriority,
   CommunicationAnnouncementStatus,
+  CommunicationConversationStatus,
+  CommunicationMessageKind,
+  CommunicationMessageStatus,
   CommunicationNotificationDeliveryChannel,
   CommunicationNotificationDeliveryStatus,
   CommunicationNotificationPriority,
   CommunicationNotificationSourceModule,
   CommunicationNotificationStatus,
   CommunicationNotificationType,
+  CommunicationParticipantRole,
+  CommunicationParticipantStatus,
+  UserStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import {
   CommunicationAnnouncementForNotificationGeneration,
   CommunicationGeneratedNotificationRecord,
+  CommunicationMessageForNotificationGeneration,
   CommunicationNotificationGenerationRepository,
 } from '../infrastructure/communication-notification-generation.repository';
 
@@ -90,6 +97,63 @@ describe('CommunicationNotificationGenerationRepository', () => {
         }),
       }),
     );
+  });
+
+  it('resolves message notification recipients from active readable non-sender participants', () => {
+    const repository = new CommunicationNotificationGenerationRepository({
+      scoped: {},
+    } as unknown as PrismaService);
+
+    const result = repository.resolveCurrentSchoolMessageRecipientUserIds(
+      messageRecord({
+        conversation: {
+          id: 'conversation-1',
+          status: CommunicationConversationStatus.ACTIVE,
+          deletedAt: null,
+          participants: [
+            participantRecord({ id: 'sender', userId: 'sender-1' }),
+            participantRecord({ id: 'active', userId: 'recipient-1' }),
+            participantRecord({
+              id: 'read-only',
+              userId: 'recipient-2',
+              role: CommunicationParticipantRole.READ_ONLY,
+            }),
+            participantRecord({
+              id: 'future-muted',
+              userId: 'muted-future',
+              mutedUntil: new Date('2026-05-04T09:00:00.000Z'),
+            }),
+            participantRecord({
+              id: 'muted-status',
+              userId: 'muted-status',
+              status: CommunicationParticipantStatus.MUTED,
+            }),
+            participantRecord({
+              id: 'blocked',
+              userId: 'blocked-user',
+              status: CommunicationParticipantStatus.BLOCKED,
+            }),
+            participantRecord({
+              id: 'system',
+              userId: 'system-user',
+              role: CommunicationParticipantRole.SYSTEM,
+            }),
+            participantRecord({
+              id: 'inactive-user',
+              userId: 'inactive-user',
+              user: {
+                id: 'inactive-user',
+                status: UserStatus.DISABLED,
+                deletedAt: null,
+              },
+            }),
+          ],
+        },
+      }),
+      new Date('2026-05-03T09:00:00.000Z'),
+    );
+
+    expect(result).toEqual(['recipient-1', 'recipient-2']);
   });
 
   it('creates only missing notification and IN_APP delivery rows on retry-safe generation', async () => {
@@ -173,6 +237,114 @@ describe('CommunicationNotificationGenerationRepository', () => {
       ],
     });
   });
+
+  it('creates only missing message notification and IN_APP delivery rows on retry-safe generation', async () => {
+    const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(0),
+      communicationNotification: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'existing-notification-1', recipientUserId: 'recipient-1' },
+          ]),
+        create: jest.fn().mockResolvedValue(
+          generatedNotificationRecord({
+            id: 'message-notification-1',
+            recipientUserId: 'recipient-2',
+            sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+            sourceType: 'communication_message',
+            sourceId: 'message-1',
+            type: CommunicationNotificationType.MESSAGE_RECEIVED,
+          }),
+        ),
+      },
+      communicationNotificationDelivery: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ notificationId: 'existing-notification-1' }]),
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const scoped = {
+      $transaction: jest.fn((callback) => callback(tx)),
+    };
+    const repository = new CommunicationNotificationGenerationRepository({
+      scoped,
+    } as unknown as PrismaService);
+
+    const result = await repository.createMissingMessageNotifications({
+      schoolId: 'school-1',
+      messageId: 'message-1',
+      conversationId: 'conversation-1',
+      recipientUserIds: ['recipient-1', 'recipient-2', 'recipient-2'],
+      actorUserId: 'sender-1',
+      title: 'New message',
+      body: 'Preview',
+      type: CommunicationNotificationType.MESSAGE_RECEIVED,
+      priority: CommunicationNotificationPriority.NORMAL,
+      metadata: {
+        conversationId: 'conversation-1',
+        messageId: 'message-1',
+      },
+      now: new Date('2026-05-03T09:00:00.000Z'),
+    });
+
+    expect(result).toMatchObject({
+      recipientCount: 2,
+      createdNotificationCount: 1,
+      existingNotificationCount: 1,
+      createdDeliveryCount: 1,
+      existingDeliveryCount: 1,
+    });
+    expect(tx.communicationNotification.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          recipientUserId: { in: ['recipient-1', 'recipient-2'] },
+          sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+          sourceType: 'communication_message',
+          sourceId: 'message-1',
+          type: CommunicationNotificationType.MESSAGE_RECEIVED,
+        }),
+      }),
+    );
+    expect(tx.communicationNotification.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          recipientUserId: 'recipient-2',
+          actorUserId: 'sender-1',
+          sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+          sourceType: 'communication_message',
+          sourceId: 'message-1',
+          type: CommunicationNotificationType.MESSAGE_RECEIVED,
+          status: CommunicationNotificationStatus.UNREAD,
+          metadata: {
+            conversationId: 'conversation-1',
+            messageId: 'message-1',
+          },
+        }),
+        select: expect.objectContaining({
+          metadata: true,
+          recipientUserId: true,
+          sourceModule: true,
+          sourceId: true,
+          type: true,
+          status: true,
+        }),
+      }),
+    );
+    expect(
+      tx.communicationNotificationDelivery.createMany,
+    ).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          notificationId: 'message-notification-1',
+          channel: CommunicationNotificationDeliveryChannel.IN_APP,
+          status: CommunicationNotificationDeliveryStatus.DELIVERED,
+          provider: 'in_app',
+        }),
+      ],
+    });
+  });
 });
 
 function announcementRecord(
@@ -214,8 +386,58 @@ function generatedNotificationRecord(
     readAt: null,
     archivedAt: null,
     expiresAt: null,
+    metadata: null,
     createdAt: new Date('2026-05-03T09:00:00.000Z'),
     updatedAt: new Date('2026-05-03T09:00:00.000Z'),
+    ...(overrides ?? {}),
+  };
+}
+
+function messageRecord(
+  overrides?: Partial<CommunicationMessageForNotificationGeneration>,
+): CommunicationMessageForNotificationGeneration {
+  return {
+    id: 'message-1',
+    schoolId: 'school-1',
+    conversationId: 'conversation-1',
+    senderUserId: 'sender-1',
+    kind: CommunicationMessageKind.TEXT,
+    status: CommunicationMessageStatus.SENT,
+    body: 'Hello',
+    hiddenAt: null,
+    deletedAt: null,
+    sentAt: new Date('2026-05-03T09:00:00.000Z'),
+    createdAt: new Date('2026-05-03T09:00:00.000Z'),
+    conversation: {
+      id: 'conversation-1',
+      status: CommunicationConversationStatus.ACTIVE,
+      deletedAt: null,
+      participants: [
+        participantRecord({ id: 'sender', userId: 'sender-1' }),
+        participantRecord({ id: 'recipient', userId: 'recipient-1' }),
+      ],
+    },
+    ...(overrides ?? {}),
+  };
+}
+
+function participantRecord(
+  overrides?: Partial<
+    CommunicationMessageForNotificationGeneration['conversation']['participants'][number]
+  >,
+): CommunicationMessageForNotificationGeneration['conversation']['participants'][number] {
+  const userId = overrides?.userId ?? 'recipient-1';
+  return {
+    id: 'participant-1',
+    userId,
+    role: CommunicationParticipantRole.MEMBER,
+    status: CommunicationParticipantStatus.ACTIVE,
+    mutedUntil: null,
+    user: {
+      id: userId,
+      status: UserStatus.ACTIVE,
+      deletedAt: null,
+    },
     ...(overrides ?? {}),
   };
 }

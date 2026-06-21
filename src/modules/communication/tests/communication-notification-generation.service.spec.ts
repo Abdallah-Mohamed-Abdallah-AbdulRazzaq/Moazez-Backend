@@ -2,23 +2,32 @@ import {
   CommunicationAnnouncementAudienceType,
   CommunicationAnnouncementPriority,
   CommunicationAnnouncementStatus,
+  CommunicationConversationStatus,
+  CommunicationMessageKind,
+  CommunicationMessageStatus,
   CommunicationNotificationPriority,
   CommunicationNotificationSourceModule,
   CommunicationNotificationStatus,
   CommunicationNotificationType,
+  CommunicationParticipantRole,
+  CommunicationParticipantStatus,
   UserType,
+  UserStatus,
 } from '@prisma/client';
 import { CommunicationRealtimeEventsService } from '../application/communication-realtime-events.service';
 import { CommunicationNotificationGenerationService } from '../application/communication-notification-generation.service';
 import {
   CommunicationAnnouncementForNotificationGeneration,
   CommunicationGeneratedNotificationRecord,
+  CommunicationMessageForNotificationGeneration,
   CommunicationNotificationGenerationRepository,
 } from '../infrastructure/communication-notification-generation.repository';
 
 const SCHOOL_ID = 'school-1';
 const ORGANIZATION_ID = 'org-1';
 const ANNOUNCEMENT_ID = 'announcement-1';
+const MESSAGE_ID = 'message-1';
+const CONVERSATION_ID = 'conversation-1';
 const ACTOR_ID = 'actor-1';
 
 describe('CommunicationNotificationGenerationService', () => {
@@ -168,6 +177,210 @@ describe('CommunicationNotificationGenerationService', () => {
     });
     expect(realtime.publishNotificationCreated).not.toHaveBeenCalled();
   });
+
+  it('generates message_received notifications for eligible non-sender recipients', async () => {
+    const realtime = realtimeMock();
+    const repository = repositoryMock({
+      findSentCurrentSchoolMessageForNotificationGeneration: jest
+        .fn()
+        .mockResolvedValue(messageRecord()),
+      resolveCurrentSchoolMessageRecipientUserIds: jest
+        .fn()
+        .mockReturnValue(['recipient-1', 'recipient-2', 'recipient-1']),
+      createMissingMessageNotifications: jest.fn().mockResolvedValue({
+        recipientCount: 2,
+        createdNotificationCount: 2,
+        existingNotificationCount: 0,
+        createdDeliveryCount: 2,
+        existingDeliveryCount: 0,
+        createdNotifications: [
+          generatedNotificationRecord({
+            id: 'message-notification-1',
+            recipientUserId: 'recipient-1',
+            sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+            sourceType: 'communication_message',
+            sourceId: MESSAGE_ID,
+            type: CommunicationNotificationType.MESSAGE_RECEIVED,
+            title: 'New message',
+            body: 'Hello from the conversation',
+            metadata: {
+              conversationId: CONVERSATION_ID,
+              messageId: MESSAGE_ID,
+            },
+          }),
+          generatedNotificationRecord({
+            id: 'message-notification-2',
+            recipientUserId: 'recipient-2',
+            sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+            sourceType: 'communication_message',
+            sourceId: MESSAGE_ID,
+            type: CommunicationNotificationType.MESSAGE_RECEIVED,
+            title: 'New message',
+            body: 'Hello from the conversation',
+            metadata: {
+              conversationId: CONVERSATION_ID,
+              messageId: MESSAGE_ID,
+            },
+          }),
+        ],
+      }),
+    });
+
+    const result = await new CommunicationNotificationGenerationService(
+      repository,
+      realtime,
+    ).generateForMessageCreated({
+      schoolId: SCHOOL_ID,
+      messageId: MESSAGE_ID,
+      actorUserId: ACTOR_ID,
+    });
+
+    expect(result).toMatchObject({
+      messageId: MESSAGE_ID,
+      recipientCount: 2,
+      createdNotificationCount: 2,
+      createdDeliveryCount: 2,
+      skippedReason: null,
+    });
+    expect(repository.createMissingMessageNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schoolId: SCHOOL_ID,
+        messageId: MESSAGE_ID,
+        conversationId: CONVERSATION_ID,
+        recipientUserIds: ['recipient-1', 'recipient-2'],
+        actorUserId: ACTOR_ID,
+        type: CommunicationNotificationType.MESSAGE_RECEIVED,
+        title: 'New message',
+        body: 'Hello from the conversation',
+        priority: CommunicationNotificationPriority.NORMAL,
+        metadata: {
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          sentAt: '2026-05-03T09:02:00.000Z',
+        },
+        now: expect.any(Date),
+      }),
+    );
+    expect(realtime.publishNotificationCreated).toHaveBeenCalledTimes(2);
+    expect(realtime.publishNotificationCreated).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      expect.objectContaining({
+        id: 'message-notification-1',
+        recipientUserId: 'recipient-1',
+      }),
+    );
+    expect(realtime.publishNotificationCreated).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      expect.objectContaining({
+        id: 'message-notification-2',
+        recipientUserId: 'recipient-2',
+      }),
+    );
+  });
+
+  it('uses generic safe previews for media message notifications', async () => {
+    const realtime = realtimeMock();
+    const repository = repositoryMock({
+      findSentCurrentSchoolMessageForNotificationGeneration: jest
+        .fn()
+        .mockResolvedValue(
+          messageRecord({
+            kind: CommunicationMessageKind.IMAGE,
+            body: 'caption should not leak as the notification media label',
+          }),
+        ),
+      resolveCurrentSchoolMessageRecipientUserIds: jest
+        .fn()
+        .mockReturnValue(['recipient-1']),
+      createMissingMessageNotifications: jest.fn().mockResolvedValue({
+        recipientCount: 1,
+        createdNotificationCount: 1,
+        existingNotificationCount: 0,
+        createdDeliveryCount: 1,
+        existingDeliveryCount: 0,
+        createdNotifications: [generatedNotificationRecord()],
+      }),
+    });
+
+    await new CommunicationNotificationGenerationService(
+      repository,
+      realtime,
+    ).generateForMessageCreated({
+      schoolId: SCHOOL_ID,
+      messageId: MESSAGE_ID,
+      actorUserId: ACTOR_ID,
+    });
+
+    expect(repository.createMissingMessageNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: 'Photo',
+      }),
+    );
+  });
+
+  it('skips message notification generation when there are no eligible recipients', async () => {
+    const realtime = realtimeMock();
+    const repository = repositoryMock({
+      findSentCurrentSchoolMessageForNotificationGeneration: jest
+        .fn()
+        .mockResolvedValue(messageRecord()),
+      resolveCurrentSchoolMessageRecipientUserIds: jest.fn().mockReturnValue([]),
+    });
+
+    const result = await new CommunicationNotificationGenerationService(
+      repository,
+      realtime,
+    ).generateForMessageCreated({
+      schoolId: SCHOOL_ID,
+      messageId: MESSAGE_ID,
+      actorUserId: ACTOR_ID,
+    });
+
+    expect(result).toMatchObject({
+      messageId: MESSAGE_ID,
+      skippedReason: 'no_eligible_recipients',
+    });
+    expect(repository.createMissingMessageNotifications).not.toHaveBeenCalled();
+    expect(realtime.publishNotificationCreated).not.toHaveBeenCalled();
+  });
+
+  it('returns existing message notification counts on retry without publishing duplicate realtime events', async () => {
+    const realtime = realtimeMock();
+    const repository = repositoryMock({
+      findSentCurrentSchoolMessageForNotificationGeneration: jest
+        .fn()
+        .mockResolvedValue(messageRecord()),
+      resolveCurrentSchoolMessageRecipientUserIds: jest
+        .fn()
+        .mockReturnValue(['recipient-1']),
+      createMissingMessageNotifications: jest.fn().mockResolvedValue({
+        recipientCount: 1,
+        createdNotificationCount: 0,
+        existingNotificationCount: 1,
+        createdDeliveryCount: 0,
+        existingDeliveryCount: 1,
+        createdNotifications: [],
+      }),
+    });
+
+    const result = await new CommunicationNotificationGenerationService(
+      repository,
+      realtime,
+    ).generateForMessageCreated({
+      schoolId: SCHOOL_ID,
+      messageId: MESSAGE_ID,
+      actorUserId: ACTOR_ID,
+    });
+
+    expect(result).toMatchObject({
+      createdNotificationCount: 0,
+      existingNotificationCount: 1,
+      createdDeliveryCount: 0,
+      existingDeliveryCount: 1,
+      skippedReason: null,
+    });
+    expect(realtime.publishNotificationCreated).not.toHaveBeenCalled();
+  });
 });
 
 function repositoryMock(
@@ -190,6 +403,20 @@ function repositoryMock(
         existingDeliveryCount: 0,
         createdNotifications: [generatedNotificationRecord()],
       }),
+    findSentCurrentSchoolMessageForNotificationGeneration: jest
+      .fn()
+      .mockResolvedValue(messageRecord()),
+    resolveCurrentSchoolMessageRecipientUserIds: jest
+      .fn()
+      .mockReturnValue(['recipient-1']),
+    createMissingMessageNotifications: jest.fn().mockResolvedValue({
+      recipientCount: 1,
+      createdNotificationCount: 1,
+      existingNotificationCount: 0,
+      createdDeliveryCount: 1,
+      existingDeliveryCount: 0,
+      createdNotifications: [generatedNotificationRecord()],
+    }),
     ...(overrides ?? {}),
   } as unknown as CommunicationNotificationGenerationRepository &
     Record<string, jest.Mock>;
@@ -248,8 +475,57 @@ function generatedNotificationRecord(
     readAt: null,
     archivedAt: null,
     expiresAt: null,
+    metadata: null,
     createdAt: new Date('2026-05-03T09:01:00.000Z'),
     updatedAt: new Date('2026-05-03T09:01:00.000Z'),
+    ...(overrides ?? {}),
+  };
+}
+
+function messageRecord(
+  overrides?: Partial<CommunicationMessageForNotificationGeneration>,
+): CommunicationMessageForNotificationGeneration {
+  return {
+    id: MESSAGE_ID,
+    schoolId: SCHOOL_ID,
+    conversationId: CONVERSATION_ID,
+    senderUserId: ACTOR_ID,
+    kind: CommunicationMessageKind.TEXT,
+    status: CommunicationMessageStatus.SENT,
+    body: ' Hello\nfrom   the conversation ',
+    hiddenAt: null,
+    deletedAt: null,
+    sentAt: new Date('2026-05-03T09:02:00.000Z'),
+    createdAt: new Date('2026-05-03T09:02:00.000Z'),
+    conversation: {
+      id: CONVERSATION_ID,
+      status: CommunicationConversationStatus.ACTIVE,
+      deletedAt: null,
+      participants: [
+        participantRecord({ userId: ACTOR_ID }),
+        participantRecord({ id: 'participant-2', userId: 'recipient-1' }),
+      ],
+    },
+    ...(overrides ?? {}),
+  };
+}
+
+function participantRecord(
+  overrides?: Partial<
+    CommunicationMessageForNotificationGeneration['conversation']['participants'][number]
+  >,
+): CommunicationMessageForNotificationGeneration['conversation']['participants'][number] {
+  return {
+    id: 'participant-1',
+    userId: 'recipient-1',
+    role: CommunicationParticipantRole.MEMBER,
+    status: CommunicationParticipantStatus.ACTIVE,
+    mutedUntil: null,
+    user: {
+      id: 'recipient-1',
+      status: UserStatus.ACTIVE,
+      deletedAt: null,
+    },
     ...(overrides ?? {}),
   };
 }

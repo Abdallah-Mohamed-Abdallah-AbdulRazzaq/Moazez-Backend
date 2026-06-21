@@ -719,6 +719,16 @@ describe('Communication policy tenancy isolation (security)', () => {
       await prisma.session.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
+      await prisma.communicationNotificationDelivery.deleteMany({
+        where: {
+          notification: {
+            recipientUserId: { in: createdUserIds },
+          },
+        },
+      });
+      await prisma.communicationNotification.deleteMany({
+        where: { recipientUserId: { in: createdUserIds } },
+      });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });

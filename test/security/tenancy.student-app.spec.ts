@@ -820,6 +820,16 @@ describe('Student App Home/Profile routes (security)', () => {
       await prisma.student.deleteMany({
         where: { id: { in: createdStudentIds } },
       });
+      await prisma.communicationNotificationDelivery.deleteMany({
+        where: {
+          notification: {
+            recipientUserId: { in: createdUserIds },
+          },
+        },
+      });
+      await prisma.communicationNotification.deleteMany({
+        where: { recipientUserId: { in: createdUserIds } },
+      });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });

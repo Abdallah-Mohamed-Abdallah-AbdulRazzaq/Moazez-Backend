@@ -382,6 +382,7 @@ function notificationListRecord(
     readAt: null,
     archivedAt: null,
     expiresAt: null,
+    metadata: null,
     createdAt: new Date('2026-05-03T08:00:00.000Z'),
     updatedAt: new Date('2026-05-03T08:30:00.000Z'),
     ...(overrides ?? {}),

@@ -788,6 +788,16 @@ describe('Teacher App tenancy isolation (security)', () => {
       await prisma.schoolProfile.deleteMany({
         where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
       });
+      await prisma.communicationNotificationDelivery.deleteMany({
+        where: {
+          notification: {
+            recipientUserId: { in: createdUserIds },
+          },
+        },
+      });
+      await prisma.communicationNotification.deleteMany({
+        where: { recipientUserId: { in: createdUserIds } },
+      });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });

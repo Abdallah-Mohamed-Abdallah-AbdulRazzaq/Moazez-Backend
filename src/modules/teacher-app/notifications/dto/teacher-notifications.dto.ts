@@ -41,7 +41,9 @@ export class ListTeacherNotificationsQueryDto {
 
 export class TeacherNotificationDeepLinkDto {
   type!: string;
-  announcementId!: string;
+  announcementId?: string;
+  conversationId?: string;
+  messageId?: string;
 }
 
 export class TeacherNotificationDto {

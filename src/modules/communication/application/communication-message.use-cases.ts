@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   AuditOutcome,
   CommunicationMessageKind,
@@ -71,6 +71,7 @@ import {
   presentCommunicationReadSummary,
 } from '../presenters/communication-message-read.presenter';
 import { CommunicationRealtimeEventsService } from './communication-realtime-events.service';
+import { CommunicationNotificationGenerationService } from './communication-notification-generation.service';
 
 @Injectable()
 export class ListCommunicationMessagesUseCase {
@@ -124,11 +125,15 @@ export class ListCommunicationMessagesUseCase {
 
 @Injectable()
 export class CreateCommunicationMessageUseCase {
+  private readonly logger = new Logger(CreateCommunicationMessageUseCase.name);
+
   constructor(
     private readonly communicationMessageRepository: CommunicationMessageRepository,
     private readonly communicationPolicyRepository: CommunicationPolicyRepository,
     @Optional()
     private readonly realtimeEvents?: CommunicationRealtimeEventsService,
+    @Optional()
+    private readonly notificationGenerationService?: CommunicationNotificationGenerationService,
   ) {}
 
   async execute(
@@ -235,9 +240,29 @@ export class CreateCommunicationMessageUseCase {
 
     if (wasCreated) {
       this.realtimeEvents?.publishMessageCreated(scope.schoolId, message);
+      await this.generateMessageNotificationsSafely(scope, message.id);
     }
 
     return presentCommunicationMessage(message);
+  }
+
+  private async generateMessageNotificationsSafely(
+    scope: CommunicationScope,
+    messageId: string,
+  ): Promise<void> {
+    if (!this.notificationGenerationService) return;
+
+    try {
+      await this.notificationGenerationService.generateForMessageCreated({
+        schoolId: scope.schoolId,
+        messageId,
+        actorUserId: scope.actorId,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Communication message notification generation failed for message ${messageId}: ${formatNotificationGenerationError(error)}`,
+      );
+    }
   }
 }
 
@@ -882,4 +907,10 @@ function normalizeOptionalText(
 function asPlainMetadata(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
+}
+
+function formatNotificationGenerationError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'unknown error';
 }
