@@ -12,7 +12,7 @@ import { CommunicationGeneratedNotificationRecord } from '../infrastructure/comm
 import { CommunicationModerationMessageRecord } from '../infrastructure/communication-moderation.repository';
 import { CommunicationMessageReactionRecord } from '../infrastructure/communication-reaction.repository';
 import { presentCommunicationRealtimeNotification } from '../presenters/communication-app-notification.presenter';
-import { presentCommunicationMessageAttachment } from '../presenters/communication-message-attachment.presenter';
+import { presentCommunicationAppMessageAttachment } from '../presenters/communication-app-message-attachment.presenter';
 import { presentCommunicationMessage } from '../presenters/communication-message.presenter';
 import { presentModerationMessageMetadata } from '../presenters/communication-moderation.presenter';
 import { presentCommunicationReaction } from '../presenters/communication-reaction.presenter';
@@ -255,7 +255,9 @@ export class CommunicationRealtimeEventsService {
       {
         conversationId: attachment.conversationId,
         messageId: attachment.messageId,
-        attachment: presentCommunicationMessageAttachment(attachment),
+        attachment: presentCommunicationAppMessageAttachment(attachment, {
+          aliasStyle: 'camel',
+        }),
         eventAt: eventTimestamp(),
       },
     );

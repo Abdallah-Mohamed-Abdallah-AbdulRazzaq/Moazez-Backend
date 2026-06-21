@@ -3,6 +3,7 @@ import {
   CommunicationNotificationSourceModule,
   CommunicationNotificationStatus,
   CommunicationNotificationType,
+  FileVisibility,
 } from '@prisma/client';
 import { REALTIME_SERVER_EVENTS } from '../../../infrastructure/realtime/realtime-event-names';
 import { RealtimePublisherService } from '../../../infrastructure/realtime/realtime-publisher.service';
@@ -111,6 +112,61 @@ describe('CommunicationRealtimeEventsService', () => {
     const payload = publisher.publishToUser.mock.calls[0][3];
     expect(JSON.stringify(payload)).not.toContain('metadata');
   });
+
+  it('publishes attachment.linked with app-safe attachment metadata only', () => {
+    const publisher = publisherMock();
+
+    new CommunicationRealtimeEventsService(publisher).publishAttachmentLinked(
+      'school-1',
+      attachmentRecord(),
+    );
+
+    expect(publisher.publishToConversation).toHaveBeenCalledWith(
+      'school-1',
+      'conversation-1',
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_ATTACHMENT_LINKED,
+      {
+        conversationId: 'conversation-1',
+        messageId: 'message-1',
+        attachment: expect.objectContaining({
+          attachmentId: 'attachment-1',
+          fileId: 'file-1',
+          displayName: 'worksheet.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: '2048',
+          mediaKind: 'file',
+          caption: 'Worksheet',
+          sortOrder: 1,
+          createdAt: '2026-05-03T08:00:00.000Z',
+          downloadPath: '/api/v1/files/file-1/download',
+        }),
+        eventAt: expect.any(String),
+      },
+    );
+
+    const payload = publisher.publishToConversation.mock.calls[0][3];
+    const json = JSON.stringify(payload);
+    for (const forbidden of [
+      'id":"attachment-1',
+      'uploadedById',
+      'createdById',
+      'ownerId',
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'bucket',
+      'objectKey',
+      'storageKey',
+      'signedUrl',
+      'metadata',
+      'providerMetadata',
+      'virusScan',
+      'deletedAt',
+    ]) {
+      expect(json).not.toContain(forbidden);
+    }
+  });
 });
 
 function publisherMock(): RealtimePublisherService & Record<string, jest.Mock> {
@@ -145,4 +201,39 @@ function generatedNotificationRecord(
     updatedAt: new Date('2026-05-03T08:30:00.000Z'),
     ...(overrides ?? {}),
   };
+}
+
+function attachmentRecord() {
+  return {
+    id: 'attachment-1',
+    schoolId: 'school-1',
+    conversationId: 'conversation-1',
+    messageId: 'message-1',
+    fileId: 'file-1',
+    uploadedById: 'actor-1',
+    createdById: 'actor-1',
+    ownerId: 'owner-1',
+    caption: 'Worksheet',
+    sortOrder: 1,
+    createdAt: new Date('2026-05-03T08:00:00.000Z'),
+    updatedAt: new Date('2026-05-03T08:30:00.000Z'),
+    deletedAt: null,
+    file: {
+      id: 'file-1',
+      schoolId: 'school-1',
+      organizationId: 'org-1',
+      originalName: 'worksheet.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 2048n,
+      visibility: FileVisibility.PRIVATE,
+      deletedAt: null,
+      bucket: 'private-bucket',
+      objectKey: 'objects/file-1',
+      storageKey: 'storage/file-1',
+      signedUrl: 'https://storage.example/file-1',
+      metadata: { raw: true },
+      providerMetadata: { provider: 's3' },
+      virusScan: { status: 'passed' },
+    },
+  } as any;
 }

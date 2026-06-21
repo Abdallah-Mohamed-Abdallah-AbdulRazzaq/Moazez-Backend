@@ -216,19 +216,37 @@ describe('TeacherMessagesPresenter', () => {
           {
             id: 'attachment-1',
             fileId: 'file-1',
+            uploadedById: 'uploader-1',
+            createdById: 'creator-1',
+            ownerId: 'owner-1',
+            schoolId: 'school-1',
+            organizationId: 'org-1',
+            membershipId: 'membership-1',
+            roleId: 'role-1',
             caption: 'Worksheet',
             sortOrder: 1,
             createdAt: new Date('2026-09-18T10:00:00.000Z'),
+            deletedAt: new Date('2026-09-18T10:05:00.000Z'),
             file: {
               id: 'file-1',
+              schoolId: 'school-1',
+              organizationId: 'org-1',
               originalName: 'worksheet.pdf',
               mimeType: 'application/pdf',
               sizeBytes: BigInt(1234),
               visibility: FileVisibility.PRIVATE,
               createdAt: new Date('2026-09-18T10:00:00.000Z'),
+              bucket: 'private-bucket',
+              objectKey: 'objects/file-1',
+              storageKey: 'storage/file-1',
+              signedUrl: 'https://storage.example/file-1',
+              metadata: { provider: 's3' },
+              providerMetadata: { storageClass: 'standard' },
+              virusScan: { status: 'passed' },
+              deletedAt: new Date('2026-09-18T10:05:00.000Z'),
             },
           },
-        ],
+        ] as any,
       }),
       teacherUserId: TEACHER_ID,
     });
@@ -257,10 +275,22 @@ describe('TeacherMessagesPresenter', () => {
       }),
     ]);
     expect(result.message.attachmentsCount).toBe(1);
+    expect(json).not.toContain('uploadedById');
+    expect(json).not.toContain('createdById');
+    expect(json).not.toContain('ownerId');
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('organizationId');
+    expect(json).not.toContain('membershipId');
+    expect(json).not.toContain('roleId');
     expect(json).not.toContain('bucket');
     expect(json).not.toContain('objectKey');
+    expect(json).not.toContain('storageKey');
+    expect(json).not.toContain('signedUrl');
     expect(json).not.toContain('raw-storage');
     expect(json).not.toContain('metadata');
+    expect(json).not.toContain('providerMetadata');
+    expect(json).not.toContain('virusScan');
+    expect(json).not.toContain('deletedAt');
   });
 
   it('computes readCount from readers other than the sender', () => {

@@ -137,13 +137,19 @@ describe('StudentMessagesPresenter', () => {
     for (const forbidden of [
       'uploadedById',
       'createdById',
+      'ownerId',
       'schoolId',
       'organizationId',
+      'membershipId',
+      'roleId',
       'bucket',
       'objectKey',
       'storageKey',
       'signedUrl',
       'metadata',
+      'providerMetadata',
+      'virusScan',
+      'deletedAt',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
@@ -372,9 +378,15 @@ function attachmentFixture() {
     fileId: 'file-1',
     uploadedById: 'uploader-1',
     createdById: 'creator-1',
+    ownerId: 'owner-1',
+    schoolId: 'school-1',
+    organizationId: 'org-1',
+    membershipId: 'membership-1',
+    roleId: 'role-1',
     caption: null,
     sortOrder: 0,
     createdAt: new Date('2026-01-01T08:03:00.000Z'),
+    deletedAt: new Date('2026-01-01T08:04:00.000Z'),
     file: {
       id: 'file-1',
       originalName: 'voice-note.mp3',
@@ -385,6 +397,9 @@ function attachmentFixture() {
       storageKey: 'storage/file-1',
       signedUrl: 'https://storage.example/file-1',
       metadata: { provider: 's3' },
+      providerMetadata: { storageClass: 'standard' },
+      virusScan: { status: 'passed' },
+      deletedAt: new Date('2026-01-01T08:04:00.000Z'),
     },
   };
 }

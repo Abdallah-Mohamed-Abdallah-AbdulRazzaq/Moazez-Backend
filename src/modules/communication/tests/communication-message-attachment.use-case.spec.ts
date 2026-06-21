@@ -371,13 +371,38 @@ describe('communication message attachment use cases', () => {
         conversationId: CONVERSATION_ID,
         messageId: MESSAGE_ID,
         attachment: expect.objectContaining({
-          id: ATTACHMENT_ID,
+          attachmentId: ATTACHMENT_ID,
           fileId: FILE_ID,
+          displayName: 'worksheet.pdf',
+          mimeType: 'application/pdf',
+          mediaKind: 'file',
           caption: 'worksheet',
+          downloadPath: '/api/v1/files/file-1/download',
         }),
         eventAt: expect.any(String),
       }),
     );
+    const payload = publisher.publishToConversation.mock.calls[0][3];
+    const json = JSON.stringify(payload);
+    for (const forbidden of [
+      'uploadedById',
+      'createdById',
+      'ownerId',
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'bucket',
+      'objectKey',
+      'storageKey',
+      'signedUrl',
+      'metadata',
+      'providerMetadata',
+      'virusScan',
+      'deletedAt',
+    ]) {
+      expect(json).not.toContain(forbidden);
+    }
   });
 
   it('deletes attachment link and audits mutation', async () => {
