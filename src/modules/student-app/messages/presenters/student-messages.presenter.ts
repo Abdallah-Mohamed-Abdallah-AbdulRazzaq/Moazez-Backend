@@ -5,6 +5,7 @@ import type {
 } from '../../../communication/presenters/communication-message-read.presenter';
 import { presentCommunicationAppMessageAttachments } from '../../../communication/presenters/communication-app-message-attachment.presenter';
 import {
+  StudentConversationMessageSearchResponseDto,
   StudentConversationMessageResponseDto,
   StudentConversationMessagesResponseDto,
   StudentConversationReadResponseDto,
@@ -75,6 +76,17 @@ export class StudentMessagesPresenter {
         limit: params.result.limit,
         total: params.result.total,
       },
+    };
+  }
+
+  static presentMessageSearch(params: {
+    result: StudentMessageListResult;
+    studentUserId: string;
+    query: string;
+  }): StudentConversationMessageSearchResponseDto {
+    return {
+      ...this.presentMessageList(params),
+      query: params.query,
     };
   }
 

@@ -293,6 +293,39 @@ describe('TeacherMessagesPresenter', () => {
     expect(json).not.toContain('deletedAt');
   });
 
+  it('presents teacher message search as camelCase only with safe fields', () => {
+    const result = TeacherMessagesPresenter.presentMessageSearch({
+      result: {
+        conversationId: CONVERSATION_ID,
+        items: [messageFixture({ attachments: [] })],
+        total: 1,
+        page: 1,
+        limit: 20,
+      },
+      teacherUserId: TEACHER_ID,
+      query: 'exam',
+    });
+    const json = JSON.stringify(result);
+
+    expect(result).toMatchObject({
+      conversationId: CONVERSATION_ID,
+      query: 'exam',
+      pagination: { page: 1, limit: 20, total: 1 },
+    });
+    expect(result.messages[0]).toMatchObject({
+      messageId: 'message-1',
+      attachmentsCount: 0,
+      readCount: 0,
+    });
+    expect(json).not.toContain('conversation_id');
+    expect(json).not.toContain('sender_type');
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('uploadedById');
+    expect(json).not.toContain('bucket');
+    expect(json).not.toContain('objectKey');
+    expect(json).not.toContain('deletedAt');
+  });
+
   it('computes readCount from readers other than the sender', () => {
     const result = TeacherMessagesPresenter.presentMessage({
       message: messageFixture({

@@ -4,6 +4,7 @@ import {
 } from '../../../communication/presenters/communication-message-read.presenter';
 import { presentCommunicationAppMessageAttachments } from '../../../communication/presenters/communication-app-message-attachment.presenter';
 import {
+  TeacherConversationMessageSearchResponseDto,
   TeacherConversationMessageResponseDto,
   TeacherConversationMessagesResponseDto,
   TeacherConversationReadResponseDto,
@@ -91,6 +92,17 @@ export class TeacherMessagesPresenter {
         limit: params.result.limit,
         total: params.result.total,
       },
+    };
+  }
+
+  static presentMessageSearch(params: {
+    result: TeacherMessageListResult;
+    teacherUserId: string;
+    query: string;
+  }): TeacherConversationMessageSearchResponseDto {
+    return {
+      ...this.presentMessageList(params),
+      query: params.query,
     };
   }
 

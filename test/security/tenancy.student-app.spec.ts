@@ -2188,6 +2188,44 @@ describe('Student App Home/Profile routes (security)', () => {
     expect(serializedMessages).not.toContain('deleted raw student body');
     assertNoForbiddenStudentAppFields(messages.body);
 
+    const search = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}/search`,
+      )
+      .query({ q: 'Visible teacher', page: 1, limit: 10 })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const searchJson = JSON.stringify(search.body);
+
+    expect(search.body).toMatchObject({
+      conversationId: ownConversationId,
+      conversation_id: ownConversationId,
+      query: 'Visible teacher',
+      pagination: expect.objectContaining({
+        page: 1,
+        limit: 10,
+      }),
+    });
+    expect(searchJson).toContain('Visible teacher message');
+    expect(searchJson).not.toContain('hidden raw student body');
+    expect(searchJson).not.toContain('deleted raw student body');
+    expect(searchJson).not.toContain(sameSchoolOtherConversationId);
+    expect(searchJson).not.toContain(tenantBConversationId);
+    assertNoForbiddenStudentAppFields(search.body);
+
+    const hiddenSearch = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}/search`,
+      )
+      .query({ q: 'hidden raw student' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(hiddenSearch.body.messages).toEqual([]);
+    expect(JSON.stringify(hiddenSearch.body)).not.toContain(
+      'hidden raw student body',
+    );
+
     const send = await request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/student/messages/conversations/${ownConversationId}/messages`,
@@ -2239,6 +2277,17 @@ describe('Student App Home/Profile routes (security)', () => {
     ]) {
       await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}/${path}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+
+    for (const path of [
+      `student/messages/conversations/${sameSchoolOtherConversationId}/search`,
+      `student/messages/conversations/${tenantBConversationId}/search`,
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/${path}`)
+        .query({ q: 'Visible teacher' })
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(404);
     }

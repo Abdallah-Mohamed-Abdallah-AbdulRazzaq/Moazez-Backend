@@ -302,6 +302,37 @@ export class StudentMessagesReadAdapter {
     };
   }
 
+  async searchMessages(params: {
+    conversationId: string;
+    studentUserId: string;
+    q: string;
+    limit?: number;
+    page?: number;
+  }): Promise<StudentMessageListResult> {
+    const limit = resolveLimit(params.limit, DEFAULT_MESSAGE_LIMIT);
+    const page = resolvePage(params.page);
+    const where = this.buildMessageSearchWhere(params);
+
+    const [items, total] = await Promise.all([
+      this.scopedPrisma.communicationMessage.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: limit,
+        skip: (page - 1) * limit,
+        select: MESSAGE_SELECT,
+      }),
+      this.scopedPrisma.communicationMessage.count({ where }),
+    ]);
+
+    return {
+      conversationId: params.conversationId,
+      items,
+      total,
+      page,
+      limit,
+    };
+  }
+
   findMessageForStudent(params: {
     conversationId: string;
     messageId: string;
@@ -436,6 +467,35 @@ export class StudentMessagesReadAdapter {
             },
           }
         : {}),
+    };
+  }
+
+  private buildMessageSearchWhere(params: {
+    conversationId: string;
+    studentUserId: string;
+    q: string;
+  }): Prisma.CommunicationMessageWhereInput {
+    return {
+      conversationId: params.conversationId,
+      status: CommunicationMessageStatus.SENT,
+      kind: { not: CommunicationMessageKind.SYSTEM },
+      hiddenAt: null,
+      deletedAt: null,
+      body: {
+        contains: params.q,
+        mode: Prisma.QueryMode.insensitive,
+      },
+      conversation: {
+        is: {
+          deletedAt: null,
+          participants: {
+            some: {
+              userId: params.studentUserId,
+              status: { in: [...ACTIVE_PARTICIPANT_STATUSES] },
+            },
+          },
+        },
+      },
     };
   }
 

@@ -2024,6 +2024,43 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     });
     assertNoForbiddenParentAppFields(messages.body);
 
+    const search = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/messages/conversations/${ownConversationAId}/search`,
+      )
+      .query({ q: 'Visible parent', page: 1, limit: 10 })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const searchJson = JSON.stringify(search.body);
+
+    expect(search.body).toMatchObject({
+      conversationId: ownConversationAId,
+      conversation_id: ownConversationAId,
+      query: 'Visible parent',
+      pagination: expect.objectContaining({
+        page: 1,
+        limit: 10,
+      }),
+    });
+    expect(searchJson).toContain('Visible parent message');
+    expect(searchJson).not.toContain('Hidden message body should not leak');
+    expect(searchJson).not.toContain(nonParticipantConversationAId);
+    expect(searchJson).not.toContain(crossSchoolConversationId);
+    assertNoForbiddenParentAppFields(search.body);
+
+    const hiddenSearch = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/parent/messages/conversations/${ownConversationAId}/search`,
+      )
+      .query({ q: 'Hidden message body' })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(JSON.stringify(hiddenSearch.body)).not.toContain(
+      'Hidden message body should not leak',
+    );
+    expect(hiddenSearch.body.messages).toEqual([]);
+
     await request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/parent/messages/conversations/${ownConversationAId}/messages`,
@@ -2092,6 +2129,13 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         .get(
           `${GLOBAL_PREFIX}/parent/messages/conversations/${inaccessibleConversationId}/messages`,
         )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/parent/messages/conversations/${inaccessibleConversationId}/search`,
+        )
+        .query({ q: 'Visible parent' })
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(404);
       await request(app.getHttpServer())

@@ -10,6 +10,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 
@@ -58,6 +59,11 @@ export const TEACHER_MESSAGE_CONTACT_ROLES = [
 function toLowerOptionalString(value: unknown): unknown {
   if (value === undefined || value === null || value === '') return undefined;
   return typeof value === 'string' ? value.trim().toLowerCase() : value;
+}
+
+function trimRequiredString(value: unknown): unknown {
+  if (value === undefined || value === null) return value;
+  return typeof value === 'string' ? value.trim() : value;
 }
 
 export class TeacherMessageConversationParamsDto {
@@ -111,6 +117,28 @@ export class ListTeacherConversationMessagesQueryDto {
   @IsOptional()
   @IsISO8601()
   after?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  page?: number;
+}
+
+export class SearchTeacherConversationMessagesQueryDto {
+  @Transform(({ value }) => trimRequiredString(value))
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  q!: string;
 
   @IsOptional()
   @Type(() => Number)
@@ -384,6 +412,10 @@ export class TeacherConversationMessagesResponseDto {
   conversationId!: string;
   messages!: TeacherMessageDto[];
   pagination!: TeacherMessagePaginationDto;
+}
+
+export class TeacherConversationMessageSearchResponseDto extends TeacherConversationMessagesResponseDto {
+  query!: string;
 }
 
 export class TeacherConversationMessageResponseDto {

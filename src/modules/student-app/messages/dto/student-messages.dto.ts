@@ -10,6 +10,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 
@@ -60,6 +61,11 @@ function toLowerOptionalString(value: unknown): unknown {
   return typeof value === 'string' ? value.trim().toLowerCase() : value;
 }
 
+function trimRequiredString(value: unknown): unknown {
+  if (value === undefined || value === null) return value;
+  return typeof value === 'string' ? value.trim() : value;
+}
+
 export class ListStudentMessageConversationsQueryDto {
   @IsOptional()
   @Transform(({ value }) => toLowerOptionalString(value))
@@ -104,6 +110,28 @@ export class ListStudentConversationMessagesQueryDto {
   @IsOptional()
   @IsISO8601()
   after?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  page?: number;
+}
+
+export class SearchStudentConversationMessagesQueryDto {
+  @Transform(({ value }) => trimRequiredString(value))
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  q!: string;
 
   @IsOptional()
   @Type(() => Number)
@@ -419,6 +447,10 @@ export class StudentConversationMessagesResponseDto {
   conversation_id!: string;
   messages!: StudentMessageDto[];
   pagination!: StudentMessagePaginationDto;
+}
+
+export class StudentConversationMessageSearchResponseDto extends StudentConversationMessagesResponseDto {
+  query!: string;
 }
 
 export class StudentConversationMessageResponseDto {

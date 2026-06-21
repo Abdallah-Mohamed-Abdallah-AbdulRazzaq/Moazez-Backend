@@ -1046,6 +1046,44 @@ describe('Teacher App tenancy isolation (security)', () => {
     expect(messagesJson).not.toContain('hiddenReason');
     expectSafeTeacherTaskPayload(messages.body);
 
+    const search = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/search`,
+      )
+      .query({ q: `${testSuffix}-own-visible`, page: 1, limit: 10 })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const searchJson = JSON.stringify(search.body);
+
+    expect(search.body).toMatchObject({
+      conversationId: ownConversationId,
+      query: `${testSuffix}-own-visible`,
+      pagination: expect.objectContaining({
+        page: 1,
+        limit: 10,
+      }),
+    });
+    expect(searchJson).toContain(`${testSuffix}-own-visible-message`);
+    expect(searchJson).not.toContain(`${testSuffix}-own-hidden-message`);
+    expect(searchJson).not.toContain(`${testSuffix}-own-deleted-message`);
+    expect(searchJson).not.toContain(otherTeacherConversationId);
+    expect(searchJson).not.toContain(crossSchoolConversationId);
+    expect(searchJson).not.toContain('conversation_id');
+    expectSafeTeacherTaskPayload(search.body);
+
+    const hiddenSearch = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/search`,
+      )
+      .query({ q: `${testSuffix}-own-hidden` })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(hiddenSearch.body.messages).toEqual([]);
+    expect(JSON.stringify(hiddenSearch.body)).not.toContain(
+      `${testSuffix}-own-hidden-message`,
+    );
+
     const sent = await request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/teacher/messages/conversations/${ownConversationId}/messages`,
@@ -1108,6 +1146,13 @@ describe('Teacher App tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
     await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${otherTeacherConversationId}/search`,
+      )
+      .query({ q: `${testSuffix}-own-visible` })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/teacher/messages/conversations/${otherTeacherConversationId}/messages`,
       )
@@ -1134,6 +1179,14 @@ describe('Teacher App tenancy isolation (security)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(404);
     }
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${crossSchoolConversationId}/search`,
+      )
+      .query({ q: `${testSuffix}-own-visible` })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
 
     await request(app.getHttpServer())
       .post(

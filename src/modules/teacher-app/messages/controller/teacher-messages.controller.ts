@@ -24,6 +24,7 @@ import { GetTeacherMessageConversationUseCase } from '../application/get-teacher
 import { ListTeacherConversationMessagesUseCase } from '../application/list-teacher-conversation-messages.use-case';
 import { ListTeacherMessageConversationsUseCase } from '../application/list-teacher-message-conversations.use-case';
 import { MarkTeacherConversationReadUseCase } from '../application/mark-teacher-conversation-read.use-case';
+import { SearchTeacherConversationMessagesUseCase } from '../application/search-teacher-conversation-messages.use-case';
 import { SendTeacherConversationMessageUseCase } from '../application/send-teacher-conversation-message.use-case';
 import {
   CreateTeacherMessageConversationUseCase,
@@ -34,7 +35,9 @@ import {
   ListTeacherConversationMessagesQueryDto,
   ListTeacherMessageContactsQueryDto,
   ListTeacherMessageConversationsQueryDto,
+  SearchTeacherConversationMessagesQueryDto,
   SendTeacherConversationMessageDto,
+  TeacherConversationMessageSearchResponseDto,
   TeacherConversationMessageResponseDto,
   TeacherConversationMessagesResponseDto,
   TeacherConversationReadResponseDto,
@@ -56,6 +59,7 @@ export class TeacherMessagesController {
     private readonly listTeacherMessageConversationsUseCase: ListTeacherMessageConversationsUseCase,
     private readonly getTeacherMessageConversationUseCase: GetTeacherMessageConversationUseCase,
     private readonly listTeacherConversationMessagesUseCase: ListTeacherConversationMessagesUseCase,
+    private readonly searchTeacherConversationMessagesUseCase: SearchTeacherConversationMessagesUseCase,
     private readonly sendTeacherConversationMessageUseCase: SendTeacherConversationMessageUseCase,
     private readonly markTeacherConversationReadUseCase: MarkTeacherConversationReadUseCase,
     private readonly getTeacherMessageReadersUseCase: GetTeacherMessageReadersUseCase,
@@ -88,6 +92,18 @@ export class TeacherMessagesController {
   ): Promise<TeacherMessageConversationResponseDto> {
     return this.getTeacherMessageConversationUseCase.execute(
       params.conversationId,
+    );
+  }
+
+  @Get('conversations/:conversationId/search')
+  @ApiOkResponse({ type: TeacherConversationMessageSearchResponseDto })
+  searchMessages(
+    @Param() params: TeacherMessageConversationParamsDto,
+    @Query() query: SearchTeacherConversationMessagesQueryDto,
+  ): Promise<TeacherConversationMessageSearchResponseDto> {
+    return this.searchTeacherConversationMessagesUseCase.execute(
+      params.conversationId,
+      query,
     );
   }
 

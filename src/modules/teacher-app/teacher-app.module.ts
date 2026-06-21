@@ -65,6 +65,7 @@ import { GetTeacherMessageConversationUseCase } from './messages/application/get
 import { ListTeacherConversationMessagesUseCase } from './messages/application/list-teacher-conversation-messages.use-case';
 import { ListTeacherMessageConversationsUseCase } from './messages/application/list-teacher-message-conversations.use-case';
 import { MarkTeacherConversationReadUseCase } from './messages/application/mark-teacher-conversation-read.use-case';
+import { SearchTeacherConversationMessagesUseCase } from './messages/application/search-teacher-conversation-messages.use-case';
 import { SendTeacherConversationMessageUseCase } from './messages/application/send-teacher-conversation-message.use-case';
 import {
   CreateTeacherMessageConversationUseCase,
@@ -200,6 +201,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     ListTeacherMessageConversationsUseCase,
     GetTeacherMessageConversationUseCase,
     ListTeacherConversationMessagesUseCase,
+    SearchTeacherConversationMessagesUseCase,
     SendTeacherConversationMessageUseCase,
     MarkTeacherConversationReadUseCase,
     GetTeacherMessageReadersUseCase,

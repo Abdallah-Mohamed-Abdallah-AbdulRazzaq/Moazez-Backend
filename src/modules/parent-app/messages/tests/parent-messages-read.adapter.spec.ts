@@ -1,3 +1,8 @@
+import {
+  CommunicationMessageKind,
+  CommunicationMessageStatus,
+  CommunicationParticipantStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { ParentMessagesReadAdapter } from '../infrastructure/parent-messages-read.adapter';
 
@@ -62,6 +67,60 @@ describe('ParentMessagesReadAdapter', () => {
       expect(mutation).not.toHaveBeenCalled();
     }
     expect(platformBypass).not.toHaveBeenCalled();
+  });
+
+  it('searches only sent visible text inside the current parent conversation scope', async () => {
+    const { adapter, messageMocks } = createAdapter();
+    messageMocks.findMany.mockResolvedValue([]);
+    messageMocks.count.mockResolvedValue(0);
+
+    await adapter.searchMessages({
+      conversationId: 'conversation-1',
+      parentUserId: 'parent-user-1',
+      q: 'invoice',
+      page: 2,
+      limit: 10,
+    });
+
+    const query = messageMocks.findMany.mock.calls[0][0];
+    const selectJson = JSON.stringify(query.select);
+
+    expect(query.where).toMatchObject({
+      conversationId: 'conversation-1',
+      status: CommunicationMessageStatus.SENT,
+      kind: { not: CommunicationMessageKind.SYSTEM },
+      hiddenAt: null,
+      deletedAt: null,
+      body: {
+        contains: 'invoice',
+        mode: 'insensitive',
+      },
+      conversation: {
+        is: {
+          deletedAt: null,
+          participants: {
+            some: {
+              userId: 'parent-user-1',
+              status: {
+                in: [
+                  CommunicationParticipantStatus.ACTIVE,
+                  CommunicationParticipantStatus.MUTED,
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(query.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+    expect(query.take).toBe(10);
+    expect(query.skip).toBe(10);
+    expect(query.where).not.toHaveProperty('schoolId');
+    expect(selectJson).toContain('attachments');
+    expect(selectJson).not.toContain('bucket');
+    expect(selectJson).not.toContain('objectKey');
+    expect(selectJson).not.toContain('metadata');
+    expect(messageMocks.count.mock.calls[0][0].where).toEqual(query.where);
   });
 
   it('discovers parent contacts only through linked child classroom allocations', async () => {

@@ -68,6 +68,41 @@ describe('ParentMessagesPresenter', () => {
     }
   });
 
+  it('presents parent message search with dual aliases and no unsafe fields', () => {
+    const result = ParentMessagesPresenter.presentMessageSearch({
+      result: {
+        conversationId: 'conversation-1',
+        items: [messageFixture({ attachments: [attachmentFixture()] })],
+        total: 1,
+        page: 1,
+        limit: 20,
+      },
+      parentUserId: 'parent-user-1',
+      query: 'teacher',
+    });
+    const serialized = JSON.stringify(result);
+
+    expect(result).toMatchObject({
+      conversationId: 'conversation-1',
+      conversation_id: 'conversation-1',
+      query: 'teacher',
+      pagination: { page: 1, limit: 20, total: 1 },
+    });
+    expect(result.messages[0]).toMatchObject({
+      messageId: 'message-1',
+      message_id: 'message-1',
+      senderType: 'me',
+      sender_type: 'me',
+      attachmentsCount: 1,
+      attachments_count: 1,
+    });
+    expect(serialized).not.toContain('schoolId');
+    expect(serialized).not.toContain('uploadedById');
+    expect(serialized).not.toContain('bucket');
+    expect(serialized).not.toContain('objectKey');
+    expect(serialized).not.toContain('deletedAt');
+  });
+
   it('presents enriched parent conversation list cards safely', () => {
     const result = ParentMessagesPresenter.presentConversationList({
       result: {

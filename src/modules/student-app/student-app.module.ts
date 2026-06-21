@@ -66,6 +66,7 @@ import { GetStudentMessageConversationUseCase } from './messages/application/get
 import { ListStudentConversationMessagesUseCase } from './messages/application/list-student-conversation-messages.use-case';
 import { ListStudentMessageConversationsUseCase } from './messages/application/list-student-message-conversations.use-case';
 import { MarkStudentConversationReadUseCase } from './messages/application/mark-student-conversation-read.use-case';
+import { SearchStudentConversationMessagesUseCase } from './messages/application/search-student-conversation-messages.use-case';
 import { SendStudentConversationMessageUseCase } from './messages/application/send-student-conversation-message.use-case';
 import {
   CreateStudentMessageConversationUseCase,
@@ -216,6 +217,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     ListStudentMessageConversationsUseCase,
     GetStudentMessageConversationUseCase,
     ListStudentConversationMessagesUseCase,
+    SearchStudentConversationMessagesUseCase,
     SendStudentConversationMessageUseCase,
     MarkStudentConversationReadUseCase,
     GetStudentMessageReadersUseCase,

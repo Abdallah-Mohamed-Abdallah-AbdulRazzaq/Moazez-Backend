@@ -28,9 +28,11 @@ import {
   CreateParentMessageConversationUseCase,
   ListParentMessageContactsUseCase,
 } from '../application/parent-message-contacts.use-cases';
+import { SearchParentConversationMessagesUseCase } from '../application/search-parent-conversation-messages.use-case';
 import { SendParentConversationMessageUseCase } from '../application/send-parent-conversation-message.use-case';
 import {
   CreateParentMessageConversationDto,
+  ParentConversationMessageSearchResponseDto,
   ListParentConversationMessagesQueryDto,
   ListParentMessageContactsQueryDto,
   ListParentMessageConversationsQueryDto,
@@ -43,6 +45,7 @@ import {
   ParentMessageConversationsResponseDto,
   ParentMessageReadersQueryDto,
   ParentMessageReadersResponseDto,
+  SearchParentConversationMessagesQueryDto,
   SendParentConversationMessageDto,
 } from '../dto/parent-messages.dto';
 
@@ -54,6 +57,7 @@ export class ParentMessagesController {
     private readonly listParentMessageConversationsUseCase: ListParentMessageConversationsUseCase,
     private readonly getParentMessageConversationUseCase: GetParentMessageConversationUseCase,
     private readonly listParentConversationMessagesUseCase: ListParentConversationMessagesUseCase,
+    private readonly searchParentConversationMessagesUseCase: SearchParentConversationMessagesUseCase,
     private readonly sendParentConversationMessageUseCase: SendParentConversationMessageUseCase,
     private readonly markParentConversationReadUseCase: MarkParentConversationReadUseCase,
     private readonly getParentMessageReadersUseCase: GetParentMessageReadersUseCase,
@@ -85,6 +89,18 @@ export class ParentMessagesController {
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
   ): Promise<ParentMessageConversationResponseDto> {
     return this.getParentMessageConversationUseCase.execute(conversationId);
+  }
+
+  @Get('conversations/:conversationId/search')
+  @ApiOkResponse({ type: ParentConversationMessageSearchResponseDto })
+  searchMessages(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Query() query: SearchParentConversationMessagesQueryDto,
+  ): Promise<ParentConversationMessageSearchResponseDto> {
+    return this.searchParentConversationMessagesUseCase.execute({
+      conversationId,
+      query,
+    });
   }
 
   @Get('conversations/:conversationId/messages')

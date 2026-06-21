@@ -113,6 +113,62 @@ describe('TeacherMessagesReadAdapter', () => {
     expect(query.where).not.toHaveProperty('schoolId');
   });
 
+  it('searches only sent visible text inside the current teacher conversation scope', async () => {
+    const { adapter, prismaMocks } = createAdapter();
+    prismaMocks.communicationMessage.findMany.mockResolvedValue([]);
+    prismaMocks.communicationMessage.count.mockResolvedValue(0);
+
+    await adapter.searchMessages({
+      conversationId: 'conversation-1',
+      teacherUserId: 'teacher-1',
+      q: 'exam',
+      page: 2,
+      limit: 10,
+    });
+
+    const query = prismaMocks.communicationMessage.findMany.mock.calls[0][0];
+    const selectJson = JSON.stringify(query.select);
+
+    expect(query.where).toMatchObject({
+      conversationId: 'conversation-1',
+      status: CommunicationMessageStatus.SENT,
+      kind: { not: CommunicationMessageKind.SYSTEM },
+      hiddenAt: null,
+      deletedAt: null,
+      body: {
+        contains: 'exam',
+        mode: 'insensitive',
+      },
+      conversation: {
+        is: {
+          deletedAt: null,
+          participants: {
+            some: {
+              userId: 'teacher-1',
+              status: {
+                in: [
+                  CommunicationParticipantStatus.ACTIVE,
+                  CommunicationParticipantStatus.MUTED,
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(query.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+    expect(query.take).toBe(10);
+    expect(query.skip).toBe(10);
+    expect(query.where).not.toHaveProperty('schoolId');
+    expect(selectJson).toContain('attachments');
+    expect(selectJson).not.toContain('bucket');
+    expect(selectJson).not.toContain('objectKey');
+    expect(selectJson).not.toContain('metadata');
+    expect(prismaMocks.communicationMessage.count.mock.calls[0][0].where).toEqual(
+      query.where,
+    );
+  });
+
   it('derives unread summaries from participant conversations only', async () => {
     const { adapter, prismaMocks } = createAdapter();
     prismaMocks.communicationMessage.groupBy.mockResolvedValue([

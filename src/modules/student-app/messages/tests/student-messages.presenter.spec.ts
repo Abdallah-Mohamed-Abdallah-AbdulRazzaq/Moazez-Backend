@@ -155,6 +155,46 @@ describe('StudentMessagesPresenter', () => {
     }
   });
 
+  it('presents student message search with dual aliases and no unsafe fields', () => {
+    const result = StudentMessagesPresenter.presentMessageSearch({
+      result: {
+        conversationId: 'conversation-1',
+        items: [
+          messageFixture({
+            id: 'message-with-attachment',
+            attachments: [attachmentFixture()],
+          }),
+        ] as any,
+        total: 1,
+        page: 1,
+        limit: 20,
+      },
+      studentUserId: 'student-user-1',
+      query: 'science',
+    });
+    const serialized = JSON.stringify(result);
+
+    expect(result).toMatchObject({
+      conversationId: 'conversation-1',
+      conversation_id: 'conversation-1',
+      query: 'science',
+      pagination: { page: 1, limit: 20, total: 1 },
+    });
+    expect(result.messages[0]).toMatchObject({
+      messageId: 'message-with-attachment',
+      message_id: 'message-with-attachment',
+      senderType: 'other',
+      sender_type: 'other',
+      attachmentsCount: 1,
+      attachments_count: 1,
+    });
+    expect(serialized).not.toContain('schoolId');
+    expect(serialized).not.toContain('uploadedById');
+    expect(serialized).not.toContain('bucket');
+    expect(serialized).not.toContain('objectKey');
+    expect(serialized).not.toContain('deletedAt');
+  });
+
   it('presents student list enrichment with group mapping and sender-excluded last-message reads', () => {
     const result = StudentMessagesPresenter.presentConversationList({
       result: {

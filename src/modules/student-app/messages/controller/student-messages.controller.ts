@@ -24,6 +24,7 @@ import { GetStudentMessageConversationUseCase } from '../application/get-student
 import { ListStudentConversationMessagesUseCase } from '../application/list-student-conversation-messages.use-case';
 import { ListStudentMessageConversationsUseCase } from '../application/list-student-message-conversations.use-case';
 import { MarkStudentConversationReadUseCase } from '../application/mark-student-conversation-read.use-case';
+import { SearchStudentConversationMessagesUseCase } from '../application/search-student-conversation-messages.use-case';
 import { SendStudentConversationMessageUseCase } from '../application/send-student-conversation-message.use-case';
 import {
   CreateStudentMessageConversationUseCase,
@@ -34,7 +35,9 @@ import {
   ListStudentConversationMessagesQueryDto,
   ListStudentMessageContactsQueryDto,
   ListStudentMessageConversationsQueryDto,
+  SearchStudentConversationMessagesQueryDto,
   SendStudentConversationMessageDto,
+  StudentConversationMessageSearchResponseDto,
   StudentConversationMessageResponseDto,
   StudentConversationMessagesResponseDto,
   StudentConversationReadResponseDto,
@@ -54,6 +57,7 @@ export class StudentMessagesController {
     private readonly listStudentMessageConversationsUseCase: ListStudentMessageConversationsUseCase,
     private readonly getStudentMessageConversationUseCase: GetStudentMessageConversationUseCase,
     private readonly listStudentConversationMessagesUseCase: ListStudentConversationMessagesUseCase,
+    private readonly searchStudentConversationMessagesUseCase: SearchStudentConversationMessagesUseCase,
     private readonly sendStudentConversationMessageUseCase: SendStudentConversationMessageUseCase,
     private readonly markStudentConversationReadUseCase: MarkStudentConversationReadUseCase,
     private readonly getStudentMessageReadersUseCase: GetStudentMessageReadersUseCase,
@@ -85,6 +89,18 @@ export class StudentMessagesController {
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
   ): Promise<StudentMessageConversationResponseDto> {
     return this.getStudentMessageConversationUseCase.execute(conversationId);
+  }
+
+  @Get('conversations/:conversationId/search')
+  @ApiOkResponse({ type: StudentConversationMessageSearchResponseDto })
+  searchMessages(
+    @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
+    @Query() query: SearchStudentConversationMessagesQueryDto,
+  ): Promise<StudentConversationMessageSearchResponseDto> {
+    return this.searchStudentConversationMessagesUseCase.execute({
+      conversationId,
+      query,
+    });
   }
 
   @Get('conversations/:conversationId/messages')

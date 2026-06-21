@@ -74,6 +74,60 @@ describe('StudentMessagesReadAdapter', () => {
     });
   });
 
+  it('searches only sent visible text inside the current student conversation scope', async () => {
+    const { adapter, messageMocks } = createAdapter();
+    messageMocks.findMany.mockResolvedValue([]);
+    messageMocks.count.mockResolvedValue(0);
+
+    await adapter.searchMessages({
+      conversationId: 'conversation-1',
+      studentUserId: 'student-user-1',
+      q: 'homework',
+      page: 2,
+      limit: 10,
+    });
+
+    const query = messageMocks.findMany.mock.calls[0][0];
+    const selectJson = JSON.stringify(query.select);
+
+    expect(query.where).toMatchObject({
+      conversationId: 'conversation-1',
+      status: CommunicationMessageStatus.SENT,
+      kind: { not: CommunicationMessageKind.SYSTEM },
+      hiddenAt: null,
+      deletedAt: null,
+      body: {
+        contains: 'homework',
+        mode: 'insensitive',
+      },
+      conversation: {
+        is: {
+          deletedAt: null,
+          participants: {
+            some: {
+              userId: 'student-user-1',
+              status: {
+                in: [
+                  CommunicationParticipantStatus.ACTIVE,
+                  CommunicationParticipantStatus.MUTED,
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(query.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+    expect(query.take).toBe(10);
+    expect(query.skip).toBe(10);
+    expect(query.where).not.toHaveProperty('schoolId');
+    expect(selectJson).toContain('attachments');
+    expect(selectJson).not.toContain('bucket');
+    expect(selectJson).not.toContain('objectKey');
+    expect(selectJson).not.toContain('metadata');
+    expect(messageMocks.count.mock.calls[0][0].where).toEqual(query.where);
+  });
+
   it('does not create conversations or use platform bypass', async () => {
     const { adapter, conversationMocks, messageMocks, platformBypass } =
       createAdapter();

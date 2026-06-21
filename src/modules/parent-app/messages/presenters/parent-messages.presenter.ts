@@ -5,6 +5,7 @@ import type {
 } from '../../../communication/presenters/communication-message-read.presenter';
 import { presentCommunicationAppMessageAttachments } from '../../../communication/presenters/communication-app-message-attachment.presenter';
 import {
+  ParentConversationMessageSearchResponseDto,
   ParentConversationMessageResponseDto,
   ParentConversationMessagesResponseDto,
   ParentConversationReadResponseDto,
@@ -75,6 +76,17 @@ export class ParentMessagesPresenter {
         limit: params.result.limit,
         total: params.result.total,
       },
+    };
+  }
+
+  static presentMessageSearch(params: {
+    result: ParentMessageListResult;
+    parentUserId: string;
+    query: string;
+  }): ParentConversationMessageSearchResponseDto {
+    return {
+      ...this.presentMessageList(params),
+      query: params.query,
     };
   }
 
