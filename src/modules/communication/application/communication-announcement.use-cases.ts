@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   AuditOutcome,
   CommunicationAnnouncementAudienceType,
@@ -18,6 +18,7 @@ import {
   assertCanLinkAnnouncementAttachment,
   assertCanMarkAnnouncementRead,
   assertCanPublishAnnouncement,
+  assertCanReplayAnnouncementNotifications,
   assertCanUpdateAnnouncement,
   CommunicationAnnouncementAudienceInput,
   CommunicationAnnouncementAudienceTypeValue,
@@ -38,6 +39,7 @@ import {
   ListCommunicationAnnouncementsQueryDto,
   UpdateCommunicationAnnouncementDto,
 } from '../dto/communication-announcement.dto';
+import { CommunicationNotificationGenerationService } from './communication-notification-generation.service';
 import { CommunicationNotificationQueueService } from './communication-notification-queue.service';
 import {
   CommunicationAnnouncementAttachmentRecord,
@@ -60,6 +62,9 @@ import {
   presentCommunicationAnnouncementReadReceipt,
   presentCommunicationAnnouncementReadSummary,
 } from '../presenters/communication-announcement-read.presenter';
+
+const DEFAULT_SCHEDULED_ANNOUNCEMENT_BATCH_SIZE = 50;
+const MAX_SCHEDULED_ANNOUNCEMENT_BATCH_SIZE = 100;
 
 @Injectable()
 export class ListCommunicationAnnouncementsUseCase {
@@ -374,6 +379,119 @@ export class PublishCommunicationAnnouncementUseCase {
     }
 
     return presentCommunicationAnnouncement(published);
+  }
+}
+
+export interface ProcessScheduledCommunicationAnnouncementsOptions {
+  now?: Date;
+  limit?: number;
+}
+
+export interface ProcessScheduledCommunicationAnnouncementsSummary {
+  processedCount: number;
+  publishedCount: number;
+  skippedCount: number;
+  failedCount: number;
+}
+
+@Injectable()
+export class ProcessScheduledCommunicationAnnouncementsUseCase {
+  private readonly logger = new Logger(
+    ProcessScheduledCommunicationAnnouncementsUseCase.name,
+  );
+
+  constructor(
+    private readonly communicationAnnouncementRepository: CommunicationAnnouncementRepository,
+    private readonly publishCommunicationAnnouncementUseCase: PublishCommunicationAnnouncementUseCase,
+  ) {}
+
+  async execute(
+    options: ProcessScheduledCommunicationAnnouncementsOptions = {},
+  ): Promise<ProcessScheduledCommunicationAnnouncementsSummary> {
+    requireCommunicationScope();
+    const now = options.now ?? new Date();
+    const limit = normalizeScheduledAnnouncementBatchLimit(options.limit);
+    const dueAnnouncements =
+      await this.communicationAnnouncementRepository.findDueScheduledCurrentSchoolAnnouncements(
+        {
+          now,
+          limit,
+        },
+      );
+
+    const summary: ProcessScheduledCommunicationAnnouncementsSummary = {
+      processedCount: dueAnnouncements.length,
+      publishedCount: 0,
+      skippedCount: 0,
+      failedCount: 0,
+    };
+
+    for (const announcement of dueAnnouncements) {
+      try {
+        await this.publishCommunicationAnnouncementUseCase.execute(
+          announcement.id,
+        );
+        summary.publishedCount += 1;
+      } catch (error) {
+        summary.failedCount += 1;
+        this.logger.warn(
+          `Scheduled communication announcement publish failed for ${announcement.id}: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
+        );
+      }
+    }
+
+    return summary;
+  }
+}
+
+export interface ReplayCommunicationAnnouncementNotificationsSummary {
+  announcementId: string;
+  replayed: boolean;
+  generatedCount: number;
+  skippedExistingCount: number;
+  failedCount: number;
+  skippedReason: string | null;
+}
+
+@Injectable()
+export class ReplayCommunicationAnnouncementNotificationsUseCase {
+  constructor(
+    private readonly communicationAnnouncementRepository: CommunicationAnnouncementRepository,
+    private readonly communicationNotificationGenerationService: CommunicationNotificationGenerationService,
+  ) {}
+
+  async execute(
+    announcementId: string,
+  ): Promise<ReplayCommunicationAnnouncementNotificationsSummary> {
+    const scope = requireCommunicationScope();
+    const announcement = await requireAnnouncement(
+      this.communicationAnnouncementRepository,
+      announcementId,
+    );
+
+    assertCanReplayAnnouncementNotifications(toPlainAnnouncement(announcement));
+
+    const result =
+      await this.communicationNotificationGenerationService.generateForPublishedAnnouncement(
+        {
+          schoolId: scope.schoolId,
+          organizationId: scope.organizationId,
+          announcementId: announcement.id,
+          actorUserId: scope.actorId,
+          actorUserType: scope.userType,
+        },
+      );
+
+    return {
+      announcementId: result.announcementId,
+      replayed: result.skippedReason === null,
+      generatedCount: result.createdNotificationCount,
+      skippedExistingCount: result.existingNotificationCount,
+      failedCount: 0,
+      skippedReason: result.skippedReason,
+    };
   }
 }
 
@@ -706,6 +824,20 @@ function normalizeAudienceUserId(
 function parseOptionalDate(value: string | null | undefined): Date | null {
   if (value === undefined || value === null) return null;
   return new Date(value);
+}
+
+function normalizeScheduledAnnouncementBatchLimit(
+  value: number | undefined,
+): number {
+  if (value === undefined) return DEFAULT_SCHEDULED_ANNOUNCEMENT_BATCH_SIZE;
+  if (!Number.isInteger(value) || value < 1) {
+    throw new CommunicationAnnouncementInvalidException(
+      'Scheduled announcement batch limit is invalid',
+      { field: 'limit', value },
+    );
+  }
+
+  return Math.min(value, MAX_SCHEDULED_ANNOUNCEMENT_BATCH_SIZE);
 }
 
 function toPlainAnnouncement(

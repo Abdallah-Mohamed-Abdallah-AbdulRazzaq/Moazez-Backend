@@ -308,6 +308,24 @@ export class CommunicationAnnouncementRepository {
     });
   }
 
+  findDueScheduledCurrentSchoolAnnouncements(input: {
+    now: Date;
+    limit: number;
+  }): Promise<CommunicationAnnouncementListRecord[]> {
+    return this.scopedPrisma.communicationAnnouncement.findMany({
+      where: {
+        status: CommunicationAnnouncementStatus.SCHEDULED,
+        scheduledAt: { lte: input.now },
+        publishedAt: null,
+        archivedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: input.now } }],
+      },
+      orderBy: [{ scheduledAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      take: input.limit,
+      ...COMMUNICATION_ANNOUNCEMENT_LIST_ARGS,
+    });
+  }
+
   async createCurrentSchoolAnnouncement(input: {
     schoolId: string;
     data: CommunicationAnnouncementCreateData;

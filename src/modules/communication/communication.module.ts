@@ -15,6 +15,8 @@ import {
   ListCommunicationAnnouncementsUseCase,
   MarkCommunicationAnnouncementReadUseCase,
   PublishCommunicationAnnouncementUseCase,
+  ProcessScheduledCommunicationAnnouncementsUseCase,
+  ReplayCommunicationAnnouncementNotificationsUseCase,
   UpdateCommunicationAnnouncementUseCase,
 } from './application/communication-announcement.use-cases';
 import {
@@ -108,6 +110,7 @@ import {
   UpdateCommunicationUserRestrictionUseCase,
 } from './application/communication-restriction.use-cases';
 import { CommunicationConversationController } from './controller/communication-conversation.controller';
+import { CommunicationAdminController } from './controller/communication-admin.controller';
 import { CommunicationAnnouncementController } from './controller/communication-announcement.controller';
 import { CommunicationMessageInteractionsController } from './controller/communication-message-interactions.controller';
 import { CommunicationMessageController } from './controller/communication-message.controller';
@@ -135,6 +138,7 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
   imports: [AuthModule, QueueModule, RealtimeModule, StorageModule],
   controllers: [
     CommunicationPolicyController,
+    CommunicationAdminController,
     CommunicationAnnouncementController,
     CommunicationConversationController,
     CommunicationParticipantController,
@@ -166,6 +170,8 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     GetCommunicationAnnouncementUseCase,
     UpdateCommunicationAnnouncementUseCase,
     PublishCommunicationAnnouncementUseCase,
+    ProcessScheduledCommunicationAnnouncementsUseCase,
+    ReplayCommunicationAnnouncementNotificationsUseCase,
     ArchiveCommunicationAnnouncementUseCase,
     CancelCommunicationAnnouncementUseCase,
     MarkCommunicationAnnouncementReadUseCase,

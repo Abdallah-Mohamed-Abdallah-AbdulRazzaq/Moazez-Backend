@@ -343,6 +343,23 @@ export function assertCanMarkAnnouncementRead(
   assertAnnouncementNotExpired(announcement, now);
 }
 
+export function assertCanReplayAnnouncementNotifications(
+  announcement: PlainCommunicationAnnouncement,
+  now = new Date(),
+): void {
+  if (announcement.status !== 'PUBLISHED' || Boolean(announcement.archivedAt)) {
+    throw new CommunicationAnnouncementStateException(
+      'Only published announcements can replay notification generation',
+      {
+        announcementId: announcement.id,
+        status: announcement.status,
+      },
+    );
+  }
+
+  assertAnnouncementNotExpired(announcement, now);
+}
+
 export function assertCanLinkAnnouncementAttachment(
   announcement: PlainCommunicationAnnouncement,
 ): void {

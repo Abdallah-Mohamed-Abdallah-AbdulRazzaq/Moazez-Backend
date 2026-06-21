@@ -2,6 +2,7 @@ import {
   assertAnnouncementAudienceIsValid,
   assertAnnouncementLifecycleDates,
   assertCanMarkAnnouncementRead,
+  assertCanReplayAnnouncementNotifications,
   assertCanUpdateAnnouncement,
   CommunicationAnnouncementInvalidException,
   CommunicationAnnouncementStateException,
@@ -145,6 +146,69 @@ describe('communication announcement domain', () => {
           body: 'Body',
           audienceType: 'SCHOOL',
           expiresAt: new Date('2026-05-02T10:00:00.000Z'),
+        },
+        now,
+      ),
+    ).toThrow(CommunicationAnnouncementStateException);
+  });
+
+  it('allows notification replay only for non-expired published announcements', () => {
+    const now = new Date('2026-05-03T10:00:00.000Z');
+
+    expect(() =>
+      assertCanReplayAnnouncementNotifications(
+        {
+          id: 'announcement-1',
+          status: 'PUBLISHED',
+          title: 'Title',
+          body: 'Body',
+          audienceType: 'SCHOOL',
+          publishedAt: new Date('2026-05-03T09:00:00.000Z'),
+          expiresAt: new Date('2026-05-04T10:00:00.000Z'),
+        },
+        now,
+      ),
+    ).not.toThrow();
+
+    expect(() =>
+      assertCanReplayAnnouncementNotifications(
+        {
+          id: 'announcement-2',
+          status: 'SCHEDULED',
+          title: 'Title',
+          body: 'Body',
+          audienceType: 'SCHOOL',
+          scheduledAt: new Date('2026-05-03T09:00:00.000Z'),
+        },
+        now,
+      ),
+    ).toThrow(CommunicationAnnouncementStateException);
+
+    expect(() =>
+      assertCanReplayAnnouncementNotifications(
+        {
+          id: 'announcement-3',
+          status: 'PUBLISHED',
+          title: 'Title',
+          body: 'Body',
+          audienceType: 'SCHOOL',
+          publishedAt: new Date('2026-05-03T09:00:00.000Z'),
+          archivedAt: new Date('2026-05-03T09:30:00.000Z'),
+        },
+        now,
+      ),
+    ).toThrow(CommunicationAnnouncementStateException);
+
+    expect(() =>
+      assertCanReplayAnnouncementNotifications(
+        {
+          id: 'announcement-4',
+          status: 'PUBLISHED',
+          title: 'Title',
+          body: 'Body',
+          audienceType: 'SCHOOL',
+          publishedAt: new Date('2026-05-03T09:00:00.000Z'),
+          expiresAt: new Date('2026-05-03T09:30:00.000Z'),
         },
         now,
       ),

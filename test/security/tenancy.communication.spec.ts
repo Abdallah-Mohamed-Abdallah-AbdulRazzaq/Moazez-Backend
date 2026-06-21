@@ -4466,6 +4466,90 @@ describe('Communication announcement tenancy isolation (security)', () => {
     expect(json).not.toContain('school B private announcement');
   });
 
+  it('admin replay tooling is current-school scoped and returns only safe counts', async () => {
+    const admin = await login(adminAEmail);
+    const viewer = await login(viewOnlyEmail);
+    const [schoolAAnnouncement, schoolBAnnouncement] = await Promise.all([
+      prisma.communicationAnnouncement.create({
+        data: {
+          schoolId: schoolAId,
+          title: `${testSuffix} replay school A announcement`,
+          body: 'Replay school A body',
+          status: CommunicationAnnouncementStatus.PUBLISHED,
+          priority: CommunicationAnnouncementPriority.NORMAL,
+          audienceType: CommunicationAnnouncementAudienceType.SCHOOL,
+          publishedAt: new Date('2026-05-03T10:00:00.000Z'),
+          createdById: adminAId,
+          updatedById: adminAId,
+          publishedById: adminAId,
+        },
+        select: { id: true },
+      }),
+      prisma.communicationAnnouncement.create({
+        data: {
+          schoolId: schoolBId,
+          title: `${testSuffix} replay school B announcement`,
+          body: 'Replay school B body',
+          status: CommunicationAnnouncementStatus.PUBLISHED,
+          priority: CommunicationAnnouncementPriority.NORMAL,
+          audienceType: CommunicationAnnouncementAudienceType.SCHOOL,
+          publishedAt: new Date('2026-05-03T10:00:00.000Z'),
+          createdById: adminBId,
+          updatedById: adminBId,
+          publishedById: adminBId,
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    const replay = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/admin/announcements/${schoolAAnnouncement.id}/replay-notifications`,
+      )
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(201);
+    const replayJson = JSON.stringify(replay.body);
+
+    expect(replay.body).toMatchObject({
+      announcementId: schoolAAnnouncement.id,
+      replayed: expect.any(Boolean),
+      generatedCount: expect.any(Number),
+      skippedExistingCount: expect.any(Number),
+      failedCount: 0,
+      skippedReason: null,
+    });
+    expect(replayJson).not.toContain('schoolId');
+    expect(replayJson).not.toContain('recipientUserId');
+    expect(replayJson).not.toContain('delivery');
+    expect(replayJson).not.toContain('queue');
+
+    const replayAgain = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/admin/announcements/${schoolAAnnouncement.id}/replay-notifications`,
+      )
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(201);
+
+    expect(replayAgain.body.generatedCount).toBe(0);
+    expect(replayAgain.body.skippedExistingCount).toBeGreaterThanOrEqual(
+      replay.body.generatedCount,
+    );
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/admin/announcements/${schoolBAnnouncement.id}/replay-notifications`,
+      )
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/communication/admin/announcements/${schoolAAnnouncement.id}/replay-notifications`,
+      )
+      .set('Authorization', `Bearer ${viewer.accessToken}`)
+      .expect(403);
+  });
+
   it('actors without view permission get 403 for read routes', async () => {
     const { accessToken } = await login(noAccessEmail);
 
@@ -4554,6 +4638,12 @@ describe('Communication announcement tenancy isolation (security)', () => {
         .post(`${GLOBAL_PREFIX}/communication/announcements`)
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ title: 'denied', body: 'denied', audienceType: 'school' })
+        .expect(403);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/communication/admin/announcements/${announcementAId}/replay-notifications`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
         .expect(403);
     }
   });
