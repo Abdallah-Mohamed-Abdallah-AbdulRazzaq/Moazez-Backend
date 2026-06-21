@@ -6,10 +6,18 @@ import {
 } from '@prisma/client';
 import { getRequestContext } from '../../../common/context/request-context';
 import { NotFoundDomainException } from '../../../common/exceptions/domain-exception';
+import { FilesNotFoundException } from '../../files/uploads/domain/file-upload.exceptions';
 import {
   CommunicationScope,
   requireCommunicationScope,
 } from '../communication-context';
+import {
+  assertAttachmentFileIsSafe,
+  assertAttachmentMediaPolicy,
+  assertAttachmentMimeMatchesMessageKind,
+  CommunicationAttachmentInvalidFileException,
+  PlainAttachmentFile,
+} from '../domain/communication-message-attachment-domain';
 import {
   assertConversationAllowsMessageSend,
   assertMessageCanBeDeleted,
@@ -32,6 +40,7 @@ import {
 import { CommunicationConversationNotMemberException } from '../domain/communication-participant-domain';
 import { buildDefaultCommunicationPolicy } from '../domain/communication-policy-domain';
 import {
+  CreateCommunicationMessageAttachmentDto,
   CreateCommunicationMessageDto,
   ListCommunicationMessagesQueryDto,
   MarkConversationReadDto,
@@ -42,6 +51,8 @@ import {
 import {
   CommunicationMessageAuditInput,
   CommunicationMessageConversationAccessRecord,
+  CommunicationMessageCreateResult,
+  CommunicationMessageFileReference,
   CommunicationMessageParticipantAccessRecord,
   CommunicationMessageRecord,
   CommunicationMessageRepository,
@@ -137,10 +148,13 @@ export class CreateCommunicationMessageUseCase {
       conversationId,
       actorId: scope.actorId,
     });
-    const body = normalizeMessageBody(command.body ?? command.content);
+    const body = normalizeMessageBody(
+      command.body ?? command.content ?? command.caption,
+    );
     const kind = normalizeCommunicationMessageType(
       command.type ?? 'text',
     ) as CommunicationMessageKind;
+    const attachments = normalizeMessageAttachmentInputs(command);
 
     assertMessageSendAllowedByPolicy(policy);
     assertParticipantAllowsMessageSend(toPlainParticipant(participant));
@@ -154,8 +168,10 @@ export class CreateCommunicationMessageUseCase {
       body,
       metadata: command.metadata,
       clientMessageId: command.clientMessageId,
+      attachmentsCount: attachments.length,
     });
     assertMessageLength(body, policy.maxMessageLength);
+    assertAttachmentMediaPolicy({ kind, policy });
 
     const replyTarget = command.replyToMessageId
       ? await requireReplyTarget({
@@ -171,7 +187,15 @@ export class CreateCommunicationMessageUseCase {
       });
     }
 
-    const message =
+    await loadAndValidateMessageAttachmentFiles({
+      repository: this.communicationMessageRepository,
+      schoolId: scope.schoolId,
+      kind,
+      attachments,
+      maxAttachmentSizeMb: policy.maxAttachmentSizeMb,
+    });
+
+    const createResult =
       await this.communicationMessageRepository.createCurrentSchoolMessage({
         schoolId: scope.schoolId,
         conversationId,
@@ -183,6 +207,14 @@ export class CreateCommunicationMessageUseCase {
           clientMessageId: normalizeOptionalText(command.clientMessageId),
           replyToMessageId: command.replyToMessageId ?? null,
           metadata: command.metadata ?? null,
+          attachments: attachments.map((attachment) => ({
+            fileId: attachment.fileId,
+            uploadedById: scope.actorId,
+            caption: normalizeOptionalText(
+              attachment.caption ?? command.caption,
+            ),
+            sortOrder: attachment.sortOrder,
+          })),
         },
         buildAuditEntry: (created) =>
           buildCommunicationMessageAuditEntry({
@@ -195,11 +227,15 @@ export class CreateCommunicationMessageUseCase {
               'clientMessageId',
               'replyToMessageId',
               'metadata',
+              'attachments',
             ],
           }),
       });
+    const { message, wasCreated } = normalizeCreateMessageResult(createResult);
 
-    this.realtimeEvents?.publishMessageCreated(scope.schoolId, message);
+    if (wasCreated) {
+      this.realtimeEvents?.publishMessageCreated(scope.schoolId, message);
+    }
 
     return presentCommunicationMessage(message);
   }
@@ -676,6 +712,126 @@ function toPlainMessage(
     hiddenAt: message.hiddenAt,
     deletedAt: message.deletedAt,
   };
+}
+
+interface NormalizedMessageAttachmentInput {
+  fileId: string;
+  mediaKind: string | null;
+  caption: string | null;
+  sortOrder: number;
+}
+
+function normalizeMessageAttachmentInputs(
+  command: CreateCommunicationMessageDto,
+): NormalizedMessageAttachmentInput[] {
+  return (command.attachments ?? []).map((attachment, index) =>
+    normalizeMessageAttachmentInput(attachment, index),
+  );
+}
+
+function normalizeMessageAttachmentInput(
+  attachment: CreateCommunicationMessageAttachmentDto,
+  index: number,
+): NormalizedMessageAttachmentInput {
+  const fileId = normalizeOptionalText(attachment.fileId);
+  if (!fileId) {
+    throw new CommunicationAttachmentInvalidFileException(
+      'Attachment file is required',
+      { index },
+    );
+  }
+
+  return {
+    fileId,
+    mediaKind: normalizeOptionalText(attachment.mediaKind),
+    caption: normalizeOptionalText(attachment.caption),
+    sortOrder: normalizeAttachmentSortOrder(attachment.sortOrder, index),
+  };
+}
+
+function normalizeAttachmentSortOrder(
+  value: number | undefined,
+  index: number,
+): number {
+  if (value === undefined) return index;
+  if (!Number.isInteger(value) || value < 0 || value > 10000) {
+    throw new CommunicationAttachmentInvalidFileException(
+      'Attachment sort order is invalid',
+      { index, sortOrder: value },
+    );
+  }
+
+  return value;
+}
+
+async function loadAndValidateMessageAttachmentFiles(params: {
+  repository: CommunicationMessageRepository;
+  schoolId: string;
+  kind: CommunicationMessageKind;
+  attachments: NormalizedMessageAttachmentInput[];
+  maxAttachmentSizeMb: number;
+}): Promise<CommunicationMessageFileReference[]> {
+  if (params.attachments.length === 0) return [];
+
+  const fileIds = [...new Set(params.attachments.map((item) => item.fileId))];
+  if (fileIds.length !== params.attachments.length) {
+    throw new CommunicationAttachmentInvalidFileException(
+      'Duplicate message attachments are not allowed',
+      { fileIds },
+    );
+  }
+
+  const files =
+    await params.repository.findCurrentSchoolFilesForMessageAttachments(fileIds);
+  const fileById = new Map(files.map((file) => [file.id, file]));
+
+  for (const attachment of params.attachments) {
+    const file = fileById.get(attachment.fileId);
+    if (!file) {
+      throw new FilesNotFoundException({ fileId: attachment.fileId });
+    }
+
+    const plainFile = toPlainAttachmentFile(file);
+    assertAttachmentFileIsSafe({
+      file: plainFile,
+      maxAttachmentSizeMb: params.maxAttachmentSizeMb,
+      expectedSchoolId: params.schoolId,
+    });
+    assertAttachmentMimeMatchesMessageKind({
+      kind: params.kind,
+      file: plainFile,
+      mediaKind: attachment.mediaKind,
+    });
+  }
+
+  return params.attachments.map((attachment) => fileById.get(attachment.fileId)!);
+}
+
+function toPlainAttachmentFile(
+  file: CommunicationMessageFileReference,
+): PlainAttachmentFile {
+  return {
+    id: file.id,
+    schoolId: file.schoolId,
+    mimeType: file.mimeType,
+    sizeBytes: file.sizeBytes,
+    deletedAt: file.deletedAt,
+  };
+}
+
+function normalizeCreateMessageResult(
+  result: CommunicationMessageCreateResult | CommunicationMessageRecord,
+): CommunicationMessageCreateResult {
+  if (
+    typeof result === 'object' &&
+    result !== null &&
+    'message' in result &&
+    'wasCreated' in result
+  ) {
+    return result;
+  }
+
+  return { message: result, wasCreated: true };
 }
 
 function buildCommunicationMessageAuditEntry(params: {

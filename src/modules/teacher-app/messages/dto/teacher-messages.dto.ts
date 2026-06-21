@@ -1,5 +1,6 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsArray,
   IsISO8601,
   IsIn,
   IsInt,
@@ -9,6 +10,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 
 export const TEACHER_MESSAGE_CONVERSATION_TYPES = [
@@ -37,6 +39,20 @@ export const TEACHER_MESSAGE_TYPES = [
   'video',
   'system',
 ] as const;
+
+export const TEACHER_MESSAGE_SEND_TYPES = [
+  'text',
+  'image',
+  'file',
+  'audio',
+  'voice',
+  'video',
+] as const;
+
+function toLowerOptionalString(value: unknown): unknown {
+  if (value === undefined || value === null || value === '') return undefined;
+  return typeof value === 'string' ? value.trim().toLowerCase() : value;
+}
 
 export class TeacherMessageConversationParamsDto {
   @IsUUID()
@@ -121,14 +137,63 @@ export class TeacherMessageReadersQueryDto {
   page?: number;
 }
 
+export class SendTeacherConversationMessageAttachmentDto {
+  @IsUUID()
+  fileId!: string;
+
+  @IsOptional()
+  @Transform(({ value }) => toLowerOptionalString(value))
+  @IsIn(['image', 'file', 'audio', 'video'])
+  mediaKind?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  caption?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(10000)
+  sortOrder?: number;
+}
+
 export class SendTeacherConversationMessageDto {
+  @IsOptional()
+  @Transform(({ value }) => toLowerOptionalString(value))
+  @IsIn(TEACHER_MESSAGE_SEND_TYPES)
+  type?: string;
+
+  @IsOptional()
   @IsString()
   @MaxLength(20000)
-  body!: string;
+  body?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  content?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  caption?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  clientMessageId?: string;
 
   @IsOptional()
   @IsUUID()
   replyToMessageId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SendTeacherConversationMessageAttachmentDto)
+  attachments?: SendTeacherConversationMessageAttachmentDto[];
 }
 
 export class TeacherMessagePaginationDto {

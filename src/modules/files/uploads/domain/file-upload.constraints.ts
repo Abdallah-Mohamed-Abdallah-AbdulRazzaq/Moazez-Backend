@@ -1,8 +1,13 @@
 export const FILES_UPLOAD_ALLOWED_MIME_TYPES = [
   'application/pdf',
+  'audio/mp4',
+  'audio/mpeg',
+  'audio/webm',
   'image/jpeg',
   'image/png',
   'text/plain',
+  'video/mp4',
+  'video/webm',
 ] as const;
 
 export const FILES_UPLOAD_MAX_SIZE_BYTES = 10 * 1024 * 1024;

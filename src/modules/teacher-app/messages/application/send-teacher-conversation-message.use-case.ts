@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { CreateCommunicationMessageUseCase } from '../../../communication/application/communication-message.use-cases';
+import { CreateCommunicationMessageDto } from '../../../communication/dto/communication-message.dto';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
 import {
   SendTeacherConversationMessageDto,
@@ -29,11 +30,7 @@ export class SendTeacherConversationMessageUseCase {
 
     const created = await this.createCommunicationMessageUseCase.execute(
       conversationId,
-      {
-        type: 'text',
-        body: dto.body,
-        replyToMessageId: dto.replyToMessageId,
-      },
+      buildCreateMessageCommand(dto),
     );
 
     const message = await this.messagesReadAdapter.findMessageForTeacher({
@@ -67,4 +64,32 @@ export class SendTeacherConversationMessageUseCase {
       );
     }
   }
+}
+
+function buildCreateMessageCommand(
+  dto: SendTeacherConversationMessageDto,
+): CreateCommunicationMessageDto {
+  const command: CreateCommunicationMessageDto = {
+    type: dto.type ?? 'text',
+  };
+
+  if (dto.body !== undefined) command.body = dto.body;
+  if (dto.content !== undefined) command.content = dto.content;
+  if (dto.caption !== undefined) command.caption = dto.caption;
+  if (dto.clientMessageId !== undefined) {
+    command.clientMessageId = dto.clientMessageId;
+  }
+  if (dto.replyToMessageId !== undefined) {
+    command.replyToMessageId = dto.replyToMessageId;
+  }
+  if (dto.attachments !== undefined) {
+    command.attachments = dto.attachments.map((attachment) => ({
+      fileId: attachment.fileId,
+      mediaKind: attachment.mediaKind,
+      caption: attachment.caption,
+      sortOrder: attachment.sortOrder,
+    }));
+  }
+
+  return command;
 }

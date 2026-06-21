@@ -43,6 +43,27 @@ const COMMUNICATION_MESSAGE_ARGS =
           userId: true,
         },
       },
+      attachments: {
+        where: { deletedAt: null },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          fileId: true,
+          caption: true,
+          sortOrder: true,
+          createdAt: true,
+          file: {
+            select: {
+              id: true,
+              originalName: true,
+              mimeType: true,
+              sizeBytes: true,
+              visibility: true,
+              createdAt: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -85,6 +106,19 @@ const COMMUNICATION_MESSAGE_READ_ARGS =
       metadata: true,
       createdAt: true,
       updatedAt: true,
+    },
+  });
+
+const COMMUNICATION_MESSAGE_FILE_REFERENCE_ARGS =
+  Prisma.validator<Prisma.FileDefaultArgs>()({
+    select: {
+      id: true,
+      schoolId: true,
+      originalName: true,
+      mimeType: true,
+      sizeBytes: true,
+      visibility: true,
+      deletedAt: true,
     },
   });
 
@@ -164,6 +198,9 @@ export type CommunicationMessageReadRecord =
     typeof COMMUNICATION_MESSAGE_READ_ARGS
   >;
 
+export type CommunicationMessageFileReference =
+  Prisma.FileGetPayload<typeof COMMUNICATION_MESSAGE_FILE_REFERENCE_ARGS>;
+
 export type CommunicationMessageInfoRecord =
   Prisma.CommunicationMessageGetPayload<
     typeof COMMUNICATION_MESSAGE_INFO_ARGS
@@ -221,6 +258,19 @@ export interface CommunicationMessageCreateData {
   replyToMessageId?: string | null;
   senderUserId?: string | null;
   metadata?: Record<string, unknown> | null;
+  attachments?: CommunicationMessageCreateAttachmentData[];
+}
+
+export interface CommunicationMessageCreateAttachmentData {
+  fileId: string;
+  uploadedById: string;
+  caption?: string | null;
+  sortOrder?: number;
+}
+
+export interface CommunicationMessageCreateResult {
+  message: CommunicationMessageRecord;
+  wasCreated: boolean;
 }
 
 export interface CommunicationMessageUpdateData {
@@ -361,6 +411,19 @@ export class CommunicationMessageRepository {
     });
   }
 
+  findCurrentSchoolFilesForMessageAttachments(
+    fileIds: string[],
+  ): Promise<CommunicationMessageFileReference[]> {
+    if (fileIds.length === 0) return Promise.resolve([]);
+
+    return this.scopedPrisma.file.findMany({
+      where: {
+        id: { in: fileIds },
+      },
+      ...COMMUNICATION_MESSAGE_FILE_REFERENCE_ARGS,
+    });
+  }
+
   async createCurrentSchoolMessage(input: {
     schoolId: string;
     conversationId: string;
@@ -368,8 +431,23 @@ export class CommunicationMessageRepository {
     buildAuditEntry: (
       message: CommunicationMessageRecord,
     ) => CommunicationMessageAuditInput;
-  }): Promise<CommunicationMessageRecord> {
+  }): Promise<CommunicationMessageCreateResult> {
     return this.scopedPrisma.$transaction(async (tx) => {
+      const existingMessageId = input.data.clientMessageId
+        ? await this.findExistingMessageIdForClientMessageInTransaction(tx, {
+            conversationId: input.conversationId,
+            senderUserId: input.data.senderUserId ?? null,
+            clientMessageId: input.data.clientMessageId,
+          })
+        : null;
+
+      if (existingMessageId) {
+        return {
+          message: await this.findMessageInTransaction(tx, existingMessageId),
+          wasCreated: false,
+        };
+      }
+
       const created = await tx.communicationMessage.create({
         data: {
           schoolId: input.schoolId,
@@ -378,6 +456,22 @@ export class CommunicationMessageRepository {
         },
         select: { id: true },
       });
+
+      const attachments = input.data.attachments ?? [];
+      if (attachments.length > 0) {
+        await tx.communicationMessageAttachment.createMany({
+          data: attachments.map((attachment) => ({
+            schoolId: input.schoolId,
+            conversationId: input.conversationId,
+            messageId: created.id,
+            fileId: attachment.fileId,
+            uploadedById: attachment.uploadedById,
+            caption: normalizeNullableText(attachment.caption),
+            sortOrder: attachment.sortOrder ?? 0,
+          })),
+          skipDuplicates: true,
+        });
+      }
 
       const message = await this.findMessageInTransaction(tx, created.id);
       await tx.communicationConversation.updateMany({
@@ -389,7 +483,7 @@ export class CommunicationMessageRepository {
         input.buildAuditEntry(message),
       );
 
-      return message;
+      return { message, wasCreated: true };
     });
   }
 
@@ -813,6 +907,28 @@ export class CommunicationMessageRepository {
     return message;
   }
 
+  private async findExistingMessageIdForClientMessageInTransaction(
+    tx: Prisma.TransactionClient,
+    input: {
+      conversationId: string;
+      senderUserId: string | null;
+      clientMessageId: string;
+    },
+  ): Promise<string | null> {
+    if (!input.senderUserId) return null;
+
+    const existing = await tx.communicationMessage.findFirst({
+      where: {
+        conversationId: input.conversationId,
+        senderUserId: input.senderUserId,
+        clientMessageId: input.clientMessageId,
+      },
+      select: { id: true },
+    });
+
+    return existing?.id ?? null;
+  }
+
   private async findReadInTransaction(
     tx: Prisma.TransactionClient,
     readId: string,
@@ -940,6 +1056,12 @@ function toNullableJson(
   if (value === undefined) return undefined;
   if (value === null) return Prisma.JsonNull;
   return value as Prisma.InputJsonValue;
+}
+
+function normalizeNullableText(value: string | null | undefined): string | null {
+  if (value === undefined || value === null) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function countReadUsersExcludingSender(message: {

@@ -1,14 +1,16 @@
 import { Transform, Type } from 'class-transformer';
 import {
+  IsArray,
   IsISO8601,
   IsIn,
   IsInt,
-  IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 
 export const STUDENT_MESSAGE_CONVERSATION_TYPES = [
@@ -36,6 +38,15 @@ export const STUDENT_MESSAGE_TYPES = [
   'audio',
   'video',
   'system',
+] as const;
+
+export const STUDENT_MESSAGE_SEND_TYPES = [
+  'text',
+  'image',
+  'file',
+  'audio',
+  'voice',
+  'video',
 ] as const;
 
 function toLowerOptionalString(value: unknown): unknown {
@@ -119,11 +130,63 @@ export class StudentMessageReadersQueryDto {
   page?: number;
 }
 
-export class SendStudentConversationMessageDto {
+export class SendStudentConversationMessageAttachmentDto {
+  @IsUUID()
+  fileId!: string;
+
+  @IsOptional()
+  @Transform(({ value }) => toLowerOptionalString(value))
+  @IsIn(['image', 'file', 'audio', 'video'])
+  mediaKind?: string;
+
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
+  @MaxLength(1000)
+  caption?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(10000)
+  sortOrder?: number;
+}
+
+export class SendStudentConversationMessageDto {
+  @IsOptional()
+  @Transform(({ value }) => toLowerOptionalString(value))
+  @IsIn(STUDENT_MESSAGE_SEND_TYPES)
+  type?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(20000)
-  body!: string;
+  body?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  content?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  caption?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  clientMessageId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  replyToMessageId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SendStudentConversationMessageAttachmentDto)
+  attachments?: SendStudentConversationMessageAttachmentDto[];
 }
 
 export class StudentMessagePaginationDto {

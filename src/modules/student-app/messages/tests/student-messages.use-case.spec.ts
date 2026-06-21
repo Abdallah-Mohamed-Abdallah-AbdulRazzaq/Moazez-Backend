@@ -51,7 +51,7 @@ describe('Student Messages use-cases', () => {
     expect(readAdapter.listMessages).not.toHaveBeenCalled();
   });
 
-  it('delegates text-only sends to Communication core after visibility passes', async () => {
+  it('delegates text sends to Communication core after visibility passes', async () => {
     const {
       sendUseCase,
       readAdapter,
@@ -77,6 +77,80 @@ describe('Student Messages use-cases', () => {
         body: 'Hello',
       },
     );
+  });
+
+  it('delegates file sends to Communication core and returns safe dual-alias attachments', async () => {
+    const {
+      sendUseCase,
+      readAdapter,
+      createCommunicationMessageUseCase,
+    } = createUseCasesWithValidAccess();
+    readAdapter.findConversationForStudent.mockResolvedValue(
+      conversationFixture() as any,
+    );
+    createCommunicationMessageUseCase.execute.mockResolvedValue({
+      id: 'message-1',
+    });
+    readAdapter.findMessageForStudent.mockResolvedValue(
+      messageFixture({
+        kind: CommunicationMessageKind.FILE,
+        body: 'Homework PDF',
+        attachments: [attachmentFixture()],
+      }) as any,
+    );
+
+    const result = await sendUseCase.execute({
+      conversationId: 'conversation-1',
+      body: {
+        type: 'file',
+        body: 'Homework PDF',
+        attachments: [
+          {
+            fileId: 'file-1',
+            mediaKind: 'file',
+            caption: 'Homework PDF',
+            sortOrder: 0,
+          },
+        ],
+      },
+    });
+
+    expect(createCommunicationMessageUseCase.execute).toHaveBeenCalledWith(
+      'conversation-1',
+      {
+        type: 'file',
+        body: 'Homework PDF',
+        attachments: [
+          {
+            fileId: 'file-1',
+            mediaKind: 'file',
+            caption: 'Homework PDF',
+            sortOrder: 0,
+          },
+        ],
+      },
+    );
+    expect(result.message).toMatchObject({
+      type: 'file',
+      attachmentsCount: 1,
+      attachments_count: 1,
+      attachments: [
+        expect.objectContaining({
+          attachmentId: 'attachment-1',
+          attachment_id: 'attachment-1',
+          fileId: 'file-1',
+          file_id: 'file-1',
+          mediaKind: 'file',
+          media_kind: 'file',
+          downloadPath: '/api/v1/files/file-1/download',
+          download_path: '/api/v1/files/file-1/download',
+        }),
+      ],
+    });
+    const json = JSON.stringify(result);
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('objectKey');
+    expect(json).not.toContain('signedUrl');
   });
 
   it('delegates read marking to Communication core after visibility passes', async () => {
@@ -295,7 +369,7 @@ function conversationFixture() {
   };
 }
 
-function messageFixture() {
+function messageFixture(overrides?: Record<string, unknown>) {
   return {
     id: 'message-1',
     conversationId: 'conversation-1',
@@ -309,6 +383,7 @@ function messageFixture() {
     deletedAt: null,
     reads: [],
     _count: { reads: 0 },
+    attachments: [],
     sentAt: new Date('2026-01-01T08:00:00.000Z'),
     createdAt: new Date('2026-01-01T08:00:00.000Z'),
     updatedAt: new Date('2026-01-01T08:00:00.000Z'),
@@ -318,6 +393,24 @@ function messageFixture() {
       lastName: 'User',
       userType: UserType.STUDENT,
       status: UserStatus.ACTIVE,
+    },
+    ...(overrides ?? {}),
+  };
+}
+
+function attachmentFixture() {
+  return {
+    id: 'attachment-1',
+    fileId: 'file-1',
+    caption: 'Homework PDF',
+    sortOrder: 0,
+    createdAt: new Date('2026-01-01T08:00:00.000Z'),
+    file: {
+      originalName: 'homework.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 123n,
+      visibility: 'PRIVATE',
+      createdAt: new Date('2026-01-01T08:00:00.000Z'),
     },
   };
 }

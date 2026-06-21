@@ -33,15 +33,21 @@ import {
 } from '../domain/communication-conversation-domain';
 import {
   CommunicationMessageDeletedException,
+  CommunicationMessageEmptyException,
   CommunicationMessageHiddenException,
   CommunicationMessageSendForbiddenException,
   CommunicationMessageTooLongException,
 } from '../domain/communication-message-domain';
+import {
+  CommunicationAttachmentInvalidFileException,
+  CommunicationAttachmentNotAllowedException,
+} from '../domain/communication-message-attachment-domain';
 import { CommunicationConversationNotMemberException } from '../domain/communication-participant-domain';
 import { buildDefaultCommunicationPolicy } from '../domain/communication-policy-domain';
 import {
   CommunicationMessageAuditInput,
   CommunicationMessageConversationAccessRecord,
+  CommunicationMessageFileReference,
   CommunicationMessageParticipantAccessRecord,
   CommunicationMessageReadersResult,
   CommunicationMessageReadResult,
@@ -249,6 +255,203 @@ describe('communication message use cases', () => {
     expect(repository.emitRealtime).not.toHaveBeenCalled();
   });
 
+  it('send creates an image message with validated attachment rows', async () => {
+    let audit: CommunicationMessageAuditInput | undefined;
+    const repository = repositoryMock({
+      findCurrentSchoolFilesForMessageAttachments: jest
+        .fn()
+        .mockResolvedValue([fileReference({ mimeType: 'image/jpeg' })]),
+      createCurrentSchoolMessage: jest.fn().mockImplementation((input) => {
+        const created = messageRecord({
+          kind: CommunicationMessageKind.IMAGE,
+          body: 'Class photo',
+          attachments: [attachmentRecord()] as any,
+        });
+        audit = input.buildAuditEntry(created);
+        return Promise.resolve({ message: created, wasCreated: true });
+      }),
+    });
+
+    const result = await withScope(() =>
+      new CreateCommunicationMessageUseCase(
+        repository,
+        policyRepositoryMock(),
+      ).execute(CONVERSATION_ID, {
+        type: 'image',
+        caption: 'Class photo',
+        clientMessageId: 'client-image-1',
+        attachments: [
+          {
+            fileId: 'file-1',
+            mediaKind: 'image',
+          },
+        ],
+      }),
+    );
+
+    expect(result).toMatchObject({
+      type: 'image',
+      body: 'Class photo',
+      attachmentsCount: 1,
+      attachments: [
+        expect.objectContaining({
+          attachmentId: 'attachment-1',
+          fileId: 'file-1',
+          displayName: 'photo.jpg',
+          mediaKind: 'image',
+          downloadPath: '/api/v1/files/file-1/download',
+        }),
+      ],
+    });
+    expect(
+      repository.findCurrentSchoolFilesForMessageAttachments,
+    ).toHaveBeenCalledWith(['file-1']);
+    expect(repository.createCurrentSchoolMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: CommunicationMessageKind.IMAGE,
+          body: 'Class photo',
+          clientMessageId: 'client-image-1',
+          attachments: [
+            {
+              fileId: 'file-1',
+              uploadedById: ACTOR_ID,
+              caption: 'Class photo',
+              sortOrder: 0,
+            },
+          ],
+        }),
+      }),
+    );
+    expect(audit?.after).toMatchObject({
+      changedFields: expect.arrayContaining(['attachments']),
+    });
+  });
+
+  it('send rejects media message kinds without attachments', async () => {
+    const repository = repositoryMock();
+
+    await expect(
+      withScope(() =>
+        new CreateCommunicationMessageUseCase(
+          repository,
+          policyRepositoryMock(),
+        ).execute(CONVERSATION_ID, { type: 'image', caption: 'Missing file' }),
+      ),
+    ).rejects.toBeInstanceOf(CommunicationMessageEmptyException);
+    expect(repository.findCurrentSchoolFilesForMessageAttachments).not.toHaveBeenCalled();
+    expect(repository.createCurrentSchoolMessage).not.toHaveBeenCalled();
+  });
+
+  it('send rejects media MIME mismatches before persistence', async () => {
+    const repository = repositoryMock({
+      findCurrentSchoolFilesForMessageAttachments: jest
+        .fn()
+        .mockResolvedValue([fileReference({ mimeType: 'video/mp4' })]),
+    });
+
+    await expect(
+      withScope(() =>
+        new CreateCommunicationMessageUseCase(
+          repository,
+          policyRepositoryMock(),
+        ).execute(CONVERSATION_ID, {
+          type: 'image',
+          attachments: [{ fileId: 'file-1', mediaKind: 'image' }],
+        }),
+      ),
+    ).rejects.toBeInstanceOf(CommunicationAttachmentInvalidFileException);
+    expect(repository.createCurrentSchoolMessage).not.toHaveBeenCalled();
+  });
+
+  it('send enforces attachment, video, and voice policy switches', async () => {
+    const useCaseForPolicy = (policy: ReturnType<typeof buildDefaultCommunicationPolicy>) =>
+      new CreateCommunicationMessageUseCase(
+        repositoryMock({
+          findCurrentSchoolFilesForMessageAttachments: jest
+            .fn()
+            .mockResolvedValue([fileReference({ mimeType: 'video/mp4' })]),
+        }),
+        policyRepositoryMock({
+          findCurrentSchoolPolicy: jest.fn().mockResolvedValue(policy),
+        }),
+      );
+
+    await expect(
+      withScope(() =>
+        useCaseForPolicy({
+          ...buildDefaultCommunicationPolicy(),
+          allowAttachments: false,
+        }).execute(CONVERSATION_ID, {
+          type: 'file',
+          attachments: [{ fileId: 'file-1', mediaKind: 'file' }],
+        }),
+      ),
+    ).rejects.toBeInstanceOf(CommunicationAttachmentNotAllowedException);
+
+    await expect(
+      withScope(() =>
+        useCaseForPolicy({
+          ...buildDefaultCommunicationPolicy(),
+          allowVideoMessages: false,
+        }).execute(CONVERSATION_ID, {
+          type: 'video',
+          attachments: [{ fileId: 'file-1', mediaKind: 'video' }],
+        }),
+      ),
+    ).rejects.toBeInstanceOf(CommunicationAttachmentNotAllowedException);
+
+    await expect(
+      withScope(() =>
+        new CreateCommunicationMessageUseCase(
+          repositoryMock({
+            findCurrentSchoolFilesForMessageAttachments: jest
+              .fn()
+              .mockResolvedValue([fileReference({ mimeType: 'audio/mpeg' })]),
+          }),
+          policyRepositoryMock({
+            findCurrentSchoolPolicy: jest.fn().mockResolvedValue({
+              ...buildDefaultCommunicationPolicy(),
+              allowVoiceMessages: false,
+            }),
+          }),
+        ).execute(CONVERSATION_ID, {
+          type: 'voice',
+          attachments: [{ fileId: 'file-1', mediaKind: 'audio' }],
+        }),
+      ),
+    ).rejects.toBeInstanceOf(CommunicationAttachmentNotAllowedException);
+  });
+
+  it('send enforces maxAttachmentSizeMb per attachment file', async () => {
+    const repository = repositoryMock({
+      findCurrentSchoolFilesForMessageAttachments: jest
+        .fn()
+        .mockResolvedValue([
+          fileReference({ mimeType: 'application/pdf', sizeBytes: 2_000_000n }),
+        ]),
+    });
+    const policyRepository = policyRepositoryMock({
+      findCurrentSchoolPolicy: jest.fn().mockResolvedValue({
+        ...buildDefaultCommunicationPolicy(),
+        maxAttachmentSizeMb: 1,
+      }),
+    });
+
+    await expect(
+      withScope(() =>
+        new CreateCommunicationMessageUseCase(
+          repository,
+          policyRepository,
+        ).execute(CONVERSATION_ID, {
+          type: 'file',
+          attachments: [{ fileId: 'file-1', mediaKind: 'file' }],
+        }),
+      ),
+    ).rejects.toBeInstanceOf(CommunicationAttachmentInvalidFileException);
+    expect(repository.createCurrentSchoolMessage).not.toHaveBeenCalled();
+  });
+
   it('send publishes message.created after persistence succeeds', async () => {
     const repository = repositoryMock({
       createCurrentSchoolMessage: jest.fn().mockResolvedValue(
@@ -287,6 +490,102 @@ describe('communication message use cases', () => {
         }),
       }),
     );
+  });
+
+  it('send publishes media message.created with safe attachments only', async () => {
+    const repository = repositoryMock({
+      createCurrentSchoolMessage: jest.fn().mockResolvedValue({
+        message: messageRecord({
+          kind: CommunicationMessageKind.IMAGE,
+          body: 'Photo',
+          attachments: [
+            attachmentRecord({
+              file: {
+                id: 'file-1',
+                originalName: 'photo.jpg',
+                mimeType: 'image/jpeg',
+                sizeBytes: 123n,
+                visibility: 'PRIVATE',
+                createdAt: new Date('2026-05-02T07:59:00.000Z'),
+                bucket: 'hidden',
+                objectKey: 'hidden',
+                signedUrl: 'hidden',
+              },
+              uploadedById: 'hidden',
+              createdById: 'hidden',
+            }),
+          ] as any,
+        }),
+        wasCreated: true,
+      }),
+    });
+    const publisher = realtimePublisherMock();
+
+    await withScope(() =>
+      new CreateCommunicationMessageUseCase(
+        repository,
+        policyRepositoryMock(),
+        new CommunicationRealtimeEventsService(publisher),
+      ).execute(CONVERSATION_ID, {
+        type: 'image',
+        attachments: [{ fileId: 'file-1', mediaKind: 'image' }],
+      }),
+    );
+
+    const payload = publisher.publishToConversation.mock.calls[0][3];
+    expect(payload).toMatchObject({
+      message: expect.objectContaining({
+        type: 'image',
+        attachments: [
+          expect.objectContaining({
+            attachmentId: 'attachment-1',
+            fileId: 'file-1',
+            displayName: 'photo.jpg',
+            mediaKind: 'image',
+            downloadPath: '/api/v1/files/file-1/download',
+          }),
+        ],
+        attachmentsCount: 1,
+      }),
+    });
+    const json = JSON.stringify(payload);
+    expect(json).not.toContain('bucket');
+    expect(json).not.toContain('objectKey');
+    expect(json).not.toContain('signedUrl');
+    expect(json).not.toContain('uploadedById');
+    expect(json).not.toContain('createdById');
+  });
+
+  it('send does not publish message.created for idempotent clientMessageId retry', async () => {
+    const repository = repositoryMock({
+      createCurrentSchoolMessage: jest.fn().mockResolvedValue({
+        message: messageRecord({
+          kind: CommunicationMessageKind.IMAGE,
+          clientMessageId: 'client-image-1',
+          attachments: [attachmentRecord()] as any,
+        }),
+        wasCreated: false,
+      }),
+    });
+    const publisher = realtimePublisherMock();
+
+    const result = await withScope(() =>
+      new CreateCommunicationMessageUseCase(
+        repository,
+        policyRepositoryMock(),
+        new CommunicationRealtimeEventsService(publisher),
+      ).execute(CONVERSATION_ID, {
+        type: 'image',
+        clientMessageId: 'client-image-1',
+        attachments: [{ fileId: 'file-1', mediaKind: 'image' }],
+      }),
+    );
+
+    expect(result).toMatchObject({
+      clientMessageId: 'client-image-1',
+      attachmentsCount: 1,
+    });
+    expect(publisher.publishToConversation).not.toHaveBeenCalled();
   });
 
   it('does not publish message.created when persistence fails', async () => {
@@ -831,6 +1130,9 @@ function repositoryMock(
     findActiveParticipantForActor: jest
       .fn()
       .mockResolvedValue(participantRecord()),
+    findCurrentSchoolFilesForMessageAttachments: jest
+      .fn()
+      .mockResolvedValue([fileReference()]),
     createCurrentSchoolMessage: jest.fn().mockResolvedValue(messageRecord()),
     updateCurrentSchoolMessage: jest.fn().mockResolvedValue(messageRecord()),
     deleteOrHideCurrentSchoolMessage: jest
@@ -944,8 +1246,43 @@ function messageRecord(
     updatedAt: new Date('2026-05-02T08:00:00.000Z'),
     _count: { reads: 0 },
     reads: [],
+    attachments: [],
     ...(overrides ?? {}),
   };
+}
+
+function attachmentRecord(overrides?: Record<string, unknown>) {
+  return {
+    id: 'attachment-1',
+    fileId: 'file-1',
+    caption: 'Photo caption',
+    sortOrder: 0,
+    createdAt: new Date('2026-05-02T08:00:00.000Z'),
+    file: {
+      id: 'file-1',
+      originalName: 'photo.jpg',
+      mimeType: 'image/jpeg',
+      sizeBytes: 123n,
+      visibility: 'PRIVATE',
+      createdAt: new Date('2026-05-02T07:59:00.000Z'),
+    },
+    ...(overrides ?? {}),
+  };
+}
+
+function fileReference(
+  overrides?: Partial<CommunicationMessageFileReference>,
+): CommunicationMessageFileReference {
+  return {
+    id: 'file-1',
+    schoolId: SCHOOL_ID,
+    originalName: 'photo.jpg',
+    mimeType: 'image/jpeg',
+    sizeBytes: 123n,
+    visibility: 'PRIVATE',
+    deletedAt: null,
+    ...(overrides ?? {}),
+  } as CommunicationMessageFileReference;
 }
 
 function readRecord(

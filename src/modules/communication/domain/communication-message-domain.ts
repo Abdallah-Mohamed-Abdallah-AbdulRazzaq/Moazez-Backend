@@ -71,6 +71,7 @@ export interface MessageCreatePayload {
   body?: string | null;
   metadata?: Record<string, unknown> | null;
   clientMessageId?: string | null;
+  attachmentsCount?: number;
 }
 
 export interface MessageReadSummaryInput {
@@ -94,6 +95,7 @@ const MESSAGE_KIND_MAP: Record<string, CommunicationMessageKindValue> = {
   image: 'IMAGE',
   file: 'FILE',
   audio: 'AUDIO',
+  voice: 'AUDIO',
   video: 'VIDEO',
   system: 'SYSTEM',
 };
@@ -351,13 +353,29 @@ export function assertParticipantAllowsMessageRead(
 export function assertMessageCreatePayload(
   payload: MessageCreatePayload,
 ): void {
-  if (payload.kind !== 'TEXT') {
+  if (payload.kind === 'SYSTEM') {
     throw new CommunicationMessageKindInvalidException({
       kind: payload.kind,
     });
   }
 
-  assertMessageBodyRequired(payload.body);
+  const attachmentsCount = payload.attachmentsCount ?? 0;
+
+  if (payload.kind === 'TEXT') {
+    if (attachmentsCount > 0) {
+      throw new CommunicationMessageKindInvalidException({
+        kind: payload.kind,
+        attachmentsCount,
+      });
+    }
+    assertMessageBodyRequired(payload.body);
+  } else if (attachmentsCount < 1) {
+    throw new CommunicationMessageEmptyException({
+      kind: payload.kind,
+      attachmentsCount,
+    });
+  }
+
   assertPlainObjectMetadata(payload.metadata);
   assertOptionalTextLength('clientMessageId', payload.clientMessageId, 128);
 }

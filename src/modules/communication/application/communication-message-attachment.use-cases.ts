@@ -345,6 +345,7 @@ function toPlainFile(
   return {
     id: file.id,
     schoolId: file.schoolId,
+    mimeType: file.mimeType,
     sizeBytes: file.sizeBytes,
     deletedAt: file.deletedAt,
   };

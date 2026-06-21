@@ -1,4 +1,5 @@
 import {
+  AuditOutcome,
   CommunicationMessageKind,
   CommunicationMessageStatus,
   CommunicationParticipantStatus,
@@ -16,6 +17,108 @@ const PARTICIPANT_ID = 'participant-1';
 const READ_AT = new Date('2026-05-02T09:00:00.000Z');
 
 describe('CommunicationMessageRepository read receipts', () => {
+  it('creates a message and attachment rows in one transaction', async () => {
+    const tx = transactionMock();
+    tx.communicationMessage.create.mockResolvedValue({ id: MESSAGE_ID });
+    tx.communicationMessage.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(messageRow());
+    const { repository } = repositoryMock(tx);
+
+    const result = await repository.createCurrentSchoolMessage({
+      schoolId: SCHOOL_ID,
+      conversationId: CONVERSATION_ID,
+      data: {
+        senderUserId: ACTOR_ID,
+        kind: CommunicationMessageKind.IMAGE,
+        status: CommunicationMessageStatus.SENT,
+        body: 'Photo',
+        clientMessageId: 'client-1',
+        attachments: [
+          {
+            fileId: 'file-1',
+            uploadedById: ACTOR_ID,
+            caption: 'Photo caption',
+            sortOrder: 0,
+          },
+        ],
+      },
+      buildAuditEntry: () => auditEntry(),
+    });
+
+    expect(tx.communicationMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          schoolId: SCHOOL_ID,
+          conversationId: CONVERSATION_ID,
+          kind: CommunicationMessageKind.IMAGE,
+          body: 'Photo',
+          clientMessageId: 'client-1',
+        }),
+        select: { id: true },
+      }),
+    );
+    expect(tx.communicationMessageAttachment.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          schoolId: SCHOOL_ID,
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          fileId: 'file-1',
+          uploadedById: ACTOR_ID,
+          caption: 'Photo caption',
+          sortOrder: 0,
+        },
+      ],
+      skipDuplicates: true,
+    });
+    expect(result).toMatchObject({
+      wasCreated: true,
+      message: { id: MESSAGE_ID },
+    });
+  });
+
+  it('returns an existing clientMessageId result without duplicating attachments', async () => {
+    const tx = transactionMock();
+    tx.communicationMessage.findFirst
+      .mockResolvedValueOnce({ id: MESSAGE_ID })
+      .mockResolvedValueOnce(messageRow());
+    const { repository } = repositoryMock(tx);
+
+    const result = await repository.createCurrentSchoolMessage({
+      schoolId: SCHOOL_ID,
+      conversationId: CONVERSATION_ID,
+      data: {
+        senderUserId: ACTOR_ID,
+        kind: CommunicationMessageKind.IMAGE,
+        status: CommunicationMessageStatus.SENT,
+        body: 'Photo',
+        clientMessageId: 'client-1',
+        attachments: [
+          {
+            fileId: 'file-1',
+            uploadedById: ACTOR_ID,
+            caption: 'Photo caption',
+            sortOrder: 0,
+          },
+        ],
+      },
+      buildAuditEntry: () => auditEntry(),
+    });
+
+    expect(tx.communicationMessage.create).not.toHaveBeenCalled();
+    expect(tx.communicationMessageAttachment.createMany).not.toHaveBeenCalled();
+    expect(tx.communicationConversation.updateMany).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      wasCreated: false,
+      message: {
+        id: MESSAGE_ID,
+        attachments: [expect.objectContaining({ fileId: 'file-1' })],
+      },
+    });
+  });
+
   it('creates one read row for a non-sender and returns absolute readCount', async () => {
     const tx = transactionMock();
     tx.communicationMessage.findFirst.mockResolvedValue({
@@ -365,6 +468,10 @@ function transactionMock() {
     communicationMessage: {
       findFirst: jest.fn(),
       findMany: jest.fn(),
+      create: jest.fn(),
+    },
+    communicationMessageAttachment: {
+      createMany: jest.fn(),
     },
     communicationMessageRead: {
       findFirst: jest.fn(),
@@ -377,6 +484,70 @@ function transactionMock() {
     communicationConversationParticipant: {
       updateMany: jest.fn(),
     },
+    communicationConversation: {
+      updateMany: jest.fn(),
+    },
+    auditLog: {
+      create: jest.fn(),
+    },
+  };
+}
+
+function messageRow(overrides?: Record<string, unknown>) {
+  return {
+    id: MESSAGE_ID,
+    schoolId: SCHOOL_ID,
+    conversationId: CONVERSATION_ID,
+    senderUserId: ACTOR_ID,
+    kind: CommunicationMessageKind.IMAGE,
+    status: CommunicationMessageStatus.SENT,
+    body: 'Photo',
+    clientMessageId: 'client-1',
+    replyToMessageId: null,
+    editedAt: null,
+    hiddenById: null,
+    hiddenAt: null,
+    hiddenReason: null,
+    deletedById: null,
+    deletedAt: null,
+    sentAt: READ_AT,
+    metadata: null,
+    createdAt: READ_AT,
+    updatedAt: READ_AT,
+    _count: { reads: 0 },
+    reads: [],
+    attachments: [
+      {
+        id: 'attachment-1',
+        fileId: 'file-1',
+        caption: 'Photo caption',
+        sortOrder: 0,
+        createdAt: READ_AT,
+        file: {
+          id: 'file-1',
+          originalName: 'photo.jpg',
+          mimeType: 'image/jpeg',
+          sizeBytes: 123n,
+          visibility: 'PRIVATE',
+          createdAt: READ_AT,
+        },
+      },
+    ],
+    ...(overrides ?? {}),
+  };
+}
+
+function auditEntry() {
+  return {
+    actorId: ACTOR_ID,
+    userType: UserType.SCHOOL_USER,
+    organizationId: 'org-1',
+    schoolId: SCHOOL_ID,
+    module: 'communication',
+    action: 'communication.message.create',
+    resourceType: 'communication_message',
+    resourceId: MESSAGE_ID,
+    outcome: AuditOutcome.SUCCESS,
   };
 }
 

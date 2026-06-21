@@ -2,6 +2,10 @@ import {
   CommunicationMessageRecord,
   CommunicationMessageListResult,
 } from '../infrastructure/communication-message.repository';
+import {
+  CommunicationAppAttachmentCamelResponse,
+  presentCommunicationAppMessageAttachments,
+} from './communication-app-message-attachment.presenter';
 
 export interface CommunicationMessageResponse {
   id: string;
@@ -24,6 +28,8 @@ export interface CommunicationMessageResponse {
   updatedAt: string;
   metadata: Record<string, unknown> | null;
   readCount: number;
+  attachments: CommunicationAppAttachmentCamelResponse[];
+  attachmentsCount: number;
 }
 
 export function presentCommunicationMessageList(
@@ -41,7 +47,13 @@ export function presentCommunicationMessageList(
 export function presentCommunicationMessage(
   message: CommunicationMessageRecord,
 ): CommunicationMessageResponse {
-  const body = shouldHideBody(message) ? null : message.body;
+  const hidden = shouldHideBody(message);
+  const body = hidden ? null : message.body;
+  const attachments = hidden
+    ? []
+    : presentCommunicationAppMessageAttachments(message.attachments ?? [], {
+        aliasStyle: 'camel',
+      });
 
   return {
     id: message.id,
@@ -64,6 +76,8 @@ export function presentCommunicationMessage(
     updatedAt: message.updatedAt.toISOString(),
     metadata: sanitizeCommunicationMessageMetadata(message.metadata),
     readCount: countReadUsersExcludingSender(message),
+    attachments,
+    attachmentsCount: attachments.length,
   };
 }
 
@@ -84,6 +98,7 @@ export function summarizeCommunicationMessageForAudit(
     hiddenAt: presentNullableDate(message.hiddenAt),
     deletedAt: presentNullableDate(message.deletedAt),
     sentAt: message.sentAt.toISOString(),
+    attachmentsCount: message.attachments?.length ?? 0,
   };
 }
 

@@ -8,6 +8,7 @@ import {
 import {
   CommunicationMessageDeletedException,
   CommunicationMessageHiddenException,
+  CommunicationMessageKindValue,
   CommunicationMessageSendForbiddenException,
 } from './communication-message-domain';
 import {
@@ -66,6 +67,7 @@ export interface PlainAttachmentParticipant {
 export interface PlainAttachmentFile {
   id: string;
   schoolId: string | null;
+  mimeType: string;
   sizeBytes: bigint | number;
   deletedAt?: Date | null;
 }
@@ -112,6 +114,36 @@ export function assertAttachmentAllowedByPolicy(
   if (!policy.allowAttachments) {
     throw new CommunicationAttachmentNotAllowedException(
       'Attachments are disabled by communication policy',
+    );
+  }
+}
+
+export function assertAttachmentMediaPolicy(params: {
+  kind: CommunicationMessageKindValue;
+  policy: Pick<
+    PlainCommunicationPolicy,
+    | 'isEnabled'
+    | 'allowAttachments'
+    | 'allowVoiceMessages'
+    | 'allowVideoMessages'
+    | 'maxAttachmentSizeMb'
+  >;
+}): void {
+  if (params.kind === 'TEXT' || params.kind === 'SYSTEM') return;
+
+  assertAttachmentAllowedByPolicy(params.policy);
+
+  if (params.kind === 'VIDEO' && !params.policy.allowVideoMessages) {
+    throw new CommunicationAttachmentNotAllowedException(
+      'Video messages are disabled by communication policy',
+      { kind: params.kind },
+    );
+  }
+
+  if (params.kind === 'AUDIO' && !params.policy.allowVoiceMessages) {
+    throw new CommunicationAttachmentNotAllowedException(
+      'Voice messages are disabled by communication policy',
+      { kind: params.kind },
     );
   }
 }
@@ -191,6 +223,42 @@ export function assertAttachmentFileIsSafe(params: {
   }
 }
 
+export function assertAttachmentMimeMatchesMessageKind(params: {
+  kind: CommunicationMessageKindValue;
+  file: Pick<PlainAttachmentFile, 'id' | 'mimeType'>;
+  mediaKind?: string | null;
+}): void {
+  const expectedMediaKind = mediaKindForMessageKind(params.kind);
+  const actualMediaKind = deriveAttachmentMediaKind(params.file.mimeType);
+
+  if (!expectedMediaKind) return;
+
+  if (actualMediaKind !== expectedMediaKind) {
+    throw new CommunicationAttachmentInvalidFileException(
+      'Attachment file type does not match message type',
+      {
+        fileId: params.file.id,
+        kind: params.kind,
+        mimeType: params.file.mimeType,
+        expectedMediaKind,
+        actualMediaKind,
+      },
+    );
+  }
+
+  if (params.mediaKind && params.mediaKind !== actualMediaKind) {
+    throw new CommunicationAttachmentInvalidFileException(
+      'Attachment media kind does not match file MIME type',
+      {
+        fileId: params.file.id,
+        mediaKind: params.mediaKind,
+        mimeType: params.file.mimeType,
+        actualMediaKind,
+      },
+    );
+  }
+}
+
 export function assertCanDeleteMessageAttachment(params: {
   attachment: PlainCommunicationMessageAttachment;
   message: PlainAttachmentMessage;
@@ -235,4 +303,35 @@ function assertAttachmentMessageIsVisible(
       messageId: message.id,
     });
   }
+}
+
+function mediaKindForMessageKind(
+  kind: CommunicationMessageKindValue,
+): 'image' | 'video' | 'audio' | 'file' | null {
+  switch (kind) {
+    case 'IMAGE':
+      return 'image';
+    case 'VIDEO':
+      return 'video';
+    case 'AUDIO':
+      return 'audio';
+    case 'FILE':
+      return 'file';
+    case 'TEXT':
+    case 'SYSTEM':
+    default:
+      return null;
+  }
+}
+
+function deriveAttachmentMediaKind(
+  mimeType: string,
+): 'image' | 'video' | 'audio' | 'file' {
+  const normalized = mimeType.trim().toLowerCase();
+
+  if (normalized.startsWith('image/')) return 'image';
+  if (normalized.startsWith('video/')) return 'video';
+  if (normalized.startsWith('audio/')) return 'audio';
+
+  return 'file';
 }

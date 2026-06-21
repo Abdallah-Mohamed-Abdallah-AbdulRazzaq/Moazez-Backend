@@ -1,15 +1,17 @@
 import { Type } from 'class-transformer';
 import {
   IsISO8601,
+  IsArray,
   IsIn,
   IsInt,
-  IsObject,
   IsOptional,
+  IsObject,
   IsString,
   IsUUID,
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 
 export const COMMUNICATION_MESSAGE_TYPES = [
@@ -22,6 +24,15 @@ export const COMMUNICATION_MESSAGE_TYPES = [
 ] as const;
 
 export const PUBLIC_COMMUNICATION_MESSAGE_TYPES = ['text'] as const;
+
+export const PUBLIC_COMMUNICATION_MESSAGE_CREATE_TYPES = [
+  'text',
+  'image',
+  'file',
+  'audio',
+  'voice',
+  'video',
+] as const;
 
 export const COMMUNICATION_MESSAGE_STATUSES = [
   'sent',
@@ -63,7 +74,7 @@ export class ListCommunicationMessagesQueryDto {
 
 export class CreateCommunicationMessageDto {
   @IsOptional()
-  @IsIn(PUBLIC_COMMUNICATION_MESSAGE_TYPES)
+  @IsIn(PUBLIC_COMMUNICATION_MESSAGE_CREATE_TYPES)
   type?: string;
 
   @IsOptional()
@@ -86,8 +97,40 @@ export class CreateCommunicationMessageDto {
   replyToMessageId?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  caption?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateCommunicationMessageAttachmentDto)
+  attachments?: CreateCommunicationMessageAttachmentDto[];
+
+  @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown> | null;
+}
+
+export class CreateCommunicationMessageAttachmentDto {
+  @IsUUID()
+  fileId!: string;
+
+  @IsOptional()
+  @IsIn(['image', 'file', 'audio', 'video'])
+  mediaKind?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  caption?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(10000)
+  sortOrder?: number;
 }
 
 export class UpdateCommunicationMessageDto {

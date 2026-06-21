@@ -112,7 +112,7 @@ describe('Teacher Messages use cases', () => {
     expect(createCommunicationMessageUseCase.execute).not.toHaveBeenCalled();
   });
 
-  it('send delegates text-only messages to Communication core after access validation', async () => {
+  it('send delegates text messages to Communication core after access validation', async () => {
     const { sendUseCase, messagesReadAdapter, createCommunicationMessageUseCase } =
       createUseCases();
 
@@ -143,7 +143,68 @@ describe('Teacher Messages use cases', () => {
     });
   });
 
-  it('send DTO rejects attachment, audio, and conversation creation fields', async () => {
+  it('send delegates voice media messages and returns camelCase safe attachments', async () => {
+    const { sendUseCase, messagesReadAdapter, createCommunicationMessageUseCase } =
+      createUseCases();
+    messagesReadAdapter.findMessageForTeacher.mockResolvedValueOnce(
+      messageFixture({
+        kind: CommunicationMessageKind.AUDIO,
+        body: 'Voice note',
+        attachments: [attachmentFixture()],
+      }),
+    );
+
+    const result = await sendUseCase.execute(CONVERSATION_ID, {
+      type: 'voice',
+      caption: 'Voice note',
+      clientMessageId: 'client-voice-1',
+      attachments: [
+        {
+          fileId: '11111111-1111-4111-8111-111111111111',
+          mediaKind: 'audio',
+          caption: 'Voice note',
+          sortOrder: 0,
+        },
+      ],
+    });
+
+    expect(createCommunicationMessageUseCase.execute).toHaveBeenCalledWith(
+      CONVERSATION_ID,
+      {
+        type: 'voice',
+        caption: 'Voice note',
+        clientMessageId: 'client-voice-1',
+        attachments: [
+          {
+            fileId: '11111111-1111-4111-8111-111111111111',
+            mediaKind: 'audio',
+            caption: 'Voice note',
+            sortOrder: 0,
+          },
+        ],
+      },
+    );
+    expect(result.message).toMatchObject({
+      type: 'audio',
+      attachmentsCount: 1,
+      attachments: [
+        expect.objectContaining({
+          attachmentId: 'attachment-1',
+          fileId: 'file-1',
+          displayName: 'voice.webm',
+          originalName: 'voice.webm',
+          mediaKind: 'audio',
+          downloadPath: '/api/v1/files/file-1/download',
+        }),
+      ],
+    });
+    const json = JSON.stringify(result);
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('objectKey');
+    expect(json).not.toContain('signedUrl');
+  });
+
+  it('send DTO accepts media fields but rejects conversation creation fields', async () => {
     const pipe = new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
@@ -158,10 +219,37 @@ describe('Teacher Messages use cases', () => {
     await expect(
       pipe.transform(
         {
-          body: 'Hello',
-          attachments: [{ fileId: 'file-1' }],
-          audioUrl: 'https://example.test/audio.mp3',
           type: 'audio',
+          caption: 'Voice note',
+          clientMessageId: 'client-1',
+          attachments: [
+            {
+              fileId: '11111111-1111-4111-8111-111111111111',
+              mediaKind: 'audio',
+              caption: 'Voice note',
+              sortOrder: 0,
+            },
+          ],
+        },
+        metadata,
+      ),
+    ).resolves.toMatchObject({
+      type: 'audio',
+      caption: 'Voice note',
+      attachments: [
+        {
+          fileId: '11111111-1111-4111-8111-111111111111',
+          mediaKind: 'audio',
+          caption: 'Voice note',
+          sortOrder: 0,
+        },
+      ],
+    });
+
+    await expect(
+      pipe.transform(
+        {
+          body: 'Hello',
           participantIds: ['user-1'],
         },
         metadata,
@@ -436,6 +524,24 @@ function messageFixture(
     _count: { reads: 0 },
     ...overrides,
   } as unknown as TeacherMessageRecord;
+}
+
+function attachmentFixture() {
+  return {
+    id: 'attachment-1',
+    fileId: 'file-1',
+    caption: 'Voice note',
+    sortOrder: 0,
+    createdAt: new Date('2026-09-18T10:00:00.000Z'),
+    file: {
+      id: 'file-1',
+      originalName: 'voice.webm',
+      mimeType: 'audio/webm',
+      sizeBytes: 123n,
+      visibility: 'PRIVATE',
+      createdAt: new Date('2026-09-18T09:59:00.000Z'),
+    },
+  };
 }
 
 function coreReadersFixture() {

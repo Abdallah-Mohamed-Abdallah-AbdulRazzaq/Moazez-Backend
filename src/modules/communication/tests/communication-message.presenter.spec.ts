@@ -92,6 +92,40 @@ describe('communication message presenter', () => {
     expect(presented.readCount).toBe(2);
   });
 
+  it('presents safe attachments and suppresses them for hidden messages', () => {
+    const visible = presentCommunicationMessage(
+      messageRecord({
+        kind: CommunicationMessageKind.IMAGE,
+        attachments: [attachmentRecord()] as any,
+      }),
+    );
+    const hidden = presentCommunicationMessage(
+      messageRecord({
+        status: CommunicationMessageStatus.HIDDEN,
+        hiddenAt: new Date('2026-05-02T09:00:00.000Z'),
+        attachments: [attachmentRecord()] as any,
+      }),
+    );
+    const json = JSON.stringify(visible);
+
+    expect(visible.attachments).toEqual([
+      expect.objectContaining({
+        attachmentId: 'attachment-1',
+        fileId: 'file-1',
+        displayName: 'photo.jpg',
+        mimeType: 'image/jpeg',
+        mediaKind: 'image',
+        downloadPath: '/api/v1/files/file-1/download',
+      }),
+    ]);
+    expect(visible.attachmentsCount).toBe(1);
+    expect(hidden.attachments).toEqual([]);
+    expect(hidden.attachmentsCount).toBe(0);
+    expect(json).not.toContain('bucket');
+    expect(json).not.toContain('objectKey');
+    expect(json).not.toContain('signedUrl');
+  });
+
   it('summarizes audits without storing full message body', () => {
     const summary = summarizeCommunicationMessageForAudit(
       messageRecord({ body: 'Sensitive chat body' }),
@@ -131,6 +165,25 @@ function messageRecord(
     updatedAt: new Date('2026-05-02T08:30:00.000Z'),
     _count: { reads: 0 },
     reads: [],
+    attachments: [],
     ...(overrides ?? {}),
+  };
+}
+
+function attachmentRecord() {
+  return {
+    id: 'attachment-1',
+    fileId: 'file-1',
+    caption: null,
+    sortOrder: 0,
+    createdAt: new Date('2026-05-02T08:00:00.000Z'),
+    file: {
+      id: 'file-1',
+      originalName: 'photo.jpg',
+      mimeType: 'image/jpeg',
+      sizeBytes: 123n,
+      visibility: 'PRIVATE',
+      createdAt: new Date('2026-05-02T07:59:00.000Z'),
+    },
   };
 }

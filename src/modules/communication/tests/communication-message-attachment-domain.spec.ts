@@ -8,6 +8,8 @@ import {
   CommunicationAttachmentNotAllowedException,
   assertAttachmentAllowedByPolicy,
   assertAttachmentFileIsSafe,
+  assertAttachmentMediaPolicy,
+  assertAttachmentMimeMatchesMessageKind,
   assertMessageAllowsAttachment,
   assertParticipantAllowsAttachment,
   PlainAttachmentConversation,
@@ -44,6 +46,7 @@ describe('communication message attachment domain', () => {
         file: {
           id: 'file-1',
           schoolId: 'school-1',
+          mimeType: 'application/pdf',
           sizeBytes: 3n * 1024n * 1024n,
           deletedAt: null,
         },
@@ -51,6 +54,32 @@ describe('communication message attachment domain', () => {
         expectedSchoolId: 'school-1',
       }),
     ).toThrow(CommunicationAttachmentInvalidFileException);
+  });
+
+  it('enforces media policy switches and MIME-kind matching', () => {
+    expect(() =>
+      assertAttachmentMediaPolicy({
+        kind: 'VIDEO',
+        policy: {
+          ...buildDefaultCommunicationPolicy(),
+          allowVideoMessages: false,
+        },
+      }),
+    ).toThrow(CommunicationAttachmentNotAllowedException);
+    expect(() =>
+      assertAttachmentMimeMatchesMessageKind({
+        kind: 'IMAGE',
+        file: { id: 'file-1', mimeType: 'video/mp4' },
+        mediaKind: 'image',
+      }),
+    ).toThrow(CommunicationAttachmentInvalidFileException);
+    expect(() =>
+      assertAttachmentMimeMatchesMessageKind({
+        kind: 'AUDIO',
+        file: { id: 'file-1', mimeType: 'audio/webm' },
+        mediaKind: 'audio',
+      }),
+    ).not.toThrow();
   });
 
   it('rejects archived closed hidden and deleted message targets', () => {

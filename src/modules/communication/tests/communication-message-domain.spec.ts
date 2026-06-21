@@ -124,10 +124,27 @@ describe('communication message domain', () => {
     );
   });
 
-  it('public create payload accepts text only', () => {
+  it('public create payload accepts text and requires attachments for media', () => {
     expect(() =>
       assertMessageCreatePayload({ kind: 'TEXT', body: 'Hello' }),
     ).not.toThrow();
+    expect(() =>
+      assertMessageCreatePayload({
+        kind: 'IMAGE',
+        body: null,
+        attachmentsCount: 1,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertMessageCreatePayload({
+        kind: 'TEXT',
+        body: 'Hello',
+        attachmentsCount: 1,
+      }),
+    ).toThrow(CommunicationMessageKindInvalidException);
+    expect(() =>
+      assertMessageCreatePayload({ kind: 'IMAGE', body: null }),
+    ).toThrow(CommunicationMessageEmptyException);
     expect(() =>
       assertMessageCreatePayload({ kind: 'SYSTEM', body: 'Internal' }),
     ).toThrow(CommunicationMessageKindInvalidException);

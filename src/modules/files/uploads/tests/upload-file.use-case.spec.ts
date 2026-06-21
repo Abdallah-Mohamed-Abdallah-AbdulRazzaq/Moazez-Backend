@@ -118,6 +118,47 @@ describe('UploadFileUseCase', () => {
     expect(registerFileMetadataUseCase.execute).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['audio/mpeg', 'voice.mp3'],
+    ['audio/mp4', 'voice.m4a'],
+    ['audio/webm', 'voice.webm'],
+    ['video/mp4', 'lesson.mp4'],
+    ['video/webm', 'lesson.webm'],
+  ])('accepts %s for app-facing communication media files', async (mimeType, originalName) => {
+    storageService.saveObject.mockResolvedValue({
+      bucket: 'moazez-dev',
+      etag: 'etag-1',
+    });
+    registerFileMetadataUseCase.execute.mockResolvedValue({
+      id: 'file-1',
+      originalName,
+      mimeType,
+      sizeBytes: '12',
+      visibility: FileVisibility.PRIVATE,
+      createdAt: '2026-04-20T10:00:00.000Z',
+    });
+
+    const file: UploadedMultipartFile = {
+      originalname: originalName,
+      mimetype: mimeType,
+      size: 12,
+      buffer: Buffer.from('media body'),
+    };
+
+    const response = await runInFilesScope(() => useCase.execute(file));
+
+    expect(response).toMatchObject({
+      originalName,
+      mimeType,
+      visibility: FileVisibility.PRIVATE,
+    });
+    expect(storageService.saveObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contentType: mimeType,
+      }),
+    );
+  });
+
   it('rejects oversized files with files.upload.size_exceeded', async () => {
     const file: UploadedMultipartFile = {
       originalname: 'too-large.txt',

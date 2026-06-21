@@ -89,7 +89,7 @@ describe('Parent Messages use-cases', () => {
     expect(getMessageInfoUseCase.execute).not.toHaveBeenCalled();
   });
 
-  it('sends text-only messages through Communication core after parent participant check', async () => {
+  it('sends text messages through Communication core after parent participant check', async () => {
     const { sendUseCase, readAdapter, createMessageUseCase } =
       createUseCasesWithValidAccess();
     readAdapter.findConversationForParent.mockResolvedValue(
@@ -107,6 +107,78 @@ describe('Parent Messages use-cases', () => {
       'conversation-1',
       { type: 'text', body: 'Hello parent chat' },
     );
+  });
+
+  it('sends image messages through Communication core and returns safe attachments', async () => {
+    const { sendUseCase, readAdapter, createMessageUseCase } =
+      createUseCasesWithValidAccess();
+    readAdapter.findConversationForParent.mockResolvedValue(
+      conversationFixture(),
+    );
+    createMessageUseCase.execute.mockResolvedValue({ id: 'message-1' });
+    readAdapter.findMessageForParent.mockResolvedValue(
+      messageFixture({
+        kind: 'IMAGE',
+        body: 'Photo caption',
+        attachments: [attachmentFixture()],
+      }),
+    );
+
+    const result = await sendUseCase.execute({
+      conversationId: 'conversation-1',
+      body: {
+        type: 'image',
+        caption: 'Photo caption',
+        clientMessageId: 'client-image-1',
+        attachments: [
+          {
+            fileId: 'file-1',
+            mediaKind: 'image',
+            caption: 'Photo caption',
+            sortOrder: 0,
+          },
+        ],
+      },
+    });
+
+    expect(createMessageUseCase.execute).toHaveBeenCalledWith(
+      'conversation-1',
+      {
+        type: 'image',
+        caption: 'Photo caption',
+        clientMessageId: 'client-image-1',
+        attachments: [
+          {
+            fileId: 'file-1',
+            mediaKind: 'image',
+            caption: 'Photo caption',
+            sortOrder: 0,
+          },
+        ],
+      },
+    );
+    expect(result.message).toMatchObject({
+      type: 'image',
+      body: 'Photo caption',
+      attachmentsCount: 1,
+      attachments_count: 1,
+      attachments: [
+        expect.objectContaining({
+          attachmentId: 'attachment-1',
+          attachment_id: 'attachment-1',
+          fileId: 'file-1',
+          file_id: 'file-1',
+          mediaKind: 'image',
+          media_kind: 'image',
+          downloadPath: '/api/v1/files/file-1/download',
+          download_path: '/api/v1/files/file-1/download',
+        }),
+      ],
+    });
+    const json = JSON.stringify(result);
+    expect(json).not.toContain('schoolId');
+    expect(json).not.toContain('objectKey');
+    expect(json).not.toContain('signedUrl');
   });
 
   it('returns parent message readers with dual aliases and no ownership override', async () => {
@@ -289,7 +361,7 @@ function conversationFixture() {
   };
 }
 
-function messageFixture() {
+function messageFixture(overrides?: Record<string, unknown>) {
   return {
     id: 'message-1',
     conversationId: 'conversation-1',
@@ -313,6 +385,25 @@ function messageFixture() {
     },
     reads: [],
     _count: { reads: 0 },
+    attachments: [],
+    ...(overrides ?? {}),
+  };
+}
+
+function attachmentFixture() {
+  return {
+    id: 'attachment-1',
+    fileId: 'file-1',
+    caption: 'Photo caption',
+    sortOrder: 0,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    file: {
+      originalName: 'photo.jpg',
+      mimeType: 'image/jpeg',
+      sizeBytes: 123n,
+      visibility: 'PRIVATE',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    },
   };
 }
 
