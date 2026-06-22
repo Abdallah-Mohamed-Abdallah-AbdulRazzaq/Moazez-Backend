@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
+import { AppDeviceTokensModule } from '../app-device-tokens/app-device-tokens.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { DisciplineModule } from '../discipline/discipline.module';
 import { GradesSubmissionsRepository } from '../grades/assessments/infrastructure/grades-submissions.repository';
@@ -82,6 +83,8 @@ import {
   ListStudentNotificationsUseCase,
   MarkAllStudentNotificationsReadUseCase,
   MarkStudentNotificationReadUseCase,
+  RegisterStudentDeviceTokenUseCase,
+  UnregisterStudentDeviceTokenUseCase,
   UpdateStudentNotificationPreferencesUseCase,
 } from './notifications/application/student-notifications.use-cases';
 import { StudentNotificationsController } from './notifications/controller/student-notifications.controller';
@@ -124,6 +127,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
 @Module({
   imports: [
     AppCalendarReadModelModule,
+    AppDeviceTokensModule,
     AuthModule,
     CommunicationModule,
     DisciplineModule,
@@ -231,6 +235,8 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     ArchiveStudentNotificationUseCase,
     GetStudentNotificationPreferencesUseCase,
     UpdateStudentNotificationPreferencesUseCase,
+    RegisterStudentDeviceTokenUseCase,
+    UnregisterStudentDeviceTokenUseCase,
     StudentAnnouncementsReadAdapter,
     ListStudentAnnouncementsUseCase,
     GetStudentAnnouncementUseCase,

@@ -1,4 +1,10 @@
 import { ArgumentMetadata, ValidationPipe } from '@nestjs/common';
+import { AppDeviceTokenSurface } from '@prisma/client';
+import { AppDeviceTokenService } from '../../../app-device-tokens/application/app-device-token.service';
+import {
+  RegisterAppDeviceTokenDto,
+  UnregisterAppDeviceTokenDto,
+} from '../../../app-device-tokens/dto/app-device-token.dto';
 import { CommunicationAppNotificationCenterService } from '../../../communication/application/communication-app-notification-center.service';
 import { CommunicationNotificationPreferenceService } from '../../../communication/application/communication-notification-preference.service';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
@@ -12,6 +18,8 @@ import {
   ListTeacherNotificationsUseCase,
   MarkAllTeacherNotificationsReadUseCase,
   MarkTeacherNotificationReadUseCase,
+  RegisterTeacherDeviceTokenUseCase,
+  UnregisterTeacherDeviceTokenUseCase,
   UpdateTeacherNotificationPreferencesUseCase,
 } from '../application/teacher-notifications.use-cases';
 import {
@@ -120,6 +128,41 @@ describe('Teacher notifications use cases', () => {
         { category: 'message_received', inAppEnabled: false },
         { category: 'announcement', inAppEnabled: true },
       ],
+    });
+  });
+
+  it('registers and unregisters device tokens for the current teacher only', async () => {
+    const {
+      registerDeviceTokenUseCase,
+      unregisterDeviceTokenUseCase,
+      deviceTokenService,
+    } = createUseCases();
+    const registerDto: RegisterAppDeviceTokenDto = {
+      token: 'fcm-token-value-for-teacher-device',
+      platform: 'web',
+      deviceId: 'teacher-device',
+    };
+    const unregisterDto: UnregisterAppDeviceTokenDto = {
+      token: 'fcm-token-value-for-teacher-device',
+      deviceId: 'teacher-device',
+    };
+
+    await registerDeviceTokenUseCase.execute(registerDto);
+    await unregisterDeviceTokenUseCase.execute(unregisterDto);
+
+    expect(deviceTokenService.registerForActor).toHaveBeenCalledWith({
+      schoolId: 'school-1',
+      userId: 'teacher-user-1',
+      appSurface: AppDeviceTokenSurface.TEACHER,
+      body: registerDto,
+      aliasStyle: 'camel',
+    });
+    expect(deviceTokenService.unregisterForActor).toHaveBeenCalledWith({
+      schoolId: 'school-1',
+      userId: 'teacher-user-1',
+      appSurface: AppDeviceTokenSurface.TEACHER,
+      body: unregisterDto,
+      aliasStyle: 'camel',
     });
   });
 
@@ -234,15 +277,19 @@ function createUseCases(): {
   archiveUseCase: ArchiveTeacherNotificationUseCase;
   getPreferencesUseCase: GetTeacherNotificationPreferencesUseCase;
   updatePreferencesUseCase: UpdateTeacherNotificationPreferencesUseCase;
+  registerDeviceTokenUseCase: RegisterTeacherDeviceTokenUseCase;
+  unregisterDeviceTokenUseCase: UnregisterTeacherDeviceTokenUseCase;
   accessService: jest.Mocked<TeacherAppAccessService>;
   notificationCenter: jest.Mocked<CommunicationAppNotificationCenterService>;
   preferenceService: jest.Mocked<CommunicationNotificationPreferenceService>;
+  deviceTokenService: jest.Mocked<AppDeviceTokenService>;
 } {
   const accessService = {
     assertCurrentTeacher: jest.fn(() => contextFixture()),
   } as unknown as jest.Mocked<TeacherAppAccessService>;
   const notificationCenter = notificationCenterMock();
   const preferenceService = preferenceServiceMock();
+  const deviceTokenService = deviceTokenServiceMock();
 
   return {
     listUseCase: new ListTeacherNotificationsUseCase(
@@ -277,9 +324,18 @@ function createUseCases(): {
       accessService,
       preferenceService,
     ),
+    registerDeviceTokenUseCase: new RegisterTeacherDeviceTokenUseCase(
+      accessService,
+      deviceTokenService,
+    ),
+    unregisterDeviceTokenUseCase: new UnregisterTeacherDeviceTokenUseCase(
+      accessService,
+      deviceTokenService,
+    ),
     accessService,
     notificationCenter,
     preferenceService,
+    deviceTokenService,
   };
 }
 
@@ -301,6 +357,22 @@ function preferenceServiceMock(): jest.Mocked<CommunicationNotificationPreferenc
     shouldCreateInAppNotification: jest.fn().mockResolvedValue(true),
     filterInAppEnabledRecipientUserIds: jest.fn(),
   } as unknown as jest.Mocked<CommunicationNotificationPreferenceService>;
+}
+
+function deviceTokenServiceMock(): jest.Mocked<AppDeviceTokenService> {
+  return {
+    registerForActor: jest.fn().mockResolvedValue({
+      deviceTokenId: 'device-token-1',
+      platform: 'web',
+      appSurface: 'teacher',
+      isActive: true,
+    }),
+    unregisterForActor: jest.fn().mockResolvedValue({
+      deviceTokenId: 'device-token-1',
+      appSurface: 'teacher',
+      revoked: true,
+    }),
+  } as unknown as jest.Mocked<AppDeviceTokenService>;
 }
 
 function contextFixture(): TeacherAppContext {

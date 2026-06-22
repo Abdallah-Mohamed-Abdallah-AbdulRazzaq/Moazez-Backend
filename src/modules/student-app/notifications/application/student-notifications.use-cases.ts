@@ -1,4 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import { AppDeviceTokenSurface } from '@prisma/client';
+import { AppDeviceTokenService } from '../../../app-device-tokens/application/app-device-token.service';
+import {
+  AppDeviceTokenDualRegisterResponseDto,
+  AppDeviceTokenDualUnregisterResponseDto,
+  RegisterAppDeviceTokenDto,
+  UnregisterAppDeviceTokenDto,
+} from '../../../app-device-tokens/dto/app-device-token.dto';
 import { CommunicationAppNotificationCenterService } from '../../../communication/application/communication-app-notification-center.service';
 import { CommunicationNotificationPreferenceService } from '../../../communication/application/communication-notification-preference.service';
 import { StudentAppAccessService } from '../../access/student-app-access.service';
@@ -144,6 +152,52 @@ export class GetStudentNotificationPreferencesUseCase {
       userId: context.studentUserId,
       aliasStyle: STUDENT_NOTIFICATION_ALIAS_STYLE,
     }) as Promise<StudentNotificationPreferencesResponseDto>;
+  }
+}
+
+@Injectable()
+export class RegisterStudentDeviceTokenUseCase {
+  constructor(
+    private readonly accessService: StudentAppAccessService,
+    private readonly deviceTokenService: AppDeviceTokenService,
+  ) {}
+
+  async execute(
+    dto: RegisterAppDeviceTokenDto,
+  ): Promise<AppDeviceTokenDualRegisterResponseDto> {
+    const { context } =
+      await this.accessService.getCurrentStudentWithEnrollment();
+
+    return this.deviceTokenService.registerForActor({
+      schoolId: context.schoolId,
+      userId: context.studentUserId,
+      appSurface: AppDeviceTokenSurface.STUDENT,
+      body: dto,
+      aliasStyle: STUDENT_NOTIFICATION_ALIAS_STYLE,
+    }) as Promise<AppDeviceTokenDualRegisterResponseDto>;
+  }
+}
+
+@Injectable()
+export class UnregisterStudentDeviceTokenUseCase {
+  constructor(
+    private readonly accessService: StudentAppAccessService,
+    private readonly deviceTokenService: AppDeviceTokenService,
+  ) {}
+
+  async execute(
+    dto: UnregisterAppDeviceTokenDto,
+  ): Promise<AppDeviceTokenDualUnregisterResponseDto> {
+    const { context } =
+      await this.accessService.getCurrentStudentWithEnrollment();
+
+    return this.deviceTokenService.unregisterForActor({
+      schoolId: context.schoolId,
+      userId: context.studentUserId,
+      appSurface: AppDeviceTokenSurface.STUDENT,
+      body: dto,
+      aliasStyle: STUDENT_NOTIFICATION_ALIAS_STYLE,
+    }) as Promise<AppDeviceTokenDualUnregisterResponseDto>;
   }
 }
 

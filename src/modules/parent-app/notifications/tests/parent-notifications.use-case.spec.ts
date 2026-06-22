@@ -1,4 +1,10 @@
 import { ArgumentMetadata, ValidationPipe } from '@nestjs/common';
+import { AppDeviceTokenSurface } from '@prisma/client';
+import { AppDeviceTokenService } from '../../../app-device-tokens/application/app-device-token.service';
+import {
+  RegisterAppDeviceTokenDto,
+  UnregisterAppDeviceTokenDto,
+} from '../../../app-device-tokens/dto/app-device-token.dto';
 import { CommunicationAppNotificationCenterService } from '../../../communication/application/communication-app-notification-center.service';
 import { CommunicationNotificationPreferenceService } from '../../../communication/application/communication-notification-preference.service';
 import { ParentAppAccessService } from '../../access/parent-app-access.service';
@@ -12,6 +18,8 @@ import {
   ListParentNotificationsUseCase,
   MarkAllParentNotificationsReadUseCase,
   MarkParentNotificationReadUseCase,
+  RegisterParentDeviceTokenUseCase,
+  UnregisterParentDeviceTokenUseCase,
   UpdateParentNotificationPreferencesUseCase,
 } from '../application/parent-notifications.use-cases';
 import {
@@ -119,6 +127,41 @@ describe('Parent notifications use cases', () => {
         { category: 'message_received', inAppEnabled: false },
         { category: 'announcement', in_app_enabled: true },
       ],
+    });
+  });
+
+  it('registers and unregisters device tokens for the current parent only', async () => {
+    const {
+      registerDeviceTokenUseCase,
+      unregisterDeviceTokenUseCase,
+      deviceTokenService,
+    } = createUseCasesWithValidAccess();
+    const registerDto: RegisterAppDeviceTokenDto = {
+      token: 'fcm-token-value-for-parent-device',
+      platform: 'android',
+      deviceId: 'parent-device',
+    };
+    const unregisterDto: UnregisterAppDeviceTokenDto = {
+      token: 'fcm-token-value-for-parent-device',
+      deviceId: 'parent-device',
+    };
+
+    await registerDeviceTokenUseCase.execute(registerDto);
+    await unregisterDeviceTokenUseCase.execute(unregisterDto);
+
+    expect(deviceTokenService.registerForActor).toHaveBeenCalledWith({
+      schoolId: 'school-1',
+      userId: 'parent-user-1',
+      appSurface: AppDeviceTokenSurface.PARENT,
+      body: registerDto,
+      aliasStyle: 'dual',
+    });
+    expect(deviceTokenService.unregisterForActor).toHaveBeenCalledWith({
+      schoolId: 'school-1',
+      userId: 'parent-user-1',
+      appSurface: AppDeviceTokenSurface.PARENT,
+      body: unregisterDto,
+      aliasStyle: 'dual',
     });
   });
 
@@ -234,15 +277,19 @@ function createUseCases(): {
   archiveUseCase: ArchiveParentNotificationUseCase;
   getPreferencesUseCase: GetParentNotificationPreferencesUseCase;
   updatePreferencesUseCase: UpdateParentNotificationPreferencesUseCase;
+  registerDeviceTokenUseCase: RegisterParentDeviceTokenUseCase;
+  unregisterDeviceTokenUseCase: UnregisterParentDeviceTokenUseCase;
   accessService: jest.Mocked<ParentAppAccessService>;
   notificationCenter: jest.Mocked<CommunicationAppNotificationCenterService>;
   preferenceService: jest.Mocked<CommunicationNotificationPreferenceService>;
+  deviceTokenService: jest.Mocked<AppDeviceTokenService>;
 } {
   const accessService = {
     assertCurrentParent: jest.fn(),
   } as unknown as jest.Mocked<ParentAppAccessService>;
   const notificationCenter = notificationCenterMock();
   const preferenceService = preferenceServiceMock();
+  const deviceTokenService = deviceTokenServiceMock();
 
   return {
     listUseCase: new ListParentNotificationsUseCase(
@@ -277,9 +324,18 @@ function createUseCases(): {
       accessService,
       preferenceService,
     ),
+    registerDeviceTokenUseCase: new RegisterParentDeviceTokenUseCase(
+      accessService,
+      deviceTokenService,
+    ),
+    unregisterDeviceTokenUseCase: new UnregisterParentDeviceTokenUseCase(
+      accessService,
+      deviceTokenService,
+    ),
     accessService,
     notificationCenter,
     preferenceService,
+    deviceTokenService,
   };
 }
 
@@ -307,6 +363,27 @@ function preferenceServiceMock(): jest.Mocked<CommunicationNotificationPreferenc
     shouldCreateInAppNotification: jest.fn().mockResolvedValue(true),
     filterInAppEnabledRecipientUserIds: jest.fn(),
   } as unknown as jest.Mocked<CommunicationNotificationPreferenceService>;
+}
+
+function deviceTokenServiceMock(): jest.Mocked<AppDeviceTokenService> {
+  return {
+    registerForActor: jest.fn().mockResolvedValue({
+      deviceTokenId: 'device-token-1',
+      device_token_id: 'device-token-1',
+      platform: 'android',
+      appSurface: 'parent',
+      app_surface: 'parent',
+      isActive: true,
+      is_active: true,
+    }),
+    unregisterForActor: jest.fn().mockResolvedValue({
+      deviceTokenId: 'device-token-1',
+      device_token_id: 'device-token-1',
+      appSurface: 'parent',
+      app_surface: 'parent',
+      revoked: true,
+    }),
+  } as unknown as jest.Mocked<AppDeviceTokenService>;
 }
 
 function contextFixture(): ParentAppContext {

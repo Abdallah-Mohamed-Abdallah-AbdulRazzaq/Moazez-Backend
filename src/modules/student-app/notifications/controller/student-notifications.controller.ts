@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -22,8 +23,16 @@ import {
   ListStudentNotificationsUseCase,
   MarkAllStudentNotificationsReadUseCase,
   MarkStudentNotificationReadUseCase,
+  RegisterStudentDeviceTokenUseCase,
+  UnregisterStudentDeviceTokenUseCase,
   UpdateStudentNotificationPreferencesUseCase,
 } from '../application/student-notifications.use-cases';
+import {
+  AppDeviceTokenDualRegisterResponseDto,
+  AppDeviceTokenDualUnregisterResponseDto,
+  RegisterAppDeviceTokenDto,
+  UnregisterAppDeviceTokenDto,
+} from '../../../app-device-tokens/dto/app-device-token.dto';
 import {
   ListStudentNotificationsQueryDto,
   StudentNotificationPreferencesResponseDto,
@@ -47,6 +56,8 @@ export class StudentNotificationsController {
     private readonly archiveStudentNotificationUseCase: ArchiveStudentNotificationUseCase,
     private readonly getStudentNotificationPreferencesUseCase: GetStudentNotificationPreferencesUseCase,
     private readonly updateStudentNotificationPreferencesUseCase: UpdateStudentNotificationPreferencesUseCase,
+    private readonly registerStudentDeviceTokenUseCase: RegisterStudentDeviceTokenUseCase,
+    private readonly unregisterStudentDeviceTokenUseCase: UnregisterStudentDeviceTokenUseCase,
   ) {}
 
   @Get()
@@ -81,6 +92,22 @@ export class StudentNotificationsController {
     @Body() body: UpdateStudentNotificationPreferencesDto,
   ): Promise<StudentNotificationPreferencesResponseDto> {
     return this.updateStudentNotificationPreferencesUseCase.execute(body);
+  }
+
+  @Post('device-tokens')
+  @ApiCreatedResponse({ type: AppDeviceTokenDualRegisterResponseDto })
+  registerDeviceToken(
+    @Body() body: RegisterAppDeviceTokenDto,
+  ): Promise<AppDeviceTokenDualRegisterResponseDto> {
+    return this.registerStudentDeviceTokenUseCase.execute(body);
+  }
+
+  @Delete('device-tokens/current')
+  @ApiOkResponse({ type: AppDeviceTokenDualUnregisterResponseDto })
+  unregisterCurrentDeviceToken(
+    @Body() body: UnregisterAppDeviceTokenDto,
+  ): Promise<AppDeviceTokenDualUnregisterResponseDto> {
+    return this.unregisterStudentDeviceTokenUseCase.execute(body);
   }
 
   @Get(':notificationId')

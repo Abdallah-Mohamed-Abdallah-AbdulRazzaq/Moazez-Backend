@@ -371,6 +371,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
 
   const testSuffix = `parent-app-security-${Date.now()}`;
   const createdUserIds: string[] = [];
+  const createdAppDeviceTokenIds: string[] = [];
   const createdGuardianIds: string[] = [];
   const createdStudentGuardianIds: string[] = [];
   const createdStudentIds: string[] = [];
@@ -941,6 +942,14 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       });
       await prisma.communicationNotification.deleteMany({
         where: { recipientUserId: { in: createdUserIds } },
+      });
+      await prisma.appDeviceToken.deleteMany({
+        where: {
+          OR: [
+            { id: { in: createdAppDeviceTokenIds } },
+            { userId: { in: createdUserIds } },
+          ],
+        },
       });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
@@ -2313,6 +2322,94 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
           .expect(404);
       }
     }
+  });
+
+  it('registers and unregisters parent device tokens without scope or token leaks', async () => {
+    const { accessToken } = await login(parentEmail);
+    const token = `${testSuffix}-parent-fcm-token-value-1234567890`;
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/parent/notifications/device-tokens`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        token,
+        platform: 'android',
+        schoolId: schoolBId,
+        userId: adminUserId,
+      })
+      .expect(400);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/parent/notifications/device-tokens`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        token,
+        platform: 'android',
+        deviceId: `${testSuffix}-parent-device`,
+        appVersion: '1.0.0',
+        locale: 'en-US',
+        timezone: 'Africa/Cairo',
+      })
+      .expect(201);
+
+    createdAppDeviceTokenIds.push(response.body.deviceTokenId);
+    expect(response.body).toMatchObject({
+      deviceTokenId: expect.any(String),
+      device_token_id: response.body.deviceTokenId,
+      platform: 'android',
+      appSurface: 'parent',
+      app_surface: 'parent',
+      isActive: true,
+      is_active: true,
+    });
+    assertNoForbiddenParentAppFields(response.body);
+    expect(JSON.stringify(response.body)).not.toContain(token);
+    expect(JSON.stringify(response.body)).not.toContain('tokenHash');
+    expect(JSON.stringify(response.body)).not.toContain('tokenCiphertext');
+
+    const row = await prisma.appDeviceToken.findUniqueOrThrow({
+      where: { id: response.body.deviceTokenId },
+    });
+    expect(row.schoolId).toBe(schoolAId);
+    expect(row.userId).toBe(parentUserId);
+    expect(row.tokenHash).not.toBe(token);
+    expect(row.tokenCiphertext).not.toContain(token);
+    expect(row.isActive).toBe(true);
+
+    const revoked = await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/parent/notifications/device-tokens/current`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ token })
+      .expect(200);
+
+    expect(revoked.body).toMatchObject({
+      deviceTokenId: response.body.deviceTokenId,
+      device_token_id: response.body.deviceTokenId,
+      appSurface: 'parent',
+      app_surface: 'parent',
+      revoked: true,
+    });
+    assertNoForbiddenParentAppFields(revoked.body);
+
+    const revokedRow = await prisma.appDeviceToken.findUniqueOrThrow({
+      where: { id: response.body.deviceTokenId },
+    });
+    expect(revokedRow.isActive).toBe(false);
+    expect(revokedRow.revokedAt).toBeTruthy();
+
+    const unknown = await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/parent/notifications/device-tokens/current`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ token: `${testSuffix}-unknown-parent-token-value-123456` })
+      .expect(200);
+
+    expect(unknown.body).toMatchObject({
+      deviceTokenId: null,
+      device_token_id: null,
+      appSurface: 'parent',
+      app_surface: 'parent',
+      revoked: false,
+    });
   });
 
   it('forbids school admin, teacher, and student actors on Parent App routes', async () => {

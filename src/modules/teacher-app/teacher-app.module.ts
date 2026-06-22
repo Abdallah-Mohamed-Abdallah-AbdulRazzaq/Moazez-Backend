@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
+import { AppDeviceTokensModule } from '../app-device-tokens/app-device-tokens.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { RollCallModule } from '../attendance/roll-call/roll-call.module';
 import { AssessmentsModule } from '../grades/assessments/assessments.module';
@@ -84,6 +85,8 @@ import {
   ListTeacherNotificationsUseCase,
   MarkAllTeacherNotificationsReadUseCase,
   MarkTeacherNotificationReadUseCase,
+  RegisterTeacherDeviceTokenUseCase,
+  UnregisterTeacherDeviceTokenUseCase,
   UpdateTeacherNotificationPreferencesUseCase,
 } from './notifications/application/teacher-notifications.use-cases';
 import { TeacherNotificationsController } from './notifications/controller/teacher-notifications.controller';
@@ -123,6 +126,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
 @Module({
   imports: [
     AppCalendarReadModelModule,
+    AppDeviceTokensModule,
     RollCallModule,
     AssessmentsModule,
     TasksModule,
@@ -215,6 +219,8 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     ArchiveTeacherNotificationUseCase,
     GetTeacherNotificationPreferencesUseCase,
     UpdateTeacherNotificationPreferencesUseCase,
+    RegisterTeacherDeviceTokenUseCase,
+    UnregisterTeacherDeviceTokenUseCase,
     TeacherAnnouncementsReadAdapter,
     ListTeacherAnnouncementsUseCase,
     GetTeacherAnnouncementUseCase,

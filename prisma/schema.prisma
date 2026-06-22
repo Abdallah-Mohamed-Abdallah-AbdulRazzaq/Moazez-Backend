@@ -981,6 +981,22 @@ enum CommunicationNotificationDeliveryStatus {
   @@map("communication_notification_delivery_status")
 }
 
+enum AppDeviceTokenPlatform {
+  ANDROID
+  IOS
+  WEB
+
+  @@map("app_device_token_platform")
+}
+
+enum AppDeviceTokenSurface {
+  PARENT
+  STUDENT
+  TEACHER
+
+  @@map("app_device_token_surface")
+}
+
 enum AcademicCalendarEventType {
   HOLIDAY
   EXAM
@@ -1265,6 +1281,7 @@ model School {
   communicationNotifications            CommunicationNotification[]
   communicationNotificationDeliveries   CommunicationNotificationDelivery[]
   communicationNotificationPreferences  CommunicationNotificationPreference[]
+  appDeviceTokens                       AppDeviceToken[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -1459,6 +1476,7 @@ model User {
   communicationNotificationsActed                CommunicationNotification[]            @relation("CommunicationNotificationsActorUser")
   communicationNotificationPreferences           CommunicationNotificationPreference[]   @relation("CommunicationNotificationPreferencesUser")
   schoolEmailDeliveryRecipients                  SchoolEmailDeliveryRecipient[]         @relation("SchoolEmailDeliveryRecipientsUser")
+  appDeviceTokens                                AppDeviceToken[]                       @relation("AppDeviceTokensUser")
 
   @@index([userType])
   @@index([status])
@@ -5829,6 +5847,42 @@ model CommunicationNotificationPreference {
   @@index([schoolId, userId], map: "communication_notification_preferences_school_user_idx")
   @@index([category])
   @@map("communication_notification_preferences")
+}
+
+model AppDeviceToken {
+  id              String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                 @map("school_id") @db.Uuid
+  userId          String                 @map("user_id") @db.Uuid
+  tokenHash       String                 @map("token_hash")
+  tokenCiphertext String                 @map("token_ciphertext")
+  platform        AppDeviceTokenPlatform
+  appSurface      AppDeviceTokenSurface  @map("app_surface")
+  deviceId        String?                @map("device_id")
+  appVersion      String?                @map("app_version")
+  locale          String?
+  timezone        String?
+  isActive        Boolean                @default(true) @map("is_active")
+  lastSeenAt      DateTime               @default(now()) @map("last_seen_at")
+  revokedAt       DateTime?              @map("revoked_at")
+  lastFailureCode String?                @map("last_failure_code")
+  lastFailureAt   DateTime?              @map("last_failure_at")
+  failureCount    Int                    @default(0) @map("failure_count")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  user   User   @relation("AppDeviceTokensUser", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, userId, tokenHash, appSurface])
+  @@index([schoolId])
+  @@index([userId])
+  @@index([schoolId, userId])
+  @@index([schoolId, userId, appSurface])
+  @@index([schoolId, appSurface, isActive])
+  @@index([tokenHash])
+  @@index([revokedAt])
+  @@map("app_device_tokens")
 }
 
 // ============================================================

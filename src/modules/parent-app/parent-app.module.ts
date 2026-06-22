@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
+import { AppDeviceTokensModule } from '../app-device-tokens/app-device-tokens.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { DisciplineModule } from '../discipline/discipline.module';
 import { ParentAppAccessService } from './access/parent-app-access.service';
@@ -75,6 +76,8 @@ import {
   ListParentNotificationsUseCase,
   MarkAllParentNotificationsReadUseCase,
   MarkParentNotificationReadUseCase,
+  RegisterParentDeviceTokenUseCase,
+  UnregisterParentDeviceTokenUseCase,
   UpdateParentNotificationPreferencesUseCase,
 } from './notifications/application/parent-notifications.use-cases';
 import { ParentNotificationsController } from './notifications/controller/parent-notifications.controller';
@@ -113,6 +116,7 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
 @Module({
   imports: [
     AppCalendarReadModelModule,
+    AppDeviceTokensModule,
     CommunicationModule,
     DisciplineModule,
     ParentHomeworksModule,
@@ -209,6 +213,8 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ArchiveParentNotificationUseCase,
     GetParentNotificationPreferencesUseCase,
     UpdateParentNotificationPreferencesUseCase,
+    RegisterParentDeviceTokenUseCase,
+    UnregisterParentDeviceTokenUseCase,
     ParentAnnouncementsReadAdapter,
     ListParentAnnouncementsUseCase,
     GetParentAnnouncementUseCase,

@@ -317,6 +317,7 @@ describe('Student App Home/Profile routes (security)', () => {
 
   const testSuffix = `student-app-security-${Date.now()}`;
   const createdUserIds: string[] = [];
+  const createdAppDeviceTokenIds: string[] = [];
   const createdStudentIds: string[] = [];
   const createdEnrollmentIds: string[] = [];
   const createdAttendanceSessionIds: string[] = [];
@@ -829,6 +830,14 @@ describe('Student App Home/Profile routes (security)', () => {
       });
       await prisma.communicationNotification.deleteMany({
         where: { recipientUserId: { in: createdUserIds } },
+      });
+      await prisma.appDeviceToken.deleteMany({
+        where: {
+          OR: [
+            { id: { in: createdAppDeviceTokenIds } },
+            { userId: { in: createdUserIds } },
+          ],
+        },
       });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
@@ -2314,6 +2323,94 @@ describe('Student App Home/Profile routes (security)', () => {
       )
       .set('Authorization', `Bearer ${otherStudentToken}`)
       .expect(404);
+  });
+
+  it('registers and unregisters student device tokens without scope or token leaks', async () => {
+    const { accessToken } = await login(linkedStudentEmail);
+    const token = `${testSuffix}-student-fcm-token-value-1234567890`;
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/notifications/device-tokens`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        token,
+        platform: 'ios',
+        schoolId,
+        userId: sameSchoolOtherStudentUserId,
+      })
+      .expect(400);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/notifications/device-tokens`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        token,
+        platform: 'ios',
+        deviceId: `${testSuffix}-student-device`,
+        appVersion: '1.0.0',
+        locale: 'en-US',
+        timezone: 'Africa/Cairo',
+      })
+      .expect(201);
+
+    createdAppDeviceTokenIds.push(response.body.deviceTokenId);
+    expect(response.body).toMatchObject({
+      deviceTokenId: expect.any(String),
+      device_token_id: response.body.deviceTokenId,
+      platform: 'ios',
+      appSurface: 'student',
+      app_surface: 'student',
+      isActive: true,
+      is_active: true,
+    });
+    assertNoForbiddenStudentDeviceTokenFields(response.body);
+    expect(JSON.stringify(response.body)).not.toContain(token);
+    expect(JSON.stringify(response.body)).not.toContain('tokenHash');
+    expect(JSON.stringify(response.body)).not.toContain('tokenCiphertext');
+
+    const row = await prisma.appDeviceToken.findUniqueOrThrow({
+      where: { id: response.body.deviceTokenId },
+    });
+    expect(row.schoolId).toBe(schoolId);
+    expect(row.userId).toBe(linkedStudentUserId);
+    expect(row.tokenHash).not.toBe(token);
+    expect(row.tokenCiphertext).not.toContain(token);
+    expect(row.isActive).toBe(true);
+
+    const revoked = await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/student/notifications/device-tokens/current`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ token, deviceId: `${testSuffix}-student-device` })
+      .expect(200);
+
+    expect(revoked.body).toMatchObject({
+      deviceTokenId: response.body.deviceTokenId,
+      device_token_id: response.body.deviceTokenId,
+      appSurface: 'student',
+      app_surface: 'student',
+      revoked: true,
+    });
+    assertNoForbiddenStudentDeviceTokenFields(revoked.body);
+
+    const revokedRow = await prisma.appDeviceToken.findUniqueOrThrow({
+      where: { id: response.body.deviceTokenId },
+    });
+    expect(revokedRow.isActive).toBe(false);
+    expect(revokedRow.revokedAt).toBeTruthy();
+
+    const unknown = await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/student/notifications/device-tokens/current`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ deviceId: `${testSuffix}-unknown-student-device` })
+      .expect(200);
+
+    expect(unknown.body).toMatchObject({
+      deviceTokenId: null,
+      device_token_id: null,
+      appSurface: 'student',
+      app_surface: 'student',
+      revoked: false,
+    });
   });
 
   it('allows a linked student to read audience-matched announcements only', async () => {
@@ -4980,6 +5077,25 @@ describe('Student App Home/Profile routes (security)', () => {
       'directUrl',
       'signedUrl',
       'fileUrl',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  }
+
+  function assertNoForbiddenStudentDeviceTokenFields(body: unknown): void {
+    const serialized = JSON.stringify(body);
+    for (const forbidden of [
+      '"token"',
+      'tokenHash',
+      'tokenCiphertext',
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'userId',
+      'passwordHash',
+      'provider',
+      'metadata',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }

@@ -118,6 +118,7 @@ describe('Teacher App tenancy isolation (security)', () => {
 
   const testSuffix = `teacher-app-security-${Date.now()}`;
   const createdUserIds: string[] = [];
+  const createdAppDeviceTokenIds: string[] = [];
   const createdStudentIds: string[] = [];
   const createdGuardianIds: string[] = [];
   const createdStudentGuardianIds: string[] = [];
@@ -798,6 +799,14 @@ describe('Teacher App tenancy isolation (security)', () => {
       await prisma.communicationNotification.deleteMany({
         where: { recipientUserId: { in: createdUserIds } },
       });
+      await prisma.appDeviceToken.deleteMany({
+        where: {
+          OR: [
+            { id: { in: createdAppDeviceTokenIds } },
+            { userId: { in: createdUserIds } },
+          ],
+        },
+      });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
@@ -1128,6 +1137,90 @@ describe('Teacher App tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ contactId: 'student:00000000-0000-4000-8000-000000000000' })
       .expect(404);
+  });
+
+  it('registers and unregisters teacher device tokens without scope or token leaks', async () => {
+    const { accessToken } = await login(teacherAEmail);
+    const token = `${testSuffix}-teacher-fcm-token-value-1234567890`;
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/notifications/device-tokens`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        token,
+        platform: 'web',
+        schoolId: schoolBId,
+        userId: teacherBId,
+      })
+      .expect(400);
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/notifications/device-tokens`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        token,
+        platform: 'web',
+        deviceId: `${testSuffix}-teacher-device`,
+        appVersion: '1.0.0',
+        locale: 'en-US',
+        timezone: 'Africa/Cairo',
+      })
+      .expect(201);
+
+    createdAppDeviceTokenIds.push(response.body.deviceTokenId);
+    expect(response.body).toMatchObject({
+      deviceTokenId: expect.any(String),
+      platform: 'web',
+      appSurface: 'teacher',
+      isActive: true,
+    });
+    expect(response.body).not.toHaveProperty('device_token_id');
+    expect(response.body).not.toHaveProperty('app_surface');
+    expectSafeTeacherDeviceTokenPayload(response.body);
+    expect(JSON.stringify(response.body)).not.toContain(token);
+
+    const row = await prisma.appDeviceToken.findUniqueOrThrow({
+      where: { id: response.body.deviceTokenId },
+    });
+    expect(row.schoolId).toBe(schoolAId);
+    expect(row.userId).toBe(teacherAId);
+    expect(row.tokenHash).not.toBe(token);
+    expect(row.tokenCiphertext).not.toContain(token);
+    expect(row.isActive).toBe(true);
+
+    const revoked = await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/teacher/notifications/device-tokens/current`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ deviceId: `${testSuffix}-teacher-device` })
+      .expect(200);
+
+    expect(revoked.body).toMatchObject({
+      deviceTokenId: response.body.deviceTokenId,
+      appSurface: 'teacher',
+      revoked: true,
+    });
+    expect(revoked.body).not.toHaveProperty('device_token_id');
+    expect(revoked.body).not.toHaveProperty('app_surface');
+    expectSafeTeacherDeviceTokenPayload(revoked.body);
+
+    const revokedRow = await prisma.appDeviceToken.findUniqueOrThrow({
+      where: { id: response.body.deviceTokenId },
+    });
+    expect(revokedRow.isActive).toBe(false);
+    expect(revokedRow.revokedAt).toBeTruthy();
+
+    const unknown = await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/teacher/notifications/device-tokens/current`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ token: `${testSuffix}-unknown-teacher-token-value-123456` })
+      .expect(200);
+
+    expect(unknown.body).toEqual({
+      deviceTokenId: null,
+      appSurface: 'teacher',
+      revokedAt: null,
+      revoked: false,
+    });
   });
 
   it('same-school non-participant teacher cannot access message conversation operations', async () => {
@@ -4251,6 +4344,28 @@ describe('Teacher App tenancy isolation (security)', () => {
       'sessionId',
       'refreshToken',
       'raw-storage-logo-should-not-be-returned',
+    ]) {
+      expect(json).not.toContain(forbidden);
+    }
+  }
+
+  function expectSafeTeacherDeviceTokenPayload(value: unknown): void {
+    const json = JSON.stringify(value);
+
+    for (const forbidden of [
+      '"token"',
+      'tokenHash',
+      'tokenCiphertext',
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'userId',
+      'passwordHash',
+      'provider',
+      'metadata',
+      'device_token_id',
+      'app_surface',
     ]) {
       expect(json).not.toContain(forbidden);
     }

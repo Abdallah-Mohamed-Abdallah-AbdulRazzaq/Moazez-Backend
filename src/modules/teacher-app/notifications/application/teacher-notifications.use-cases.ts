@@ -1,4 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import { AppDeviceTokenSurface } from '@prisma/client';
+import { AppDeviceTokenService } from '../../../app-device-tokens/application/app-device-token.service';
+import {
+  AppDeviceTokenRegisterResponseDto,
+  AppDeviceTokenUnregisterResponseDto,
+  RegisterAppDeviceTokenDto,
+  UnregisterAppDeviceTokenDto,
+} from '../../../app-device-tokens/dto/app-device-token.dto';
 import { CommunicationAppNotificationCenterService } from '../../../communication/application/communication-app-notification-center.service';
 import { CommunicationNotificationPreferenceService } from '../../../communication/application/communication-notification-preference.service';
 import { TeacherAppAccessService } from '../../access/teacher-app-access.service';
@@ -131,6 +139,50 @@ export class GetTeacherNotificationPreferencesUseCase {
       userId: context.teacherUserId,
       aliasStyle: TEACHER_NOTIFICATION_ALIAS_STYLE,
     }) as Promise<TeacherNotificationPreferencesResponseDto>;
+  }
+}
+
+@Injectable()
+export class RegisterTeacherDeviceTokenUseCase {
+  constructor(
+    private readonly accessService: TeacherAppAccessService,
+    private readonly deviceTokenService: AppDeviceTokenService,
+  ) {}
+
+  async execute(
+    dto: RegisterAppDeviceTokenDto,
+  ): Promise<AppDeviceTokenRegisterResponseDto> {
+    const context = this.accessService.assertCurrentTeacher();
+
+    return this.deviceTokenService.registerForActor({
+      schoolId: context.schoolId,
+      userId: context.teacherUserId,
+      appSurface: AppDeviceTokenSurface.TEACHER,
+      body: dto,
+      aliasStyle: TEACHER_NOTIFICATION_ALIAS_STYLE,
+    }) as Promise<AppDeviceTokenRegisterResponseDto>;
+  }
+}
+
+@Injectable()
+export class UnregisterTeacherDeviceTokenUseCase {
+  constructor(
+    private readonly accessService: TeacherAppAccessService,
+    private readonly deviceTokenService: AppDeviceTokenService,
+  ) {}
+
+  async execute(
+    dto: UnregisterAppDeviceTokenDto,
+  ): Promise<AppDeviceTokenUnregisterResponseDto> {
+    const context = this.accessService.assertCurrentTeacher();
+
+    return this.deviceTokenService.unregisterForActor({
+      schoolId: context.schoolId,
+      userId: context.teacherUserId,
+      appSurface: AppDeviceTokenSurface.TEACHER,
+      body: dto,
+      aliasStyle: TEACHER_NOTIFICATION_ALIAS_STYLE,
+    }) as Promise<AppDeviceTokenUnregisterResponseDto>;
   }
 }
 
