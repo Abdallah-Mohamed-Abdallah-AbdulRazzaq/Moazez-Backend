@@ -9,6 +9,7 @@ import { CommunicationNotificationPreferenceRecord } from '../infrastructure/com
 export interface CommunicationNotificationPreferenceView {
   category: CommunicationNotificationPreferenceCategory;
   inAppEnabled: boolean;
+  pushEnabled: boolean;
 }
 
 interface PreferenceMetadata {
@@ -34,12 +35,19 @@ export function buildDefaultedCommunicationNotificationPreferences(
   records: CommunicationNotificationPreferenceRecord[],
 ): CommunicationNotificationPreferenceView[] {
   const byCategory = new Map(
-    records.map((record) => [record.category, record.inAppEnabled]),
+    records.map((record) => [
+      record.category,
+      {
+        inAppEnabled: record.inAppEnabled,
+        pushEnabled: record.pushEnabled,
+      },
+    ]),
   );
 
   return PREFERENCE_METADATA.map((metadata) => ({
     category: metadata.category,
-    inAppEnabled: byCategory.get(metadata.category) ?? true,
+    inAppEnabled: byCategory.get(metadata.category)?.inAppEnabled ?? true,
+    pushEnabled: byCategory.get(metadata.category)?.pushEnabled ?? true,
   }));
 }
 
@@ -69,6 +77,7 @@ function presentCommunicationNotificationPreference(
     label: metadata?.label ?? buildFallbackLabel(category),
     description: metadata?.description ?? '',
     inAppEnabled: preference.inAppEnabled,
+    pushEnabled: preference.pushEnabled,
     canChange: true,
   };
 
@@ -77,6 +86,7 @@ function presentCommunicationNotificationPreference(
   return {
     ...base,
     in_app_enabled: preference.inAppEnabled,
+    push_enabled: preference.pushEnabled,
     can_change: true,
   };
 }

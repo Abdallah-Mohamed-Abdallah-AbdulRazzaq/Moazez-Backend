@@ -110,8 +110,16 @@ describe('Teacher notifications use cases', () => {
     await getPreferencesUseCase.execute();
     await updatePreferencesUseCase.execute({
       preferences: [
-        { category: 'message_received', inAppEnabled: false },
-        { category: 'announcement', inAppEnabled: true },
+        {
+          category: 'message_received',
+          inAppEnabled: false,
+          pushEnabled: false,
+        },
+        {
+          category: 'announcement',
+          inAppEnabled: true,
+          pushEnabled: true,
+        },
       ],
     });
 
@@ -125,8 +133,16 @@ describe('Teacher notifications use cases', () => {
       userId: 'teacher-user-1',
       aliasStyle: 'camel',
       preferences: [
-        { category: 'message_received', inAppEnabled: false },
-        { category: 'announcement', inAppEnabled: true },
+        {
+          category: 'message_received',
+          inAppEnabled: false,
+          pushEnabled: false,
+        },
+        {
+          category: 'announcement',
+          inAppEnabled: true,
+          pushEnabled: true,
+        },
       ],
     });
   });
@@ -265,6 +281,29 @@ describe('Teacher notifications use cases', () => {
         metadata,
       ),
     ).rejects.toBeDefined();
+
+    await expect(
+      pipe.transform(
+        {
+          preferences: [
+            {
+              category: 'message_received',
+              inAppEnabled: true,
+              pushEnabled: false,
+            },
+          ],
+        },
+        metadata,
+      ),
+    ).resolves.toMatchObject({
+      preferences: [
+        {
+          category: 'message_received',
+          inAppEnabled: true,
+          pushEnabled: false,
+        },
+      ],
+    });
   });
 });
 

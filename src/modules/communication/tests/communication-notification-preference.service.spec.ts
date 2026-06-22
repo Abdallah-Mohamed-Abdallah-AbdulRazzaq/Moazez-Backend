@@ -30,6 +30,8 @@ describe('CommunicationNotificationPreferenceService', () => {
           description: 'Notifications for new communication messages.',
           inAppEnabled: true,
           in_app_enabled: true,
+          pushEnabled: true,
+          push_enabled: true,
           canChange: true,
           can_change: true,
         },
@@ -39,6 +41,8 @@ describe('CommunicationNotificationPreferenceService', () => {
           description: 'Notifications for school and class announcements.',
           inAppEnabled: true,
           in_app_enabled: true,
+          pushEnabled: true,
+          push_enabled: true,
           canChange: true,
           can_change: true,
         },
@@ -56,11 +60,13 @@ describe('CommunicationNotificationPreferenceService', () => {
           category:
             CommunicationNotificationPreferenceCategory.MESSAGE_RECEIVED,
           inAppEnabled: false,
+          pushEnabled: false,
         }),
         preferenceRecord({
           id: 'preference-2',
           category: CommunicationNotificationPreferenceCategory.ANNOUNCEMENT,
           inAppEnabled: true,
+          pushEnabled: true,
         }),
       ]),
     });
@@ -73,7 +79,7 @@ describe('CommunicationNotificationPreferenceService', () => {
       aliasStyle: 'camel',
       preferences: [
         { category: 'message_received', inAppEnabled: false },
-        { category: 'announcement', in_app_enabled: true },
+        { category: 'announcement', push_enabled: false },
       ],
     });
 
@@ -88,7 +94,7 @@ describe('CommunicationNotificationPreferenceService', () => {
         },
         {
           category: CommunicationNotificationPreferenceCategory.ANNOUNCEMENT,
-          inAppEnabled: true,
+          pushEnabled: false,
         },
       ],
     });
@@ -99,6 +105,7 @@ describe('CommunicationNotificationPreferenceService', () => {
           label: 'Messages',
           description: 'Notifications for new communication messages.',
           inAppEnabled: false,
+          pushEnabled: false,
           canChange: true,
         },
         {
@@ -106,11 +113,13 @@ describe('CommunicationNotificationPreferenceService', () => {
           label: 'Announcements',
           description: 'Notifications for school and class announcements.',
           inAppEnabled: true,
+          pushEnabled: true,
           canChange: true,
         },
       ],
     });
     expect(JSON.stringify(result)).not.toContain('in_app_enabled');
+    expect(JSON.stringify(result)).not.toContain('push_enabled');
     expect(JSON.stringify(result)).not.toContain('userId');
   });
 
@@ -146,6 +155,23 @@ describe('CommunicationNotificationPreferenceService', () => {
     ).rejects.toMatchObject({
       code: 'communication.notification_preference.invalid',
     });
+
+    await expect(
+      service.updatePreferencesForActor({
+        schoolId: SCHOOL_ID,
+        userId: USER_ID,
+        aliasStyle: 'dual',
+        preferences: [
+          {
+            category: 'message_received',
+            pushEnabled: true,
+            push_enabled: false,
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: 'communication.notification_preference.invalid',
+    });
   });
 
   it('defaults missing generation preferences to enabled and filters disabled recipients', async () => {
@@ -156,6 +182,9 @@ describe('CommunicationNotificationPreferenceService', () => {
       listCurrentSchoolDisabledUserIdsForCategory: jest
         .fn()
         .mockResolvedValue(['user-2']),
+      listCurrentSchoolPushDisabledUserIdsForCategory: jest
+        .fn()
+        .mockResolvedValue(['user-3']),
     });
     const service = new CommunicationNotificationPreferenceService(repository);
 
@@ -181,6 +210,21 @@ describe('CommunicationNotificationPreferenceService', () => {
         category: CommunicationNotificationPreferenceCategory.ANNOUNCEMENT,
       },
     );
+
+    await expect(
+      service.filterPushEnabledRecipientUserIds({
+        schoolId: SCHOOL_ID,
+        recipientUserIds: ['user-1', 'user-3', 'user-1'],
+        category: CommunicationNotificationPreferenceCategory.MESSAGE_RECEIVED,
+      }),
+    ).resolves.toEqual(['user-1']);
+    expect(
+      repository.listCurrentSchoolPushDisabledUserIdsForCategory,
+    ).toHaveBeenCalledWith({
+      schoolId: SCHOOL_ID,
+      userIds: ['user-1', 'user-3'],
+      category: CommunicationNotificationPreferenceCategory.MESSAGE_RECEIVED,
+    });
   });
 });
 
@@ -202,6 +246,9 @@ function repositoryMock(
     listCurrentSchoolDisabledUserIdsForCategory: jest
       .fn()
       .mockResolvedValue([]),
+    listCurrentSchoolPushDisabledUserIdsForCategory: jest
+      .fn()
+      .mockResolvedValue([]),
     ...(overrides ?? {}),
   } as unknown as CommunicationNotificationPreferenceRepository &
     Record<string, jest.Mock>;
@@ -216,6 +263,7 @@ function preferenceRecord(
     userId: USER_ID,
     category: CommunicationNotificationPreferenceCategory.MESSAGE_RECEIVED,
     inAppEnabled: true,
+    pushEnabled: true,
     createdAt: new Date('2026-06-21T09:00:00.000Z'),
     updatedAt: new Date('2026-06-21T09:00:00.000Z'),
     ...(overrides ?? {}),

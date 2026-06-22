@@ -80,6 +80,14 @@ export class CommunicationNotificationGenerationService {
         reason: 'all_recipients_disabled_preferences',
       });
     }
+    const pushEnabledRecipientUserIds =
+      await this.communicationNotificationPreferenceService.filterPushEnabledRecipientUserIds(
+        {
+          schoolId: input.schoolId,
+          recipientUserIds: preferenceEnabledRecipientUserIds,
+          category: CommunicationNotificationPreferenceCategory.ANNOUNCEMENT,
+        },
+      );
 
     const { createdNotifications, pushDeliveries = [], ...result } =
       await this.communicationNotificationGenerationRepository.createMissingAnnouncementPublishedNotifications(
@@ -87,6 +95,7 @@ export class CommunicationNotificationGenerationService {
           schoolId: input.schoolId,
           announcementId: announcement.id,
           recipientUserIds: preferenceEnabledRecipientUserIds,
+          pushEnabledRecipientUserIds,
           actorUserId:
             announcement.publishedById ??
             announcement.createdById ??
@@ -178,6 +187,15 @@ export class CommunicationNotificationGenerationService {
         reason: 'all_recipients_disabled_preferences',
       });
     }
+    const pushEnabledRecipientUserIds =
+      await this.communicationNotificationPreferenceService.filterPushEnabledRecipientUserIds(
+        {
+          schoolId: input.schoolId,
+          recipientUserIds: preferenceEnabledRecipientUserIds,
+          category:
+            CommunicationNotificationPreferenceCategory.MESSAGE_RECEIVED,
+        },
+      );
 
     const { createdNotifications, pushDeliveries = [], ...result } =
       await this.communicationNotificationGenerationRepository.createMissingMessageNotifications(
@@ -186,6 +204,7 @@ export class CommunicationNotificationGenerationService {
           messageId: message.id,
           conversationId: message.conversationId,
           recipientUserIds: preferenceEnabledRecipientUserIds,
+          pushEnabledRecipientUserIds,
           actorUserId: message.senderUserId ?? input.actorUserId,
           title: 'New message',
           body: buildMessageNotificationPreview({

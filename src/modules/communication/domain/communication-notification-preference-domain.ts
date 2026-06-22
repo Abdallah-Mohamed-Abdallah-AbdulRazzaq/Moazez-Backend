@@ -56,37 +56,52 @@ export function presentCommunicationNotificationPreferenceCategory(
 }
 
 export function resolvePreferenceBoolean(input: {
-  inAppEnabled?: boolean;
-  in_app_enabled?: boolean;
-}): boolean {
-  const hasCamel = typeof input.inAppEnabled !== 'undefined';
-  const hasSnake = typeof input.in_app_enabled !== 'undefined';
+  camelValue?: boolean;
+  snakeValue?: boolean;
+  fieldName: string;
+}): boolean | undefined {
+  const hasCamel = typeof input.camelValue !== 'undefined';
+  const hasSnake = typeof input.snakeValue !== 'undefined';
 
   if (!hasCamel && !hasSnake) {
-    throw new CommunicationNotificationPreferenceInvalidException(
-      'Notification preference inAppEnabled is required',
-      { field: 'inAppEnabled' },
-    );
+    return undefined;
   }
 
   if (
     hasCamel &&
     hasSnake &&
-    input.inAppEnabled !== input.in_app_enabled
+    input.camelValue !== input.snakeValue
   ) {
     throw new CommunicationNotificationPreferenceInvalidException(
       'Notification preference aliases must not conflict',
-      { field: 'inAppEnabled' },
+      { field: input.fieldName },
     );
   }
 
-  const value = hasCamel ? input.inAppEnabled : input.in_app_enabled;
+  const value = hasCamel ? input.camelValue : input.snakeValue;
   if (typeof value !== 'boolean') {
     throw new CommunicationNotificationPreferenceInvalidException(
-      'Notification preference inAppEnabled must be a boolean',
-      { field: 'inAppEnabled' },
+      `Notification preference ${input.fieldName} must be a boolean`,
+      { field: input.fieldName },
     );
   }
 
   return value;
+}
+
+export function assertPreferenceUpdateHasAtLeastOneChannel(input: {
+  inAppEnabled?: boolean;
+  pushEnabled?: boolean;
+}): void {
+  if (
+    typeof input.inAppEnabled !== 'undefined' ||
+    typeof input.pushEnabled !== 'undefined'
+  ) {
+    return;
+  }
+
+  throw new CommunicationNotificationPreferenceInvalidException(
+    'Notification preference update must include inAppEnabled or pushEnabled',
+    { field: 'preferences' },
+  );
 }

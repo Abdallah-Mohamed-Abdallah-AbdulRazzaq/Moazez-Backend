@@ -76,6 +76,7 @@ describe('CommunicationNotificationGenerationService', () => {
         schoolId: SCHOOL_ID,
         announcementId: ANNOUNCEMENT_ID,
         recipientUserIds: ['user-1', 'user-2'],
+        pushEnabledRecipientUserIds: ['user-1', 'user-2'],
         actorUserId: ACTOR_ID,
         title: 'Published announcement',
         body: 'Body with spacing',
@@ -167,6 +168,70 @@ describe('CommunicationNotificationGenerationService', () => {
       actorUserId: ACTOR_ID,
       actorUserType: UserType.SCHOOL_USER,
     });
+  });
+
+  it('keeps in-app notifications but skips push enqueue when push preference is disabled', async () => {
+    const realtime = realtimeMock();
+    const pushQueue = pushQueueMock();
+    const repository = repositoryMock({
+      resolveCurrentSchoolMessageRecipientUserIds: jest
+        .fn()
+        .mockReturnValue(['recipient-1', 'recipient-2']),
+      createMissingMessageNotifications: jest.fn().mockResolvedValue({
+        recipientCount: 2,
+        createdNotificationCount: 2,
+        existingNotificationCount: 0,
+        createdDeliveryCount: 2,
+        existingDeliveryCount: 0,
+        createdNotifications: [
+          generatedNotificationRecord({
+            id: 'message-notification-1',
+            recipientUserId: 'recipient-1',
+            sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+            sourceType: 'communication_message',
+            sourceId: MESSAGE_ID,
+            type: CommunicationNotificationType.MESSAGE_RECEIVED,
+          }),
+          generatedNotificationRecord({
+            id: 'message-notification-2',
+            recipientUserId: 'recipient-2',
+            sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+            sourceType: 'communication_message',
+            sourceId: MESSAGE_ID,
+            type: CommunicationNotificationType.MESSAGE_RECEIVED,
+          }),
+        ],
+        pushDeliveries: [],
+      }),
+    });
+    const preferences = preferenceMock({
+      filterInAppEnabledRecipientUserIds: jest
+        .fn()
+        .mockResolvedValue(['recipient-1', 'recipient-2']),
+      filterPushEnabledRecipientUserIds: jest.fn().mockResolvedValue([]),
+    });
+
+    await createGenerationService(
+      repository,
+      realtime,
+      preferences,
+      pushQueue,
+    ).generateForMessageCreated({
+      schoolId: SCHOOL_ID,
+      organizationId: ORGANIZATION_ID,
+      messageId: MESSAGE_ID,
+      actorUserId: ACTOR_ID,
+      actorUserType: UserType.SCHOOL_USER,
+    });
+
+    expect(repository.createMissingMessageNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipientUserIds: ['recipient-1', 'recipient-2'],
+        pushEnabledRecipientUserIds: [],
+      }),
+    );
+    expect(realtime.publishNotificationCreated).toHaveBeenCalledTimes(2);
+    expect(pushQueue.enqueueNotificationPushDelivery).not.toHaveBeenCalled();
   });
 
   it('does not fail generation when push enqueue fails', async () => {
@@ -338,6 +403,7 @@ describe('CommunicationNotificationGenerationService', () => {
         messageId: MESSAGE_ID,
         conversationId: CONVERSATION_ID,
         recipientUserIds: ['recipient-1', 'recipient-2'],
+        pushEnabledRecipientUserIds: ['recipient-1', 'recipient-2'],
         actorUserId: ACTOR_ID,
         type: CommunicationNotificationType.MESSAGE_RECEIVED,
         title: 'New message',
@@ -717,6 +783,9 @@ function preferenceMock(
 ): CommunicationNotificationPreferenceService & Record<string, jest.Mock> {
   return {
     filterInAppEnabledRecipientUserIds: jest.fn(async (params) =>
+      params.recipientUserIds,
+    ),
+    filterPushEnabledRecipientUserIds: jest.fn(async (params) =>
       params.recipientUserIds,
     ),
     shouldCreateInAppNotification: jest.fn().mockResolvedValue(true),

@@ -5867,6 +5867,7 @@ model CommunicationNotificationPreference {
   userId       String                                      @map("user_id") @db.Uuid
   category     CommunicationNotificationPreferenceCategory
   inAppEnabled Boolean                                     @default(true) @map("in_app_enabled")
+  pushEnabled  Boolean                                     @default(true) @map("push_enabled")
   createdAt    DateTime                                    @default(now()) @map("created_at")
   updatedAt    DateTime                                    @updatedAt @map("updated_at")
 

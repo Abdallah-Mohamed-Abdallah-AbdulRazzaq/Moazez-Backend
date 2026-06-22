@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { CommunicationNotificationPreferenceCategory } from '@prisma/client';
 import {
+  assertPreferenceUpdateHasAtLeastOneChannel,
   normalizeCommunicationNotificationPreferenceCategory,
   resolvePreferenceBoolean,
 } from '../domain/communication-notification-preference-domain';
@@ -18,6 +19,8 @@ export interface CommunicationNotificationPreferenceUpdateItem {
   category: string;
   inAppEnabled?: boolean;
   in_app_enabled?: boolean;
+  pushEnabled?: boolean;
+  push_enabled?: boolean;
 }
 
 @Injectable()
@@ -99,6 +102,29 @@ export class CommunicationNotificationPreferenceService {
 
     return recipientUserIds.filter((userId) => !disabled.has(userId));
   }
+
+  async filterPushEnabledRecipientUserIds(params: {
+    schoolId: string;
+    recipientUserIds: string[];
+    category: CommunicationNotificationPreferenceCategory;
+  }): Promise<string[]> {
+    const recipientUserIds = [
+      ...new Set(params.recipientUserIds.filter((userId) => userId.length > 0)),
+    ];
+    if (recipientUserIds.length === 0) return [];
+
+    const disabledUserIds =
+      await this.preferenceRepository.listCurrentSchoolPushDisabledUserIdsForCategory(
+        {
+          schoolId: params.schoolId,
+          userIds: recipientUserIds,
+          category: params.category,
+        },
+      );
+    const disabled = new Set(disabledUserIds);
+
+    return recipientUserIds.filter((userId) => !disabled.has(userId));
+  }
 }
 
 function normalizePreferenceUpdates(
@@ -106,18 +132,44 @@ function normalizePreferenceUpdates(
 ): CommunicationNotificationPreferenceUpsertInput[] {
   const byCategory = new Map<
     CommunicationNotificationPreferenceCategory,
-    boolean
+    {
+      inAppEnabled?: boolean;
+      pushEnabled?: boolean;
+    }
   >();
 
   for (const preference of preferences) {
-    byCategory.set(
-      normalizeCommunicationNotificationPreferenceCategory(preference.category),
-      resolvePreferenceBoolean(preference),
+    const category = normalizeCommunicationNotificationPreferenceCategory(
+      preference.category,
     );
+    const normalized = {
+      inAppEnabled: resolvePreferenceBoolean({
+        camelValue: preference.inAppEnabled,
+        snakeValue: preference.in_app_enabled,
+        fieldName: 'inAppEnabled',
+      }),
+      pushEnabled: resolvePreferenceBoolean({
+        camelValue: preference.pushEnabled,
+        snakeValue: preference.push_enabled,
+        fieldName: 'pushEnabled',
+      }),
+    };
+    assertPreferenceUpdateHasAtLeastOneChannel(normalized);
+
+    const current = byCategory.get(category) ?? {};
+    byCategory.set(category, {
+      ...current,
+      ...(typeof normalized.inAppEnabled !== 'undefined'
+        ? { inAppEnabled: normalized.inAppEnabled }
+        : {}),
+      ...(typeof normalized.pushEnabled !== 'undefined'
+        ? { pushEnabled: normalized.pushEnabled }
+        : {}),
+    });
   }
 
-  return [...byCategory.entries()].map(([category, inAppEnabled]) => ({
+  return [...byCategory.entries()].map(([category, preference]) => ({
     category,
-    inAppEnabled,
+    ...preference,
   }));
 }

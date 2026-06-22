@@ -109,8 +109,16 @@ describe('Student notifications use cases', () => {
     await getPreferencesUseCase.execute();
     await updatePreferencesUseCase.execute({
       preferences: [
-        { category: 'message_received', inAppEnabled: false },
-        { category: 'announcement', in_app_enabled: true },
+        {
+          category: 'message_received',
+          inAppEnabled: false,
+          pushEnabled: false,
+        },
+        {
+          category: 'announcement',
+          in_app_enabled: true,
+          push_enabled: true,
+        },
       ],
     });
 
@@ -124,8 +132,16 @@ describe('Student notifications use cases', () => {
       userId: 'student-user-1',
       aliasStyle: 'dual',
       preferences: [
-        { category: 'message_received', inAppEnabled: false },
-        { category: 'announcement', in_app_enabled: true },
+        {
+          category: 'message_received',
+          inAppEnabled: false,
+          pushEnabled: false,
+        },
+        {
+          category: 'announcement',
+          in_app_enabled: true,
+          push_enabled: true,
+        },
       ],
     });
   });
@@ -265,6 +281,29 @@ describe('Student notifications use cases', () => {
         metadata,
       ),
     ).rejects.toBeDefined();
+
+    await expect(
+      pipe.transform(
+        {
+          preferences: [
+            {
+              category: 'announcement',
+              in_app_enabled: true,
+              pushEnabled: false,
+            },
+          ],
+        },
+        metadata,
+      ),
+    ).resolves.toMatchObject({
+      preferences: [
+        {
+          category: 'announcement',
+          in_app_enabled: true,
+          pushEnabled: false,
+        },
+      ],
+    });
   });
 });
 

@@ -146,6 +146,8 @@ export class StudentNotificationPreferenceDto {
   description!: string;
   inAppEnabled!: boolean;
   in_app_enabled!: boolean;
+  pushEnabled!: boolean;
+  push_enabled!: boolean;
   canChange!: boolean;
   can_change!: boolean;
 }

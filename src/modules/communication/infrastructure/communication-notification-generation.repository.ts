@@ -80,6 +80,8 @@ const GENERATED_NOTIFICATION_SELECT = {
   updatedAt: true,
 } satisfies Prisma.CommunicationNotificationSelect;
 
+const PUSH_PREFERENCE_DISABLED_CODE = 'push/preference-disabled';
+
 const COMMUNICATION_MESSAGE_FOR_NOTIFICATION_GENERATION_ARGS =
   Prisma.validator<Prisma.CommunicationMessageDefaultArgs>()({
     select: {
@@ -140,6 +142,7 @@ export interface CommunicationAnnouncementNotificationCreateInput {
   schoolId: string;
   announcementId: string;
   recipientUserIds: string[];
+  pushEnabledRecipientUserIds: string[];
   actorUserId: string | null;
   title: string;
   body: string;
@@ -164,6 +167,7 @@ export interface CommunicationMessageNotificationCreateInput {
   messageId: string;
   conversationId: string;
   recipientUserIds: string[];
+  pushEnabledRecipientUserIds: string[];
   actorUserId: string | null;
   title: string;
   body: string;
@@ -394,7 +398,19 @@ export class CommunicationNotificationGenerationRepository {
       }
       const pushDeliveries = await this.ensurePushDeliveriesInTransaction(tx, {
         schoolId: input.schoolId,
+        now: input.now,
         notificationIds,
+        notificationRecipientPairs: [
+          ...existingNotifications.map((notification) => ({
+            notificationId: notification.id,
+            recipientUserId: notification.recipientUserId,
+          })),
+          ...createdNotifications.map((notification) => ({
+            notificationId: notification.id,
+            recipientUserId: notification.recipientUserId,
+          })),
+        ],
+        pushEnabledRecipientUserIds: input.pushEnabledRecipientUserIds,
       });
 
       return {
@@ -511,7 +527,19 @@ export class CommunicationNotificationGenerationRepository {
       }
       const pushDeliveries = await this.ensurePushDeliveriesInTransaction(tx, {
         schoolId: input.schoolId,
+        now: input.now,
         notificationIds,
+        notificationRecipientPairs: [
+          ...existingNotifications.map((notification) => ({
+            notificationId: notification.id,
+            recipientUserId: notification.recipientUserId,
+          })),
+          ...createdNotifications.map((notification) => ({
+            notificationId: notification.id,
+            recipientUserId: notification.recipientUserId,
+          })),
+        ],
+        pushEnabledRecipientUserIds: input.pushEnabledRecipientUserIds,
       });
 
       return {
@@ -530,19 +558,35 @@ export class CommunicationNotificationGenerationRepository {
     tx: Prisma.TransactionClient,
     input: {
       schoolId: string;
+      now: Date;
       notificationIds: string[];
+      notificationRecipientPairs: Array<{
+        notificationId: string;
+        recipientUserId: string;
+      }>;
+      pushEnabledRecipientUserIds: string[];
     },
   ): Promise<CommunicationGeneratedPushDeliveryRecord[]> {
     const notificationIds = deduplicateRecipientUserIds(input.notificationIds);
     if (notificationIds.length === 0) return [];
+    const pushEnabledRecipientUserIds = new Set(
+      deduplicateRecipientUserIds(input.pushEnabledRecipientUserIds),
+    );
+    const recipientByNotificationId = new Map(
+      input.notificationRecipientPairs.map((pair) => [
+        pair.notificationId,
+        pair.recipientUserId,
+      ]),
+    );
 
     const existingDeliveries =
       await tx.communicationNotificationDelivery.findMany({
         where: {
+          schoolId: input.schoolId,
           notificationId: { in: notificationIds },
           channel: CommunicationNotificationDeliveryChannel.PUSH,
         },
-        select: { id: true, notificationId: true },
+        select: { id: true, notificationId: true, status: true },
       });
     const notificationIdsWithDelivery = new Set(
       existingDeliveries.map((delivery) => delivery.notificationId),
@@ -553,20 +597,89 @@ export class CommunicationNotificationGenerationRepository {
 
     if (missingDeliveryNotificationIds.length > 0) {
       await tx.communicationNotificationDelivery.createMany({
-        data: missingDeliveryNotificationIds.map((notificationId) => ({
-          schoolId: input.schoolId,
-          notificationId,
-          channel: CommunicationNotificationDeliveryChannel.PUSH,
-          status: CommunicationNotificationDeliveryStatus.PENDING,
-          provider: COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
-        })),
+        data: missingDeliveryNotificationIds.map((notificationId) => {
+          const recipientUserId = recipientByNotificationId.get(notificationId);
+          const pushEnabled =
+            !!recipientUserId && pushEnabledRecipientUserIds.has(recipientUserId);
+          const data: Prisma.CommunicationNotificationDeliveryCreateManyInput = {
+            schoolId: input.schoolId,
+            notificationId,
+            channel: CommunicationNotificationDeliveryChannel.PUSH,
+            status: pushEnabled
+              ? CommunicationNotificationDeliveryStatus.PENDING
+              : CommunicationNotificationDeliveryStatus.SKIPPED,
+            provider: COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
+            attemptedAt: pushEnabled ? null : input.now,
+            errorCode: pushEnabled ? null : PUSH_PREFERENCE_DISABLED_CODE,
+            errorMessage: pushEnabled
+              ? null
+              : 'Push notification preference disabled',
+          };
+          if (!pushEnabled) {
+            data.metadata = { skippedReason: 'preference_disabled' };
+          }
+
+          return data;
+        }),
       });
     }
 
+    const pushDisabledNotificationIds = notificationIds.filter(
+      (notificationId) => {
+        const recipientUserId = recipientByNotificationId.get(notificationId);
+        return (
+          !recipientUserId || !pushEnabledRecipientUserIds.has(recipientUserId)
+        );
+      },
+    );
+
+    if (pushDisabledNotificationIds.length > 0) {
+      await tx.communicationNotificationDelivery.updateMany({
+        where: {
+          schoolId: input.schoolId,
+          notificationId: { in: pushDisabledNotificationIds },
+          channel: CommunicationNotificationDeliveryChannel.PUSH,
+          status: {
+            in: [
+              CommunicationNotificationDeliveryStatus.PENDING,
+              CommunicationNotificationDeliveryStatus.FAILED,
+              CommunicationNotificationDeliveryStatus.SKIPPED,
+            ],
+          },
+        },
+        data: {
+          status: CommunicationNotificationDeliveryStatus.SKIPPED,
+          provider: COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
+          attemptedAt: input.now,
+          sentAt: null,
+          failedAt: null,
+          errorCode: PUSH_PREFERENCE_DISABLED_CODE,
+          errorMessage: 'Push notification preference disabled',
+          metadata: { skippedReason: 'preference_disabled' },
+        },
+      });
+    }
+
+    const pushEnabledNotificationIds = notificationIds.filter(
+      (notificationId) => {
+        const recipientUserId = recipientByNotificationId.get(notificationId);
+        return (
+          !!recipientUserId && pushEnabledRecipientUserIds.has(recipientUserId)
+        );
+      },
+    );
+
     return tx.communicationNotificationDelivery.findMany({
       where: {
-        notificationId: { in: notificationIds },
+        schoolId: input.schoolId,
+        notificationId: { in: pushEnabledNotificationIds },
         channel: CommunicationNotificationDeliveryChannel.PUSH,
+        status: {
+          in: [
+            CommunicationNotificationDeliveryStatus.PENDING,
+            CommunicationNotificationDeliveryStatus.FAILED,
+          ],
+        },
       },
       select: { id: true, notificationId: true },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],

@@ -21,6 +21,14 @@ export class UpdateCommunicationNotificationPreferenceItemDto {
   @IsOptional()
   @IsBoolean()
   in_app_enabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  pushEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  push_enabled?: boolean;
 }
 
 export class UpdateCommunicationNotificationPreferencesDto {

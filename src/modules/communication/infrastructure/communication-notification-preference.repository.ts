@@ -13,6 +13,7 @@ const COMMUNICATION_NOTIFICATION_PREFERENCE_ARGS =
       userId: true,
       category: true,
       inAppEnabled: true,
+      pushEnabled: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -25,7 +26,8 @@ export type CommunicationNotificationPreferenceRecord =
 
 export interface CommunicationNotificationPreferenceUpsertInput {
   category: CommunicationNotificationPreferenceCategory;
-  inAppEnabled: boolean;
+  inAppEnabled?: boolean;
+  pushEnabled?: boolean;
 }
 
 @Injectable()
@@ -57,15 +59,27 @@ export class CommunicationNotificationPreferenceRepository {
   }): Promise<CommunicationNotificationPreferenceRecord[]> {
     const uniquePreferences = new Map<
       CommunicationNotificationPreferenceCategory,
-      boolean
+      {
+        inAppEnabled?: boolean;
+        pushEnabled?: boolean;
+      }
     >();
 
     for (const preference of input.preferences) {
-      uniquePreferences.set(preference.category, preference.inAppEnabled);
+      const current = uniquePreferences.get(preference.category) ?? {};
+      uniquePreferences.set(preference.category, {
+        ...current,
+        ...(typeof preference.inAppEnabled !== 'undefined'
+          ? { inAppEnabled: preference.inAppEnabled }
+          : {}),
+        ...(typeof preference.pushEnabled !== 'undefined'
+          ? { pushEnabled: preference.pushEnabled }
+          : {}),
+      });
     }
 
     await this.scopedPrisma.$transaction(
-      [...uniquePreferences.entries()].map(([category, inAppEnabled]) =>
+      [...uniquePreferences.entries()].map(([category, preference]) =>
         this.scopedPrisma.communicationNotificationPreference.upsert({
           where: {
             schoolId_userId_category: {
@@ -78,9 +92,21 @@ export class CommunicationNotificationPreferenceRepository {
             schoolId: input.schoolId,
             userId: input.userId,
             category,
-            inAppEnabled,
+            ...(typeof preference.inAppEnabled !== 'undefined'
+              ? { inAppEnabled: preference.inAppEnabled }
+              : {}),
+            ...(typeof preference.pushEnabled !== 'undefined'
+              ? { pushEnabled: preference.pushEnabled }
+              : {}),
           },
-          update: { inAppEnabled },
+          update: {
+            ...(typeof preference.inAppEnabled !== 'undefined'
+              ? { inAppEnabled: preference.inAppEnabled }
+              : {}),
+            ...(typeof preference.pushEnabled !== 'undefined'
+              ? { pushEnabled: preference.pushEnabled }
+              : {}),
+          },
         }),
       ),
     );
@@ -123,6 +149,27 @@ export class CommunicationNotificationPreferenceRepository {
           userId: { in: [...new Set(input.userIds)] },
           category: input.category,
           inAppEnabled: false,
+        },
+        select: { userId: true },
+      });
+
+    return preferences.map((preference) => preference.userId);
+  }
+
+  async listCurrentSchoolPushDisabledUserIdsForCategory(input: {
+    schoolId: string;
+    userIds: string[];
+    category: CommunicationNotificationPreferenceCategory;
+  }): Promise<string[]> {
+    if (input.userIds.length === 0) return [];
+
+    const preferences =
+      await this.scopedPrisma.communicationNotificationPreference.findMany({
+        where: {
+          schoolId: input.schoolId,
+          userId: { in: [...new Set(input.userIds)] },
+          category: input.category,
+          pushEnabled: false,
         },
         select: { userId: true },
       });

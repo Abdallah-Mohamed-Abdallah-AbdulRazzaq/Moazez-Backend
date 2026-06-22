@@ -183,6 +183,7 @@ describe('CommunicationNotificationGenerationRepository', () => {
             },
           ]),
         createMany: jest.fn().mockResolvedValue({ count: 1 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
     const scoped = {
@@ -197,6 +198,7 @@ describe('CommunicationNotificationGenerationRepository', () => {
         schoolId: 'school-1',
         announcementId: 'announcement-1',
         recipientUserIds: ['user-1', 'user-2', 'user-2'],
+        pushEnabledRecipientUserIds: ['user-1', 'user-2'],
         actorUserId: 'actor-1',
         title: 'Announcement',
         body: 'Preview',
@@ -313,6 +315,7 @@ describe('CommunicationNotificationGenerationRepository', () => {
             },
           ]),
         createMany: jest.fn().mockResolvedValue({ count: 1 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
     const scoped = {
@@ -327,6 +330,7 @@ describe('CommunicationNotificationGenerationRepository', () => {
       messageId: 'message-1',
       conversationId: 'conversation-1',
       recipientUserIds: ['recipient-1', 'recipient-2', 'recipient-2'],
+      pushEnabledRecipientUserIds: ['recipient-1', 'recipient-2'],
       actorUserId: 'sender-1',
       title: 'New message',
       body: 'Preview',
@@ -422,6 +426,82 @@ describe('CommunicationNotificationGenerationRepository', () => {
         }),
       ],
     });
+  });
+
+  it('creates skipped push delivery rows for push-disabled recipients without enqueue candidates', async () => {
+    const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(0),
+      communicationNotification: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue(
+          generatedNotificationRecord({
+            id: 'message-notification-1',
+            recipientUserId: 'recipient-1',
+            sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+            sourceType: 'communication_message',
+            sourceId: 'message-1',
+            type: CommunicationNotificationType.MESSAGE_RECEIVED,
+          }),
+        ),
+      },
+      communicationNotificationDelivery: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([]),
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const scoped = {
+      $transaction: jest.fn((callback) => callback(tx)),
+    };
+    const repository = new CommunicationNotificationGenerationRepository({
+      scoped,
+    } as unknown as PrismaService);
+
+    const result = await repository.createMissingMessageNotifications({
+      schoolId: 'school-1',
+      messageId: 'message-1',
+      conversationId: 'conversation-1',
+      recipientUserIds: ['recipient-1'],
+      pushEnabledRecipientUserIds: [],
+      actorUserId: 'sender-1',
+      title: 'New message',
+      body: 'Preview',
+      type: CommunicationNotificationType.MESSAGE_RECEIVED,
+      priority: CommunicationNotificationPriority.NORMAL,
+      metadata: {
+        conversationId: 'conversation-1',
+        messageId: 'message-1',
+      },
+      now: new Date('2026-05-03T09:00:00.000Z'),
+    });
+
+    expect(result.pushDeliveries).toEqual([]);
+    expect(
+      tx.communicationNotificationDelivery.createMany,
+    ).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          notificationId: 'message-notification-1',
+          channel: CommunicationNotificationDeliveryChannel.PUSH,
+          status: CommunicationNotificationDeliveryStatus.SKIPPED,
+          provider: 'firebase_fcm',
+          errorCode: 'push/preference-disabled',
+          errorMessage: 'Push notification preference disabled',
+        }),
+      ],
+    });
+    expect(tx.communicationNotificationDelivery.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: CommunicationNotificationDeliveryStatus.SKIPPED,
+          errorCode: 'push/preference-disabled',
+        }),
+      }),
+    );
   });
 });
 

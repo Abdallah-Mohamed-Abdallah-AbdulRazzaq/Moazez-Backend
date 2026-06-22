@@ -130,6 +130,7 @@ export class TeacherNotificationPreferenceDto {
   label!: string;
   description!: string;
   inAppEnabled!: boolean;
+  pushEnabled!: boolean;
   canChange!: boolean;
 }
 
