@@ -4324,19 +4324,44 @@ describe('Communication announcement tenancy isolation (security)', () => {
     ).toBe(true);
     expect(
       notifications.flatMap((notification) => notification.deliveries),
+    ).toHaveLength(expectedRecipientUserIds.length * 2);
+    expect(
+      notifications
+        .flatMap((notification) => notification.deliveries)
+        .filter(
+          (delivery) =>
+            delivery.channel === CommunicationNotificationDeliveryChannel.IN_APP,
+        ),
     ).toHaveLength(expectedRecipientUserIds.length);
     expect(
       notifications
         .flatMap((notification) => notification.deliveries)
-        .every(
+        .filter(
           (delivery) =>
-            delivery.channel ===
-              CommunicationNotificationDeliveryChannel.IN_APP &&
-            delivery.status ===
-              CommunicationNotificationDeliveryStatus.DELIVERED &&
-            delivery.provider === 'in_app' &&
-            delivery.providerMessageId === null,
+            delivery.channel === CommunicationNotificationDeliveryChannel.PUSH,
         ),
+    ).toHaveLength(expectedRecipientUserIds.length);
+    expect(
+      notifications
+        .flatMap((notification) => notification.deliveries)
+        .every((delivery) => {
+          if (delivery.channel === CommunicationNotificationDeliveryChannel.IN_APP) {
+            return (
+              delivery.status ===
+                CommunicationNotificationDeliveryStatus.DELIVERED &&
+              delivery.provider === 'in_app' &&
+              delivery.providerMessageId === null
+            );
+          }
+
+          return (
+            delivery.channel === CommunicationNotificationDeliveryChannel.PUSH &&
+            delivery.status ===
+              CommunicationNotificationDeliveryStatus.PENDING &&
+            delivery.provider === 'firebase_fcm' &&
+            delivery.providerMessageId === null
+          );
+        }),
     ).toBe(true);
 
     await expect(

@@ -255,8 +255,10 @@ export class CreateCommunicationMessageUseCase {
     try {
       await this.notificationGenerationService.generateForMessageCreated({
         schoolId: scope.schoolId,
+        organizationId: scope.organizationId,
         messageId,
         actorUserId: scope.actorId,
+        actorUserType: scope.userType,
       });
     } catch (error) {
       this.logger.warn(

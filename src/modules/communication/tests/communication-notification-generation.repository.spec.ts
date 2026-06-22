@@ -170,7 +170,18 @@ describe('CommunicationNotificationGenerationRepository', () => {
       communicationNotificationDelivery: {
         findMany: jest
           .fn()
-          .mockResolvedValue([{ notificationId: 'existing-notification-1' }]),
+          .mockResolvedValueOnce([{ notificationId: 'existing-notification-1' }])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            {
+              id: 'push-delivery-existing',
+              notificationId: 'existing-notification-1',
+            },
+            {
+              id: 'push-delivery-new',
+              notificationId: 'new-notification-1',
+            },
+          ]),
         createMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
@@ -202,6 +213,16 @@ describe('CommunicationNotificationGenerationRepository', () => {
       createdDeliveryCount: 1,
       existingDeliveryCount: 1,
       createdNotifications: [generatedNotificationRecord()],
+      pushDeliveries: [
+        {
+          id: 'push-delivery-existing',
+          notificationId: 'existing-notification-1',
+        },
+        {
+          id: 'push-delivery-new',
+          notificationId: 'new-notification-1',
+        },
+      ],
     });
     expect(tx.communicationNotification.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -236,6 +257,24 @@ describe('CommunicationNotificationGenerationRepository', () => {
         }),
       ],
     });
+    expect(
+      tx.communicationNotificationDelivery.createMany,
+    ).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          notificationId: 'existing-notification-1',
+          channel: CommunicationNotificationDeliveryChannel.PUSH,
+          status: CommunicationNotificationDeliveryStatus.PENDING,
+          provider: 'firebase_fcm',
+        }),
+        expect.objectContaining({
+          notificationId: 'new-notification-1',
+          channel: CommunicationNotificationDeliveryChannel.PUSH,
+          status: CommunicationNotificationDeliveryStatus.PENDING,
+          provider: 'firebase_fcm',
+        }),
+      ],
+    });
   });
 
   it('creates only missing message notification and IN_APP delivery rows on retry-safe generation', async () => {
@@ -261,7 +300,18 @@ describe('CommunicationNotificationGenerationRepository', () => {
       communicationNotificationDelivery: {
         findMany: jest
           .fn()
-          .mockResolvedValue([{ notificationId: 'existing-notification-1' }]),
+          .mockResolvedValueOnce([{ notificationId: 'existing-notification-1' }])
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            {
+              id: 'push-delivery-existing',
+              notificationId: 'existing-notification-1',
+            },
+            {
+              id: 'push-delivery-new',
+              notificationId: 'message-notification-1',
+            },
+          ]),
         createMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
@@ -295,6 +345,16 @@ describe('CommunicationNotificationGenerationRepository', () => {
       existingNotificationCount: 1,
       createdDeliveryCount: 1,
       existingDeliveryCount: 1,
+      pushDeliveries: [
+        {
+          id: 'push-delivery-existing',
+          notificationId: 'existing-notification-1',
+        },
+        {
+          id: 'push-delivery-new',
+          notificationId: 'message-notification-1',
+        },
+      ],
     });
     expect(tx.communicationNotification.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -341,6 +401,24 @@ describe('CommunicationNotificationGenerationRepository', () => {
           channel: CommunicationNotificationDeliveryChannel.IN_APP,
           status: CommunicationNotificationDeliveryStatus.DELIVERED,
           provider: 'in_app',
+        }),
+      ],
+    });
+    expect(
+      tx.communicationNotificationDelivery.createMany,
+    ).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          notificationId: 'existing-notification-1',
+          channel: CommunicationNotificationDeliveryChannel.PUSH,
+          status: CommunicationNotificationDeliveryStatus.PENDING,
+          provider: 'firebase_fcm',
+        }),
+        expect.objectContaining({
+          notificationId: 'message-notification-1',
+          channel: CommunicationNotificationDeliveryChannel.PUSH,
+          status: CommunicationNotificationDeliveryStatus.PENDING,
+          provider: 'firebase_fcm',
         }),
       ],
     });

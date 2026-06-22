@@ -134,6 +134,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'CommunicationAnnouncementAttachment',
   'CommunicationNotification',
   'CommunicationNotificationDelivery',
+  'CommunicationNotificationPushAttempt',
   'CommunicationNotificationPreference',
   'AppDeviceToken',
 ]);

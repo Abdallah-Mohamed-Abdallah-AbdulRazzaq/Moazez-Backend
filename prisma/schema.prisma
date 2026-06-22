@@ -1280,6 +1280,7 @@ model School {
   communicationAnnouncementAttachments  CommunicationAnnouncementAttachment[]
   communicationNotifications            CommunicationNotification[]
   communicationNotificationDeliveries   CommunicationNotificationDelivery[]
+  communicationNotificationPushAttempts CommunicationNotificationPushAttempt[]
   communicationNotificationPreferences  CommunicationNotificationPreference[]
   appDeviceTokens                       AppDeviceToken[]
 
@@ -5817,6 +5818,7 @@ model CommunicationNotificationDelivery {
 
   school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   notification CommunicationNotification @relation(fields: [notificationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  pushAttempts CommunicationNotificationPushAttempt[]
 
   @@unique([id, schoolId])
   @@index([schoolId])
@@ -5826,6 +5828,37 @@ model CommunicationNotificationDelivery {
   @@index([status])
   @@index([providerMessageId])
   @@map("communication_notification_deliveries")
+}
+
+model CommunicationNotificationPushAttempt {
+  id                String                                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String                                  @map("school_id") @db.Uuid
+  deliveryId        String                                  @map("delivery_id") @db.Uuid
+  deviceTokenId     String                                  @map("device_token_id") @db.Uuid
+  status            CommunicationNotificationDeliveryStatus @default(PENDING)
+  provider          String?
+  providerMessageId String?                                 @map("provider_message_id")
+  errorCode         String?                                 @map("error_code")
+  errorMessage      String?                                 @map("error_message")
+  attemptedAt       DateTime?                               @map("attempted_at")
+  sentAt            DateTime?                               @map("sent_at")
+  failedAt          DateTime?                               @map("failed_at")
+  skippedAt         DateTime?                               @map("skipped_at")
+  createdAt         DateTime                                @default(now()) @map("created_at")
+  updatedAt         DateTime                                @updatedAt @map("updated_at")
+
+  school      School                            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  delivery    CommunicationNotificationDelivery @relation(fields: [deliveryId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  deviceToken AppDeviceToken                    @relation(fields: [deviceTokenId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([deliveryId, deviceTokenId])
+  @@index([schoolId])
+  @@index([deliveryId])
+  @@index([deviceTokenId])
+  @@index([schoolId, deliveryId])
+  @@index([schoolId, status])
+  @@index([schoolId, deviceTokenId])
+  @@map("communication_notification_push_attempts")
 }
 
 model CommunicationNotificationPreference {
@@ -5872,6 +5905,7 @@ model AppDeviceToken {
 
   school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   user   User   @relation("AppDeviceTokensUser", fields: [userId], references: [id], onDelete: Restrict)
+  pushAttempts CommunicationNotificationPushAttempt[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, userId, tokenHash, appSurface])

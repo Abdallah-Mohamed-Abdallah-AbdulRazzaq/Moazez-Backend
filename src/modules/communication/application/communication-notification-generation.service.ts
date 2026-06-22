@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   CommunicationNotificationPreferenceCategory,
   CommunicationNotificationPriority,
@@ -13,6 +13,7 @@ import {
   buildSkippedMessageNotificationGenerationResult,
   CommunicationAnnouncementNotificationGenerationJobData,
   CommunicationAnnouncementNotificationGenerationResult,
+  CommunicationGeneratedPushDeliveryRecord,
   CommunicationMessageNotificationGenerationInput,
   CommunicationMessageNotificationGenerationResult,
   deduplicateRecipientUserIds,
@@ -21,13 +22,19 @@ import {
 import { CommunicationNotificationGenerationRepository } from '../infrastructure/communication-notification-generation.repository';
 import { CommunicationRealtimeEventsService } from './communication-realtime-events.service';
 import { CommunicationNotificationPreferenceService } from './communication-notification-preference.service';
+import { CommunicationNotificationPushQueueService } from './communication-notification-push-queue.service';
 
 @Injectable()
 export class CommunicationNotificationGenerationService {
+  private readonly logger = new Logger(
+    CommunicationNotificationGenerationService.name,
+  );
+
   constructor(
     private readonly communicationNotificationGenerationRepository: CommunicationNotificationGenerationRepository,
     private readonly communicationRealtimeEventsService: CommunicationRealtimeEventsService,
     private readonly communicationNotificationPreferenceService: CommunicationNotificationPreferenceService,
+    private readonly communicationNotificationPushQueueService?: CommunicationNotificationPushQueueService,
   ) {}
 
   async generateForPublishedAnnouncement(
@@ -74,7 +81,7 @@ export class CommunicationNotificationGenerationService {
       });
     }
 
-    const { createdNotifications, ...result } =
+    const { createdNotifications, pushDeliveries = [], ...result } =
       await this.communicationNotificationGenerationRepository.createMissingAnnouncementPublishedNotifications(
         {
           schoolId: input.schoolId,
@@ -105,6 +112,13 @@ export class CommunicationNotificationGenerationService {
         notification,
       );
     }
+    await this.enqueuePushDeliveriesSafely({
+      schoolId: input.schoolId,
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      actorUserType: input.actorUserType,
+      pushDeliveries,
+    });
 
     return {
       announcementId: announcement.id,
@@ -165,7 +179,7 @@ export class CommunicationNotificationGenerationService {
       });
     }
 
-    const { createdNotifications, ...result } =
+    const { createdNotifications, pushDeliveries = [], ...result } =
       await this.communicationNotificationGenerationRepository.createMissingMessageNotifications(
         {
           schoolId: input.schoolId,
@@ -195,6 +209,13 @@ export class CommunicationNotificationGenerationService {
         notification,
       );
     }
+    await this.enqueuePushDeliveriesSafely({
+      schoolId: input.schoolId,
+      organizationId: input.organizationId,
+      actorUserId: message.senderUserId ?? input.actorUserId ?? '',
+      actorUserType: input.actorUserType,
+      pushDeliveries,
+    });
 
     return {
       messageId: message.id,
@@ -202,4 +223,46 @@ export class CommunicationNotificationGenerationService {
       skippedReason: null,
     };
   }
+
+  private async enqueuePushDeliveriesSafely(input: {
+    schoolId: string;
+    organizationId: string;
+    actorUserId: string;
+    actorUserType: CommunicationAnnouncementNotificationGenerationJobData['actorUserType'];
+    pushDeliveries: CommunicationGeneratedPushDeliveryRecord[];
+  }): Promise<void> {
+    if (!this.communicationNotificationPushQueueService) return;
+    if (input.pushDeliveries.length === 0) return;
+    if (!input.actorUserId) return;
+    const pushQueueService = this.communicationNotificationPushQueueService;
+
+    await Promise.all(
+      input.pushDeliveries.map(async (delivery) => {
+        try {
+          await pushQueueService.enqueueNotificationPushDelivery(
+            {
+              schoolId: input.schoolId,
+              organizationId: input.organizationId,
+              notificationId: delivery.notificationId,
+              deliveryId: delivery.id,
+              actorUserId: input.actorUserId,
+              actorUserType: input.actorUserType,
+            },
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Communication push delivery enqueue failed for delivery ${delivery.id}: ${formatPushEnqueueError(error)}`,
+          );
+        }
+      }),
+    );
+  }
+}
+
+function formatPushEnqueueError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return 'Unknown push enqueue error';
 }

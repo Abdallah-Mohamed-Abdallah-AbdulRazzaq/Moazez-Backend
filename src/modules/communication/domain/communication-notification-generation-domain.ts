@@ -15,9 +15,19 @@ export const COMMUNICATION_ANNOUNCEMENT_NOTIFICATION_SOURCE_TYPE =
 export const COMMUNICATION_MESSAGE_NOTIFICATION_SOURCE_TYPE =
   'communication_message';
 export const COMMUNICATION_IN_APP_NOTIFICATION_PROVIDER = 'in_app';
+export const COMMUNICATION_PUSH_NOTIFICATION_PROVIDER = 'firebase_fcm';
+export const COMMUNICATION_NOTIFICATION_PUSH_QUEUE_NAME =
+  'communication-notification-push';
+export const COMMUNICATION_NOTIFICATION_PUSH_SEND_JOB_NAME =
+  'communication.notification.push.send';
 
 const ANNOUNCEMENT_NOTIFICATION_PREVIEW_MAX_LENGTH = 240;
 const MESSAGE_NOTIFICATION_PREVIEW_MAX_LENGTH = 160;
+
+export interface CommunicationGeneratedPushDeliveryRecord {
+  id: string;
+  notificationId: string;
+}
 
 export interface CommunicationAnnouncementNotificationGenerationJobData {
   schoolId: string;
@@ -39,8 +49,10 @@ export interface CommunicationAnnouncementNotificationGenerationResult {
 
 export interface CommunicationMessageNotificationGenerationInput {
   schoolId: string;
+  organizationId: string;
   messageId: string;
   actorUserId: string | null;
+  actorUserType: UserType;
 }
 
 export interface CommunicationMessageNotificationGenerationResult {
@@ -58,6 +70,12 @@ export function buildAnnouncementNotificationGenerationJobId(input: {
   announcementId: string;
 }): string {
   return `communication-announcement-notifications:${input.schoolId}:${input.announcementId}`;
+}
+
+export function buildCommunicationNotificationPushJobId(input: {
+  deliveryId: string;
+}): string {
+  return `communication-push:${input.deliveryId}`;
 }
 
 export function buildAnnouncementNotificationPreview(body: string): string {

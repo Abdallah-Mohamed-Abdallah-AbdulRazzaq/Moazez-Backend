@@ -23,6 +23,8 @@ import {
   COMMUNICATION_ANNOUNCEMENT_NOTIFICATION_SOURCE_TYPE,
   COMMUNICATION_IN_APP_NOTIFICATION_PROVIDER,
   COMMUNICATION_MESSAGE_NOTIFICATION_SOURCE_TYPE,
+  COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
+  CommunicationGeneratedPushDeliveryRecord,
   deduplicateRecipientUserIds,
 } from '../domain/communication-notification-generation-domain';
 
@@ -154,6 +156,7 @@ export interface CommunicationAnnouncementNotificationCreateResult {
   createdDeliveryCount: number;
   existingDeliveryCount: number;
   createdNotifications: CommunicationGeneratedNotificationRecord[];
+  pushDeliveries: CommunicationGeneratedPushDeliveryRecord[];
 }
 
 export interface CommunicationMessageNotificationCreateInput {
@@ -177,6 +180,7 @@ export interface CommunicationMessageNotificationCreateResult {
   createdDeliveryCount: number;
   existingDeliveryCount: number;
   createdNotifications: CommunicationGeneratedNotificationRecord[];
+  pushDeliveries: CommunicationGeneratedPushDeliveryRecord[];
 }
 
 interface AudienceTargetIds {
@@ -302,6 +306,7 @@ export class CommunicationNotificationGenerationRepository {
         createdDeliveryCount: 0,
         existingDeliveryCount: 0,
         createdNotifications: [],
+        pushDeliveries: [],
       };
     }
 
@@ -387,6 +392,10 @@ export class CommunicationNotificationGenerationRepository {
           })),
         });
       }
+      const pushDeliveries = await this.ensurePushDeliveriesInTransaction(tx, {
+        schoolId: input.schoolId,
+        notificationIds,
+      });
 
       return {
         recipientCount: recipientUserIds.length,
@@ -395,6 +404,7 @@ export class CommunicationNotificationGenerationRepository {
         createdDeliveryCount: missingDeliveryNotificationIds.length,
         existingDeliveryCount: existingDeliveries.length,
         createdNotifications,
+        pushDeliveries,
       };
     });
   }
@@ -414,6 +424,7 @@ export class CommunicationNotificationGenerationRepository {
         createdDeliveryCount: 0,
         existingDeliveryCount: 0,
         createdNotifications: [],
+        pushDeliveries: [],
       };
     }
 
@@ -498,6 +509,10 @@ export class CommunicationNotificationGenerationRepository {
           })),
         });
       }
+      const pushDeliveries = await this.ensurePushDeliveriesInTransaction(tx, {
+        schoolId: input.schoolId,
+        notificationIds,
+      });
 
       return {
         recipientCount: recipientUserIds.length,
@@ -506,7 +521,55 @@ export class CommunicationNotificationGenerationRepository {
         createdDeliveryCount: missingDeliveryNotificationIds.length,
         existingDeliveryCount: existingDeliveries.length,
         createdNotifications,
+        pushDeliveries,
       };
+    });
+  }
+
+  private async ensurePushDeliveriesInTransaction(
+    tx: Prisma.TransactionClient,
+    input: {
+      schoolId: string;
+      notificationIds: string[];
+    },
+  ): Promise<CommunicationGeneratedPushDeliveryRecord[]> {
+    const notificationIds = deduplicateRecipientUserIds(input.notificationIds);
+    if (notificationIds.length === 0) return [];
+
+    const existingDeliveries =
+      await tx.communicationNotificationDelivery.findMany({
+        where: {
+          notificationId: { in: notificationIds },
+          channel: CommunicationNotificationDeliveryChannel.PUSH,
+        },
+        select: { id: true, notificationId: true },
+      });
+    const notificationIdsWithDelivery = new Set(
+      existingDeliveries.map((delivery) => delivery.notificationId),
+    );
+    const missingDeliveryNotificationIds = notificationIds.filter(
+      (notificationId) => !notificationIdsWithDelivery.has(notificationId),
+    );
+
+    if (missingDeliveryNotificationIds.length > 0) {
+      await tx.communicationNotificationDelivery.createMany({
+        data: missingDeliveryNotificationIds.map((notificationId) => ({
+          schoolId: input.schoolId,
+          notificationId,
+          channel: CommunicationNotificationDeliveryChannel.PUSH,
+          status: CommunicationNotificationDeliveryStatus.PENDING,
+          provider: COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
+        })),
+      });
+    }
+
+    return tx.communicationNotificationDelivery.findMany({
+      where: {
+        notificationId: { in: notificationIds },
+        channel: CommunicationNotificationDeliveryChannel.PUSH,
+      },
+      select: { id: true, notificationId: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
   }
 

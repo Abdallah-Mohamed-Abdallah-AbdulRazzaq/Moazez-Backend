@@ -617,8 +617,10 @@ describe('communication message use cases', () => {
 
     expect(notifications.generateForMessageCreated).toHaveBeenCalledWith({
       schoolId: SCHOOL_ID,
+      organizationId: ORGANIZATION_ID,
       messageId: MESSAGE_ID,
       actorUserId: ACTOR_ID,
+      actorUserType: UserType.SCHOOL_USER,
     });
     expect(publisher.publishToConversation).toHaveBeenCalledTimes(1);
   });

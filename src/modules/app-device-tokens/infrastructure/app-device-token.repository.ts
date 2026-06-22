@@ -71,6 +71,14 @@ export interface RevokeCurrentSchoolActorTokenInput {
   now?: Date;
 }
 
+export interface RecordAppDeviceTokenFailureInput {
+  schoolId: string;
+  deviceTokenId: string;
+  errorCode: string;
+  now?: Date;
+  deactivate?: boolean;
+}
+
 @Injectable()
 export class AppDeviceTokenRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -168,6 +176,30 @@ export class AppDeviceTokenRepository {
       },
       orderBy: [{ lastSeenAt: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }],
       ...APP_DEVICE_TOKEN_WITH_CIPHERTEXT_ARGS,
+    });
+  }
+
+  recordCurrentSchoolTokenFailure(
+    input: RecordAppDeviceTokenFailureInput,
+  ): Promise<Prisma.BatchPayload> {
+    const failedAt = input.now ?? new Date();
+
+    return this.scopedPrisma.appDeviceToken.updateMany({
+      where: {
+        id: input.deviceTokenId,
+        schoolId: input.schoolId,
+      },
+      data: {
+        lastFailureCode: input.errorCode,
+        lastFailureAt: failedAt,
+        failureCount: { increment: 1 },
+        ...(input.deactivate
+          ? {
+              isActive: false,
+              revokedAt: failedAt,
+            }
+          : {}),
+      },
     });
   }
 

@@ -9,6 +9,10 @@ import { AppDeviceTokenRepository } from './infrastructure/app-device-token.repo
     AppDeviceTokenRepository,
     AppDeviceTokenService,
   ],
-  exports: [AppDeviceTokenService],
+  exports: [
+    AppDeviceTokenCrypto,
+    AppDeviceTokenRepository,
+    AppDeviceTokenService,
+  ],
 })
 export class AppDeviceTokensModule {}

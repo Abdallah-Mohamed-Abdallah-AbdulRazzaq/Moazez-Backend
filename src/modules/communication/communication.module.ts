@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { QueueModule } from '../../infrastructure/queue/queue.module';
+import { FirebaseAdminModule } from '../../infrastructure/push/firebase/firebase-admin.module';
 import { RealtimeModule } from '../../infrastructure/realtime/realtime.module';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { AuthModule } from '../iam/auth/auth.module';
+import { AppDeviceTokensModule } from '../app-device-tokens/app-device-tokens.module';
 import {
   ArchiveCommunicationAnnouncementUseCase,
   CancelCommunicationAnnouncementUseCase,
@@ -29,6 +31,9 @@ import {
   MarkCommunicationNotificationReadUseCase,
 } from './application/communication-notification.use-cases';
 import { CommunicationNotificationGenerationService } from './application/communication-notification-generation.service';
+import { CommunicationNotificationPushDeliveryService } from './application/communication-notification-push-delivery.service';
+import { CommunicationNotificationPushPayloadBuilder } from './application/communication-notification-push-payload.builder';
+import { CommunicationNotificationPushQueueService } from './application/communication-notification-push-queue.service';
 import { CommunicationNotificationPreferenceService } from './application/communication-notification-preference.service';
 import { CommunicationNotificationQueueService } from './application/communication-notification-queue.service';
 import {
@@ -121,8 +126,10 @@ import { CommunicationSafetyController } from './controller/communication-safety
 import { CommunicationBlockRepository } from './infrastructure/communication-block.repository';
 import { CommunicationAnnouncementRepository } from './infrastructure/communication-announcement.repository';
 import { CommunicationNotificationGenerationRepository } from './infrastructure/communication-notification-generation.repository';
+import { CommunicationNotificationPushRepository } from './infrastructure/communication-notification-push.repository';
 import { CommunicationNotificationPreferenceRepository } from './infrastructure/communication-notification-preference.repository';
 import { CommunicationNotificationGenerationWorker } from './infrastructure/communication-notification-generation.worker';
+import { CommunicationNotificationPushWorker } from './infrastructure/communication-notification-push.worker';
 import { CommunicationConversationRepository } from './infrastructure/communication-conversation.repository';
 import { CommunicationModerationRepository } from './infrastructure/communication-moderation.repository';
 import { CommunicationMessageRepository } from './infrastructure/communication-message.repository';
@@ -135,7 +142,14 @@ import { CommunicationRestrictionRepository } from './infrastructure/communicati
 import { CommunicationNotificationRepository } from './infrastructure/communication-notification.repository';
 
 @Module({
-  imports: [AuthModule, QueueModule, RealtimeModule, StorageModule],
+  imports: [
+    AppDeviceTokensModule,
+    AuthModule,
+    FirebaseAdminModule,
+    QueueModule,
+    RealtimeModule,
+    StorageModule,
+  ],
   controllers: [
     CommunicationPolicyController,
     CommunicationAdminController,
@@ -161,6 +175,7 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     CommunicationRestrictionRepository,
     CommunicationNotificationRepository,
     CommunicationNotificationGenerationRepository,
+    CommunicationNotificationPushRepository,
     CommunicationNotificationPreferenceRepository,
     GetCommunicationPolicyUseCase,
     UpdateCommunicationPolicyUseCase,
@@ -240,9 +255,13 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     ListCommunicationNotificationDeliveriesUseCase,
     GetCommunicationNotificationDeliveryUseCase,
     CommunicationNotificationGenerationService,
+    CommunicationNotificationPushDeliveryService,
+    CommunicationNotificationPushPayloadBuilder,
+    CommunicationNotificationPushQueueService,
     CommunicationNotificationPreferenceService,
     CommunicationNotificationQueueService,
     CommunicationNotificationGenerationWorker,
+    CommunicationNotificationPushWorker,
     CommunicationRealtimeEventsService,
     CommunicationAppNotificationCenterService,
   ],
