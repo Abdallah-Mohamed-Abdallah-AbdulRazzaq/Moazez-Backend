@@ -37,6 +37,7 @@ import {
   validateAssessmentMaxScore,
   validateAssessmentWeight,
 } from '../domain/grade-assessment-domain';
+import { normalizeDeliveryMode } from '../../shared/domain/grade-workflow';
 import {
   CreateGradeAssessmentData,
   GradeAssessmentRecord,
@@ -213,6 +214,9 @@ export function normalizeAssessmentListFilters(
   const scopeType = query.scopeType
     ? normalizeGradeScopeType(query.scopeType)
     : undefined;
+  const deliveryMode = query.deliveryMode
+    ? normalizeDeliveryMode(query.deliveryMode)
+    : undefined;
 
   return {
     ...((query.academicYearId ?? query.yearId)
@@ -230,6 +234,7 @@ export function normalizeAssessmentListFilters(
     ...(query.classroomId ? { classroomId: query.classroomId } : {}),
     ...(query.approvalStatus ? { approvalStatus: query.approvalStatus } : {}),
     ...(query.type ? { type: query.type } : {}),
+    ...(deliveryMode ? { deliveryMode } : {}),
     ...(query.search ? { search: query.search } : {}),
     ...parsedDates,
   };

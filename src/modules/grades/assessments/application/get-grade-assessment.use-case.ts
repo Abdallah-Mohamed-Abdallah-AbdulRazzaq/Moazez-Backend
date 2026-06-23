@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { requireGradesScope } from '../../grades-context';
-import { assertScoreOnlyAssessment } from '../domain/grade-assessment-domain';
 import { GradesAssessmentsRepository } from '../infrastructure/grades-assessments.repository';
 import { presentGradeAssessment } from '../presenters/grade-assessment.presenter';
 
@@ -21,8 +20,6 @@ export class GetGradeAssessmentUseCase {
         assessmentId,
       });
     }
-
-    assertScoreOnlyAssessment(assessment);
 
     return presentGradeAssessment(assessment);
   }

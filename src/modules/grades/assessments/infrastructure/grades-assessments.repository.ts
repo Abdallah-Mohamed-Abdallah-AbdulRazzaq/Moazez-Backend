@@ -182,6 +182,7 @@ export interface ListGradeAssessmentsFilters {
   classroomId?: string;
   approvalStatus?: GradeAssessmentApprovalStatus;
   type?: GradeAssessmentType;
+  deliveryMode?: GradeAssessmentDeliveryMode;
   search?: string;
   dateFrom?: Date;
   dateTo?: Date;
@@ -314,6 +315,12 @@ export class GradesAssessmentsRepository {
     });
   }
 
+  countSubmissionsForAssessment(assessmentId: string): Promise<number> {
+    return this.scopedPrisma.gradeSubmission.count({
+      where: { assessmentId },
+    });
+  }
+
   listActiveQuestionsForPublish(
     assessmentId: string,
   ): Promise<GradeAssessmentQuestionPublishRecord[]> {
@@ -426,7 +433,6 @@ export class GradesAssessmentsRepository {
     }
 
     return {
-      deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
       ...(filters.academicYearId
         ? { academicYearId: filters.academicYearId }
         : {}),
@@ -442,6 +448,7 @@ export class GradesAssessmentsRepository {
         ? { approvalStatus: filters.approvalStatus }
         : {}),
       ...(filters.type ? { type: filters.type } : {}),
+      ...(filters.deliveryMode ? { deliveryMode: filters.deliveryMode } : {}),
       ...(and.length > 0 ? { AND: and } : {}),
     };
   }

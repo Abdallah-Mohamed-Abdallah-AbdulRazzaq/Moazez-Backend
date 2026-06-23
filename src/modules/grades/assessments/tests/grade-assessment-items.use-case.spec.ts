@@ -547,7 +547,51 @@ describe('grade assessment item use cases', () => {
           score: 10,
         }),
       ),
-    ).rejects.toBeInstanceOf(ValidationDomainException);
+    ).rejects.toMatchObject({
+      message:
+        'Direct grade item entry is only supported for score-only assessments',
+      details: {
+        deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        reason: 'question_based_uses_submissions_review_sync',
+      },
+    });
+    expect(repository.upsertGradeItem).not.toHaveBeenCalled();
+  });
+
+  it('bulk rejects non-SCORE_ONLY assessments', async () => {
+    const repository = baseRepository({
+      findAssessmentForItems: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        }),
+      ),
+    });
+    const useCase = new BulkUpsertGradeAssessmentItemsUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() =>
+        useCase.execute(ASSESSMENT_ID, {
+          items: [
+            {
+              studentId: STUDENT_ID,
+              status: GradeItemStatus.ENTERED,
+              score: 10,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      message:
+        'Direct grade item entry is only supported for score-only assessments',
+      details: {
+        deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        reason: 'question_based_uses_submissions_review_sync',
+      },
+    });
+    expect(repository.bulkUpsertGradeItems).not.toHaveBeenCalled();
   });
 
   it('rejects students outside the current school as not found', async () => {

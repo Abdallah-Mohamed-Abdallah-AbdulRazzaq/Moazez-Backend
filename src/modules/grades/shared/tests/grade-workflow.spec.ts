@@ -49,9 +49,12 @@ describe('grade workflow helpers', () => {
     expect(isAssessmentLocked({ isLocked: true })).toBe(true);
   });
 
-  it('rejects question-based delivery mode for score-only Sprint 4A helpers', () => {
+  it('rejects question-based delivery mode for score-only helpers', () => {
     expect(() =>
       assertScoreOnlyDeliveryMode(GradeAssessmentDeliveryMode.QUESTION_BASED),
     ).toThrow(ValidationDomainException);
+    expect(() =>
+      assertScoreOnlyDeliveryMode(GradeAssessmentDeliveryMode.QUESTION_BASED),
+    ).toThrow('Assessment delivery mode must be score-only');
   });
 });

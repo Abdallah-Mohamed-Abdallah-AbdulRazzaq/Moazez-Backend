@@ -289,6 +289,7 @@ describe('Grade assessment use cases', () => {
         }),
       ),
       countGradeItemsForAssessment: jest.fn().mockResolvedValue(0),
+      countSubmissionsForAssessment: jest.fn().mockResolvedValue(0),
       listActiveQuestionsForPublish: jest
         .fn()
         .mockResolvedValue(validPublishQuestions()),
@@ -386,6 +387,28 @@ describe('Grade assessment use cases', () => {
     );
   });
 
+  it('creates score-only when the general create endpoint receives SCORE_ONLY', async () => {
+    const repository = baseRepository();
+    const useCase = new CreateGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    const result = await withGradesScope(() =>
+      useCase.execute({
+        ...createCommand,
+        deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
+      }),
+    );
+
+    expect(repository.createAssessment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
+      }),
+    );
+    expect(result.deliveryMode).toBe('SCORE_ONLY');
+  });
+
   it('keeps the existing create endpoint score-only focused', async () => {
     const repository = baseRepository({ createAssessment: jest.fn() });
     const useCase = new CreateGradeAssessmentUseCase(
@@ -400,7 +423,15 @@ describe('Grade assessment use cases', () => {
           deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
         }),
       ),
-    ).rejects.toBeInstanceOf(ValidationDomainException);
+    ).rejects.toMatchObject({
+      message:
+        'Use the question-based assessment creation endpoint for question-based assessments',
+      details: {
+        field: 'deliveryMode',
+        deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        expectedEndpoint: '/api/v1/grades/assessments/question-based',
+      },
+    });
     expect(repository.createAssessment).not.toHaveBeenCalled();
   });
 
@@ -570,6 +601,11 @@ describe('Grade assessment use cases', () => {
         .fn()
         .mockResolvedValue([
           assessmentRecord({ id: 'active-assessment', deletedAt: null }),
+          assessmentRecord({
+            id: 'question-assessment',
+            deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+            deletedAt: null,
+          }),
         ]),
     });
     const useCase = new ListGradeAssessmentsUseCase(repository);
@@ -584,7 +620,53 @@ describe('Grade assessment use cases', () => {
         termId: TERM_ID,
       }),
     );
-    expect(result.items.map((item) => item.id)).toEqual(['active-assessment']);
+    expect(repository.listAssessments).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        deliveryMode: expect.anything(),
+      }),
+    );
+    expect(result.items.map((item) => item.id)).toEqual([
+      'active-assessment',
+      'question-assessment',
+    ]);
+    expect(result.items.map((item) => item.deliveryMode)).toEqual([
+      'SCORE_ONLY',
+      'question_based',
+    ]);
+  });
+
+  it('filters list by score-only delivery mode', async () => {
+    const repository = baseRepository();
+    const useCase = new ListGradeAssessmentsUseCase(repository);
+
+    await withGradesScope(() =>
+      useCase.execute({
+        deliveryMode: 'score_only' as unknown as GradeAssessmentDeliveryMode,
+      }),
+    );
+
+    expect(repository.listAssessments).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
+      }),
+    );
+  });
+
+  it('filters list by question-based delivery mode', async () => {
+    const repository = baseRepository();
+    const useCase = new ListGradeAssessmentsUseCase(repository);
+
+    await withGradesScope(() =>
+      useCase.execute({
+        deliveryMode: 'question_based' as unknown as GradeAssessmentDeliveryMode,
+      }),
+    );
+
+    expect(repository.listAssessments).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+      }),
+    );
   });
 
   it('returns one assessment in the presenter shape', async () => {
@@ -608,6 +690,41 @@ describe('Grade assessment use cases', () => {
       date: '2026-09-15',
       approvalStatus: 'draft',
     });
+  });
+
+  it('returns a question-based assessment in the same dashboard detail shape', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        }),
+      ),
+    });
+    const useCase = new GetGradeAssessmentUseCase(repository);
+
+    const result = await withGradesScope(() => useCase.execute('assessment-1'));
+
+    expect(result).toMatchObject({
+      id: 'assessment-1',
+      deliveryMode: 'question_based',
+      approvalStatus: 'draft',
+    });
+    expect(result).not.toHaveProperty('questions');
+    expect(result).not.toHaveProperty('options');
+    expect(result).not.toHaveProperty('answerKey');
+    expect(repository.listActiveQuestionsForPublish).not.toHaveBeenCalled();
+    expect(repository.countGradeItemsForAssessment).not.toHaveBeenCalled();
+  });
+
+  it('returns not found for a missing assessment detail', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(null),
+    });
+    const useCase = new GetGradeAssessmentUseCase(repository);
+
+    await expect(
+      withGradesScope(() => useCase.execute('missing-assessment')),
+    ).rejects.toBeInstanceOf(NotFoundDomainException);
   });
 
   it('publishes a DRAFT assessment and records audit metadata', async () => {
@@ -1152,6 +1269,52 @@ describe('Grade assessment use cases', () => {
     );
   });
 
+  it('locks an APPROVED question-based assessment', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+          approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+          publishedAt: new Date('2026-09-16T08:00:00.000Z'),
+          publishedById: 'user-1',
+          approvedAt: new Date('2026-09-17T08:00:00.000Z'),
+          approvedById: 'user-1',
+        }),
+      ),
+      lockAssessment: jest.fn().mockImplementation((_id, data) =>
+        Promise.resolve(
+          assessmentRecord({
+            deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+            approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+            publishedAt: new Date('2026-09-16T08:00:00.000Z'),
+            publishedById: 'user-1',
+            approvedAt: new Date('2026-09-17T08:00:00.000Z'),
+            approvedById: 'user-1',
+            lockedAt: data.lockedAt,
+            lockedById: data.lockedById,
+          }),
+        ),
+      ),
+    });
+    const useCase = new LockGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    const result = await withGradesScope(() => useCase.execute('assessment-1'));
+
+    expect(repository.lockAssessment).toHaveBeenCalledWith(
+      'assessment-1',
+      expect.objectContaining({ lockedById: 'user-1' }),
+    );
+    expect(result).toMatchObject({
+      id: 'assessment-1',
+      deliveryMode: 'question_based',
+      approvalStatus: 'approved',
+      isLocked: true,
+    });
+  });
+
   it('rejects locking a DRAFT assessment', async () => {
     const repository = baseRepository({
       lockAssessment: jest.fn(),
@@ -1229,6 +1392,47 @@ describe('Grade assessment use cases', () => {
     expect(repository.lockAssessment).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      label: 'DRAFT',
+      approvalStatus: GradeAssessmentApprovalStatus.DRAFT,
+      lockedAt: null,
+      errorClass: GradeAssessmentNotApprovedException,
+    },
+    {
+      label: 'PUBLISHED',
+      approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+      lockedAt: null,
+      errorClass: GradeAssessmentNotApprovedException,
+    },
+    {
+      label: 'already locked',
+      approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      lockedAt: new Date('2026-09-20T08:00:00.000Z'),
+      errorClass: GradeAssessmentAlreadyLockedException,
+    },
+  ])('rejects locking a $label question-based assessment', async (scenario) => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+          approvalStatus: scenario.approvalStatus,
+          lockedAt: scenario.lockedAt,
+        }),
+      ),
+      lockAssessment: jest.fn(),
+    });
+    const useCase = new LockGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(scenario.errorClass);
+    expect(repository.lockAssessment).not.toHaveBeenCalled();
+  });
+
   it('returns not found when locking a missing or soft-deleted assessment', async () => {
     const repository = baseRepository({
       findAssessmentById: jest.fn().mockResolvedValue(null),
@@ -1272,6 +1476,52 @@ describe('Grade assessment use cases', () => {
         after: expect.objectContaining({ weight: 15 }),
       }),
     );
+  });
+
+  it('updates draft question-based assessment metadata without changing delivery mode', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        }),
+      ),
+      updateAssessment: jest.fn().mockImplementation((_id, data) =>
+        Promise.resolve(
+          assessmentRecord({
+            deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+            weight: data.weight === undefined ? 10 : Number(data.weight),
+          }),
+        ),
+      ),
+    });
+    const useCase = new UpdateGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    const result = await withGradesScope(() =>
+      useCase.execute('assessment-1', {
+        titleEn: 'Question quiz updated',
+        date: '2026-09-20',
+        weight: 12,
+      }),
+    );
+
+    expect(repository.updateAssessment).toHaveBeenCalledWith(
+      'assessment-1',
+      expect.objectContaining({
+        titleEn: 'Question quiz updated',
+        date: new Date('2026-09-20'),
+        weight: expect.any(Prisma.Decimal),
+      }),
+    );
+    const updatePayload = (repository.updateAssessment as jest.Mock).mock
+      .calls[0][1];
+    expect(updatePayload).not.toHaveProperty('deliveryMode');
+    expect(result).toMatchObject({
+      deliveryMode: 'question_based',
+      weight: 12,
+    });
   });
 
   it('rejects updating a non-DRAFT assessment', async () => {
@@ -1340,6 +1590,49 @@ describe('Grade assessment use cases', () => {
     expect(repository.updateAssessment).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      label: 'PUBLISHED',
+      approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+      lockedAt: null,
+      errorClass: GradeAssessmentInvalidStatusTransitionException,
+    },
+    {
+      label: 'APPROVED',
+      approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      lockedAt: null,
+      errorClass: GradeAssessmentInvalidStatusTransitionException,
+    },
+    {
+      label: 'locked',
+      approvalStatus: GradeAssessmentApprovalStatus.DRAFT,
+      lockedAt: new Date('2026-09-20T08:00:00.000Z'),
+      errorClass: GradeAssessmentLockedException,
+    },
+  ])('rejects updating a $label question-based assessment', async (scenario) => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+          approvalStatus: scenario.approvalStatus,
+          lockedAt: scenario.lockedAt,
+        }),
+      ),
+      updateAssessment: jest.fn(),
+    });
+    const useCase = new UpdateGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() =>
+        useCase.execute('assessment-1', { titleEn: 'Updated' }),
+      ),
+    ).rejects.toBeInstanceOf(scenario.errorClass);
+    expect(repository.updateAssessment).not.toHaveBeenCalled();
+  });
+
   it('rejects updating when the term is closed', async () => {
     const repository = baseRepository({
       findTerm: jest.fn().mockResolvedValue(activeTerm({ isActive: false })),
@@ -1394,6 +1687,40 @@ describe('Grade assessment use cases', () => {
         }),
       }),
     );
+  });
+
+  it('soft-deletes a draft question-based assessment without hard-deleting questions', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        }),
+      ),
+      softDeleteAssessment: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+          deletedAt: new Date('2026-09-16T09:00:00.000Z'),
+        }),
+      ),
+    });
+    const useCase = new DeleteGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    const result = await withGradesScope(() => useCase.execute('assessment-1'));
+
+    expect(repository.countGradeItemsForAssessment).toHaveBeenCalledWith(
+      'assessment-1',
+    );
+    expect(repository.countSubmissionsForAssessment).toHaveBeenCalledWith(
+      'assessment-1',
+    );
+    expect(repository.listActiveQuestionsForPublish).not.toHaveBeenCalled();
+    expect(repository.softDeleteAssessment).toHaveBeenCalledWith(
+      'assessment-1',
+    );
+    expect(result).toEqual({ ok: true });
   });
 
   it('rejects deleting a non-DRAFT assessment', async () => {
@@ -1456,6 +1783,47 @@ describe('Grade assessment use cases', () => {
     expect(repository.softDeleteAssessment).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      label: 'PUBLISHED',
+      approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+      lockedAt: null,
+      errorClass: GradeAssessmentInvalidStatusTransitionException,
+    },
+    {
+      label: 'APPROVED',
+      approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+      lockedAt: null,
+      errorClass: GradeAssessmentInvalidStatusTransitionException,
+    },
+    {
+      label: 'locked',
+      approvalStatus: GradeAssessmentApprovalStatus.DRAFT,
+      lockedAt: new Date('2026-09-20T08:00:00.000Z'),
+      errorClass: GradeAssessmentLockedException,
+    },
+  ])('rejects deleting a $label question-based assessment', async (scenario) => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+          approvalStatus: scenario.approvalStatus,
+          lockedAt: scenario.lockedAt,
+        }),
+      ),
+      softDeleteAssessment: jest.fn(),
+    });
+    const useCase = new DeleteGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toBeInstanceOf(scenario.errorClass);
+    expect(repository.softDeleteAssessment).not.toHaveBeenCalled();
+  });
+
   it('rejects deleting an assessment that already has grade items', async () => {
     const repository = baseRepository({
       countGradeItemsForAssessment: jest.fn().mockResolvedValue(1),
@@ -1469,6 +1837,32 @@ describe('Grade assessment use cases', () => {
     await expect(
       withGradesScope(() => useCase.execute('assessment-1')),
     ).rejects.toBeInstanceOf(GradeAssessmentInvalidStatusTransitionException);
+    expect(repository.softDeleteAssessment).not.toHaveBeenCalled();
+  });
+
+  it('rejects deleting a question-based assessment that already has submissions', async () => {
+    const repository = baseRepository({
+      findAssessmentById: jest.fn().mockResolvedValue(
+        assessmentRecord({
+          deliveryMode: GradeAssessmentDeliveryMode.QUESTION_BASED,
+        }),
+      ),
+      countSubmissionsForAssessment: jest.fn().mockResolvedValue(1),
+      softDeleteAssessment: jest.fn(),
+    });
+    const useCase = new DeleteGradeAssessmentUseCase(
+      repository,
+      authRepository(),
+    );
+
+    await expect(
+      withGradesScope(() => useCase.execute('assessment-1')),
+    ).rejects.toMatchObject({
+      details: {
+        reason: 'submissions_exist',
+        submissionCount: 1,
+      },
+    });
     expect(repository.softDeleteAssessment).not.toHaveBeenCalled();
   });
 

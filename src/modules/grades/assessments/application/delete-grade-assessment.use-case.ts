@@ -43,14 +43,25 @@ export class DeleteGradeAssessmentUseCase {
     );
     assertTermWritableForAssessment(term);
 
-    const gradeItemCount =
-      await this.gradesAssessmentsRepository.countGradeItemsForAssessment(
+    const [gradeItemCount, submissionCount] = await Promise.all([
+      this.gradesAssessmentsRepository.countGradeItemsForAssessment(
         existing.id,
-      );
+      ),
+      this.gradesAssessmentsRepository.countSubmissionsForAssessment(
+        existing.id,
+      ),
+    ]);
     if (gradeItemCount > 0) {
       throw new GradeAssessmentInvalidStatusTransitionException({
         reason: 'grade_items_exist',
         gradeItemCount,
+      });
+    }
+
+    if (submissionCount > 0) {
+      throw new GradeAssessmentInvalidStatusTransitionException({
+        reason: 'submissions_exist',
+        submissionCount,
       });
     }
 

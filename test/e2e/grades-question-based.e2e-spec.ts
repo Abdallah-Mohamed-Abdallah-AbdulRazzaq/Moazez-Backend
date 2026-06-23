@@ -557,6 +557,73 @@ describe('Question-based Grades closeout flow (e2e)', () => {
       isLocked: false,
     });
 
+    const assessmentDetailResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(assessmentDetailResponse.body).toMatchObject({
+      id: assessmentId,
+      deliveryMode: 'question_based',
+      approvalStatus: 'draft',
+    });
+    expect(JSON.stringify(assessmentDetailResponse.body)).not.toContain(
+      'answerKey',
+    );
+    expect(JSON.stringify(assessmentDetailResponse.body)).not.toContain(
+      'correctAnswer',
+    );
+    expect(assessmentDetailResponse.body).not.toHaveProperty('questions');
+    expect(assessmentDetailResponse.body).not.toHaveProperty('options');
+
+    const assessmentsListResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/assessments`)
+      .query(gradesScopeQuery(fixture))
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(assessmentsListResponse.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: assessmentId,
+          deliveryMode: 'question_based',
+        }),
+      ]),
+    );
+
+    const questionBasedListResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/assessments`)
+      .query({
+        ...gradesScopeQuery(fixture),
+        deliveryMode: 'question_based',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(questionBasedListResponse.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: assessmentId,
+          deliveryMode: 'question_based',
+        }),
+      ]),
+    );
+
+    const scoreOnlyListResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/grades/assessments`)
+      .query({
+        ...gradesScopeQuery(fixture),
+        deliveryMode: 'score_only',
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(
+      scoreOnlyListResponse.body.items.some(
+        (item: { id: string }) => item.id === assessmentId,
+      ),
+    ).toBe(false);
+
     const emptyQuestionsResponse = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/grades/assessments/${assessmentId}/questions`)
       .set('Authorization', `Bearer ${accessToken}`)

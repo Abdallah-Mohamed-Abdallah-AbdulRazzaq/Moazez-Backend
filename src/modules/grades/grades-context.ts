@@ -10,7 +10,8 @@ export const GRADES_ROUTE_PREFIX = 'grades';
 export const SPRINT_4A_SUPPORTED_DELIVERY_MODE =
   GradeAssessmentDeliveryMode.SCORE_ONLY;
 
-// QUESTION_BASED remains deferred for Sprint 4B implementation work.
+// Some dashboard write paths intentionally stay score-only; question-based
+// workflows use the dedicated questions, submissions, review, and sync routes.
 export const DEFERRED_GRADES_DELIVERY_MODES = [
   GradeAssessmentDeliveryMode.QUESTION_BASED,
 ] as const;

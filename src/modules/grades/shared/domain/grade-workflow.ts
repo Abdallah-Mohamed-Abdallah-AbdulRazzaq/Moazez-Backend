@@ -122,11 +122,16 @@ export function isScoreOnlyDeliveryMode(
 
 export function assertScoreOnlyDeliveryMode(
   deliveryMode: GradeAssessmentDeliveryMode | string,
+  options?: { message?: string; details?: Record<string, unknown> },
 ): void {
-  if (!isScoreOnlyDeliveryMode(deliveryMode)) {
+  const normalizedDeliveryMode = normalizeDeliveryMode(deliveryMode);
+  if (normalizedDeliveryMode !== GradeAssessmentDeliveryMode.SCORE_ONLY) {
     throw new ValidationDomainException(
-      'Question-based assessments are deferred for Sprint 4B',
-      { deliveryMode },
+      options?.message ?? 'Assessment delivery mode must be score-only',
+      {
+        deliveryMode: normalizedDeliveryMode,
+        ...(options?.details ?? {}),
+      },
     );
   }
 }

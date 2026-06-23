@@ -180,21 +180,28 @@ export function normalizeScoreOnlyDeliveryMode(
   const deliveryMode = normalizeDeliveryMode(
     input ?? GradeAssessmentDeliveryMode.SCORE_ONLY,
   );
-  assertScoreOnlyDeliveryMode(deliveryMode);
+  assertScoreOnlyDeliveryMode(deliveryMode, {
+    message:
+      'Use the question-based assessment creation endpoint for question-based assessments',
+    details: {
+      field: 'deliveryMode',
+      deliveryMode,
+      expectedEndpoint: '/api/v1/grades/assessments/question-based',
+    },
+  });
   return deliveryMode;
 }
 
 export function assertScoreOnlyAssessment(
   assessment: Pick<AssessmentCrudLike, 'deliveryMode'>,
+  options?: { message?: string; details?: Record<string, unknown> },
 ): void {
-  assertScoreOnlyDeliveryMode(assessment.deliveryMode);
+  assertScoreOnlyDeliveryMode(assessment.deliveryMode, options);
 }
 
 export function assertAssessmentMutableForCrud(
   assessment: AssessmentCrudLike,
 ): void {
-  assertScoreOnlyAssessment(assessment);
-
   if (isAssessmentLocked(assessment)) {
     throw new GradeAssessmentLockedException();
   }
@@ -273,8 +280,6 @@ export function assertApprovableAssessment(
 }
 
 export function assertLockableAssessment(assessment: AssessmentCrudLike): void {
-  assertScoreOnlyAssessment(assessment);
-
   if (isAssessmentLocked(assessment)) {
     throw new GradeAssessmentAlreadyLockedException();
   }

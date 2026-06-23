@@ -19,6 +19,7 @@ import {
   assertScoreOnlyDeliveryMode,
   assertTermWritable,
   isAssessmentLocked,
+  normalizeDeliveryMode,
   normalizeAssessmentApprovalStatus,
 } from '../../shared/domain/grade-workflow';
 import {
@@ -106,7 +107,13 @@ export function assertAssessmentAcceptsGradeItems(
   assessment: GradeItemAssessmentLike,
   term: GradeTermWritableLike,
 ): void {
-  assertScoreOnlyDeliveryMode(assessment.deliveryMode);
+  assertScoreOnlyDeliveryMode(assessment.deliveryMode, {
+    message: 'Direct grade item entry is only supported for score-only assessments',
+    details: {
+      deliveryMode: normalizeDeliveryMode(assessment.deliveryMode),
+      reason: 'question_based_uses_submissions_review_sync',
+    },
+  });
   assertAssessmentNotLockedForGradeEntry(assessment);
   assertAssessmentPublishedOrApprovedForGradeEntry(assessment);
   assertTermWritable(term);

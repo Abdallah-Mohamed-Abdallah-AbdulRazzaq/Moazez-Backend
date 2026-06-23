@@ -75,6 +75,11 @@ export class ListGradeAssessmentsQueryDto {
   type?: GradeAssessmentType;
 
   @IsOptional()
+  @Transform(({ value }) => toUpperEnumValue(value))
+  @IsEnum(GradeAssessmentDeliveryMode)
+  deliveryMode?: GradeAssessmentDeliveryMode;
+
+  @IsOptional()
   @IsString()
   @MaxLength(200)
   search?: string;
