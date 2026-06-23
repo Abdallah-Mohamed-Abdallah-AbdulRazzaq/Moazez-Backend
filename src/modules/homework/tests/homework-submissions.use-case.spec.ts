@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import {
   HomeworkAssignmentStatus,
   HomeworkQuestionType,
@@ -12,6 +13,12 @@ import {
   setActor,
 } from '../../../common/context/request-context';
 import { DomainException } from '../../../common/exceptions/domain-exception';
+import { REQUIRED_PERMISSIONS_METADATA } from '../../../common/decorators/required-permissions.decorator';
+import {
+  GetHomeworkAssignmentSubmissionUseCase,
+  ListHomeworkAssignmentSubmissionsUseCase,
+  ReviewHomeworkAssignmentSubmissionUseCase,
+} from '../application/homework-submission-review-surface.use-cases';
 import {
   GetHomeworkSubmissionUseCase,
   GetHomeworkSubmissionForReviewUseCase,
@@ -20,6 +27,7 @@ import {
   SaveHomeworkSubmissionDraftUseCase,
   SubmitHomeworkSubmissionUseCase,
 } from '../application/homework-submissions.use-cases';
+import { HomeworkSubmissionsController } from '../controller/homework-submissions.controller';
 import { HomeworkRepository } from '../infrastructure/homework.repository';
 
 describe('Homework submission use cases', () => {
@@ -508,6 +516,103 @@ describe('Homework submission use cases', () => {
     });
   });
 
+  it('lists dashboard review submissions with safe lower-case presentation', async () => {
+    const repository = createRepository();
+    const useCase = new ListHomeworkAssignmentSubmissionsUseCase(
+      new ListHomeworkSubmissionsForReviewUseCase(repository),
+    );
+
+    const result = await withTeacherScope(() =>
+      useCase.execute('homework-1', {
+        search: 'learner',
+        page: 2,
+        limit: 10,
+      }),
+    );
+
+    expect(repository.listReviewableSubmissions).toHaveBeenCalledWith({
+      homeworkAssignmentId: 'homework-1',
+      statuses: undefined,
+      search: 'learner',
+      page: 2,
+      limit: 10,
+    });
+    expect(result).toEqual({
+      submissions: [
+        expect.objectContaining({
+          id: 'submission-1',
+          homeworkId: 'homework-1',
+          targetId: 'target-1',
+          student: {
+            id: 'student-1',
+            displayName: 'Student One',
+            studentNumber: null,
+          },
+          status: 'submitted',
+          submittedAt: '2026-09-10T08:00:00.000Z',
+          reviewedAt: null,
+          totalMarks: 10,
+        }),
+      ],
+      pagination: { page: 1, limit: 25, total: 1 },
+    });
+    const serialized = JSON.stringify(result);
+    for (const forbidden of [
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'enrollmentId',
+      'reviewedByUserId',
+      'deletedAt',
+      'answerKey',
+      'correctAnswer',
+      'isCorrect',
+      'expectedAnswer',
+      'storageKey',
+      'objectKey',
+      'signedUrl',
+      'metadata',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
+  it.each([
+    ['submitted', [HomeworkSubmissionStatus.SUBMITTED]],
+    ['late', [HomeworkSubmissionStatus.LATE]],
+    ['reviewed', [HomeworkSubmissionStatus.REVIEWED]],
+    [
+      'pending_review',
+      [HomeworkSubmissionStatus.SUBMITTED, HomeworkSubmissionStatus.LATE],
+    ],
+  ] as const)(
+    'maps dashboard submission status=%s to core review filters',
+    async (status, expectedStatuses) => {
+      const repository = createRepository();
+      const useCase = new ListHomeworkAssignmentSubmissionsUseCase(
+        new ListHomeworkSubmissionsForReviewUseCase(repository),
+      );
+
+      await withTeacherScope(() =>
+        useCase.execute('homework-1', {
+          status,
+          search: 'learner',
+          page: 3,
+          limit: 5,
+        }),
+      );
+
+      expect(repository.listReviewableSubmissions).toHaveBeenCalledWith({
+        homeworkAssignmentId: 'homework-1',
+        statuses: expectedStatuses,
+        search: 'learner',
+        page: 3,
+        limit: 5,
+      });
+    },
+  );
+
   it('gets a single teacher-visible submitted submission', async () => {
     const repository = createRepository();
     const useCase = new GetHomeworkSubmissionForReviewUseCase(repository);
@@ -524,6 +629,36 @@ describe('Homework submission use cases', () => {
       submissionId: 'submission-1',
     });
     expect(submission.status).toBe(HomeworkSubmissionStatus.SUBMITTED);
+  });
+
+  it('gets one dashboard review submission and hides mismatched submissions as not found', async () => {
+    const repository = createRepository();
+    const useCase = new GetHomeworkAssignmentSubmissionUseCase(
+      new GetHomeworkSubmissionForReviewUseCase(repository),
+    );
+
+    const result = await withTeacherScope(() =>
+      useCase.execute('homework-1', 'submission-1'),
+    );
+
+    expect(repository.findReviewableSubmission).toHaveBeenCalledWith({
+      homeworkAssignmentId: 'homework-1',
+      submissionId: 'submission-1',
+    });
+    expect(result.submission).toMatchObject({
+      id: 'submission-1',
+      homeworkId: 'homework-1',
+      status: 'submitted',
+    });
+
+    repository.findReviewableSubmission.mockResolvedValueOnce(null);
+    await expect(
+      withTeacherScope(() =>
+        useCase.execute('homework-1', 'submission-from-another-homework'),
+      ),
+    ).rejects.toMatchObject<Partial<DomainException>>({
+      code: 'homework.submission.not_found',
+    });
   });
 
   it('reviews a submitted submission and records target review metadata', async () => {
@@ -562,6 +697,34 @@ describe('Homework submission use cases', () => {
     expect(authRepository.createAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'homework.submission.review' }),
     );
+  });
+
+  it('reviews a dashboard submission using the current homework actor id', async () => {
+    const repository = createRepository();
+    const authRepository = createAuthRepository();
+    const useCase = new ReviewHomeworkAssignmentSubmissionUseCase(
+      new ReviewHomeworkSubmissionUseCase(repository, authRepository),
+    );
+
+    const result = await withTeacherScope(() =>
+      useCase.execute('homework-1', 'submission-1', {
+        reviewNote: '  Good work  ',
+        awardedMarks: 8.5,
+      }),
+    );
+
+    expect(repository.reviewSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewedByUserId: 'teacher-1',
+        reviewNote: 'Good work',
+        awardedMarks: 8.5,
+      }),
+    );
+    expect(result.submission).toMatchObject({
+      status: 'reviewed',
+      reviewNote: 'Good work',
+      awardedMarks: 8.5,
+    });
   });
 
   it('reviews a late submission with the same reviewed target lifecycle', async () => {
@@ -683,6 +846,56 @@ describe('Homework submission use cases', () => {
     expect((repository as any).createNotification).toBeUndefined();
     expect((repository as any).grantXp).toBeUndefined();
     expect((repository as any).createRewardRedemption).toBeUndefined();
+  });
+
+  it('keeps dashboard submission controller routes permissioned and POST/PATCH review equivalent', async () => {
+    const listUseCase = { execute: jest.fn() };
+    const getUseCase = { execute: jest.fn() };
+    const reviewUseCase = {
+      execute: jest.fn().mockResolvedValue({
+        submission: { id: 'submission-1', status: 'reviewed' },
+      }),
+    };
+    const controller = new HomeworkSubmissionsController(
+      listUseCase as never,
+      getUseCase as never,
+      reviewUseCase as never,
+    );
+
+    expect(readPermissions('listSubmissions')).toEqual([
+      'homework.submissions.view',
+    ]);
+    expect(readPermissions('getSubmission')).toEqual([
+      'homework.submissions.view',
+    ]);
+    expect(readPermissions('reviewSubmission')).toEqual([
+      'homework.assignments.manage',
+    ]);
+    expect(readPermissions('patchReviewSubmission')).toEqual([
+      'homework.assignments.manage',
+    ]);
+
+    await controller.reviewSubmission('homework-1', 'submission-1', {
+      reviewNote: 'Done',
+      awardedMarks: 8,
+    });
+    await controller.patchReviewSubmission('homework-1', 'submission-1', {
+      reviewNote: 'Done',
+      awardedMarks: 8,
+    });
+
+    expect(reviewUseCase.execute).toHaveBeenNthCalledWith(
+      1,
+      'homework-1',
+      'submission-1',
+      { reviewNote: 'Done', awardedMarks: 8 },
+    );
+    expect(reviewUseCase.execute).toHaveBeenNthCalledWith(
+      2,
+      'homework-1',
+      'submission-1',
+      { reviewNote: 'Done', awardedMarks: 8 },
+    );
   });
 });
 
@@ -1063,6 +1276,13 @@ function seedReviewSubmission(overrides?: Record<string, unknown>): any {
       reviewedAt: null,
     },
   };
+}
+
+function readPermissions(methodName: string): string[] | undefined {
+  return Reflect.getMetadata(
+    REQUIRED_PERMISSIONS_METADATA,
+    HomeworkSubmissionsController.prototype[methodName],
+  );
 }
 
 function modelMocks() {

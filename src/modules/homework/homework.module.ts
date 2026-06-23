@@ -21,6 +21,11 @@ import {
   SubmitHomeworkSubmissionUseCase,
 } from './application/homework-submissions.use-cases';
 import {
+  GetHomeworkAssignmentSubmissionUseCase,
+  ListHomeworkAssignmentSubmissionsUseCase,
+  ReviewHomeworkAssignmentSubmissionUseCase,
+} from './application/homework-submission-review-surface.use-cases';
+import {
   GetHomeworkSubmissionAnswerUseCase,
   ListHomeworkSubmissionAnswersUseCase,
   ListStudentHomeworkAnswersUseCase,
@@ -69,6 +74,7 @@ import { HomeworkAssignmentsController } from './controller/homework-assignments
 import { HomeworkGradeSyncController } from './controller/homework-grade-sync.controller';
 import { HomeworkQuestionsController } from './controller/homework-questions.controller';
 import { HomeworkSubmissionContentController } from './controller/homework-submission-content.controller';
+import { HomeworkSubmissionsController } from './controller/homework-submissions.controller';
 import { HomeworkRepository } from './infrastructure/homework.repository';
 
 @Module({
@@ -78,6 +84,7 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     HomeworkGradeSyncController,
     HomeworkQuestionsController,
     HomeworkAttachmentsController,
+    HomeworkSubmissionsController,
     HomeworkSubmissionContentController,
   ],
   providers: [
@@ -95,6 +102,9 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     ListHomeworkSubmissionsForReviewUseCase,
     GetHomeworkSubmissionForReviewUseCase,
     ReviewHomeworkSubmissionUseCase,
+    ListHomeworkAssignmentSubmissionsUseCase,
+    GetHomeworkAssignmentSubmissionUseCase,
+    ReviewHomeworkAssignmentSubmissionUseCase,
     SaveHomeworkSubmissionDraftUseCase,
     SubmitHomeworkSubmissionUseCase,
     ListHomeworkSubmissionAnswersUseCase,
@@ -145,6 +155,9 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     ListHomeworkSubmissionsForReviewUseCase,
     GetHomeworkSubmissionForReviewUseCase,
     ReviewHomeworkSubmissionUseCase,
+    ListHomeworkAssignmentSubmissionsUseCase,
+    GetHomeworkAssignmentSubmissionUseCase,
+    ReviewHomeworkAssignmentSubmissionUseCase,
     SaveHomeworkSubmissionDraftUseCase,
     SubmitHomeworkSubmissionUseCase,
     ListHomeworkSubmissionAnswersUseCase,

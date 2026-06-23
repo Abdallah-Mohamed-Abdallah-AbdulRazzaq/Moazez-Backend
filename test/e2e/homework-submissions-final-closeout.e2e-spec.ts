@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   HomeworkAssignmentMode,
   HomeworkAssignmentStatus,
+  HomeworkQuestionType,
   HomeworkTargetMode,
   MembershipStatus,
   OrganizationStatus,
@@ -82,6 +83,7 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
   let teacherUserId = '';
   let studentUserId = '';
   let parentUserId = '';
+  let adminEmail = '';
   let teacherEmail = '';
   let studentEmail = '';
   let parentEmail = '';
@@ -94,8 +96,10 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
   let reviewedTargetId = '';
   let lateHomeworkId = '';
   let lateTargetId = '';
+  let reviewedQuestionId = '';
   let reviewedSubmissionId = '';
   let lateSubmissionId = '';
+  let adminAuth: AuthTokens;
   let teacherAuth: AuthTokens;
   let studentAuth: AuthTokens;
   let parentAuth: AuthTokens;
@@ -113,20 +117,30 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     prisma = new PrismaClient();
     await prisma.$connect();
 
-    const [teacherRole, studentRole, parentRole] = await Promise.all([
-      findSystemRole('teacher'),
-      findSystemRole('student'),
-      findSystemRole('parent'),
-    ]);
+    const [schoolAdminRole, teacherRole, studentRole, parentRole] =
+      await Promise.all([
+        findSystemRole('school_admin'),
+        findSystemRole('teacher'),
+        findSystemRole('student'),
+        findSystemRole('parent'),
+      ]);
 
     organizationId = await createOrganization();
     schoolId = await createSchool(organizationId);
     academic = await createAcademicBase(schoolId);
 
+    adminEmail = `${marker}-admin@example.test`;
     teacherEmail = `${marker}-teacher@example.test`;
     studentEmail = `${marker}-student@example.test`;
     parentEmail = `${marker}-parent@example.test`;
 
+    await createUserWithMembership({
+      email: adminEmail,
+      firstName: 'Sprint14E',
+      lastName: 'Admin',
+      userType: UserType.SCHOOL_USER,
+      roleId: schoolAdminRole.id,
+    });
     teacherUserId = await createUserWithMembership({
       email: teacherEmail,
       firstName: 'Sprint14E',
@@ -173,9 +187,11 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
       dueAt: new Date('2030-05-25T12:00:00.000Z'),
       isGraded: true,
       totalMarks: new Prisma.Decimal(10),
+      includeQuestion: true,
     });
     reviewedHomeworkId = reviewedHomework.homeworkId;
     reviewedTargetId = reviewedHomework.targetId;
+    reviewedQuestionId = reviewedHomework.questionId ?? '';
 
     const lateHomework = await createPublishedHomework({
       marker: 'late-flow',
@@ -205,6 +221,7 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     );
     await app.init();
 
+    adminAuth = await login(adminEmail);
     teacherAuth = await login(teacherEmail);
     studentAuth = await login(studentEmail);
     parentAuth = await login(parentEmail);
@@ -244,6 +261,10 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
         'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers',
         'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/attachments',
         'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/review',
+        'GET /api/v1/homework/assignments/:homeworkId/submissions',
+        'GET /api/v1/homework/assignments/:homeworkId/submissions/:submissionId',
+        'POST /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/review',
+        'PATCH /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/review',
         'GET /api/v1/parent/children/:studentId/homeworks/:homeworkId',
       ]),
     );
@@ -260,9 +281,7 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
       'POST /api/v1/student/homeworks/:homeworkId/answers',
       'GET /api/v1/parent/children/:studentId/homeworks/:homeworkId/questions',
       'GET /api/v1/parent/children/:studentId/homeworks/:homeworkId/attachments',
-      'GET /api/v1/homework/assignments/:homeworkId/submissions',
-      'GET /api/v1/homework/assignments/:homeworkId/submissions/:submissionId',
-      'POST /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/review',
+      'POST /api/v1/homework/assignments/:homeworkId/submissions',
       'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/sync-grade-item',
       'POST /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/sync-grade-item',
       'POST /api/v1/homework/assignments/:homeworkId/notifications',
@@ -327,6 +346,29 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     });
     expectSafeAppPayload(currentDraft.body);
 
+    const savedAnswers = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/student/homeworks/${reviewedHomeworkId}/submission/answers`,
+      )
+      .set('Authorization', bearer(studentAuth))
+      .send({
+        answers: [
+          {
+            questionId: reviewedQuestionId,
+            textAnswer: '  Dashboard review surface answer.  ',
+          },
+        ],
+      })
+      .expect(200);
+    expect(savedAnswers.body.items).toEqual([
+      expect.objectContaining({
+        questionId: reviewedQuestionId,
+        textAnswer: 'Dashboard review surface answer.',
+        isDraft: true,
+      }),
+    ]);
+    expectSafeAppPayload(savedAnswers.body);
+
     const submitted = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/student/homeworks/${reviewedHomeworkId}/submit`)
       .set('Authorization', bearer(studentAuth))
@@ -361,6 +403,88 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
       bodyText: 'Late closeout answer.',
     });
     expectSafeAppPayload(late.body);
+
+    const dashboardSubmissions = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/homework/assignments/${reviewedHomeworkId}/submissions`)
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+
+    expect(dashboardSubmissions.body.submissions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: reviewedSubmissionId,
+          homeworkId: reviewedHomeworkId,
+          targetId: reviewedTargetId,
+          status: 'submitted',
+          bodyText: 'Student draft answer for Sprint 14E.',
+          student: expect.objectContaining({
+            id: studentId,
+            displayName: 'Sprint14E Student',
+          }),
+        }),
+      ]),
+    );
+    expectSafeAppPayload(dashboardSubmissions.body);
+
+    const dashboardSubmissionDetail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/homework/assignments/${reviewedHomeworkId}/submissions/${reviewedSubmissionId}`,
+      )
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+
+    expect(dashboardSubmissionDetail.body.submission).toMatchObject({
+      id: reviewedSubmissionId,
+      homeworkId: reviewedHomeworkId,
+      targetId: reviewedTargetId,
+      status: 'submitted',
+      totalMarks: 10,
+      awardedMarks: null,
+      isLate: false,
+    });
+    expectSafeAppPayload(dashboardSubmissionDetail.body);
+
+    const dashboardAnswers = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/homework/assignments/${reviewedHomeworkId}/submissions/${reviewedSubmissionId}/answers`,
+      )
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+    expect(dashboardAnswers.body.items).toEqual([
+      expect.objectContaining({
+        answerId: expect.any(String),
+        submissionId: reviewedSubmissionId,
+        questionId: reviewedQuestionId,
+        textAnswer: 'Dashboard review surface answer.',
+      }),
+    ]);
+    expectSafeAppPayload(dashboardAnswers.body);
+
+    const reviewedAnswerId = dashboardAnswers.body.items[0].answerId as string;
+
+    const dashboardAttachments = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/homework/assignments/${reviewedHomeworkId}/submissions/${reviewedSubmissionId}/attachments`,
+      )
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+    expect(dashboardAttachments.body.items).toEqual([]);
+    expectSafeAppPayload(dashboardAttachments.body);
+
+    const reviewedAnswer = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/homework/assignments/${reviewedHomeworkId}/submissions/${reviewedSubmissionId}/answers/${reviewedAnswerId}/review`,
+      )
+      .set('Authorization', bearer(adminAuth))
+      .send({ awardedPoints: 8, teacherComment: '  Clear answer.  ' })
+      .expect(200);
+    expect(reviewedAnswer.body.answer).toMatchObject({
+      answerId: reviewedAnswerId,
+      awardedPoints: 8,
+      teacherComment: 'Clear answer.',
+      reviewedAt: expect.any(String),
+    });
+    expectSafeAppPayload(reviewedAnswer.body);
 
     const submissions = await request(app.getHttpServer())
       .get(
@@ -418,7 +542,7 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
       id: reviewedSubmissionId,
       status: 'submitted',
       totalMarks: 10,
-      awardedMarks: null,
+      awardedMarks: 8,
       isLate: false,
     });
     expectSafeAppPayload(submissionDetail.body);
@@ -432,6 +556,14 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
       .expect(403);
 
     await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/homework/assignments/${reviewedHomeworkId}/submissions/${reviewedSubmissionId}/review`,
+      )
+      .set('Authorization', bearer(studentAuth))
+      .send({ reviewNote: 'Students cannot review dashboard homework.' })
+      .expect(403);
+
+    await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/student/homeworks/${reviewedHomeworkId}/submit`)
       .set('Authorization', bearer(teacherAuth))
       .send({ bodyText: 'Teachers cannot submit as students.' })
@@ -439,10 +571,10 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
 
     const reviewed = await request(app.getHttpServer())
       .post(
-        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${placement.allocationId}/assignments/${reviewedHomeworkId}/submissions/${reviewedSubmissionId}/review`,
+        `${GLOBAL_PREFIX}/homework/assignments/${reviewedHomeworkId}/submissions/${reviewedSubmissionId}/review`,
       )
-      .set('Authorization', bearer(teacherAuth))
-      .send({ reviewNote: 'Solid closeout answer.', awardedMarks: 8 })
+      .set('Authorization', bearer(adminAuth))
+      .send({ reviewNote: 'Solid closeout answer.', awardedMarks: 10 })
       .expect(200);
 
     expect(reviewed.body.submission).toMatchObject({
@@ -457,6 +589,21 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     });
     expect(reviewed.body.submission.reviewedAt).toEqual(expect.any(String));
     expectSafeAppPayload(reviewed.body);
+
+    const lateReviewed = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/homework/assignments/${lateHomeworkId}/submissions/${lateSubmissionId}/review`,
+      )
+      .set('Authorization', bearer(adminAuth))
+      .send({ reviewNote: 'Late closeout review.' })
+      .expect(200);
+    expect(lateReviewed.body.submission).toMatchObject({
+      id: lateSubmissionId,
+      status: 'reviewed',
+      reviewNote: 'Late closeout review.',
+      isLate: true,
+    });
+    expectSafeAppPayload(lateReviewed.body);
 
     const studentDetail = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/student/homeworks/${reviewedHomeworkId}`)
@@ -790,7 +937,8 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     dueAt: Date;
     isGraded: boolean;
     totalMarks: Prisma.Decimal | null;
-  }): Promise<{ homeworkId: string; targetId: string }> {
+    includeQuestion?: boolean;
+  }): Promise<{ homeworkId: string; targetId: string; questionId?: string }> {
     const homework = await prisma.homeworkAssignment.create({
       data: {
         schoolId,
@@ -816,6 +964,22 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     });
     createdHomeworkAssignmentIds.push(homework.id);
 
+    const question = params.includeQuestion
+      ? await prisma.homeworkQuestion.create({
+          data: {
+            schoolId,
+            homeworkAssignmentId: homework.id,
+            type: HomeworkQuestionType.SHORT_TEXT,
+            prompt: `${marker}-${params.marker}-question`,
+            points: params.totalMarks ?? new Prisma.Decimal(10),
+            sortOrder: 0,
+            isRequired: true,
+            createdByUserId: teacherUserId,
+          },
+          select: { id: true },
+        })
+      : null;
+
     const target = await prisma.homeworkTarget.create({
       data: {
         schoolId,
@@ -827,7 +991,11 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     });
     createdHomeworkTargetIds.push(target.id);
 
-    return { homeworkId: homework.id, targetId: target.id };
+    return {
+      homeworkId: homework.id,
+      targetId: target.id,
+      questionId: question?.id,
+    };
   }
 
   async function login(email: string): Promise<AuthTokens> {
@@ -983,6 +1151,9 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
         ],
       },
     });
+    await prisma.homeworkSubmissionAnswer.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
     await prisma.homeworkSubmission.deleteMany({
       where: {
         OR: [
@@ -998,6 +1169,12 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
           { schoolId: { in: createdSchoolIds } },
         ],
       },
+    });
+    await prisma.homeworkQuestionOption.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.homeworkQuestion.deleteMany({
+      where: { schoolId: { in: createdSchoolIds } },
     });
     await prisma.homeworkAssignment.deleteMany({
       where: {

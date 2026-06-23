@@ -45,6 +45,30 @@ function expectNoTenantIds(body: unknown): void {
   expect(serialized).not.toContain('organizationId');
 }
 
+function expectNoUnsafeHomeworkSubmissionFields(body: unknown): void {
+  const serialized = JSON.stringify(body);
+  for (const forbidden of [
+    'schoolId',
+    'organizationId',
+    'membershipId',
+    'roleId',
+    'enrollmentId',
+    'reviewedByUserId',
+    'deletedAt',
+    'answerKey',
+    'correctAnswer',
+    'isCorrect',
+    'expectedAnswer',
+    'storageKey',
+    'objectKey',
+    'signedUrl',
+    'metadata',
+    'providerMetadata',
+  ]) {
+    expect(serialized).not.toContain(forbidden);
+  }
+}
+
 describe('Homework tenancy isolation (security)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
@@ -105,6 +129,7 @@ describe('Homework tenancy isolation (security)', () => {
       parentRole,
       assignmentsViewPermission,
       assignmentsManagePermission,
+      submissionsViewPermission,
       targetsViewPermission,
       targetsManagePermission,
     ] = await Promise.all([
@@ -133,6 +158,10 @@ describe('Homework tenancy isolation (security)', () => {
         select: { id: true },
       }),
       prisma.permission.findUnique({
+        where: { code: 'homework.submissions.view' },
+        select: { id: true },
+      }),
+      prisma.permission.findUnique({
         where: { code: 'homework.targets.view' },
         select: { id: true },
       }),
@@ -149,6 +178,7 @@ describe('Homework tenancy isolation (security)', () => {
       !parentRole ||
       !assignmentsViewPermission ||
       !assignmentsManagePermission ||
+      !submissionsViewPermission ||
       !targetsViewPermission ||
       !targetsManagePermission
     ) {
@@ -180,7 +210,11 @@ describe('Homework tenancy isolation (security)', () => {
     const viewOnlyRole = await createRoleWithPermissions({
       key: `${suffix}-viewer`,
       name: 'Homework Security Viewer',
-      permissionIds: [assignmentsViewPermission.id, targetsViewPermission.id],
+      permissionIds: [
+        assignmentsViewPermission.id,
+        submissionsViewPermission.id,
+        targetsViewPermission.id,
+      ],
     });
     const manageOnlyRole = await createRoleWithPermissions({
       key: `${suffix}-manager`,
@@ -1232,6 +1266,165 @@ describe('Homework tenancy isolation (security)', () => {
       )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(403);
+  });
+
+  it('requires dashboard submission view and manage permissions', async () => {
+    const submitted = await createTeacherReviewSubmission({
+      title: `${suffix} dashboard submission permission boundary`,
+      submissionStatus: HomeworkSubmissionStatus.SUBMITTED,
+    });
+    const manageOnly = await login(manageOnlyEmail, 'HomeworkManage123!');
+    const viewOnly = await login(viewOnlyEmail, 'HomeworkView123!');
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/homework/assignments/${submitted.homeworkId}/submissions`,
+      )
+      .set('Authorization', `Bearer ${manageOnly.accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/homework/assignments/${submitted.homeworkId}/submissions/${submitted.submissionId}`,
+      )
+      .set('Authorization', `Bearer ${manageOnly.accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/homework/assignments/${submitted.homeworkId}/submissions/${submitted.submissionId}/review`,
+      )
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .send({ reviewNote: 'View-only users cannot review.' })
+      .expect(403);
+  });
+
+  it('lets dashboard users list, inspect, and review homework submissions without unsafe fields', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const submitted = await createTeacherReviewSubmission({
+      title: `${suffix} dashboard review submitted`,
+      submissionStatus: HomeworkSubmissionStatus.SUBMITTED,
+    });
+    const late = await createTeacherReviewSubmission({
+      title: `${suffix} dashboard review late`,
+      submissionStatus: HomeworkSubmissionStatus.LATE,
+      dueAt: new Date('2026-01-02T10:00:00.000Z'),
+    });
+    const reviewedFixture = await createTeacherReviewSubmission({
+      title: `${suffix} dashboard review already reviewed`,
+      submissionStatus: HomeworkSubmissionStatus.REVIEWED,
+    });
+
+    const list = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/homework/assignments/${submitted.homeworkId}/submissions?limit=100&search=${suffix}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(list.body.submissions).toEqual([
+      expect.objectContaining({
+        id: submitted.submissionId,
+        homeworkId: submitted.homeworkId,
+        targetId: submitted.targetId,
+        status: 'submitted',
+        bodyText: `${suffix} dashboard review submitted answer`,
+        totalMarks: 10,
+      }),
+    ]);
+    expectNoUnsafeHomeworkSubmissionFields(list.body);
+
+    const pendingReview = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/homework/assignments/${late.homeworkId}/submissions?status=pending_review&limit=100`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(
+      pendingReview.body.submissions.map((item: { id: string }) => item.id),
+    ).toEqual([late.submissionId]);
+
+    const reviewedList = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/homework/assignments/${reviewedFixture.homeworkId}/submissions?status=reviewed&limit=100`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(
+      reviewedList.body.submissions.map((item: { id: string }) => item.id),
+    ).toEqual([reviewedFixture.submissionId]);
+
+    const detail = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/homework/assignments/${submitted.homeworkId}/submissions/${submitted.submissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(detail.body.submission).toMatchObject({
+      id: submitted.submissionId,
+      homeworkId: submitted.homeworkId,
+      targetId: submitted.targetId,
+      status: 'submitted',
+      student: expect.objectContaining({
+        id: demoStudentId,
+        displayName: expect.any(String),
+      }),
+    });
+    expectNoUnsafeHomeworkSubmissionFields(detail.body);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/homework/assignments/${late.homeworkId}/submissions/${submitted.submissionId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/homework/assignments/${late.homeworkId}/submissions/${submitted.submissionId}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNote: 'Wrong homework' })
+      .expect(404);
+
+    const reviewed = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/homework/assignments/${submitted.homeworkId}/submissions/${submitted.submissionId}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNote: '  Dashboard review complete  ', awardedMarks: 8.5 })
+      .expect(200);
+    expect(reviewed.body.submission).toMatchObject({
+      id: submitted.submissionId,
+      status: 'reviewed',
+      reviewNote: 'Dashboard review complete',
+      awardedMarks: 8.5,
+      reviewedAt: expect.any(String),
+    });
+    expectNoUnsafeHomeworkSubmissionFields(reviewed.body);
+
+    const lateReviewed = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/homework/assignments/${late.homeworkId}/submissions/${late.submissionId}/review`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ reviewNote: 'Late dashboard review' })
+      .expect(200);
+    expect(lateReviewed.body.submission).toMatchObject({
+      id: late.submissionId,
+      status: 'reviewed',
+      reviewNote: 'Late dashboard review',
+      isLate: true,
+    });
+    expectNoUnsafeHomeworkSubmissionFields(lateReviewed.body);
+
+    const crossSchoolList = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/homework/assignments/${tenantBHomeworkId}/submissions?limit=100`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(crossSchoolList.body.submissions).toEqual([]);
+    expectNoUnsafeHomeworkSubmissionFields(crossSchoolList.body);
   });
 
   it('prevents school A admin from reading school B homework', async () => {
