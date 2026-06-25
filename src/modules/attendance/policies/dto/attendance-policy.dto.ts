@@ -122,7 +122,7 @@ export class CreateAttendancePolicyDto {
 
   @IsOptional()
   @IsEnum(DailyComputationStrategy)
-  dailyComputationStrategy?: DailyComputationStrategy;
+  dailyComputationStrategy?: DailyComputationStrategy | null;
 
   @IsOptional()
   @IsArray()
@@ -132,22 +132,22 @@ export class CreateAttendancePolicyDto {
   @IsOptional()
   @IsInt()
   @Min(0)
-  lateThresholdMinutes?: number;
+  lateThresholdMinutes?: number | null;
 
   @IsOptional()
   @IsInt()
   @Min(0)
-  earlyLeaveThresholdMinutes?: number;
+  earlyLeaveThresholdMinutes?: number | null;
 
   @IsOptional()
   @IsInt()
   @Min(0)
-  autoAbsentAfterMinutes?: number;
+  autoAbsentAfterMinutes?: number | null;
 
   @IsOptional()
   @IsInt()
   @Min(0)
-  absentIfMissedPeriodsCount?: number;
+  absentIfMissedPeriodsCount?: number | null;
 
   @IsOptional()
   @IsBoolean()
@@ -302,7 +302,7 @@ export class UpdateAttendancePolicyDto {
 
   @IsOptional()
   @IsEnum(DailyComputationStrategy)
-  dailyComputationStrategy?: DailyComputationStrategy;
+  dailyComputationStrategy?: DailyComputationStrategy | null;
 
   @IsOptional()
   @IsArray()
@@ -312,22 +312,22 @@ export class UpdateAttendancePolicyDto {
   @IsOptional()
   @IsInt()
   @Min(0)
-  lateThresholdMinutes?: number;
+  lateThresholdMinutes?: number | null;
 
   @IsOptional()
   @IsInt()
   @Min(0)
-  earlyLeaveThresholdMinutes?: number;
+  earlyLeaveThresholdMinutes?: number | null;
 
   @IsOptional()
   @IsInt()
   @Min(0)
-  autoAbsentAfterMinutes?: number;
+  autoAbsentAfterMinutes?: number | null;
 
   @IsOptional()
   @IsInt()
   @Min(0)
-  absentIfMissedPeriodsCount?: number;
+  absentIfMissedPeriodsCount?: number | null;
 
   @IsOptional()
   @IsBoolean()

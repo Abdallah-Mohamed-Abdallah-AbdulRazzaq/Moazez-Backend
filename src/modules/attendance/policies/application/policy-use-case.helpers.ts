@@ -23,6 +23,12 @@ import {
   validateNormalizedScope,
 } from '../domain/policy-scope';
 import {
+  AttendancePolicyAdvancedContractConfig,
+  normalizeNullableNonNegativeInteger,
+  normalizeSelectedPeriodIds,
+  validateAdvancedPolicyContractConfig,
+} from '../domain/policy-contract.validation';
+import {
   AttendancePoliciesRepository,
   AttendancePolicyRecord,
   TermReferenceRecord,
@@ -40,14 +46,24 @@ type PolicyScopeInput = {
 
 type PolicyConfigInput = {
   mode?: AttendanceMode;
-  dailyComputationStrategy?: DailyComputationStrategy;
+  dailyComputationStrategy?: DailyComputationStrategy | null;
+  selectedPeriodIds?: string[] | null;
+  lateThresholdMinutes?: number | null;
+  earlyLeaveThresholdMinutes?: number | null;
+  autoAbsentAfterMinutes?: number | null;
+  absentIfMissedPeriodsCount?: number | null;
   requireExcuseAttachment?: boolean;
   requireAttachmentForExcuse?: boolean;
+  requireExcuseReason?: boolean;
   allowParentExcuseRequests?: boolean;
   allowExcuses?: boolean;
   notifyGuardiansOnAbsence?: boolean;
+  notifyTeachers?: boolean;
+  notifyStudents?: boolean;
   notifyGuardians?: boolean;
   notifyOnAbsent?: boolean;
+  notifyOnLate?: boolean;
+  notifyOnEarlyLeave?: boolean;
 };
 
 type PolicyDateInput = {
@@ -311,6 +327,7 @@ export function buildCreatePolicyData(params: {
   const effectiveFrom = resolveCreateDate(params.command, 'from');
   const effectiveTo = resolveCreateDate(params.command, 'to');
   validateEffectiveDateRange(effectiveFrom, effectiveTo);
+  const advancedConfig = resolveCreateAdvancedPolicyConfig(params.command);
 
   return {
     schoolId: params.schoolId,
@@ -328,14 +345,22 @@ export function buildCreatePolicyData(params: {
     descriptionEn: normalizeOptionalString(params.command.descriptionEn),
     notes: resolveNotes(params.command),
     mode: params.command.mode,
-    dailyComputationStrategy:
-      params.command.dailyComputationStrategy ??
-      DailyComputationStrategy.MANUAL,
+    dailyComputationStrategy: advancedConfig.dailyComputationStrategy,
+    selectedPeriodIds: advancedConfig.selectedPeriodIds,
+    lateThresholdMinutes: advancedConfig.lateThresholdMinutes,
+    earlyLeaveThresholdMinutes: advancedConfig.earlyLeaveThresholdMinutes,
+    autoAbsentAfterMinutes: advancedConfig.autoAbsentAfterMinutes,
+    absentIfMissedPeriodsCount: advancedConfig.absentIfMissedPeriodsCount,
     requireExcuseAttachment: resolveCreateRequireExcuseAttachment(
       params.command,
     ),
+    requireExcuseReason: params.command.requireExcuseReason ?? false,
     allowParentExcuseRequests: resolveCreateAllowExcuses(params.command),
     notifyGuardiansOnAbsence: resolveCreateNotifyGuardians(params.command),
+    notifyTeachers: params.command.notifyTeachers ?? false,
+    notifyStudents: params.command.notifyStudents ?? false,
+    notifyOnLate: params.command.notifyOnLate ?? false,
+    notifyOnEarlyLeave: params.command.notifyOnEarlyLeave ?? false,
     effectiveFrom,
     effectiveTo,
     isActive: params.command.isActive ?? true,
@@ -391,9 +416,16 @@ export function buildUpdatePolicyData(params: {
   if (params.command.mode !== undefined) {
     data.mode = params.command.mode;
   }
-  if (params.command.dailyComputationStrategy !== undefined) {
+  if (
+    params.command.dailyComputationStrategy !== undefined &&
+    params.command.dailyComputationStrategy !== null
+  ) {
     data.dailyComputationStrategy = params.command.dailyComputationStrategy;
   }
+  Object.assign(
+    data,
+    buildUpdateAdvancedPolicyData(params.command, params.existing),
+  );
 
   const requireExcuseAttachment = resolveUpdateRequireExcuseAttachment(
     params.command,
@@ -469,6 +501,124 @@ export function normalizeQueryScopeInput(
     sectionId: query.sectionId,
     classroomId: query.classroomId,
   };
+}
+
+function resolveCreateAdvancedPolicyConfig(
+  input: PolicyConfigInput,
+): AttendancePolicyAdvancedContractConfig {
+  const config = {
+    dailyComputationStrategy:
+      input.dailyComputationStrategy ?? DailyComputationStrategy.MANUAL,
+    selectedPeriodIds: normalizeSelectedPeriodIds(input.selectedPeriodIds),
+    lateThresholdMinutes:
+      normalizeNullableNonNegativeInteger(
+        'lateThresholdMinutes',
+        input.lateThresholdMinutes,
+      ) ?? null,
+    earlyLeaveThresholdMinutes:
+      normalizeNullableNonNegativeInteger(
+        'earlyLeaveThresholdMinutes',
+        input.earlyLeaveThresholdMinutes,
+      ) ?? null,
+    autoAbsentAfterMinutes:
+      normalizeNullableNonNegativeInteger(
+        'autoAbsentAfterMinutes',
+        input.autoAbsentAfterMinutes,
+      ) ?? null,
+    absentIfMissedPeriodsCount:
+      normalizeNullableNonNegativeInteger(
+        'absentIfMissedPeriodsCount',
+        input.absentIfMissedPeriodsCount,
+      ) ?? null,
+  };
+
+  validateAdvancedPolicyContractConfig(config);
+  return config;
+}
+
+function buildUpdateAdvancedPolicyData(
+  input: PolicyConfigInput,
+  existing: AttendancePolicyRecord,
+): Prisma.AttendancePolicyUncheckedUpdateInput {
+  const hasSelectedPeriodIds = hasOwn(input, 'selectedPeriodIds');
+  const hasLateThresholdMinutes = hasOwn(input, 'lateThresholdMinutes');
+  const hasEarlyLeaveThresholdMinutes = hasOwn(
+    input,
+    'earlyLeaveThresholdMinutes',
+  );
+  const hasAutoAbsentAfterMinutes = hasOwn(input, 'autoAbsentAfterMinutes');
+  const hasAbsentIfMissedPeriodsCount = hasOwn(
+    input,
+    'absentIfMissedPeriodsCount',
+  );
+
+  const selectedPeriodIds = hasSelectedPeriodIds
+    ? normalizeSelectedPeriodIds(input.selectedPeriodIds)
+    : existing.selectedPeriodIds;
+  const lateThresholdMinutes = hasLateThresholdMinutes
+    ? normalizeNullableNonNegativeInteger(
+        'lateThresholdMinutes',
+        input.lateThresholdMinutes,
+      )
+    : existing.lateThresholdMinutes;
+  const earlyLeaveThresholdMinutes = hasEarlyLeaveThresholdMinutes
+    ? normalizeNullableNonNegativeInteger(
+        'earlyLeaveThresholdMinutes',
+        input.earlyLeaveThresholdMinutes,
+      )
+    : existing.earlyLeaveThresholdMinutes;
+  const autoAbsentAfterMinutes = hasAutoAbsentAfterMinutes
+    ? normalizeNullableNonNegativeInteger(
+        'autoAbsentAfterMinutes',
+        input.autoAbsentAfterMinutes,
+      )
+    : existing.autoAbsentAfterMinutes;
+  const absentIfMissedPeriodsCount = hasAbsentIfMissedPeriodsCount
+    ? normalizeNullableNonNegativeInteger(
+        'absentIfMissedPeriodsCount',
+        input.absentIfMissedPeriodsCount,
+      )
+    : existing.absentIfMissedPeriodsCount;
+
+  validateAdvancedPolicyContractConfig({
+    dailyComputationStrategy:
+      input.dailyComputationStrategy ?? existing.dailyComputationStrategy,
+    selectedPeriodIds,
+    lateThresholdMinutes: lateThresholdMinutes ?? null,
+    earlyLeaveThresholdMinutes: earlyLeaveThresholdMinutes ?? null,
+    autoAbsentAfterMinutes: autoAbsentAfterMinutes ?? null,
+    absentIfMissedPeriodsCount: absentIfMissedPeriodsCount ?? null,
+  });
+
+  const data: Prisma.AttendancePolicyUncheckedUpdateInput = {};
+  if (hasSelectedPeriodIds) data.selectedPeriodIds = selectedPeriodIds;
+  if (hasLateThresholdMinutes) data.lateThresholdMinutes = lateThresholdMinutes;
+  if (hasEarlyLeaveThresholdMinutes) {
+    data.earlyLeaveThresholdMinutes = earlyLeaveThresholdMinutes;
+  }
+  if (hasAutoAbsentAfterMinutes) {
+    data.autoAbsentAfterMinutes = autoAbsentAfterMinutes;
+  }
+  if (hasAbsentIfMissedPeriodsCount) {
+    data.absentIfMissedPeriodsCount = absentIfMissedPeriodsCount;
+  }
+  if (hasOwn(input, 'requireExcuseReason')) {
+    data.requireExcuseReason = input.requireExcuseReason ?? false;
+  }
+  if (hasOwn(input, 'notifyTeachers')) {
+    data.notifyTeachers = input.notifyTeachers ?? false;
+  }
+  if (hasOwn(input, 'notifyStudents')) {
+    data.notifyStudents = input.notifyStudents ?? false;
+  }
+  if (hasOwn(input, 'notifyOnLate')) {
+    data.notifyOnLate = input.notifyOnLate ?? false;
+  }
+  if (hasOwn(input, 'notifyOnEarlyLeave')) {
+    data.notifyOnEarlyLeave = input.notifyOnEarlyLeave ?? false;
+  }
+
+  return data;
 }
 
 function normalizeScope(params: {

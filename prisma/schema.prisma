@@ -3365,29 +3365,39 @@ model StudentNote {
 // ============================================================
 
 model AttendancePolicy {
-  id                        String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId                  String                   @map("school_id") @db.Uuid
-  academicYearId            String                   @map("academic_year_id") @db.Uuid
-  termId                    String                   @map("term_id") @db.Uuid
-  scopeType                 AttendanceScopeType      @map("scope_type")
-  scopeKey                  String                   @map("scope_key")
-  stageId                   String?                  @map("stage_id") @db.Uuid
-  gradeId                   String?                  @map("grade_id") @db.Uuid
-  sectionId                 String?                  @map("section_id") @db.Uuid
-  classroomId               String?                  @map("classroom_id") @db.Uuid
-  nameAr                    String                   @map("name_ar")
-  nameEn                    String                   @map("name_en")
-  descriptionAr             String?                  @map("description_ar")
-  descriptionEn             String?                  @map("description_en")
-  notes                     String?
-  mode                      AttendanceMode
-  dailyComputationStrategy  DailyComputationStrategy @default(MANUAL) @map("daily_computation_strategy")
-  requireExcuseAttachment   Boolean                  @default(false) @map("require_excuse_attachment")
-  allowParentExcuseRequests Boolean                  @default(true) @map("allow_parent_excuse_requests")
-  notifyGuardiansOnAbsence  Boolean                  @default(true) @map("notify_guardians_on_absence")
-  effectiveFrom             DateTime?                @map("effective_from") @db.Date
-  effectiveTo               DateTime?                @map("effective_to") @db.Date
-  isActive                  Boolean                  @default(true) @map("is_active")
+  id                         String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                   String                   @map("school_id") @db.Uuid
+  academicYearId             String                   @map("academic_year_id") @db.Uuid
+  termId                     String                   @map("term_id") @db.Uuid
+  scopeType                  AttendanceScopeType      @map("scope_type")
+  scopeKey                   String                   @map("scope_key")
+  stageId                    String?                  @map("stage_id") @db.Uuid
+  gradeId                    String?                  @map("grade_id") @db.Uuid
+  sectionId                  String?                  @map("section_id") @db.Uuid
+  classroomId                String?                  @map("classroom_id") @db.Uuid
+  nameAr                     String                   @map("name_ar")
+  nameEn                     String                   @map("name_en")
+  descriptionAr              String?                  @map("description_ar")
+  descriptionEn              String?                  @map("description_en")
+  notes                      String?
+  mode                       AttendanceMode
+  dailyComputationStrategy   DailyComputationStrategy @default(MANUAL) @map("daily_computation_strategy")
+  selectedPeriodIds          String[]                 @default([]) @map("selected_period_ids")
+  lateThresholdMinutes       Int?                     @map("late_threshold_minutes")
+  earlyLeaveThresholdMinutes Int?                     @map("early_leave_threshold_minutes")
+  autoAbsentAfterMinutes     Int?                     @map("auto_absent_after_minutes")
+  absentIfMissedPeriodsCount Int?                     @map("absent_if_missed_periods_count")
+  requireExcuseAttachment    Boolean                  @default(false) @map("require_excuse_attachment")
+  requireExcuseReason        Boolean                  @default(false) @map("require_excuse_reason")
+  allowParentExcuseRequests  Boolean                  @default(true) @map("allow_parent_excuse_requests")
+  notifyGuardiansOnAbsence   Boolean                  @default(true) @map("notify_guardians_on_absence")
+  notifyTeachers             Boolean                  @default(false) @map("notify_teachers")
+  notifyStudents             Boolean                  @default(false) @map("notify_students")
+  notifyOnLate               Boolean                  @default(false) @map("notify_on_late")
+  notifyOnEarlyLeave         Boolean                  @default(false) @map("notify_on_early_leave")
+  effectiveFrom              DateTime?                @map("effective_from") @db.Date
+  effectiveTo                DateTime?                @map("effective_to") @db.Date
+  isActive                   Boolean                  @default(true) @map("is_active")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

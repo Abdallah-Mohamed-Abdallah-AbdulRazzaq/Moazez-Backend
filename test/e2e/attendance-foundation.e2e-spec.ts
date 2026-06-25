@@ -5,6 +5,7 @@ import {
   AttendanceMode,
   AttendanceScopeType,
   AttendanceStatus,
+  DailyComputationStrategy,
   PrismaClient,
   StudentEnrollmentStatus,
 } from '@prisma/client';
@@ -435,6 +436,19 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
 
     const fixture = await createAttendancePrerequisites();
     const policyNameSuffix = randomUUID().split('-')[0];
+    const advancedPolicyFields = {
+      dailyComputationStrategy: DailyComputationStrategy.DERIVED_FROM_PERIODS,
+      selectedPeriodIds: ['period-1', 'period-2'],
+      lateThresholdMinutes: 10,
+      earlyLeaveThresholdMinutes: 12,
+      autoAbsentAfterMinutes: 45,
+      absentIfMissedPeriodsCount: 2,
+      requireExcuseReason: true,
+      notifyTeachers: true,
+      notifyStudents: true,
+      notifyOnLate: true,
+      notifyOnEarlyLeave: false,
+    };
 
     const createPolicyResponse = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/attendance/policies`)
@@ -447,6 +461,7 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
         scopeType: AttendanceScopeType.CLASSROOM,
         classroomId: fixture.classroomId,
         mode: AttendanceMode.DAILY,
+        ...advancedPolicyFields,
         effectiveStartDate: fixture.termStartDate,
         effectiveEndDate: fixture.termEndDate,
         allowExcuses: true,
@@ -467,8 +482,27 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
         scopeType: AttendanceScopeType.CLASSROOM,
         scopeKey: `classroom:${fixture.classroomId}`,
         mode: AttendanceMode.DAILY,
+        ...advancedPolicyFields,
         isActive: true,
       }),
+    );
+
+    const listPoliciesResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/attendance/policies`)
+      .query({
+        yearId: fixture.academicYearId,
+        termId: fixture.termId,
+      })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(listPoliciesResponse.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: createPolicyResponse.body.id,
+          ...advancedPolicyFields,
+        }),
+      ]),
     );
 
     const effectivePolicyResponse = await request(app.getHttpServer())
@@ -481,6 +515,7 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
       expect.objectContaining({
         id: createPolicyResponse.body.id,
         scopeKey: `classroom:${fixture.classroomId}`,
+        ...advancedPolicyFields,
       }),
     );
 
