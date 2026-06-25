@@ -83,6 +83,7 @@ const EFFECTIVE_POLICY_ARGS =
       id: true,
       scopeType: true,
       scopeKey: true,
+      selectedPeriodIds: true,
       effectiveFrom: true,
       effectiveTo: true,
       updatedAt: true,

@@ -540,6 +540,62 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
       }),
     );
 
+    const allowedPeriodKey = `att-pol-2b-allowed-${policyNameSuffix}`;
+    const allowedPeriodResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/attendance/roll-call/session/resolve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        ...attendanceScopeQuery(fixture),
+        mode: AttendanceMode.PERIOD,
+        periodKey: allowedPeriodKey,
+        periodId: ' period-1 ',
+        periodLabelEn: 'Period 1',
+      })
+      .expect(201);
+
+    const allowedPeriodSessionId = allowedPeriodResponse.body.session.id;
+    cleanupState.sessionIds.add(allowedPeriodSessionId);
+
+    expect(allowedPeriodResponse.body.session).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        mode: AttendanceMode.PERIOD,
+        periodId: 'period-1',
+        periodKey: allowedPeriodKey,
+        policyId: createPolicyResponse.body.id,
+      }),
+    );
+
+    const disallowedPeriodKey = `att-pol-2b-disallowed-${policyNameSuffix}`;
+    const disallowedPeriodResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/attendance/roll-call/session/resolve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        ...attendanceScopeQuery(fixture),
+        mode: AttendanceMode.PERIOD,
+        periodKey: disallowedPeriodKey,
+        periodId: 'period-not-selected',
+      })
+      .expect(400);
+
+    expect(disallowedPeriodResponse.body?.error?.code).toBe(
+      'validation.failed',
+    );
+
+    const disallowedSessionCount = await prisma.attendanceSession.count({
+      where: {
+        schoolId: demoSchoolId,
+        academicYearId: fixture.academicYearId,
+        termId: fixture.termId,
+        date: new Date(fixture.attendanceDate),
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: `classroom:${fixture.classroomId}`,
+        mode: AttendanceMode.PERIOD,
+        periodKey: disallowedPeriodKey,
+      },
+    });
+    expect(disallowedSessionCount).toBe(0);
+
     const rosterResponse = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/attendance/roll-call/roster`)
       .query({

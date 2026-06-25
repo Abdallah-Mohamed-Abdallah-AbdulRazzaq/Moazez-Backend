@@ -10,6 +10,7 @@ import {
   normalizeAttendancePeriodKey,
   parseAttendanceDate,
 } from '../domain/session-key';
+import { assertPeriodAllowedByEffectivePolicyForNewSession } from '../domain/policy-period-selection';
 import { AttendanceRollCallRepository } from '../infrastructure/attendance-roll-call.repository';
 import { presentRollCallSession } from '../presenters/attendance-roll-call.presenter';
 import {
@@ -67,8 +68,13 @@ export class ResolveRollCallSessionUseCase {
         termId: command.termId,
         candidates,
         date,
-      });
+    });
     const policy = selectEffectivePolicy(policies, candidates, date);
+    assertPeriodAllowedByEffectivePolicyForNewSession({
+      mode: command.mode,
+      periodId: command.periodId,
+      effectivePolicy: policy,
+    });
 
     try {
       const session = await this.attendanceRollCallRepository.createSession(

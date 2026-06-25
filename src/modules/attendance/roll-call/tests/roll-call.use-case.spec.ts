@@ -83,6 +83,9 @@ describe('Attendance roll-call use cases', () => {
     overrides?: Partial<{
       id: string;
       policyId: string | null;
+      mode: AttendanceMode;
+      periodId: string | null;
+      periodKey: string;
       status: AttendanceSessionStatus;
       submittedAt: Date | null;
       submittedById: string | null;
@@ -103,9 +106,9 @@ describe('Attendance roll-call use cases', () => {
       gradeId: 'grade-1',
       sectionId: 'section-1',
       classroomId: 'classroom-1',
-      mode: AttendanceMode.DAILY,
-      periodId: null,
-      periodKey: 'daily',
+      mode: overrides?.mode ?? AttendanceMode.DAILY,
+      periodId: overrides?.periodId ?? null,
+      periodKey: overrides?.periodKey ?? 'daily',
       periodLabelAr: null,
       periodLabelEn: null,
       policyId: overrides?.policyId ?? null,
@@ -164,18 +167,47 @@ describe('Attendance roll-call use cases', () => {
     };
   }
 
-  function entryRecord() {
+  function effectivePolicy(
+    overrides?: Partial<{
+      id: string;
+      selectedPeriodIds: string[];
+      scopeType: AttendanceScopeType;
+      scopeKey: string;
+      updatedAt: Date;
+    }>,
+  ) {
+    return {
+      id: overrides?.id ?? 'policy-1',
+      scopeType: overrides?.scopeType ?? AttendanceScopeType.CLASSROOM,
+      scopeKey: overrides?.scopeKey ?? 'classroom:classroom-1',
+      selectedPeriodIds: overrides?.selectedPeriodIds ?? [],
+      effectiveFrom: null,
+      effectiveTo: null,
+      updatedAt:
+        overrides?.updatedAt ?? new Date('2026-09-01T00:00:00.000Z'),
+    };
+  }
+
+  function entryRecord(
+    overrides?: Partial<{
+      status: AttendanceStatus;
+      lateMinutes: number | null;
+      earlyLeaveMinutes: number | null;
+      excuseReason: string | null;
+      note: string | null;
+    }>,
+  ) {
     return {
       id: 'entry-1',
       schoolId: 'school-1',
       sessionId: 'session-1',
       studentId: 'student-1',
       enrollmentId: 'enrollment-1',
-      status: AttendanceStatus.PRESENT,
-      lateMinutes: null,
-      earlyLeaveMinutes: null,
-      excuseReason: null,
-      note: null,
+      status: overrides?.status ?? AttendanceStatus.PRESENT,
+      lateMinutes: overrides?.lateMinutes ?? null,
+      earlyLeaveMinutes: overrides?.earlyLeaveMinutes ?? null,
+      excuseReason: overrides?.excuseReason ?? null,
+      note: overrides?.note ?? null,
       markedById: 'user-1',
       markedAt: new Date('2026-09-15T07:05:00.000Z'),
       createdAt: new Date('2026-09-15T07:05:00.000Z'),
@@ -201,7 +233,16 @@ describe('Attendance roll-call use cases', () => {
       findClassroomById: jest.fn().mockResolvedValue(classroomReference()),
       findEffectivePolicyCandidates: jest.fn().mockResolvedValue([]),
       findSessionByKey: jest.fn().mockResolvedValue(null),
-      createSession: jest.fn().mockResolvedValue(sessionRecord()),
+      createSession: jest.fn().mockImplementation((data) =>
+        Promise.resolve(
+          sessionRecord({
+            policyId: data.policyId ?? null,
+            mode: data.mode,
+            periodId: data.periodId ?? null,
+            periodKey: data.periodKey,
+          }),
+        ),
+      ),
       findSessionById: jest.fn().mockResolvedValue(sessionRecord()),
       submitSession: jest.fn().mockImplementation((params) =>
         Promise.resolve(
@@ -279,17 +320,241 @@ describe('Attendance roll-call use cases', () => {
     expect(repository.createSession).not.toHaveBeenCalled();
   });
 
+  it('preserves legacy PERIOD session creation when no effective policy exists', async () => {
+    const repository = baseRepository();
+    const useCase = new ResolveRollCallSessionUseCase(repository);
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute({
+        yearId: 'year-1',
+        termId: 'term-1',
+        date: '2026-09-15',
+        scopeType: AttendanceScopeType.CLASSROOM,
+        classroomId: 'classroom-1',
+        mode: AttendanceMode.PERIOD,
+        periodKey: 'period-key-1',
+      }),
+    );
+
+    expect(repository.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: AttendanceMode.PERIOD,
+        periodId: null,
+        periodKey: 'period-key-1',
+        policyId: null,
+      }),
+    );
+    expect(result.session.mode).toBe(AttendanceMode.PERIOD);
+    expect(result.session.periodId).toBeNull();
+    expect(result.session.periodKey).toBe('period-key-1');
+  });
+
+  it('ignores selectedPeriodIds for new DAILY sessions', async () => {
+    const repository = baseRepository({
+      findEffectivePolicyCandidates: jest
+        .fn()
+        .mockResolvedValue([
+          effectivePolicy({ selectedPeriodIds: ['period-1'] }),
+        ]),
+    });
+    const useCase = new ResolveRollCallSessionUseCase(repository);
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute({
+        yearId: 'year-1',
+        termId: 'term-1',
+        date: '2026-09-15',
+        scopeType: AttendanceScopeType.CLASSROOM,
+        classroomId: 'classroom-1',
+        mode: AttendanceMode.DAILY,
+      }),
+    );
+
+    expect(repository.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: AttendanceMode.DAILY,
+        periodId: null,
+        periodKey: 'daily',
+        policyId: 'policy-1',
+      }),
+    );
+    expect(result.session.mode).toBe(AttendanceMode.DAILY);
+  });
+
+  it('preserves legacy PERIOD behavior when selectedPeriodIds is empty', async () => {
+    const repository = baseRepository({
+      findEffectivePolicyCandidates: jest
+        .fn()
+        .mockResolvedValue([effectivePolicy({ selectedPeriodIds: [] })]),
+    });
+    const useCase = new ResolveRollCallSessionUseCase(repository);
+
+    await withAttendanceScope(() =>
+      useCase.execute({
+        yearId: 'year-1',
+        termId: 'term-1',
+        date: '2026-09-15',
+        scopeType: AttendanceScopeType.CLASSROOM,
+        classroomId: 'classroom-1',
+        mode: AttendanceMode.PERIOD,
+        periodKey: 'period-key-1',
+      }),
+    );
+
+    expect(repository.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: AttendanceMode.PERIOD,
+        periodId: null,
+        periodKey: 'period-key-1',
+        policyId: 'policy-1',
+      }),
+    );
+  });
+
+  it('rejects a new PERIOD session with selectedPeriodIds and missing periodId', async () => {
+    const repository = baseRepository({
+      findEffectivePolicyCandidates: jest
+        .fn()
+        .mockResolvedValue([
+          effectivePolicy({ selectedPeriodIds: ['period-1'] }),
+        ]),
+      createSession: jest.fn(),
+    });
+    const useCase = new ResolveRollCallSessionUseCase(repository);
+
+    await expect(
+      withAttendanceScope(() =>
+        useCase.execute({
+          yearId: 'year-1',
+          termId: 'term-1',
+          date: '2026-09-15',
+          scopeType: AttendanceScopeType.CLASSROOM,
+          classroomId: 'classroom-1',
+          mode: AttendanceMode.PERIOD,
+          periodKey: 'period-key-1',
+          periodId: '   ',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      details: expect.objectContaining({
+        field: 'periodId',
+        mode: AttendanceMode.PERIOD,
+        policyId: 'policy-1',
+      }),
+    });
+    expect(repository.createSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects a new PERIOD session with selectedPeriodIds and disallowed periodId', async () => {
+    const repository = baseRepository({
+      findEffectivePolicyCandidates: jest
+        .fn()
+        .mockResolvedValue([
+          effectivePolicy({ selectedPeriodIds: ['period-1'] }),
+        ]),
+      createSession: jest.fn(),
+    });
+    const useCase = new ResolveRollCallSessionUseCase(repository);
+
+    await expect(
+      withAttendanceScope(() =>
+        useCase.execute({
+          yearId: 'year-1',
+          termId: 'term-1',
+          date: '2026-09-15',
+          scopeType: AttendanceScopeType.CLASSROOM,
+          classroomId: 'classroom-1',
+          mode: AttendanceMode.PERIOD,
+          periodKey: 'period-key-1',
+          periodId: 'period-2',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      details: expect.objectContaining({
+        field: 'periodId',
+        mode: AttendanceMode.PERIOD,
+        policyId: 'policy-1',
+        periodId: 'period-2',
+      }),
+    });
+    expect(repository.createSession).not.toHaveBeenCalled();
+  });
+
+  it('creates a new PERIOD session with selectedPeriodIds and allowed periodId', async () => {
+    const repository = baseRepository({
+      findEffectivePolicyCandidates: jest
+        .fn()
+        .mockResolvedValue([
+          effectivePolicy({ selectedPeriodIds: ['period-1'] }),
+        ]),
+    });
+    const useCase = new ResolveRollCallSessionUseCase(repository);
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute({
+        yearId: 'year-1',
+        termId: 'term-1',
+        date: '2026-09-15',
+        scopeType: AttendanceScopeType.CLASSROOM,
+        classroomId: 'classroom-1',
+        mode: AttendanceMode.PERIOD,
+        periodKey: 'period-key-1',
+        periodId: ' period-1 ',
+      }),
+    );
+
+    expect(repository.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: AttendanceMode.PERIOD,
+        periodId: 'period-1',
+        periodKey: 'period-key-1',
+        policyId: 'policy-1',
+      }),
+    );
+    expect(result.session.policyId).toBe('policy-1');
+    expect(result.session.periodId).toBe('period-1');
+  });
+
+  it('returns an existing PERIOD session before selected-period validation', async () => {
+    const repository = baseRepository({
+      findSessionByKey: jest.fn().mockResolvedValue(
+        sessionRecord({
+          mode: AttendanceMode.PERIOD,
+          periodId: 'legacy-period',
+          periodKey: 'legacy-period-key',
+          policyId: 'legacy-policy',
+        }),
+      ),
+      findEffectivePolicyCandidates: jest.fn(),
+      createSession: jest.fn(),
+    });
+    const useCase = new ResolveRollCallSessionUseCase(repository);
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute({
+        yearId: 'year-1',
+        termId: 'term-1',
+        date: '2026-09-15',
+        scopeType: AttendanceScopeType.CLASSROOM,
+        classroomId: 'classroom-1',
+        mode: AttendanceMode.PERIOD,
+        periodKey: 'legacy-period-key',
+        periodId: 'disallowed-period',
+      }),
+    );
+
+    expect(result.session.id).toBe('session-1');
+    expect(result.session.policyId).toBe('legacy-policy');
+    expect(repository.findEffectivePolicyCandidates).not.toHaveBeenCalled();
+    expect(repository.createSession).not.toHaveBeenCalled();
+  });
+
   it('attaches the effective policy when creating a session', async () => {
     const repository = baseRepository({
       findEffectivePolicyCandidates: jest.fn().mockResolvedValue([
-        {
-          id: 'policy-1',
-          scopeType: AttendanceScopeType.CLASSROOM,
-          scopeKey: 'classroom:classroom-1',
-          effectiveFrom: null,
-          effectiveTo: null,
-          updatedAt: new Date('2026-09-01T00:00:00.000Z'),
-        },
+        effectivePolicy(),
       ]),
       createSession: jest.fn().mockImplementation((data) =>
         Promise.resolve(
@@ -556,6 +821,50 @@ describe('Attendance roll-call use cases', () => {
       }),
     );
     expect(result.entries[0].id).toBe('entry-1');
+  });
+
+  it('does not apply policy thresholds when saving draft entries', async () => {
+    const repository = baseRepository({
+      bulkUpsertEntries: jest.fn().mockImplementation((params) =>
+        Promise.resolve([
+          entryRecord({
+            status: params.entries[0].status,
+            lateMinutes: params.entries[0].lateMinutes,
+          }),
+        ]),
+      ),
+    });
+    const useCase = new SaveRollCallEntriesUseCase(repository);
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute('session-1', {
+        entries: [
+          {
+            studentId: 'student-1',
+            status: AttendanceStatus.PRESENT,
+            lateMinutes: 20,
+          },
+        ],
+      }),
+    );
+
+    expect(repository.bulkUpsertEntries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entries: [
+          expect.objectContaining({
+            studentId: 'student-1',
+            status: AttendanceStatus.PRESENT,
+            lateMinutes: 20,
+          }),
+        ],
+      }),
+    );
+    expect(result.entries[0]).toEqual(
+      expect.objectContaining({
+        status: AttendanceStatus.PRESENT,
+        lateMinutes: 20,
+      }),
+    );
   });
 
   it('rejects draft entry mutation when session is not DRAFT', async () => {
