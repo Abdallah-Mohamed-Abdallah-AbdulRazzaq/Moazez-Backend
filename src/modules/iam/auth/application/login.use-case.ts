@@ -25,7 +25,8 @@ export class LoginUseCase {
   ) {}
 
   async execute(command: LoginCommand): Promise<LoginResponseDto> {
-    const user = await this.authRepository.findUserByEmail(command.email);
+    const normalizedEmail = normalizeLoginIdentifier(command.email);
+    const user = await this.authRepository.findUserByEmail(normalizedEmail);
 
     if (!user || !user.passwordHash) {
       await this.authRepository.createAuditLog({
@@ -35,7 +36,7 @@ export class LoginUseCase {
         outcome: AuditOutcome.FAILURE,
         ipAddress: command.ipAddress,
         userAgent: command.userAgent,
-        after: { reason: 'user_not_found', email: command.email },
+        after: { reason: 'user_not_found', email: normalizedEmail },
       });
       throw new InvalidCredentialsException();
     }
@@ -120,4 +121,8 @@ export class LoginUseCase {
       },
     };
   }
+}
+
+function normalizeLoginIdentifier(value: string): string {
+  return value.trim().toLowerCase();
 }

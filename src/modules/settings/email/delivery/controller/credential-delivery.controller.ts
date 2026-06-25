@@ -30,7 +30,7 @@ export class CredentialDeliveryController {
   ) {}
 
   @Post('preview-recipients')
-  @RequiredPermissions('settings.security.view')
+  @RequiredPermissions('settings.email.credential_deliveries.view')
   @ApiOperation({
     summary: 'Preview recipients for credential delivery',
     description:
@@ -42,7 +42,8 @@ export class CredentialDeliveryController {
     description: 'settings.email.delivery_no_recipients',
   })
   @ApiForbiddenResponse({
-    description: 'Requires settings.security.view in the current school scope.',
+    description:
+      'Requires settings.email.credential_deliveries.view in the current school scope.',
   })
   previewRecipients(
     @Body() dto: CredentialDeliveryPreviewRecipientsDto,
@@ -51,7 +52,7 @@ export class CredentialDeliveryController {
   }
 
   @Post()
-  @RequiredPermissions('settings.security.manage')
+  @RequiredPermissions('settings.email.credential_deliveries.manage')
   @ApiOperation({
     summary: 'Create a queued credential delivery batch',
     description:
@@ -71,7 +72,7 @@ export class CredentialDeliveryController {
   })
   @ApiForbiddenResponse({
     description:
-      'Requires settings.security.manage in the current school scope.',
+      'Requires settings.email.credential_deliveries.manage in the current school scope.',
   })
   createDelivery(
     @Body() dto: CreateCredentialDeliveryDto,

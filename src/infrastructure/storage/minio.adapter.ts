@@ -46,6 +46,10 @@ export class MinioAdapter {
     }
   }
 
+  bucketExists(bucket: string): Promise<boolean> {
+    return this.client.bucketExists(bucket);
+  }
+
   async putObject(
     input: PutObjectInput,
   ): Promise<{ etag: string; versionId?: string }> {

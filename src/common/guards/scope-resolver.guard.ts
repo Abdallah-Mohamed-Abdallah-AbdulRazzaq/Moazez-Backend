@@ -4,7 +4,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { UserType } from '@prisma/client';
+import { UserStatus, UserType } from '@prisma/client';
 import { APPLICANT_PORTAL_ACCESS_METADATA } from '../decorators/applicant-portal-access.decorator';
 import { PUBLIC_ROUTE_METADATA } from '../decorators/public-route.decorator';
 import {
@@ -13,6 +13,7 @@ import {
   setPlatformPermissions,
 } from '../context/request-context';
 import {
+  AccountDisabledException,
   ScopeMissingException,
   TokenInvalidException,
 } from '../../modules/iam/auth/domain/auth.exceptions';
@@ -49,6 +50,10 @@ export class ScopeResolverGuard implements CanActivate {
 
     const user = await this.authRepository.findUserById(ctx.actor.id);
     if (!user) throw new TokenInvalidException();
+    if (user.status !== UserStatus.ACTIVE) {
+      await this.authRepository.revokeUserSessions(user.id);
+      throw new AccountDisabledException();
+    }
 
     const membership = user.memberships[0];
     if (!membership) {

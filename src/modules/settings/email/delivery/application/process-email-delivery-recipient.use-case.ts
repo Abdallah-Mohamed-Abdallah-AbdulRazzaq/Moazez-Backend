@@ -16,10 +16,9 @@ import {
   EmailConnectionMissingException,
   EmailDeliveryConnectionInactiveException,
 } from '../../domain/email.exceptions';
+import { EmailSecretCrypto } from '../../domain/email-secret-crypto';
 import { EmailSettingsRepository } from '../../infrastructure/email-settings.repository';
-import {
-  SCHOOL_EMAIL_TRANSPORT,
-} from '../transport/email-transport';
+import { SCHOOL_EMAIL_TRANSPORT } from '../transport/email-transport';
 import type { SchoolEmailTransport } from '../transport/email-transport';
 import { CredentialDeliveryModeValue } from '../dto/email-delivery.dto';
 import { EmailDeliveryRepository } from '../infrastructure/email-delivery.repository';
@@ -35,6 +34,7 @@ export class ProcessEmailDeliveryRecipientUseCase {
     private readonly passwordService: PasswordService,
     private readonly authRepository: AuthRepository,
     private readonly renderer: SchoolEmailRendererService,
+    private readonly emailSecretCrypto: EmailSecretCrypto,
     @Inject(SCHOOL_EMAIL_TRANSPORT)
     private readonly emailTransport: SchoolEmailTransport,
   ) {}
@@ -90,6 +90,22 @@ export class ProcessEmailDeliveryRecipientUseCase {
         connection,
       });
 
+      if (rendered.credentialToApply) {
+        const passwordHash = await this.passwordService.hash(
+          rendered.credentialToApply.temporaryPassword,
+        );
+        await this.credentialsRepository.updateUserCredential({
+          userId: rendered.credentialToApply.userId,
+          passwordHash,
+          mustChangePassword: true,
+          passwordProvisionedAt: new Date(),
+          passwordChangedAt: null,
+        });
+        await this.authRepository.revokeUserSessions(
+          rendered.credentialToApply.userId,
+        );
+      }
+
       await this.deliveryRepository.markRecipientSent({
         recipientId: recipient.id,
         sentAt: new Date(),
@@ -122,13 +138,13 @@ export class ProcessEmailDeliveryRecipientUseCase {
 
   private async renderCredentialRecipient(
     batch: SchoolEmailDeliveryBatch,
-    recipient: { userId: string | null },
-  ) {
+    recipient: EmailDeliveryRecipientWithMetadata,
+  ): Promise<RenderedEmailWithCredential> {
     if (!recipient.userId) {
       throw new Error('credential_recipient_user_missing');
     }
 
-    let membership =
+    const membership =
       await this.credentialsRepository.findScopedMembershipByUserId(
         recipient.userId,
       );
@@ -138,6 +154,7 @@ export class ProcessEmailDeliveryRecipientUseCase {
 
     const credentialMode = readCredentialMode(batch);
     let temporaryPassword: string | null = null;
+    let credentialToApply: PendingCredentialToApply | null = null;
 
     if (credentialMode !== 'LOGIN_INFO_ONLY') {
       if (
@@ -147,19 +164,18 @@ export class ProcessEmailDeliveryRecipientUseCase {
         throw new Error('credential_recipient_already_has_password');
       }
 
-      temporaryPassword = generateTemporaryPassword();
-      const passwordHash = await this.passwordService.hash(temporaryPassword);
-      membership = await this.credentialsRepository.updateUserCredential({
+      const pendingCredential = await this.resolvePendingCredential(
+        recipient,
+        credentialMode,
+      );
+      temporaryPassword = pendingCredential.temporaryPassword;
+      credentialToApply = {
         userId: recipient.userId,
-        passwordHash,
-        mustChangePassword: true,
-        passwordProvisionedAt: new Date(),
-        passwordChangedAt: null,
-      });
-      await this.authRepository.revokeUserSessions(recipient.userId);
+        temporaryPassword,
+      };
     }
 
-    return this.renderer.renderCredentialEmail({
+    const rendered = await this.renderer.renderCredentialEmail({
       schoolId: batch.schoolId,
       templateKey: batch.templateKey ?? SchoolEmailTemplateKey.ACCOUNT_CREDENTIALS,
       user: {
@@ -171,6 +187,11 @@ export class ProcessEmailDeliveryRecipientUseCase {
       },
       temporaryPassword,
     });
+
+    return {
+      ...rendered,
+      credentialToApply,
+    };
   }
 
   private async renderCampaignRecipient(
@@ -188,7 +209,7 @@ export class ProcessEmailDeliveryRecipientUseCase {
         )
       : null;
 
-    return this.renderer.renderCampaignEmail({
+    const rendered = await this.renderer.renderCampaignEmail({
       schoolId: batch.schoolId,
       templateKey: batch.templateKey ?? SchoolEmailTemplateKey.GENERAL_MESSAGE,
       campaignContent,
@@ -207,7 +228,98 @@ export class ProcessEmailDeliveryRecipientUseCase {
             loginEmail: null,
           },
     });
+
+    return {
+      ...rendered,
+      credentialToApply: null,
+    };
   }
+
+  private async resolvePendingCredential(
+    recipient: EmailDeliveryRecipientWithMetadata,
+    credentialMode: CredentialDeliveryModeValue,
+  ): Promise<{ temporaryPassword: string }> {
+    const metadata = jsonRecordOrNull(recipient.metadata) ?? {};
+    const pending = readPendingCredential(metadata);
+    if (pending) {
+      return {
+        temporaryPassword: this.emailSecretCrypto.decrypt(
+          pending.encryptedTemporaryPassword,
+        ),
+      };
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+    await this.deliveryRepository.updateRecipientMetadata(
+      recipient.id,
+      buildMetadataWithPendingCredential(metadata, {
+        credentialMode,
+        encryptedTemporaryPassword:
+          this.emailSecretCrypto.encrypt(temporaryPassword),
+      }),
+    );
+
+    return { temporaryPassword };
+  }
+}
+
+interface PendingCredentialToApply {
+  userId: string;
+  temporaryPassword: string;
+}
+
+interface RenderedEmailWithCredential {
+  subject: string;
+  html: string;
+  text?: string | null;
+  credentialToApply: PendingCredentialToApply | null;
+}
+
+type EmailDeliveryRecipientWithMetadata = {
+  id: string;
+  userId: string | null;
+  metadata: Prisma.JsonValue | null;
+};
+
+const PENDING_CREDENTIAL_METADATA_KEY = 'pendingCredential';
+const PENDING_CREDENTIAL_METADATA_VERSION = 1;
+
+function readPendingCredential(
+  metadata: Record<string, unknown>,
+): { encryptedTemporaryPassword: string } | null {
+  const value = metadata[PENDING_CREDENTIAL_METADATA_KEY];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const pending = value as Record<string, unknown>;
+  if (
+    pending.version !== PENDING_CREDENTIAL_METADATA_VERSION ||
+    typeof pending.encryptedTemporaryPassword !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    encryptedTemporaryPassword: pending.encryptedTemporaryPassword,
+  };
+}
+
+function buildMetadataWithPendingCredential(
+  metadata: Record<string, unknown>,
+  pending: {
+    credentialMode: CredentialDeliveryModeValue;
+    encryptedTemporaryPassword: string;
+  },
+): Prisma.InputJsonObject {
+  return {
+    ...metadata,
+    [PENDING_CREDENTIAL_METADATA_KEY]: {
+      version: PENDING_CREDENTIAL_METADATA_VERSION,
+      credentialMode: pending.credentialMode,
+      encryptedTemporaryPassword: pending.encryptedTemporaryPassword,
+    },
+  } satisfies Prisma.InputJsonObject;
 }
 
 function readCredentialMode(

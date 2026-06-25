@@ -51,7 +51,7 @@ export class EmailCampaignController {
   ) {}
 
   @Post('preview-recipients')
-  @RequiredPermissions('settings.security.view')
+  @RequiredPermissions('settings.email.campaigns.view')
   @ApiOperation({
     summary: 'Preview recipients for a general email campaign',
     description:
@@ -63,7 +63,8 @@ export class EmailCampaignController {
     description: 'settings.email.delivery_no_recipients',
   })
   @ApiForbiddenResponse({
-    description: 'Requires settings.security.view in the current school scope.',
+    description:
+      'Requires settings.email.campaigns.view in the current school scope.',
   })
   previewRecipients(
     @Body() dto: CampaignPreviewRecipientsDto,
@@ -72,7 +73,7 @@ export class EmailCampaignController {
   }
 
   @Post('preview')
-  @RequiredPermissions('settings.security.view')
+  @RequiredPermissions('settings.email.campaigns.view')
   @ApiOperation({
     summary: 'Preview a general email campaign',
     description:
@@ -85,7 +86,8 @@ export class EmailCampaignController {
       'settings.email.campaign_invalid | settings.email.campaign_credential_variables_forbidden',
   })
   @ApiForbiddenResponse({
-    description: 'Requires settings.security.view in the current school scope.',
+    description:
+      'Requires settings.email.campaigns.view in the current school scope.',
   })
   previewCampaign(
     @Body() dto: CampaignPreviewDto,
@@ -94,7 +96,7 @@ export class EmailCampaignController {
   }
 
   @Post()
-  @RequiredPermissions('settings.security.manage')
+  @RequiredPermissions('settings.email.campaigns.manage')
   @ApiOperation({
     summary: 'Create a queued general email campaign',
     description:
@@ -108,7 +110,7 @@ export class EmailCampaignController {
   })
   @ApiForbiddenResponse({
     description:
-      'Requires settings.security.manage in the current school scope.',
+      'Requires settings.email.campaigns.manage in the current school scope.',
   })
   createCampaign(
     @Body() dto: CreateCampaignDto,
@@ -117,12 +119,13 @@ export class EmailCampaignController {
   }
 
   @Get()
-  @RequiredPermissions('settings.security.view')
+  @RequiredPermissions('settings.email.campaigns.view')
   @ApiOperation({ summary: 'List general email campaign batches' })
   @ApiOkResponse({ type: DeliveryBatchListResponseDto })
   @ApiBadRequestResponse({ description: 'validation.failed' })
   @ApiForbiddenResponse({
-    description: 'Requires settings.security.view in the current school scope.',
+    description:
+      'Requires settings.email.campaigns.view in the current school scope.',
   })
   listCampaigns(
     @Query() query: DeliveryListQueryDto,
@@ -134,7 +137,7 @@ export class EmailCampaignController {
   }
 
   @Get(':batchId')
-  @RequiredPermissions('settings.security.view')
+  @RequiredPermissions('settings.email.campaigns.view')
   @ApiOperation({ summary: 'Get one general email campaign batch' })
   @ApiParam({
     name: 'batchId',
@@ -146,7 +149,8 @@ export class EmailCampaignController {
     description: 'settings.email.delivery_batch_not_found',
   })
   @ApiForbiddenResponse({
-    description: 'Requires settings.security.view in the current school scope.',
+    description:
+      'Requires settings.email.campaigns.view in the current school scope.',
   })
   getCampaign(
     @Param('batchId', new ParseUUIDPipe()) batchId: string,

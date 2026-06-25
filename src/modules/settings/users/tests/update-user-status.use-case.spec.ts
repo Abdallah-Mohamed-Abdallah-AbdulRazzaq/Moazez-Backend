@@ -34,8 +34,10 @@ describe('UpdateUserStatusUseCase', () => {
       updateUserAndMembership,
     } as unknown as UsersRepository;
     const createAuditLog = jest.fn().mockResolvedValue(undefined);
+    const revokeUserSessions = jest.fn().mockResolvedValue({ count: 1 });
     const authRepository = {
       createAuditLog,
+      revokeUserSessions,
     } as unknown as AuthRepository;
 
     const useCase = new UpdateUserStatusUseCase(usersRepository, authRepository);
@@ -73,6 +75,7 @@ describe('UpdateUserStatusUseCase', () => {
       );
       expect(auditEntry.before).toEqual({ status: UserStatus.ACTIVE });
       expect(auditEntry.after).toEqual({ status: UserStatus.DISABLED });
+      expect(revokeUserSessions).toHaveBeenCalledWith('user-2');
       expect(result).toEqual({ id: 'user-2', status: 'inactive' });
     });
   });

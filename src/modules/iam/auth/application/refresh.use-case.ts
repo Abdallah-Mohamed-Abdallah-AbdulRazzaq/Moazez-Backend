@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { UserStatus } from '@prisma/client';
 import type { LoginResponseDto } from '../dto/login-response.dto';
 import {
+  AccountDisabledException,
   RefreshRotatedException,
   SessionRevokedException,
   TokenExpiredException,
@@ -48,6 +50,10 @@ export class RefreshUseCase {
     const user = await this.authRepository.findUserById(session.userId);
     if (!user) {
       throw new TokenInvalidException();
+    }
+    if (user.status !== UserStatus.ACTIVE) {
+      await this.authRepository.revokeUserSessions(user.id);
+      throw new AccountDisabledException();
     }
 
     await this.authRepository.revokeSession(session.id);

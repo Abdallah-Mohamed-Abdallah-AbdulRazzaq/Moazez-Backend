@@ -213,6 +213,7 @@ export class EmailDeliveryRepository {
             in: [
               SchoolEmailDeliveryRecipientStatus.PENDING,
               SchoolEmailDeliveryRecipientStatus.QUEUED,
+              SchoolEmailDeliveryRecipientStatus.SENDING,
               SchoolEmailDeliveryRecipientStatus.FAILED,
             ],
           },
@@ -226,6 +227,16 @@ export class EmailDeliveryRepository {
       });
 
     return result.count === 1;
+  }
+
+  async updateRecipientMetadata(
+    recipientId: string,
+    metadata: Prisma.InputJsonValue | typeof Prisma.JsonNull,
+  ): Promise<void> {
+    await this.scopedPrisma.schoolEmailDeliveryRecipient.updateMany({
+      where: { id: recipientId },
+      data: { metadata },
+    });
   }
 
   async markRecipientSent(args: {

@@ -18,6 +18,7 @@ import {
 import { PasswordService } from '../../../../iam/auth/domain/password.service';
 import { AuthRepository } from '../../../../iam/auth/infrastructure/auth.repository';
 import { UserCredentialsRepository } from '../../../users/credentials/infrastructure/user-credentials.repository';
+import { EmailSecretCrypto } from '../../domain/email-secret-crypto';
 import { EmailSettingsRepository } from '../../infrastructure/email-settings.repository';
 import { ProcessEmailDeliveryRecipientUseCase } from '../application/process-email-delivery-recipient.use-case';
 import { SchoolEmailRendererService } from '../application/school-email-renderer.service';
@@ -68,6 +69,8 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
   function recipient(overrides?: {
     status?: SchoolEmailDeliveryRecipientStatus;
     batchStatus?: SchoolEmailDeliveryBatchStatus;
+    credentialMode?: string;
+    metadata?: Record<string, unknown> | null;
   }) {
     return {
       id: 'recipient-1',
@@ -83,7 +86,7 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
       sentAt: null,
       failureReason: null,
       skippedReason: null,
-      metadata: null,
+      metadata: overrides?.metadata ?? null,
       createdAt: now,
       updatedAt: now,
       batch: {
@@ -95,7 +98,8 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
         subjectSnapshot: null,
         createdByUserId: 'actor-1',
         recipientScope: {
-          credentialMode: 'GENERATE_TEMPORARY_PASSWORD',
+          credentialMode:
+            overrides?.credentialMode ?? 'GENERATE_TEMPORARY_PASSWORD',
         },
         previewData: null,
         campaignContent: null,
@@ -147,12 +151,26 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
     };
   }
 
-  function buildUseCase(currentRecipient = recipient()) {
+  function buildUseCase(
+    currentRecipient = recipient(),
+    options?: {
+      sendEmail?: jest.Mock;
+      membershipRecord?: ReturnType<typeof membership>;
+    },
+  ) {
     const sentMetadata: unknown[] = [];
+    const updatedMetadata: unknown[] = [];
     const deliveryRepository = {
       findRecipientForProcessing: jest.fn().mockResolvedValue(currentRecipient),
       markRecipientSending: jest.fn().mockResolvedValue(true),
       markBatchProcessing: jest.fn().mockResolvedValue(undefined),
+      updateRecipientMetadata: jest.fn((recipientId, metadata) => {
+        updatedMetadata.push(metadata);
+        if (currentRecipient.id === recipientId) {
+          currentRecipient.metadata = metadata;
+        }
+        return Promise.resolve();
+      }),
       markRecipientSent: jest.fn((args) => {
         sentMetadata.push(args.metadata);
         return Promise.resolve();
@@ -172,7 +190,9 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
       }),
     } as unknown as EmailSettingsRepository;
     const credentialsRepository = {
-      findScopedMembershipByUserId: jest.fn().mockResolvedValue(membership()),
+      findScopedMembershipByUserId: jest
+        .fn()
+        .mockResolvedValue(options?.membershipRecord ?? membership()),
       updateUserCredential: jest.fn().mockResolvedValue(membership('hash-new')),
     } as unknown as UserCredentialsRepository;
     const passwordService = {
@@ -181,12 +201,20 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
     const authRepository = {
       revokeUserSessions: jest.fn().mockResolvedValue({ count: 0 }),
     } as unknown as AuthRepository;
+    const emailSecretCrypto = {
+      encrypt: jest.fn((plainText: string) => `encrypted:${plainText}`),
+      decrypt: jest.fn((cipherText: string) =>
+        cipherText.replace(/^encrypted:/, ''),
+      ),
+    } as unknown as EmailSecretCrypto;
     const transport = {
-      sendEmail: jest.fn().mockResolvedValue({
-        providerMessageId: 'provider-1',
-        accepted: ['contact@example.com'],
-        rejected: [],
-      }),
+      sendEmail:
+        options?.sendEmail ??
+        jest.fn().mockResolvedValue({
+          providerMessageId: 'provider-1',
+          accepted: ['contact@example.com'],
+          rejected: [],
+        }),
     } as unknown as SchoolEmailTransport;
     const renderer = new SchoolEmailRendererService(emailSettingsRepository);
     const useCase = new ProcessEmailDeliveryRecipientUseCase(
@@ -196,6 +224,7 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
       passwordService,
       authRepository,
       renderer,
+      emailSecretCrypto,
       transport,
     );
 
@@ -205,12 +234,14 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
       credentialsRepository,
       passwordService,
       authRepository,
+      emailSecretCrypto,
       transport,
       sentMetadata,
+      updatedMetadata,
     };
   }
 
-  it('generates a temporary password in memory, updates credentials, sends, and stores only safe metadata', async () => {
+  it('generates one pending temporary password, sends, applies credentials, and stores only safe sent metadata', async () => {
     const mocks = buildUseCase();
 
     await runScoped(() =>
@@ -242,7 +273,146 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
         html: expect.stringContaining('MZ-'),
       }),
     );
+    expect(mocks.deliveryRepository.updateRecipientMetadata).toHaveBeenCalledWith(
+      'recipient-1',
+      expect.objectContaining({
+        pendingCredential: expect.objectContaining({
+          encryptedTemporaryPassword: expect.stringMatching(/^encrypted:MZ-/),
+        }),
+      }),
+    );
     expect(JSON.stringify(mocks.sentMetadata)).not.toMatch(/MZ-/);
+    expect(JSON.stringify(mocks.sentMetadata)).not.toContain(
+      'pendingCredential',
+    );
+  });
+
+  it('does not mutate user credentials when SMTP send fails', async () => {
+    const sendEmail = jest
+      .fn()
+      .mockRejectedValue(new Error('smtp temporary failure MZ-LEAK-1234'));
+    const mocks = buildUseCase(recipient(), { sendEmail });
+
+    await expect(
+      runScoped(() =>
+        mocks.useCase.execute({
+          schoolId: 'school-1',
+          organizationId: 'org-1',
+          batchId: 'batch-1',
+          recipientId: 'recipient-1',
+          actorUserId: 'actor-1',
+          actorUserType: UserType.SCHOOL_USER,
+        }),
+      ),
+    ).rejects.toThrow('smtp temporary failure [redacted]');
+
+    expect(mocks.credentialsRepository.updateUserCredential).not.toHaveBeenCalled();
+    expect(mocks.authRepository.revokeUserSessions).not.toHaveBeenCalled();
+    expect(mocks.deliveryRepository.markRecipientFailed).toHaveBeenCalledWith({
+      recipientId: 'recipient-1',
+      failureReason: 'smtp temporary failure [redacted]',
+    });
+    expect(JSON.stringify(mocks.updatedMetadata)).toContain(
+      'encryptedTemporaryPassword',
+    );
+    expect(JSON.stringify(mocks.updatedMetadata)).not.toMatch(/"MZ-/);
+  });
+
+  it('reuses the same pending temporary password on retry', async () => {
+    const firstSend = jest
+      .fn()
+      .mockRejectedValue(new Error('smtp temporary failure'));
+    const firstRun = buildUseCase(recipient(), { sendEmail: firstSend });
+
+    await expect(
+      runScoped(() =>
+        firstRun.useCase.execute({
+          schoolId: 'school-1',
+          organizationId: 'org-1',
+          batchId: 'batch-1',
+          recipientId: 'recipient-1',
+          actorUserId: 'actor-1',
+          actorUserType: UserType.SCHOOL_USER,
+        }),
+      ),
+    ).rejects.toThrow('smtp temporary failure');
+
+    const firstHtml = firstSend.mock.calls[0][0].html as string;
+    const firstTemporaryPassword = firstHtml.match(/MZ-[A-Z0-9-]+/)?.[0];
+    expect(firstTemporaryPassword).toBeTruthy();
+
+    const retryRecipient = recipient({
+      status: SchoolEmailDeliveryRecipientStatus.FAILED,
+      metadata: firstRun.updatedMetadata[0] as Record<string, unknown>,
+    });
+    const retrySend = jest.fn().mockResolvedValue({
+      providerMessageId: 'provider-2',
+      accepted: ['contact@example.com'],
+      rejected: [],
+    });
+    const retryRun = buildUseCase(retryRecipient, { sendEmail: retrySend });
+
+    await runScoped(() =>
+      retryRun.useCase.execute({
+        schoolId: 'school-1',
+        organizationId: 'org-1',
+        batchId: 'batch-1',
+        recipientId: 'recipient-1',
+        actorUserId: 'actor-1',
+        actorUserType: UserType.SCHOOL_USER,
+      }),
+    );
+
+    const retryHtml = retrySend.mock.calls[0][0].html as string;
+    expect(retryHtml).toContain(firstTemporaryPassword);
+    expect(retryRun.emailSecretCrypto.encrypt).not.toHaveBeenCalled();
+    expect(retryRun.credentialsRepository.updateUserCredential).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects generate mode for existing-password users before delivery', async () => {
+    const mocks = buildUseCase(recipient(), {
+      membershipRecord: membership('existing-hash'),
+    });
+
+    await expect(
+      runScoped(() =>
+        mocks.useCase.execute({
+          schoolId: 'school-1',
+          organizationId: 'org-1',
+          batchId: 'batch-1',
+          recipientId: 'recipient-1',
+          actorUserId: 'actor-1',
+          actorUserType: UserType.SCHOOL_USER,
+        }),
+      ),
+    ).rejects.toThrow('credential_recipient_already_has_password');
+
+    expect(mocks.transport.sendEmail).not.toHaveBeenCalled();
+    expect(mocks.credentialsRepository.updateUserCredential).not.toHaveBeenCalled();
+  });
+
+  it('revokes sessions after successful regenerate delivery', async () => {
+    const mocks = buildUseCase(
+      recipient({ credentialMode: 'REGENERATE_TEMPORARY_PASSWORD' }),
+      {
+        membershipRecord: membership('existing-hash'),
+      },
+    );
+
+    await runScoped(() =>
+      mocks.useCase.execute({
+        schoolId: 'school-1',
+        organizationId: 'org-1',
+        batchId: 'batch-1',
+        recipientId: 'recipient-1',
+        actorUserId: 'actor-1',
+        actorUserType: UserType.SCHOOL_USER,
+      }),
+    );
+
+    expect(mocks.authRepository.revokeUserSessions).toHaveBeenCalledWith(
+      'user-1',
+    );
   });
 
   it('does not resend already sent recipients', async () => {

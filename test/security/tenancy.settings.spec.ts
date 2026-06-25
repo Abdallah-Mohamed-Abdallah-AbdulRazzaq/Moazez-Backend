@@ -39,6 +39,25 @@ const CREDENTIAL_TARGET_EMAIL =
   'credential-target@settings-tenancy.moazez.local';
 const CREDENTIAL_TARGET_PASSWORD = 'CredentialTarget123!';
 const CREDENTIAL_TARGET_NEW_PASSWORD = 'CredentialTarget456!';
+const GRANULAR_EMAIL_TEST_PASSWORD = 'GranularEmail123!';
+
+const SIH_PERMISSION_SEEDS = [
+  { code: 'settings.permissions.view', module: 'settings', resource: 'permissions', action: 'view', description: 'View the settings permission catalog' },
+  { code: 'settings.email.connection.view', module: 'settings', resource: 'email.connection', action: 'view', description: 'View school email provider connection settings' },
+  { code: 'settings.email.connection.manage', module: 'settings', resource: 'email.connection', action: 'manage', description: 'Create, test, activate, disable, and update school email provider connection settings' },
+  { code: 'settings.email.templates.view', module: 'settings', resource: 'email.templates', action: 'view', description: 'View school email templates and previews' },
+  { code: 'settings.email.templates.manage', module: 'settings', resource: 'email.templates', action: 'manage', description: 'Update and reset school email templates' },
+  { code: 'settings.email.deliveries.view', module: 'settings', resource: 'email.deliveries', action: 'view', description: 'View school email delivery batches and recipients' },
+  { code: 'settings.email.deliveries.manage', module: 'settings', resource: 'email.deliveries', action: 'manage', description: 'Cancel school email delivery batches' },
+  { code: 'settings.email.campaigns.view', module: 'settings', resource: 'email.campaigns', action: 'view', description: 'Preview and view school email campaigns' },
+  { code: 'settings.email.campaigns.manage', module: 'settings', resource: 'email.campaigns', action: 'manage', description: 'Create school email campaigns' },
+  { code: 'settings.email.credential_deliveries.view', module: 'settings', resource: 'email.credential_deliveries', action: 'view', description: 'Preview school credential delivery recipients' },
+  { code: 'settings.email.credential_deliveries.manage', module: 'settings', resource: 'email.credential_deliveries', action: 'manage', description: 'Create school credential delivery batches' },
+];
+
+const SIH_SCHOOL_ADMIN_PERMISSION_CODES = SIH_PERMISSION_SEEDS.map(
+  (permission) => permission.code,
+);
 
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
@@ -60,6 +79,8 @@ describe('Settings tenancy isolation (security)', () => {
   let tenantBSchoolId: string;
   let tenantBUserId: string;
   let tenantBRoleId: string;
+  const createdGranularPermissionRoleIds: string[] = [];
+  const createdGranularPermissionUserIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -84,6 +105,7 @@ describe('Settings tenancy isolation (security)', () => {
         'school_admin system role not found — run `npm run seed` first.',
       );
     }
+    await ensureSihPermissionsForSchoolAdmin(schoolAdminRole.id);
 
     const demoAdmin = await prisma.user.findUnique({
       where: { email: DEMO_ADMIN_EMAIL },
@@ -546,6 +568,25 @@ describe('Settings tenancy isolation (security)', () => {
         });
         await prisma.role.deleteMany({ where: { id: demoViewerRoleId } });
       }
+      if (createdGranularPermissionUserIds.length > 0) {
+        await prisma.session.deleteMany({
+          where: { userId: { in: createdGranularPermissionUserIds } },
+        });
+        await prisma.membership.deleteMany({
+          where: { userId: { in: createdGranularPermissionUserIds } },
+        });
+        await prisma.user.deleteMany({
+          where: { id: { in: createdGranularPermissionUserIds } },
+        });
+      }
+      if (createdGranularPermissionRoleIds.length > 0) {
+        await prisma.rolePermission.deleteMany({
+          where: { roleId: { in: createdGranularPermissionRoleIds } },
+        });
+        await prisma.role.deleteMany({
+          where: { id: { in: createdGranularPermissionRoleIds } },
+        });
+      }
       if (tenantBRoleId) {
         await prisma.rolePermission.deleteMany({
           where: { roleId: tenantBRoleId },
@@ -588,6 +629,94 @@ describe('Settings tenancy isolation (security)', () => {
     return { accessToken: response.body.accessToken, body: response.body };
   }
 
+  async function ensureSihPermissionsForSchoolAdmin(
+    schoolAdminRoleId: string,
+  ): Promise<void> {
+    for (const permission of SIH_PERMISSION_SEEDS) {
+      await prisma.permission.upsert({
+        where: { code: permission.code },
+        update: permission,
+        create: permission,
+      });
+    }
+
+    const permissions = await prisma.permission.findMany({
+      where: { code: { in: SIH_SCHOOL_ADMIN_PERMISSION_CODES } },
+      select: { id: true },
+    });
+
+    await prisma.rolePermission.createMany({
+      data: permissions.map((permission) => ({
+        roleId: schoolAdminRoleId,
+        permissionId: permission.id,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  async function createGranularPermissionUser(params: {
+    key: string;
+    email: string;
+    permissionCodes: string[];
+  }): Promise<{ accessToken: string; userId: string; roleId: string }> {
+    const role = await prisma.role.create({
+      data: {
+        schoolId: demoSchoolId,
+        key: params.key,
+        name: params.key.replace(/_/g, ' '),
+        isSystem: false,
+      },
+      select: { id: true },
+    });
+    createdGranularPermissionRoleIds.push(role.id);
+
+    const permissions = await prisma.permission.findMany({
+      where: { code: { in: params.permissionCodes } },
+      select: { id: true },
+    });
+    await prisma.rolePermission.createMany({
+      data: permissions.map((permission) => ({
+        roleId: role.id,
+        permissionId: permission.id,
+      })),
+      skipDuplicates: true,
+    });
+
+    const user = await prisma.user.create({
+      data: {
+        email: params.email,
+        firstName: 'Granular',
+        lastName: 'Permission',
+        userType: UserType.SCHOOL_USER,
+        status: UserStatus.ACTIVE,
+        passwordHash: await argon2.hash(
+          GRANULAR_EMAIL_TEST_PASSWORD,
+          ARGON2_OPTIONS,
+        ),
+      },
+      select: { id: true },
+    });
+    createdGranularPermissionUserIds.push(user.id);
+
+    await prisma.membership.create({
+      data: {
+        userId: user.id,
+        organizationId: demoOrganizationId,
+        schoolId: demoSchoolId,
+        roleId: role.id,
+        userType: UserType.SCHOOL_USER,
+        status: MembershipStatus.ACTIVE,
+      },
+    });
+
+    const { accessToken } = await login(
+      params.email,
+      GRANULAR_EMAIL_TEST_PASSWORD,
+    );
+
+    return { accessToken, userId: user.id, roleId: role.id };
+  }
+
   it('school A branding returns only school A data', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
@@ -614,6 +743,36 @@ describe('Settings tenancy isolation (security)', () => {
         sessionTimeoutMinutes: expect.any(Number),
       }),
     );
+  });
+
+  it('requires explicit permission catalog access for settings permissions', async () => {
+    const admin = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const viewer = await login(DEMO_VIEWER_EMAIL, DEMO_VIEWER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/permissions`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'settings.permissions.view',
+          module: 'settings',
+          resource: 'permissions',
+          action: 'view',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(response.body)).not.toContain('schoolId');
+    expect(JSON.stringify(response.body)).not.toContain('organizationId');
+
+    const rejected = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/permissions`)
+      .set('Authorization', `Bearer ${viewer.accessToken}`)
+      .expect(403);
+
+    expect(rejected.body?.error?.code).toBe('auth.scope.missing');
   });
 
   it('requires auth for school login identity settings', async () => {
@@ -701,6 +860,108 @@ describe('Settings tenancy isolation (security)', () => {
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/settings/email/templates`)
       .expect(401);
+  });
+
+  it('does not allow broad settings security permissions to manage email routes', async () => {
+    const suffix = Date.now();
+    const { accessToken } = await createGranularPermissionUser({
+      key: `settings_security_only_${suffix}`,
+      email: `security-only-${suffix}@settings-tenancy.moazez.local`,
+      permissionCodes: ['settings.security.view', 'settings.security.manage'],
+    });
+
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/settings/email/connection`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        providerType: 'SMTP',
+        fromName: 'Security Only',
+        fromEmail: `security-only-${suffix}@settings-tenancy.moazez.local`,
+        host: 'smtp-security-only.settings-tenancy.moazez.local',
+        port: 587,
+        secure: false,
+        username: `security-only-${suffix}`,
+        password: 'SecurityOnlySmtp123!',
+      })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/settings/email/credential-deliveries/preview-recipients`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ scope: 'selected', userIds: [demoCredentialUserId] })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/deliveries`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/settings/email/campaigns/preview`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ subject: 'Nope', bodyHtml: '<p>Nope</p>' })
+      .expect(403);
+  });
+
+  it('enforces granular email connection view and manage permissions', async () => {
+    const suffix = Date.now();
+    const viewOnly = await createGranularPermissionUser({
+      key: `email_connection_view_${suffix}`,
+      email: `email-view-${suffix}@settings-tenancy.moazez.local`,
+      permissionCodes: ['settings.email.connection.view'],
+    });
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/settings/email/connection`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/settings/email/connection`)
+      .set('Authorization', `Bearer ${viewOnly.accessToken}`)
+      .send({
+        providerType: 'SMTP',
+        fromName: 'View Only',
+        fromEmail: `view-only-${suffix}@settings-tenancy.moazez.local`,
+        host: 'smtp-view-only.settings-tenancy.moazez.local',
+        port: 587,
+        secure: false,
+        username: `view-only-${suffix}`,
+        password: 'ViewOnlySmtp123!',
+      })
+      .expect(403);
+
+    const manage = await createGranularPermissionUser({
+      key: `email_connection_manage_${suffix}`,
+      email: `email-manage-${suffix}@settings-tenancy.moazez.local`,
+      permissionCodes: ['settings.email.connection.manage'],
+    });
+
+    const updated = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/settings/email/connection`)
+      .set('Authorization', `Bearer ${manage.accessToken}`)
+      .send({
+        providerType: 'SMTP',
+        fromName: 'Manage Only',
+        fromEmail: `manage-only-${suffix}@settings-tenancy.moazez.local`,
+        host: 'smtp-manage-only.settings-tenancy.moazez.local',
+        port: 587,
+        secure: false,
+        username: `manage-only-${suffix}`,
+        password: 'ManageOnlySmtp123!',
+      })
+      .expect(200);
+
+    expect(updated.body).toEqual(
+      expect.objectContaining({
+        configured: true,
+        providerType: 'SMTP',
+        hasPassword: true,
+      }),
+    );
+    expect(JSON.stringify(updated.body)).not.toContain('ManageOnlySmtp123!');
   });
 
   it('school admin can configure test activate and disable own school email connection without exposing secrets', async () => {

@@ -37,7 +37,7 @@ export class EmailConnectionController {
   ) {}
 
   @Get()
-  @RequiredPermissions('settings.security.view')
+  @RequiredPermissions('settings.email.connection.view')
   @ApiOperation({
     summary: 'Get school email provider connection',
     description:
@@ -45,14 +45,15 @@ export class EmailConnectionController {
   })
   @ApiOkResponse({ type: SchoolEmailConnectionResponseDto })
   @ApiForbiddenResponse({
-    description: 'Requires settings.security.view in the current school scope.',
+    description:
+      'Requires settings.email.connection.view in the current school scope.',
   })
   getConnection(): Promise<SchoolEmailConnectionResponseDto> {
     return this.getEmailConnectionUseCase.execute();
   }
 
   @Put()
-  @RequiredPermissions('settings.security.manage')
+  @RequiredPermissions('settings.email.connection.manage')
   @ApiOperation({
     summary: 'Update school email provider connection',
     description:
@@ -62,7 +63,7 @@ export class EmailConnectionController {
   @ApiBadRequestResponse({ description: 'validation.failed' })
   @ApiForbiddenResponse({
     description:
-      'Requires settings.security.manage in the current school scope.',
+      'Requires settings.email.connection.manage in the current school scope.',
   })
   updateConnection(
     @Body() dto: UpdateEmailConnectionDto,
@@ -71,7 +72,7 @@ export class EmailConnectionController {
   }
 
   @Post('test')
-  @RequiredPermissions('settings.security.manage')
+  @RequiredPermissions('settings.email.connection.manage')
   @ApiOperation({
     summary: 'Validate the school email provider connection',
     description:
@@ -85,7 +86,7 @@ export class EmailConnectionController {
   })
   @ApiForbiddenResponse({
     description:
-      'Requires settings.security.manage in the current school scope.',
+      'Requires settings.email.connection.manage in the current school scope.',
   })
   testConnection(
     @Body() dto: TestEmailConnectionDto,
@@ -94,7 +95,7 @@ export class EmailConnectionController {
   }
 
   @Post('activate')
-  @RequiredPermissions('settings.security.manage')
+  @RequiredPermissions('settings.email.connection.manage')
   @ApiOperation({ summary: 'Activate a verified school email connection' })
   @ApiCreatedResponse({ type: SchoolEmailConnectionResponseDto })
   @ApiNotFoundResponse({ description: 'settings.email.connection_missing' })
@@ -103,20 +104,20 @@ export class EmailConnectionController {
   })
   @ApiForbiddenResponse({
     description:
-      'Requires settings.security.manage in the current school scope.',
+      'Requires settings.email.connection.manage in the current school scope.',
   })
   activateConnection(): Promise<SchoolEmailConnectionResponseDto> {
     return this.activateEmailConnectionUseCase.execute();
   }
 
   @Post('disable')
-  @RequiredPermissions('settings.security.manage')
+  @RequiredPermissions('settings.email.connection.manage')
   @ApiOperation({ summary: 'Disable the school email connection' })
   @ApiCreatedResponse({ type: SchoolEmailConnectionResponseDto })
   @ApiNotFoundResponse({ description: 'settings.email.connection_missing' })
   @ApiForbiddenResponse({
     description:
-      'Requires settings.security.manage in the current school scope.',
+      'Requires settings.email.connection.manage in the current school scope.',
   })
   disableConnection(): Promise<SchoolEmailConnectionResponseDto> {
     return this.disableEmailConnectionUseCase.execute();

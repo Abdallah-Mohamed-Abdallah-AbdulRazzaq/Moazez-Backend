@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { ListPermissionsUseCase } from '../application/list-permissions.use-case';
 import { PermissionResponseDto } from '../dto/permission-response.dto';
 
@@ -12,6 +13,7 @@ export class PermissionsController {
   ) {}
 
   @Get()
+  @RequiredPermissions('settings.permissions.view')
   listPermissions(): Promise<PermissionResponseDto[]> {
     return this.listPermissionsUseCase.execute();
   }

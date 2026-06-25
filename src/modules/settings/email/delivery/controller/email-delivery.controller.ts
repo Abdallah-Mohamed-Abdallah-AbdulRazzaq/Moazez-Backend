@@ -45,7 +45,7 @@ export class EmailDeliveryController {
   ) {}
 
   @Get()
-  @RequiredPermissions('settings.security.view')
+  @RequiredPermissions('settings.email.deliveries.view')
   @ApiOperation({
     summary: 'List school email delivery batches',
     description:
@@ -54,7 +54,8 @@ export class EmailDeliveryController {
   @ApiOkResponse({ type: DeliveryBatchListResponseDto })
   @ApiBadRequestResponse({ description: 'validation.failed' })
   @ApiForbiddenResponse({
-    description: 'Requires settings.security.view in the current school scope.',
+    description:
+      'Requires settings.email.deliveries.view in the current school scope.',
   })
   listDeliveries(
     @Query() query: DeliveryListQueryDto,
@@ -63,7 +64,7 @@ export class EmailDeliveryController {
   }
 
   @Get(':batchId')
-  @RequiredPermissions('settings.security.view')
+  @RequiredPermissions('settings.email.deliveries.view')
   @ApiOperation({ summary: 'Get one school email delivery batch' })
   @ApiParam({
     name: 'batchId',
@@ -75,7 +76,8 @@ export class EmailDeliveryController {
     description: 'settings.email.delivery_batch_not_found',
   })
   @ApiForbiddenResponse({
-    description: 'Requires settings.security.view in the current school scope.',
+    description:
+      'Requires settings.email.deliveries.view in the current school scope.',
   })
   getDelivery(
     @Param('batchId', new ParseUUIDPipe()) batchId: string,
@@ -84,7 +86,7 @@ export class EmailDeliveryController {
   }
 
   @Get(':batchId/recipients')
-  @RequiredPermissions('settings.security.view')
+  @RequiredPermissions('settings.email.deliveries.view')
   @ApiOperation({ summary: 'List recipients for one email delivery batch' })
   @ApiParam({
     name: 'batchId',
@@ -97,7 +99,8 @@ export class EmailDeliveryController {
     description: 'settings.email.delivery_batch_not_found',
   })
   @ApiForbiddenResponse({
-    description: 'Requires settings.security.view in the current school scope.',
+    description:
+      'Requires settings.email.deliveries.view in the current school scope.',
   })
   listRecipients(
     @Param('batchId', new ParseUUIDPipe()) batchId: string,
@@ -107,7 +110,7 @@ export class EmailDeliveryController {
   }
 
   @Post(':batchId/cancel')
-  @RequiredPermissions('settings.security.manage')
+  @RequiredPermissions('settings.email.deliveries.manage')
   @ApiOperation({ summary: 'Cancel a queued email delivery batch' })
   @ApiParam({
     name: 'batchId',
@@ -123,7 +126,7 @@ export class EmailDeliveryController {
   })
   @ApiForbiddenResponse({
     description:
-      'Requires settings.security.manage in the current school scope.',
+      'Requires settings.email.deliveries.manage in the current school scope.',
   })
   cancelDelivery(
     @Param('batchId', new ParseUUIDPipe()) batchId: string,

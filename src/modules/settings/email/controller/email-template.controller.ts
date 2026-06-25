@@ -46,7 +46,7 @@ export class EmailTemplateController {
   ) {}
 
   @Get()
-  @RequiredPermissions('settings.security.view')
+  @RequiredPermissions('settings.email.templates.view')
   @ApiOperation({
     summary: 'List school email templates',
     description:
@@ -54,14 +54,15 @@ export class EmailTemplateController {
   })
   @ApiOkResponse({ type: EmailTemplateListResponseDto })
   @ApiForbiddenResponse({
-    description: 'Requires settings.security.view in the current school scope.',
+    description:
+      'Requires settings.email.templates.view in the current school scope.',
   })
   listTemplates(): Promise<EmailTemplateListResponseDto> {
     return this.listEmailTemplatesUseCase.execute();
   }
 
   @Get(':key')
-  @RequiredPermissions('settings.security.view')
+  @RequiredPermissions('settings.email.templates.view')
   @ApiOperation({ summary: 'Get one school email template' })
   @ApiParam({
     name: 'key',
@@ -70,7 +71,8 @@ export class EmailTemplateController {
   })
   @ApiOkResponse({ type: EmailTemplateResponseDto })
   @ApiForbiddenResponse({
-    description: 'Requires settings.security.view in the current school scope.',
+    description:
+      'Requires settings.email.templates.view in the current school scope.',
   })
   getTemplate(
     @Param('key', new ParseEnumPipe(SchoolEmailTemplateKey))
@@ -80,7 +82,7 @@ export class EmailTemplateController {
   }
 
   @Put(':key')
-  @RequiredPermissions('settings.security.manage')
+  @RequiredPermissions('settings.email.templates.manage')
   @ApiOperation({
     summary: 'Update one school email template',
     description:
@@ -98,7 +100,7 @@ export class EmailTemplateController {
   })
   @ApiForbiddenResponse({
     description:
-      'Requires settings.security.manage in the current school scope.',
+      'Requires settings.email.templates.manage in the current school scope.',
   })
   updateTemplate(
     @Param('key', new ParseEnumPipe(SchoolEmailTemplateKey))
@@ -109,7 +111,7 @@ export class EmailTemplateController {
   }
 
   @Post(':key/preview')
-  @RequiredPermissions('settings.security.view')
+  @RequiredPermissions('settings.email.templates.view')
   @ApiOperation({
     summary: 'Preview a school email template',
     description:
@@ -126,7 +128,8 @@ export class EmailTemplateController {
     description: 'settings.email.template_invalid',
   })
   @ApiForbiddenResponse({
-    description: 'Requires settings.security.view in the current school scope.',
+    description:
+      'Requires settings.email.templates.view in the current school scope.',
   })
   previewTemplate(
     @Param('key', new ParseEnumPipe(SchoolEmailTemplateKey))
@@ -137,7 +140,7 @@ export class EmailTemplateController {
   }
 
   @Post(':key/reset-default')
-  @RequiredPermissions('settings.security.manage')
+  @RequiredPermissions('settings.email.templates.manage')
   @ApiOperation({
     summary: 'Reset a school email template to the default content',
   })
@@ -149,7 +152,7 @@ export class EmailTemplateController {
   @ApiCreatedResponse({ type: EmailTemplateResponseDto })
   @ApiForbiddenResponse({
     description:
-      'Requires settings.security.manage in the current school scope.',
+      'Requires settings.email.templates.manage in the current school scope.',
   })
   resetTemplate(
     @Param('key', new ParseEnumPipe(SchoolEmailTemplateKey))

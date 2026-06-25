@@ -25,6 +25,19 @@ export class FirebaseAdminService {
     return this.configService.get<boolean>('FCM_DRY_RUN') !== false;
   }
 
+  checkReadiness(): { mode: 'disabled' | 'dry_run' | 'send_enabled' } {
+    if (!this.isEnabled()) {
+      return { mode: 'disabled' };
+    }
+
+    if (this.isDryRun()) {
+      return { mode: 'dry_run' };
+    }
+
+    this.getOrInitializeApp();
+    return { mode: 'send_enabled' };
+  }
+
   getMessaging(): Messaging {
     return getMessaging(this.getOrInitializeApp());
   }

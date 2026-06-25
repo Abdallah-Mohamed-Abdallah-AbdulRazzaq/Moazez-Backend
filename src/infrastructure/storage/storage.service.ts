@@ -57,4 +57,22 @@ export class StorageService {
   }) {
     return this.minioAdapter.statObject(input);
   }
+
+  async checkReadiness(): Promise<void> {
+    const privateBucket = this.signedUrlService.resolveBucket(
+      FileVisibility.PRIVATE,
+    );
+    const publicBucket = this.signedUrlService.resolveBucket(
+      FileVisibility.PUBLIC,
+    );
+
+    const [privateExists, publicExists] = await Promise.all([
+      this.minioAdapter.bucketExists(privateBucket),
+      this.minioAdapter.bucketExists(publicBucket),
+    ]);
+
+    if (!privateExists || !publicExists) {
+      throw new Error('storage_bucket_unavailable');
+    }
+  }
 }

@@ -49,6 +49,40 @@ export class BullmqService implements OnModuleDestroy {
     return this.getQueue(queueName).add(jobName, data, options);
   }
 
+  async ping(): Promise<void> {
+    await this.connection.ping();
+  }
+
+  async getQueueReadiness(name: string): Promise<{
+    name: string;
+    status: 'ok';
+    counts: {
+      waiting: number;
+      active: number;
+      delayed: number;
+      failed: number;
+    };
+  }> {
+    const queue = this.getQueue(name);
+    const counts = await queue.getJobCounts(
+      'waiting',
+      'active',
+      'delayed',
+      'failed',
+    );
+
+    return {
+      name,
+      status: 'ok',
+      counts: {
+        waiting: counts.waiting ?? 0,
+        active: counts.active ?? 0,
+        delayed: counts.delayed ?? 0,
+        failed: counts.failed ?? 0,
+      },
+    };
+  }
+
   createWorker<TData extends object, TResult = unknown>(
     queueName: string,
     processor: Processor<TData, TResult, string>,

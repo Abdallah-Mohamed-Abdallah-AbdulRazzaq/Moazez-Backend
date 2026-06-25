@@ -31,6 +31,9 @@ export class UpdateUserStatusUseCase {
       status:
         command.status === 'active' ? UserStatus.ACTIVE : UserStatus.DISABLED,
     });
+    if (updated.user.status !== UserStatus.ACTIVE) {
+      await this.authRepository.revokeUserSessions(updated.user.id);
+    }
 
     await this.authRepository.createAuditLog({
       actorId: scope.actorId,

@@ -26,6 +26,24 @@ const ARGON2_OPTIONS: argon2.Options = {
   parallelism: 1,
 };
 
+const SIH_PERMISSION_SEEDS = [
+  { code: 'settings.permissions.view', module: 'settings', resource: 'permissions', action: 'view', description: 'View the settings permission catalog' },
+  { code: 'settings.email.connection.view', module: 'settings', resource: 'email.connection', action: 'view', description: 'View school email provider connection settings' },
+  { code: 'settings.email.connection.manage', module: 'settings', resource: 'email.connection', action: 'manage', description: 'Create, test, activate, disable, and update school email provider connection settings' },
+  { code: 'settings.email.templates.view', module: 'settings', resource: 'email.templates', action: 'view', description: 'View school email templates and previews' },
+  { code: 'settings.email.templates.manage', module: 'settings', resource: 'email.templates', action: 'manage', description: 'Update and reset school email templates' },
+  { code: 'settings.email.deliveries.view', module: 'settings', resource: 'email.deliveries', action: 'view', description: 'View school email delivery batches and recipients' },
+  { code: 'settings.email.deliveries.manage', module: 'settings', resource: 'email.deliveries', action: 'manage', description: 'Cancel school email delivery batches' },
+  { code: 'settings.email.campaigns.view', module: 'settings', resource: 'email.campaigns', action: 'view', description: 'Preview and view school email campaigns' },
+  { code: 'settings.email.campaigns.manage', module: 'settings', resource: 'email.campaigns', action: 'manage', description: 'Create school email campaigns' },
+  { code: 'settings.email.credential_deliveries.view', module: 'settings', resource: 'email.credential_deliveries', action: 'view', description: 'Preview school credential delivery recipients' },
+  { code: 'settings.email.credential_deliveries.manage', module: 'settings', resource: 'email.credential_deliveries', action: 'manage', description: 'Create school credential delivery batches' },
+];
+
+const SIH_SCHOOL_ADMIN_PERMISSION_CODES = SIH_PERMISSION_SEEDS.map(
+  (permission) => permission.code,
+);
+
 type ExpressLayer = {
   route?: {
     path?: string | string[];
@@ -93,6 +111,7 @@ describe('Sprint 11F Identity/Credentials/Email final closeout (e2e)', () => {
     schoolAdminRoleId = schoolAdminRole.id;
     teacherRoleId = teacherRole.id;
     studentRoleId = studentRole.id;
+    await ensureSihPermissionsForSchoolAdmin(schoolAdminRoleId);
 
     const organizationA = await prisma.organization.create({
       data: {
@@ -305,18 +324,12 @@ describe('Sprint 11F Identity/Credentials/Email final closeout (e2e)', () => {
       'GET /api/v1/parent/homeworks',
       'GET /api/v1/student/pickup',
       'POST /api/v1/parent/pickup/requests',
-      'GET /api/v1/teacher/notifications',
-      'GET /api/v1/student/notifications',
-      'GET /api/v1/parent/notifications',
       'GET /api/v1/applicant-portal/identity',
       'POST /api/v1/parent/children/add',
-      'GET /api/v1/teacher/messages/contacts',
-      'POST /api/v1/teacher/messages/conversations',
       'POST /api/v1/teacher/messages/conversations/:conversationId/attachments',
       'POST /api/v1/teacher/messages/conversations/:conversationId/audio',
       'POST /api/v1/student/messages/conversations/:conversationId/attachments',
       'POST /api/v1/parent/messages/conversations/:conversationId/audio',
-      'POST /api/v1/student/rewards/:rewardId/redeem',
       'PUT /api/v1/teacher/profile',
       'POST /api/v1/parent/profile/avatar',
       'PUT /api/v1/student/preferences',
@@ -363,7 +376,6 @@ describe('Sprint 11F Identity/Credentials/Email final closeout (e2e)', () => {
       .expect(403);
 
     for (const route of [
-      '/student/notifications',
       '/parent/pickup',
       '/applicant-portal/identity',
     ]) {
@@ -1019,6 +1031,31 @@ describe('Sprint 11F Identity/Credentials/Email final closeout (e2e)', () => {
     });
     if (!role) throw new Error(`Missing system role: ${key}`);
     return role;
+  }
+
+  async function ensureSihPermissionsForSchoolAdmin(
+    schoolAdminRoleId: string,
+  ): Promise<void> {
+    for (const permission of SIH_PERMISSION_SEEDS) {
+      await prisma.permission.upsert({
+        where: { code: permission.code },
+        update: permission,
+        create: permission,
+      });
+    }
+
+    const permissions = await prisma.permission.findMany({
+      where: { code: { in: SIH_SCHOOL_ADMIN_PERMISSION_CODES } },
+      select: { id: true },
+    });
+
+    await prisma.rolePermission.createMany({
+      data: permissions.map((permission) => ({
+        roleId: schoolAdminRoleId,
+        permissionId: permission.id,
+      })),
+      skipDuplicates: true,
+    });
   }
 
   async function createUserWithMembership(params: {

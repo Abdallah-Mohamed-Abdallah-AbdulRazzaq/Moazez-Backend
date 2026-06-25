@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
-import type { UserType } from '@prisma/client';
+import { UserStatus, type UserType } from '@prisma/client';
 import { PUBLIC_ROUTE_METADATA } from '../decorators/public-route.decorator';
 import { setActor } from '../context/request-context';
 import {
@@ -13,6 +13,7 @@ import {
   TokenService,
 } from '../../modules/iam/auth/domain/token.service';
 import {
+  AccountDisabledException,
   SessionRevokedException,
   TokenInvalidException,
 } from '../../modules/iam/auth/domain/auth.exceptions';
@@ -48,6 +49,14 @@ export class JwtAuthGuard implements CanActivate {
     const session = await this.authRepository.findSessionById(payload.sid);
     if (!session) throw new TokenInvalidException();
     if (session.revokedAt) throw new SessionRevokedException();
+    if (session.userId !== payload.sub) throw new TokenInvalidException();
+
+    const user = await this.authRepository.findUserById(payload.sub);
+    if (!user) throw new TokenInvalidException();
+    if (user.status !== UserStatus.ACTIVE) {
+      await this.authRepository.revokeUserSessions(user.id);
+      throw new AccountDisabledException();
+    }
 
     setActor({
       id: payload.sub,
