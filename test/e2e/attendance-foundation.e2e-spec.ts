@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   AttendanceMode,
   AttendanceScopeType,
+  AttendanceSessionStatus,
   AttendanceStatus,
   DailyComputationStrategy,
   PrismaClient,
@@ -980,6 +981,192 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
         expect.objectContaining({ action: 'attendance.session.unsubmit' }),
       ]),
     );
+  });
+
+  it('normalizes draft PRESENT entries by linked policy thresholds without changing submit semantics', async () => {
+    const { accessToken } = await login();
+    const fixture = await createAttendancePrerequisites();
+    const policyNameSuffix = randomUUID().split('-')[0];
+
+    const createPolicyResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/attendance/policies`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: fixture.academicYearId,
+        termId: fixture.termId,
+        nameAr: `Sprint 2F Threshold Policy ${policyNameSuffix} AR`,
+        nameEn: `Sprint 2F Threshold Policy ${policyNameSuffix}`,
+        scopeType: AttendanceScopeType.CLASSROOM,
+        classroomId: fixture.classroomId,
+        mode: AttendanceMode.DAILY,
+        lateThresholdMinutes: 10,
+        earlyLeaveThresholdMinutes: 12,
+        effectiveStartDate: fixture.termStartDate,
+        effectiveEndDate: fixture.termEndDate,
+        isActive: true,
+      })
+      .expect(201);
+
+    cleanupState.policyIds.add(createPolicyResponse.body.id);
+
+    const resolveSessionResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/attendance/roll-call/session/resolve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        ...attendanceScopeQuery(fixture),
+        mode: AttendanceMode.DAILY,
+      })
+      .expect(201);
+
+    const sessionId = resolveSessionResponse.body.session.id;
+    cleanupState.sessionIds.add(sessionId);
+
+    expect(resolveSessionResponse.body.session).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        policyId: createPolicyResponse.body.id,
+        status: AttendanceSessionStatus.DRAFT,
+      }),
+    );
+
+    const belowThresholdResponse = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${sessionId}/entries/${fixture.presentStudentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        status: AttendanceStatus.PRESENT,
+        lateMinutes: 9,
+      })
+      .expect(200);
+
+    cleanupState.entryIds.add(belowThresholdResponse.body.id);
+    expect(belowThresholdResponse.body).toEqual(
+      expect.objectContaining({
+        sessionId,
+        studentId: fixture.presentStudentId,
+        status: AttendanceStatus.PRESENT,
+        lateMinutes: 9,
+      }),
+    );
+
+    const lateThresholdResponse = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${sessionId}/entries/${fixture.presentStudentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        status: AttendanceStatus.PRESENT,
+        lateMinutes: 15,
+        earlyLeaveMinutes: 3,
+      })
+      .expect(200);
+
+    cleanupState.entryIds.add(lateThresholdResponse.body.id);
+    expect(lateThresholdResponse.body).toEqual(
+      expect.objectContaining({
+        sessionId,
+        studentId: fixture.presentStudentId,
+        status: AttendanceStatus.LATE,
+        lateMinutes: 15,
+        earlyLeaveMinutes: null,
+      }),
+    );
+
+    const earlyLeaveThresholdResponse = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${sessionId}/entries/${fixture.absentStudentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        status: AttendanceStatus.PRESENT,
+        lateMinutes: 3,
+        earlyLeaveMinutes: 14,
+      })
+      .expect(200);
+
+    cleanupState.entryIds.add(earlyLeaveThresholdResponse.body.id);
+    expect(earlyLeaveThresholdResponse.body).toEqual(
+      expect.objectContaining({
+        sessionId,
+        studentId: fixture.absentStudentId,
+        status: AttendanceStatus.EARLY_LEAVE,
+        lateMinutes: null,
+        earlyLeaveMinutes: 14,
+      }),
+    );
+
+    const ambiguousThresholdResponse = await request(app.getHttpServer())
+      .put(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${sessionId}/entries/${fixture.absentStudentId}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        status: AttendanceStatus.PRESENT,
+        lateMinutes: 15,
+        earlyLeaveMinutes: 14,
+      })
+      .expect(400);
+
+    expect(ambiguousThresholdResponse.body?.error?.code).toBe(
+      'validation.failed',
+    );
+    expect(ambiguousThresholdResponse.body?.error?.details).toEqual(
+      expect.objectContaining({
+        field: 'status',
+        studentId: fixture.absentStudentId,
+        lateMinutes: 15,
+        earlyLeaveMinutes: 14,
+        lateThresholdMinutes: 10,
+        earlyLeaveThresholdMinutes: 12,
+        reason: 'ambiguous_threshold_match',
+      }),
+    );
+    expect(JSON.stringify(ambiguousThresholdResponse.body)).not.toContain(
+      'schoolId',
+    );
+    expect(JSON.stringify(ambiguousThresholdResponse.body)).not.toContain(
+      'organizationId',
+    );
+
+    const submitResponse = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${sessionId}/submit`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+
+    expect(submitResponse.body.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          studentId: fixture.presentStudentId,
+          status: AttendanceStatus.LATE,
+          lateMinutes: 15,
+        }),
+        expect.objectContaining({
+          studentId: fixture.absentStudentId,
+          status: AttendanceStatus.EARLY_LEAVE,
+          earlyLeaveMinutes: 14,
+        }),
+      ]),
+    );
+
+    const reportsSummaryResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/attendance/reports/summary`)
+      .query(attendanceReadQuery(fixture))
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(reportsSummaryResponse.body).toMatchObject({
+      totalSessions: 1,
+      totalEntries: 2,
+      presentCount: 0,
+      absentCount: 0,
+      lateCount: 1,
+      earlyLeaveCount: 1,
+      incidentCount: 2,
+      affectedStudentsCount: 2,
+    });
   });
 });
 

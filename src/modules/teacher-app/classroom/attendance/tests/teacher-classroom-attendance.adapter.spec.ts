@@ -103,6 +103,34 @@ describe('TeacherClassroomAttendanceAdapter', () => {
     });
   });
 
+  it('keeps Teacher App late writes compatible without minute fields', async () => {
+    const { adapter, saveEntries } = createAdapter();
+
+    await adapter.updateEntries({
+      allocation: allocationFixture(),
+      sessionId: 'session-1',
+      entries: [
+        {
+          studentId: 'student-1',
+          status: 'late',
+          arrivalTime: '2026-09-10T08:15:00.000Z',
+          dismissalTime: '2026-09-10T14:00:00.000Z',
+          note: 'Traffic',
+        },
+      ],
+    });
+
+    expect(saveEntries.execute).toHaveBeenCalledWith('session-1', {
+      entries: [
+        {
+          studentId: 'student-1',
+          status: AttendanceStatus.LATE,
+          note: 'Traffic',
+        },
+      ],
+    });
+  });
+
   it('rejects student updates outside the owned classroom roster', async () => {
     const { adapter, saveEntries } = createAdapter();
 

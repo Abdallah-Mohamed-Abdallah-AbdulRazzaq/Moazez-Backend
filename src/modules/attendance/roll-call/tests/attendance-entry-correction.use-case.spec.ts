@@ -56,6 +56,7 @@ describe('CorrectAttendanceEntryUseCase', () => {
     overrides?: Partial<{
       status: AttendanceSessionStatus;
       term: ReturnType<typeof activeTerm>;
+      policyId: string | null;
     }>,
   ) {
     return {
@@ -75,7 +76,7 @@ describe('CorrectAttendanceEntryUseCase', () => {
       periodKey: 'daily',
       periodLabelAr: null,
       periodLabelEn: null,
-      policyId: null,
+      policyId: overrides?.policyId ?? null,
       status: overrides?.status ?? AttendanceSessionStatus.SUBMITTED,
       submittedAt: new Date('2026-09-15T07:20:00.000Z'),
       submittedById: 'user-1',
@@ -170,6 +171,7 @@ describe('CorrectAttendanceEntryUseCase', () => {
       correctSubmittedEntry: jest
         .fn()
         .mockResolvedValue(correctedEntry({ status: AttendanceStatus.PRESENT })),
+      findPolicyThresholdsById: jest.fn(),
       submitSession: jest.fn(),
       unsubmitSession: jest.fn(),
       ...overrides,
@@ -217,6 +219,52 @@ describe('CorrectAttendanceEntryUseCase', () => {
     expect(result.status).toBe(AttendanceStatus.PRESENT);
     expect(repository.submitSession).not.toHaveBeenCalled();
     expect(repository.unsubmitSession).not.toHaveBeenCalled();
+  });
+
+  it('does not apply policy thresholds during submitted entry correction', async () => {
+    const repository = baseRepository({
+      findSessionEntryForCorrection: jest.fn().mockResolvedValue({
+        session: sessionRecord({ policyId: 'policy-1' }),
+        entry: entryRecord({ status: AttendanceStatus.LATE, lateMinutes: 20 }),
+      }),
+      findPolicyThresholdsById: jest.fn().mockResolvedValue({
+        id: 'policy-1',
+        lateThresholdMinutes: 10,
+        earlyLeaveThresholdMinutes: null,
+      }),
+      correctSubmittedEntry: jest.fn().mockResolvedValue(
+        correctedEntry({
+          status: AttendanceStatus.PRESENT,
+          lateMinutes: null,
+          earlyLeaveMinutes: null,
+        }),
+      ),
+    });
+    const useCase = new CorrectAttendanceEntryUseCase(
+      repository,
+      baseAuthRepository(),
+    );
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute('session-1', 'student-1', {
+        status: AttendanceStatus.PRESENT,
+        lateMinutes: 20,
+        correctionReason: 'Attendance officer verified classroom sheet',
+      }),
+    );
+
+    expect(repository.findPolicyThresholdsById).not.toHaveBeenCalled();
+    expect(repository.correctSubmittedEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        correction: expect.objectContaining({
+          status: AttendanceStatus.PRESENT,
+          lateMinutes: null,
+          earlyLeaveMinutes: null,
+        }),
+      }),
+    );
+    expect(result.status).toBe(AttendanceStatus.PRESENT);
+    expect(result.lateMinutes).toBeNull();
   });
 
   it('corrects a submitted PRESENT entry to LATE when lateMinutes is positive', async () => {

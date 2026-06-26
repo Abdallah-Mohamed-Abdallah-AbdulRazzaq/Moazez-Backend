@@ -14,6 +14,7 @@ import {
   RollCallEntryUpsertInput,
   RollCallRosterEnrollmentRecord,
 } from '../infrastructure/attendance-roll-call.repository';
+import { normalizeDraftEntriesByPolicyThresholds } from '../domain/entry-threshold-normalization';
 import { presentSavedRollCallEntries } from '../presenters/attendance-roll-call.presenter';
 import {
   assertRollCallSessionTermWritable,
@@ -54,13 +55,22 @@ export class SaveRollCallEntriesUseCase {
       scope: scopeFromSession(session),
     });
     const normalizedEntries = normalizeEntriesForRoster(entries, roster);
+    const thresholdPolicy = session.policyId
+      ? await this.attendanceRollCallRepository.findPolicyThresholdsById(
+          session.policyId,
+        )
+      : null;
+    const thresholdNormalizedEntries = normalizeDraftEntriesByPolicyThresholds(
+      normalizedEntries,
+      thresholdPolicy,
+    );
     const savedEntries =
       await this.attendanceRollCallRepository.bulkUpsertEntries({
         schoolId: session.schoolId,
         sessionId: session.id,
         markedById: attendanceScope.actorId,
         markedAt: new Date(),
-        entries: normalizedEntries,
+        entries: thresholdNormalizedEntries,
       });
 
     return { session, entries: savedEntries };

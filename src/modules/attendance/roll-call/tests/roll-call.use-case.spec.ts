@@ -14,6 +14,7 @@ import {
 } from '../../../../common/context/request-context';
 import {
   NotFoundDomainException,
+  ValidationDomainException,
 } from '../../../../common/exceptions/domain-exception';
 import { TimetableAttendancePeriodReferenceService } from '../../../academics/timetable/application/timetable-attendance-period-reference.service';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
@@ -189,6 +190,21 @@ describe('Attendance roll-call use cases', () => {
     };
   }
 
+  function thresholdPolicy(
+    overrides?: Partial<{
+      id: string;
+      lateThresholdMinutes: number | null;
+      earlyLeaveThresholdMinutes: number | null;
+    }>,
+  ) {
+    return {
+      id: overrides?.id ?? 'policy-1',
+      lateThresholdMinutes: overrides?.lateThresholdMinutes ?? null,
+      earlyLeaveThresholdMinutes:
+        overrides?.earlyLeaveThresholdMinutes ?? null,
+    };
+  }
+
   function entryRecord(
     overrides?: Partial<{
       status: AttendanceStatus;
@@ -233,6 +249,7 @@ describe('Attendance roll-call use cases', () => {
       findTermById: jest.fn().mockResolvedValue(activeTerm()),
       findClassroomById: jest.fn().mockResolvedValue(classroomReference()),
       findEffectivePolicyCandidates: jest.fn().mockResolvedValue([]),
+      findPolicyThresholdsById: jest.fn().mockResolvedValue(null),
       findSessionByKey: jest.fn().mockResolvedValue(null),
       createSession: jest.fn().mockImplementation((data) =>
         Promise.resolve(
@@ -734,6 +751,56 @@ describe('Attendance roll-call use cases', () => {
     );
   });
 
+  it('does not inspect policy thresholds or mutate entries when submitting a session', async () => {
+    const repository = baseRepository({
+      findSessionById: jest
+        .fn()
+        .mockResolvedValue(sessionRecord({ policyId: 'policy-1' })),
+      findPolicyThresholdsById: jest
+        .fn()
+        .mockResolvedValue(thresholdPolicy({ lateThresholdMinutes: 10 })),
+      submitSession: jest.fn().mockImplementation((params) =>
+        Promise.resolve(
+          sessionRecord({
+            policyId: 'policy-1',
+            status: AttendanceSessionStatus.SUBMITTED,
+            submittedAt: params.submittedAt,
+            submittedById: params.submittedById,
+            entries: [
+              entryRecord({
+                status: AttendanceStatus.PRESENT,
+                lateMinutes: 20,
+              }),
+            ],
+          }),
+        ),
+      ),
+    });
+    const authRepository = baseAuthRepository();
+    const useCase = new SubmitRollCallSessionUseCase(
+      repository,
+      authRepository,
+    );
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute('session-1'),
+    );
+
+    expect(repository.findPolicyThresholdsById).not.toHaveBeenCalled();
+    expect(repository.submitSession).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      schoolId: 'school-1',
+      submittedAt: expect.any(Date),
+      submittedById: 'user-1',
+    });
+    expect(result.entries[0]).toEqual(
+      expect.objectContaining({
+        status: AttendanceStatus.PRESENT,
+        lateMinutes: 20,
+      }),
+    );
+  });
+
   it('rejects submitting an already submitted session', async () => {
     const repository = baseRepository({
       findSessionById: jest.fn().mockResolvedValue(
@@ -916,7 +983,7 @@ describe('Attendance roll-call use cases', () => {
     expect(result.entries[0].id).toBe('entry-1');
   });
 
-  it('does not apply policy thresholds when saving draft entries', async () => {
+  it('leaves draft PRESENT entries unchanged when the session has no linked policy', async () => {
     const repository = baseRepository({
       bulkUpsertEntries: jest.fn().mockImplementation((params) =>
         Promise.resolve([
@@ -958,6 +1025,420 @@ describe('Attendance roll-call use cases', () => {
         lateMinutes: 20,
       }),
     );
+    expect(repository.findPolicyThresholdsById).not.toHaveBeenCalled();
+  });
+
+  it('converts draft PRESENT entries to LATE when lateMinutes meets the linked policy threshold', async () => {
+    const repository = baseRepository({
+      findSessionById: jest
+        .fn()
+        .mockResolvedValue(sessionRecord({ policyId: 'policy-1' })),
+      findPolicyThresholdsById: jest
+        .fn()
+        .mockResolvedValue(thresholdPolicy({ lateThresholdMinutes: 10 })),
+      bulkUpsertEntries: jest.fn().mockImplementation((params) =>
+        Promise.resolve([
+          entryRecord({
+            status: params.entries[0].status,
+            lateMinutes: params.entries[0].lateMinutes,
+            earlyLeaveMinutes: params.entries[0].earlyLeaveMinutes,
+          }),
+        ]),
+      ),
+    });
+    const useCase = new SaveRollCallEntriesUseCase(repository);
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute('session-1', {
+        entries: [
+          {
+            studentId: 'student-1',
+            status: AttendanceStatus.PRESENT,
+            lateMinutes: 10,
+            earlyLeaveMinutes: 3,
+          },
+        ],
+      }),
+    );
+
+    expect(repository.findPolicyThresholdsById).toHaveBeenCalledWith(
+      'policy-1',
+    );
+    expect(repository.bulkUpsertEntries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entries: [
+          expect.objectContaining({
+            studentId: 'student-1',
+            status: AttendanceStatus.LATE,
+            lateMinutes: 10,
+            earlyLeaveMinutes: null,
+          }),
+        ],
+      }),
+    );
+    expect(result.entries[0]).toEqual(
+      expect.objectContaining({
+        status: AttendanceStatus.LATE,
+        lateMinutes: 10,
+        earlyLeaveMinutes: null,
+      }),
+    );
+  });
+
+  it('converts draft PRESENT entries to EARLY_LEAVE when earlyLeaveMinutes meets the linked policy threshold', async () => {
+    const repository = baseRepository({
+      findSessionById: jest
+        .fn()
+        .mockResolvedValue(sessionRecord({ policyId: 'policy-1' })),
+      findPolicyThresholdsById: jest.fn().mockResolvedValue(
+        thresholdPolicy({
+          earlyLeaveThresholdMinutes: 12,
+        }),
+      ),
+      bulkUpsertEntries: jest.fn().mockImplementation((params) =>
+        Promise.resolve([
+          entryRecord({
+            status: params.entries[0].status,
+            lateMinutes: params.entries[0].lateMinutes,
+            earlyLeaveMinutes: params.entries[0].earlyLeaveMinutes,
+          }),
+        ]),
+      ),
+    });
+    const useCase = new SaveRollCallEntriesUseCase(repository);
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute('session-1', {
+        entries: [
+          {
+            studentId: 'student-1',
+            status: AttendanceStatus.PRESENT,
+            lateMinutes: 3,
+            earlyLeaveMinutes: 12,
+          },
+        ],
+      }),
+    );
+
+    expect(repository.bulkUpsertEntries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entries: [
+          expect.objectContaining({
+            studentId: 'student-1',
+            status: AttendanceStatus.EARLY_LEAVE,
+            lateMinutes: null,
+            earlyLeaveMinutes: 12,
+          }),
+        ],
+      }),
+    );
+    expect(result.entries[0]).toEqual(
+      expect.objectContaining({
+        status: AttendanceStatus.EARLY_LEAVE,
+        lateMinutes: null,
+        earlyLeaveMinutes: 12,
+      }),
+    );
+  });
+
+  it('leaves draft PRESENT entries unchanged when minute values are below configured thresholds', async () => {
+    const repository = baseRepository({
+      findSessionById: jest
+        .fn()
+        .mockResolvedValue(sessionRecord({ policyId: 'policy-1' })),
+      findPolicyThresholdsById: jest.fn().mockResolvedValue(
+        thresholdPolicy({
+          lateThresholdMinutes: 10,
+          earlyLeaveThresholdMinutes: 12,
+        }),
+      ),
+      bulkUpsertEntries: jest.fn().mockImplementation((params) =>
+        Promise.resolve([
+          entryRecord({
+            status: params.entries[0].status,
+            lateMinutes: params.entries[0].lateMinutes,
+            earlyLeaveMinutes: params.entries[0].earlyLeaveMinutes,
+          }),
+        ]),
+      ),
+    });
+    const useCase = new SaveRollCallEntriesUseCase(repository);
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute('session-1', {
+        entries: [
+          {
+            studentId: 'student-1',
+            status: AttendanceStatus.PRESENT,
+            lateMinutes: 9,
+            earlyLeaveMinutes: 11,
+          },
+        ],
+      }),
+    );
+
+    expect(repository.bulkUpsertEntries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entries: [
+          expect.objectContaining({
+            status: AttendanceStatus.PRESENT,
+            lateMinutes: 9,
+            earlyLeaveMinutes: 11,
+          }),
+        ],
+      }),
+    );
+    expect(result.entries[0]).toEqual(
+      expect.objectContaining({
+        status: AttendanceStatus.PRESENT,
+        lateMinutes: 9,
+        earlyLeaveMinutes: 11,
+      }),
+    );
+  });
+
+  it('leaves draft PRESENT entries unchanged when linked policy thresholds are null', async () => {
+    const repository = baseRepository({
+      findSessionById: jest
+        .fn()
+        .mockResolvedValue(sessionRecord({ policyId: 'policy-1' })),
+      findPolicyThresholdsById: jest
+        .fn()
+        .mockResolvedValue(thresholdPolicy()),
+      bulkUpsertEntries: jest.fn().mockImplementation((params) =>
+        Promise.resolve([
+          entryRecord({
+            status: params.entries[0].status,
+            lateMinutes: params.entries[0].lateMinutes,
+            earlyLeaveMinutes: params.entries[0].earlyLeaveMinutes,
+          }),
+        ]),
+      ),
+    });
+    const useCase = new SaveRollCallEntriesUseCase(repository);
+
+    await withAttendanceScope(() =>
+      useCase.execute('session-1', {
+        entries: [
+          {
+            studentId: 'student-1',
+            status: AttendanceStatus.PRESENT,
+            lateMinutes: 20,
+            earlyLeaveMinutes: 20,
+          },
+        ],
+      }),
+    );
+
+    expect(repository.bulkUpsertEntries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entries: [
+          expect.objectContaining({
+            status: AttendanceStatus.PRESENT,
+            lateMinutes: 20,
+            earlyLeaveMinutes: 20,
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('leaves explicit LATE and EARLY_LEAVE draft entries unchanged when minutes are missing', async () => {
+    const repository = baseRepository({
+      findSessionById: jest
+        .fn()
+        .mockResolvedValue(sessionRecord({ policyId: 'policy-1' })),
+      listRosterStudents: jest.fn().mockResolvedValue([
+        rosterEnrollment({ studentId: 'student-1' }),
+        {
+          ...rosterEnrollment({ studentId: 'student-2' }),
+          id: 'enrollment-2',
+        },
+      ]),
+      findPolicyThresholdsById: jest.fn().mockResolvedValue(
+        thresholdPolicy({
+          lateThresholdMinutes: 10,
+          earlyLeaveThresholdMinutes: 12,
+        }),
+      ),
+      bulkUpsertEntries: jest.fn().mockImplementation((params) =>
+        Promise.resolve(
+          params.entries.map((entry, index) =>
+            entryRecord({
+              status: entry.status,
+              lateMinutes: entry.lateMinutes,
+              earlyLeaveMinutes: entry.earlyLeaveMinutes,
+              note: `entry-${index + 1}`,
+            }),
+          ),
+        ),
+      ),
+    });
+    const useCase = new SaveRollCallEntriesUseCase(repository);
+
+    await withAttendanceScope(() =>
+      useCase.execute('session-1', {
+        entries: [
+          {
+            studentId: 'student-1',
+            status: AttendanceStatus.LATE,
+          },
+          {
+            studentId: 'student-2',
+            status: AttendanceStatus.EARLY_LEAVE,
+          },
+        ],
+      }),
+    );
+
+    expect(repository.bulkUpsertEntries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entries: [
+          expect.objectContaining({
+            studentId: 'student-1',
+            status: AttendanceStatus.LATE,
+            lateMinutes: null,
+            earlyLeaveMinutes: null,
+          }),
+          expect.objectContaining({
+            studentId: 'student-2',
+            status: AttendanceStatus.EARLY_LEAVE,
+            lateMinutes: null,
+            earlyLeaveMinutes: null,
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('rejects draft PRESENT entries that trigger both late and early-leave thresholds', async () => {
+    const repository = baseRepository({
+      findSessionById: jest
+        .fn()
+        .mockResolvedValue(sessionRecord({ policyId: 'policy-1' })),
+      findPolicyThresholdsById: jest.fn().mockResolvedValue(
+        thresholdPolicy({
+          lateThresholdMinutes: 10,
+          earlyLeaveThresholdMinutes: 12,
+        }),
+      ),
+      bulkUpsertEntries: jest.fn(),
+    });
+    const useCase = new SaveRollCallEntriesUseCase(repository);
+
+    await expect(
+      withAttendanceScope(() =>
+        useCase.execute('session-1', {
+          entries: [
+            {
+              studentId: 'student-1',
+              status: AttendanceStatus.PRESENT,
+              lateMinutes: 10,
+              earlyLeaveMinutes: 12,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      message:
+        'Attendance entry cannot match both late and early-leave thresholds',
+      details: {
+        field: 'status',
+        studentId: 'student-1',
+        lateMinutes: 10,
+        earlyLeaveMinutes: 12,
+        lateThresholdMinutes: 10,
+        earlyLeaveThresholdMinutes: 12,
+        reason: 'ambiguous_threshold_match',
+      },
+    });
+    expect(repository.bulkUpsertEntries).not.toHaveBeenCalled();
+  });
+
+  it('keeps ambiguous threshold validation details free of tenant internals', async () => {
+    const repository = baseRepository({
+      findSessionById: jest
+        .fn()
+        .mockResolvedValue(sessionRecord({ policyId: 'policy-1' })),
+      findPolicyThresholdsById: jest.fn().mockResolvedValue(
+        thresholdPolicy({
+          lateThresholdMinutes: 10,
+          earlyLeaveThresholdMinutes: 12,
+        }),
+      ),
+      bulkUpsertEntries: jest.fn(),
+    });
+    const useCase = new SaveRollCallEntriesUseCase(repository);
+
+    try {
+      await withAttendanceScope(() =>
+        useCase.execute('session-1', {
+          entries: [
+            {
+              studentId: 'student-1',
+              status: AttendanceStatus.PRESENT,
+              lateMinutes: 10,
+              earlyLeaveMinutes: 12,
+            },
+          ],
+        }),
+      );
+      throw new Error('Expected ambiguous threshold validation to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ValidationDomainException);
+      const details = (error as ValidationDomainException).details ?? {};
+      expect(details).not.toHaveProperty('schoolId');
+      expect(details).not.toHaveProperty('organizationId');
+      expect(details).not.toHaveProperty('membershipId');
+      expect(details).not.toHaveProperty('roleId');
+      expect(details).not.toHaveProperty('deletedAt');
+      expect(details).not.toHaveProperty('actorId');
+    }
+  });
+
+  it('applies threshold normalization through targeted entry upsert', async () => {
+    const repository = baseRepository({
+      findSessionById: jest
+        .fn()
+        .mockResolvedValue(sessionRecord({ policyId: 'policy-1' })),
+      findPolicyThresholdsById: jest
+        .fn()
+        .mockResolvedValue(thresholdPolicy({ lateThresholdMinutes: 10 })),
+      bulkUpsertEntries: jest.fn().mockImplementation((params) =>
+        Promise.resolve([
+          entryRecord({
+            status: params.entries[0].status,
+            lateMinutes: params.entries[0].lateMinutes,
+            earlyLeaveMinutes: params.entries[0].earlyLeaveMinutes,
+          }),
+        ]),
+      ),
+    });
+    const saveUseCase = new SaveRollCallEntriesUseCase(repository);
+    const useCase = new UpsertRollCallEntryUseCase(saveUseCase);
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute('session-1', 'student-1', {
+        status: AttendanceStatus.PRESENT,
+        lateMinutes: 15,
+      }),
+    );
+
+    expect(repository.bulkUpsertEntries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entries: [
+          expect.objectContaining({
+            studentId: 'student-1',
+            status: AttendanceStatus.LATE,
+            lateMinutes: 15,
+            earlyLeaveMinutes: null,
+          }),
+        ],
+      }),
+    );
+    expect(result.status).toBe(AttendanceStatus.LATE);
+    expect(result.lateMinutes).toBe(15);
   });
 
   it('rejects draft entry mutation when session is not DRAFT', async () => {

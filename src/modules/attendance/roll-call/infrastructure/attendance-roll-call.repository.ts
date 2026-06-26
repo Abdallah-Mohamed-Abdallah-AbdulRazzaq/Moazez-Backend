@@ -90,6 +90,15 @@ const EFFECTIVE_POLICY_ARGS =
     },
   });
 
+const POLICY_THRESHOLD_ARGS =
+  Prisma.validator<Prisma.AttendancePolicyDefaultArgs>()({
+    select: {
+      id: true,
+      lateThresholdMinutes: true,
+      earlyLeaveThresholdMinutes: true,
+    },
+  });
+
 const ROSTER_ENROLLMENT_ARGS =
   Prisma.validator<Prisma.EnrollmentDefaultArgs>()({
     select: {
@@ -294,6 +303,9 @@ export type ClassroomReferenceRecord = Prisma.ClassroomGetPayload<
 export type EffectiveAttendancePolicyRecord = Prisma.AttendancePolicyGetPayload<
   typeof EFFECTIVE_POLICY_ARGS
 >;
+export type RollCallPolicyThresholdRecord = Prisma.AttendancePolicyGetPayload<
+  typeof POLICY_THRESHOLD_ARGS
+>;
 export type RollCallRosterEnrollmentRecord = Prisma.EnrollmentGetPayload<
   typeof ROSTER_ENROLLMENT_ARGS
 >;
@@ -462,6 +474,15 @@ export class AttendanceRollCallRepository {
       },
       orderBy: [{ updatedAt: 'desc' }],
       ...EFFECTIVE_POLICY_ARGS,
+    });
+  }
+
+  findPolicyThresholdsById(
+    policyId: string,
+  ): Promise<RollCallPolicyThresholdRecord | null> {
+    return this.scopedPrisma.attendancePolicy.findFirst({
+      where: { id: policyId },
+      ...POLICY_THRESHOLD_ARGS,
     });
   }
 
