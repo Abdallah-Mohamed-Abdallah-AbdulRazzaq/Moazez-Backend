@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../iam/auth/auth.module';
+import { GetDerivedDailyAbsencesReportUseCase } from './application/get-derived-daily-absences-report.use-case';
 import { GetAttendanceDailyTrendUseCase } from './application/get-attendance-daily-trend.use-case';
 import { GetAttendanceScopeBreakdownUseCase } from './application/get-attendance-scope-breakdown.use-case';
 import { GetAttendanceSummaryReportUseCase } from './application/get-attendance-summary-report.use-case';
@@ -14,6 +15,7 @@ import { AttendanceReportsRepository } from './infrastructure/attendance-reports
     GetAttendanceSummaryReportUseCase,
     GetAttendanceDailyTrendUseCase,
     GetAttendanceScopeBreakdownUseCase,
+    GetDerivedDailyAbsencesReportUseCase,
   ],
 })
 export class ReportsModule {}

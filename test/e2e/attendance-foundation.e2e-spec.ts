@@ -357,36 +357,32 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
     });
     cleanupState.timetableConfigIds.add(timetableConfig.id);
 
-    const [firstPeriod, secondPeriod] = await Promise.all([
-      prisma.timetablePeriod.create({
-        data: {
-          schoolId: demoSchoolId,
-          timetableConfigId: timetableConfig.id,
-          periodIndex: 1,
-          label: `Sprint 3A Period 1 ${suffix}`,
-          startTime: '08:00',
-          endTime: '08:45',
-          type: TimetablePeriodType.CLASS,
-          isInstructional: true,
-        },
-        select: { id: true },
-      }),
-      prisma.timetablePeriod.create({
-        data: {
-          schoolId: demoSchoolId,
-          timetableConfigId: timetableConfig.id,
-          periodIndex: 2,
-          label: `Sprint 3A Period 2 ${suffix}`,
-          startTime: '08:50',
-          endTime: '09:35',
-          type: TimetablePeriodType.CLASS,
-          isInstructional: true,
-        },
-        select: { id: true },
-      }),
-    ]);
-    cleanupState.timetablePeriodIds.add(firstPeriod.id);
-    cleanupState.timetablePeriodIds.add(secondPeriod.id);
+    const periods = await Promise.all(
+      [
+        ['08:00', '08:45'],
+        ['08:50', '09:35'],
+        ['09:40', '10:25'],
+        ['10:30', '11:15'],
+        ['11:20', '12:05'],
+      ].map(([startTime, endTime], index) =>
+        prisma.timetablePeriod.create({
+          data: {
+            schoolId: demoSchoolId,
+            timetableConfigId: timetableConfig.id,
+            periodIndex: index + 1,
+            label: `Sprint 3A Period ${index + 1} ${suffix}`,
+            startTime,
+            endTime,
+            type: TimetablePeriodType.CLASS,
+            isInstructional: true,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    for (const period of periods) {
+      cleanupState.timetablePeriodIds.add(period.id);
+    }
 
     const [presentStudent, absentStudent] = await Promise.all([
       prisma.student.create({
@@ -454,7 +450,7 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
       absentStudentId: absentStudent.id,
       presentEnrollmentId: presentEnrollment.id,
       absentEnrollmentId: absentEnrollment.id,
-      selectedPeriodIds: [firstPeriod.id, secondPeriod.id],
+      selectedPeriodIds: periods.map((period) => period.id),
     };
   }
 
@@ -981,6 +977,170 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
         expect.objectContaining({ action: 'attendance.session.unsubmit' }),
       ]),
     );
+  });
+
+  it('reports derived daily absences from submitted selected period evidence only', async () => {
+    const { accessToken } = await login();
+    const fixture = await createAttendancePrerequisites();
+    const policyNameSuffix = randomUUID().split('-')[0];
+
+    const createPolicyResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/attendance/policies`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: fixture.academicYearId,
+        termId: fixture.termId,
+        nameAr: `Sprint 2H Derived Policy ${policyNameSuffix} AR`,
+        nameEn: `Sprint 2H Derived Policy ${policyNameSuffix}`,
+        scopeType: AttendanceScopeType.CLASSROOM,
+        classroomId: fixture.classroomId,
+        mode: AttendanceMode.DAILY,
+        dailyComputationStrategy: DailyComputationStrategy.DERIVED_FROM_PERIODS,
+        selectedPeriodIds: fixture.selectedPeriodIds,
+        absentIfMissedPeriodsCount: 2,
+        effectiveStartDate: fixture.termStartDate,
+        effectiveEndDate: fixture.termEndDate,
+        isActive: true,
+      })
+      .expect(201);
+
+    cleanupState.policyIds.add(createPolicyResponse.body.id);
+
+    const periodStatuses = [
+      AttendanceStatus.PRESENT,
+      AttendanceStatus.LATE,
+      AttendanceStatus.EARLY_LEAVE,
+      AttendanceStatus.EXCUSED,
+      AttendanceStatus.UNMARKED,
+    ];
+
+    for (const [index, periodId] of fixture.selectedPeriodIds.entries()) {
+      const resolvePeriodResponse = await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/attendance/roll-call/session/resolve`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          ...attendanceScopeQuery(fixture),
+          mode: AttendanceMode.PERIOD,
+          periodKey: `att-pol-2h-${policyNameSuffix}-${index + 1}`,
+          periodId,
+          periodLabelEn: `Derived Period ${index + 1}`,
+        })
+        .expect(201);
+
+      const periodSessionId = resolvePeriodResponse.body.session.id;
+      cleanupState.sessionIds.add(periodSessionId);
+
+      const saveResponse = await request(app.getHttpServer())
+        .put(
+          `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${periodSessionId}/entries`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          entries: [
+            {
+              studentId: fixture.absentStudentId,
+              status:
+                index < 2 ? AttendanceStatus.ABSENT : AttendanceStatus.PRESENT,
+            },
+            {
+              studentId: fixture.presentStudentId,
+              status: periodStatuses[index],
+              lateMinutes:
+                periodStatuses[index] === AttendanceStatus.LATE ? 6 : null,
+              earlyLeaveMinutes:
+                periodStatuses[index] === AttendanceStatus.EARLY_LEAVE
+                  ? 6
+                  : null,
+            },
+          ],
+        })
+        .expect(200);
+
+      for (const entry of saveResponse.body.entries) {
+        cleanupState.entryIds.add(entry.id);
+      }
+
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${periodSessionId}/submit`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(201);
+    }
+
+    const reportResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/attendance/reports/derived-daily-absences`)
+      .query(attendanceReadQuery(fixture))
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(reportResponse.body.items).toHaveLength(1);
+    expect(reportResponse.body.items[0]).toEqual(
+      expect.objectContaining({
+        date: fixture.attendanceDate,
+        studentId: fixture.absentStudentId,
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: `classroom:${fixture.classroomId}`,
+        policyId: createPolicyResponse.body.id,
+        missedPeriodCount: 2,
+        requiredMissedPeriodsCount: 2,
+        evidencePeriodCount: fixture.selectedPeriodIds.length,
+        derivedStatus: AttendanceStatus.ABSENT,
+        source: DailyComputationStrategy.DERIVED_FROM_PERIODS,
+        reportOnly: true,
+      }),
+    );
+    expect(reportResponse.body.items[0].missedPeriodIds).toEqual(
+      expect.arrayContaining([
+        fixture.selectedPeriodIds[0],
+        fixture.selectedPeriodIds[1],
+      ]),
+    );
+    expect(reportResponse.body.items[0].missedPeriodIds).toHaveLength(2);
+    expect(reportResponse.body.items[0].sourcePeriodIds).toEqual(
+      expect.arrayContaining(fixture.selectedPeriodIds),
+    );
+    expect(
+      reportResponse.body.items.some(
+        (item: { studentId: string }) =>
+          item.studentId === fixture.presentStudentId,
+      ),
+    ).toBe(false);
+    expect(JSON.stringify(reportResponse.body)).not.toContain('sessionId');
+    expect(JSON.stringify(reportResponse.body)).not.toContain('schoolId');
+    expect(JSON.stringify(reportResponse.body)).not.toContain(
+      'organizationId',
+    );
+
+    const dailySessionCount = await prisma.attendanceSession.count({
+      where: {
+        schoolId: demoSchoolId,
+        academicYearId: fixture.academicYearId,
+        termId: fixture.termId,
+        date: new Date(fixture.attendanceDate),
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: `classroom:${fixture.classroomId}`,
+        mode: AttendanceMode.DAILY,
+      },
+    });
+    expect(dailySessionCount).toBe(0);
+
+    const reportsSummaryResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/attendance/reports/summary`)
+      .query(attendanceReadQuery(fixture))
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(reportsSummaryResponse.body).toMatchObject({
+      totalSessions: fixture.selectedPeriodIds.length,
+      totalEntries: fixture.selectedPeriodIds.length * 2,
+      absentCount: 2,
+      lateCount: 1,
+      earlyLeaveCount: 1,
+      excusedCount: 1,
+      unmarkedCount: 1,
+      incidentCount: 5,
+    });
   });
 
   it('normalizes draft PRESENT entries by linked policy thresholds without changing submit semantics', async () => {

@@ -2,6 +2,7 @@ import {
   AttendanceMode,
   AttendanceScopeType,
   AttendanceSessionStatus,
+  DailyComputationStrategy,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import { AttendanceReportsRepository } from '../infrastructure/attendance-reports.repository';
@@ -93,5 +94,60 @@ describe('AttendanceReportsRepository', () => {
       status: AttendanceSessionStatus.SUBMITTED,
       deletedAt: null,
     });
+  });
+
+  it('reads derived daily absence evidence from submitted period sessions only', async () => {
+    const { repository, findMany } = buildRepository();
+    const dateFrom = new Date('2026-09-15T00:00:00.000Z');
+    const dateTo = new Date('2026-09-16T00:00:00.000Z');
+
+    await repository.listDerivedDailyAbsenceEvidence({
+      academicYearId: 'year-1',
+      termId: 'term-1',
+      dateFrom,
+      dateTo,
+      scopeType: AttendanceScopeType.CLASSROOM,
+      scopeKey: 'classroom:classroom-1',
+      classroomId: 'classroom-1',
+      mode: AttendanceMode.DAILY,
+      periodKey: 'ignored-period-key',
+    });
+
+    expect(findMany.mock.calls[0][0].where.session).toMatchObject({
+      status: AttendanceSessionStatus.SUBMITTED,
+      deletedAt: null,
+      academicYearId: 'year-1',
+      termId: 'term-1',
+      date: { gte: dateFrom, lte: dateTo },
+      scopeType: AttendanceScopeType.CLASSROOM,
+      scopeKey: 'classroom:classroom-1',
+      classroomId: 'classroom-1',
+      mode: AttendanceMode.PERIOD,
+      periodId: { not: null },
+      policyId: { not: null },
+      policy: {
+        is: {
+          dailyComputationStrategy:
+            DailyComputationStrategy.DERIVED_FROM_PERIODS,
+          absentIfMissedPeriodsCount: { not: null },
+        },
+      },
+    });
+    expect(findMany.mock.calls[0][0].where.session).not.toHaveProperty(
+      'periodKey',
+    );
+  });
+
+  it('selects only safe derived daily evidence fields', async () => {
+    const { repository, findMany } = buildRepository();
+
+    await repository.listDerivedDailyAbsenceEvidence({});
+
+    const select = findMany.mock.calls[0][0].select;
+    expect(select).not.toHaveProperty('schoolId');
+    expect(select).not.toHaveProperty('markedById');
+    expect(select.session.select).not.toHaveProperty('schoolId');
+    expect(select.session.select).not.toHaveProperty('submittedById');
+    expect(select.session.select).not.toHaveProperty('deletedAt');
   });
 });

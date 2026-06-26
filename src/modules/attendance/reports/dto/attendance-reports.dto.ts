@@ -1,4 +1,9 @@
-import { AttendanceMode, AttendanceScopeType } from '@prisma/client';
+import {
+  AttendanceMode,
+  AttendanceScopeType,
+  AttendanceStatus,
+  DailyComputationStrategy,
+} from '@prisma/client';
 import {
   IsDateString,
   IsEnum,
@@ -82,6 +87,8 @@ export class AttendanceScopeBreakdownReportQueryDto extends AttendanceReportBase
   groupBy!: AttendanceReportScopeGroupBy;
 }
 
+export class DerivedDailyAbsencesReportQueryDto extends AttendanceReportBaseQueryDto {}
+
 export class AttendanceSummaryReportResponseDto {
   totalSessions!: number;
   totalEntries!: number;
@@ -131,4 +138,32 @@ export class AttendanceScopeBreakdownReportRowResponseDto {
 
 export class AttendanceScopeBreakdownReportResponseDto {
   items!: AttendanceScopeBreakdownReportRowResponseDto[];
+}
+
+export class DerivedDailyAbsenceScopeIdsResponseDto {
+  stageId!: string | null;
+  gradeId!: string | null;
+  sectionId!: string | null;
+  classroomId!: string | null;
+}
+
+export class DerivedDailyAbsenceReportRowResponseDto {
+  date!: string;
+  studentId!: string;
+  scopeType!: AttendanceScopeType;
+  scopeKey!: string;
+  scopeIds!: DerivedDailyAbsenceScopeIdsResponseDto;
+  policyId!: string;
+  missedPeriodCount!: number;
+  requiredMissedPeriodsCount!: number;
+  missedPeriodIds!: string[];
+  evidencePeriodCount!: number;
+  sourcePeriodIds!: string[];
+  derivedStatus!: AttendanceStatus;
+  source!: DailyComputationStrategy;
+  reportOnly!: true;
+}
+
+export class DerivedDailyAbsencesReportResponseDto {
+  items!: DerivedDailyAbsenceReportRowResponseDto[];
 }

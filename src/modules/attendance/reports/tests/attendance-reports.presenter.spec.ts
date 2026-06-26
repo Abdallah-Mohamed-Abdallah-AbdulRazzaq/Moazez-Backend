@@ -1,5 +1,11 @@
+import {
+  AttendanceScopeType,
+  AttendanceStatus,
+  DailyComputationStrategy,
+} from '@prisma/client';
 import { AttendanceReportScopeGroupBy } from '../domain/attendance-report';
 import {
+  presentDerivedDailyAbsencesReport,
   presentAttendanceDailyTrendReport,
   presentAttendanceScopeBreakdownReport,
   presentAttendanceSummaryReport,
@@ -97,5 +103,60 @@ describe('Attendance reports presenter', () => {
         },
       ],
     });
+  });
+
+  it('shapes derived daily absence report rows without persisted session fields', () => {
+    const response = presentDerivedDailyAbsencesReport([
+      {
+        date: '2026-09-15',
+        studentId: 'student-1',
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: 'classroom:classroom-1',
+        scopeIds: {
+          stageId: 'stage-1',
+          gradeId: 'grade-1',
+          sectionId: 'section-1',
+          classroomId: 'classroom-1',
+        },
+        policyId: 'policy-1',
+        missedPeriodCount: 2,
+        requiredMissedPeriodsCount: 2,
+        missedPeriodIds: ['period-1', 'period-2'],
+        evidencePeriodCount: 2,
+        sourcePeriodIds: ['period-1', 'period-2'],
+        derivedStatus: AttendanceStatus.ABSENT,
+        source: DailyComputationStrategy.DERIVED_FROM_PERIODS,
+        reportOnly: true,
+      },
+    ]);
+
+    expect(response).toEqual({
+      items: [
+        {
+          date: '2026-09-15',
+          studentId: 'student-1',
+          scopeType: AttendanceScopeType.CLASSROOM,
+          scopeKey: 'classroom:classroom-1',
+          scopeIds: {
+            stageId: 'stage-1',
+            gradeId: 'grade-1',
+            sectionId: 'section-1',
+            classroomId: 'classroom-1',
+          },
+          policyId: 'policy-1',
+          missedPeriodCount: 2,
+          requiredMissedPeriodsCount: 2,
+          missedPeriodIds: ['period-1', 'period-2'],
+          evidencePeriodCount: 2,
+          sourcePeriodIds: ['period-1', 'period-2'],
+          derivedStatus: AttendanceStatus.ABSENT,
+          source: DailyComputationStrategy.DERIVED_FROM_PERIODS,
+          reportOnly: true,
+        },
+      ],
+    });
+    expect(JSON.stringify(response)).not.toContain('sessionId');
+    expect(JSON.stringify(response)).not.toContain('schoolId');
+    expect(JSON.stringify(response)).not.toContain('deletedAt');
   });
 });

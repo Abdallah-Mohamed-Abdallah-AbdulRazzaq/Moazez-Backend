@@ -2,12 +2,14 @@ import {
   AttendanceDailyTrendReportResponseDto,
   AttendanceScopeBreakdownReportResponseDto,
   AttendanceSummaryReportResponseDto,
+  DerivedDailyAbsencesReportResponseDto,
 } from '../dto/attendance-reports.dto';
 import {
   AttendanceDailyTrendRow,
   AttendanceScopeBreakdownRow,
   AttendanceSummaryReport,
 } from '../domain/attendance-report';
+import { DerivedDailyAbsenceRow } from '../domain/derived-daily-attendance';
 
 export function presentAttendanceSummaryReport(
   summary: AttendanceSummaryReport,
@@ -64,6 +66,34 @@ export function presentAttendanceScopeBreakdownReport(
       excusedCount: row.excusedCount,
       attendanceRate: row.attendanceRate,
       incidentCount: row.incidentCount,
+    })),
+  };
+}
+
+export function presentDerivedDailyAbsencesReport(
+  rows: DerivedDailyAbsenceRow[],
+): DerivedDailyAbsencesReportResponseDto {
+  return {
+    items: rows.map((row) => ({
+      date: row.date,
+      studentId: row.studentId,
+      scopeType: row.scopeType,
+      scopeKey: row.scopeKey,
+      scopeIds: {
+        stageId: row.scopeIds.stageId,
+        gradeId: row.scopeIds.gradeId,
+        sectionId: row.scopeIds.sectionId,
+        classroomId: row.scopeIds.classroomId,
+      },
+      policyId: row.policyId,
+      missedPeriodCount: row.missedPeriodCount,
+      requiredMissedPeriodsCount: row.requiredMissedPeriodsCount,
+      missedPeriodIds: row.missedPeriodIds,
+      evidencePeriodCount: row.evidencePeriodCount,
+      sourcePeriodIds: row.sourcePeriodIds,
+      derivedStatus: row.derivedStatus,
+      source: row.source,
+      reportOnly: row.reportOnly,
     })),
   };
 }

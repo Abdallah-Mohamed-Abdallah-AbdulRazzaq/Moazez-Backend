@@ -1788,4 +1788,176 @@ describe('Attendance policies tenancy isolation (security)', () => {
       }),
     ]);
   });
+
+  it('reports derived daily absences without deriving from school B evidence', async () => {
+    const { accessToken } = await login();
+    const reportDate = new Date('2026-09-20T00:00:00.000Z');
+    const demoPeriodId = `${testSuffix}-derived-period-a`;
+    const tenantBPeriodId = `${testSuffix}-derived-period-b`;
+
+    const createdEntryIds: string[] = [];
+    const createdSessionIds: string[] = [];
+    const createdPolicyIds: string[] = [];
+
+    try {
+      const [demoDerivedPolicy, tenantBDerivedPolicy] = await Promise.all([
+        prisma.attendancePolicy.create({
+          data: {
+            schoolId: demoSchoolId,
+            academicYearId: demoYearId,
+            termId: demoTermId,
+            scopeType: AttendanceScopeType.CLASSROOM,
+            scopeKey: `classroom:${demoClassroomId}`,
+            stageId: demoStageId,
+            gradeId: demoGradeId,
+            sectionId: demoSectionId,
+            classroomId: demoClassroomId,
+            nameAr: `${testSuffix}-derived-policy-a-ar`,
+            nameEn: `${testSuffix}-derived-policy-a`,
+            mode: AttendanceMode.DAILY,
+            dailyComputationStrategy:
+              DailyComputationStrategy.DERIVED_FROM_PERIODS,
+            selectedPeriodIds: [demoPeriodId],
+            absentIfMissedPeriodsCount: 1,
+          },
+          select: { id: true },
+        }),
+        prisma.attendancePolicy.create({
+          data: {
+            schoolId: tenantBSchoolId,
+            academicYearId: tenantBYearId,
+            termId: tenantBTermId,
+            scopeType: AttendanceScopeType.CLASSROOM,
+            scopeKey: `classroom:${tenantBClassroomId}`,
+            stageId: tenantBStageId,
+            gradeId: tenantBGradeId,
+            sectionId: tenantBSectionId,
+            classroomId: tenantBClassroomId,
+            nameAr: `${testSuffix}-derived-policy-b-ar`,
+            nameEn: `${testSuffix}-derived-policy-b`,
+            mode: AttendanceMode.DAILY,
+            dailyComputationStrategy:
+              DailyComputationStrategy.DERIVED_FROM_PERIODS,
+            selectedPeriodIds: [tenantBPeriodId],
+            absentIfMissedPeriodsCount: 1,
+          },
+          select: { id: true },
+        }),
+      ]);
+      createdPolicyIds.push(demoDerivedPolicy.id, tenantBDerivedPolicy.id);
+
+      const [demoDerivedSession, tenantBDerivedSession] = await Promise.all([
+        prisma.attendanceSession.create({
+          data: {
+            schoolId: demoSchoolId,
+            academicYearId: demoYearId,
+            termId: demoTermId,
+            date: reportDate,
+            scopeType: AttendanceScopeType.CLASSROOM,
+            scopeKey: `classroom:${demoClassroomId}`,
+            stageId: demoStageId,
+            gradeId: demoGradeId,
+            sectionId: demoSectionId,
+            classroomId: demoClassroomId,
+            mode: AttendanceMode.PERIOD,
+            periodId: demoPeriodId,
+            periodKey: `${testSuffix}-derived-period-a`,
+            policyId: demoDerivedPolicy.id,
+            status: AttendanceSessionStatus.SUBMITTED,
+            submittedAt: new Date('2026-09-20T07:20:00.000Z'),
+          },
+          select: { id: true },
+        }),
+        prisma.attendanceSession.create({
+          data: {
+            schoolId: tenantBSchoolId,
+            academicYearId: tenantBYearId,
+            termId: tenantBTermId,
+            date: reportDate,
+            scopeType: AttendanceScopeType.CLASSROOM,
+            scopeKey: `classroom:${tenantBClassroomId}`,
+            stageId: tenantBStageId,
+            gradeId: tenantBGradeId,
+            sectionId: tenantBSectionId,
+            classroomId: tenantBClassroomId,
+            mode: AttendanceMode.PERIOD,
+            periodId: tenantBPeriodId,
+            periodKey: `${testSuffix}-derived-period-b`,
+            policyId: tenantBDerivedPolicy.id,
+            status: AttendanceSessionStatus.SUBMITTED,
+            submittedAt: new Date('2026-09-20T07:20:00.000Z'),
+          },
+          select: { id: true },
+        }),
+      ]);
+      createdSessionIds.push(demoDerivedSession.id, tenantBDerivedSession.id);
+
+      const [demoDerivedEntry, tenantBDerivedEntry] = await Promise.all([
+        prisma.attendanceEntry.create({
+          data: {
+            schoolId: demoSchoolId,
+            sessionId: demoDerivedSession.id,
+            studentId: demoStudentId,
+            enrollmentId: demoEnrollmentId,
+            status: AttendanceStatus.ABSENT,
+          },
+          select: { id: true },
+        }),
+        prisma.attendanceEntry.create({
+          data: {
+            schoolId: tenantBSchoolId,
+            sessionId: tenantBDerivedSession.id,
+            studentId: tenantBStudentId,
+            enrollmentId: tenantBEnrollmentId,
+            status: AttendanceStatus.ABSENT,
+          },
+          select: { id: true },
+        }),
+      ]);
+      createdEntryIds.push(demoDerivedEntry.id, tenantBDerivedEntry.id);
+
+      const response = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/attendance/reports/derived-daily-absences`)
+        .query({
+          academicYearId: demoYearId,
+          termId: demoTermId,
+          dateFrom: '2026-09-20',
+          dateTo: '2026-09-20',
+        })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(response.body.items).toEqual([
+        expect.objectContaining({
+          studentId: demoStudentId,
+          policyId: demoDerivedPolicy.id,
+          missedPeriodCount: 1,
+          requiredMissedPeriodsCount: 1,
+          missedPeriodIds: [demoPeriodId],
+          derivedStatus: AttendanceStatus.ABSENT,
+          source: DailyComputationStrategy.DERIVED_FROM_PERIODS,
+          reportOnly: true,
+        }),
+      ]);
+
+      const serialized = JSON.stringify(response.body);
+      expect(serialized).not.toContain(tenantBStudentId);
+      expect(serialized).not.toContain(tenantBEnrollmentId);
+      expect(serialized).not.toContain(tenantBDerivedPolicy.id);
+      expect(serialized).not.toContain(tenantBDerivedSession.id);
+      expect(serialized).not.toContain(tenantBDerivedEntry.id);
+      expect(serialized).not.toContain(tenantBPeriodId);
+      expectNoTenantLeak(response.body);
+    } finally {
+      await prisma.attendanceEntry.deleteMany({
+        where: { id: { in: createdEntryIds } },
+      });
+      await prisma.attendanceSession.deleteMany({
+        where: { id: { in: createdSessionIds } },
+      });
+      await prisma.attendancePolicy.deleteMany({
+        where: { id: { in: createdPolicyIds } },
+      });
+    }
+  });
 });

@@ -3,6 +3,7 @@ import {
   AttendanceMode,
   AttendanceScopeType,
   AttendanceSessionStatus,
+  DailyComputationStrategy,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
@@ -150,6 +151,45 @@ const ATTENDANCE_REPORT_ENTRY_ARGS =
     },
   });
 
+const DERIVED_DAILY_ABSENCE_EVIDENCE_ARGS =
+  Prisma.validator<Prisma.AttendanceEntryDefaultArgs>()({
+    select: {
+      id: true,
+      studentId: true,
+      enrollmentId: true,
+      status: true,
+      updatedAt: true,
+      session: {
+        select: {
+          id: true,
+          date: true,
+          scopeType: true,
+          scopeKey: true,
+          stageId: true,
+          gradeId: true,
+          sectionId: true,
+          classroomId: true,
+          mode: true,
+          periodId: true,
+          periodKey: true,
+          policyId: true,
+          status: true,
+          submittedAt: true,
+          updatedAt: true,
+          policy: {
+            select: {
+              id: true,
+              dailyComputationStrategy: true,
+              selectedPeriodIds: true,
+              absentIfMissedPeriodsCount: true,
+              updatedAt: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
 export type AcademicYearReferenceRecord = Prisma.AcademicYearGetPayload<
   typeof ACADEMIC_YEAR_REFERENCE_ARGS
 >;
@@ -171,6 +211,8 @@ export type ClassroomReferenceRecord = Prisma.ClassroomGetPayload<
 export type AttendanceReportEntryRecord = Prisma.AttendanceEntryGetPayload<
   typeof ATTENDANCE_REPORT_ENTRY_ARGS
 >;
+export type DerivedDailyAbsenceEvidenceRecord =
+  Prisma.AttendanceEntryGetPayload<typeof DERIVED_DAILY_ABSENCE_EVIDENCE_ARGS>;
 
 export interface AttendanceReportFilters {
   academicYearId?: string;
@@ -234,6 +276,40 @@ export class AttendanceReportsRepository {
       where: this.buildSubmittedEntryWhere(filters),
       orderBy: [{ session: { date: 'asc' } }, { id: 'asc' }],
       ...ATTENDANCE_REPORT_ENTRY_ARGS,
+    });
+  }
+
+  listDerivedDailyAbsenceEvidence(
+    filters: AttendanceReportFilters,
+  ): Promise<DerivedDailyAbsenceEvidenceRecord[]> {
+    const derivedFilters: AttendanceReportFilters = {
+      ...filters,
+      mode: AttendanceMode.PERIOD,
+      periodKey: undefined,
+    };
+
+    return this.scopedPrisma.attendanceEntry.findMany({
+      where: {
+        session: {
+          ...this.buildSubmittedSessionWhere(derivedFilters),
+          periodId: { not: null },
+          policyId: { not: null },
+          policy: {
+            is: {
+              dailyComputationStrategy:
+                DailyComputationStrategy.DERIVED_FROM_PERIODS,
+              absentIfMissedPeriodsCount: { not: null },
+            },
+          },
+        },
+      },
+      orderBy: [
+        { session: { date: 'asc' } },
+        { studentId: 'asc' },
+        { updatedAt: 'desc' },
+        { id: 'asc' },
+      ],
+      ...DERIVED_DAILY_ABSENCE_EVIDENCE_ARGS,
     });
   }
 
