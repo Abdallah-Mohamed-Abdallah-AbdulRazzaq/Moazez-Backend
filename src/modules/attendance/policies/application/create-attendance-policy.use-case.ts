@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { TimetableAttendancePeriodReferenceService } from '../../../academics/timetable/application/timetable-attendance-period-reference.service';
 import { requireAttendanceScope } from '../../attendance-context';
 import { CreateAttendancePolicyDto } from '../dto/attendance-policy.dto';
 import {
@@ -15,11 +16,13 @@ import {
   resolvePolicyScope,
   validateAcademicPolicyContext,
 } from './policy-use-case.helpers';
+import { assertAttendancePolicySelectedPeriodsReferenceTimetable } from './policy-period-reference.validation';
 
 @Injectable()
 export class CreateAttendancePolicyUseCase {
   constructor(
     private readonly attendancePoliciesRepository: AttendancePoliciesRepository,
+    private readonly timetablePeriodReferences: TimetableAttendancePeriodReferenceService,
   ) {}
 
   async execute(command: CreateAttendancePolicyDto) {
@@ -48,16 +51,24 @@ export class CreateAttendancePolicyUseCase {
       nameEn: names.nameEn,
     });
 
+    const policyData = buildCreatePolicyData({
+      schoolId: scope.schoolId,
+      academicYearId,
+      termId: command.termId,
+      scope: policyScope,
+      command,
+    });
+    await assertAttendancePolicySelectedPeriodsReferenceTimetable(
+      this.timetablePeriodReferences,
+      {
+        academicYearId,
+        termId: command.termId,
+        selectedPeriodIds: policyData.selectedPeriodIds as string[],
+      },
+    );
+
     try {
-      const policy = await this.attendancePoliciesRepository.create(
-        buildCreatePolicyData({
-          schoolId: scope.schoolId,
-          academicYearId,
-          termId: command.termId,
-          scope: policyScope,
-          command,
-        }),
-      );
+      const policy = await this.attendancePoliciesRepository.create(policyData);
 
       return presentAttendancePolicy(policy);
     } catch (error) {

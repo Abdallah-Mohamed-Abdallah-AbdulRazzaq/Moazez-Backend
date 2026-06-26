@@ -15,6 +15,7 @@ import {
 import {
   NotFoundDomainException,
 } from '../../../../common/exceptions/domain-exception';
+import { TimetableAttendancePeriodReferenceService } from '../../../academics/timetable/application/timetable-attendance-period-reference.service';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { GetRollCallRosterUseCase } from '../application/get-roll-call-roster.use-case';
 import { ResolveRollCallSessionUseCase } from '../application/resolve-roll-call-session.use-case';
@@ -266,6 +267,23 @@ describe('Attendance roll-call use cases', () => {
     } as unknown as AttendanceRollCallRepository;
   }
 
+  function periodReferenceService(isValid = true) {
+    const service = {
+      findValidPeriodIdsForAttendanceContext: jest.fn(),
+      isPeriodValidForAttendanceContext: jest.fn().mockResolvedValue(isValid),
+    };
+
+    return service as unknown as TimetableAttendancePeriodReferenceService &
+      typeof service;
+  }
+
+  function resolveUseCase(
+    repository: AttendanceRollCallRepository,
+    references = periodReferenceService(),
+  ): ResolveRollCallSessionUseCase {
+    return new ResolveRollCallSessionUseCase(repository, references);
+  }
+
   function baseAuthRepository(overrides?: Partial<Record<string, jest.Mock>>) {
     return {
       createAuditLog: jest.fn().mockResolvedValue(undefined),
@@ -275,7 +293,7 @@ describe('Attendance roll-call use cases', () => {
 
   it('creates a draft session when no matching session exists', async () => {
     const repository = baseRepository();
-    const useCase = new ResolveRollCallSessionUseCase(repository);
+    const useCase = resolveUseCase(repository);
 
     const result = await withAttendanceScope(() =>
       useCase.execute({
@@ -303,7 +321,8 @@ describe('Attendance roll-call use cases', () => {
       findSessionByKey: jest.fn().mockResolvedValue(sessionRecord()),
       createSession: jest.fn(),
     });
-    const useCase = new ResolveRollCallSessionUseCase(repository);
+    const periodReferences = periodReferenceService(false);
+    const useCase = resolveUseCase(repository, periodReferences);
 
     const result = await withAttendanceScope(() =>
       useCase.execute({
@@ -318,11 +337,15 @@ describe('Attendance roll-call use cases', () => {
 
     expect(result.session.id).toBe('session-1');
     expect(repository.createSession).not.toHaveBeenCalled();
+    expect(
+      periodReferences.isPeriodValidForAttendanceContext,
+    ).not.toHaveBeenCalled();
   });
 
   it('preserves legacy PERIOD session creation when no effective policy exists', async () => {
     const repository = baseRepository();
-    const useCase = new ResolveRollCallSessionUseCase(repository);
+    const periodReferences = periodReferenceService(false);
+    const useCase = resolveUseCase(repository, periodReferences);
 
     const result = await withAttendanceScope(() =>
       useCase.execute({
@@ -347,6 +370,48 @@ describe('Attendance roll-call use cases', () => {
     expect(result.session.mode).toBe(AttendanceMode.PERIOD);
     expect(result.session.periodId).toBeNull();
     expect(result.session.periodKey).toBe('period-key-1');
+    expect(
+      periodReferences.isPeriodValidForAttendanceContext,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('rejects a supplied PERIOD periodId that is outside the timetable academic context', async () => {
+    const repository = baseRepository({
+      createSession: jest.fn(),
+    });
+    const periodReferences = periodReferenceService(false);
+    const useCase = resolveUseCase(repository, periodReferences);
+
+    await expect(
+      withAttendanceScope(() =>
+        useCase.execute({
+          yearId: 'year-1',
+          termId: 'term-1',
+          date: '2026-09-15',
+          scopeType: AttendanceScopeType.CLASSROOM,
+          classroomId: 'classroom-1',
+          mode: AttendanceMode.PERIOD,
+          periodKey: 'period-key-1',
+          periodId: ' missing-period ',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      details: {
+        field: 'periodId',
+        mode: AttendanceMode.PERIOD,
+        periodId: 'missing-period',
+        reason: 'not_found_or_outside_context',
+      },
+    });
+    expect(repository.createSession).not.toHaveBeenCalled();
+    expect(
+      periodReferences.isPeriodValidForAttendanceContext,
+    ).toHaveBeenCalledWith({
+      academicYearId: 'year-1',
+      termId: 'term-1',
+      periodId: 'missing-period',
+    });
   });
 
   it('ignores selectedPeriodIds for new DAILY sessions', async () => {
@@ -357,7 +422,8 @@ describe('Attendance roll-call use cases', () => {
           effectivePolicy({ selectedPeriodIds: ['period-1'] }),
         ]),
     });
-    const useCase = new ResolveRollCallSessionUseCase(repository);
+    const periodReferences = periodReferenceService(false);
+    const useCase = resolveUseCase(repository, periodReferences);
 
     const result = await withAttendanceScope(() =>
       useCase.execute({
@@ -379,6 +445,9 @@ describe('Attendance roll-call use cases', () => {
       }),
     );
     expect(result.session.mode).toBe(AttendanceMode.DAILY);
+    expect(
+      periodReferences.isPeriodValidForAttendanceContext,
+    ).not.toHaveBeenCalled();
   });
 
   it('preserves legacy PERIOD behavior when selectedPeriodIds is empty', async () => {
@@ -387,7 +456,8 @@ describe('Attendance roll-call use cases', () => {
         .fn()
         .mockResolvedValue([effectivePolicy({ selectedPeriodIds: [] })]),
     });
-    const useCase = new ResolveRollCallSessionUseCase(repository);
+    const periodReferences = periodReferenceService(false);
+    const useCase = resolveUseCase(repository, periodReferences);
 
     await withAttendanceScope(() =>
       useCase.execute({
@@ -409,6 +479,9 @@ describe('Attendance roll-call use cases', () => {
         policyId: 'policy-1',
       }),
     );
+    expect(
+      periodReferences.isPeriodValidForAttendanceContext,
+    ).not.toHaveBeenCalled();
   });
 
   it('rejects a new PERIOD session with selectedPeriodIds and missing periodId', async () => {
@@ -420,7 +493,8 @@ describe('Attendance roll-call use cases', () => {
         ]),
       createSession: jest.fn(),
     });
-    const useCase = new ResolveRollCallSessionUseCase(repository);
+    const periodReferences = periodReferenceService(false);
+    const useCase = resolveUseCase(repository, periodReferences);
 
     await expect(
       withAttendanceScope(() =>
@@ -444,6 +518,9 @@ describe('Attendance roll-call use cases', () => {
       }),
     });
     expect(repository.createSession).not.toHaveBeenCalled();
+    expect(
+      periodReferences.isPeriodValidForAttendanceContext,
+    ).not.toHaveBeenCalled();
   });
 
   it('rejects a new PERIOD session with selectedPeriodIds and disallowed periodId', async () => {
@@ -455,7 +532,8 @@ describe('Attendance roll-call use cases', () => {
         ]),
       createSession: jest.fn(),
     });
-    const useCase = new ResolveRollCallSessionUseCase(repository);
+    const periodReferences = periodReferenceService(false);
+    const useCase = resolveUseCase(repository, periodReferences);
 
     await expect(
       withAttendanceScope(() =>
@@ -480,6 +558,9 @@ describe('Attendance roll-call use cases', () => {
       }),
     });
     expect(repository.createSession).not.toHaveBeenCalled();
+    expect(
+      periodReferences.isPeriodValidForAttendanceContext,
+    ).not.toHaveBeenCalled();
   });
 
   it('creates a new PERIOD session with selectedPeriodIds and allowed periodId', async () => {
@@ -490,7 +571,8 @@ describe('Attendance roll-call use cases', () => {
           effectivePolicy({ selectedPeriodIds: ['period-1'] }),
         ]),
     });
-    const useCase = new ResolveRollCallSessionUseCase(repository);
+    const periodReferences = periodReferenceService(true);
+    const useCase = resolveUseCase(repository, periodReferences);
 
     const result = await withAttendanceScope(() =>
       useCase.execute({
@@ -515,6 +597,13 @@ describe('Attendance roll-call use cases', () => {
     );
     expect(result.session.policyId).toBe('policy-1');
     expect(result.session.periodId).toBe('period-1');
+    expect(
+      periodReferences.isPeriodValidForAttendanceContext,
+    ).toHaveBeenCalledWith({
+      academicYearId: 'year-1',
+      termId: 'term-1',
+      periodId: 'period-1',
+    });
   });
 
   it('returns an existing PERIOD session before selected-period validation', async () => {
@@ -530,7 +619,8 @@ describe('Attendance roll-call use cases', () => {
       findEffectivePolicyCandidates: jest.fn(),
       createSession: jest.fn(),
     });
-    const useCase = new ResolveRollCallSessionUseCase(repository);
+    const periodReferences = periodReferenceService(false);
+    const useCase = resolveUseCase(repository, periodReferences);
 
     const result = await withAttendanceScope(() =>
       useCase.execute({
@@ -549,6 +639,9 @@ describe('Attendance roll-call use cases', () => {
     expect(result.session.policyId).toBe('legacy-policy');
     expect(repository.findEffectivePolicyCandidates).not.toHaveBeenCalled();
     expect(repository.createSession).not.toHaveBeenCalled();
+    expect(
+      periodReferences.isPeriodValidForAttendanceContext,
+    ).not.toHaveBeenCalled();
   });
 
   it('attaches the effective policy when creating a session', async () => {
@@ -564,7 +657,7 @@ describe('Attendance roll-call use cases', () => {
         ),
       ),
     });
-    const useCase = new ResolveRollCallSessionUseCase(repository);
+    const useCase = resolveUseCase(repository);
 
     const result = await withAttendanceScope(() =>
       useCase.execute({

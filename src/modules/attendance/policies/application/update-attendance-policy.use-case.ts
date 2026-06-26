@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
+import { TimetableAttendancePeriodReferenceService } from '../../../academics/timetable/application/timetable-attendance-period-reference.service';
 import { UpdateAttendancePolicyDto } from '../dto/attendance-policy.dto';
 import {
   AttendancePolicyConflictException,
@@ -21,11 +22,13 @@ import {
   resolvePolicyScope,
   validateAcademicPolicyContext,
 } from './policy-use-case.helpers';
+import { assertAttendancePolicySelectedPeriodsReferenceTimetable } from './policy-period-reference.validation';
 
 @Injectable()
 export class UpdateAttendancePolicyUseCase {
   constructor(
     private readonly attendancePoliciesRepository: AttendancePoliciesRepository,
+    private readonly timetablePeriodReferences: TimetableAttendancePeriodReferenceService,
   ) {}
 
   async execute(policyId: string, command: UpdateAttendancePolicyDto) {
@@ -70,16 +73,28 @@ export class UpdateAttendancePolicyUseCase {
       nameEn: names.nameEn,
     });
 
+    const updateData = buildUpdatePolicyData({
+      existing,
+      academicYearId,
+      termId,
+      scope: policyScope,
+      command,
+    });
+    if (Array.isArray(updateData.selectedPeriodIds)) {
+      await assertAttendancePolicySelectedPeriodsReferenceTimetable(
+        this.timetablePeriodReferences,
+        {
+          academicYearId,
+          termId,
+          selectedPeriodIds: updateData.selectedPeriodIds,
+        },
+      );
+    }
+
     try {
       const updated = await this.attendancePoliciesRepository.update(
         policyId,
-        buildUpdatePolicyData({
-          existing,
-          academicYearId,
-          termId,
-          scope: policyScope,
-          command,
-        }),
+        updateData,
       );
 
       return presentAttendancePolicy(updated);

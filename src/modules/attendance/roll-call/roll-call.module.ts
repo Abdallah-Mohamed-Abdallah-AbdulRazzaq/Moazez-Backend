@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TimetableModule } from '../../academics/timetable/timetable.module';
 import { AuthModule } from '../../iam/auth/auth.module';
 import { CorrectAttendanceEntryUseCase } from './application/correct-attendance-entry.use-case';
 import { GetRollCallRosterUseCase } from './application/get-roll-call-roster.use-case';
@@ -13,7 +14,7 @@ import { AttendanceRollCallController } from './controller/attendance-roll-call.
 import { AttendanceRollCallRepository } from './infrastructure/attendance-roll-call.repository';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, TimetableModule],
   controllers: [AttendanceRollCallController],
   providers: [
     AttendanceRollCallRepository,

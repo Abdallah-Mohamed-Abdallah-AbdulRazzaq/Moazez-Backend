@@ -16,6 +16,9 @@ import {
   PrismaClient,
   SchoolStatus,
   StudentEnrollmentStatus,
+  TimetableConfigStatus,
+  TimetablePeriodType,
+  TimetableScopeType,
   UserType,
 } from '@prisma/client';
 import request from 'supertest';
@@ -61,6 +64,10 @@ describe('Attendance policies tenancy isolation (security)', () => {
   let tenantBGradeId: string;
   let tenantBSectionId: string;
   let tenantBClassroomId: string;
+  let tenantBTimetableConfigId: string;
+  let tenantBTimetablePeriodId: string;
+  let demoSelectedPeriodPatchPolicyId: string;
+  let demoUnsafeForeignPeriodPolicyId: string;
   let tenantBStudentId: string;
   let tenantBEnrollmentId: string;
   let tenantBSessionId: string;
@@ -355,6 +362,40 @@ describe('Attendance policies tenancy isolation (security)', () => {
       select: { id: true },
     });
     tenantBClassroomId = tenantBClassroom.id;
+
+    const tenantBTimetableConfig = await prisma.timetableConfig.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        academicYearId: tenantBYearId,
+        termId: tenantBTermId,
+        name: `${testSuffix}-timetable-b`,
+        weekStartDay: 0,
+        activeDays: [0, 1, 2, 3, 4],
+        scopeType: TimetableScopeType.CLASSROOM,
+        scopeKey: `classroom:${tenantBClassroomId}`,
+        gradeId: tenantBGradeId,
+        sectionId: tenantBSectionId,
+        classroomId: tenantBClassroomId,
+        status: TimetableConfigStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    tenantBTimetableConfigId = tenantBTimetableConfig.id;
+
+    const tenantBTimetablePeriod = await prisma.timetablePeriod.create({
+      data: {
+        schoolId: tenantBSchoolId,
+        timetableConfigId: tenantBTimetableConfigId,
+        periodIndex: 1,
+        label: `${testSuffix}-period-b`,
+        startTime: '08:00',
+        endTime: '08:45',
+        type: TimetablePeriodType.CLASS,
+        isInstructional: true,
+      },
+      select: { id: true },
+    });
+    tenantBTimetablePeriodId = tenantBTimetablePeriod.id;
 
     const tenantBStudent = await prisma.student.create({
       data: {
@@ -805,7 +846,17 @@ describe('Attendance policies tenancy isolation (security)', () => {
         demoPolicyId,
         tenantBPolicyId,
         demoRequireAttachmentPolicyId,
+        demoSelectedPeriodPatchPolicyId,
+        demoUnsafeForeignPeriodPolicyId,
       ]),
+    );
+    await deleteSchoolScopedRows<Prisma.TimetablePeriodWhereInput>(
+      prisma.timetablePeriod.deleteMany.bind(prisma.timetablePeriod),
+      presentIds([tenantBTimetablePeriodId]),
+    );
+    await deleteSchoolScopedRows<Prisma.TimetableConfigWhereInput>(
+      prisma.timetableConfig.deleteMany.bind(prisma.timetableConfig),
+      presentIds([tenantBTimetableConfigId]),
     );
     await deleteSchoolScopedRows<Prisma.EnrollmentWhereInput>(
       prisma.enrollment.deleteMany.bind(prisma.enrollment),
@@ -908,6 +959,21 @@ describe('Attendance policies tenancy isolation (security)', () => {
     return values.filter((value): value is string => Boolean(value));
   }
 
+  function expectNoTenantLeak(payload: unknown): void {
+    const serialized = JSON.stringify(payload);
+    for (const forbidden of [
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'deletedAt',
+      'actorId',
+      'raw Prisma',
+    ]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  }
+
   async function login(): Promise<{ accessToken: string }> {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/auth/login`)
@@ -967,6 +1033,147 @@ describe('Attendance policies tenancy isolation (security)', () => {
       .expect(404);
 
     expect(response.body?.error?.code).toBe('not_found');
+  });
+
+  it("rejects school B timetable period ids in school A policy selectedPeriodIds", async () => {
+    const { accessToken } = await login();
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/attendance/policies`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: demoYearId,
+        termId: demoTermId,
+        nameAr: `${testSuffix}-foreign-period-policy-ar`,
+        nameEn: `${testSuffix}-foreign-period-policy`,
+        scopeType: AttendanceScopeType.CLASSROOM,
+        classroomId: demoClassroomId,
+        mode: AttendanceMode.PERIOD,
+        dailyComputationStrategy: DailyComputationStrategy.MANUAL,
+        selectedPeriodIds: [tenantBTimetablePeriodId],
+        isActive: true,
+      })
+      .expect(400);
+
+    expect(response.body?.error?.code).toBe('validation.failed');
+    expect(response.body?.error?.details).toEqual(
+      expect.objectContaining({
+        field: 'selectedPeriodIds',
+        invalidPeriodIds: [tenantBTimetablePeriodId],
+        reason: 'not_found_or_outside_context',
+      }),
+    );
+    expectNoTenantLeak(response.body);
+  });
+
+  it("rejects school B timetable period ids when patching school A policy selectedPeriodIds", async () => {
+    const { accessToken } = await login();
+    const patchPolicy = await prisma.attendancePolicy.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: `classroom:${demoClassroomId}`,
+        stageId: demoStageId,
+        gradeId: demoGradeId,
+        sectionId: demoSectionId,
+        classroomId: demoClassroomId,
+        nameAr: `${testSuffix}-selected-period-patch-policy-ar`,
+        nameEn: `${testSuffix}-selected-period-patch-policy`,
+        mode: AttendanceMode.PERIOD,
+        dailyComputationStrategy: DailyComputationStrategy.MANUAL,
+        isActive: false,
+      },
+      select: { id: true },
+    });
+    demoSelectedPeriodPatchPolicyId = patchPolicy.id;
+
+    const response = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/attendance/policies/${patchPolicy.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        scopeType: AttendanceScopeType.CLASSROOM,
+        classroomId: demoClassroomId,
+        selectedPeriodIds: [tenantBTimetablePeriodId],
+      })
+      .expect(400);
+
+    expect(response.body?.error?.code).toBe('validation.failed');
+    expect(response.body?.error?.details).toEqual(
+      expect.objectContaining({
+        field: 'selectedPeriodIds',
+        invalidPeriodIds: [tenantBTimetablePeriodId],
+        reason: 'not_found_or_outside_context',
+      }),
+    );
+    expectNoTenantLeak(response.body);
+  });
+
+  it('rejects a manually seeded foreign timetable period id during school A roll-call resolution', async () => {
+    const { accessToken } = await login();
+    const periodKey = `${testSuffix}-foreign-period-roll-call`;
+
+    const unsafePolicy = await prisma.attendancePolicy.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: `classroom:${demoClassroomId}`,
+        stageId: demoStageId,
+        gradeId: demoGradeId,
+        sectionId: demoSectionId,
+        classroomId: demoClassroomId,
+        nameAr: `${testSuffix}-unsafe-foreign-period-policy-ar`,
+        nameEn: `${testSuffix}-unsafe-foreign-period-policy`,
+        mode: AttendanceMode.PERIOD,
+        dailyComputationStrategy: DailyComputationStrategy.MANUAL,
+        selectedPeriodIds: [tenantBTimetablePeriodId],
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    demoUnsafeForeignPeriodPolicyId = unsafePolicy.id;
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/attendance/roll-call/session/resolve`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: demoYearId,
+        termId: demoTermId,
+        date: '2026-09-19',
+        scopeType: AttendanceScopeType.CLASSROOM,
+        classroomId: demoClassroomId,
+        mode: AttendanceMode.PERIOD,
+        periodKey,
+        periodId: tenantBTimetablePeriodId,
+      })
+      .expect(400);
+
+    expect(response.body?.error?.code).toBe('validation.failed');
+    expect(response.body?.error?.details).toEqual(
+      expect.objectContaining({
+        field: 'periodId',
+        mode: AttendanceMode.PERIOD,
+        periodId: tenantBTimetablePeriodId,
+        reason: 'not_found_or_outside_context',
+      }),
+    );
+    expectNoTenantLeak(response.body);
+
+    const sessionCount = await prisma.attendanceSession.count({
+      where: {
+        schoolId: demoSchoolId,
+        academicYearId: demoYearId,
+        termId: demoTermId,
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: `classroom:${demoClassroomId}`,
+        mode: AttendanceMode.PERIOD,
+        periodKey,
+      },
+    });
+    expect(sessionCount).toBe(0);
   });
 
   it('lists only roll-call sessions from the active school scope', async () => {

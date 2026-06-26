@@ -16,6 +16,7 @@ import { ListTimetableEntriesUseCase } from './application/list-timetable-entrie
 import { ListTimetablePeriodsUseCase } from './application/list-timetable-periods.use-case';
 import { PublishTimetableUseCase } from './application/publish-timetable.use-case';
 import { TimetableAttendanceCompatibilityService } from './application/timetable-attendance-compatibility.service';
+import { TimetableAttendancePeriodReferenceService } from './application/timetable-attendance-period-reference.service';
 import { UnpublishTimetableUseCase } from './application/unpublish-timetable.use-case';
 import { UpdateTimetableEntryUseCase } from './application/update-timetable-entry.use-case';
 import { UpdateTimetablePeriodUseCase } from './application/update-timetable-period.use-case';
@@ -50,7 +51,12 @@ import { TimetableRepository } from './infrastructure/timetable.repository';
     ValidateTimetableUseCase,
     CheckTimetableConflictsUseCase,
     TimetableAttendanceCompatibilityService,
+    TimetableAttendancePeriodReferenceService,
   ],
-  exports: [TimetableRepository, TimetableAttendanceCompatibilityService],
+  exports: [
+    TimetableRepository,
+    TimetableAttendanceCompatibilityService,
+    TimetableAttendancePeriodReferenceService,
+  ],
 })
 export class TimetableModule {}

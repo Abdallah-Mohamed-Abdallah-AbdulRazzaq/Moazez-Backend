@@ -32,6 +32,7 @@ import { ListTimetableEntriesUseCase } from '../application/list-timetable-entri
 import { ListTimetablePeriodsUseCase } from '../application/list-timetable-periods.use-case';
 import { PublishTimetableUseCase } from '../application/publish-timetable.use-case';
 import { deriveTimetableAttendanceCompatibilityKey } from '../application/timetable-attendance-compatibility.service';
+import { TimetableAttendancePeriodReferenceService } from '../application/timetable-attendance-period-reference.service';
 import { UnpublishTimetableUseCase } from '../application/unpublish-timetable.use-case';
 import { UpdateTimetableEntryUseCase } from '../application/update-timetable-entry.use-case';
 import { UpdateTimetablePeriodUseCase } from '../application/update-timetable-period.use-case';
@@ -69,8 +70,8 @@ type SubjectAllocationRecord = NonNullable<
 >;
 
 describe('Timetable use cases', () => {
-  async function withScope(testFn: () => Promise<void>): Promise<void> {
-    await runWithRequestContext(createRequestContext(), async () => {
+  async function withScope<T>(testFn: () => Promise<T>): Promise<T> {
+    return runWithRequestContext(createRequestContext(), async () => {
       setActor({ id: 'user-1', userType: UserType.SCHOOL_USER });
       setActiveMembership({
         membershipId: 'membership-1',
@@ -80,7 +81,7 @@ describe('Timetable use cases', () => {
         permissions: ['academics.structure.view', 'academics.structure.manage'],
       });
 
-      await testFn();
+      return testFn();
     });
   }
 
@@ -309,6 +310,22 @@ describe('Timetable use cases', () => {
           periods
             .filter((period) => configIds.includes(period.timetableConfigId))
             .sort((left, right) => left.periodIndex - right.periodIndex),
+        ),
+      findPeriodIdsForAttendanceContext: jest
+        .fn()
+        .mockImplementation(async (input) =>
+          periods
+            .filter((period) => input.periodIds.includes(period.id))
+            .filter((period) =>
+              configs.some(
+                (config) =>
+                  config.id === period.timetableConfigId &&
+                  config.academicYearId === input.academicYearId &&
+                  config.termId === input.termId &&
+                  input.allowedConfigStatuses.includes(config.status),
+              ),
+            )
+            .map((period) => period.id),
         ),
       findPeriodById: jest
         .fn()
@@ -2118,6 +2135,112 @@ describe('Timetable use cases', () => {
       periodEndTime: '08:45',
       teacherSubjectAllocationId: 'allocation-1',
     });
+  });
+
+  it('returns attendance-valid period ids for DRAFT and ACTIVE configs in one lookup', async () => {
+    const repository = createRepository({
+      configs: [
+        seedConfig({ id: 'draft-config', status: TimetableConfigStatus.DRAFT }),
+        seedConfig({
+          id: 'active-config',
+          status: TimetableConfigStatus.ACTIVE,
+        }),
+      ],
+      periods: [
+        seedPeriod({ id: 'draft-period', timetableConfigId: 'draft-config' }),
+        seedPeriod({ id: 'active-period', timetableConfigId: 'active-config' }),
+      ],
+    });
+    const service = new TimetableAttendancePeriodReferenceService(repository);
+
+    const validIds = await withScope(() =>
+      service.findValidPeriodIdsForAttendanceContext({
+        academicYearId: 'year-1',
+        termId: 'term-1',
+        periodIds: ['draft-period', 'active-period'],
+      }),
+    );
+
+    expect([...validIds].sort()).toEqual(['active-period', 'draft-period']);
+    expect(repository.findPeriodIdsForAttendanceContext).toHaveBeenCalledTimes(
+      1,
+    );
+  });
+
+  it('excludes archived, wrong-term, wrong-year, and nonexistent attendance period ids', async () => {
+    const repository = createRepository({
+      configs: [
+        seedConfig({
+          id: 'archived-config',
+          status: TimetableConfigStatus.ARCHIVED,
+        }),
+        seedConfig({ id: 'wrong-term-config', termId: 'term-2' }),
+        seedConfig({ id: 'wrong-year-config', academicYearId: 'year-2' }),
+        seedConfig({ id: 'valid-config' }),
+      ],
+      periods: [
+        seedPeriod({
+          id: 'archived-period',
+          timetableConfigId: 'archived-config',
+        }),
+        seedPeriod({
+          id: 'wrong-term-period',
+          timetableConfigId: 'wrong-term-config',
+        }),
+        seedPeriod({
+          id: 'wrong-year-period',
+          timetableConfigId: 'wrong-year-config',
+        }),
+        seedPeriod({ id: 'valid-period', timetableConfigId: 'valid-config' }),
+      ],
+    });
+    const service = new TimetableAttendancePeriodReferenceService(repository);
+
+    const validIds = await withScope(() =>
+      service.findValidPeriodIdsForAttendanceContext({
+        academicYearId: 'year-1',
+        termId: 'term-1',
+        periodIds: [
+          'archived-period',
+          'wrong-term-period',
+          'wrong-year-period',
+          'missing-period',
+          'valid-period',
+        ],
+      }),
+    );
+
+    expect([...validIds]).toEqual(['valid-period']);
+  });
+
+  it('checks a single attendance period reference through the bulk validation path', async () => {
+    const repository = createRepository({
+      configs: [seedConfig()],
+      periods: [seedPeriod()],
+    });
+    const service = new TimetableAttendancePeriodReferenceService(repository);
+
+    await expect(
+      withScope(() =>
+        service.isPeriodValidForAttendanceContext({
+          academicYearId: 'year-1',
+          termId: 'term-1',
+          periodId: 'period-1',
+        }),
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      withScope(() =>
+        service.isPeriodValidForAttendanceContext({
+          academicYearId: 'year-1',
+          termId: 'term-1',
+          periodId: 'missing-period',
+        }),
+      ),
+    ).resolves.toBe(false);
+    expect(repository.findPeriodIdsForAttendanceContext).toHaveBeenCalledTimes(
+      2,
+    );
   });
 
   it('keeps timetable repository reads and updates on scoped Prisma', async () => {

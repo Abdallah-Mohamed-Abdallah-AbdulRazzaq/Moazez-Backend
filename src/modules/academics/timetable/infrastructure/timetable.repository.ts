@@ -531,6 +531,29 @@ export class TimetableRepository {
     });
   }
 
+  async findPeriodIdsForAttendanceContext(input: {
+    academicYearId: string;
+    termId: string;
+    periodIds: string[];
+    allowedConfigStatuses: TimetableConfigStatus[];
+  }): Promise<string[]> {
+    if (input.periodIds.length === 0) return [];
+
+    const periods = await this.scopedPrisma.timetablePeriod.findMany({
+      where: {
+        id: { in: input.periodIds },
+        timetableConfig: {
+          academicYearId: input.academicYearId,
+          termId: input.termId,
+          status: { in: input.allowedConfigStatuses },
+        },
+      },
+      select: { id: true },
+    });
+
+    return periods.map((period) => period.id);
+  }
+
   findPeriodById(periodId: string): Promise<TimetablePeriodRecord | null> {
     return this.scopedPrisma.timetablePeriod.findFirst({
       where: { id: periodId },

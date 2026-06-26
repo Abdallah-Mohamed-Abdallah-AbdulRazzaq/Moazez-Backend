@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AttendanceMode, Prisma } from '@prisma/client';
+import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
+import { TimetableAttendancePeriodReferenceService } from '../../../academics/timetable/application/timetable-attendance-period-reference.service';
 import { requireAttendanceScope } from '../../attendance-context';
 import {
   buildEffectiveScopeCandidates,
@@ -10,7 +12,10 @@ import {
   normalizeAttendancePeriodKey,
   parseAttendanceDate,
 } from '../domain/session-key';
-import { assertPeriodAllowedByEffectivePolicyForNewSession } from '../domain/policy-period-selection';
+import {
+  assertPeriodAllowedByEffectivePolicyForNewSession,
+  normalizeRollCallPeriodId,
+} from '../domain/policy-period-selection';
 import { AttendanceRollCallRepository } from '../infrastructure/attendance-roll-call.repository';
 import { presentRollCallSession } from '../presenters/attendance-roll-call.presenter';
 import {
@@ -25,6 +30,7 @@ import {
 export class ResolveRollCallSessionUseCase {
   constructor(
     private readonly attendanceRollCallRepository: AttendanceRollCallRepository,
+    private readonly timetablePeriodReferences: TimetableAttendancePeriodReferenceService,
   ) {}
 
   async execute(command: ResolveRollCallSessionDto) {
@@ -75,6 +81,12 @@ export class ResolveRollCallSessionUseCase {
       periodId: command.periodId,
       effectivePolicy: policy,
     });
+    await this.assertSuppliedPeriodIdReferencesTimetable({
+      academicYearId,
+      termId: command.termId,
+      mode: command.mode,
+      periodId: command.periodId,
+    });
 
     try {
       const session = await this.attendanceRollCallRepository.createSession(
@@ -110,6 +122,41 @@ export class ResolveRollCallSessionUseCase {
       }
 
       throw error;
+    }
+  }
+
+  private async assertSuppliedPeriodIdReferencesTimetable(input: {
+    academicYearId: string;
+    termId: string;
+    mode: AttendanceMode;
+    periodId?: string | null;
+  }): Promise<void> {
+    if (input.mode !== AttendanceMode.PERIOD) {
+      return;
+    }
+
+    const periodId = normalizeRollCallPeriodId(input.periodId);
+    if (!periodId) {
+      return;
+    }
+
+    const isValid =
+      await this.timetablePeriodReferences.isPeriodValidForAttendanceContext({
+        academicYearId: input.academicYearId,
+        termId: input.termId,
+        periodId,
+      });
+
+    if (!isValid) {
+      throw new ValidationDomainException(
+        'Attendance roll-call periodId must reference a timetable period in the academic context',
+        {
+          field: 'periodId',
+          mode: input.mode,
+          periodId,
+          reason: 'not_found_or_outside_context',
+        },
+      );
     }
   }
 }

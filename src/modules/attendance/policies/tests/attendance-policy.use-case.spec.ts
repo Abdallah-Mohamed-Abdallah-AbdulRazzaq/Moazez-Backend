@@ -11,6 +11,7 @@ import {
   setActor,
 } from '../../../../common/context/request-context';
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
+import { TimetableAttendancePeriodReferenceService } from '../../../academics/timetable/application/timetable-attendance-period-reference.service';
 import { CreateAttendancePolicyUseCase } from '../application/create-attendance-policy.use-case';
 import { UpdateAttendancePolicyUseCase } from '../application/update-attendance-policy.use-case';
 import { AttendancePolicyConflictException } from '../domain/policy.exceptions';
@@ -105,6 +106,39 @@ describe('Attendance policy use cases', () => {
     };
   }
 
+  function periodReferenceService(validIds?: string[]) {
+    const service = {
+      findValidPeriodIdsForAttendanceContext: jest
+        .fn()
+        .mockImplementation(async (input: { periodIds: string[] }) => {
+          const allowedIds = validIds ?? input.periodIds;
+          return new Set(
+            input.periodIds.filter((periodId) =>
+              allowedIds.includes(periodId),
+            ),
+          );
+        }),
+      isPeriodValidForAttendanceContext: jest.fn(),
+    };
+
+    return service as unknown as TimetableAttendancePeriodReferenceService &
+      typeof service;
+  }
+
+  function createPolicyUseCase(
+    repository: AttendancePoliciesRepository,
+    references = periodReferenceService(),
+  ): CreateAttendancePolicyUseCase {
+    return new CreateAttendancePolicyUseCase(repository, references);
+  }
+
+  function updatePolicyUseCase(
+    repository: AttendancePoliciesRepository,
+    references = periodReferenceService(),
+  ): UpdateAttendancePolicyUseCase {
+    return new UpdateAttendancePolicyUseCase(repository, references);
+  }
+
   it('rejects creating a second active policy for the same scope', async () => {
     const repository = {
       findAcademicYearById: jest.fn().mockResolvedValue({ id: 'year-1' }),
@@ -112,7 +146,7 @@ describe('Attendance policy use cases', () => {
       findActiveScopeConflict: jest.fn().mockResolvedValue(policyRecord()),
       findNameConflicts: jest.fn().mockResolvedValue([]),
     } as unknown as AttendancePoliciesRepository;
-    const useCase = new CreateAttendancePolicyUseCase(repository);
+    const useCase = createPolicyUseCase(repository);
 
     await expect(
       withAttendanceScope(() =>
@@ -149,7 +183,8 @@ describe('Attendance policy use cases', () => {
       findNameConflicts: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue(createdPolicy),
     } as unknown as AttendancePoliciesRepository;
-    const useCase = new CreateAttendancePolicyUseCase(repository);
+    const periodReferences = periodReferenceService(['period-1', 'period-2']);
+    const useCase = createPolicyUseCase(repository, periodReferences);
 
     const result = await withAttendanceScope(() =>
       useCase.execute({
@@ -186,6 +221,13 @@ describe('Attendance policy use cases', () => {
         notifyOnEarlyLeave: false,
       }),
     );
+    expect(
+      periodReferences.findValidPeriodIdsForAttendanceContext,
+    ).toHaveBeenCalledWith({
+      academicYearId: 'year-1',
+      termId: 'term-1',
+      periodIds: ['period-1', 'period-2'],
+    });
     expect(result).toEqual(
       expect.objectContaining({
         selectedPeriodIds: ['period-1', 'period-2'],
@@ -202,6 +244,130 @@ describe('Attendance policy use cases', () => {
     );
   });
 
+  it('rejects creating a policy with nonexistent selectedPeriodIds', async () => {
+    const repository = {
+      findAcademicYearById: jest.fn().mockResolvedValue({ id: 'year-1' }),
+      findTermById: jest.fn().mockResolvedValue(activeTerm()),
+      findActiveScopeConflict: jest.fn().mockResolvedValue(null),
+      findNameConflicts: jest.fn().mockResolvedValue([]),
+      create: jest.fn(),
+    } as unknown as AttendancePoliciesRepository;
+    const useCase = createPolicyUseCase(
+      repository,
+      periodReferenceService(['period-1']),
+    );
+
+    await expect(
+      withAttendanceScope(() =>
+        useCase.execute({
+          yearId: 'year-1',
+          termId: 'term-1',
+          nameAr: 'New AR',
+          nameEn: 'New EN',
+          scopeType: AttendanceScopeType.SCHOOL,
+          mode: AttendanceMode.PERIOD,
+          selectedPeriodIds: ['period-1', 'missing-period'],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      details: {
+        field: 'selectedPeriodIds',
+        invalidPeriodIds: ['missing-period'],
+        reason: 'not_found_or_outside_context',
+      },
+    });
+    expect(repository.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects creating a policy with wrong-term selectedPeriodIds', async () => {
+    const repository = {
+      findAcademicYearById: jest.fn().mockResolvedValue({ id: 'year-1' }),
+      findTermById: jest.fn().mockResolvedValue(activeTerm()),
+      findActiveScopeConflict: jest.fn().mockResolvedValue(null),
+      findNameConflicts: jest.fn().mockResolvedValue([]),
+      create: jest.fn(),
+    } as unknown as AttendancePoliciesRepository;
+    const useCase = createPolicyUseCase(repository, periodReferenceService([]));
+
+    await expect(
+      withAttendanceScope(() =>
+        useCase.execute({
+          yearId: 'year-1',
+          termId: 'term-1',
+          nameAr: 'New AR',
+          nameEn: 'New EN',
+          scopeType: AttendanceScopeType.SCHOOL,
+          mode: AttendanceMode.PERIOD,
+          selectedPeriodIds: ['wrong-term-period'],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      details: expect.objectContaining({
+        field: 'selectedPeriodIds',
+        invalidPeriodIds: ['wrong-term-period'],
+      }),
+    });
+    expect(repository.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects creating a policy with archived-config selectedPeriodIds without tenant leaks', async () => {
+    const repository = {
+      findAcademicYearById: jest.fn().mockResolvedValue({ id: 'year-1' }),
+      findTermById: jest.fn().mockResolvedValue(activeTerm()),
+      findActiveScopeConflict: jest.fn().mockResolvedValue(null),
+      findNameConflicts: jest.fn().mockResolvedValue([]),
+      create: jest.fn(),
+    } as unknown as AttendancePoliciesRepository;
+    const useCase = createPolicyUseCase(repository, periodReferenceService([]));
+
+    await expect(
+      withAttendanceScope(() =>
+        useCase.execute({
+          yearId: 'year-1',
+          termId: 'term-1',
+          nameAr: 'New AR',
+          nameEn: 'New EN',
+          scopeType: AttendanceScopeType.SCHOOL,
+          mode: AttendanceMode.PERIOD,
+          selectedPeriodIds: ['archived-period'],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      details: expect.objectContaining({
+        field: 'selectedPeriodIds',
+        invalidPeriodIds: ['archived-period'],
+      }),
+    });
+
+    try {
+      await withAttendanceScope(() =>
+        useCase.execute({
+          yearId: 'year-1',
+          termId: 'term-1',
+          nameAr: 'New AR',
+          nameEn: 'New EN',
+          scopeType: AttendanceScopeType.SCHOOL,
+          mode: AttendanceMode.PERIOD,
+          selectedPeriodIds: ['archived-period'],
+        }),
+      );
+    } catch (error) {
+      const serialized = JSON.stringify(
+        (error as ValidationDomainException).details,
+      );
+      expect(serialized).not.toContain('schoolId');
+      expect(serialized).not.toContain('organizationId');
+      expect(serialized).not.toContain('membershipId');
+      expect(serialized).not.toContain('roleId');
+      expect(serialized).not.toContain('deletedAt');
+    }
+
+    expect(repository.create).not.toHaveBeenCalled();
+  });
+
   it('rejects duplicate selectedPeriodIds', async () => {
     const repository = {
       findAcademicYearById: jest.fn().mockResolvedValue({ id: 'year-1' }),
@@ -210,7 +376,7 @@ describe('Attendance policy use cases', () => {
       findNameConflicts: jest.fn().mockResolvedValue([]),
       create: jest.fn(),
     } as unknown as AttendancePoliciesRepository;
-    const useCase = new CreateAttendancePolicyUseCase(repository);
+    const useCase = createPolicyUseCase(repository);
 
     await expect(
       withAttendanceScope(() =>
@@ -236,7 +402,7 @@ describe('Attendance policy use cases', () => {
       findNameConflicts: jest.fn().mockResolvedValue([]),
       create: jest.fn(),
     } as unknown as AttendancePoliciesRepository;
-    const useCase = new CreateAttendancePolicyUseCase(repository);
+    const useCase = createPolicyUseCase(repository);
 
     await expect(
       withAttendanceScope(() =>
@@ -262,7 +428,7 @@ describe('Attendance policy use cases', () => {
       findNameConflicts: jest.fn().mockResolvedValue([]),
       create: jest.fn(),
     } as unknown as AttendancePoliciesRepository;
-    const useCase = new CreateAttendancePolicyUseCase(repository);
+    const useCase = createPolicyUseCase(repository);
 
     await expect(
       withAttendanceScope(() =>
@@ -310,7 +476,7 @@ describe('Attendance policy use cases', () => {
           policyRecord({ id: 'policy-2', nameEn: 'Taken EN' }),
         ]),
     } as unknown as AttendancePoliciesRepository;
-    const useCase = new UpdateAttendancePolicyUseCase(repository);
+    const useCase = updatePolicyUseCase(repository);
 
     await expect(
       withAttendanceScope(() =>
@@ -344,7 +510,8 @@ describe('Attendance policy use cases', () => {
         .fn()
         .mockResolvedValue({ ...existing, nameEn: 'Updated EN' }),
     } as unknown as AttendancePoliciesRepository;
-    const useCase = new UpdateAttendancePolicyUseCase(repository);
+    const periodReferences = periodReferenceService();
+    const useCase = updatePolicyUseCase(repository, periodReferences);
 
     await withAttendanceScope(() =>
       useCase.execute('policy-1', {
@@ -370,6 +537,9 @@ describe('Attendance policy use cases', () => {
         'notifyOnEarlyLeave',
       ]),
     );
+    expect(
+      periodReferences.findValidPeriodIdsForAttendanceContext,
+    ).not.toHaveBeenCalled();
   });
 
   it('can update advanced booleans to false explicitly', async () => {
@@ -395,7 +565,7 @@ describe('Attendance policy use cases', () => {
         notifyOnEarlyLeave: false,
       }),
     } as unknown as AttendancePoliciesRepository;
-    const useCase = new UpdateAttendancePolicyUseCase(repository);
+    const useCase = updatePolicyUseCase(repository);
 
     await withAttendanceScope(() =>
       useCase.execute('policy-1', {
@@ -433,7 +603,8 @@ describe('Attendance policy use cases', () => {
         .fn()
         .mockResolvedValue({ ...existing, selectedPeriodIds: ['period-2'] }),
     } as unknown as AttendancePoliciesRepository;
-    const useCase = new UpdateAttendancePolicyUseCase(repository);
+    const periodReferences = periodReferenceService(['period-2']);
+    const useCase = updatePolicyUseCase(repository, periodReferences);
 
     await withAttendanceScope(() =>
       useCase.execute('policy-1', {
@@ -447,5 +618,74 @@ describe('Attendance policy use cases', () => {
         selectedPeriodIds: ['period-2'],
       }),
     );
+    expect(
+      periodReferences.findValidPeriodIdsForAttendanceContext,
+    ).toHaveBeenCalledWith({
+      academicYearId: 'year-1',
+      termId: 'term-1',
+      periodIds: ['period-2'],
+    });
+  });
+
+  it('can clear selectedPeriodIds on update with an empty replacement', async () => {
+    const existing = policyRecord({
+      selectedPeriodIds: ['period-1'],
+    });
+    const repository = {
+      findById: jest.fn().mockResolvedValue(existing),
+      findAcademicYearById: jest.fn().mockResolvedValue({ id: 'year-1' }),
+      findTermById: jest.fn().mockResolvedValue(activeTerm()),
+      findActiveScopeConflict: jest.fn().mockResolvedValue(null),
+      findNameConflicts: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockResolvedValue({ ...existing, selectedPeriodIds: [] }),
+    } as unknown as AttendancePoliciesRepository;
+    const periodReferences = periodReferenceService();
+    const useCase = updatePolicyUseCase(repository, periodReferences);
+
+    await withAttendanceScope(() =>
+      useCase.execute('policy-1', {
+        selectedPeriodIds: [],
+      }),
+    );
+
+    expect(repository.update).toHaveBeenCalledWith(
+      'policy-1',
+      expect.objectContaining({
+        selectedPeriodIds: [],
+      }),
+    );
+    expect(
+      periodReferences.findValidPeriodIdsForAttendanceContext,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('rejects updating selectedPeriodIds to invalid timetable period references', async () => {
+    const existing = policyRecord({
+      selectedPeriodIds: ['period-1'],
+    });
+    const repository = {
+      findById: jest.fn().mockResolvedValue(existing),
+      findAcademicYearById: jest.fn().mockResolvedValue({ id: 'year-1' }),
+      findTermById: jest.fn().mockResolvedValue(activeTerm()),
+      findActiveScopeConflict: jest.fn().mockResolvedValue(null),
+      findNameConflicts: jest.fn().mockResolvedValue([]),
+      update: jest.fn(),
+    } as unknown as AttendancePoliciesRepository;
+    const useCase = updatePolicyUseCase(repository, periodReferenceService([]));
+
+    await expect(
+      withAttendanceScope(() =>
+        useCase.execute('policy-1', {
+          selectedPeriodIds: ['missing-period'],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'validation.failed',
+      details: expect.objectContaining({
+        field: 'selectedPeriodIds',
+        invalidPeriodIds: ['missing-period'],
+      }),
+    });
+    expect(repository.update).not.toHaveBeenCalled();
   });
 });

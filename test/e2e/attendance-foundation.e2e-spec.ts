@@ -8,6 +8,9 @@ import {
   DailyComputationStrategy,
   PrismaClient,
   StudentEnrollmentStatus,
+  TimetableConfigStatus,
+  TimetablePeriodType,
+  TimetableScopeType,
 } from '@prisma/client';
 import request from 'supertest';
 import type { App } from 'supertest/types';
@@ -34,6 +37,8 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
     enrollmentIds: new Set<string>(),
     studentIds: new Set<string>(),
     classroomIds: new Set<string>(),
+    timetableConfigIds: new Set<string>(),
+    timetablePeriodIds: new Set<string>(),
     sectionIds: new Set<string>(),
     gradeIds: new Set<string>(),
     stageIds: new Set<string>(),
@@ -107,6 +112,18 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
       if (cleanupState.policyIds.size > 0) {
         await prisma.attendancePolicy.deleteMany({
           where: { id: { in: [...cleanupState.policyIds] } },
+        });
+      }
+
+      if (cleanupState.timetablePeriodIds.size > 0) {
+        await prisma.timetablePeriod.deleteMany({
+          where: { id: { in: [...cleanupState.timetablePeriodIds] } },
+        });
+      }
+
+      if (cleanupState.timetableConfigIds.size > 0) {
+        await prisma.timetableConfig.deleteMany({
+          where: { id: { in: [...cleanupState.timetableConfigIds] } },
         });
       }
 
@@ -185,6 +202,7 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
     absentStudentId: string;
     presentEnrollmentId: string;
     absentEnrollmentId: string;
+    selectedPeriodIds: string[];
   }> {
     const suffix = randomUUID().split('-')[0];
     let activeYear = await prisma.academicYear.findFirst({
@@ -319,6 +337,56 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
     });
     cleanupState.classroomIds.add(classroom.id);
 
+    const timetableConfig = await prisma.timetableConfig.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: activeYear.id,
+        termId: activeTerm.id,
+        name: `Sprint 3A Timetable ${suffix}`,
+        weekStartDay: 0,
+        activeDays: [0, 1, 2, 3, 4],
+        scopeType: TimetableScopeType.CLASSROOM,
+        scopeKey: `classroom:${classroom.id}`,
+        gradeId: grade.id,
+        sectionId: section.id,
+        classroomId: classroom.id,
+        status: TimetableConfigStatus.DRAFT,
+      },
+      select: { id: true },
+    });
+    cleanupState.timetableConfigIds.add(timetableConfig.id);
+
+    const [firstPeriod, secondPeriod] = await Promise.all([
+      prisma.timetablePeriod.create({
+        data: {
+          schoolId: demoSchoolId,
+          timetableConfigId: timetableConfig.id,
+          periodIndex: 1,
+          label: `Sprint 3A Period 1 ${suffix}`,
+          startTime: '08:00',
+          endTime: '08:45',
+          type: TimetablePeriodType.CLASS,
+          isInstructional: true,
+        },
+        select: { id: true },
+      }),
+      prisma.timetablePeriod.create({
+        data: {
+          schoolId: demoSchoolId,
+          timetableConfigId: timetableConfig.id,
+          periodIndex: 2,
+          label: `Sprint 3A Period 2 ${suffix}`,
+          startTime: '08:50',
+          endTime: '09:35',
+          type: TimetablePeriodType.CLASS,
+          isInstructional: true,
+        },
+        select: { id: true },
+      }),
+    ]);
+    cleanupState.timetablePeriodIds.add(firstPeriod.id);
+    cleanupState.timetablePeriodIds.add(secondPeriod.id);
+
     const [presentStudent, absentStudent] = await Promise.all([
       prisma.student.create({
         data: {
@@ -385,6 +453,7 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
       absentStudentId: absentStudent.id,
       presentEnrollmentId: presentEnrollment.id,
       absentEnrollmentId: absentEnrollment.id,
+      selectedPeriodIds: [firstPeriod.id, secondPeriod.id],
     };
   }
 
@@ -438,7 +507,7 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
     const policyNameSuffix = randomUUID().split('-')[0];
     const advancedPolicyFields = {
       dailyComputationStrategy: DailyComputationStrategy.DERIVED_FROM_PERIODS,
-      selectedPeriodIds: ['period-1', 'period-2'],
+      selectedPeriodIds: fixture.selectedPeriodIds,
       lateThresholdMinutes: 10,
       earlyLeaveThresholdMinutes: 12,
       autoAbsentAfterMinutes: 45,
@@ -449,6 +518,27 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
       notifyOnLate: true,
       notifyOnEarlyLeave: false,
     };
+
+    const invalidPolicyResponse = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/attendance/policies`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        yearId: fixture.academicYearId,
+        termId: fixture.termId,
+        nameAr: `Sprint 3A Invalid Policy ${policyNameSuffix} AR`,
+        nameEn: `Sprint 3A Invalid Policy ${policyNameSuffix}`,
+        scopeType: AttendanceScopeType.CLASSROOM,
+        classroomId: fixture.classroomId,
+        mode: AttendanceMode.DAILY,
+        ...advancedPolicyFields,
+        selectedPeriodIds: [randomUUID()],
+        effectiveStartDate: fixture.termStartDate,
+        effectiveEndDate: fixture.termEndDate,
+        isActive: true,
+      })
+      .expect(400);
+
+    expect(invalidPolicyResponse.body?.error?.code).toBe('validation.failed');
 
     const createPolicyResponse = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/attendance/policies`)
@@ -519,6 +609,18 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
       }),
     );
 
+    const invalidPatchResponse = await request(app.getHttpServer())
+      .patch(
+        `${GLOBAL_PREFIX}/attendance/policies/${createPolicyResponse.body.id}`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        selectedPeriodIds: [randomUUID()],
+      })
+      .expect(400);
+
+    expect(invalidPatchResponse.body?.error?.code).toBe('validation.failed');
+
     const resolveSessionResponse = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/attendance/roll-call/session/resolve`)
       .set('Authorization', `Bearer ${accessToken}`)
@@ -541,6 +643,7 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
     );
 
     const allowedPeriodKey = `att-pol-2b-allowed-${policyNameSuffix}`;
+    const allowedPeriodId = fixture.selectedPeriodIds[0];
     const allowedPeriodResponse = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/attendance/roll-call/session/resolve`)
       .set('Authorization', `Bearer ${accessToken}`)
@@ -548,7 +651,7 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
         ...attendanceScopeQuery(fixture),
         mode: AttendanceMode.PERIOD,
         periodKey: allowedPeriodKey,
-        periodId: ' period-1 ',
+        periodId: ` ${allowedPeriodId} `,
         periodLabelEn: 'Period 1',
       })
       .expect(201);
@@ -560,7 +663,7 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
       expect.objectContaining({
         id: expect.any(String),
         mode: AttendanceMode.PERIOD,
-        periodId: 'period-1',
+        periodId: allowedPeriodId,
         periodKey: allowedPeriodKey,
         policyId: createPolicyResponse.body.id,
       }),

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TimetableModule } from '../../academics/timetable/timetable.module';
 import { CreateAttendancePolicyUseCase } from './application/create-attendance-policy.use-case';
 import { DeleteAttendancePolicyUseCase } from './application/delete-attendance-policy.use-case';
 import { GetEffectiveAttendancePolicyUseCase } from './application/get-effective-attendance-policy.use-case';
@@ -9,6 +10,7 @@ import { AttendancePoliciesController } from './controller/attendance-policies.c
 import { AttendancePoliciesRepository } from './infrastructure/attendance-policies.repository';
 
 @Module({
+  imports: [TimetableModule],
   controllers: [AttendancePoliciesController],
   providers: [
     AttendancePoliciesRepository,
