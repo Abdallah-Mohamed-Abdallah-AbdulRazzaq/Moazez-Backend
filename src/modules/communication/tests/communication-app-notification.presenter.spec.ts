@@ -106,6 +106,41 @@ describe('communication app notification presenter', () => {
     expect(json).not.toContain('metadata');
   });
 
+  it('does not expose internal idempotency or source-reference fields', () => {
+    const unsafeRecord = {
+      ...notificationListRecord({
+        sourceModule: CommunicationNotificationSourceModule.ATTENDANCE,
+        type: CommunicationNotificationType.ATTENDANCE_ABSENCE,
+        sourceId: null,
+      }),
+      idempotencyKey: 'attendance:session-1:entry-1:absent',
+      internalSourceReference: {
+        attendanceSessionId: 'session-1',
+        attendanceEntryId: 'entry-1',
+      },
+    } as unknown as CommunicationNotificationListRecord;
+
+    const presented = presentCommunicationAppNotificationList({
+      result: {
+        items: [unsafeRecord],
+        total: 1,
+        limit: 20,
+        page: 1,
+      },
+      unreadCount: 1,
+      options: { aliasStyle: 'dual' },
+    });
+    const json = JSON.stringify(presented);
+
+    expect(json).not.toContain('idempotencyKey');
+    expect(json).not.toContain('idempotency_key');
+    expect(json).not.toContain('internalSourceReference');
+    expect(json).not.toContain('attendanceSessionId');
+    expect(json).not.toContain('attendanceEntryId');
+    expect(json).not.toContain('session-1');
+    expect(json).not.toContain('entry-1');
+  });
+
   it('presents safe notification groups with dual aliases only when requested', () => {
     const dual = presentCommunicationAppNotificationList({
       result: {

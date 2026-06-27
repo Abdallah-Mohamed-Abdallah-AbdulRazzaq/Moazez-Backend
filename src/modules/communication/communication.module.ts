@@ -31,6 +31,7 @@ import {
   MarkCommunicationNotificationReadUseCase,
 } from './application/communication-notification.use-cases';
 import { CommunicationNotificationGenerationService } from './application/communication-notification-generation.service';
+import { CommunicationNotificationCommandService } from './application/communication-notification-command.service';
 import { CommunicationNotificationPushDeliveryService } from './application/communication-notification-push-delivery.service';
 import { CommunicationNotificationPushPayloadBuilder } from './application/communication-notification-push-payload.builder';
 import { CommunicationNotificationPushQueueService } from './application/communication-notification-push-queue.service';
@@ -126,6 +127,7 @@ import { CommunicationSafetyController } from './controller/communication-safety
 import { CommunicationBlockRepository } from './infrastructure/communication-block.repository';
 import { CommunicationAnnouncementRepository } from './infrastructure/communication-announcement.repository';
 import { CommunicationNotificationGenerationRepository } from './infrastructure/communication-notification-generation.repository';
+import { CommunicationNotificationCommandRepository } from './infrastructure/communication-notification-command.repository';
 import { CommunicationNotificationPushRepository } from './infrastructure/communication-notification-push.repository';
 import { CommunicationNotificationPreferenceRepository } from './infrastructure/communication-notification-preference.repository';
 import { CommunicationNotificationGenerationWorker } from './infrastructure/communication-notification-generation.worker';
@@ -175,6 +177,7 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     CommunicationRestrictionRepository,
     CommunicationNotificationRepository,
     CommunicationNotificationGenerationRepository,
+    CommunicationNotificationCommandRepository,
     CommunicationNotificationPushRepository,
     CommunicationNotificationPreferenceRepository,
     GetCommunicationPolicyUseCase,
@@ -255,6 +258,7 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     ListCommunicationNotificationDeliveriesUseCase,
     GetCommunicationNotificationDeliveryUseCase,
     CommunicationNotificationGenerationService,
+    CommunicationNotificationCommandService,
     CommunicationNotificationPushDeliveryService,
     CommunicationNotificationPushPayloadBuilder,
     CommunicationNotificationPushQueueService,
@@ -277,6 +281,7 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     GetCommunicationMessageInfoUseCase,
     MarkCommunicationConversationReadUseCase,
     CommunicationAppNotificationCenterService,
+    CommunicationNotificationCommandService,
     CommunicationNotificationPreferenceService,
   ],
 })

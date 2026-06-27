@@ -947,6 +947,7 @@ enum CommunicationNotificationType {
   MESSAGE_MENTION
   ATTENDANCE_ABSENCE
   ATTENDANCE_LATE
+  ATTENDANCE_EARLY_LEAVE
   GRADE_POSTED
   BEHAVIOR_RECORD_CREATED
   REINFORCEMENT_REWARD_GRANTED
@@ -958,6 +959,7 @@ enum CommunicationNotificationType {
 enum CommunicationNotificationPreferenceCategory {
   MESSAGE_RECEIVED
   ANNOUNCEMENT
+  ATTENDANCE
 
   @@map("communication_notification_preference_category")
 }
@@ -5775,6 +5777,7 @@ model CommunicationNotification {
   sourceModule    CommunicationNotificationSourceModule @map("source_module")
   sourceType      String                                @map("source_type")
   sourceId        String?                               @map("source_id") @db.Uuid
+  idempotencyKey  String?                               @map("idempotency_key") @db.VarChar(200)
   type            CommunicationNotificationType
   title           String
   body            String
@@ -5794,6 +5797,7 @@ model CommunicationNotification {
   deliveries    CommunicationNotificationDelivery[]
 
   @@unique([id, schoolId])
+  @@unique([schoolId, idempotencyKey], map: "comm_notif_school_idempotency_key")
   @@index([schoolId])
   @@index([recipientUserId])
   @@index([actorUserId])

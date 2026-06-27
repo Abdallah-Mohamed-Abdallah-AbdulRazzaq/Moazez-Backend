@@ -46,6 +46,17 @@ describe('CommunicationNotificationPreferenceService', () => {
           canChange: true,
           can_change: true,
         },
+        {
+          category: 'attendance',
+          label: 'Attendance',
+          description: 'Notifications for attendance incidents.',
+          inAppEnabled: true,
+          in_app_enabled: true,
+          pushEnabled: true,
+          push_enabled: true,
+          canChange: true,
+          can_change: true,
+        },
       ],
     });
     expect(JSON.stringify(result)).not.toContain('userId');
@@ -80,6 +91,7 @@ describe('CommunicationNotificationPreferenceService', () => {
       preferences: [
         { category: 'message_received', inAppEnabled: false },
         { category: 'announcement', push_enabled: false },
+        { category: 'attendance', in_app_enabled: true },
       ],
     });
 
@@ -95,6 +107,10 @@ describe('CommunicationNotificationPreferenceService', () => {
         {
           category: CommunicationNotificationPreferenceCategory.ANNOUNCEMENT,
           pushEnabled: false,
+        },
+        {
+          category: CommunicationNotificationPreferenceCategory.ATTENDANCE,
+          inAppEnabled: true,
         },
       ],
     });
@@ -112,6 +128,14 @@ describe('CommunicationNotificationPreferenceService', () => {
           category: 'announcement',
           label: 'Announcements',
           description: 'Notifications for school and class announcements.',
+          inAppEnabled: true,
+          pushEnabled: true,
+          canChange: true,
+        },
+        {
+          category: 'attendance',
+          label: 'Attendance',
+          description: 'Notifications for attendance incidents.',
           inAppEnabled: true,
           pushEnabled: true,
           canChange: true,

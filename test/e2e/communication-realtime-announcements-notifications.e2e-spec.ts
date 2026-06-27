@@ -34,6 +34,7 @@ import {
   COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_GENERATE_JOB_NAME,
   COMMUNICATION_IN_APP_NOTIFICATION_PROVIDER,
   COMMUNICATION_NOTIFICATION_QUEUE_NAME,
+  COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
 } from '../../src/modules/communication/domain/communication-notification-generation-domain';
 
 const GLOBAL_PREFIX = '/api/v1';
@@ -385,13 +386,31 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
     });
     const notificationId = notificationRows[0].id;
     cleanupState.notificationIds.add(notificationId);
-    expect(notificationRows[0].deliveries).toHaveLength(1);
-    expect(notificationRows[0].deliveries[0]).toMatchObject({
-      channel: CommunicationNotificationDeliveryChannel.IN_APP,
-      status: CommunicationNotificationDeliveryStatus.DELIVERED,
-      provider: COMMUNICATION_IN_APP_NOTIFICATION_PROVIDER,
-    });
-    cleanupState.deliveryIds.add(notificationRows[0].deliveries[0].id);
+    expect(notificationRows[0].deliveries).toHaveLength(2);
+    expect(notificationRows[0].deliveries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: CommunicationNotificationDeliveryChannel.IN_APP,
+          status: CommunicationNotificationDeliveryStatus.DELIVERED,
+          provider: COMMUNICATION_IN_APP_NOTIFICATION_PROVIDER,
+        }),
+        expect.objectContaining({
+          channel: CommunicationNotificationDeliveryChannel.PUSH,
+          status: CommunicationNotificationDeliveryStatus.PENDING,
+          provider: COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
+        }),
+      ]),
+    );
+    for (const delivery of notificationRows[0].deliveries) {
+      cleanupState.deliveryIds.add(delivery.id);
+    }
+    const inAppDelivery = notificationRows[0].deliveries.find(
+      (delivery) =>
+        delivery.channel === CommunicationNotificationDeliveryChannel.IN_APP,
+    );
+    if (!inAppDelivery) {
+      throw new Error('Expected generated in-app notification delivery');
+    }
 
     const externalDeliveryCount =
       await prisma.communicationNotificationDelivery.count({
@@ -400,7 +419,7 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
           channel: { not: CommunicationNotificationDeliveryChannel.IN_APP },
         },
       });
-    expect(externalDeliveryCount).toBe(0);
+    expect(externalDeliveryCount).toBe(1);
 
     const beforeRetry = await readNotificationGenerationCounts(announcementId);
     await generateAnnouncementNotifications(announcementId);
@@ -448,7 +467,8 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
       id: notificationId,
       status: 'unread',
       deliverySummary: {
-        total: 1,
+        total: 2,
+        pending: 1,
         delivered: 1,
       },
     });
@@ -494,25 +514,34 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
       .query({ notificationId })
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .expect(200);
-    expect(deliveryList.body.items).toEqual([
-      expect.objectContaining({
-        id: notificationRows[0].deliveries[0].id,
-        notificationId,
-        channel: 'in_app',
-        status: 'delivered',
-        provider: COMMUNICATION_IN_APP_NOTIFICATION_PROVIDER,
-      }),
-    ]);
+    expect(deliveryList.body.items).toHaveLength(2);
+    expect(deliveryList.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: inAppDelivery.id,
+          notificationId,
+          channel: 'in_app',
+          status: 'delivered',
+          provider: COMMUNICATION_IN_APP_NOTIFICATION_PROVIDER,
+        }),
+        expect.objectContaining({
+          notificationId,
+          channel: 'push',
+          status: 'pending',
+          provider: COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
+        }),
+      ]),
+    );
     expectNoSchoolId(deliveryList.body);
 
     const deliveryDetail = await request(app.getHttpServer())
       .get(
-        `${GLOBAL_PREFIX}/communication/notification-deliveries/${notificationRows[0].deliveries[0].id}`,
+        `${GLOBAL_PREFIX}/communication/notification-deliveries/${inAppDelivery.id}`,
       )
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .expect(200);
     expect(deliveryDetail.body).toMatchObject({
-      id: notificationRows[0].deliveries[0].id,
+      id: inAppDelivery.id,
       notificationId,
       channel: 'in_app',
       status: 'delivered',

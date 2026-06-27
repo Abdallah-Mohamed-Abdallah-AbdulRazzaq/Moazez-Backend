@@ -23,6 +23,9 @@ describe('communication notification domain', () => {
     expect(normalizeCommunicationNotificationType('message_received')).toBe(
       'MESSAGE_RECEIVED',
     );
+    expect(normalizeCommunicationNotificationType('attendance_early_leave')).toBe(
+      'ATTENDANCE_EARLY_LEAVE',
+    );
     expect(normalizeCommunicationNotificationDeliveryChannel('in_app')).toBe(
       'IN_APP',
     );

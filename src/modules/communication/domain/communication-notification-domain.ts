@@ -29,6 +29,7 @@ export type CommunicationNotificationTypeValue =
   | 'MESSAGE_MENTION'
   | 'ATTENDANCE_ABSENCE'
   | 'ATTENDANCE_LATE'
+  | 'ATTENDANCE_EARLY_LEAVE'
   | 'GRADE_POSTED'
   | 'BEHAVIOR_RECORD_CREATED'
   | 'REINFORCEMENT_REWARD_GRANTED'
@@ -97,6 +98,7 @@ const NOTIFICATION_TYPE_MAP: Record<string, CommunicationNotificationTypeValue> 
     message_mention: 'MESSAGE_MENTION',
     attendance_absence: 'ATTENDANCE_ABSENCE',
     attendance_late: 'ATTENDANCE_LATE',
+    attendance_early_leave: 'ATTENDANCE_EARLY_LEAVE',
     grade_posted: 'GRADE_POSTED',
     behavior_record_created: 'BEHAVIOR_RECORD_CREATED',
     reinforcement_reward_granted: 'REINFORCEMENT_REWARD_GRANTED',

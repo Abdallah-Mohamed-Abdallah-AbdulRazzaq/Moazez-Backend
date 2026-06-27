@@ -5,6 +5,7 @@ import { DomainException } from '../../../common/exceptions/domain-exception';
 export const COMMUNICATION_NOTIFICATION_PREFERENCE_CATEGORIES = [
   'message_received',
   'announcement',
+  'attendance',
 ] as const;
 
 export type CommunicationNotificationPreferenceCategoryPublic =
@@ -16,6 +17,7 @@ const NOTIFICATION_PREFERENCE_CATEGORY_MAP: Record<
 > = {
   message_received: CommunicationNotificationPreferenceCategory.MESSAGE_RECEIVED,
   announcement: CommunicationNotificationPreferenceCategory.ANNOUNCEMENT,
+  attendance: CommunicationNotificationPreferenceCategory.ATTENDANCE,
 };
 
 export class CommunicationNotificationPreferenceInvalidException extends DomainException {
@@ -52,6 +54,8 @@ export function presentCommunicationNotificationPreferenceCategory(
       return 'message_received';
     case CommunicationNotificationPreferenceCategory.ANNOUNCEMENT:
       return 'announcement';
+    case CommunicationNotificationPreferenceCategory.ATTENDANCE:
+      return 'attendance';
   }
 }
 
