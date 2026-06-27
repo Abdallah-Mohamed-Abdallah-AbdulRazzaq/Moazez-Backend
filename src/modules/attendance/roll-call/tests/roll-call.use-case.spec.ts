@@ -18,6 +18,7 @@ import {
 } from '../../../../common/exceptions/domain-exception';
 import { TimetableAttendancePeriodReferenceService } from '../../../academics/timetable/application/timetable-attendance-period-reference.service';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
+import { AttendanceGuardianAbsenceNotificationService } from '../application/attendance-guardian-absence-notification.service';
 import { GetRollCallRosterUseCase } from '../application/get-roll-call-roster.use-case';
 import { ResolveRollCallSessionUseCase } from '../application/resolve-roll-call-session.use-case';
 import { SaveRollCallEntriesUseCase } from '../application/save-roll-call-entries.use-case';
@@ -306,6 +307,17 @@ describe('Attendance roll-call use cases', () => {
       createAuditLog: jest.fn().mockResolvedValue(undefined),
       ...overrides,
     } as unknown as AuthRepository;
+  }
+
+  function guardianAbsenceNotificationService(
+    overrides?: Partial<Record<string, jest.Mock>>,
+  ) {
+    return {
+      notifySubmittedAbsences: jest.fn().mockResolvedValue(undefined),
+      ...overrides,
+    } as unknown as AttendanceGuardianAbsenceNotificationService & {
+      notifySubmittedAbsences: jest.Mock;
+    };
   }
 
   it('creates a draft session when no matching session exists', async () => {
@@ -749,6 +761,74 @@ describe('Attendance roll-call use cases', () => {
         },
       }),
     );
+  });
+
+  it('dispatches guardian absence notifications after the submit audit path', async () => {
+    const submitted = sessionRecord({
+      policyId: 'policy-1',
+      status: AttendanceSessionStatus.SUBMITTED,
+      submittedAt: new Date('2026-09-15T07:20:00.000Z'),
+      submittedById: 'user-1',
+      entries: [entryRecord({ status: AttendanceStatus.ABSENT })],
+    });
+    const repository = baseRepository({
+      findSessionById: jest
+        .fn()
+        .mockResolvedValue(sessionRecord({ policyId: 'policy-1' })),
+      submitSession: jest.fn().mockResolvedValue(submitted),
+    });
+    const authRepository = baseAuthRepository();
+    const notifications = guardianAbsenceNotificationService();
+    const useCase = new SubmitRollCallSessionUseCase(
+      repository,
+      authRepository,
+      notifications,
+    );
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute('session-1'),
+    );
+
+    expect(authRepository.createAuditLog).toHaveBeenCalled();
+    expect(notifications.notifySubmittedAbsences).toHaveBeenCalledWith(
+      submitted,
+    );
+    expect(
+      (authRepository.createAuditLog as jest.Mock).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      notifications.notifySubmittedAbsences.mock.invocationCallOrder[0],
+    );
+    expect(result.session.status).toBe(AttendanceSessionStatus.SUBMITTED);
+  });
+
+  it('keeps submit successful when guardian absence notification orchestration fails', async () => {
+    const repository = baseRepository({
+      submitSession: jest.fn().mockResolvedValue(
+        sessionRecord({
+          status: AttendanceSessionStatus.SUBMITTED,
+          submittedAt: new Date('2026-09-15T07:20:00.000Z'),
+          submittedById: 'user-1',
+        }),
+      ),
+    });
+    const authRepository = baseAuthRepository();
+    const notifications = guardianAbsenceNotificationService({
+      notifySubmittedAbsences: jest
+        .fn()
+        .mockRejectedValue(new Error('notification failed')),
+    });
+    const useCase = new SubmitRollCallSessionUseCase(
+      repository,
+      authRepository,
+      notifications,
+    );
+
+    const result = await withAttendanceScope(() =>
+      useCase.execute('session-1'),
+    );
+
+    expect(result.session.status).toBe(AttendanceSessionStatus.SUBMITTED);
+    expect(notifications.notifySubmittedAbsences).toHaveBeenCalled();
   });
 
   it('does not inspect policy thresholds or mutate entries when submitting a session', async () => {

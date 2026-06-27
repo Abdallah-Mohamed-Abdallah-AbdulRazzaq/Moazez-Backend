@@ -6,13 +6,20 @@ import {
   AttendanceScopeType,
   AttendanceSessionStatus,
   AttendanceStatus,
+  CommunicationNotificationPreferenceCategory,
+  CommunicationNotificationSourceModule,
+  CommunicationNotificationType,
   DailyComputationStrategy,
+  MembershipStatus,
   PrismaClient,
   StudentEnrollmentStatus,
   TimetableConfigStatus,
   TimetablePeriodType,
   TimetableScopeType,
+  UserStatus,
+  UserType,
 } from '@prisma/client';
+import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
@@ -22,6 +29,13 @@ const GLOBAL_PREFIX = '/api/v1';
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
 const DEMO_ADMIN_PASSWORD = 'School123!';
 const DEMO_SCHOOL_SLUG = 'moazez-academy';
+const PARENT_PASSWORD = 'AttendanceParent123!';
+const ARGON2_OPTIONS: argon2.Options = {
+  type: argon2.argon2id,
+  memoryCost: 19 * 1024,
+  timeCost: 2,
+  parallelism: 1,
+};
 
 jest.setTimeout(30000);
 
@@ -40,6 +54,12 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
     classroomIds: new Set<string>(),
     timetableConfigIds: new Set<string>(),
     timetablePeriodIds: new Set<string>(),
+    notificationIds: new Set<string>(),
+    notificationPreferenceIds: new Set<string>(),
+    studentGuardianIds: new Set<string>(),
+    guardianIds: new Set<string>(),
+    membershipIds: new Set<string>(),
+    userIds: new Set<string>(),
     sectionIds: new Set<string>(),
     gradeIds: new Set<string>(),
     stageIds: new Set<string>(),
@@ -98,6 +118,48 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
         });
       }
 
+      const userIds = [...cleanupState.userIds];
+      const notificationIds = new Set(cleanupState.notificationIds);
+      if (userIds.length > 0) {
+        const userNotifications =
+          await prisma.communicationNotification.findMany({
+            where: { recipientUserId: { in: userIds } },
+            select: { id: true },
+          });
+        for (const notification of userNotifications) {
+          notificationIds.add(notification.id);
+        }
+      }
+
+      if (notificationIds.size > 0) {
+        const ids = [...notificationIds];
+        await prisma.communicationNotificationPushAttempt.deleteMany({
+          where: {
+            delivery: {
+              notificationId: { in: ids },
+            },
+          },
+        });
+        await prisma.communicationNotificationDelivery.deleteMany({
+          where: { notificationId: { in: ids } },
+        });
+        await prisma.communicationNotification.deleteMany({
+          where: { id: { in: ids } },
+        });
+      }
+
+      if (cleanupState.notificationPreferenceIds.size > 0) {
+        await prisma.communicationNotificationPreference.deleteMany({
+          where: { id: { in: [...cleanupState.notificationPreferenceIds] } },
+        });
+      }
+
+      if (userIds.length > 0) {
+        await prisma.communicationNotificationPreference.deleteMany({
+          where: { userId: { in: userIds } },
+        });
+      }
+
       if (cleanupState.entryIds.size > 0) {
         await prisma.attendanceEntry.deleteMany({
           where: { id: { in: [...cleanupState.entryIds] } },
@@ -131,6 +193,18 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
       if (cleanupState.enrollmentIds.size > 0) {
         await prisma.enrollment.deleteMany({
           where: { id: { in: [...cleanupState.enrollmentIds] } },
+        });
+      }
+
+      if (cleanupState.studentGuardianIds.size > 0) {
+        await prisma.studentGuardian.deleteMany({
+          where: { id: { in: [...cleanupState.studentGuardianIds] } },
+        });
+      }
+
+      if (cleanupState.guardianIds.size > 0) {
+        await prisma.guardian.deleteMany({
+          where: { id: { in: [...cleanupState.guardianIds] } },
         });
       }
 
@@ -176,14 +250,35 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
         });
       }
 
+      if (userIds.length > 0) {
+        await prisma.session.deleteMany({
+          where: { userId: { in: userIds } },
+        });
+      }
+
+      if (cleanupState.membershipIds.size > 0) {
+        await prisma.membership.deleteMany({
+          where: { id: { in: [...cleanupState.membershipIds] } },
+        });
+      }
+
+      if (userIds.length > 0) {
+        await prisma.user.deleteMany({
+          where: { id: { in: userIds } },
+        });
+      }
+
       await prisma.$disconnect();
     }
   });
 
-  async function login(): Promise<{ accessToken: string }> {
+  async function login(
+    email = DEMO_ADMIN_EMAIL,
+    password = DEMO_ADMIN_PASSWORD,
+  ): Promise<{ accessToken: string }> {
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/auth/login`)
-      .send({ email: DEMO_ADMIN_EMAIL, password: DEMO_ADMIN_PASSWORD })
+      .send({ email, password })
       .expect(200);
 
     return { accessToken: response.body.accessToken };
@@ -454,6 +549,83 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
     };
   }
 
+  async function createParentGuardianForStudent(
+    studentId: string,
+  ): Promise<{
+    parentUserId: string;
+    parentEmail: string;
+    guardianId: string;
+  }> {
+    const suffix = randomUUID().split('-')[0];
+    const parentRole = await prisma.role.findFirst({
+      where: { key: 'parent', schoolId: null, isSystem: true },
+      select: { id: true },
+    });
+    if (!parentRole) {
+      throw new Error('parent system role not found - run `npm run seed`.');
+    }
+
+    const parentEmail = `attendance-parent-${suffix}@example.test`;
+    const parentUser = await prisma.user.create({
+      data: {
+        email: parentEmail,
+        passwordHash: await argon2.hash(PARENT_PASSWORD, ARGON2_OPTIONS),
+        firstName: `Attendance Parent ${suffix}`,
+        lastName: 'Guardian',
+        userType: UserType.PARENT,
+        status: UserStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    cleanupState.userIds.add(parentUser.id);
+
+    const membership = await prisma.membership.create({
+      data: {
+        userId: parentUser.id,
+        organizationId: demoOrganizationId,
+        schoolId: demoSchoolId,
+        roleId: parentRole.id,
+        userType: UserType.PARENT,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    cleanupState.membershipIds.add(membership.id);
+
+    const guardian = await prisma.guardian.create({
+      data: {
+        schoolId: demoSchoolId,
+        organizationId: demoOrganizationId,
+        userId: parentUser.id,
+        firstName: `Attendance Parent ${suffix}`,
+        lastName: 'Guardian',
+        phone: `+1555${suffix.padEnd(8, '0').slice(0, 8)}`,
+        email: parentEmail,
+        relation: 'parent',
+        isPrimary: true,
+      },
+      select: { id: true },
+    });
+    cleanupState.guardianIds.add(guardian.id);
+
+    const link = await prisma.studentGuardian.create({
+      data: {
+        schoolId: demoSchoolId,
+        studentId,
+        guardianId: guardian.id,
+        isPrimary: true,
+      },
+      select: { id: true },
+    });
+    cleanupState.studentGuardianIds.add(link.id);
+
+    return {
+      parentUserId: parentUser.id,
+      parentEmail,
+      guardianId: guardian.id,
+    };
+  }
+
   function attendanceScopeQuery(fixture: {
     academicYearId: string;
     termId: string;
@@ -501,6 +673,9 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
     );
 
     const fixture = await createAttendancePrerequisites();
+    const parentGuardian = await createParentGuardianForStudent(
+      fixture.absentStudentId,
+    );
     const policyNameSuffix = randomUUID().split('-')[0];
     const advancedPolicyFields = {
       dailyComputationStrategy: DailyComputationStrategy.DERIVED_FROM_PERIODS,
@@ -749,6 +924,10 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
     for (const entry of saveEntriesResponse.body.entries) {
       cleanupState.entryIds.add(entry.id);
     }
+    const absentEntry = saveEntriesResponse.body.entries.find(
+      (entry: { studentId: string }) =>
+        entry.studentId === fixture.absentStudentId,
+    );
 
     expect(saveEntriesResponse.body.entries).toEqual(
       expect.arrayContaining([
@@ -776,6 +955,46 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
         status: 'SUBMITTED',
         submittedAt: expect.any(String),
       }),
+    );
+
+    const parentAuth = await login(parentGuardian.parentEmail, PARENT_PASSWORD);
+    const parentNotificationsResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/notifications`)
+      .set('Authorization', `Bearer ${parentAuth.accessToken}`)
+      .expect(200);
+
+    expect(parentNotificationsResponse.body.notifications).toHaveLength(1);
+    const attendanceNotification =
+      parentNotificationsResponse.body.notifications[0];
+    cleanupState.notificationIds.add(attendanceNotification.notificationId);
+    expect(attendanceNotification).toEqual(
+      expect.objectContaining({
+        type: 'attendance_absence',
+        sourceModule: 'attendance',
+        sourceId: null,
+        title: 'Attendance absence recorded',
+        priority: 'normal',
+        status: 'unread',
+        deepLink: null,
+      }),
+    );
+    expect(attendanceNotification.body).toContain('was marked absent on');
+    expect(JSON.stringify(attendanceNotification)).not.toContain(
+      'idempotencyKey',
+    );
+    expect(JSON.stringify(attendanceNotification)).not.toContain(
+      'idempotency_key',
+    );
+    expect(JSON.stringify(attendanceNotification)).not.toContain(sessionId);
+    expect(JSON.stringify(attendanceNotification)).not.toContain(
+      absentEntry.id,
+    );
+    expect(JSON.stringify(attendanceNotification)).not.toContain('schoolId');
+    expect(JSON.stringify(attendanceNotification)).not.toContain(
+      'organizationId',
+    );
+    expect(JSON.stringify(attendanceNotification)).not.toContain(
+      parentGuardian.guardianId,
     );
 
     const submittedMutationResponse = await request(app.getHttpServer())
@@ -977,6 +1196,120 @@ describe('Attendance Foundation closeout flow (e2e)', () => {
         expect.objectContaining({ action: 'attendance.session.unsubmit' }),
       ]),
     );
+  });
+
+  it('skips guardian absence notifications when policy flag or ATTENDANCE preference disables them', async () => {
+    const { accessToken } = await login();
+
+    async function runDisabledNotificationScenario(params: {
+      notifyGuardiansOnAbsence: boolean;
+      disableAttendancePreference: boolean;
+    }) {
+      const fixture = await createAttendancePrerequisites();
+      const parentGuardian = await createParentGuardianForStudent(
+        fixture.absentStudentId,
+      );
+      if (params.disableAttendancePreference) {
+        const preference =
+          await prisma.communicationNotificationPreference.create({
+            data: {
+              schoolId: demoSchoolId,
+              userId: parentGuardian.parentUserId,
+              category: CommunicationNotificationPreferenceCategory.ATTENDANCE,
+              inAppEnabled: false,
+              pushEnabled: true,
+            },
+            select: { id: true },
+          });
+        cleanupState.notificationPreferenceIds.add(preference.id);
+      }
+
+      const suffix = randomUUID().split('-')[0];
+      const createPolicyResponse = await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/attendance/policies`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          yearId: fixture.academicYearId,
+          termId: fixture.termId,
+          nameAr: `Sprint 2L Notification Policy ${suffix} AR`,
+          nameEn: `Sprint 2L Notification Policy ${suffix}`,
+          scopeType: AttendanceScopeType.CLASSROOM,
+          classroomId: fixture.classroomId,
+          mode: AttendanceMode.DAILY,
+          notifyGuardiansOnAbsence: params.notifyGuardiansOnAbsence,
+          effectiveStartDate: fixture.termStartDate,
+          effectiveEndDate: fixture.termEndDate,
+          isActive: true,
+        })
+        .expect(201);
+      cleanupState.policyIds.add(createPolicyResponse.body.id);
+
+      const resolveSessionResponse = await request(app.getHttpServer())
+        .post(`${GLOBAL_PREFIX}/attendance/roll-call/session/resolve`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          ...attendanceScopeQuery(fixture),
+          mode: AttendanceMode.DAILY,
+        })
+        .expect(201);
+      const sessionId = resolveSessionResponse.body.session.id;
+      cleanupState.sessionIds.add(sessionId);
+
+      const saveEntriesResponse = await request(app.getHttpServer())
+        .put(
+          `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${sessionId}/entries`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          entries: [
+            {
+              studentId: fixture.absentStudentId,
+              status: AttendanceStatus.ABSENT,
+            },
+          ],
+        })
+        .expect(200);
+      for (const entry of saveEntriesResponse.body.entries) {
+        cleanupState.entryIds.add(entry.id);
+      }
+
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/attendance/roll-call/sessions/${sessionId}/submit`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(201);
+
+      const parentAuth = await login(
+        parentGuardian.parentEmail,
+        PARENT_PASSWORD,
+      );
+      const notificationsResponse = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/parent/notifications`)
+        .set('Authorization', `Bearer ${parentAuth.accessToken}`)
+        .expect(200);
+
+      expect(notificationsResponse.body.notifications).toEqual([]);
+      await expect(
+        prisma.communicationNotification.count({
+          where: {
+            schoolId: demoSchoolId,
+            recipientUserId: parentGuardian.parentUserId,
+            sourceModule: CommunicationNotificationSourceModule.ATTENDANCE,
+            type: CommunicationNotificationType.ATTENDANCE_ABSENCE,
+          },
+        }),
+      ).resolves.toBe(0);
+    }
+
+    await runDisabledNotificationScenario({
+      notifyGuardiansOnAbsence: false,
+      disableAttendancePreference: false,
+    });
+    await runDisabledNotificationScenario({
+      notifyGuardiansOnAbsence: true,
+      disableAttendancePreference: true,
+    });
   });
 
   it('reports derived daily absences from submitted selected period evidence only', async () => {

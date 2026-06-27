@@ -4,9 +4,12 @@ import {
   AttendanceScopeType,
   AttendanceSessionStatus,
   AttendanceStatus,
+  MembershipStatus,
   Prisma,
   StudentEnrollmentStatus,
   StudentStatus,
+  UserStatus,
+  UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 import {
@@ -96,6 +99,26 @@ const POLICY_THRESHOLD_ARGS =
       id: true,
       lateThresholdMinutes: true,
       earlyLeaveThresholdMinutes: true,
+    },
+  });
+
+const POLICY_GUARDIAN_ABSENCE_NOTIFICATION_CONFIG_ARGS =
+  Prisma.validator<Prisma.AttendancePolicyDefaultArgs>()({
+    select: {
+      id: true,
+      notifyGuardiansOnAbsence: true,
+    },
+  });
+
+const GUARDIAN_ABSENCE_NOTIFICATION_RECIPIENT_ARGS =
+  Prisma.validator<Prisma.StudentGuardianDefaultArgs>()({
+    select: {
+      studentId: true,
+      guardian: {
+        select: {
+          userId: true,
+        },
+      },
     },
   });
 
@@ -306,6 +329,10 @@ export type EffectiveAttendancePolicyRecord = Prisma.AttendancePolicyGetPayload<
 export type RollCallPolicyThresholdRecord = Prisma.AttendancePolicyGetPayload<
   typeof POLICY_THRESHOLD_ARGS
 >;
+export type RollCallPolicyGuardianAbsenceNotificationConfigRecord =
+  Prisma.AttendancePolicyGetPayload<
+    typeof POLICY_GUARDIAN_ABSENCE_NOTIFICATION_CONFIG_ARGS
+  >;
 export type RollCallRosterEnrollmentRecord = Prisma.EnrollmentGetPayload<
   typeof ROSTER_ENROLLMENT_ARGS
 >;
@@ -361,6 +388,11 @@ export interface RollCallEntryCorrectionInput {
   earlyLeaveMinutes: number | null;
   excuseReason: string | null;
   note: string | null;
+}
+
+export interface RollCallGuardianAbsenceNotificationRecipientRecord {
+  studentId: string;
+  recipientUserId: string;
 }
 
 @Injectable()
@@ -484,6 +516,71 @@ export class AttendanceRollCallRepository {
       where: { id: policyId },
       ...POLICY_THRESHOLD_ARGS,
     });
+  }
+
+  findPolicyGuardianAbsenceNotificationConfig(
+    policyId: string,
+  ): Promise<RollCallPolicyGuardianAbsenceNotificationConfigRecord | null> {
+    return this.scopedPrisma.attendancePolicy.findFirst({
+      where: { id: policyId },
+      ...POLICY_GUARDIAN_ABSENCE_NOTIFICATION_CONFIG_ARGS,
+    });
+  }
+
+  async listGuardianAbsenceNotificationRecipients(params: {
+    schoolId: string;
+    studentIds: string[];
+  }): Promise<RollCallGuardianAbsenceNotificationRecipientRecord[]> {
+    const studentIds = [...new Set(params.studentIds.filter(Boolean))];
+    if (studentIds.length === 0) return [];
+
+    const links = await this.scopedPrisma.studentGuardian.findMany({
+      where: {
+        schoolId: params.schoolId,
+        studentId: { in: studentIds },
+        student: {
+          is: {
+            status: StudentStatus.ACTIVE,
+            deletedAt: null,
+          },
+        },
+        guardian: {
+          is: {
+            deletedAt: null,
+            userId: { not: null },
+            user: {
+              is: {
+                userType: UserType.PARENT,
+                status: UserStatus.ACTIVE,
+                deletedAt: null,
+                memberships: {
+                  some: {
+                    schoolId: params.schoolId,
+                    userType: UserType.PARENT,
+                    status: MembershipStatus.ACTIVE,
+                    endedAt: null,
+                    deletedAt: null,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ studentId: 'asc' }, { guardianId: 'asc' }, { id: 'asc' }],
+      ...GUARDIAN_ABSENCE_NOTIFICATION_RECIPIENT_ARGS,
+    });
+
+    return links.flatMap((link) =>
+      link.guardian.userId
+        ? [
+            {
+              studentId: link.studentId,
+              recipientUserId: link.guardian.userId,
+            },
+          ]
+        : [],
+    );
   }
 
   findSessionByKey(
