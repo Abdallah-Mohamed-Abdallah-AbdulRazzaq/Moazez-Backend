@@ -8,6 +8,7 @@ import {
 import {
   resolveStudentBirthDate,
   resolveStudentName,
+  resolveStudentProfilePatch,
 } from '../domain/student-record.inputs';
 import { StudentsRepository } from '../infrastructure/students.repository';
 import { presentStudent } from '../presenters/student.presenter';
@@ -59,6 +60,8 @@ export class UpdateStudentUseCase {
     if (command.status) {
       data.status = mapStudentStatusFromApi(command.status);
     }
+
+    Object.assign(data, resolveStudentProfilePatch(command));
 
     if (Object.keys(data).length === 0) {
       return presentStudent(existingStudent);

@@ -5,6 +5,7 @@ import {
   resolveGuardianEmail,
   resolveGuardianName,
   resolveGuardianPhone,
+  resolveGuardianProfileFields,
   resolveGuardianRelation,
 } from '../domain/guardian.inputs';
 import { GuardiansRepository } from '../infrastructure/guardians.repository';
@@ -17,6 +18,7 @@ export class CreateGuardianUseCase {
   async execute(command: CreateGuardianDto): Promise<GuardianResponseDto> {
     const scope = requireStudentsScope();
     const name = resolveGuardianName(command);
+    const profile = resolveGuardianProfileFields(command);
 
     const guardian = await this.guardiansRepository.createGuardian({
       schoolId: scope.schoolId,
@@ -25,9 +27,15 @@ export class CreateGuardianUseCase {
       firstName: name.firstName,
       lastName: name.lastName,
       phone: resolveGuardianPhone(command.phone_primary),
+      phoneSecondary: profile.phoneSecondary,
       email: resolveGuardianEmail(command.email),
+      nationalId: profile.nationalId,
+      jobTitle: profile.jobTitle,
+      workplace: profile.workplace,
       relation: resolveGuardianRelation(command.relation),
       isPrimary: command.is_primary ?? false,
+      canPickup: profile.canPickup,
+      canReceiveNotifications: profile.canReceiveNotifications,
     });
 
     return presentGuardian(guardian);

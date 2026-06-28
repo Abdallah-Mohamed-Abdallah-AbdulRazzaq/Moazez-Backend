@@ -25,62 +25,62 @@ class GuardianMutationDto {
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  full_name?: string;
+  full_name?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  first_name?: string;
+  first_name?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  last_name?: string;
+  last_name?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  relation?: string;
+  relation?: string | null;
 
   @IsOptional()
   @IsPhoneNumber()
-  phone_primary?: string;
+  phone_primary?: string | null;
 
   @IsOptional()
   @IsPhoneNumber()
-  phone_secondary?: string;
+  phone_secondary?: string | null;
 
   @IsOptional()
   @IsEmail()
   @MaxLength(200)
-  email?: string;
+  email?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(30)
-  national_id?: string;
+  national_id?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  job_title?: string;
+  job_title?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  workplace?: string;
+  workplace?: string | null;
 
   @IsOptional()
   @IsBoolean()
-  is_primary?: boolean;
+  is_primary?: boolean | null;
 
   @IsOptional()
   @IsBoolean()
-  can_pickup?: boolean;
+  can_pickup?: boolean | null;
 
   @IsOptional()
   @IsBoolean()
-  can_receive_notifications?: boolean;
+  can_receive_notifications?: boolean | null;
 }
 
 export class CreateGuardianDto extends GuardianMutationDto {}

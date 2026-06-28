@@ -6,6 +6,13 @@ export interface ResolvedPersonName {
   fullName: string;
 }
 
+export interface ParsedPersonNameParts {
+  firstName: string | null;
+  fatherName: string | null;
+  grandfatherName: string | null;
+  familyName: string | null;
+}
+
 type ResolvePersonNameInput = {
   firstName?: string | null;
   lastName?: string | null;
@@ -20,21 +27,28 @@ export function normalizeOptionalText(value?: string | null): string | null {
   return normalized && normalized.length > 0 ? normalized : null;
 }
 
-function splitFullName(
-  fullName: string,
-  label: string,
-): { firstName: string; lastName: string } {
-  const parts = fullName.split(' ');
-
-  if (parts.length < 2) {
-    throw new ValidationDomainException(`${label} name must include at least two parts`, {
-      field: 'name',
-    });
+export function parseOptionalPersonNameParts(
+  value?: string | null,
+): ParsedPersonNameParts | null {
+  const fullName = normalizeOptionalText(value);
+  if (!fullName) {
+    return null;
   }
 
+  const parts = fullName.split(' ');
+  const [firstName] = parts;
+  const familyName =
+    parts.length >= 4
+      ? parts.slice(3).join(' ')
+      : parts.length >= 2
+        ? parts[parts.length - 1]
+        : null;
+
   return {
-    firstName: parts[0],
-    lastName: parts.slice(1).join(' '),
+    firstName: firstName ?? null,
+    fatherName: parts.length >= 3 ? parts[1] : null,
+    grandfatherName: parts.length >= 4 ? parts[2] : null,
+    familyName,
   };
 }
 
@@ -46,10 +60,19 @@ export function resolvePersonName(
   const fullName = normalizeOptionalText(input.fullName);
   const fallbackFirstName = normalizeOptionalText(input.fallbackFirstName);
   const fallbackLastName = normalizeOptionalText(input.fallbackLastName);
-  const split = fullName ? splitFullName(fullName, input.label) : null;
+  const split = parseOptionalPersonNameParts(fullName);
+
+  if (fullName && (!split?.firstName || !split.familyName)) {
+    throw new ValidationDomainException(
+      `${input.label} name must include at least two parts`,
+      {
+        field: 'name',
+      },
+    );
+  }
 
   const firstName = explicitFirstName ?? split?.firstName ?? fallbackFirstName;
-  const lastName = explicitLastName ?? split?.lastName ?? fallbackLastName;
+  const lastName = explicitLastName ?? split?.familyName ?? fallbackLastName;
 
   if (!firstName || !lastName) {
     throw new ValidationDomainException(

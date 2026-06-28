@@ -5,6 +5,7 @@ import {
   resolveGuardianEmail,
   resolveGuardianName,
   resolveGuardianPhone,
+  resolveGuardianProfilePatch,
   resolveGuardianRelation,
 } from '../domain/guardian.inputs';
 import { GuardiansRepository } from '../infrastructure/guardians.repository';
@@ -60,9 +61,11 @@ export class UpdateGuardianUseCase {
       );
     }
 
-    if (command.is_primary !== undefined) {
+    if (command.is_primary !== undefined && command.is_primary !== null) {
       data.isPrimary = command.is_primary;
     }
+
+    Object.assign(data, resolveGuardianProfilePatch(command));
 
     if (Object.keys(data).length === 0) {
       return presentGuardian(existingGuardian);

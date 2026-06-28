@@ -25,14 +25,14 @@ export function presentGuardian(
     full_name: buildGuardianFullName(guardian),
     relation: guardian.relation,
     phone_primary: guardian.phone,
-    phone_secondary: null,
+    phone_secondary: guardian.phoneSecondary,
     email: guardian.email,
-    national_id: null,
-    job_title: null,
-    workplace: null,
+    national_id: guardian.nationalId,
+    job_title: guardian.jobTitle,
+    workplace: guardian.workplace,
     is_primary: options?.isPrimary ?? guardian.isPrimary,
-    can_pickup: null,
-    can_receive_notifications: null,
+    can_pickup: guardian.canPickup,
+    can_receive_notifications: guardian.canReceiveNotifications,
   };
 }
 

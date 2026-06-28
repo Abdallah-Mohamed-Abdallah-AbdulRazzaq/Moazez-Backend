@@ -29,101 +29,101 @@ export class StudentContactDto {
   @IsOptional()
   @IsString()
   @MaxLength(300)
-  address_line?: string;
+  address_line?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  city?: string;
+  city?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  district?: string;
+  district?: string | null;
 
   @IsOptional()
   @IsPhoneNumber()
-  student_phone?: string;
+  student_phone?: string | null;
 
   @IsOptional()
   @IsEmail()
   @MaxLength(200)
-  student_email?: string;
+  student_email?: string | null;
 }
 
 class StudentMutationDto {
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  name?: string;
+  name?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  first_name_en?: string;
+  first_name_en?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  father_name_en?: string;
+  father_name_en?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  grandfather_name_en?: string;
+  grandfather_name_en?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  family_name_en?: string;
+  family_name_en?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  first_name_ar?: string;
+  first_name_ar?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  father_name_ar?: string;
+  father_name_ar?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  grandfather_name_ar?: string;
+  grandfather_name_ar?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  family_name_ar?: string;
+  family_name_ar?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  full_name_en?: string;
+  full_name_en?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  full_name_ar?: string;
+  full_name_ar?: string | null;
 
   @IsOptional()
   @IsDateString()
-  dateOfBirth?: string;
+  dateOfBirth?: string | null;
 
   @IsOptional()
   @IsDateString()
-  date_of_birth?: string;
+  date_of_birth?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(50)
-  gender?: string;
+  gender?: string | null;
 
   @IsOptional()
   @IsString()
   @MaxLength(120)
-  nationality?: string;
+  nationality?: string | null;
 
   @IsOptional()
   @IsIn(STUDENT_STATUS_API_VALUES)
@@ -132,7 +132,7 @@ class StudentMutationDto {
   @IsOptional()
   @ValidateNested()
   @Type(() => StudentContactDto)
-  contact?: StudentContactDto;
+  contact?: StudentContactDto | null;
 }
 
 export class CreateStudentDto extends StudentMutationDto {}

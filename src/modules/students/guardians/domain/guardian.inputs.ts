@@ -11,6 +11,26 @@ type GuardianNameFields = {
   last_name?: string | null;
 };
 
+type GuardianProfileFields = GuardianNameFields & {
+  phone_secondary?: string | null;
+  national_id?: string | null;
+  job_title?: string | null;
+  workplace?: string | null;
+  can_pickup?: boolean | null;
+  can_receive_notifications?: boolean | null;
+};
+
+export interface ResolvedGuardianProfileFields {
+  phoneSecondary: string | null;
+  nationalId: string | null;
+  jobTitle: string | null;
+  workplace: string | null;
+  canPickup: boolean | null;
+  canReceiveNotifications: boolean | null;
+}
+
+type GuardianProfilePatch = Partial<ResolvedGuardianProfileFields>;
+
 export function resolveGuardianName(
   fields: GuardianNameFields,
   fallback?: { firstName: string; lastName: string },
@@ -70,4 +90,49 @@ export function resolveGuardianEmail(
   fallback?: string | null,
 ): string | null {
   return normalizeOptionalText(email) ?? normalizeOptionalText(fallback);
+}
+
+export function resolveGuardianProfileFields(
+  fields: GuardianProfileFields,
+): ResolvedGuardianProfileFields {
+  return {
+    phoneSecondary: normalizeOptionalText(fields.phone_secondary),
+    nationalId: normalizeOptionalText(fields.national_id),
+    jobTitle: normalizeOptionalText(fields.job_title),
+    workplace: normalizeOptionalText(fields.workplace),
+    canPickup: fields.can_pickup ?? null,
+    canReceiveNotifications: fields.can_receive_notifications ?? null,
+  };
+}
+
+export function resolveGuardianProfilePatch(
+  fields: GuardianProfileFields,
+): GuardianProfilePatch {
+  const patch: GuardianProfilePatch = {};
+
+  if (fields.phone_secondary !== undefined) {
+    patch.phoneSecondary = normalizeOptionalText(fields.phone_secondary);
+  }
+
+  if (fields.national_id !== undefined) {
+    patch.nationalId = normalizeOptionalText(fields.national_id);
+  }
+
+  if (fields.job_title !== undefined) {
+    patch.jobTitle = normalizeOptionalText(fields.job_title);
+  }
+
+  if (fields.workplace !== undefined) {
+    patch.workplace = normalizeOptionalText(fields.workplace);
+  }
+
+  if (fields.can_pickup !== undefined) {
+    patch.canPickup = fields.can_pickup;
+  }
+
+  if (fields.can_receive_notifications !== undefined) {
+    patch.canReceiveNotifications = fields.can_receive_notifications;
+  }
+
+  return patch;
 }

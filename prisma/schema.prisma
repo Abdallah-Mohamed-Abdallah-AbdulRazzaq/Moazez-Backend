@@ -3146,10 +3146,23 @@ model Student {
   organizationId String        @map("organization_id") @db.Uuid
   applicationId  String?       @map("application_id") @db.Uuid
   userId         String?       @unique @map("user_id") @db.Uuid
-  firstName      String        @map("first_name")
-  lastName       String        @map("last_name")
-  birthDate      DateTime?     @map("birth_date") @db.Date
-  status         StudentStatus @default(ACTIVE)
+  firstName         String        @map("first_name")
+  fatherNameEn      String?       @map("father_name_en")
+  grandfatherNameEn String?       @map("grandfather_name_en")
+  lastName          String        @map("last_name")
+  firstNameAr       String?       @map("first_name_ar")
+  fatherNameAr      String?       @map("father_name_ar")
+  grandfatherNameAr String?       @map("grandfather_name_ar")
+  familyNameAr      String?       @map("family_name_ar")
+  birthDate         DateTime?     @map("birth_date") @db.Date
+  gender            String?
+  nationality       String?
+  addressLine       String?       @map("address_line")
+  city              String?
+  district          String?
+  studentPhone      String?       @map("student_phone")
+  studentEmail      String?       @map("student_email")
+  status            StudentStatus @default(ACTIVE)
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -3195,16 +3208,22 @@ model Student {
 }
 
 model Guardian {
-  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId       String  @map("school_id") @db.Uuid
-  organizationId String  @map("organization_id") @db.Uuid
-  userId         String? @map("user_id") @db.Uuid
-  firstName      String  @map("first_name")
-  lastName       String  @map("last_name")
-  phone          String
-  email          String?
-  relation       String
-  isPrimary      Boolean @default(false) @map("is_primary")
+  id                         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                   String   @map("school_id") @db.Uuid
+  organizationId             String   @map("organization_id") @db.Uuid
+  userId                     String?  @map("user_id") @db.Uuid
+  firstName                  String   @map("first_name")
+  lastName                   String   @map("last_name")
+  phone                      String
+  phoneSecondary             String?  @map("phone_secondary")
+  email                      String?
+  nationalId                 String?  @map("national_id")
+  jobTitle                   String?  @map("job_title")
+  workplace                  String?
+  relation                   String
+  isPrimary                  Boolean  @default(false) @map("is_primary")
+  canPickup                  Boolean? @map("can_pickup")
+  canReceiveNotifications    Boolean? @map("can_receive_notifications")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

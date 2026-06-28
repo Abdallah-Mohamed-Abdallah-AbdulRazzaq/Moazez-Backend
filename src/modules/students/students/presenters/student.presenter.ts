@@ -5,16 +5,57 @@ import {
 import { mapStudentStatusToApi } from '../domain/student-status.enums';
 import { StudentRecord } from '../infrastructure/students.repository';
 
+type StudentSummaryPresenterRecord = Pick<
+  StudentRecord,
+  'id' | 'firstName' | 'lastName' | 'status'
+> &
+  Partial<Pick<StudentRecord, 'fatherNameEn' | 'grandfatherNameEn'>>;
+
 function toIsoDate(value: Date | null): string | null {
   return value ? value.toISOString().slice(0, 10) : null;
 }
 
-function toFullName(student: Pick<StudentRecord, 'firstName' | 'lastName'>): string {
-  return `${student.firstName} ${student.lastName}`.trim();
+function joinNameParts(parts: Array<string | null | undefined>): string | null {
+  const fullName = parts
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join(' ');
+
+  return fullName.length > 0 ? fullName : null;
+}
+
+function toEnglishFullName(
+  student: Pick<
+    StudentRecord,
+    'firstName' | 'fatherNameEn' | 'grandfatherNameEn' | 'lastName'
+  >,
+): string {
+  return (
+    joinNameParts([
+      student.firstName,
+      student.fatherNameEn,
+      student.grandfatherNameEn,
+      student.lastName,
+    ]) ?? `${student.firstName} ${student.lastName}`.trim()
+  );
+}
+
+function toArabicFullName(
+  student: Pick<
+    StudentRecord,
+    'firstNameAr' | 'fatherNameAr' | 'grandfatherNameAr' | 'familyNameAr'
+  >,
+): string | null {
+  return joinNameParts([
+    student.firstNameAr,
+    student.fatherNameAr,
+    student.grandfatherNameAr,
+    student.familyNameAr,
+  ]);
 }
 
 export function presentStudent(student: StudentRecord): StudentResponseDto {
-  const fullName = toFullName(student);
+  const fullName = toEnglishFullName(student);
   const birthDate = toIsoDate(student.birthDate);
 
   return {
@@ -22,26 +63,26 @@ export function presentStudent(student: StudentRecord): StudentResponseDto {
     student_id: null,
     name: fullName,
     first_name_en: student.firstName,
-    father_name_en: null,
-    grandfather_name_en: null,
+    father_name_en: student.fatherNameEn,
+    grandfather_name_en: student.grandfatherNameEn,
     family_name_en: student.lastName,
-    first_name_ar: null,
-    father_name_ar: null,
-    grandfather_name_ar: null,
-    family_name_ar: null,
+    first_name_ar: student.firstNameAr,
+    father_name_ar: student.fatherNameAr,
+    grandfather_name_ar: student.grandfatherNameAr,
+    family_name_ar: student.familyNameAr,
     full_name_en: fullName,
-    full_name_ar: null,
+    full_name_ar: toArabicFullName(student),
     dateOfBirth: birthDate,
     date_of_birth: birthDate,
-    gender: null,
-    nationality: null,
+    gender: student.gender,
+    nationality: student.nationality,
     status: mapStudentStatusToApi(student.status),
     contact: {
-      address_line: null,
-      city: null,
-      district: null,
-      student_phone: null,
-      student_email: null,
+      address_line: student.addressLine,
+      city: student.city,
+      district: student.district,
+      student_phone: student.studentPhone,
+      student_email: student.studentEmail,
     },
     created_at: student.createdAt.toISOString(),
     updated_at: student.updatedAt.toISOString(),
@@ -49,12 +90,16 @@ export function presentStudent(student: StudentRecord): StudentResponseDto {
 }
 
 export function presentStudentSummary(
-  student: Pick<
-    StudentRecord,
-    'id' | 'firstName' | 'lastName' | 'status'
-  >,
+  student: StudentSummaryPresenterRecord,
 ): StudentSummaryResponseDto {
-  const fullName = toFullName(student);
+  const fullName =
+    joinNameParts([
+      student.firstName,
+      student.fatherNameEn,
+      student.grandfatherNameEn,
+      student.lastName,
+    ]) ??
+    `${student.firstName} ${student.lastName}`.trim();
 
   return {
     id: student.id,
