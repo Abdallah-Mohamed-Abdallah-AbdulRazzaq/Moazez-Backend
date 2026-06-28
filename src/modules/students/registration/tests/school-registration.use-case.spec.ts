@@ -123,7 +123,7 @@ describe('CreateSchoolRegistrationUseCase', () => {
       id: 'student-1',
       schoolId: params.schoolId,
       organizationId: params.organizationId,
-      applicationId: null,
+      applicationId: (params.student.applicationId as string | null) ?? null,
       userId: null,
       firstName: String(params.student.firstName),
       fatherNameEn: params.student.fatherNameEn as string | null,
@@ -345,6 +345,7 @@ describe('CreateSchoolRegistrationUseCase', () => {
       schoolId: 'school-1',
       organizationId: 'org-1',
       student: {
+        applicationId: null,
         firstName: 'Layla',
         fatherNameEn: 'Ali',
         grandfatherNameEn: 'Mahmoud',
@@ -433,6 +434,38 @@ describe('CreateSchoolRegistrationUseCase', () => {
     expect(JSON.stringify(result)).not.toContain('deletedAt');
     expect(JSON.stringify(result)).not.toContain('applicationId');
     expect(JSON.stringify(result)).not.toContain('applicant');
+  });
+
+  it('sets Student.applicationId only through trusted internal source context', async () => {
+    const deps = createUseCase();
+
+    const result = await withStudentsScope(() =>
+      deps.useCase.execute(baseCommand(), {
+        source: 'admissions_application',
+        sourceApplicationId: 'application-1',
+      }),
+    );
+    const coreCommand = (
+      deps.registrationRepository.createRegistrationCore as jest.Mock
+    ).mock.calls[0][0];
+
+    expect(coreCommand.student.applicationId).toBe('application-1');
+    expect(result.student).toEqual(
+      expect.objectContaining({
+        id: 'student-1',
+        full_name_en: 'Layla Ali Mahmoud Hassan',
+      }),
+    );
+    expect(JSON.stringify(result)).not.toContain('applicationId');
+    expect(deps.authRepository.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'students.registration.create',
+        after: expect.objectContaining({
+          source: 'admissions_application',
+          sourceApplicationId: 'application-1',
+        }),
+      }),
+    );
   });
 
   it('respects an explicitly primary guardian and leaves the others non-primary', async () => {

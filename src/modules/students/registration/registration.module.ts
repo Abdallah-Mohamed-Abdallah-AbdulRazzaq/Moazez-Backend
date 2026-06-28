@@ -25,5 +25,6 @@ import { SchoolRegistrationRepository } from './infrastructure/school-registrati
     TermsRepository,
     CreateSchoolRegistrationUseCase,
   ],
+  exports: [CreateSchoolRegistrationUseCase],
 })
 export class RegistrationModule {}

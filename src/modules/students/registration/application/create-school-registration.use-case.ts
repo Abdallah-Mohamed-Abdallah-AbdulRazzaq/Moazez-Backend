@@ -59,6 +59,11 @@ interface ResolvedRegistrationPlacement {
   classroom: ClassroomRecord;
 }
 
+export interface CreateSchoolRegistrationOptions {
+  sourceApplicationId?: string | null;
+  source?: 'manual' | 'admissions_application';
+}
+
 function normalizeOptionalText(value?: string | null): string | null {
   const normalized = value?.trim().replace(/\s+/g, ' ');
   return normalized && normalized.length > 0 ? normalized : null;
@@ -79,6 +84,7 @@ export class CreateSchoolRegistrationUseCase {
 
   async execute(
     command: CreateSchoolRegistrationDto,
+    options: CreateSchoolRegistrationOptions = {},
   ): Promise<SchoolRegistrationResponseDto> {
     const scope = requireStudentsScope();
     this.validateCommand(command);
@@ -103,7 +109,7 @@ export class CreateSchoolRegistrationUseCase {
       student: {
         schoolId: scope.schoolId,
         organizationId: scope.organizationId,
-        applicationId: null,
+        applicationId: options.sourceApplicationId ?? null,
         firstName: studentName.firstName,
         fatherNameEn: studentProfile.fatherNameEn,
         grandfatherNameEn: studentProfile.grandfatherNameEn,
@@ -186,6 +192,8 @@ export class CreateSchoolRegistrationUseCase {
         studentAccount.mode === 'create' && Boolean(studentAccount.result),
       studentAccountLinked:
         studentAccount.mode === 'link' && Boolean(studentAccount.result),
+      source: options.source ?? 'manual',
+      sourceApplicationId: options.sourceApplicationId ?? null,
     });
 
     return presentSchoolRegistration({
@@ -510,6 +518,8 @@ export class CreateSchoolRegistrationUseCase {
     parentAccountsLinkedCount: number;
     studentAccountCreated: boolean;
     studentAccountLinked: boolean;
+    source: 'manual' | 'admissions_application';
+    sourceApplicationId: string | null;
   }): Promise<void> {
     const scope = requireStudentsScope();
 
@@ -532,6 +542,10 @@ export class CreateSchoolRegistrationUseCase {
         parentAccountsLinkedCount: params.parentAccountsLinkedCount,
         studentAccountCreated: params.studentAccountCreated,
         studentAccountLinked: params.studentAccountLinked,
+        source: params.source,
+        ...(params.sourceApplicationId
+          ? { sourceApplicationId: params.sourceApplicationId }
+          : {}),
       },
     });
   }

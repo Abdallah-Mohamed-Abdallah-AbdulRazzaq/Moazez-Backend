@@ -9,13 +9,19 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { CreateApplicationUseCase } from '../application/create-application.use-case';
 import { EnrollApplicationHandoffUseCase } from '../application/enroll-application-handoff.use-case';
 import { GetApplicationRegistrationHandoffUseCase } from '../application/get-application-registration-handoff.use-case';
 import { GetApplicationUseCase } from '../application/get-application.use-case';
 import { ListApplicationsUseCase } from '../application/list-applications.use-case';
+import { RegisterAcceptedApplicationUseCase } from '../application/register-accepted-application.use-case';
 import { SubmitApplicationUseCase } from '../application/submit-application.use-case';
 import { UpdateApplicationUseCase } from '../application/update-application.use-case';
 import {
@@ -27,6 +33,10 @@ import {
   UpdateApplicationDto,
 } from '../dto/application.dto';
 import { ApplicationRegistrationHandoffResponseDto } from '../dto/application-registration-handoff.dto';
+import {
+  ApplicationRegistrationSubmitResponseDto,
+  RegisterAcceptedApplicationDto,
+} from '../dto/application-registration-submit.dto';
 
 @ApiTags('admissions-applications')
 @ApiBearerAuth()
@@ -40,6 +50,7 @@ export class ApplicationsController {
     private readonly submitApplicationUseCase: SubmitApplicationUseCase,
     private readonly enrollApplicationHandoffUseCase: EnrollApplicationHandoffUseCase,
     private readonly getApplicationRegistrationHandoffUseCase: GetApplicationRegistrationHandoffUseCase,
+    private readonly registerAcceptedApplicationUseCase: RegisterAcceptedApplicationUseCase,
   ) {}
 
   @Get()
@@ -76,6 +87,22 @@ export class ApplicationsController {
     @Param('id', new ParseUUIDPipe()) applicationId: string,
   ): Promise<ApplicationRegistrationHandoffResponseDto> {
     return this.getApplicationRegistrationHandoffUseCase.execute(applicationId);
+  }
+
+  @Post(':id/register')
+  @HttpCode(200)
+  @ApiOkResponse({ type: ApplicationRegistrationSubmitResponseDto })
+  @RequiredPermissions(
+    'admissions.applications.manage',
+    'students.records.manage',
+    'students.guardians.manage',
+    'students.enrollments.manage',
+  )
+  registerAcceptedApplication(
+    @Param('id', new ParseUUIDPipe()) applicationId: string,
+    @Body() dto: RegisterAcceptedApplicationDto,
+  ): Promise<ApplicationRegistrationSubmitResponseDto> {
+    return this.registerAcceptedApplicationUseCase.execute(applicationId, dto);
   }
 
   @Patch(':id')
