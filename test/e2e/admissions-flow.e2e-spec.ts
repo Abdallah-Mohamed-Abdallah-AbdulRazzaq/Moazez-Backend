@@ -1020,6 +1020,117 @@ describe('Admissions Sprint 2A closeout flow (e2e)', () => {
 
     expect(acceptedDecision.body.applicationStatus).toBe('accepted');
 
+    const registrationHandoffResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/admissions/applications/${acceptedFlow.submittedApplication.id}/registration-handoff`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(registrationHandoffResponse.body).toEqual(
+      expect.objectContaining({
+        applicationId: acceptedFlow.submittedApplication.id,
+        status: 'accepted',
+        eligible: true,
+        alreadyRegistered: false,
+        registered: null,
+        eligibility: {
+          canPrepareHandoff: true,
+          canSubmitRegistration: false,
+          reasonCodes: [],
+          placementTests: { total: 1, completed: 1 },
+          interviews: { total: 1, completed: 1 },
+          documents: {
+            included: true,
+            blockingPolicy: 'not_enforced_by_current_handoff',
+          },
+        },
+      }),
+    );
+    expect(registrationHandoffResponse.body.source.application).toEqual(
+      expect.objectContaining({
+        id: acceptedFlow.submittedApplication.id,
+        studentName: acceptedFlow.lead.studentName,
+        requestedAcademicYearId: demoAcademicYearId,
+        requestedAcademicYearName: demoAcademicYearName,
+        requestedGradeId: demoGradeId,
+        requestedGradeName: demoGradeName,
+        source: 'referral',
+        status: 'accepted',
+      }),
+    );
+    expect(registrationHandoffResponse.body.source.lead).toEqual(
+      expect.objectContaining({
+        id: acceptedFlow.lead.id,
+        primaryContactName: acceptedFlow.lead.primaryContactName,
+        phone: acceptedFlow.lead.phone,
+        email: acceptedFlow.lead.email,
+      }),
+    );
+    expect(registrationHandoffResponse.body.wizardDraft).toEqual(
+      expect.objectContaining({
+        student: expect.objectContaining({
+          name: acceptedFlow.lead.studentName,
+          full_name_en: acceptedFlow.lead.studentName,
+          status: 'active',
+        }),
+        guardians: [
+          {
+            profile: expect.objectContaining({
+              full_name: acceptedFlow.lead.primaryContactName,
+              relation: null,
+              phone_primary: acceptedFlow.lead.phone,
+              email: acceptedFlow.lead.email,
+            }),
+            relationship: { is_primary: true },
+            account: { mode: 'none' },
+          },
+        ],
+        enrollment: {
+          academicYearId: demoAcademicYearId,
+          gradeId: demoGradeId,
+          sectionId: null,
+          classroomId: null,
+          termId: null,
+          enrollmentDate: null,
+          status: 'active',
+        },
+        studentAccount: { mode: 'none' },
+      }),
+    );
+    expect(registrationHandoffResponse.body.missingRequiredForRegistration).toEqual(
+      expect.arrayContaining([
+        'guardians[0].profile.relation',
+        'enrollment.classroomId',
+        'enrollment.enrollmentDate',
+      ]),
+    );
+    expect(registrationHandoffResponse.body.documents).toEqual([
+      expect.objectContaining({
+        applicationDocumentId: acceptedFlow.document.id,
+        documentType: 'birth_certificate',
+        source: 'admissions_upload',
+        file: expect.objectContaining({
+          id: acceptedFlow.uploadedFile.id,
+          originalName: acceptedFlow.uploadedFile.originalName,
+          mimeType: acceptedFlow.uploadedFile.mimeType,
+          sizeBytes: acceptedFlow.uploadedFile.sizeBytes,
+        }),
+      }),
+    ]);
+    const registrationHandoffJson = JSON.stringify(
+      registrationHandoffResponse.body,
+    );
+    expect(registrationHandoffJson).not.toContain('schoolId');
+    expect(registrationHandoffJson).not.toContain('organizationId');
+    expect(registrationHandoffJson).not.toContain('userId');
+    expect(registrationHandoffJson).not.toContain('membershipId');
+    expect(registrationHandoffJson).not.toContain('roleId');
+    expect(registrationHandoffJson).not.toContain('passwordHash');
+    expect(registrationHandoffJson).not.toContain('deletedAt');
+    expect(registrationHandoffJson).not.toContain('bucket');
+    expect(registrationHandoffJson).not.toContain('objectKey');
+
     const nonAcceptedFlow = await createDecisionReadyApplication(
       accessToken,
       'Sprint2A Handoff Waitlist',
@@ -1041,6 +1152,19 @@ describe('Admissions Sprint 2A closeout flow (e2e)', () => {
       .expect(409);
 
     expect(rejectedHandoffResponse.body?.error?.code).toBe(
+      'admissions.application.not_accepted',
+    );
+
+    const rejectedRegistrationHandoffResponse = await request(
+      app.getHttpServer(),
+    )
+      .get(
+        `${GLOBAL_PREFIX}/admissions/applications/${nonAcceptedFlow.submittedApplication.id}/registration-handoff`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(409);
+
+    expect(rejectedRegistrationHandoffResponse.body?.error?.code).toBe(
       'admissions.application.not_accepted',
     );
 

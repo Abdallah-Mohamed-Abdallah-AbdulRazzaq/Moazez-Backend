@@ -36,6 +36,11 @@ const TENANT_B_ORG_SLUG = 'admissions-tenancy-org-b';
 const TENANT_B_SCHOOL_SLUG = 'admissions-tenancy-school-b';
 const TENANT_B_ADMIN_EMAIL = 'admin-b@admissions-tenancy.moazez.local';
 const TENANT_B_ADMIN_PASSWORD = 'AdmissionsB123!';
+const BLOCKED_ACTOR_SUFFIX = `admissions-handoff-${Date.now()}`;
+const BLOCKED_ACTOR_PASSWORD = 'AdmissionsHandoff123!';
+const APPLICANT_ACTOR_EMAIL = `${BLOCKED_ACTOR_SUFFIX}-applicant@security.moazez.local`;
+const PARENT_ACTOR_EMAIL = `${BLOCKED_ACTOR_SUFFIX}-parent@security.moazez.local`;
+const STUDENT_ACTOR_EMAIL = `${BLOCKED_ACTOR_SUFFIX}-student@security.moazez.local`;
 
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
@@ -60,6 +65,8 @@ describe('Admissions tenancy isolation (security)', () => {
   let tenantBSchoolId: string;
   let tenantBUserId: string;
   let tenantBOrganizationId: string;
+  const blockedActorUserIds = new Set<string>();
+  const blockedActorMembershipIds = new Set<string>();
 
   let demoLeadId: string;
   let demoApplicationId: string;
@@ -312,6 +319,24 @@ describe('Admissions tenancy isolation (security)', () => {
         },
       });
     }
+
+    await createBlockedActor({
+      email: APPLICANT_ACTOR_EMAIL,
+      userType: UserType.APPLICANT,
+      withMembership: false,
+    });
+    await createBlockedActor({
+      email: PARENT_ACTOR_EMAIL,
+      userType: UserType.PARENT,
+      roleKey: 'parent',
+      withMembership: true,
+    });
+    await createBlockedActor({
+      email: STUDENT_ACTOR_EMAIL,
+      userType: UserType.STUDENT,
+      roleKey: 'student',
+      withMembership: true,
+    });
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -571,13 +596,34 @@ describe('Admissions tenancy isolation (security)', () => {
         },
       });
       await prisma.session.deleteMany({
-        where: { userId: { in: [limitedUserId, tenantBUserId].filter(Boolean) } },
+        where: {
+          userId: {
+            in: [
+              limitedUserId,
+              tenantBUserId,
+              ...blockedActorUserIds,
+            ].filter(Boolean),
+          },
+        },
       });
       await prisma.membership.deleteMany({
-        where: { userId: { in: [limitedUserId, tenantBUserId].filter(Boolean) } },
+        where: {
+          OR: [
+            { userId: { in: [limitedUserId, tenantBUserId].filter(Boolean) } },
+            { id: { in: [...blockedActorMembershipIds] } },
+          ],
+        },
       });
       await prisma.user.deleteMany({
-        where: { id: { in: [limitedUserId, tenantBUserId].filter(Boolean) } },
+        where: {
+          id: {
+            in: [
+              limitedUserId,
+              tenantBUserId,
+              ...blockedActorUserIds,
+            ].filter(Boolean),
+          },
+        },
       });
       await prisma.rolePermission.deleteMany({ where: { roleId: limitedRoleId } });
       await prisma.role.deleteMany({ where: { id: limitedRoleId } });
@@ -597,6 +643,83 @@ describe('Admissions tenancy isolation (security)', () => {
       .expect(200);
 
     return { accessToken: response.body.accessToken };
+  }
+
+  async function createBlockedActor(params: {
+    email: string;
+    userType: UserType;
+    roleKey?: string;
+    withMembership: boolean;
+  }): Promise<void> {
+    const passwordHash = await argon2.hash(
+      BLOCKED_ACTOR_PASSWORD,
+      ARGON2_OPTIONS,
+    );
+    const user = await prisma.user.upsert({
+      where: { email: params.email },
+      update: {
+        firstName: 'Admissions',
+        lastName: params.userType,
+        userType: params.userType,
+        status: UserStatus.ACTIVE,
+        passwordHash,
+      },
+      create: {
+        email: params.email,
+        firstName: 'Admissions',
+        lastName: params.userType,
+        userType: params.userType,
+        status: UserStatus.ACTIVE,
+        passwordHash,
+      },
+      select: { id: true },
+    });
+    blockedActorUserIds.add(user.id);
+
+    if (!params.withMembership) {
+      return;
+    }
+
+    const role = await prisma.role.findFirstOrThrow({
+      where: {
+        key: params.roleKey,
+        schoolId: null,
+        isSystem: true,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    const existingMembership = await prisma.membership.findFirst({
+      where: {
+        userId: user.id,
+        organizationId: demoOrganizationId,
+        schoolId: demoSchoolId,
+        roleId: role.id,
+      },
+      select: { id: true },
+    });
+    const membership = existingMembership
+      ? await prisma.membership.update({
+          where: { id: existingMembership.id },
+          data: {
+            status: MembershipStatus.ACTIVE,
+            endedAt: null,
+            userType: params.userType,
+          },
+          select: { id: true },
+        })
+      : await prisma.membership.create({
+          data: {
+            userId: user.id,
+            organizationId: demoOrganizationId,
+            schoolId: demoSchoolId,
+            roleId: role.id,
+            userType: params.userType,
+            status: MembershipStatus.ACTIVE,
+          },
+          select: { id: true },
+        });
+    blockedActorMembershipIds.add(membership.id);
   }
 
   it('returns 404 when school A admin requests a school B lead by id', async () => {
@@ -813,6 +936,19 @@ describe('Admissions tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('not_found');
   });
 
+  it('returns 404 when school A admin requests registration handoff for a school B application id', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/admissions/applications/${tenantBApplicationId}/registration-handoff`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    expect(response.body?.error?.code).toBe('not_found');
+  });
+
   it('returns 403 when the same-school actor lacks the leads manage permission', async () => {
     const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
 
@@ -924,6 +1060,36 @@ describe('Admissions tenancy isolation (security)', () => {
 
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/admissions/applications/${demoApplicationId}/enroll`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it('returns 403 when the same-school actor lacks the applications manage permission for registration handoff', async () => {
+    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/admissions/applications/${demoApplicationId}/registration-handoff`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it.each([
+    ['applicant', APPLICANT_ACTOR_EMAIL],
+    ['parent', PARENT_ACTOR_EMAIL],
+    ['student', STUDENT_ACTOR_EMAIL],
+  ])('returns 403 when %s actor requests registration handoff', async (_label, email) => {
+    const { accessToken } = await login(email, BLOCKED_ACTOR_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/admissions/applications/${demoApplicationId}/registration-handoff`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(403);
 

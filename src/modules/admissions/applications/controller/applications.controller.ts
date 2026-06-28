@@ -13,6 +13,7 @@ import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nest
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { CreateApplicationUseCase } from '../application/create-application.use-case';
 import { EnrollApplicationHandoffUseCase } from '../application/enroll-application-handoff.use-case';
+import { GetApplicationRegistrationHandoffUseCase } from '../application/get-application-registration-handoff.use-case';
 import { GetApplicationUseCase } from '../application/get-application.use-case';
 import { ListApplicationsUseCase } from '../application/list-applications.use-case';
 import { SubmitApplicationUseCase } from '../application/submit-application.use-case';
@@ -25,6 +26,7 @@ import {
   ListApplicationsQueryDto,
   UpdateApplicationDto,
 } from '../dto/application.dto';
+import { ApplicationRegistrationHandoffResponseDto } from '../dto/application-registration-handoff.dto';
 
 @ApiTags('admissions-applications')
 @ApiBearerAuth()
@@ -37,6 +39,7 @@ export class ApplicationsController {
     private readonly updateApplicationUseCase: UpdateApplicationUseCase,
     private readonly submitApplicationUseCase: SubmitApplicationUseCase,
     private readonly enrollApplicationHandoffUseCase: EnrollApplicationHandoffUseCase,
+    private readonly getApplicationRegistrationHandoffUseCase: GetApplicationRegistrationHandoffUseCase,
   ) {}
 
   @Get()
@@ -64,6 +67,15 @@ export class ApplicationsController {
     @Param('id', new ParseUUIDPipe()) applicationId: string,
   ): Promise<ApplicationResponseDto> {
     return this.getApplicationUseCase.execute(applicationId);
+  }
+
+  @Get(':id/registration-handoff')
+  @ApiOkResponse({ type: ApplicationRegistrationHandoffResponseDto })
+  @RequiredPermissions('admissions.applications.manage')
+  getApplicationRegistrationHandoff(
+    @Param('id', new ParseUUIDPipe()) applicationId: string,
+  ): Promise<ApplicationRegistrationHandoffResponseDto> {
+    return this.getApplicationRegistrationHandoffUseCase.execute(applicationId);
   }
 
   @Patch(':id')

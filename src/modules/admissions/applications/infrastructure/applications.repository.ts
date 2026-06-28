@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  StudentEnrollmentStatus,
   InterviewStatus,
   PlacementTestStatus,
   Prisma,
@@ -71,6 +72,216 @@ export type ApplicationEnrollmentHandoffRecord = Prisma.ApplicationGetPayload<
   typeof APPLICATION_ENROLLMENT_HANDOFF_RECORD_ARGS
 >;
 
+const APPLICATION_REGISTRATION_HANDOFF_RECORD_ARGS =
+  Prisma.validator<Prisma.ApplicationDefaultArgs>()({
+    select: {
+      id: true,
+      schoolId: true,
+      organizationId: true,
+      leadId: true,
+      studentName: true,
+      requestedAcademicYearId: true,
+      requestedGradeId: true,
+      source: true,
+      status: true,
+      submittedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      decision: {
+        select: {
+          id: true,
+          decision: true,
+          decidedAt: true,
+        },
+      },
+      requestedAcademicYear: {
+        select: {
+          id: true,
+          nameAr: true,
+          nameEn: true,
+          isActive: true,
+        },
+      },
+      requestedGrade: {
+        select: {
+          id: true,
+          stageId: true,
+          nameAr: true,
+          nameEn: true,
+        },
+      },
+      lead: {
+        select: {
+          id: true,
+          studentName: true,
+          primaryContactName: true,
+          phone: true,
+          email: true,
+        },
+      },
+      applicantAdmissionRequest: {
+        select: {
+          id: true,
+          schoolId: true,
+          applicationId: true,
+          requestedAcademicYearId: true,
+          requestedGradeId: true,
+          childFirstName: true,
+          childLastName: true,
+          childFullName: true,
+          childDateOfBirth: true,
+          childGender: true,
+          childNationality: true,
+          previousSchool: true,
+          notes: true,
+          submittedAt: true,
+          requestedAcademicYear: {
+            select: {
+              id: true,
+              nameAr: true,
+              nameEn: true,
+            },
+          },
+          requestedGrade: {
+            select: {
+              id: true,
+              nameAr: true,
+              nameEn: true,
+            },
+          },
+          applicantProfile: {
+            select: {
+              fullName: true,
+              phoneNumber: true,
+              city: true,
+              relationship: true,
+              user: {
+                select: {
+                  email: true,
+                  contactEmail: true,
+                },
+              },
+            },
+          },
+        },
+      },
+      documents: {
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          applicationId: true,
+          fileId: true,
+          documentType: true,
+          status: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+          file: {
+            select: {
+              id: true,
+              originalName: true,
+              mimeType: true,
+              sizeBytes: true,
+              visibility: true,
+            },
+          },
+          applicantAdmissionRequestDocuments: {
+            where: { deletedAt: null },
+            select: {
+              id: true,
+            },
+          },
+        },
+      },
+      student: {
+        select: {
+          id: true,
+          schoolId: true,
+          organizationId: true,
+          applicationId: true,
+          userId: true,
+          firstName: true,
+          fatherNameEn: true,
+          grandfatherNameEn: true,
+          lastName: true,
+          firstNameAr: true,
+          fatherNameAr: true,
+          grandfatherNameAr: true,
+          familyNameAr: true,
+          birthDate: true,
+          gender: true,
+          nationality: true,
+          addressLine: true,
+          city: true,
+          district: true,
+          studentPhone: true,
+          studentEmail: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          deletedAt: true,
+          enrollments: {
+            where: {
+              status: StudentEnrollmentStatus.ACTIVE,
+              deletedAt: null,
+            },
+            orderBy: [{ enrolledAt: 'desc' }, { createdAt: 'desc' }],
+            take: 1,
+            select: {
+              id: true,
+              schoolId: true,
+              studentId: true,
+              academicYearId: true,
+              termId: true,
+              classroomId: true,
+              status: true,
+              enrolledAt: true,
+              endedAt: true,
+              exitReason: true,
+              createdAt: true,
+              updatedAt: true,
+              deletedAt: true,
+              academicYear: {
+                select: {
+                  id: true,
+                  nameAr: true,
+                  nameEn: true,
+                  isActive: true,
+                },
+              },
+              classroom: {
+                select: {
+                  id: true,
+                  nameAr: true,
+                  nameEn: true,
+                  section: {
+                    select: {
+                      id: true,
+                      nameAr: true,
+                      nameEn: true,
+                      grade: {
+                        select: {
+                          id: true,
+                          nameAr: true,
+                          nameEn: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+export type ApplicationRegistrationHandoffRecord =
+  Prisma.ApplicationGetPayload<
+    typeof APPLICATION_REGISTRATION_HANDOFF_RECORD_ARGS
+  >;
+
 @Injectable()
 export class ApplicationsRepository {
   private get scopedPrisma(): PrismaService {
@@ -104,6 +315,15 @@ export class ApplicationsRepository {
     return this.scopedPrisma.application.findFirst({
       where: { id: applicationId },
       ...APPLICATION_ENROLLMENT_HANDOFF_RECORD_ARGS,
+    });
+  }
+
+  findApplicationRegistrationHandoffById(
+    applicationId: string,
+  ): Promise<ApplicationRegistrationHandoffRecord | null> {
+    return this.scopedPrisma.application.findFirst({
+      where: { id: applicationId },
+      ...APPLICATION_REGISTRATION_HANDOFF_RECORD_ARGS,
     });
   }
 

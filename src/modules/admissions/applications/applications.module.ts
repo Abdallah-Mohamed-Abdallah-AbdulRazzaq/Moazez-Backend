@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CreateApplicationUseCase } from './application/create-application.use-case';
 import { EnrollApplicationHandoffUseCase } from './application/enroll-application-handoff.use-case';
+import { GetApplicationRegistrationHandoffUseCase } from './application/get-application-registration-handoff.use-case';
 import { GetApplicationUseCase } from './application/get-application.use-case';
 import { ListApplicationsUseCase } from './application/list-applications.use-case';
 import { SubmitApplicationUseCase } from './application/submit-application.use-case';
@@ -20,6 +21,7 @@ import { ApplicationEnrollmentHandoffValidator } from './validators/application-
     UpdateApplicationUseCase,
     SubmitApplicationUseCase,
     EnrollApplicationHandoffUseCase,
+    GetApplicationRegistrationHandoffUseCase,
   ],
   exports: [ApplicationsRepository],
 })
