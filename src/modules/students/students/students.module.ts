@@ -24,6 +24,6 @@ import { StudentsRepository } from './infrastructure/students.repository';
     UpdateStudentUseCase,
     GetStudentTimelineUseCase,
   ],
-  exports: [StudentsRepository],
+  exports: [StudentsRepository, CreateOrLinkStudentAccountUseCase],
 })
 export class StudentsRecordsModule {}

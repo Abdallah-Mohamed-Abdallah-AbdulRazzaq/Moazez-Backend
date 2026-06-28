@@ -40,6 +40,6 @@ import { GuardiansRepository } from './infrastructure/guardians.repository';
     UpdateStudentGuardianLinkUseCase,
     UnlinkGuardianFromStudentUseCase,
   ],
-  exports: [GuardiansRepository],
+  exports: [GuardiansRepository, CreateOrLinkGuardianAccountUseCase],
 })
 export class GuardiansModule {}
