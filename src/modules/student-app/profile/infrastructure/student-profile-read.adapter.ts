@@ -9,15 +9,19 @@ const STUDENT_PROFILE_IDENTITY_ARGS =
       id: true,
       firstName: true,
       lastName: true,
-      userId: true,
       status: true,
-      user: {
+      avatarFile: {
         select: {
           id: true,
+          mimeType: true,
+          sizeBytes: true,
+          deletedAt: true,
+        },
+      },
+      user: {
+        select: {
           email: true,
           phone: true,
-          firstName: true,
-          lastName: true,
           userType: true,
           status: true,
           deletedAt: true,

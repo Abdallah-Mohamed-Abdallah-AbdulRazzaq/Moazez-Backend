@@ -1,14 +1,20 @@
 export class StudentProfileStudentDto {
   studentId!: string;
-  userId!: string;
   displayName!: string;
   firstName!: string;
   lastName!: string;
   email!: string;
   phone!: string | null;
-  avatarUrl!: null;
+  avatarUrl!: string | null;
   studentNumber!: null;
   status!: 'active';
+}
+
+export class StudentProfileAvatarDto {
+  fileId!: string;
+  url!: string;
+  mimeType!: string;
+  sizeBytes!: number;
 }
 
 export class StudentProfileSchoolDto {
@@ -32,7 +38,7 @@ export class StudentProfileEnrollmentDto {
 }
 
 export class StudentProfileUnsupportedDto {
-  avatarUpload!: true;
+  avatarUpload!: boolean;
   preferences!: true;
   seatNumber!: true;
 }
@@ -69,6 +75,7 @@ export class StudentProfileTopStudentDto {
 
 export class StudentProfileResponseDto {
   student!: StudentProfileStudentDto;
+  avatar!: StudentProfileAvatarDto | null;
   school!: StudentProfileSchoolDto;
   enrollment!: StudentProfileEnrollmentDto;
   unsupported!: StudentProfileUnsupportedDto;

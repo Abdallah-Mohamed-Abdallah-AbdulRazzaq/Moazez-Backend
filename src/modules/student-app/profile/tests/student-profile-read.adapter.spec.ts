@@ -25,6 +25,14 @@ describe('StudentProfileReadAdapter', () => {
       },
     });
     expect(query.where).not.toHaveProperty('schoolId');
+    expect(query.select.avatarFile.select).toEqual({
+      id: true,
+      mimeType: true,
+      sizeBytes: true,
+      deletedAt: true,
+    });
+    expect(query.select).not.toHaveProperty('schoolId');
+    expect(query.select).not.toHaveProperty('organizationId');
     expect(baseStudentMocks.findFirst).not.toHaveBeenCalled();
   });
 

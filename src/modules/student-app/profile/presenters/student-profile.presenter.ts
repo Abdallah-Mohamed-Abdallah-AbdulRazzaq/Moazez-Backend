@@ -1,4 +1,5 @@
 import {
+  StudentProfileAvatarDto,
   StudentProfileEnrollmentDto,
   StudentProfileResponseDto,
 } from '../dto/student-profile.dto';
@@ -19,24 +20,25 @@ export class StudentProfilePresenter {
   static present(input: StudentProfilePresenterInput): StudentProfileResponseDto {
     const displayName = fullName(input.student);
     const enrollment = presentEnrollment(input.enrollment);
+    const avatar = presentAvatar(input.student.avatarFile);
 
     return {
       student: {
         studentId: input.student.id,
-        userId: input.student.userId ?? '',
         displayName,
         firstName: input.student.firstName,
         lastName: input.student.lastName,
         email: input.student.user?.email ?? '',
         phone: input.student.user?.phone ?? null,
-        avatarUrl: null,
+        avatarUrl: avatar?.url ?? null,
         studentNumber: null,
         status: 'active',
       },
+      avatar,
       school: input.school,
       enrollment,
       unsupported: {
-        avatarUpload: true,
+        avatarUpload: false,
         preferences: true,
         seatNumber: true,
       },
@@ -57,6 +59,21 @@ export class StudentProfilePresenter {
       leaderboard: [],
     };
   }
+}
+
+function presentAvatar(
+  avatarFile: StudentProfileIdentityRecord['avatarFile'],
+): StudentProfileAvatarDto | null {
+  if (!avatarFile || avatarFile.deletedAt) {
+    return null;
+  }
+
+  return {
+    fileId: avatarFile.id,
+    url: buildSecureDownloadUrl(avatarFile.id),
+    mimeType: avatarFile.mimeType,
+    sizeBytes: Number(avatarFile.sizeBytes),
+  };
 }
 
 function presentEnrollment(
@@ -98,4 +115,8 @@ function fullName(
 
 function displayName(node: { nameEn: string; nameAr: string }): string {
   return node.nameEn || node.nameAr;
+}
+
+function buildSecureDownloadUrl(fileId: string): string {
+  return `/api/v1/files/${fileId}/download`;
 }

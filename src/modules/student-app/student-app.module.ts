@@ -5,9 +5,12 @@ import { CommunicationModule } from '../communication/communication.module';
 import { DisciplineModule } from '../discipline/discipline.module';
 import { GradesSubmissionsRepository } from '../grades/assessments/infrastructure/grades-submissions.repository';
 import { AuthModule } from '../iam/auth/auth.module';
+import { RegisterFileMetadataUseCase } from '../files/uploads/application/register-file-metadata.use-case';
+import { FilesRepository } from '../files/uploads/infrastructure/files.repository';
 import { HeroJourneyModule } from '../reinforcement/hero-journey/hero-journey.module';
 import { ReviewsModule } from '../reinforcement/reviews/reviews.module';
 import { RewardsModule } from '../reinforcement/rewards/rewards.module';
+import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { StudentAppAccessService } from './access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from './access/student-app-student-read.adapter';
 import { GetStudentAnnouncementUseCase } from './announcements/application/get-student-announcement.use-case';
@@ -88,8 +91,11 @@ import {
   UpdateStudentNotificationPreferencesUseCase,
 } from './notifications/application/student-notifications.use-cases';
 import { StudentNotificationsController } from './notifications/controller/student-notifications.controller';
+import { DeleteStudentAvatarUseCase } from './profile/application/delete-student-avatar.use-case';
 import { GetStudentProfileUseCase } from './profile/application/get-student-profile.use-case';
+import { UploadStudentAvatarUseCase } from './profile/application/upload-student-avatar.use-case';
 import { StudentProfileController } from './profile/controller/student-profile.controller';
+import { StudentAvatarRepository } from './profile/infrastructure/student-avatar.repository';
 import { StudentProfileReadAdapter } from './profile/infrastructure/student-profile-read.adapter';
 import { GetStudentAcademicProgressUseCase } from './progress/application/get-student-academic-progress.use-case';
 import { GetStudentBehaviorProgressUseCase } from './progress/application/get-student-behavior-progress.use-case';
@@ -134,6 +140,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     HeroJourneyModule,
     ReviewsModule,
     RewardsModule,
+    StorageModule,
     StudentHomeworksModule,
   ],
   controllers: [
@@ -160,8 +167,13 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentAppStudentReadAdapter,
     StudentHomeReadAdapter,
     GetStudentHomeUseCase,
+    StudentAvatarRepository,
     StudentProfileReadAdapter,
+    FilesRepository,
+    RegisterFileMetadataUseCase,
     GetStudentProfileUseCase,
+    UploadStudentAvatarUseCase,
+    DeleteStudentAvatarUseCase,
     StudentSubjectsReadAdapter,
     ListStudentSubjectsUseCase,
     GetStudentSubjectUseCase,

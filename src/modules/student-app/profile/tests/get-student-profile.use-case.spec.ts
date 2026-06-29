@@ -36,7 +36,6 @@ describe('GetStudentProfileUseCase', () => {
 
     expect(result.student).toEqual({
       studentId: 'student-1',
-      userId: 'student-user-1',
       displayName: 'Sara Student',
       firstName: 'Sara',
       lastName: 'Student',
@@ -46,6 +45,8 @@ describe('GetStudentProfileUseCase', () => {
       studentNumber: null,
       status: 'active',
     });
+    expect(result.avatar).toBeNull();
+    expect(result.student).not.toHaveProperty('userId');
     expect(result.school).toEqual({
       name: 'Moazez Demo School',
       logoUrl: null,
@@ -79,7 +80,7 @@ describe('GetStudentProfileUseCase', () => {
     const result = await useCase.execute();
 
     expect(result.unsupported).toEqual({
-      avatarUpload: true,
+      avatarUpload: false,
       preferences: true,
       seatNumber: true,
     });
@@ -87,6 +88,42 @@ describe('GetStudentProfileUseCase', () => {
     expect(result.top_students).toEqual([]);
     expect(result.leaderboard).toEqual([]);
   });
+
+  it('returns safe avatar data when the current student has an avatar file', async () => {
+    const { useCase, readAdapter } = createUseCaseWithValidAccess();
+    readAdapter.findStudentProfile.mockResolvedValue(
+      studentProfileFixture({
+        avatarFile: {
+          id: 'avatar-file-1',
+          mimeType: 'image/webp',
+          sizeBytes: BigInt(2048),
+          deletedAt: null,
+        },
+      }),
+    );
+    readAdapter.findSchoolDisplay.mockResolvedValue({
+      name: 'Moazez Demo School',
+      logoUrl: null,
+    });
+    readAdapter.findCurrentEnrollment.mockResolvedValue(enrollmentFixture());
+    readAdapter.sumTotalXpForCurrentStudent.mockResolvedValue(0);
+
+    const result = await useCase.execute();
+
+    expect(result.student.avatarUrl).toBe(
+      '/api/v1/files/avatar-file-1/download',
+    );
+    expect(result.avatar).toEqual({
+      fileId: 'avatar-file-1',
+      url: '/api/v1/files/avatar-file-1/download',
+      mimeType: 'image/webp',
+      sizeBytes: 2048,
+    });
+    expect(JSON.stringify(result)).not.toContain('objectKey');
+    expect(JSON.stringify(result)).not.toContain('bucket');
+    expect(JSON.stringify(result)).not.toContain('signed');
+  });
+
 
   it('does not expose tenant, schedule, guardian, medical, document, note, or security internals', async () => {
     const { useCase, readAdapter } = createUseCaseWithValidAccess();
@@ -112,6 +149,7 @@ describe('GetStudentProfileUseCase', () => {
       'session',
       'token',
       'applicationId',
+      'userId',
       'bucket',
       'objectKey',
     ]) {
@@ -206,19 +244,18 @@ function currentStudentWithEnrollmentFixture(): StudentAppCurrentStudentWithEnro
   };
 }
 
-function studentProfileFixture(): StudentProfileIdentityRecord {
+function studentProfileFixture(overrides?: {
+  avatarFile?: StudentProfileIdentityRecord['avatarFile'];
+}): StudentProfileIdentityRecord {
   return {
     id: 'student-1',
     firstName: 'Sara',
     lastName: 'Student',
-    userId: 'student-user-1',
     status: 'ACTIVE',
+    avatarFile: overrides?.avatarFile ?? null,
     user: {
-      id: 'student-user-1',
       email: 'sara.student@example.test',
       phone: null,
-      firstName: 'Sara',
-      lastName: 'Student',
       userType: UserType.STUDENT,
       status: UserStatus.ACTIVE,
       deletedAt: null,

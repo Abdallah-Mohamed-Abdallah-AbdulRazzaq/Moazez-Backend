@@ -3146,6 +3146,7 @@ model Student {
   organizationId String        @map("organization_id") @db.Uuid
   applicationId  String?       @map("application_id") @db.Uuid
   userId         String?       @unique @map("user_id") @db.Uuid
+  avatarFileId   String?       @map("avatar_file_id") @db.Uuid
   firstName         String        @map("first_name")
   fatherNameEn      String?       @map("father_name_en")
   grandfatherNameEn String?       @map("grandfather_name_en")
@@ -3172,6 +3173,7 @@ model Student {
   organization                       Organization                        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   application                        Application?                        @relation(fields: [applicationId, schoolId], references: [id, schoolId], onDelete: Restrict)
   user                               User?                               @relation("StudentUser", fields: [userId], references: [id], onDelete: SetNull)
+  avatarFile                         File?                               @relation("StudentAvatarFile", fields: [avatarFileId], references: [id], onDelete: SetNull)
   guardians                          StudentGuardian[]
   enrollments                        Enrollment[]
   documents                          StudentDocument[]
@@ -3202,6 +3204,7 @@ model Student {
   @@index([schoolId])
   @@index([organizationId])
   @@index([applicationId])
+  @@index([avatarFileId])
   @@index([schoolId, status, createdAt(sort: Desc)])
   @@index([deletedAt])
   @@map("students")
@@ -6033,6 +6036,7 @@ model File {
   applicationDocuments                 ApplicationDocument[]
   applicantAdmissionRequestDocuments   ApplicantAdmissionRequestDocument[]
   studentDocuments                     StudentDocument[]
+  studentAvatars                       Student[]                            @relation("StudentAvatarFile")
   importJobsUploaded                   ImportJob[]                           @relation("ImportJobUploadedFile")
   heroBadges                           HeroBadge[]
   rewardCatalogItemImages              RewardCatalogItem[]                   @relation("RewardCatalogItemImageFile")

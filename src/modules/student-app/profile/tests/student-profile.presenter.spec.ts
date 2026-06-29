@@ -16,7 +16,6 @@ describe('StudentProfilePresenter', () => {
 
     expect(result.student).toMatchObject({
       studentId: 'student-1',
-      userId: 'student-user-1',
       displayName: 'Sara Student',
       email: 'sara.student@example.test',
       phone: null,
@@ -24,8 +23,10 @@ describe('StudentProfilePresenter', () => {
       studentNumber: null,
       status: 'active',
     });
+    expect(result.avatar).toBeNull();
+    expect(result.student).not.toHaveProperty('userId');
     expect(result.unsupported).toEqual({
-      avatarUpload: true,
+      avatarUpload: false,
       preferences: true,
       seatNumber: true,
     });
@@ -40,6 +41,35 @@ describe('StudentProfilePresenter', () => {
       rank_title: null,
       rank_image_url: null,
     });
+  });
+
+  it('presents safe avatar metadata when an avatar file exists', () => {
+    const result = StudentProfilePresenter.present({
+      student: studentProfileFixture({
+        avatarFile: {
+          id: 'avatar-file-1',
+          mimeType: 'image/png',
+          sizeBytes: BigInt(12345),
+          deletedAt: null,
+        },
+      }),
+      school: { name: 'Moazez Demo School', logoUrl: null },
+      enrollment: enrollmentFixture(),
+      totalXp: 0,
+    });
+
+    expect(result.student.avatarUrl).toBe(
+      '/api/v1/files/avatar-file-1/download',
+    );
+    expect(result.avatar).toEqual({
+      fileId: 'avatar-file-1',
+      url: '/api/v1/files/avatar-file-1/download',
+      mimeType: 'image/png',
+      sizeBytes: 12345,
+    });
+    expect(JSON.stringify(result)).not.toContain('bucket');
+    expect(JSON.stringify(result)).not.toContain('objectKey');
+    expect(JSON.stringify(result)).not.toContain('signed');
   });
 
   it('does not expose forbidden Student App fields', () => {
@@ -63,26 +93,28 @@ describe('StudentProfilePresenter', () => {
       'password',
       'session',
       'token',
+      'userId',
+      'applicationId',
       'objectKey',
+      'bucket',
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
   });
 });
 
-function studentProfileFixture(): StudentProfileIdentityRecord {
+function studentProfileFixture(overrides?: {
+  avatarFile?: StudentProfileIdentityRecord['avatarFile'];
+}): StudentProfileIdentityRecord {
   return {
     id: 'student-1',
     firstName: 'Sara',
     lastName: 'Student',
-    userId: 'student-user-1',
     status: 'ACTIVE',
+    avatarFile: overrides?.avatarFile ?? null,
     user: {
-      id: 'student-user-1',
       email: 'sara.student@example.test',
       phone: null,
-      firstName: 'Sara',
-      lastName: 'Student',
       userType: UserType.STUDENT,
       status: UserStatus.ACTIVE,
       deletedAt: null,

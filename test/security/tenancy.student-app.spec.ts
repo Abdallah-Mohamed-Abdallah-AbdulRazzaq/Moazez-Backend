@@ -919,15 +919,16 @@ describe('Student App Home/Profile routes (security)', () => {
 
     expect(profile.body.student).toMatchObject({
       studentId: linkedStudentId,
-      userId: linkedStudentUserId,
       displayName: 'Linked Student',
       email: linkedStudentEmail,
       avatarUrl: null,
       studentNumber: null,
       status: 'active',
     });
+    expect(profile.body.student).not.toHaveProperty('userId');
+    expect(profile.body.avatar).toBeNull();
     expect(profile.body.unsupported).toEqual({
-      avatarUpload: true,
+      avatarUpload: false,
       preferences: true,
       seatNumber: true,
     });
@@ -2714,18 +2715,13 @@ describe('Student App Home/Profile routes (security)', () => {
       .expect(404);
   });
 
-  it('does not expose mutation or avatar upload routes', async () => {
+  it('does not expose profile field mutation routes', async () => {
     const { accessToken } = await login(linkedStudentEmail);
 
     await request(app.getHttpServer())
       .patch(`${GLOBAL_PREFIX}/student/profile`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ firstName: 'Changed' })
-      .expect(404);
-
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/student/profile/avatar`)
-      .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
 
     for (const method of ['post', 'put', 'patch', 'delete'] as const) {

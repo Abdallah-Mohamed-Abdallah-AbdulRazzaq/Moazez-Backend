@@ -691,6 +691,16 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       await prisma.student.deleteMany({
         where: { id: { in: createdStudentIds } },
       });
+      await prisma.communicationNotificationDelivery.deleteMany({
+        where: {
+          notification: {
+            recipientUserId: { in: createdUserIds },
+          },
+        },
+      });
+      await prisma.communicationNotification.deleteMany({
+        where: { recipientUserId: { in: createdUserIds } },
+      });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
@@ -738,6 +748,8 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
 
     expect(routes).toEqual([
       'DELETE /api/v1/student/homeworks/:homeworkId/submission/attachments/:attachmentId',
+      'DELETE /api/v1/student/notifications/device-tokens/current',
+      'DELETE /api/v1/student/profile/avatar',
       'GET /api/v1/student/announcements',
       'GET /api/v1/student/announcements/:announcementId',
       'GET /api/v1/student/announcements/:announcementId/attachments',
@@ -768,9 +780,19 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'GET /api/v1/student/lessons/:lessonPlanItemId',
       'GET /api/v1/student/lessons/today',
       'GET /api/v1/student/lessons/week',
+      'GET /api/v1/student/messages/contacts',
       'GET /api/v1/student/messages/conversations',
       'GET /api/v1/student/messages/conversations/:conversationId',
       'GET /api/v1/student/messages/conversations/:conversationId/messages',
+      'GET /api/v1/student/messages/conversations/:conversationId/messages/:messageId/attachments/:attachmentId/download',
+      'GET /api/v1/student/messages/conversations/:conversationId/messages/:messageId/attachments/:attachmentId/preview',
+      'GET /api/v1/student/messages/conversations/:conversationId/messages/:messageId/info',
+      'GET /api/v1/student/messages/conversations/:conversationId/messages/:messageId/readers',
+      'GET /api/v1/student/messages/conversations/:conversationId/search',
+      'GET /api/v1/student/notifications',
+      'GET /api/v1/student/notifications/:notificationId',
+      'GET /api/v1/student/notifications/preferences',
+      'GET /api/v1/student/notifications/summary',
       'GET /api/v1/student/profile',
       'GET /api/v1/student/progress',
       'GET /api/v1/student/progress/academic',
@@ -793,6 +815,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'PATCH /api/v1/student/homeworks/:homeworkId/submission/answers/:questionId',
       'PATCH /api/v1/student/homeworks/:homeworkId/submission/attachments/:attachmentId',
       'PATCH /api/v1/student/homeworks/:homeworkId/submission/attachments/:attachmentId/reorder',
+      'PATCH /api/v1/student/notifications/preferences',
       'POST /api/v1/student/announcements/:announcementId/read',
       'POST /api/v1/student/exams/:assessmentId/start',
       'POST /api/v1/student/exams/:assessmentId/submission/submit',
@@ -803,8 +826,14 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'POST /api/v1/student/homeworks/:homeworkId/submission/draft',
       'POST /api/v1/student/homeworks/:homeworkId/submission/submit',
       'POST /api/v1/student/homeworks/:homeworkId/submit',
+      'POST /api/v1/student/messages/conversations',
       'POST /api/v1/student/messages/conversations/:conversationId/messages',
       'POST /api/v1/student/messages/conversations/:conversationId/read',
+      'POST /api/v1/student/notifications/:notificationId/archive',
+      'POST /api/v1/student/notifications/:notificationId/read',
+      'POST /api/v1/student/notifications/device-tokens',
+      'POST /api/v1/student/notifications/read-all',
+      'POST /api/v1/student/profile/avatar',
       'POST /api/v1/student/rewards/:rewardId/redeem',
       'POST /api/v1/student/tasks/:taskId/stages/:stageId/submit',
       'PUT /api/v1/student/exams/:assessmentId/submission/answers',
@@ -818,11 +847,8 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'GET /api/v1/student/homeworks/:homeworkId/attachments',
       'GET /api/v1/student/homeworks/:homeworkId/questions',
       'GET /api/v1/student/pickup',
-      'GET /api/v1/student/notifications',
-      'GET /api/v1/student/messages/contacts',
       'POST /api/v1/student/homeworks/:homeworkId/submission/resolve',
       'PUT /api/v1/student/homeworks/:homeworkId/submission/answers/:questionId',
-      'POST /api/v1/student/messages/conversations',
       'POST /api/v1/student/messages/conversations/:conversationId/attachments',
       'POST /api/v1/student/messages/conversations/:conversationId/audio',
       'POST /api/v1/student/xp/grants/manual',
@@ -830,7 +856,6 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'POST /api/v1/student/announcements',
       'POST /api/v1/student/announcements/:announcementId/publish',
       'PATCH /api/v1/student/profile',
-      'POST /api/v1/student/profile/avatar',
     ]) {
       expect(routes).not.toContain(absentRoute);
     }
@@ -874,15 +899,16 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
 
     expect(profile.body.student).toMatchObject({
       studentId: linkedStudentId,
-      userId: linkedStudentUserId,
       displayName: 'Linked Student',
       email: linkedStudentEmail,
       avatarUrl: null,
       studentNumber: null,
       status: 'active',
     });
+    expect(profile.body.student).not.toHaveProperty('userId');
+    expect(profile.body.avatar).toBeNull();
     expect(profile.body.unsupported).toEqual({
-      avatarUpload: true,
+      avatarUpload: false,
       preferences: true,
       seatNumber: true,
     });
@@ -1857,18 +1883,13 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       .expect(404);
   });
 
-  it('does not expose mutation or avatar upload routes', async () => {
+  it('does not expose profile field mutation routes', async () => {
     const { accessToken } = await login(linkedStudentEmail);
 
     await request(app.getHttpServer())
       .patch(`${GLOBAL_PREFIX}/student/profile`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ firstName: 'Changed' })
-      .expect(404);
-
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/student/profile/avatar`)
-      .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
 
     for (const method of ['post', 'put', 'patch', 'delete'] as const) {
@@ -1919,7 +1940,6 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'hero/rewards/redeem',
       'rewards/redemptions',
       'messages/contacts',
-      'messages/conversations',
       `messages/conversations/${ownConversationId}/attachments`,
       `messages/conversations/${ownConversationId}/audio`,
       'announcements',
@@ -1964,8 +1984,6 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       `homeworks/${ownTaskId}/questions`,
       `homeworks/${ownTaskId}/attachments`,
       'pickup',
-      'notifications',
-      'messages/contacts',
       'messages/new',
       `messages/conversations/${ownConversationId}/participants`,
       `messages/conversations/${ownConversationId}/invites`,
