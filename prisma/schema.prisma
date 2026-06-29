@@ -3314,13 +3314,22 @@ model Enrollment {
 }
 
 model StudentDocument {
-  id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId     String                @map("school_id") @db.Uuid
-  studentId    String                @map("student_id") @db.Uuid
-  fileId       String                @map("file_id") @db.Uuid
-  documentType String                @map("document_type")
-  status       StudentDocumentStatus @default(MISSING)
-  notes        String?
+  id                               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                         String                @map("school_id") @db.Uuid
+  studentId                        String                @map("student_id") @db.Uuid
+  fileId                           String                @map("file_id") @db.Uuid
+  documentType                     String                @map("document_type")
+  status                           StudentDocumentStatus @default(MISSING)
+  notes                            String?
+  sourceApplicationId              String?               @map("source_application_id") @db.Uuid
+  sourceApplicationDocumentId      String?               @map("source_application_document_id") @db.Uuid
+  sourceApplicantRequestDocumentId String?               @map("source_applicant_request_document_id") @db.Uuid
+  importedAt                       DateTime?             @map("imported_at")
+  importedBy                       String?               @map("imported_by") @db.Uuid
+  sourceDocumentType               String?               @map("source_document_type")
+  sourceReviewStatus               String?               @map("source_review_status")
+  sourceNotes                      String?               @map("source_notes")
+  sourceFileId                     String?               @map("source_file_id") @db.Uuid
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -3334,6 +3343,11 @@ model StudentDocument {
   @@index([fileId])
   @@index([schoolId, status])
   @@index([schoolId, studentId, documentType])
+  @@index([sourceApplicationId])
+  @@index([sourceApplicationDocumentId])
+  @@index([sourceApplicantRequestDocumentId])
+  @@index([sourceFileId])
+  @@unique([schoolId, studentId, sourceApplicationDocumentId], name: "studentDocumentSourceImport", map: "student_documents_source_import_key")
   @@map("student_documents")
 }
 

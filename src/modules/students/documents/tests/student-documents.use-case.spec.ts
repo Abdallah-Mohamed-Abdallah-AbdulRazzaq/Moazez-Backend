@@ -1,15 +1,23 @@
-import { FileVisibility, StudentDocumentStatus, StudentStatus, UserType } from '@prisma/client';
+import {
+  AuditOutcome,
+  FileVisibility,
+  StudentDocumentStatus,
+  StudentStatus,
+  UserType,
+} from '@prisma/client';
 import {
   createRequestContext,
   runWithRequestContext,
   setActiveMembership,
   setActor,
 } from '../../../../common/context/request-context';
+import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { UploadFileUseCase } from '../../../files/uploads/application/upload-file.use-case';
 import { FilesRepository } from '../../../files/uploads/infrastructure/files.repository';
 import { StudentsRepository } from '../../students/infrastructure/students.repository';
 import { CreateStudentDocumentUseCase } from '../application/create-student-document.use-case';
 import { DeleteStudentDocumentUseCase } from '../application/delete-student-document.use-case';
+import { ImportApplicationDocumentsUseCase } from '../application/import-application-documents.use-case';
 import { StudentDocumentsRepository } from '../infrastructure/student-documents.repository';
 
 describe('Student documents use cases', () => {
@@ -58,6 +66,15 @@ describe('Student documents use cases', () => {
       documentType: overrides?.documentType ?? 'Birth Certificate',
       status: overrides?.status ?? StudentDocumentStatus.COMPLETE,
       notes: overrides?.notes ?? 'Verified copy',
+      sourceApplicationId: null,
+      sourceApplicationDocumentId: null,
+      sourceApplicantRequestDocumentId: null,
+      importedAt: null,
+      importedBy: null,
+      sourceDocumentType: null,
+      sourceReviewStatus: null,
+      sourceNotes: null,
+      sourceFileId: null,
       createdAt: new Date('2026-04-22T10:00:00.000Z'),
       updatedAt: new Date('2026-04-22T10:05:00.000Z'),
       file: {
@@ -154,5 +171,235 @@ describe('Student documents use cases', () => {
       'document-1',
     ]);
     expect(result).toEqual({ ok: true });
+  });
+
+  it('imports selected admissions documents into student documents', async () => {
+    const importedDocument = createDocumentRecord({
+      id: 'student-document-1',
+      documentType: 'Birth Certificate',
+    });
+    const studentDocumentsRepository = {
+      importApplicationDocumentsFromApplication: jest.fn().mockResolvedValue({
+        status: 'imported',
+        imported: [
+          {
+            applicationDocumentId: 'application-document-1',
+            studentDocument: importedDocument,
+            source: {
+              sourceApplicationId: 'application-1',
+              sourceApplicationDocumentId: 'application-document-1',
+              sourceApplicantRequestDocumentId: 'applicant-document-1',
+            },
+          },
+        ],
+        skipped: [],
+      }),
+    } as unknown as StudentDocumentsRepository;
+    const authRepository = {
+      createAuditLog: jest.fn().mockResolvedValue(undefined),
+    } as unknown as AuthRepository;
+    const useCase = new ImportApplicationDocumentsUseCase(
+      studentDocumentsRepository,
+      authRepository,
+    );
+
+    const result = await withStudentsScope(() =>
+      useCase.execute('student-1', {
+        applicationId: 'application-1',
+        applicationDocumentIds: [
+          'application-document-1',
+          'application-document-1',
+        ],
+      }),
+    );
+
+    expect(
+      (studentDocumentsRepository.importApplicationDocumentsFromApplication as jest.Mock)
+        .mock.calls[0][0],
+    ).toEqual({
+      schoolId: 'school-1',
+      actorId: 'user-1',
+      studentId: 'student-1',
+      applicationId: 'application-1',
+      applicationDocumentIds: ['application-document-1'],
+    });
+    expect(result).toEqual({
+      studentId: 'student-1',
+      applicationId: 'application-1',
+      imported: [
+        {
+          applicationDocumentId: 'application-document-1',
+          studentDocument: {
+            id: 'student-document-1',
+            studentId: 'student-1',
+            fileId: 'file-1',
+            type: 'Birth Certificate',
+            name: 'birth-certificate.pdf',
+            status: 'complete',
+            uploadedDate: '2026-04-22T10:00:00.000Z',
+            url: '/api/v1/files/file-1/download',
+            fileType: 'pdf',
+            notes: 'Verified copy',
+          },
+          source: {
+            sourceApplicationId: 'application-1',
+            sourceApplicationDocumentId: 'application-document-1',
+            sourceApplicantRequestDocumentId: 'applicant-document-1',
+          },
+        },
+      ],
+      skipped: [],
+      warnings: [],
+    });
+    expect(authRepository.createAuditLog).toHaveBeenCalledWith({
+      actorId: 'user-1',
+      userType: UserType.SCHOOL_USER,
+      organizationId: 'org-1',
+      schoolId: 'school-1',
+      module: 'students',
+      action: 'students.document.import_from_admissions',
+      resourceType: 'student_document',
+      resourceId: 'student-1',
+      outcome: AuditOutcome.SUCCESS,
+      after: {
+        studentId: 'student-1',
+        applicationId: 'application-1',
+        applicationDocumentIds: ['application-document-1'],
+        studentDocumentIds: ['student-document-1'],
+        importedCount: 1,
+        skippedCount: 0,
+        source: 'admissions_application',
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain('schoolId');
+    expect(JSON.stringify(result)).not.toContain('objectKey');
+    expect(JSON.stringify(result)).not.toContain('bucket');
+  });
+
+  it('returns already imported source documents as skipped', async () => {
+    const studentDocumentsRepository = {
+      importApplicationDocumentsFromApplication: jest.fn().mockResolvedValue({
+        status: 'imported',
+        imported: [],
+        skipped: [
+          {
+            applicationDocumentId: 'application-document-1',
+            reason: 'already_imported',
+            studentDocumentId: 'student-document-1',
+          },
+        ],
+      }),
+    } as unknown as StudentDocumentsRepository;
+    const authRepository = {
+      createAuditLog: jest.fn().mockResolvedValue(undefined),
+    } as unknown as AuthRepository;
+    const useCase = new ImportApplicationDocumentsUseCase(
+      studentDocumentsRepository,
+      authRepository,
+    );
+
+    const result = await withStudentsScope(() =>
+      useCase.execute('student-1', {
+        applicationId: 'application-1',
+        applicationDocumentIds: ['application-document-1'],
+      }),
+    );
+
+    expect(result.skipped).toEqual([
+      {
+        applicationDocumentId: 'application-document-1',
+        reason: 'already_imported',
+        studentDocumentId: 'student-document-1',
+      },
+    ]);
+    expect(authRepository.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        after: expect.objectContaining({
+          importedCount: 0,
+          skippedCount: 1,
+        }),
+      }),
+    );
+  });
+
+  it('rejects import when the target student is not registered from the application', async () => {
+    const studentDocumentsRepository = {
+      importApplicationDocumentsFromApplication: jest
+        .fn()
+        .mockResolvedValue({ status: 'target_not_registered' }),
+    } as unknown as StudentDocumentsRepository;
+    const authRepository = {
+      createAuditLog: jest.fn().mockResolvedValue(undefined),
+    } as unknown as AuthRepository;
+    const useCase = new ImportApplicationDocumentsUseCase(
+      studentDocumentsRepository,
+      authRepository,
+    );
+
+    await expect(
+      withStudentsScope(() =>
+        useCase.execute('student-1', {
+          applicationId: 'application-1',
+          applicationDocumentIds: ['application-document-1'],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'students.document.import_target_not_registered',
+    });
+    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('rejects mismatched or missing source admissions documents safely', async () => {
+    const studentDocumentsRepository = {
+      importApplicationDocumentsFromApplication: jest.fn().mockResolvedValue({
+        status: 'source_documents_not_found',
+        missingDocumentIds: ['application-document-2'],
+      }),
+    } as unknown as StudentDocumentsRepository;
+    const authRepository = {
+      createAuditLog: jest.fn().mockResolvedValue(undefined),
+    } as unknown as AuthRepository;
+    const useCase = new ImportApplicationDocumentsUseCase(
+      studentDocumentsRepository,
+      authRepository,
+    );
+
+    await expect(
+      withStudentsScope(() =>
+        useCase.execute('student-1', {
+          applicationId: 'application-1',
+          applicationDocumentIds: ['application-document-2'],
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('rejects import when the source file is unavailable', async () => {
+    const studentDocumentsRepository = {
+      importApplicationDocumentsFromApplication: jest.fn().mockResolvedValue({
+        status: 'source_file_unavailable',
+        applicationDocumentId: 'application-document-1',
+      }),
+    } as unknown as StudentDocumentsRepository;
+    const authRepository = {
+      createAuditLog: jest.fn().mockResolvedValue(undefined),
+    } as unknown as AuthRepository;
+    const useCase = new ImportApplicationDocumentsUseCase(
+      studentDocumentsRepository,
+      authRepository,
+    );
+
+    await expect(
+      withStudentsScope(() =>
+        useCase.execute('student-1', {
+          applicationId: 'application-1',
+          applicationDocumentIds: ['application-document-1'],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'students.document.import_file_unavailable',
+    });
+    expect(authRepository.createAuditLog).not.toHaveBeenCalled();
   });
 });

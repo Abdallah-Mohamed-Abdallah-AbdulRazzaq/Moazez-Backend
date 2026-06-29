@@ -20,10 +20,13 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { UploadedMultipartFile } from '../../../files/uploads/domain/uploaded-file';
 import { CreateStudentDocumentUseCase } from '../application/create-student-document.use-case';
+import { ImportApplicationDocumentsUseCase } from '../application/import-application-documents.use-case';
 import { ListMissingStudentDocumentsUseCase } from '../application/list-missing-student-documents.use-case';
 import { ListStudentDocumentsUseCase } from '../application/list-student-documents.use-case';
 import {
   CreateStudentDocumentDto,
+  ImportStudentDocumentsFromApplicationDto,
+  ImportStudentDocumentsFromApplicationResponseDto,
   StudentDocumentResponseDto,
 } from '../dto/student-document.dto';
 
@@ -35,6 +38,7 @@ export class StudentDocumentsController {
     private readonly listStudentDocumentsUseCase: ListStudentDocumentsUseCase,
     private readonly listMissingStudentDocumentsUseCase: ListMissingStudentDocumentsUseCase,
     private readonly createStudentDocumentUseCase: CreateStudentDocumentUseCase,
+    private readonly importApplicationDocumentsUseCase: ImportApplicationDocumentsUseCase,
   ) {}
 
   @Get(':studentId/documents')
@@ -67,5 +71,15 @@ export class StudentDocumentsController {
     @UploadedFile() file: UploadedMultipartFile | undefined,
   ): Promise<StudentDocumentResponseDto> {
     return this.createStudentDocumentUseCase.execute(studentId, dto, file);
+  }
+
+  @Post(':studentId/documents/import-from-application')
+  @ApiCreatedResponse({ type: ImportStudentDocumentsFromApplicationResponseDto })
+  @RequiredPermissions('students.documents.manage', 'admissions.documents.view')
+  importFromApplication(
+    @Param('studentId', new ParseUUIDPipe()) studentId: string,
+    @Body() dto: ImportStudentDocumentsFromApplicationDto,
+  ): Promise<ImportStudentDocumentsFromApplicationResponseDto> {
+    return this.importApplicationDocumentsUseCase.execute(studentId, dto);
   }
 }
