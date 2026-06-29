@@ -412,6 +412,27 @@ describe('Accepted application registration submit (e2e)', () => {
       accepted: true,
     });
 
+    const beforeDetail = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/admissions/applications/${applicationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(beforeDetail.body).toEqual(
+      expect.objectContaining({
+        id: applicationId,
+        status: 'accepted',
+        registrationState: {
+          registered: false,
+          studentId: null,
+          enrollmentId: null,
+          enrollmentStatus: null,
+          registeredVia: null,
+          registeredAt: null,
+          source: 'derived_from_student_application_id',
+        },
+      }),
+    );
+
     const response = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/admissions/applications/${applicationId}/register`)
       .set('Authorization', `Bearer ${accessToken}`)
@@ -460,6 +481,35 @@ describe('Accepted application registration submit (e2e)', () => {
       applicationId,
       schoolId: demoSchoolId,
     });
+
+    const afterDetail = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/admissions/applications/${applicationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(afterDetail.body).toEqual(
+      expect.objectContaining({
+        id: applicationId,
+        status: 'accepted',
+        registrationState: {
+          registered: true,
+          studentId: response.body.registration.student.id,
+          enrollmentId: response.body.registration.enrollment.enrollmentId,
+          enrollmentStatus: 'active',
+          registeredVia: 'admissions_application',
+          registeredAt: null,
+          source: 'derived_from_student_application_id',
+        },
+      }),
+    );
+    expect(JSON.stringify(afterDetail.body)).not.toContain('schoolId');
+    expect(JSON.stringify(afterDetail.body)).not.toContain('organizationId');
+    expect(JSON.stringify(afterDetail.body)).not.toContain('userId');
+    expect(JSON.stringify(afterDetail.body)).not.toContain('membershipId');
+    expect(JSON.stringify(afterDetail.body)).not.toContain('roleId');
+    expect(JSON.stringify(afterDetail.body)).not.toContain('passwordHash');
+    expect(JSON.stringify(afterDetail.body)).not.toContain('deletedAt');
+    expect(JSON.stringify(afterDetail.body)).not.toContain('applicationId');
 
     const second = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/admissions/applications/${applicationId}/register`)

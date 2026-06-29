@@ -756,6 +756,40 @@ describe('Admissions tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('not_found');
   });
 
+  it('returns safe same-school application detail registration state without internal ownership leaks', async () => {
+    const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/admissions/applications/${demoApplicationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        id: demoApplicationId,
+        registrationState: {
+          registered: false,
+          studentId: null,
+          enrollmentId: null,
+          enrollmentStatus: null,
+          registeredVia: null,
+          registeredAt: null,
+          source: 'derived_from_student_application_id',
+        },
+      }),
+    );
+
+    const serialized = JSON.stringify(response.body);
+    expect(serialized).not.toContain('schoolId');
+    expect(serialized).not.toContain('organizationId');
+    expect(serialized).not.toContain('userId');
+    expect(serialized).not.toContain('membershipId');
+    expect(serialized).not.toContain('roleId');
+    expect(serialized).not.toContain('passwordHash');
+    expect(serialized).not.toContain('deletedAt');
+    expect(serialized).not.toContain('applicationId');
+  });
+
   it('returns 404 when school A admin updates a school B application by id', async () => {
     const { accessToken } = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
@@ -1073,6 +1107,21 @@ describe('Admissions tenancy isolation (security)', () => {
       .get(
         `${GLOBAL_PREFIX}/admissions/applications/${demoApplicationId}/registration-handoff`,
       )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it.each([
+    ['applicant', APPLICANT_ACTOR_EMAIL],
+    ['parent', PARENT_ACTOR_EMAIL],
+    ['student', STUDENT_ACTOR_EMAIL],
+  ])('returns 403 when %s actor requests staff application detail', async (_label, email) => {
+    const { accessToken } = await login(email, BLOCKED_ACTOR_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/admissions/applications/${demoApplicationId}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(403);
 

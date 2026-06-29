@@ -28,6 +28,7 @@ type ApplicationStoreItem = {
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+  student: null;
 };
 
 describe('Admissions applications use cases', () => {
@@ -81,6 +82,7 @@ describe('Admissions applications use cases', () => {
           createdAt: now,
           updatedAt: now,
           deletedAt: null,
+          student: null,
         };
         store.push(application);
         return application;
@@ -129,6 +131,15 @@ describe('Admissions applications use cases', () => {
       submittedAt: null,
       createdAt: '2026-04-21T11:00:00.000Z',
       updatedAt: '2026-04-21T11:00:00.000Z',
+      registrationState: {
+        registered: false,
+        studentId: null,
+        enrollmentId: null,
+        enrollmentStatus: null,
+        registeredVia: null,
+        registeredAt: null,
+        source: 'derived_from_student_application_id',
+      },
     });
   });
 

@@ -23,6 +23,23 @@ const APPLICATION_RECORD_ARGS =
       createdAt: true,
       updatedAt: true,
       deletedAt: true,
+      student: {
+        select: {
+          id: true,
+          enrollments: {
+            where: {
+              status: StudentEnrollmentStatus.ACTIVE,
+              deletedAt: null,
+            },
+            orderBy: [{ enrolledAt: 'desc' }, { createdAt: 'desc' }],
+            take: 1,
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+      },
     },
   });
 

@@ -60,6 +60,16 @@ export class UpdateApplicationDto {
   source?: ApplicationSourceApiValue;
 }
 
+export class ApplicationRegistrationStateDto {
+  registered!: boolean;
+  studentId!: string | null;
+  enrollmentId!: string | null;
+  enrollmentStatus!: string | null;
+  registeredVia!: 'admissions_application' | null;
+  registeredAt!: string | null;
+  source!: 'derived_from_student_application_id';
+}
+
 export class ApplicationResponseDto {
   id!: string;
   leadId!: string | null;
@@ -71,6 +81,7 @@ export class ApplicationResponseDto {
   submittedAt!: string | null;
   createdAt!: string;
   updatedAt!: string;
+  registrationState!: ApplicationRegistrationStateDto;
 }
 
 export class EnrollApplicationHandoffParamsDto {

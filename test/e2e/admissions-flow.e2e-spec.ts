@@ -558,6 +558,18 @@ describe('Admissions Sprint 2A closeout flow (e2e)', () => {
     expect(after.rowCounts).toEqual(before.rowCounts);
   }
 
+  function expectUnregisteredState() {
+    return {
+      registered: false,
+      studentId: null,
+      enrollmentId: null,
+      enrollmentStatus: null,
+      registeredVia: null,
+      registeredAt: null,
+      source: 'derived_from_student_application_id',
+    };
+  }
+
   it('covers the admissions intake flow from login through application submission', async () => {
     const { accessToken } = await login();
     const lead = await createLead(accessToken, 'Sprint2A Intake');
@@ -616,6 +628,7 @@ describe('Admissions Sprint 2A closeout flow (e2e)', () => {
       submittedAt: null,
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
+      registrationState: expectUnregisteredState(),
     });
 
     const listedApplications = await request(app.getHttpServer())
@@ -715,6 +728,7 @@ describe('Admissions Sprint 2A closeout flow (e2e)', () => {
       submittedAt: expect.any(String),
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
+      registrationState: expectUnregisteredState(),
     });
   });
 
