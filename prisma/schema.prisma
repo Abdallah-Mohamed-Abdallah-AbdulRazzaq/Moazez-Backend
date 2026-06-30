@@ -339,6 +339,15 @@ enum StudentDocumentStatus {
   @@map("student_document_status")
 }
 
+enum StudentProfileCorrectionRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+
+  @@map("student_profile_correction_request_status")
+}
+
 enum StudentNoteCategory {
   BEHAVIOR
   ACADEMIC
@@ -1142,6 +1151,7 @@ model Organization {
   applicantAdmissionRequestDocuments ApplicantAdmissionRequestDocument[]
   admissionRequiredDocuments         AdmissionRequiredDocument[]
   students                           Student[]
+  studentProfileCorrectionRequests   StudentProfileCorrectionRequest[]
   guardians                          Guardian[]
 
   @@index([status])
@@ -1217,6 +1227,7 @@ model School {
   studentGuardians                      StudentGuardian[]
   enrollments                           Enrollment[]
   studentDocuments                      StudentDocument[]
+  studentProfileCorrectionRequests      StudentProfileCorrectionRequest[]
   studentMedicalProfiles                StudentMedicalProfile[]
   studentNotes                          StudentNote[]
   attendancePolicies                    AttendancePolicy[]
@@ -3177,6 +3188,7 @@ model Student {
   guardians                          StudentGuardian[]
   enrollments                        Enrollment[]
   documents                          StudentDocument[]
+  profileCorrectionRequests          StudentProfileCorrectionRequest[]
   medicalProfile                     StudentMedicalProfile?
   notes                              StudentNote[]
   attendanceEntries                  AttendanceEntry[]
@@ -3352,6 +3364,45 @@ model StudentDocument {
   @@index([sourceFileId])
   @@unique([schoolId, studentId, sourceApplicationDocumentId], name: "studentDocumentSourceImport", map: "student_documents_source_import_key")
   @@map("student_documents")
+}
+
+model StudentProfileCorrectionRequest {
+  id             String                                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String                                @map("organization_id") @db.Uuid
+  schoolId       String                                @map("school_id") @db.Uuid
+  studentId      String                                @map("student_id") @db.Uuid
+
+  requestedByUserId String? @map("requested_by_user_id") @db.Uuid
+  requestedByType   String  @map("requested_by_type")
+
+  status           StudentProfileCorrectionRequestStatus @default(PENDING)
+  requestedChanges Json                                  @map("requested_changes")
+  currentSnapshot  Json?                                 @map("current_snapshot")
+  reason           String?
+  reviewerNote     String?                               @map("reviewer_note")
+
+  approvedAt  DateTime? @map("approved_at")
+  approvedBy  String?   @map("approved_by") @db.Uuid
+  rejectedAt  DateTime? @map("rejected_at")
+  rejectedBy  String?   @map("rejected_by") @db.Uuid
+  cancelledAt DateTime? @map("cancelled_at")
+  cancelledBy String?   @map("cancelled_by") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  student      Student      @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Cascade)
+
+  @@unique([id, schoolId])
+  @@index([schoolId, studentId, status, createdAt])
+  @@index([schoolId, status, createdAt])
+  @@index([requestedByUserId])
+  @@index([studentId])
+  @@index([deletedAt])
+  @@map("student_profile_correction_requests")
 }
 
 model StudentMedicalProfile {

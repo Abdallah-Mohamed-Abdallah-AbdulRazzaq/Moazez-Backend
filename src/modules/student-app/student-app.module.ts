@@ -7,6 +7,7 @@ import { GradesSubmissionsRepository } from '../grades/assessments/infrastructur
 import { AuthModule } from '../iam/auth/auth.module';
 import { RegisterFileMetadataUseCase } from '../files/uploads/application/register-file-metadata.use-case';
 import { FilesRepository } from '../files/uploads/infrastructure/files.repository';
+import { ProfileCorrectionRequestsModule } from '../students/profile-correction-requests/profile-correction-requests.module';
 import { HeroJourneyModule } from '../reinforcement/hero-journey/hero-journey.module';
 import { ReviewsModule } from '../reinforcement/reviews/reviews.module';
 import { RewardsModule } from '../reinforcement/rewards/rewards.module';
@@ -93,6 +94,12 @@ import {
 import { StudentNotificationsController } from './notifications/controller/student-notifications.controller';
 import { DeleteStudentAvatarUseCase } from './profile/application/delete-student-avatar.use-case';
 import { GetStudentProfileUseCase } from './profile/application/get-student-profile.use-case';
+import {
+  CancelStudentProfileCorrectionRequestUseCase,
+  GetStudentProfileCorrectionRequestUseCase,
+  ListStudentProfileCorrectionRequestsUseCase,
+  SubmitStudentProfileCorrectionRequestUseCase,
+} from './profile/application/student-profile-correction-requests.use-cases';
 import { UploadStudentAvatarUseCase } from './profile/application/upload-student-avatar.use-case';
 import { StudentProfileController } from './profile/controller/student-profile.controller';
 import { StudentAvatarRepository } from './profile/infrastructure/student-avatar.repository';
@@ -138,6 +145,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     CommunicationModule,
     DisciplineModule,
     HeroJourneyModule,
+    ProfileCorrectionRequestsModule,
     ReviewsModule,
     RewardsModule,
     StorageModule,
@@ -174,6 +182,10 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     GetStudentProfileUseCase,
     UploadStudentAvatarUseCase,
     DeleteStudentAvatarUseCase,
+    SubmitStudentProfileCorrectionRequestUseCase,
+    ListStudentProfileCorrectionRequestsUseCase,
+    GetStudentProfileCorrectionRequestUseCase,
+    CancelStudentProfileCorrectionRequestUseCase,
     StudentSubjectsReadAdapter,
     ListStudentSubjectsUseCase,
     GetStudentSubjectUseCase,
