@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { METHOD_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   AttendanceMode,
@@ -110,16 +111,27 @@ const ARGON2_OPTIONS: argon2.Options = {
 
 jest.setTimeout(45000);
 
+type StudentAppControllerClass = {
+  prototype: object;
+  name: string;
+};
+
 type StudentAppReadPermissionCase = {
-  controller: { prototype: object };
+  controller: StudentAppControllerClass;
   method: string;
   permissions: string[];
 };
 
 type StudentAppActionPermissionCase = {
-  controller: { prototype: object };
+  controller: StudentAppControllerClass;
   method: string;
   permissions: string[];
+};
+
+type StudentAppPermissionSprint = '1B' | '1C' | '1D' | '1E';
+
+type StudentAppRoutePermissionCase = StudentAppActionPermissionCase & {
+  sprint: StudentAppPermissionSprint;
 };
 
 const STUDENT_APP_READ_PERMISSION_CASES: StudentAppReadPermissionCase[] = [
@@ -614,6 +626,46 @@ const STUDENT_APP_COMMUNICATION_PROFILE_ACTION_PERMISSION_CASES: StudentAppActio
   },
 ];
 
+const STUDENT_APP_CONTROLLER_CLASSES = [
+  StudentHomeController,
+  StudentProfileController,
+  StudentSubjectsController,
+  StudentGradesController,
+  StudentExamsController,
+  StudentBehaviorController,
+  StudentDisciplineController,
+  StudentProgressController,
+  StudentHeroController,
+  StudentScheduleController,
+  StudentTasksController,
+  StudentMessagesController,
+  StudentNotificationsController,
+  StudentAnnouncementsController,
+  StudentCalendarController,
+  StudentLessonsController,
+  StudentHomeworksController,
+  StudentRewardsController,
+];
+
+const STUDENT_APP_ROUTE_PERMISSION_CASES: StudentAppRoutePermissionCase[] = [
+  ...STUDENT_APP_READ_PERMISSION_CASES.map((entry) => ({
+    ...entry,
+    sprint: '1B' as const,
+  })),
+  ...STUDENT_APP_HOMEWORK_EXAM_ACTION_PERMISSION_CASES.map((entry) => ({
+    ...entry,
+    sprint: '1C' as const,
+  })),
+  ...STUDENT_APP_REINFORCEMENT_ACTION_PERMISSION_CASES.map((entry) => ({
+    ...entry,
+    sprint: '1D' as const,
+  })),
+  ...STUDENT_APP_COMMUNICATION_PROFILE_ACTION_PERMISSION_CASES.map((entry) => ({
+    ...entry,
+    sprint: '1E' as const,
+  })),
+];
+
 describe('Student App read-only route permission metadata (security)', () => {
   it('declares the STU-PERM-1B read-only permission inventory', () => {
     expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(63);
@@ -687,6 +739,52 @@ describe('Student App read-only route permission metadata (security)', () => {
         ),
       ).toEqual(entry.permissions);
     }
+  });
+
+  it('declares the final STU-PERM route permission inventory for every Student App handler', () => {
+    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(96);
+
+    const expectedByHandler = new Map<string, StudentAppRoutePermissionCase>();
+    for (const entry of STUDENT_APP_ROUTE_PERMISSION_CASES) {
+      const key = `${entry.controller.name}.${entry.method}`;
+      expect(expectedByHandler.has(key)).toBe(false);
+      expectedByHandler.set(key, entry);
+    }
+
+    for (const entry of STUDENT_APP_ROUTE_PERMISSION_CASES) {
+      const handler = (entry.controller.prototype as Record<string, unknown>)[
+        entry.method
+      ];
+
+      expect(typeof handler).toBe('function');
+      expect(
+        Reflect.getMetadata(
+          REQUIRED_PERMISSIONS_METADATA,
+          handler as object,
+        ),
+      ).toEqual(entry.permissions);
+    }
+
+    const discoveredRouteHandlers = STUDENT_APP_CONTROLLER_CLASSES.flatMap(
+      (controller) =>
+        Object.getOwnPropertyNames(controller.prototype)
+          .filter((method) => method !== 'constructor')
+          .filter((method) => {
+            const handler = (
+              controller.prototype as Record<string, unknown>
+            )[method];
+
+            return (
+              typeof handler === 'function' &&
+              Reflect.hasMetadata(METHOD_METADATA, handler)
+            );
+          })
+          .map((method) => `${controller.name}.${method}`),
+    ).sort();
+
+    expect(discoveredRouteHandlers).toEqual(
+      Array.from(expectedByHandler.keys()).sort(),
+    );
   });
 });
 
