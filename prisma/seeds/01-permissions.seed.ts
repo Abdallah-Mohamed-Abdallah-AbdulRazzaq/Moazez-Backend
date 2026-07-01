@@ -20,6 +20,9 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'platform.features.view', module: 'platform', resource: 'features', action: 'view', description: 'View school feature controls' },
   { code: 'platform.features.manage', module: 'platform', resource: 'features', action: 'manage', description: 'Create and update school feature controls' },
 
+  // app-facing infrastructure
+  { code: 'app.device_tokens.manage', module: 'app', resource: 'device_tokens', action: 'manage', description: 'Register and unregister app device tokens for the current actor' },
+
   // settings
   { code: 'settings.overview.view', module: 'settings', resource: 'overview', action: 'view', description: 'View settings overview metrics and recent audit activity' },
   { code: 'settings.users.view', module: 'settings', resource: 'users', action: 'view', description: 'View users in the school' },
@@ -63,6 +66,7 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'academics.subjects.manage', module: 'academics', resource: 'subjects', action: 'manage', description: 'Manage subjects' },
   { code: 'academics.calendar.view', module: 'academics', resource: 'calendar', action: 'view', description: 'View academic calendar events.' },
   { code: 'academics.calendar.manage', module: 'academics', resource: 'calendar', action: 'manage', description: 'Create, update, and delete academic calendar events.' },
+  { code: 'academics.timetable.view', module: 'academics', resource: 'timetable', action: 'view', description: 'View published timetable data for app-facing schedules' },
   { code: 'academics.overview.view', module: 'academics', resource: 'overview', action: 'view', description: 'View academics overview metrics and setup readiness.' },
   { code: 'academics.curriculum.view', module: 'academics', resource: 'curriculum', action: 'view', description: 'View curriculum, units, and lessons' },
   { code: 'academics.curriculum.manage', module: 'academics', resource: 'curriculum', action: 'manage', description: 'Create and manage curriculum, units, and lessons' },
@@ -91,6 +95,8 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'grades.questions.view', module: 'grades', resource: 'questions', action: 'view', description: 'View assessment questions' },
   { code: 'grades.questions.manage', module: 'grades', resource: 'questions', action: 'manage', description: 'Create and update assessment questions' },
   { code: 'grades.submissions.view', module: 'grades', resource: 'submissions', action: 'view', description: 'View question-based assessment submissions' },
+  { code: 'grades.submissions.start', module: 'grades', resource: 'submissions', action: 'start', description: 'Start an app-facing self-service assessment submission' },
+  { code: 'grades.submissions.save', module: 'grades', resource: 'submissions', action: 'save', description: 'Save draft answers for an app-facing self-service assessment submission' },
   { code: 'grades.submissions.submit', module: 'grades', resource: 'submissions', action: 'submit', description: 'Submit answers for question-based assessments' },
   { code: 'grades.submissions.review', module: 'grades', resource: 'submissions', action: 'review', description: 'Review and correct question-based assessment submissions' },
   { code: 'grades.items.view', module: 'grades', resource: 'items', action: 'view', description: 'View grade items' },
@@ -107,6 +113,10 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'homework.targets.view', module: 'homework', resource: 'targets', action: 'view', description: 'View core homework assignment targets' },
   { code: 'homework.targets.manage', module: 'homework', resource: 'targets', action: 'manage', description: 'Resolve draft core homework assignment targets' },
   { code: 'homework.submissions.view', module: 'homework', resource: 'submissions', action: 'view', description: 'View core homework submission answers and attachments' },
+  { code: 'homework.submissions.save', module: 'homework', resource: 'submissions', action: 'save', description: 'Save app-facing self-service homework submission drafts' },
+  { code: 'homework.submissions.submit', module: 'homework', resource: 'submissions', action: 'submit', description: 'Submit app-facing self-service homework submissions' },
+  { code: 'homework.answers.manage', module: 'homework', resource: 'answers', action: 'manage', description: 'Create and update app-facing self-service homework answers' },
+  { code: 'homework.submission_attachments.manage', module: 'homework', resource: 'submission_attachments', action: 'manage', description: 'Manage app-facing self-service homework submission attachments' },
 
   // reinforcement
   { code: 'reinforcement.overview.view', module: 'reinforcement', resource: 'overview', action: 'view', description: 'View reinforcement overview metrics' },
@@ -114,6 +124,8 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'reinforcement.tasks.manage', module: 'reinforcement', resource: 'tasks', action: 'manage', description: 'Create and update reinforcement tasks' },
   { code: 'reinforcement.templates.view', module: 'reinforcement', resource: 'templates', action: 'view', description: 'View reinforcement task templates' },
   { code: 'reinforcement.templates.manage', module: 'reinforcement', resource: 'templates', action: 'manage', description: 'Create and update reinforcement task templates' },
+  { code: 'reinforcement.submissions.view', module: 'reinforcement', resource: 'submissions', action: 'view', description: 'View app-facing self-service reinforcement task submissions' },
+  { code: 'reinforcement.submissions.submit', module: 'reinforcement', resource: 'submissions', action: 'submit', description: 'Submit app-facing self-service reinforcement task stages' },
   { code: 'reinforcement.reviews.view', module: 'reinforcement', resource: 'reviews', action: 'view', description: 'View reinforcement review queue and history' },
   { code: 'reinforcement.reviews.manage', module: 'reinforcement', resource: 'reviews', action: 'manage', description: 'Approve or reject reinforcement submissions' },
   { code: 'reinforcement.xp.view', module: 'reinforcement', resource: 'xp', action: 'view', description: 'View reinforcement XP policy and ledger data' },
@@ -124,6 +136,9 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'reinforcement.hero.progress.manage', module: 'reinforcement', resource: 'hero_progress', action: 'manage', description: 'Manage Hero Journey student progress state' },
   { code: 'reinforcement.hero.badges.view', module: 'reinforcement', resource: 'hero_badges', action: 'view', description: 'View Hero Journey badge catalog data' },
   { code: 'reinforcement.hero.badges.manage', module: 'reinforcement', resource: 'hero_badges', action: 'manage', description: 'Manage Hero Journey badge catalog data' },
+  { code: 'reinforcement.hero.missions.start', module: 'reinforcement', resource: 'hero_missions', action: 'start', description: 'Start an app-facing self-service Hero Journey mission' },
+  { code: 'reinforcement.hero.missions.complete', module: 'reinforcement', resource: 'hero_missions', action: 'complete', description: 'Complete an app-facing self-service Hero Journey mission' },
+  { code: 'reinforcement.hero.objectives.complete', module: 'reinforcement', resource: 'hero_objectives', action: 'complete', description: 'Complete an app-facing self-service Hero Journey mission objective' },
   { code: 'reinforcement.rewards.view', module: 'reinforcement', resource: 'rewards', action: 'view', description: 'View reinforcement reward catalog data' },
   { code: 'reinforcement.rewards.manage', module: 'reinforcement', resource: 'rewards', action: 'manage', description: 'Manage reinforcement reward catalog data' },
   { code: 'reinforcement.rewards.redemptions.view', module: 'reinforcement', resource: 'reward_redemptions', action: 'view', description: 'View reinforcement reward redemption requests' },
@@ -141,12 +156,17 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'behavior.records.review', module: 'behavior', resource: 'records', action: 'review', description: 'Approve or reject submitted behavior records' },
   { code: 'behavior.points.view', module: 'behavior', resource: 'points', action: 'view', description: 'View behavior point ledger data' },
 
+  // discipline
+  { code: 'discipline.timeline.view', module: 'discipline', resource: 'timeline', action: 'view', description: 'View app-facing derived discipline timeline and summary data' },
+
   // communication
   { code: 'communication.overview.view', module: 'communication', resource: 'overview', action: 'view', description: 'View communication overview metrics' },
   { code: 'communication.policies.view', module: 'communication', resource: 'policies', action: 'view', description: 'View communication policies' },
   { code: 'communication.policies.manage', module: 'communication', resource: 'policies', action: 'manage', description: 'Manage communication policies' },
+  { code: 'communication.contacts.view', module: 'communication', resource: 'contacts', action: 'view', description: 'View app-facing communication contacts' },
   { code: 'communication.conversations.view', module: 'communication', resource: 'conversations', action: 'view', description: 'View communication conversations' },
   { code: 'communication.conversations.create', module: 'communication', resource: 'conversations', action: 'create', description: 'Create communication conversations' },
+  { code: 'communication.conversations.read', module: 'communication', resource: 'conversations', action: 'read', description: 'Mark app-facing communication conversations as read' },
   { code: 'communication.conversations.manage', module: 'communication', resource: 'conversations', action: 'manage', description: 'Manage communication conversations' },
   { code: 'communication.conversations.moderate', module: 'communication', resource: 'conversations', action: 'moderate', description: 'Moderate communication conversations' },
   { code: 'communication.participants.manage', module: 'communication', resource: 'participants', action: 'manage', description: 'Manage communication conversation participants' },
@@ -163,8 +183,12 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'communication.platform.view', module: 'communication', resource: 'platform', action: 'view', description: 'View platform-level communication controls' },
   { code: 'communication.platform.manage', module: 'communication', resource: 'platform', action: 'manage', description: 'Manage platform-level communication controls' },
   { code: 'communication.announcements.view', module: 'communication', resource: 'announcements', action: 'view', description: 'View announcements' },
+  { code: 'communication.announcements.read', module: 'communication', resource: 'announcements', action: 'read', description: 'Mark app-facing announcements as read' },
   { code: 'communication.announcements.manage', module: 'communication', resource: 'announcements', action: 'manage', description: 'Publish announcements' },
   { code: 'communication.notifications.view', module: 'communication', resource: 'notifications', action: 'view', description: 'View runtime notification center records' },
+  { code: 'communication.notifications.read', module: 'communication', resource: 'notifications', action: 'read', description: 'Mark app-facing notification center records as read' },
+  { code: 'communication.notifications.archive', module: 'communication', resource: 'notifications', action: 'archive', description: 'Archive app-facing notification center records' },
+  { code: 'communication.notifications.preferences.manage', module: 'communication', resource: 'notification_preferences', action: 'manage', description: 'Manage app-facing notification preferences for the current actor' },
   { code: 'communication.notifications.manage', module: 'communication', resource: 'notifications', action: 'manage', description: 'Manage runtime notification records and delivery inspection' },
 
   // files
@@ -172,6 +196,15 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'files.downloads.view', module: 'files', resource: 'downloads', action: 'view', description: 'Download private files through the secure files endpoint' },
   { code: 'files.imports.manage', module: 'files', resource: 'imports', action: 'manage', description: 'Create file import jobs' },
   { code: 'files.imports.view', module: 'files', resource: 'imports', action: 'view', description: 'View import job status and validation reports' },
+
+  // student app
+  { code: 'student.home.view', module: 'student', resource: 'home', action: 'view', description: 'View Student App home aggregate data' },
+  { code: 'student.profile.view', module: 'student', resource: 'profile', action: 'view', description: 'View Student App self profile data' },
+  { code: 'student.profile.avatar.manage', module: 'student', resource: 'profile.avatar', action: 'manage', description: 'Manage Student App self-service profile avatar' },
+  { code: 'student.profile.correction_requests.view', module: 'student', resource: 'profile.correction_requests', action: 'view', description: 'View Student App self-service profile correction requests' },
+  { code: 'student.profile.correction_requests.create', module: 'student', resource: 'profile.correction_requests', action: 'create', description: 'Create Student App self-service profile correction requests' },
+  { code: 'student.profile.correction_requests.cancel', module: 'student', resource: 'profile.correction_requests', action: 'cancel', description: 'Cancel Student App self-service profile correction requests' },
+  { code: 'student.progress.view', module: 'student', resource: 'progress', action: 'view', description: 'View Student App progress aggregate data' },
 
   // students
   { code: 'students.records.view', module: 'students', resource: 'records', action: 'view', description: 'View student records' },

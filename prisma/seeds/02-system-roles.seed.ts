@@ -76,9 +76,62 @@ const PARENT_PERMISSIONS = [
 ];
 
 const STUDENT_PERMISSIONS = [
+  'app.device_tokens.manage',
+  'academics.calendar.view',
+  'academics.lesson_plans.view',
+  'academics.subjects.view',
+  'academics.timetable.view',
   'attendance.sessions.view',
+  'behavior.points.view',
+  'behavior.records.view',
+  'communication.announcements.read',
+  'communication.announcements.view',
+  'communication.contacts.view',
+  'communication.conversations.create',
+  'communication.conversations.read',
+  'communication.conversations.view',
+  'communication.messages.attachments.manage',
+  'communication.messages.send',
+  'communication.messages.view',
+  'communication.notifications.archive',
+  'communication.notifications.preferences.manage',
+  'communication.notifications.read',
+  'communication.notifications.view',
+  'discipline.timeline.view',
+  'files.downloads.view',
+  'files.uploads.manage',
   'grades.assessments.view',
+  'grades.snapshots.view',
+  'grades.submissions.save',
+  'grades.submissions.start',
+  'grades.submissions.submit',
+  'grades.submissions.view',
+  'homework.answers.manage',
+  'homework.assignments.view',
+  'homework.submission_attachments.manage',
+  'homework.submissions.save',
+  'homework.submissions.submit',
+  'homework.submissions.view',
+  'reinforcement.hero.badges.view',
+  'reinforcement.hero.missions.complete',
+  'reinforcement.hero.missions.start',
+  'reinforcement.hero.objectives.complete',
+  'reinforcement.hero.progress.view',
+  'reinforcement.hero.view',
+  'reinforcement.rewards.redemptions.request',
+  'reinforcement.rewards.redemptions.view',
+  'reinforcement.rewards.view',
+  'reinforcement.submissions.submit',
+  'reinforcement.submissions.view',
   'reinforcement.tasks.view',
+  'reinforcement.xp.view',
+  'student.home.view',
+  'student.profile.avatar.manage',
+  'student.profile.correction_requests.cancel',
+  'student.profile.correction_requests.create',
+  'student.profile.correction_requests.view',
+  'student.profile.view',
+  'student.progress.view',
   'students.records.view',
 ];
 
@@ -148,16 +201,28 @@ export async function seedSystemRoles(prisma: PrismaClient): Promise<void> {
 
     const permissions = await prisma.permission.findMany({
       where: { code: { in: role.permissions } },
-      select: { id: true },
+      select: { id: true, code: true },
     });
+    const foundPermissionIdsByCode = new Map(
+      permissions.map((permission) => [permission.code, permission.id]),
+    );
+    const missingPermissions = role.permissions.filter(
+      (code) => !foundPermissionIdsByCode.has(code),
+    );
+
+    if (missingPermissions.length > 0) {
+      throw new Error(
+        `Missing permissions for system role ${role.key}: ${missingPermissions.join(', ')}`,
+      );
+    }
 
     await prisma.rolePermission.deleteMany({ where: { roleId: record.id } });
 
-    if (permissions.length > 0) {
+    if (role.permissions.length > 0) {
       await prisma.rolePermission.createMany({
-        data: permissions.map((p) => ({
+        data: role.permissions.map((code) => ({
           roleId: record.id,
-          permissionId: p.id,
+          permissionId: foundPermissionIdsByCode.get(code)!,
         })),
         skipDuplicates: true,
       });
