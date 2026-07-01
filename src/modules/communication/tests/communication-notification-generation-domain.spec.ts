@@ -7,18 +7,38 @@ import {
   buildAnnouncementNotificationGenerationJobId,
   buildAnnouncementNotificationMetadata,
   buildAnnouncementNotificationPreview,
+  buildCommunicationNotificationPushJobId,
   deduplicateRecipientUserIds,
   mapAnnouncementPriorityToNotificationPriority,
 } from '../domain/communication-notification-generation-domain';
 
 describe('communication notification generation domain', () => {
-  it('builds deterministic announcement generation job ids', () => {
-    expect(
-      buildAnnouncementNotificationGenerationJobId({
-        schoolId: 'school-1',
-        announcementId: 'announcement-1',
-      }),
-    ).toBe('communication-announcement-notifications:school-1:announcement-1');
+  it('builds deterministic BullMQ-safe announcement generation job ids', () => {
+    const input = {
+      schoolId: 'school-1',
+      announcementId: 'announcement-1',
+    };
+    const jobId = buildAnnouncementNotificationGenerationJobId(input);
+
+    expect(jobId).toBe(
+      'communication-announcement-notifications-school-1-announcement-1',
+    );
+    expect(jobId).toContain(input.schoolId);
+    expect(jobId).toContain(input.announcementId);
+    expect(jobId).not.toContain(':');
+    expect(buildAnnouncementNotificationGenerationJobId(input)).toBe(jobId);
+  });
+
+  it('builds deterministic BullMQ-safe push delivery job ids', () => {
+    const input = {
+      deliveryId: 'delivery-1',
+    };
+    const jobId = buildCommunicationNotificationPushJobId(input);
+
+    expect(jobId).toBe('communication-push-delivery-1');
+    expect(jobId).toContain(input.deliveryId);
+    expect(jobId).not.toContain(':');
+    expect(buildCommunicationNotificationPushJobId(input)).toBe(jobId);
   });
 
   it('maps announcement priority to notification priority', () => {

@@ -36,11 +36,12 @@ describe('CommunicationNotificationPushQueueService', () => {
         actorUserType: UserType.SCHOOL_USER,
       },
       expect.objectContaining({
-        jobId: 'communication-push:delivery-1',
+        jobId: 'communication-push-delivery-1',
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
       }),
     );
+    expect(bullmqService.addJob.mock.calls[0][3].jobId).not.toContain(':');
     expect(JSON.stringify(bullmqService.addJob.mock.calls)).not.toContain(
       'tokenCiphertext',
     );

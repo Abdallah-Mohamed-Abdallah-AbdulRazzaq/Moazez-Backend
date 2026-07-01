@@ -35,9 +35,10 @@ describe('CommunicationNotificationQueueService', () => {
       },
       expect.objectContaining({
         jobId:
-          'communication-announcement-notifications:school-1:announcement-1',
+          'communication-announcement-notifications-school-1-announcement-1',
         attempts: 3,
       }),
     );
+    expect(bullmqService.addJob.mock.calls[0][3]?.jobId).not.toContain(':');
   });
 });

@@ -69,13 +69,13 @@ export function buildAnnouncementNotificationGenerationJobId(input: {
   schoolId: string;
   announcementId: string;
 }): string {
-  return `communication-announcement-notifications:${input.schoolId}:${input.announcementId}`;
+  return `communication-announcement-notifications-${input.schoolId}-${input.announcementId}`;
 }
 
 export function buildCommunicationNotificationPushJobId(input: {
   deliveryId: string;
 }): string {
-  return `communication-push:${input.deliveryId}`;
+  return `communication-push-${input.deliveryId}`;
 }
 
 export function buildAnnouncementNotificationPreview(body: string): string {
