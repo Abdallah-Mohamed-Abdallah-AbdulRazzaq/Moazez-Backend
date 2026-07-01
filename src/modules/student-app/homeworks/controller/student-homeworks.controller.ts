@@ -127,6 +127,7 @@ export class StudentHomeworksController {
   @ApiParam({ name: 'homeworkId' })
   @ApiBody({ type: StudentHomeworkSubmissionBodyDto })
   @ApiOkResponse({ type: StudentHomeworkSubmissionResponseDto })
+  @RequiredPermissions('homework.submissions.save')
   saveSubmissionDraft(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
     @Body() dto: StudentHomeworkSubmissionBodyDto,
@@ -140,6 +141,7 @@ export class StudentHomeworksController {
   @ApiParam({ name: 'homeworkId' })
   @ApiBody({ type: StudentHomeworkSubmissionBodyDto })
   @ApiOkResponse({ type: StudentHomeworkSubmissionResponseDto })
+  @RequiredPermissions('homework.submissions.save')
   saveSubmissionDraftAlias(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
     @Body() dto: StudentHomeworkSubmissionBodyDto,
@@ -163,6 +165,7 @@ export class StudentHomeworksController {
   @ApiParam({ name: 'homeworkId' })
   @ApiBody({ type: BulkSaveHomeworkAnswersDto })
   @ApiOkResponse({ type: HomeworkAnswersListResponseDto })
+  @RequiredPermissions('homework.answers.manage')
   saveSubmissionAnswers(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
     @Body() dto: BulkSaveHomeworkAnswersDto,
@@ -179,6 +182,7 @@ export class StudentHomeworksController {
   @ApiParam({ name: 'questionId' })
   @ApiBody({ type: SaveHomeworkAnswerDto })
   @ApiOkResponse({ type: HomeworkAnswerDetailResponseDto })
+  @RequiredPermissions('homework.answers.manage')
   saveSubmissionAnswer(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
     @Param('questionId', new ParseUUIDPipe()) questionId: string,
@@ -213,6 +217,7 @@ export class StudentHomeworksController {
   @ApiParam({ name: 'homeworkId' })
   @ApiBody({ type: CreateHomeworkSubmissionAttachmentDto })
   @ApiOkResponse({ type: HomeworkSubmissionAttachmentDetailResponseDto })
+  @RequiredPermissions('homework.submission_attachments.manage')
   createSubmissionAttachment(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
     @Body() dto: CreateHomeworkSubmissionAttachmentDto,
@@ -231,6 +236,7 @@ export class StudentHomeworksController {
   @ApiParam({ name: 'attachmentId' })
   @ApiBody({ type: UpdateHomeworkSubmissionAttachmentDto })
   @ApiOkResponse({ type: HomeworkSubmissionAttachmentDetailResponseDto })
+  @RequiredPermissions('homework.submission_attachments.manage')
   updateSubmissionAttachment(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
     @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
@@ -251,6 +257,7 @@ export class StudentHomeworksController {
   @ApiParam({ name: 'attachmentId' })
   @ApiBody({ type: ReorderHomeworkSubmissionAttachmentDto })
   @ApiOkResponse({ type: HomeworkSubmissionAttachmentDetailResponseDto })
+  @RequiredPermissions('homework.submission_attachments.manage')
   reorderSubmissionAttachment(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
     @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
@@ -270,6 +277,7 @@ export class StudentHomeworksController {
   })
   @ApiParam({ name: 'homeworkId' })
   @ApiParam({ name: 'attachmentId' })
+  @RequiredPermissions('homework.submission_attachments.manage')
   deleteSubmissionAttachment(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
     @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
@@ -286,6 +294,7 @@ export class StudentHomeworksController {
   @ApiParam({ name: 'homeworkId' })
   @ApiBody({ type: StudentHomeworkSubmitBodyDto })
   @ApiOkResponse({ type: StudentHomeworkSubmissionResponseDto })
+  @RequiredPermissions('homework.submissions.submit')
   submitHomework(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
     @Body() dto: StudentHomeworkSubmitBodyDto,
@@ -299,6 +308,7 @@ export class StudentHomeworksController {
   @ApiParam({ name: 'homeworkId' })
   @ApiBody({ type: StudentHomeworkSubmitBodyDto })
   @ApiOkResponse({ type: StudentHomeworkSubmissionResponseDto })
+  @RequiredPermissions('homework.submissions.submit')
   submitHomeworkAlias(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
     @Body() dto: StudentHomeworkSubmitBodyDto,

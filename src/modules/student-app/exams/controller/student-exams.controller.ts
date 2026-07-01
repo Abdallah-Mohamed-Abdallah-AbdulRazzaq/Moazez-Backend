@@ -70,6 +70,7 @@ export class StudentExamsController {
 
   @Post(':assessmentId/start')
   @ApiOkResponse({ type: StudentExamSubmissionStateResponseDto })
+  @RequiredPermissions('grades.submissions.start')
   startExamSubmission(
     @Param('assessmentId', new ParseUUIDPipe()) assessmentId: string,
   ): Promise<StudentExamSubmissionStateResponseDto> {
@@ -78,6 +79,7 @@ export class StudentExamsController {
 
   @Put(':assessmentId/submission/answers')
   @ApiOkResponse({ type: StudentExamSubmissionStateResponseDto })
+  @RequiredPermissions('grades.submissions.save')
   bulkSaveExamAnswers(
     @Param('assessmentId', new ParseUUIDPipe()) assessmentId: string,
     @Body() body: StudentExamBulkSaveAnswersDto,
@@ -87,6 +89,7 @@ export class StudentExamsController {
 
   @Patch(':assessmentId/submission/answers/:questionId')
   @ApiOkResponse({ type: StudentExamSubmissionStateResponseDto })
+  @RequiredPermissions('grades.submissions.save')
   saveExamAnswer(
     @Param('assessmentId', new ParseUUIDPipe()) assessmentId: string,
     @Param('questionId', new ParseUUIDPipe()) questionId: string,
@@ -101,6 +104,7 @@ export class StudentExamsController {
 
   @Post(':assessmentId/submission/submit')
   @ApiOkResponse({ type: StudentExamSubmissionStateResponseDto })
+  @RequiredPermissions('grades.submissions.submit')
   submitExamSubmission(
     @Param('assessmentId', new ParseUUIDPipe()) assessmentId: string,
   ): Promise<StudentExamSubmissionStateResponseDto> {

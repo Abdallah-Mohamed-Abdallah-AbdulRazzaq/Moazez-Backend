@@ -116,6 +116,12 @@ type StudentAppReadPermissionCase = {
   permissions: string[];
 };
 
+type StudentAppActionPermissionCase = {
+  controller: { prototype: object };
+  method: string;
+  permissions: string[];
+};
+
 const STUDENT_APP_READ_PERMISSION_CASES: StudentAppReadPermissionCase[] = [
   {
     controller: StudentHomeController,
@@ -434,11 +440,102 @@ const STUDENT_APP_READ_PERMISSION_CASES: StudentAppReadPermissionCase[] = [
   },
 ];
 
+const STUDENT_APP_HOMEWORK_EXAM_ACTION_PERMISSION_CASES: StudentAppActionPermissionCase[] = [
+  {
+    controller: StudentExamsController,
+    method: 'startExamSubmission',
+    permissions: ['grades.submissions.start'],
+  },
+  {
+    controller: StudentExamsController,
+    method: 'bulkSaveExamAnswers',
+    permissions: ['grades.submissions.save'],
+  },
+  {
+    controller: StudentExamsController,
+    method: 'saveExamAnswer',
+    permissions: ['grades.submissions.save'],
+  },
+  {
+    controller: StudentExamsController,
+    method: 'submitExamSubmission',
+    permissions: ['grades.submissions.submit'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'saveSubmissionDraft',
+    permissions: ['homework.submissions.save'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'saveSubmissionDraftAlias',
+    permissions: ['homework.submissions.save'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'saveSubmissionAnswers',
+    permissions: ['homework.answers.manage'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'saveSubmissionAnswer',
+    permissions: ['homework.answers.manage'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'createSubmissionAttachment',
+    permissions: ['homework.submission_attachments.manage'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'updateSubmissionAttachment',
+    permissions: ['homework.submission_attachments.manage'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'reorderSubmissionAttachment',
+    permissions: ['homework.submission_attachments.manage'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'deleteSubmissionAttachment',
+    permissions: ['homework.submission_attachments.manage'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'submitHomework',
+    permissions: ['homework.submissions.submit'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'submitHomeworkAlias',
+    permissions: ['homework.submissions.submit'],
+  },
+];
+
 describe('Student App read-only route permission metadata (security)', () => {
   it('declares the STU-PERM-1B read-only permission inventory', () => {
     expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(63);
 
     for (const entry of STUDENT_APP_READ_PERMISSION_CASES) {
+      const handler = (entry.controller.prototype as Record<string, unknown>)[
+        entry.method
+      ];
+
+      expect(typeof handler).toBe('function');
+      expect(
+        Reflect.getMetadata(
+          REQUIRED_PERMISSIONS_METADATA,
+          handler as object,
+        ),
+      ).toEqual(entry.permissions);
+    }
+  });
+
+  it('declares the STU-PERM-1C homework/exam action permission inventory', () => {
+    expect(STUDENT_APP_HOMEWORK_EXAM_ACTION_PERMISSION_CASES).toHaveLength(14);
+
+    for (const entry of STUDENT_APP_HOMEWORK_EXAM_ACTION_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
         entry.method
       ];
@@ -1370,6 +1467,88 @@ describe('Student App Home/Profile routes (security)', () => {
         const response = await request(app.getHttpServer())
           .get(`${GLOBAL_PREFIX}/${path}`)
           .set('Authorization', `Bearer ${accessToken}`)
+          .expect(403);
+
+        expect(response.body?.error?.code).toBe('auth.scope.missing');
+      }
+    } finally {
+      await prisma.membership.update({
+        where: { id: membership.id },
+        data: { roleId: membership.roleId },
+      });
+    }
+  });
+
+  it('returns auth.scope.missing for homework and exam action routes when the student role lacks permission', async () => {
+    const membership = await prisma.membership.findFirstOrThrow({
+      where: {
+        userId: linkedStudentUserId,
+        schoolId,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true, roleId: true },
+    });
+
+    await prisma.membership.update({
+      where: { id: membership.id },
+      data: { roleId: noPermissionStudentRoleId },
+    });
+
+    try {
+      const { accessToken } = await login(linkedStudentEmail);
+      const placeholderId = '11111111-1111-4111-8111-111111111111';
+      const actionRequests: Array<{
+        method: 'post' | 'put' | 'patch' | 'delete';
+        path: string;
+        body: Record<string, unknown>;
+      }> = [
+        {
+          method: 'post',
+          path: `student/exams/${ownNoSubmissionAssessmentId}/start`,
+          body: {},
+        },
+        {
+          method: 'put',
+          path: `student/exams/${ownNoSubmissionAssessmentId}/submission/answers`,
+          body: { answers: [] },
+        },
+        {
+          method: 'patch',
+          path: `student/exams/${ownNoSubmissionAssessmentId}/submission/answers/${placeholderId}`,
+          body: { selectedOptionIds: [] },
+        },
+        {
+          method: 'post',
+          path: `student/exams/${ownNoSubmissionAssessmentId}/submission/submit`,
+          body: {},
+        },
+        {
+          method: 'put',
+          path: `student/homeworks/${placeholderId}/submission`,
+          body: { bodyText: 'blocked' },
+        },
+        {
+          method: 'put',
+          path: `student/homeworks/${placeholderId}/submission/answers`,
+          body: { answers: [] },
+        },
+        {
+          method: 'post',
+          path: `student/homeworks/${placeholderId}/submission/attachments`,
+          body: { fileId: placeholderId },
+        },
+        {
+          method: 'post',
+          path: `student/homeworks/${placeholderId}/submit`,
+          body: {},
+        },
+      ];
+
+      for (const actionRequest of actionRequests) {
+        const response = await request(app.getHttpServer())
+          [actionRequest.method](`${GLOBAL_PREFIX}/${actionRequest.path}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send(actionRequest.body)
           .expect(403);
 
         expect(response.body?.error?.code).toBe('auth.scope.missing');
@@ -3285,6 +3464,22 @@ describe('Student App Home/Profile routes (security)', () => {
       bodyText: 'Student App draft',
     });
     assertNoForbiddenStudentAppFields(currentSubmission.body);
+
+    const { accessToken: otherStudentAccessToken } = await login(
+      sameSchoolOtherStudentEmail,
+    );
+
+    await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/student/homeworks/${homeworkId}/submission`)
+      .set('Authorization', `Bearer ${otherStudentAccessToken}`)
+      .send({ bodyText: 'blocked' })
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/student/homeworks/${homeworkId}/submit`)
+      .set('Authorization', `Bearer ${otherStudentAccessToken}`)
+      .send({})
+      .expect(404);
 
     const submitted = await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/student/homeworks/${homeworkId}/submit`)
