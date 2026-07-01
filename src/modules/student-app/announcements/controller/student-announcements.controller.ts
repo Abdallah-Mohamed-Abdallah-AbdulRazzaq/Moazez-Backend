@@ -49,6 +49,7 @@ export class StudentAnnouncementsController {
 
   @Post(':announcementId/read')
   @ApiCreatedResponse({ type: StudentAnnouncementReadResponseDto })
+  @RequiredPermissions('communication.announcements.read')
   markRead(
     @Param('announcementId', new ParseUUIDPipe()) announcementId: string,
   ): Promise<StudentAnnouncementReadResponseDto> {

@@ -79,6 +79,7 @@ export class StudentNotificationsController {
 
   @Post('read-all')
   @ApiCreatedResponse({ type: StudentNotificationsReadAllResponseDto })
+  @RequiredPermissions('communication.notifications.read')
   markAllRead(): Promise<StudentNotificationsReadAllResponseDto> {
     return this.markAllStudentNotificationsReadUseCase.execute();
   }
@@ -92,6 +93,7 @@ export class StudentNotificationsController {
 
   @Patch('preferences')
   @ApiOkResponse({ type: StudentNotificationPreferencesResponseDto })
+  @RequiredPermissions('communication.notifications.preferences.manage')
   updatePreferences(
     @Body() body: UpdateStudentNotificationPreferencesDto,
   ): Promise<StudentNotificationPreferencesResponseDto> {
@@ -100,6 +102,7 @@ export class StudentNotificationsController {
 
   @Post('device-tokens')
   @ApiCreatedResponse({ type: AppDeviceTokenDualRegisterResponseDto })
+  @RequiredPermissions('app.device_tokens.manage')
   registerDeviceToken(
     @Body() body: RegisterAppDeviceTokenDto,
   ): Promise<AppDeviceTokenDualRegisterResponseDto> {
@@ -108,6 +111,7 @@ export class StudentNotificationsController {
 
   @Delete('device-tokens/current')
   @ApiOkResponse({ type: AppDeviceTokenDualUnregisterResponseDto })
+  @RequiredPermissions('app.device_tokens.manage')
   unregisterCurrentDeviceToken(
     @Body() body: UnregisterAppDeviceTokenDto,
   ): Promise<AppDeviceTokenDualUnregisterResponseDto> {
@@ -125,6 +129,7 @@ export class StudentNotificationsController {
 
   @Post(':notificationId/read')
   @ApiCreatedResponse({ type: StudentNotificationResponseDto })
+  @RequiredPermissions('communication.notifications.read')
   markRead(
     @Param('notificationId', new ParseUUIDPipe()) notificationId: string,
   ): Promise<StudentNotificationResponseDto> {
@@ -133,6 +138,7 @@ export class StudentNotificationsController {
 
   @Post(':notificationId/archive')
   @ApiCreatedResponse({ type: StudentNotificationResponseDto })
+  @RequiredPermissions('communication.notifications.archive')
   archive(
     @Param('notificationId', new ParseUUIDPipe()) notificationId: string,
   ): Promise<StudentNotificationResponseDto> {

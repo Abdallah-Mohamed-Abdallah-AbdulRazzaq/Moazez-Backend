@@ -200,6 +200,7 @@ export class StudentMessagesController {
 
   @Post('conversations')
   @ApiCreatedResponse({ type: StudentMessageConversationResponseDto })
+  @RequiredPermissions('communication.conversations.create')
   createConversation(
     @Body() body: CreateStudentMessageConversationDto,
   ): Promise<StudentMessageConversationResponseDto> {
@@ -208,6 +209,7 @@ export class StudentMessagesController {
 
   @Post('conversations/:conversationId/messages')
   @ApiCreatedResponse({ type: StudentConversationMessageResponseDto })
+  @RequiredPermissions('communication.messages.send')
   sendMessage(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Body() body: SendStudentConversationMessageDto,
@@ -220,6 +222,7 @@ export class StudentMessagesController {
 
   @Post('conversations/:conversationId/read')
   @ApiCreatedResponse({ type: StudentConversationReadResponseDto })
+  @RequiredPermissions('communication.conversations.read')
   markRead(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
   ): Promise<StudentConversationReadResponseDto> {

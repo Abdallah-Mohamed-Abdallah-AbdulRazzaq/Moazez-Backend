@@ -74,6 +74,7 @@ export class StudentProfileController {
     },
   })
   @ApiCreatedResponse({ type: StudentProfileResponseDto })
+  @RequiredPermissions('student.profile.avatar.manage')
   uploadAvatar(
     @UploadedFile() file: UploadedMultipartFile | undefined,
   ): Promise<StudentProfileResponseDto> {
@@ -82,12 +83,14 @@ export class StudentProfileController {
 
   @Delete('avatar')
   @ApiOkResponse({ type: StudentProfileResponseDto })
+  @RequiredPermissions('student.profile.avatar.manage')
   deleteAvatar(): Promise<StudentProfileResponseDto> {
     return this.deleteStudentAvatarUseCase.execute();
   }
 
   @Post('correction-requests')
   @ApiCreatedResponse({ type: StudentProfileCorrectionRequestResponseDto })
+  @RequiredPermissions('student.profile.correction_requests.create')
   submitCorrectionRequest(
     @Body() dto: SubmitStudentProfileCorrectionRequestDto,
   ): Promise<StudentProfileCorrectionRequestResponseDto> {
@@ -116,6 +119,7 @@ export class StudentProfileController {
   @Post('correction-requests/:requestId/cancel')
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: StudentProfileCorrectionRequestResponseDto })
+  @RequiredPermissions('student.profile.correction_requests.cancel')
   cancelCorrectionRequest(
     @Param('requestId', new ParseUUIDPipe()) requestId: string,
   ): Promise<StudentProfileCorrectionRequestResponseDto> {

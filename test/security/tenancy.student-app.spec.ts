@@ -541,6 +541,79 @@ const STUDENT_APP_REINFORCEMENT_ACTION_PERMISSION_CASES: StudentAppActionPermiss
   },
 ];
 
+const STUDENT_APP_COMMUNICATION_PROFILE_ACTION_PERMISSION_CASES: StudentAppActionPermissionCase[] = [
+  {
+    controller: StudentProfileController,
+    method: 'uploadAvatar',
+    permissions: ['student.profile.avatar.manage'],
+  },
+  {
+    controller: StudentProfileController,
+    method: 'deleteAvatar',
+    permissions: ['student.profile.avatar.manage'],
+  },
+  {
+    controller: StudentProfileController,
+    method: 'submitCorrectionRequest',
+    permissions: ['student.profile.correction_requests.create'],
+  },
+  {
+    controller: StudentProfileController,
+    method: 'cancelCorrectionRequest',
+    permissions: ['student.profile.correction_requests.cancel'],
+  },
+  {
+    controller: StudentMessagesController,
+    method: 'createConversation',
+    permissions: ['communication.conversations.create'],
+  },
+  {
+    controller: StudentMessagesController,
+    method: 'sendMessage',
+    permissions: ['communication.messages.send'],
+  },
+  {
+    controller: StudentMessagesController,
+    method: 'markRead',
+    permissions: ['communication.conversations.read'],
+  },
+  {
+    controller: StudentAnnouncementsController,
+    method: 'markRead',
+    permissions: ['communication.announcements.read'],
+  },
+  {
+    controller: StudentNotificationsController,
+    method: 'markAllRead',
+    permissions: ['communication.notifications.read'],
+  },
+  {
+    controller: StudentNotificationsController,
+    method: 'updatePreferences',
+    permissions: ['communication.notifications.preferences.manage'],
+  },
+  {
+    controller: StudentNotificationsController,
+    method: 'registerDeviceToken',
+    permissions: ['app.device_tokens.manage'],
+  },
+  {
+    controller: StudentNotificationsController,
+    method: 'unregisterCurrentDeviceToken',
+    permissions: ['app.device_tokens.manage'],
+  },
+  {
+    controller: StudentNotificationsController,
+    method: 'markRead',
+    permissions: ['communication.notifications.read'],
+  },
+  {
+    controller: StudentNotificationsController,
+    method: 'archive',
+    permissions: ['communication.notifications.archive'],
+  },
+];
+
 describe('Student App read-only route permission metadata (security)', () => {
   it('declares the STU-PERM-1B read-only permission inventory', () => {
     expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(63);
@@ -582,6 +655,26 @@ describe('Student App read-only route permission metadata (security)', () => {
     expect(STUDENT_APP_REINFORCEMENT_ACTION_PERMISSION_CASES).toHaveLength(5);
 
     for (const entry of STUDENT_APP_REINFORCEMENT_ACTION_PERMISSION_CASES) {
+      const handler = (entry.controller.prototype as Record<string, unknown>)[
+        entry.method
+      ];
+
+      expect(typeof handler).toBe('function');
+      expect(
+        Reflect.getMetadata(
+          REQUIRED_PERMISSIONS_METADATA,
+          handler as object,
+        ),
+      ).toEqual(entry.permissions);
+    }
+  });
+
+  it('declares the STU-PERM-1E communication/notifications/profile action permission inventory', () => {
+    expect(
+      STUDENT_APP_COMMUNICATION_PROFILE_ACTION_PERMISSION_CASES,
+    ).toHaveLength(14);
+
+    for (const entry of STUDENT_APP_COMMUNICATION_PROFILE_ACTION_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
         entry.method
       ];
@@ -1653,6 +1746,112 @@ describe('Student App Home/Profile routes (security)', () => {
       for (const actionRequest of actionRequests) {
         const response = await request(app.getHttpServer())
           .post(`${GLOBAL_PREFIX}/${actionRequest.path}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send(actionRequest.body)
+          .expect(403);
+
+        expect(response.body?.error?.code).toBe('auth.scope.missing');
+      }
+    } finally {
+      await prisma.membership.update({
+        where: { id: membership.id },
+        data: { roleId: membership.roleId },
+      });
+    }
+  });
+
+  it('returns auth.scope.missing for communication, notification, and profile action routes when the student role lacks permission', async () => {
+    const membership = await prisma.membership.findFirstOrThrow({
+      where: {
+        userId: linkedStudentUserId,
+        schoolId,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true, roleId: true },
+    });
+
+    await prisma.membership.update({
+      where: { id: membership.id },
+      data: { roleId: noPermissionStudentRoleId },
+    });
+
+    try {
+      const { accessToken } = await login(linkedStudentEmail);
+      const placeholderId = '11111111-1111-4111-8111-111111111111';
+      const actionRequests: Array<{
+        method: 'post' | 'patch' | 'delete';
+        path: string;
+        body: Record<string, unknown>;
+      }> = [
+        {
+          method: 'delete',
+          path: 'student/profile/avatar',
+          body: {},
+        },
+        {
+          method: 'post',
+          path: 'student/profile/correction-requests',
+          body: {
+            fieldKey: 'phone',
+            requestedValue: '+201000000000',
+            reason: 'blocked',
+          },
+        },
+        {
+          method: 'post',
+          path: `student/profile/correction-requests/${placeholderId}/cancel`,
+          body: {},
+        },
+        {
+          method: 'post',
+          path: 'student/messages/conversations',
+          body: {
+            contactId: `teacher:${placeholderId}`,
+          },
+        },
+        {
+          method: 'post',
+          path: `student/messages/conversations/${ownConversationId}/messages`,
+          body: { body: 'blocked' },
+        },
+        {
+          method: 'post',
+          path: `student/messages/conversations/${ownConversationId}/read`,
+          body: {},
+        },
+        {
+          method: 'post',
+          path: `student/announcements/${ownAnnouncementId}/read`,
+          body: {},
+        },
+        {
+          method: 'post',
+          path: 'student/notifications/read-all',
+          body: {},
+        },
+        {
+          method: 'post',
+          path: `student/notifications/${placeholderId}/archive`,
+          body: {},
+        },
+        {
+          method: 'patch',
+          path: 'student/notifications/preferences',
+          body: { preferences: [] },
+        },
+        {
+          method: 'post',
+          path: 'student/notifications/device-tokens',
+          body: {
+            token: `${testSuffix}-blocked-student-token`,
+            platform: 'ios',
+          },
+        },
+      ];
+
+      for (const actionRequest of actionRequests) {
+        const response = await request(app.getHttpServer())
+          [actionRequest.method](`${GLOBAL_PREFIX}/${actionRequest.path}`)
           .set('Authorization', `Bearer ${accessToken}`)
           .send(actionRequest.body)
           .expect(403);
