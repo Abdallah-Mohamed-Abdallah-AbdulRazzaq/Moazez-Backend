@@ -513,6 +513,34 @@ const STUDENT_APP_HOMEWORK_EXAM_ACTION_PERMISSION_CASES: StudentAppActionPermiss
   },
 ];
 
+const STUDENT_APP_REINFORCEMENT_ACTION_PERMISSION_CASES: StudentAppActionPermissionCase[] = [
+  {
+    controller: StudentTasksController,
+    method: 'submitStage',
+    permissions: ['reinforcement.submissions.submit'],
+  },
+  {
+    controller: StudentRewardsController,
+    method: 'redeemReward',
+    permissions: ['reinforcement.rewards.redemptions.request'],
+  },
+  {
+    controller: StudentHeroController,
+    method: 'startMission',
+    permissions: ['reinforcement.hero.missions.start'],
+  },
+  {
+    controller: StudentHeroController,
+    method: 'completeMission',
+    permissions: ['reinforcement.hero.missions.complete'],
+  },
+  {
+    controller: StudentHeroController,
+    method: 'completeObjective',
+    permissions: ['reinforcement.hero.objectives.complete'],
+  },
+];
+
 describe('Student App read-only route permission metadata (security)', () => {
   it('declares the STU-PERM-1B read-only permission inventory', () => {
     expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(63);
@@ -536,6 +564,24 @@ describe('Student App read-only route permission metadata (security)', () => {
     expect(STUDENT_APP_HOMEWORK_EXAM_ACTION_PERMISSION_CASES).toHaveLength(14);
 
     for (const entry of STUDENT_APP_HOMEWORK_EXAM_ACTION_PERMISSION_CASES) {
+      const handler = (entry.controller.prototype as Record<string, unknown>)[
+        entry.method
+      ];
+
+      expect(typeof handler).toBe('function');
+      expect(
+        Reflect.getMetadata(
+          REQUIRED_PERMISSIONS_METADATA,
+          handler as object,
+        ),
+      ).toEqual(entry.permissions);
+    }
+  });
+
+  it('declares the STU-PERM-1D reinforcement/rewards/hero action permission inventory', () => {
+    expect(STUDENT_APP_REINFORCEMENT_ACTION_PERMISSION_CASES).toHaveLength(5);
+
+    for (const entry of STUDENT_APP_REINFORCEMENT_ACTION_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
         entry.method
       ];
@@ -1547,6 +1593,66 @@ describe('Student App Home/Profile routes (security)', () => {
       for (const actionRequest of actionRequests) {
         const response = await request(app.getHttpServer())
           [actionRequest.method](`${GLOBAL_PREFIX}/${actionRequest.path}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send(actionRequest.body)
+          .expect(403);
+
+        expect(response.body?.error?.code).toBe('auth.scope.missing');
+      }
+    } finally {
+      await prisma.membership.update({
+        where: { id: membership.id },
+        data: { roleId: membership.roleId },
+      });
+    }
+  });
+
+  it('returns auth.scope.missing for task, reward, and hero action routes when the student role lacks permission', async () => {
+    const membership = await prisma.membership.findFirstOrThrow({
+      where: {
+        userId: linkedStudentUserId,
+        schoolId,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true, roleId: true },
+    });
+
+    await prisma.membership.update({
+      where: { id: membership.id },
+      data: { roleId: noPermissionStudentRoleId },
+    });
+
+    try {
+      const { accessToken } = await login(linkedStudentEmail);
+      const actionRequests: Array<{
+        path: string;
+        body: Record<string, unknown>;
+      }> = [
+        {
+          path: `student/tasks/${ownSubmittableTaskId}/stages/${ownSubmittableStageId}/submit`,
+          body: { proofText: 'blocked' },
+        },
+        {
+          path: `student/rewards/${redeemableRewardId}/redeem`,
+          body: {},
+        },
+        {
+          path: `student/hero/missions/${startableHeroMissionId}/start`,
+          body: {},
+        },
+        {
+          path: `student/hero/missions/${completableHeroMissionId}/complete`,
+          body: {},
+        },
+        {
+          path: `student/hero/missions/${objectiveActionHeroMissionId}/objectives/${objectiveActionHeroObjectiveId}/complete`,
+          body: {},
+        },
+      ];
+
+      for (const actionRequest of actionRequests) {
+        const response = await request(app.getHttpServer())
+          .post(`${GLOBAL_PREFIX}/${actionRequest.path}`)
           .set('Authorization', `Bearer ${accessToken}`)
           .send(actionRequest.body)
           .expect(403);

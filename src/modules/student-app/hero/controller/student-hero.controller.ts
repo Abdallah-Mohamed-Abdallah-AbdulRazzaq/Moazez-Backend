@@ -86,6 +86,7 @@ export class StudentHeroController {
   @Post('missions/:missionId/start')
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: StudentHeroMissionDetailResponseDto })
+  @RequiredPermissions('reinforcement.hero.missions.start')
   startMission(
     @Param('missionId', new ParseUUIDPipe()) missionId: string,
     @Body() _dto: StudentHeroActionDto,
@@ -96,6 +97,7 @@ export class StudentHeroController {
   @Post('missions/:missionId/complete')
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: StudentHeroMissionDetailResponseDto })
+  @RequiredPermissions('reinforcement.hero.missions.complete')
   completeMission(
     @Param('missionId', new ParseUUIDPipe()) missionId: string,
     @Body() _dto: StudentHeroActionDto,
@@ -106,6 +108,7 @@ export class StudentHeroController {
   @Post('missions/:missionId/objectives/:objectiveId/complete')
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: StudentHeroMissionDetailResponseDto })
+  @RequiredPermissions('reinforcement.hero.objectives.complete')
   completeObjective(
     @Param('missionId', new ParseUUIDPipe()) missionId: string,
     @Param('objectiveId', new ParseUUIDPipe()) objectiveId: string,

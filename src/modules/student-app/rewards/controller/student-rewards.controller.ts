@@ -74,6 +74,7 @@ export class StudentRewardsController {
   @Post(':rewardId/redeem')
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: StudentRewardRedemptionResponseDto })
+  @RequiredPermissions('reinforcement.rewards.redemptions.request')
   redeemReward(
     @Param('rewardId', new ParseUUIDPipe()) rewardId: string,
     @Body() dto: RedeemStudentRewardDto,

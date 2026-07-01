@@ -90,6 +90,7 @@ export class StudentTasksController {
   @Post(':taskId/stages/:stageId/submit')
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: StudentTaskSubmissionResponseDto })
+  @RequiredPermissions('reinforcement.submissions.submit')
   submitStage(
     @Param('taskId', new ParseUUIDPipe()) taskId: string,
     @Param('stageId', new ParseUUIDPipe()) stageId: string,
