@@ -10,6 +10,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { CompleteStudentHeroMissionUseCase } from '../application/complete-student-hero-mission.use-case';
 import { CompleteStudentHeroObjectiveUseCase } from '../application/complete-student-hero-objective.use-case';
 import { GetStudentHeroMissionUseCase } from '../application/get-student-hero-mission.use-case';
@@ -45,24 +46,28 @@ export class StudentHeroController {
 
   @Get()
   @ApiOkResponse({ type: StudentHeroOverviewResponseDto })
+  @RequiredPermissions('reinforcement.hero.view')
   getHeroOverview(): Promise<StudentHeroOverviewResponseDto> {
     return this.getStudentHeroOverviewUseCase.execute();
   }
 
   @Get('progress')
   @ApiOkResponse({ type: StudentHeroProgressResponseDto })
+  @RequiredPermissions('reinforcement.hero.progress.view')
   getHeroProgress(): Promise<StudentHeroProgressResponseDto> {
     return this.getStudentHeroProgressUseCase.execute();
   }
 
   @Get('badges')
   @ApiOkResponse({ type: StudentHeroBadgesResponseDto })
+  @RequiredPermissions('reinforcement.hero.badges.view')
   listBadges(): Promise<StudentHeroBadgesResponseDto> {
     return this.listStudentHeroBadgesUseCase.execute();
   }
 
   @Get('missions')
   @ApiOkResponse({ type: StudentHeroMissionsResponseDto })
+  @RequiredPermissions('reinforcement.hero.view')
   listMissions(
     @Query() query: StudentHeroMissionsQueryDto,
   ): Promise<StudentHeroMissionsResponseDto> {
@@ -71,6 +76,7 @@ export class StudentHeroController {
 
   @Get('missions/:missionId')
   @ApiOkResponse({ type: StudentHeroMissionDetailResponseDto })
+  @RequiredPermissions('reinforcement.hero.view')
   getMission(
     @Param('missionId', new ParseUUIDPipe()) missionId: string,
   ): Promise<StudentHeroMissionDetailResponseDto> {

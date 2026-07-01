@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetStudentAcademicProgressUseCase } from '../application/get-student-academic-progress.use-case';
 import { GetStudentBehaviorProgressUseCase } from '../application/get-student-behavior-progress.use-case';
 import { GetStudentProgressUseCase } from '../application/get-student-progress.use-case';
@@ -24,24 +25,28 @@ export class StudentProgressController {
 
   @Get()
   @ApiOkResponse({ type: StudentProgressOverviewResponseDto })
+  @RequiredPermissions('student.progress.view')
   getProgress(): Promise<StudentProgressOverviewResponseDto> {
     return this.getStudentProgressUseCase.execute();
   }
 
   @Get('academic')
   @ApiOkResponse({ type: StudentAcademicProgressResponseDto })
+  @RequiredPermissions('grades.snapshots.view')
   getAcademicProgress(): Promise<StudentAcademicProgressResponseDto> {
     return this.getStudentAcademicProgressUseCase.execute();
   }
 
   @Get('behavior')
   @ApiOkResponse({ type: StudentBehaviorProgressResponseDto })
+  @RequiredPermissions('behavior.points.view')
   getBehaviorProgress(): Promise<StudentBehaviorProgressResponseDto> {
     return this.getStudentBehaviorProgressUseCase.execute();
   }
 
   @Get('xp')
   @ApiOkResponse({ type: StudentXpProgressResponseDto })
+  @RequiredPermissions('reinforcement.xp.view')
   getXpProgress(): Promise<StudentXpProgressResponseDto> {
     return this.getStudentXpProgressUseCase.execute();
   }

@@ -6,6 +6,7 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetStudentLessonDetailUseCase } from '../application/get-student-lesson-detail.use-case';
 import { GetStudentLessonsTodayUseCase } from '../application/get-student-lessons-today.use-case';
 import { GetStudentLessonsWeekUseCase } from '../application/get-student-lessons-week.use-case';
@@ -34,6 +35,7 @@ export class StudentLessonsController {
     description: 'Calendar date in YYYY-MM-DD format.',
   })
   @ApiOkResponse({ type: StudentLessonsTodayResponseDto })
+  @RequiredPermissions('academics.lesson_plans.view')
   getToday(
     @Query() query: StudentLessonsDateQueryDto,
   ): Promise<StudentLessonsTodayResponseDto> {
@@ -49,6 +51,7 @@ export class StudentLessonsController {
       'Calendar date in YYYY-MM-DD format. The week follows the Student App schedule week convention.',
   })
   @ApiOkResponse({ type: StudentLessonsWeekResponseDto })
+  @RequiredPermissions('academics.lesson_plans.view')
   getWeek(
     @Query() query: StudentLessonsDateQueryDto,
   ): Promise<StudentLessonsWeekResponseDto> {
@@ -58,6 +61,7 @@ export class StudentLessonsController {
   @Get(':lessonPlanItemId')
   @ApiOperation({ summary: 'Get one visible student lesson' })
   @ApiOkResponse({ type: StudentLessonItemDto })
+  @RequiredPermissions('academics.lesson_plans.view')
   getDetail(
     @Param('lessonPlanItemId', new ParseUUIDPipe()) lessonPlanItemId: string,
   ): Promise<StudentLessonItemDto> {

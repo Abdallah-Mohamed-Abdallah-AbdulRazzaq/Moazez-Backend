@@ -1,5 +1,6 @@
 import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetStudentSubjectUseCase } from '../application/get-student-subject.use-case';
 import { ListStudentSubjectsUseCase } from '../application/list-student-subjects.use-case';
 import {
@@ -18,12 +19,14 @@ export class StudentSubjectsController {
 
   @Get()
   @ApiOkResponse({ type: StudentSubjectsListResponseDto })
+  @RequiredPermissions('academics.subjects.view')
   listSubjects(): Promise<StudentSubjectsListResponseDto> {
     return this.listStudentSubjectsUseCase.execute();
   }
 
   @Get(':subjectId')
   @ApiOkResponse({ type: StudentSubjectDetailResponseDto })
+  @RequiredPermissions('academics.subjects.view')
   getSubject(
     @Param('subjectId', new ParseUUIDPipe()) subjectId: string,
   ): Promise<StudentSubjectDetailResponseDto> {

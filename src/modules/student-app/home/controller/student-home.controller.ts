@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetStudentHomeUseCase } from '../application/get-student-home.use-case';
 import { StudentHomeResponseDto } from '../dto/student-home.dto';
 
@@ -11,6 +12,7 @@ export class StudentHomeController {
 
   @Get('home')
   @ApiOkResponse({ type: StudentHomeResponseDto })
+  @RequiredPermissions('student.home.view')
   getHome(): Promise<StudentHomeResponseDto> {
     return this.getStudentHomeUseCase.execute();
   }

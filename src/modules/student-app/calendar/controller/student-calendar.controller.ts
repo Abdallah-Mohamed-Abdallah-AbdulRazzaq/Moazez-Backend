@@ -6,6 +6,7 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { AppCalendarEventsQueryDto } from '../../../academics/calendar/app-facing/dto/app-calendar-events-query.dto';
 import {
   AppCalendarEventResponseDto,
@@ -26,6 +27,7 @@ export class StudentCalendarController {
   @Get()
   @ApiOperation({ summary: 'List current student calendar events' })
   @ApiOkResponse({ type: AppCalendarEventsListResponseDto })
+  @RequiredPermissions('academics.calendar.view')
   listEvents(
     @Query() query: AppCalendarEventsQueryDto,
   ): Promise<AppCalendarEventsListResponseDto> {
@@ -36,6 +38,7 @@ export class StudentCalendarController {
   @ApiOperation({ summary: 'Get a current student calendar event' })
   @ApiParam({ name: 'eventId', format: 'uuid' })
   @ApiOkResponse({ type: AppCalendarEventResponseDto })
+  @RequiredPermissions('academics.calendar.view')
   getEvent(
     @Param('eventId', new ParseUUIDPipe()) eventId: string,
   ): Promise<AppCalendarEventResponseDto> {

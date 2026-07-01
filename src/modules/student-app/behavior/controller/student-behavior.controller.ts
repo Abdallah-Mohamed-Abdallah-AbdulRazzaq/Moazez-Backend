@@ -1,5 +1,6 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetStudentBehaviorRecordUseCase } from '../application/get-student-behavior-record.use-case';
 import { GetStudentBehaviorSummaryUseCase } from '../application/get-student-behavior-summary.use-case';
 import { ListStudentBehaviorRecordsUseCase } from '../application/list-student-behavior-records.use-case';
@@ -22,6 +23,7 @@ export class StudentBehaviorController {
 
   @Get()
   @ApiOkResponse({ type: StudentBehaviorListResponseDto })
+  @RequiredPermissions('behavior.records.view')
   listBehaviorRecords(
     @Query() query: StudentBehaviorQueryDto,
   ): Promise<StudentBehaviorListResponseDto> {
@@ -30,6 +32,7 @@ export class StudentBehaviorController {
 
   @Get('summary')
   @ApiOkResponse({ type: StudentBehaviorSummaryResponseDto })
+  @RequiredPermissions('behavior.points.view')
   getBehaviorSummary(
     @Query() query: StudentBehaviorQueryDto,
   ): Promise<StudentBehaviorSummaryResponseDto> {
@@ -38,6 +41,7 @@ export class StudentBehaviorController {
 
   @Get(':recordId')
   @ApiOkResponse({ type: StudentBehaviorRecordResponseDto })
+  @RequiredPermissions('behavior.records.view')
   getBehaviorRecord(
     @Param('recordId', new ParseUUIDPipe()) recordId: string,
   ): Promise<StudentBehaviorRecordResponseDto> {

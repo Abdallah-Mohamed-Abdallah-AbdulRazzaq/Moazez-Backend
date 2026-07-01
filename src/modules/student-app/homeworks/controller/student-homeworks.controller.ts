@@ -21,6 +21,7 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import {
   GetStudentHomeworkUseCase,
   GetStudentHomeworkSubmissionUseCase,
@@ -92,6 +93,7 @@ export class StudentHomeworksController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiOkResponse({ type: StudentHomeworksListResponseDto })
+  @RequiredPermissions('homework.assignments.view')
   listHomeworks(
     @Query() query: StudentHomeworksQueryDto,
   ): Promise<StudentHomeworksListResponseDto> {
@@ -102,6 +104,7 @@ export class StudentHomeworksController {
   @ApiOperation({ summary: 'Get assigned homework details' })
   @ApiParam({ name: 'homeworkId' })
   @ApiOkResponse({ type: StudentHomeworkResponseDto })
+  @RequiredPermissions('homework.assignments.view')
   getHomework(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
   ): Promise<StudentHomeworkResponseDto> {
@@ -112,6 +115,7 @@ export class StudentHomeworksController {
   @ApiOperation({ summary: 'Get current student homework submission' })
   @ApiParam({ name: 'homeworkId' })
   @ApiOkResponse({ type: StudentHomeworkSubmissionResponseDto })
+  @RequiredPermissions('homework.submissions.view')
   getSubmission(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
   ): Promise<StudentHomeworkSubmissionResponseDto> {
@@ -147,6 +151,7 @@ export class StudentHomeworksController {
   @ApiOperation({ summary: 'List current student homework submission answers' })
   @ApiParam({ name: 'homeworkId' })
   @ApiOkResponse({ type: HomeworkAnswersListResponseDto })
+  @RequiredPermissions('homework.submissions.view')
   listSubmissionAnswers(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
   ): Promise<HomeworkAnswersListResponseDto> {
@@ -192,6 +197,7 @@ export class StudentHomeworksController {
   })
   @ApiParam({ name: 'homeworkId' })
   @ApiOkResponse({ type: HomeworkSubmissionAttachmentsListResponseDto })
+  @RequiredPermissions('homework.submissions.view')
   listSubmissionAttachments(
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
   ): Promise<HomeworkSubmissionAttachmentsListResponseDto> {

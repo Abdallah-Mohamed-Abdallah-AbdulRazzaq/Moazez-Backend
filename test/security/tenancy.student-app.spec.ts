@@ -57,6 +57,7 @@ import {
   XpSourceType,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
+import 'reflect-metadata';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import {
@@ -66,8 +67,27 @@ import {
   setActor,
 } from '../../src/common/context/request-context';
 import { AppModule } from '../../src/app.module';
+import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { StudentAppAccessService } from '../../src/modules/student-app/access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from '../../src/modules/student-app/access/student-app-student-read.adapter';
+import { StudentAnnouncementsController } from '../../src/modules/student-app/announcements/controller/student-announcements.controller';
+import { StudentBehaviorController } from '../../src/modules/student-app/behavior/controller/student-behavior.controller';
+import { StudentCalendarController } from '../../src/modules/student-app/calendar/controller/student-calendar.controller';
+import { StudentDisciplineController } from '../../src/modules/student-app/discipline/controller/student-discipline.controller';
+import { StudentExamsController } from '../../src/modules/student-app/exams/controller/student-exams.controller';
+import { StudentGradesController } from '../../src/modules/student-app/grades/controller/student-grades.controller';
+import { StudentHeroController } from '../../src/modules/student-app/hero/controller/student-hero.controller';
+import { StudentHomeController } from '../../src/modules/student-app/home/controller/student-home.controller';
+import { StudentHomeworksController } from '../../src/modules/student-app/homeworks/controller/student-homeworks.controller';
+import { StudentLessonsController } from '../../src/modules/student-app/lessons/controller/student-lessons.controller';
+import { StudentMessagesController } from '../../src/modules/student-app/messages/controller/student-messages.controller';
+import { StudentNotificationsController } from '../../src/modules/student-app/notifications/controller/student-notifications.controller';
+import { StudentProfileController } from '../../src/modules/student-app/profile/controller/student-profile.controller';
+import { StudentProgressController } from '../../src/modules/student-app/progress/controller/student-progress.controller';
+import { StudentRewardsController } from '../../src/modules/student-app/rewards/controller/student-rewards.controller';
+import { StudentScheduleController } from '../../src/modules/student-app/schedule/controller/student-schedule.controller';
+import { StudentSubjectsController } from '../../src/modules/student-app/subjects/controller/student-subjects.controller';
+import { StudentTasksController } from '../../src/modules/student-app/tasks/controller/student-tasks.controller';
 import type {
   StudentAppEnrollmentRecord,
   StudentAppStudentRecord,
@@ -89,6 +109,350 @@ const ARGON2_OPTIONS: argon2.Options = {
 };
 
 jest.setTimeout(45000);
+
+type StudentAppReadPermissionCase = {
+  controller: { prototype: object };
+  method: string;
+  permissions: string[];
+};
+
+const STUDENT_APP_READ_PERMISSION_CASES: StudentAppReadPermissionCase[] = [
+  {
+    controller: StudentHomeController,
+    method: 'getHome',
+    permissions: ['student.home.view'],
+  },
+  {
+    controller: StudentProfileController,
+    method: 'getProfile',
+    permissions: ['student.profile.view'],
+  },
+  {
+    controller: StudentProfileController,
+    method: 'listCorrectionRequests',
+    permissions: ['student.profile.correction_requests.view'],
+  },
+  {
+    controller: StudentProfileController,
+    method: 'getCorrectionRequest',
+    permissions: ['student.profile.correction_requests.view'],
+  },
+  {
+    controller: StudentSubjectsController,
+    method: 'listSubjects',
+    permissions: ['academics.subjects.view'],
+  },
+  {
+    controller: StudentSubjectsController,
+    method: 'getSubject',
+    permissions: ['academics.subjects.view'],
+  },
+  {
+    controller: StudentGradesController,
+    method: 'listGrades',
+    permissions: ['grades.snapshots.view'],
+  },
+  {
+    controller: StudentGradesController,
+    method: 'getSummary',
+    permissions: ['grades.snapshots.view'],
+  },
+  {
+    controller: StudentGradesController,
+    method: 'getAssessmentGrade',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentExamsController,
+    method: 'listExams',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentExamsController,
+    method: 'getExam',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: StudentExamsController,
+    method: 'getExamSubmission',
+    permissions: ['grades.submissions.view'],
+  },
+  {
+    controller: StudentBehaviorController,
+    method: 'listBehaviorRecords',
+    permissions: ['behavior.records.view'],
+  },
+  {
+    controller: StudentBehaviorController,
+    method: 'getBehaviorSummary',
+    permissions: ['behavior.points.view'],
+  },
+  {
+    controller: StudentBehaviorController,
+    method: 'getBehaviorRecord',
+    permissions: ['behavior.records.view'],
+  },
+  {
+    controller: StudentDisciplineController,
+    method: 'listDiscipline',
+    permissions: ['discipline.timeline.view'],
+  },
+  {
+    controller: StudentDisciplineController,
+    method: 'getDisciplineSummary',
+    permissions: ['discipline.timeline.view'],
+  },
+  {
+    controller: StudentProgressController,
+    method: 'getProgress',
+    permissions: ['student.progress.view'],
+  },
+  {
+    controller: StudentProgressController,
+    method: 'getAcademicProgress',
+    permissions: ['grades.snapshots.view'],
+  },
+  {
+    controller: StudentProgressController,
+    method: 'getBehaviorProgress',
+    permissions: ['behavior.points.view'],
+  },
+  {
+    controller: StudentProgressController,
+    method: 'getXpProgress',
+    permissions: ['reinforcement.xp.view'],
+  },
+  {
+    controller: StudentHeroController,
+    method: 'getHeroOverview',
+    permissions: ['reinforcement.hero.view'],
+  },
+  {
+    controller: StudentHeroController,
+    method: 'getHeroProgress',
+    permissions: ['reinforcement.hero.progress.view'],
+  },
+  {
+    controller: StudentHeroController,
+    method: 'listBadges',
+    permissions: ['reinforcement.hero.badges.view'],
+  },
+  {
+    controller: StudentHeroController,
+    method: 'listMissions',
+    permissions: ['reinforcement.hero.view'],
+  },
+  {
+    controller: StudentHeroController,
+    method: 'getMission',
+    permissions: ['reinforcement.hero.view'],
+  },
+  {
+    controller: StudentScheduleController,
+    method: 'getDailySchedule',
+    permissions: ['academics.timetable.view'],
+  },
+  {
+    controller: StudentScheduleController,
+    method: 'getWeeklySchedule',
+    permissions: ['academics.timetable.view'],
+  },
+  {
+    controller: StudentTasksController,
+    method: 'listTasks',
+    permissions: ['reinforcement.tasks.view'],
+  },
+  {
+    controller: StudentTasksController,
+    method: 'getSummary',
+    permissions: ['reinforcement.tasks.view'],
+  },
+  {
+    controller: StudentTasksController,
+    method: 'getTask',
+    permissions: ['reinforcement.tasks.view'],
+  },
+  {
+    controller: StudentTasksController,
+    method: 'listSubmissions',
+    permissions: ['reinforcement.submissions.view'],
+  },
+  {
+    controller: StudentTasksController,
+    method: 'getSubmission',
+    permissions: ['reinforcement.submissions.view'],
+  },
+  {
+    controller: StudentMessagesController,
+    method: 'listContacts',
+    permissions: ['communication.contacts.view'],
+  },
+  {
+    controller: StudentMessagesController,
+    method: 'listConversations',
+    permissions: ['communication.conversations.view'],
+  },
+  {
+    controller: StudentMessagesController,
+    method: 'getConversation',
+    permissions: ['communication.conversations.view'],
+  },
+  {
+    controller: StudentMessagesController,
+    method: 'searchMessages',
+    permissions: ['communication.messages.view'],
+  },
+  {
+    controller: StudentMessagesController,
+    method: 'listMessages',
+    permissions: ['communication.messages.view'],
+  },
+  {
+    controller: StudentMessagesController,
+    method: 'getMessageReaders',
+    permissions: ['communication.messages.view'],
+  },
+  {
+    controller: StudentMessagesController,
+    method: 'getMessageInfo',
+    permissions: ['communication.messages.view'],
+  },
+  {
+    controller: StudentMessagesController,
+    method: 'downloadAttachment',
+    permissions: ['files.downloads.view'],
+  },
+  {
+    controller: StudentMessagesController,
+    method: 'previewAttachment',
+    permissions: ['files.downloads.view'],
+  },
+  {
+    controller: StudentNotificationsController,
+    method: 'listNotifications',
+    permissions: ['communication.notifications.view'],
+  },
+  {
+    controller: StudentNotificationsController,
+    method: 'getSummary',
+    permissions: ['communication.notifications.view'],
+  },
+  {
+    controller: StudentNotificationsController,
+    method: 'getPreferences',
+    permissions: ['communication.notifications.view'],
+  },
+  {
+    controller: StudentNotificationsController,
+    method: 'getNotification',
+    permissions: ['communication.notifications.view'],
+  },
+  {
+    controller: StudentAnnouncementsController,
+    method: 'listAnnouncements',
+    permissions: ['communication.announcements.view'],
+  },
+  {
+    controller: StudentAnnouncementsController,
+    method: 'getAnnouncement',
+    permissions: ['communication.announcements.view'],
+  },
+  {
+    controller: StudentAnnouncementsController,
+    method: 'listAttachments',
+    permissions: ['communication.announcements.view'],
+  },
+  {
+    controller: StudentCalendarController,
+    method: 'listEvents',
+    permissions: ['academics.calendar.view'],
+  },
+  {
+    controller: StudentCalendarController,
+    method: 'getEvent',
+    permissions: ['academics.calendar.view'],
+  },
+  {
+    controller: StudentLessonsController,
+    method: 'getToday',
+    permissions: ['academics.lesson_plans.view'],
+  },
+  {
+    controller: StudentLessonsController,
+    method: 'getWeek',
+    permissions: ['academics.lesson_plans.view'],
+  },
+  {
+    controller: StudentLessonsController,
+    method: 'getDetail',
+    permissions: ['academics.lesson_plans.view'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'listHomeworks',
+    permissions: ['homework.assignments.view'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'getHomework',
+    permissions: ['homework.assignments.view'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'getSubmission',
+    permissions: ['homework.submissions.view'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'listSubmissionAnswers',
+    permissions: ['homework.submissions.view'],
+  },
+  {
+    controller: StudentHomeworksController,
+    method: 'listSubmissionAttachments',
+    permissions: ['homework.submissions.view'],
+  },
+  {
+    controller: StudentRewardsController,
+    method: 'listRewards',
+    permissions: ['reinforcement.rewards.view'],
+  },
+  {
+    controller: StudentRewardsController,
+    method: 'getReward',
+    permissions: ['reinforcement.rewards.view'],
+  },
+  {
+    controller: StudentRewardsController,
+    method: 'listRedemptions',
+    permissions: ['reinforcement.rewards.redemptions.view'],
+  },
+  {
+    controller: StudentRewardsController,
+    method: 'getRedemption',
+    permissions: ['reinforcement.rewards.redemptions.view'],
+  },
+];
+
+describe('Student App read-only route permission metadata (security)', () => {
+  it('declares the STU-PERM-1B read-only permission inventory', () => {
+    expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(63);
+
+    for (const entry of STUDENT_APP_READ_PERMISSION_CASES) {
+      const handler = (entry.controller.prototype as Record<string, unknown>)[
+        entry.method
+      ];
+
+      expect(typeof handler).toBe('function');
+      expect(
+        Reflect.getMetadata(
+          REQUIRED_PERMISSIONS_METADATA,
+          handler as object,
+        ),
+      ).toEqual(entry.permissions);
+    }
+  });
+});
 
 describe('Student App ownership foundation (security)', () => {
   it('does not allow a linked student identity to access another same-school student', async () => {
@@ -236,6 +600,7 @@ describe('Student App Home/Profile routes (security)', () => {
 
   let organizationId: string;
   let schoolId: string;
+  let noPermissionStudentRoleId: string;
   let academicYearId: string;
   let termId: string;
   let stageId: string;
@@ -317,6 +682,7 @@ describe('Student App Home/Profile routes (security)', () => {
 
   const testSuffix = `student-app-security-${Date.now()}`;
   const createdUserIds: string[] = [];
+  const createdRoleIds: string[] = [];
   const createdAppDeviceTokenIds: string[] = [];
   const createdStudentIds: string[] = [];
   const createdEnrollmentIds: string[] = [];
@@ -404,6 +770,19 @@ describe('Student App Home/Profile routes (security)', () => {
     schoolId = school.id;
     createdSchoolIds.push(school.id);
     createdOrganizationIds.push(organization.id);
+
+    const noPermissionStudentRole = await prisma.role.create({
+      data: {
+        schoolId,
+        key: `${testSuffix}-student-no-permissions`,
+        name: `${testSuffix} Student No Permissions`,
+        description: 'Security fixture role with no permissions.',
+        isSystem: false,
+      },
+      select: { id: true },
+    });
+    noPermissionStudentRoleId = noPermissionStudentRole.id;
+    createdRoleIds.push(noPermissionStudentRole.id);
 
     await prisma.schoolProfile.create({
       data: {
@@ -845,6 +1224,12 @@ describe('Student App Home/Profile routes (security)', () => {
       await prisma.user.deleteMany({
         where: { id: { in: createdUserIds } },
       });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: { in: createdRoleIds } },
+      });
+      await prisma.role.deleteMany({
+        where: { id: { in: createdRoleIds } },
+      });
       await prisma.subject.deleteMany({
         where: { id: { in: createdSubjectIds } },
       });
@@ -933,6 +1318,68 @@ describe('Student App Home/Profile routes (security)', () => {
       seatNumber: true,
     });
     assertNoForbiddenStudentAppFields(profile.body);
+  });
+
+  it('returns auth.scope.missing for representative read-only routes when the student role lacks permission', async () => {
+    const membership = await prisma.membership.findFirstOrThrow({
+      where: {
+        userId: linkedStudentUserId,
+        schoolId,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true, roleId: true },
+    });
+
+    await prisma.membership.update({
+      where: { id: membership.id },
+      data: { roleId: noPermissionStudentRoleId },
+    });
+
+    try {
+      const { accessToken } = await login(linkedStudentEmail);
+      const placeholderId = '11111111-1111-4111-8111-111111111111';
+
+      for (const path of [
+        'student/home',
+        'student/profile',
+        'student/profile/correction-requests',
+        'student/subjects',
+        'student/grades',
+        'student/exams',
+        `student/exams/${ownAssessmentId}/submission`,
+        'student/behavior',
+        'student/discipline',
+        'student/progress',
+        'student/hero',
+        'student/schedule?date=2026-09-14',
+        'student/tasks',
+        `student/tasks/${ownTaskId}/submissions`,
+        'student/messages/contacts',
+        'student/messages/conversations',
+        `student/messages/conversations/${ownConversationId}/messages`,
+        `student/messages/conversations/${ownConversationId}/messages/${placeholderId}/attachments/${placeholderId}/download`,
+        'student/notifications',
+        'student/announcements',
+        'student/calendar/events',
+        'student/lessons/today?date=2026-09-14',
+        'student/homeworks',
+        `student/homeworks/${placeholderId}/submission`,
+        'student/rewards',
+        'student/rewards/redemptions',
+      ]) {
+        const response = await request(app.getHttpServer())
+          .get(`${GLOBAL_PREFIX}/${path}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(403);
+
+        expect(response.body?.error?.code).toBe('auth.scope.missing');
+      }
+    } finally {
+      await prisma.membership.update({
+        where: { id: membership.id },
+        data: { roleId: membership.roleId },
+      });
+    }
   });
 
   it('allows a linked student to read own daily and weekly schedule only', async () => {

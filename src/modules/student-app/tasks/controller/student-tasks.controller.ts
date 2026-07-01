@@ -10,6 +10,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetStudentTaskSubmissionUseCase } from '../application/get-student-task-submission.use-case';
 import { GetStudentTaskUseCase } from '../application/get-student-task.use-case';
 import { GetStudentTasksSummaryUseCase } from '../application/get-student-tasks-summary.use-case';
@@ -41,6 +42,7 @@ export class StudentTasksController {
 
   @Get()
   @ApiOkResponse({ type: StudentTasksListResponseDto })
+  @RequiredPermissions('reinforcement.tasks.view')
   listTasks(
     @Query() query: StudentTasksQueryDto,
   ): Promise<StudentTasksListResponseDto> {
@@ -49,12 +51,14 @@ export class StudentTasksController {
 
   @Get('summary')
   @ApiOkResponse({ type: StudentTasksSummaryResponseDto })
+  @RequiredPermissions('reinforcement.tasks.view')
   getSummary(): Promise<StudentTasksSummaryResponseDto> {
     return this.getStudentTasksSummaryUseCase.execute();
   }
 
   @Get(':taskId')
   @ApiOkResponse({ type: StudentTaskResponseDto })
+  @RequiredPermissions('reinforcement.tasks.view')
   getTask(
     @Param('taskId', new ParseUUIDPipe()) taskId: string,
   ): Promise<StudentTaskResponseDto> {
@@ -63,6 +67,7 @@ export class StudentTasksController {
 
   @Get(':taskId/submissions')
   @ApiOkResponse({ type: StudentTaskSubmissionsResponseDto })
+  @RequiredPermissions('reinforcement.submissions.view')
   listSubmissions(
     @Param('taskId', new ParseUUIDPipe()) taskId: string,
   ): Promise<StudentTaskSubmissionsResponseDto> {
@@ -71,6 +76,7 @@ export class StudentTasksController {
 
   @Get(':taskId/submissions/:submissionId')
   @ApiOkResponse({ type: StudentTaskSubmissionResponseDto })
+  @RequiredPermissions('reinforcement.submissions.view')
   getSubmission(
     @Param('taskId', new ParseUUIDPipe()) taskId: string,
     @Param('submissionId', new ParseUUIDPipe()) submissionId: string,

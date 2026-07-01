@@ -10,6 +10,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetStudentRewardRedemptionUseCase } from '../application/get-student-reward-redemption.use-case';
 import { GetStudentRewardUseCase } from '../application/get-student-reward.use-case';
 import { ListStudentRewardRedemptionsUseCase } from '../application/list-student-reward-redemptions.use-case';
@@ -38,6 +39,7 @@ export class StudentRewardsController {
 
   @Get()
   @ApiOkResponse({ type: StudentRewardsListResponseDto })
+  @RequiredPermissions('reinforcement.rewards.view')
   listRewards(
     @Query() query: StudentRewardsQueryDto,
   ): Promise<StudentRewardsListResponseDto> {
@@ -46,12 +48,14 @@ export class StudentRewardsController {
 
   @Get('redemptions')
   @ApiOkResponse({ type: StudentRewardRedemptionsResponseDto })
+  @RequiredPermissions('reinforcement.rewards.redemptions.view')
   listRedemptions(): Promise<StudentRewardRedemptionsResponseDto> {
     return this.listStudentRewardRedemptionsUseCase.execute();
   }
 
   @Get('redemptions/:redemptionId')
   @ApiOkResponse({ type: StudentRewardRedemptionResponseDto })
+  @RequiredPermissions('reinforcement.rewards.redemptions.view')
   getRedemption(
     @Param('redemptionId', new ParseUUIDPipe()) redemptionId: string,
   ): Promise<StudentRewardRedemptionResponseDto> {
@@ -60,6 +64,7 @@ export class StudentRewardsController {
 
   @Get(':rewardId')
   @ApiOkResponse({ type: StudentRewardResponseDto })
+  @RequiredPermissions('reinforcement.rewards.view')
   getReward(
     @Param('rewardId', new ParseUUIDPipe()) rewardId: string,
   ): Promise<StudentRewardResponseDto> {

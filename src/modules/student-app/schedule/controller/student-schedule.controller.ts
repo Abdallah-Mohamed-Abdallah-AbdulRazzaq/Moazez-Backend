@@ -6,6 +6,7 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetStudentDailyScheduleUseCase } from '../application/get-student-daily-schedule.use-case';
 import { GetStudentWeeklyScheduleUseCase } from '../application/get-student-weekly-schedule.use-case';
 import {
@@ -31,6 +32,7 @@ export class StudentScheduleController {
     description: 'Calendar date in YYYY-MM-DD format.',
   })
   @ApiOkResponse({ type: StudentDailyScheduleResponseDto })
+  @RequiredPermissions('academics.timetable.view')
   getDailySchedule(
     @Query() query: StudentScheduleDateQueryDto,
   ): Promise<StudentDailyScheduleResponseDto> {
@@ -46,6 +48,7 @@ export class StudentScheduleController {
       'Calendar date in YYYY-MM-DD format. The week uses the published timetable weekStartDay when one is available.',
   })
   @ApiOkResponse({ type: StudentWeeklyScheduleResponseDto })
+  @RequiredPermissions('academics.timetable.view')
   getWeeklySchedule(
     @Query() query: StudentScheduleDateQueryDto,
   ): Promise<StudentWeeklyScheduleResponseDto> {

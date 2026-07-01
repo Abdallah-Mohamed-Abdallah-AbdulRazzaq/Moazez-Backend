@@ -15,6 +15,7 @@ import {
   ApiTags,
   ApiTemporaryRedirectResponse,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetStudentMessageAttachmentDownloadUrlUseCase } from '../application/get-student-message-attachment-download-url.use-case';
 import {
   GetStudentMessageInfoUseCase,
@@ -69,6 +70,7 @@ export class StudentMessagesController {
 
   @Get('contacts')
   @ApiOkResponse({ type: StudentMessageContactsResponseDto })
+  @RequiredPermissions('communication.contacts.view')
   listContacts(
     @Query() query: ListStudentMessageContactsQueryDto,
   ): Promise<StudentMessageContactsResponseDto> {
@@ -77,6 +79,7 @@ export class StudentMessagesController {
 
   @Get('conversations')
   @ApiOkResponse({ type: StudentMessageConversationsResponseDto })
+  @RequiredPermissions('communication.conversations.view')
   listConversations(
     @Query() query: ListStudentMessageConversationsQueryDto,
   ): Promise<StudentMessageConversationsResponseDto> {
@@ -85,6 +88,7 @@ export class StudentMessagesController {
 
   @Get('conversations/:conversationId')
   @ApiOkResponse({ type: StudentMessageConversationResponseDto })
+  @RequiredPermissions('communication.conversations.view')
   getConversation(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
   ): Promise<StudentMessageConversationResponseDto> {
@@ -93,6 +97,7 @@ export class StudentMessagesController {
 
   @Get('conversations/:conversationId/search')
   @ApiOkResponse({ type: StudentConversationMessageSearchResponseDto })
+  @RequiredPermissions('communication.messages.view')
   searchMessages(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Query() query: SearchStudentConversationMessagesQueryDto,
@@ -105,6 +110,7 @@ export class StudentMessagesController {
 
   @Get('conversations/:conversationId/messages')
   @ApiOkResponse({ type: StudentConversationMessagesResponseDto })
+  @RequiredPermissions('communication.messages.view')
   listMessages(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Query() query: ListStudentConversationMessagesQueryDto,
@@ -117,6 +123,7 @@ export class StudentMessagesController {
 
   @Get('conversations/:conversationId/messages/:messageId/readers')
   @ApiOkResponse({ type: StudentMessageReadersResponseDto })
+  @RequiredPermissions('communication.messages.view')
   getMessageReaders(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Param('messageId', new ParseUUIDPipe()) messageId: string,
@@ -131,6 +138,7 @@ export class StudentMessagesController {
 
   @Get('conversations/:conversationId/messages/:messageId/info')
   @ApiOkResponse({ type: StudentMessageInfoResponseDto })
+  @RequiredPermissions('communication.messages.view')
   getMessageInfo(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Param('messageId', new ParseUUIDPipe()) messageId: string,
@@ -151,6 +159,7 @@ export class StudentMessagesController {
     description:
       'Redirects to an authorized temporary attachment download URL.',
   })
+  @RequiredPermissions('files.downloads.view')
   async downloadAttachment(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Param('messageId', new ParseUUIDPipe()) messageId: string,
@@ -173,6 +182,7 @@ export class StudentMessagesController {
   @ApiTemporaryRedirectResponse({
     description: 'Redirects to an authorized temporary attachment preview URL.',
   })
+  @RequiredPermissions('files.downloads.view')
   async previewAttachment(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Param('messageId', new ParseUUIDPipe()) messageId: string,

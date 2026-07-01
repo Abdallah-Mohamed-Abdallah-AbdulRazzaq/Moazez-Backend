@@ -1,5 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import {
   DisciplineDerivedQueryDto,
   DisciplineSummaryResponseDto,
@@ -19,6 +20,7 @@ export class StudentDisciplineController {
 
   @Get()
   @ApiOkResponse({ type: DisciplineTimelineListResponseDto })
+  @RequiredPermissions('discipline.timeline.view')
   listDiscipline(
     @Query() query: DisciplineDerivedQueryDto,
   ): Promise<DisciplineTimelineListResponseDto> {
@@ -27,6 +29,7 @@ export class StudentDisciplineController {
 
   @Get('summary')
   @ApiOkResponse({ type: DisciplineSummaryResponseDto })
+  @RequiredPermissions('discipline.timeline.view')
   getDisciplineSummary(
     @Query() query: DisciplineDerivedQueryDto,
   ): Promise<DisciplineSummaryResponseDto> {

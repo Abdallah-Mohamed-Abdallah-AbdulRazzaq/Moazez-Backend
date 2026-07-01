@@ -20,6 +20,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { DeleteStudentAvatarUseCase } from '../application/delete-student-avatar.use-case';
 import { GetStudentProfileUseCase } from '../application/get-student-profile.use-case';
 import {
@@ -52,6 +53,7 @@ export class StudentProfileController {
 
   @Get()
   @ApiOkResponse({ type: StudentProfileResponseDto })
+  @RequiredPermissions('student.profile.view')
   getProfile(): Promise<StudentProfileResponseDto> {
     return this.getStudentProfileUseCase.execute();
   }
@@ -97,12 +99,14 @@ export class StudentProfileController {
     type: StudentProfileCorrectionRequestResponseDto,
     isArray: true,
   })
+  @RequiredPermissions('student.profile.correction_requests.view')
   listCorrectionRequests(): Promise<StudentProfileCorrectionRequestResponseDto[]> {
     return this.listCorrectionRequestsUseCase.execute();
   }
 
   @Get('correction-requests/:requestId')
   @ApiOkResponse({ type: StudentProfileCorrectionRequestResponseDto })
+  @RequiredPermissions('student.profile.correction_requests.view')
   getCorrectionRequest(
     @Param('requestId', new ParseUUIDPipe()) requestId: string,
   ): Promise<StudentProfileCorrectionRequestResponseDto> {

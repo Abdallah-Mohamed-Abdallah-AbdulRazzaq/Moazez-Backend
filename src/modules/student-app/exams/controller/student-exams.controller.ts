@@ -10,6 +10,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { BulkSaveStudentExamAnswersUseCase } from '../application/bulk-save-student-exam-answers.use-case';
 import { GetStudentExamSubmissionUseCase } from '../application/get-student-exam-submission.use-case';
 import { GetStudentExamUseCase } from '../application/get-student-exam.use-case';
@@ -42,6 +43,7 @@ export class StudentExamsController {
 
   @Get()
   @ApiOkResponse({ type: StudentExamsListResponseDto })
+  @RequiredPermissions('grades.assessments.view')
   listExams(
     @Query() query: StudentExamsQueryDto,
   ): Promise<StudentExamsListResponseDto> {
@@ -50,6 +52,7 @@ export class StudentExamsController {
 
   @Get(':assessmentId')
   @ApiOkResponse({ type: StudentExamDetailResponseDto })
+  @RequiredPermissions('grades.assessments.view')
   getExam(
     @Param('assessmentId', new ParseUUIDPipe()) assessmentId: string,
   ): Promise<StudentExamDetailResponseDto> {
@@ -58,6 +61,7 @@ export class StudentExamsController {
 
   @Get(':assessmentId/submission')
   @ApiOkResponse({ type: StudentExamSubmissionStateResponseDto })
+  @RequiredPermissions('grades.submissions.view')
   getExamSubmission(
     @Param('assessmentId', new ParseUUIDPipe()) assessmentId: string,
   ): Promise<StudentExamSubmissionStateResponseDto> {
