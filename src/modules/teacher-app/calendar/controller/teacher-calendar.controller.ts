@@ -11,6 +11,7 @@ import {
   AppCalendarEventResponseDto,
   AppCalendarEventsListResponseDto,
 } from '../../../academics/calendar/app-facing/dto/app-calendar-event-response.dto';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetTeacherCalendarEventUseCase } from '../application/get-teacher-calendar-event.use-case';
 import { ListTeacherCalendarEventsUseCase } from '../application/list-teacher-calendar-events.use-case';
 
@@ -24,6 +25,7 @@ export class TeacherCalendarController {
   ) {}
 
   @Get()
+  @RequiredPermissions('academics.calendar.view')
   @ApiOperation({ summary: 'List current teacher calendar events' })
   @ApiOkResponse({ type: AppCalendarEventsListResponseDto })
   listEvents(
@@ -33,6 +35,7 @@ export class TeacherCalendarController {
   }
 
   @Get(':eventId')
+  @RequiredPermissions('academics.calendar.view')
   @ApiOperation({ summary: 'Get a current teacher calendar event' })
   @ApiParam({ name: 'eventId', format: 'uuid' })
   @ApiOkResponse({ type: AppCalendarEventResponseDto })

@@ -10,6 +10,7 @@ import { GetTeacherLessonPreparationDetailUseCase } from '../application/get-tea
 import { GetTeacherLessonPreparationTodayUseCase } from '../application/get-teacher-lesson-preparation-today.use-case';
 import { GetTeacherLessonPreparationWeekUseCase } from '../application/get-teacher-lesson-preparation-week.use-case';
 import { UpdateTeacherLessonPreparationStatusUseCase } from '../application/update-teacher-lesson-preparation-status.use-case';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import {
   TeacherLessonPreparationDateQueryDto,
   UpdateTeacherLessonPreparationStatusDto,
@@ -32,6 +33,10 @@ export class TeacherLessonPreparationController {
   ) {}
 
   @Get('today')
+  @RequiredPermissions(
+    'teacher.lesson_preparation.view',
+    'academics.lesson_plans.view',
+  )
   @ApiOperation({ summary: 'Get teacher lesson-preparation items for a date' })
   @ApiQuery({
     name: 'date',
@@ -46,6 +51,10 @@ export class TeacherLessonPreparationController {
   }
 
   @Get('week')
+  @RequiredPermissions(
+    'teacher.lesson_preparation.view',
+    'academics.lesson_plans.view',
+  )
   @ApiOperation({ summary: 'Get teacher lesson-preparation items for a week' })
   @ApiQuery({
     name: 'date',
@@ -61,6 +70,11 @@ export class TeacherLessonPreparationController {
   }
 
   @Get(':lessonPlanItemId')
+  @RequiredPermissions(
+    'teacher.lesson_preparation.view',
+    'academics.lesson_plans.view',
+    'academics.curriculum.view',
+  )
   @ApiOperation({ summary: 'Get one teacher-owned lesson-preparation item' })
   @ApiOkResponse({ type: TeacherLessonPreparationItemDto })
   getDetail(

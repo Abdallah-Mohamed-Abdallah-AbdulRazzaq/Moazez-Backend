@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../../common/decorators/required-permissions.decorator';
 import { GetTeacherClassroomAttendanceRosterUseCase } from '../application/get-teacher-classroom-attendance-roster.use-case';
 import { GetTeacherClassroomAttendanceSessionUseCase } from '../application/get-teacher-classroom-attendance-session.use-case';
 import { GetTeacherClassroomAttendanceTodayUseCase } from '../application/get-teacher-classroom-attendance-today.use-case';
@@ -31,6 +32,7 @@ export class TeacherClassroomAttendanceController {
   ) {}
 
   @Get('roster')
+  @RequiredPermissions('attendance.sessions.view')
   @ApiOkResponse({ type: TeacherClassroomAttendanceRosterResponseDto })
   getRoster(
     @Param() params: TeacherClassroomAttendanceParamsDto,
@@ -40,6 +42,7 @@ export class TeacherClassroomAttendanceController {
   }
 
   @Get('today')
+  @RequiredPermissions('attendance.sessions.view')
   @ApiOkResponse({ type: TeacherClassroomAttendanceTodayResponseDto })
   getToday(
     @Param() params: TeacherClassroomAttendanceParamsDto,
@@ -58,6 +61,7 @@ export class TeacherClassroomAttendanceController {
   }
 
   @Get('sessions/:sessionId')
+  @RequiredPermissions('attendance.sessions.view')
   @ApiOkResponse({ type: TeacherClassroomAttendanceSessionResponseDto })
   getSession(
     @Param() params: TeacherClassroomAttendanceSessionParamsDto,

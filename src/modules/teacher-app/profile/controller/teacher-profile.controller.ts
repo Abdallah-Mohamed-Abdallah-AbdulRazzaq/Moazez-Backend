@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetTeacherEmploymentProfileUseCase } from '../application/get-teacher-employment-profile.use-case';
 import { GetTeacherProfileUseCase } from '../application/get-teacher-profile.use-case';
 import {
@@ -17,12 +18,14 @@ export class TeacherProfileController {
   ) {}
 
   @Get()
+  @RequiredPermissions('teacher.profile.view')
   @ApiOkResponse({ type: TeacherProfileResponseDto })
   getProfile(): Promise<TeacherProfileResponseDto> {
     return this.getTeacherProfileUseCase.execute();
   }
 
   @Get('employment')
+  @RequiredPermissions('teacher.profile.view')
   @ApiOkResponse({ type: TeacherEmploymentProfileResponseDto })
   getEmploymentProfile(): TeacherEmploymentProfileResponseDto {
     return this.getTeacherEmploymentProfileUseCase.execute();

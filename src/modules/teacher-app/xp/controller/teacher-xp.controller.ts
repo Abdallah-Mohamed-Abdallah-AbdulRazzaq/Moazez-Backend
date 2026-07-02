@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetTeacherClassXpUseCase } from '../application/get-teacher-class-xp.use-case';
 import { GetTeacherStudentXpUseCase } from '../application/get-teacher-student-xp.use-case';
 import { GetTeacherXpDashboardUseCase } from '../application/get-teacher-xp-dashboard.use-case';
@@ -26,12 +27,14 @@ export class TeacherXpController {
   ) {}
 
   @Get('dashboard')
+  @RequiredPermissions('reinforcement.xp.view')
   @ApiOkResponse({ type: TeacherXpDashboardResponseDto })
   getDashboard(): Promise<TeacherXpDashboardResponseDto> {
     return this.getTeacherXpDashboardUseCase.execute();
   }
 
   @Get('classes/:classId')
+  @RequiredPermissions('reinforcement.xp.view')
   @ApiOkResponse({ type: TeacherXpClassResponseDto })
   getClassXp(
     @Param() params: TeacherXpClassParamsDto,
@@ -40,6 +43,7 @@ export class TeacherXpController {
   }
 
   @Get('students/:studentId')
+  @RequiredPermissions('reinforcement.xp.view', 'students.records.view')
   @ApiOkResponse({ type: TeacherXpStudentResponseDto })
   getStudentXp(
     @Param() params: TeacherXpStudentParamsDto,
@@ -48,6 +52,7 @@ export class TeacherXpController {
   }
 
   @Get('students/:studentId/history')
+  @RequiredPermissions('reinforcement.xp.view', 'students.records.view')
   @ApiOkResponse({ type: TeacherXpHistoryResponseDto })
   listStudentXpHistory(
     @Param() params: TeacherXpStudentParamsDto,

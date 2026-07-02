@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { METHOD_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
 import { readFileSync } from 'node:fs';
 import {
@@ -42,7 +43,27 @@ import {
 import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
+import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { AppModule } from '../../src/app.module';
+import { TeacherAnnouncementsController } from '../../src/modules/teacher-app/announcements/controller/teacher-announcements.controller';
+import { TeacherCalendarController } from '../../src/modules/teacher-app/calendar/controller/teacher-calendar.controller';
+import { TeacherClassroomAttendanceController } from '../../src/modules/teacher-app/classroom/attendance/controller/teacher-classroom-attendance.controller';
+import { TeacherClassroomController } from '../../src/modules/teacher-app/classroom/controller/teacher-classroom.controller';
+import { TeacherClassroomAssignmentsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-classroom-assignments.controller';
+import { TeacherClassroomGradesController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-classroom-grades.controller';
+import { TeacherClassroomSubmissionReviewController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-classroom-submission-review.controller';
+import { TeacherHomeController } from '../../src/modules/teacher-app/home/controller/teacher-home.controller';
+import { TeacherHomeworksController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homeworks.controller';
+import { TeacherLessonPreparationController } from '../../src/modules/teacher-app/lesson-preparation/controller/teacher-lesson-preparation.controller';
+import { TeacherMessagesController } from '../../src/modules/teacher-app/messages/controller/teacher-messages.controller';
+import { TeacherMyClassesController } from '../../src/modules/teacher-app/my-classes/controller/teacher-my-classes.controller';
+import { TeacherNotificationsController } from '../../src/modules/teacher-app/notifications/controller/teacher-notifications.controller';
+import { TeacherProfileController } from '../../src/modules/teacher-app/profile/controller/teacher-profile.controller';
+import { TeacherScheduleController } from '../../src/modules/teacher-app/schedule/controller/teacher-schedule.controller';
+import { TeacherSettingsController } from '../../src/modules/teacher-app/settings/controller/teacher-settings.controller';
+import { TeacherTasksController } from '../../src/modules/teacher-app/tasks/controller/teacher-tasks.controller';
+import { TeacherTaskReviewQueueController } from '../../src/modules/teacher-app/tasks/review/controller/teacher-task-review-queue.controller';
+import { TeacherXpController } from '../../src/modules/teacher-app/xp/controller/teacher-xp.controller';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'TeacherApp123!';
@@ -182,7 +203,541 @@ const FORBIDDEN_TEACHER_PERMISSIONS = [
   'settings.users.manage',
 ] as const;
 
+type ControllerClass = {
+  name: string;
+  prototype: object;
+};
+
+type TeacherAppPermissionCase = {
+  controller: ControllerClass;
+  method: string;
+  permissions: readonly string[];
+};
+
+type TeacherAppDeferredCase = {
+  controller: ControllerClass;
+  method: string;
+};
+
+const TEACHER_APP_CONTROLLER_CLASSES = [
+  TeacherHomeController,
+  TeacherMyClassesController,
+  TeacherClassroomController,
+  TeacherClassroomAttendanceController,
+  TeacherClassroomGradesController,
+  TeacherClassroomAssignmentsController,
+  TeacherClassroomSubmissionReviewController,
+  TeacherHomeworksController,
+  TeacherTasksController,
+  TeacherTaskReviewQueueController,
+  TeacherXpController,
+  TeacherMessagesController,
+  TeacherNotificationsController,
+  TeacherAnnouncementsController,
+  TeacherProfileController,
+  TeacherSettingsController,
+  TeacherScheduleController,
+  TeacherCalendarController,
+  TeacherLessonPreparationController,
+] as const;
+
+const TEACHER_APP_READ_PERMISSION_CASES: TeacherAppPermissionCase[] = [
+  {
+    controller: TeacherHomeController,
+    method: 'getHome',
+    permissions: ['teacher.home.view'],
+  },
+  {
+    controller: TeacherMyClassesController,
+    method: 'listMyClasses',
+    permissions: ['teacher.classes.view'],
+  },
+  {
+    controller: TeacherMyClassesController,
+    method: 'getMyClassDetail',
+    permissions: ['teacher.classes.view'],
+  },
+  {
+    controller: TeacherClassroomController,
+    method: 'getClassroom',
+    permissions: ['teacher.classroom.view'],
+  },
+  {
+    controller: TeacherClassroomController,
+    method: 'listRoster',
+    permissions: ['teacher.classroom.view', 'students.records.view'],
+  },
+  {
+    controller: TeacherClassroomAttendanceController,
+    method: 'getRoster',
+    permissions: ['attendance.sessions.view'],
+  },
+  {
+    controller: TeacherClassroomAttendanceController,
+    method: 'getToday',
+    permissions: ['attendance.sessions.view'],
+  },
+  {
+    controller: TeacherClassroomAttendanceController,
+    method: 'getSession',
+    permissions: ['attendance.sessions.view'],
+  },
+  {
+    controller: TeacherClassroomGradesController,
+    method: 'listAssessments',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: TeacherClassroomGradesController,
+    method: 'getAssessment',
+    permissions: ['grades.assessments.view', 'grades.questions.view'],
+  },
+  {
+    controller: TeacherClassroomGradesController,
+    method: 'getGradebook',
+    permissions: ['grades.gradebook.view', 'grades.items.view'],
+  },
+  {
+    controller: TeacherClassroomAssignmentsController,
+    method: 'listAssignments',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: TeacherClassroomAssignmentsController,
+    method: 'getAssignment',
+    permissions: ['grades.assessments.view'],
+  },
+  {
+    controller: TeacherClassroomAssignmentsController,
+    method: 'listAssignmentSubmissions',
+    permissions: ['grades.submissions.view'],
+  },
+  {
+    controller: TeacherClassroomAssignmentsController,
+    method: 'getAssignmentSubmission',
+    permissions: ['grades.submissions.view'],
+  },
+  {
+    controller: TeacherHomeworksController,
+    method: 'getDashboard',
+    permissions: ['homework.assignments.view'],
+  },
+  {
+    controller: TeacherHomeworksController,
+    method: 'listAssignments',
+    permissions: ['homework.assignments.view'],
+  },
+  {
+    controller: TeacherHomeworksController,
+    method: 'getAssignment',
+    permissions: ['homework.assignments.view'],
+  },
+  {
+    controller: TeacherHomeworksController,
+    method: 'listTargets',
+    permissions: ['homework.targets.view'],
+  },
+  {
+    controller: TeacherHomeworksController,
+    method: 'getGradeSyncStatus',
+    permissions: ['homework.grade_sync.view'],
+  },
+  {
+    controller: TeacherHomeworksController,
+    method: 'listQuestions',
+    permissions: ['homework.questions.view'],
+  },
+  {
+    controller: TeacherHomeworksController,
+    method: 'getQuestion',
+    permissions: ['homework.questions.view'],
+  },
+  {
+    controller: TeacherHomeworksController,
+    method: 'listAttachments',
+    permissions: ['homework.attachments.view'],
+  },
+  {
+    controller: TeacherHomeworksController,
+    method: 'listSubmissions',
+    permissions: ['homework.submissions.view'],
+  },
+  {
+    controller: TeacherHomeworksController,
+    method: 'getSubmission',
+    permissions: ['homework.submissions.view'],
+  },
+  {
+    controller: TeacherHomeworksController,
+    method: 'listSubmissionAnswers',
+    permissions: ['homework.submissions.view'],
+  },
+  {
+    controller: TeacherHomeworksController,
+    method: 'listSubmissionAttachments',
+    permissions: ['homework.submissions.view'],
+  },
+  {
+    controller: TeacherTasksController,
+    method: 'getDashboard',
+    permissions: ['reinforcement.tasks.view'],
+  },
+  {
+    controller: TeacherTasksController,
+    method: 'listTasks',
+    permissions: ['reinforcement.tasks.view'],
+  },
+  {
+    controller: TeacherTasksController,
+    method: 'getSelectors',
+    permissions: ['reinforcement.tasks.view'],
+  },
+  {
+    controller: TeacherTasksController,
+    method: 'getTask',
+    permissions: ['reinforcement.tasks.view'],
+  },
+  {
+    controller: TeacherTaskReviewQueueController,
+    method: 'listReviewQueue',
+    permissions: ['reinforcement.reviews.view'],
+  },
+  {
+    controller: TeacherTaskReviewQueueController,
+    method: 'getReviewSubmission',
+    permissions: ['reinforcement.reviews.view'],
+  },
+  {
+    controller: TeacherXpController,
+    method: 'getDashboard',
+    permissions: ['reinforcement.xp.view'],
+  },
+  {
+    controller: TeacherXpController,
+    method: 'getClassXp',
+    permissions: ['reinforcement.xp.view'],
+  },
+  {
+    controller: TeacherXpController,
+    method: 'getStudentXp',
+    permissions: ['reinforcement.xp.view', 'students.records.view'],
+  },
+  {
+    controller: TeacherXpController,
+    method: 'listStudentXpHistory',
+    permissions: ['reinforcement.xp.view', 'students.records.view'],
+  },
+  {
+    controller: TeacherMessagesController,
+    method: 'listContacts',
+    permissions: ['communication.contacts.view'],
+  },
+  {
+    controller: TeacherMessagesController,
+    method: 'listConversations',
+    permissions: ['communication.conversations.view'],
+  },
+  {
+    controller: TeacherMessagesController,
+    method: 'getConversation',
+    permissions: ['communication.conversations.view'],
+  },
+  {
+    controller: TeacherMessagesController,
+    method: 'searchMessages',
+    permissions: ['communication.messages.view'],
+  },
+  {
+    controller: TeacherMessagesController,
+    method: 'listMessages',
+    permissions: ['communication.messages.view'],
+  },
+  {
+    controller: TeacherMessagesController,
+    method: 'getMessageReaders',
+    permissions: ['communication.messages.view'],
+  },
+  {
+    controller: TeacherMessagesController,
+    method: 'getMessageInfo',
+    permissions: ['communication.messages.view'],
+  },
+  {
+    controller: TeacherMessagesController,
+    method: 'downloadAttachment',
+    permissions: ['communication.messages.view'],
+  },
+  {
+    controller: TeacherMessagesController,
+    method: 'previewAttachment',
+    permissions: ['communication.messages.view'],
+  },
+  {
+    controller: TeacherNotificationsController,
+    method: 'listNotifications',
+    permissions: ['communication.notifications.view'],
+  },
+  {
+    controller: TeacherNotificationsController,
+    method: 'getSummary',
+    permissions: ['communication.notifications.view'],
+  },
+  {
+    controller: TeacherNotificationsController,
+    method: 'getPreferences',
+    permissions: ['communication.notifications.preferences.manage'],
+  },
+  {
+    controller: TeacherNotificationsController,
+    method: 'getNotification',
+    permissions: ['communication.notifications.view'],
+  },
+  {
+    controller: TeacherAnnouncementsController,
+    method: 'listAnnouncements',
+    permissions: ['communication.announcements.view'],
+  },
+  {
+    controller: TeacherAnnouncementsController,
+    method: 'getAnnouncement',
+    permissions: ['communication.announcements.view'],
+  },
+  {
+    controller: TeacherProfileController,
+    method: 'getProfile',
+    permissions: ['teacher.profile.view'],
+  },
+  {
+    controller: TeacherProfileController,
+    method: 'getEmploymentProfile',
+    permissions: ['teacher.profile.view'],
+  },
+  {
+    controller: TeacherSettingsController,
+    method: 'getAbout',
+    permissions: ['teacher.settings.view'],
+  },
+  {
+    controller: TeacherSettingsController,
+    method: 'getContact',
+    permissions: ['teacher.settings.view'],
+  },
+  {
+    controller: TeacherScheduleController,
+    method: 'getDailySchedule',
+    permissions: ['academics.timetable.view'],
+  },
+  {
+    controller: TeacherScheduleController,
+    method: 'getWeeklySchedule',
+    permissions: ['academics.timetable.view'],
+  },
+  {
+    controller: TeacherCalendarController,
+    method: 'listEvents',
+    permissions: ['academics.calendar.view'],
+  },
+  {
+    controller: TeacherCalendarController,
+    method: 'getEvent',
+    permissions: ['academics.calendar.view'],
+  },
+  {
+    controller: TeacherLessonPreparationController,
+    method: 'getToday',
+    permissions: [
+      'teacher.lesson_preparation.view',
+      'academics.lesson_plans.view',
+    ],
+  },
+  {
+    controller: TeacherLessonPreparationController,
+    method: 'getWeek',
+    permissions: [
+      'teacher.lesson_preparation.view',
+      'academics.lesson_plans.view',
+    ],
+  },
+  {
+    controller: TeacherLessonPreparationController,
+    method: 'getDetail',
+    permissions: [
+      'teacher.lesson_preparation.view',
+      'academics.lesson_plans.view',
+      'academics.curriculum.view',
+    ],
+  },
+];
+
+const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [
+  { controller: TeacherClassroomAttendanceController, method: 'resolveSession' },
+  { controller: TeacherClassroomAttendanceController, method: 'updateEntries' },
+  { controller: TeacherClassroomAttendanceController, method: 'submitSession' },
+  { controller: TeacherClassroomSubmissionReviewController, method: 'reviewAnswer' },
+  {
+    controller: TeacherClassroomSubmissionReviewController,
+    method: 'bulkReviewAnswers',
+  },
+  {
+    controller: TeacherClassroomSubmissionReviewController,
+    method: 'finalizeReview',
+  },
+  { controller: TeacherClassroomSubmissionReviewController, method: 'syncGradeItem' },
+  { controller: TeacherHomeworksController, method: 'createAssignment' },
+  { controller: TeacherHomeworksController, method: 'updateAssignment' },
+  { controller: TeacherHomeworksController, method: 'publishAssignment' },
+  { controller: TeacherHomeworksController, method: 'closeAssignment' },
+  { controller: TeacherHomeworksController, method: 'cancelAssignment' },
+  { controller: TeacherHomeworksController, method: 'resolveTargets' },
+  { controller: TeacherHomeworksController, method: 'syncAssignmentToGrades' },
+  { controller: TeacherHomeworksController, method: 'createQuestion' },
+  { controller: TeacherHomeworksController, method: 'updateQuestion' },
+  { controller: TeacherHomeworksController, method: 'reorderQuestion' },
+  { controller: TeacherHomeworksController, method: 'deleteQuestion' },
+  { controller: TeacherHomeworksController, method: 'createOption' },
+  { controller: TeacherHomeworksController, method: 'updateOption' },
+  { controller: TeacherHomeworksController, method: 'reorderOption' },
+  { controller: TeacherHomeworksController, method: 'deleteOption' },
+  { controller: TeacherHomeworksController, method: 'createAttachment' },
+  { controller: TeacherHomeworksController, method: 'updateAttachment' },
+  { controller: TeacherHomeworksController, method: 'reorderAttachment' },
+  { controller: TeacherHomeworksController, method: 'deleteAttachment' },
+  { controller: TeacherHomeworksController, method: 'reviewSubmissionAnswer' },
+  {
+    controller: TeacherHomeworksController,
+    method: 'bulkReviewSubmissionAnswers',
+  },
+  { controller: TeacherHomeworksController, method: 'reviewSubmission' },
+  { controller: TeacherHomeworksController, method: 'patchReviewSubmission' },
+  { controller: TeacherHomeworksController, method: 'syncSubmissionToGrades' },
+  { controller: TeacherTasksController, method: 'createTask' },
+  {
+    controller: TeacherTaskReviewQueueController,
+    method: 'approveReviewSubmission',
+  },
+  {
+    controller: TeacherTaskReviewQueueController,
+    method: 'rejectReviewSubmission',
+  },
+  { controller: TeacherMessagesController, method: 'createConversation' },
+  { controller: TeacherMessagesController, method: 'sendMessage' },
+  { controller: TeacherMessagesController, method: 'markRead' },
+  { controller: TeacherNotificationsController, method: 'markAllRead' },
+  { controller: TeacherNotificationsController, method: 'updatePreferences' },
+  { controller: TeacherNotificationsController, method: 'registerDeviceToken' },
+  {
+    controller: TeacherNotificationsController,
+    method: 'unregisterCurrentDeviceToken',
+  },
+  { controller: TeacherNotificationsController, method: 'markRead' },
+  { controller: TeacherNotificationsController, method: 'archive' },
+  { controller: TeacherAnnouncementsController, method: 'createAnnouncement' },
+  { controller: TeacherAnnouncementsController, method: 'updateAnnouncement' },
+  { controller: TeacherAnnouncementsController, method: 'publishAnnouncement' },
+  { controller: TeacherAnnouncementsController, method: 'archiveAnnouncement' },
+  { controller: TeacherLessonPreparationController, method: 'updateStatus' },
+];
+
+const FORBIDDEN_TEACHER_READ_PERMISSIONS = [
+  ...FORBIDDEN_TEACHER_PERMISSIONS,
+  'files.downloads.view',
+  'communication.announcements.manage',
+  'communication.messages.attachments.manage',
+  'communication.conversations.manage',
+  'communication.participants.manage',
+  'communication.messages.edit',
+  'communication.messages.delete',
+  'communication.messages.report',
+  'homework.submissions.save',
+  'homework.submissions.submit',
+  'homework.answers.manage',
+  'homework.submission_attachments.manage',
+] as const;
+
 jest.setTimeout(45000);
+
+describe('Teacher App read-only route permission metadata (security)', () => {
+  it('declares the TEACH-PERM-1B read-only permission inventory', () => {
+    expect(TEACHER_APP_READ_PERMISSION_CASES).toHaveLength(63);
+
+    for (const entry of TEACHER_APP_READ_PERMISSION_CASES) {
+      const handler = getControllerHandler(entry.controller, entry.method);
+
+      expect(
+        Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler),
+      ).toEqual(entry.permissions);
+    }
+  });
+
+  it('keeps action and write handlers deferred for later Teacher permission sprints', () => {
+    expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(48);
+
+    for (const entry of TEACHER_APP_DEFERRED_ACTION_CASES) {
+      const handler = getControllerHandler(entry.controller, entry.method);
+
+      expect(
+        Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler),
+      ).toBeUndefined();
+    }
+  });
+
+  it('keeps the complete Teacher App RBAC route inventory explicit', () => {
+    const expectedKnownHandlers = new Set<string>();
+
+    for (const entry of [
+      ...TEACHER_APP_READ_PERMISSION_CASES,
+      ...TEACHER_APP_DEFERRED_ACTION_CASES,
+    ]) {
+      const key = `${entry.controller.name}.${entry.method}`;
+      expect(expectedKnownHandlers.has(key)).toBe(false);
+      expectedKnownHandlers.add(key);
+      expect(typeof getControllerHandler(entry.controller, entry.method)).toBe(
+        'function',
+      );
+    }
+
+    const discoveredRouteHandlers =
+      TEACHER_APP_CONTROLLER_CLASSES.flatMap((controller) =>
+        Object.getOwnPropertyNames(controller.prototype)
+          .filter((method) => method !== 'constructor')
+          .filter((method) => {
+            const handler = (
+              controller.prototype as Record<string, unknown>
+            )[method];
+
+            return (
+              typeof handler === 'function' &&
+              Reflect.hasMetadata(METHOD_METADATA, handler)
+            );
+          })
+          .map((method) => `${controller.name}.${method}`),
+      ).sort();
+
+    expect(discoveredRouteHandlers).toHaveLength(111);
+    expect(discoveredRouteHandlers).toEqual(
+      Array.from(expectedKnownHandlers).sort(),
+    );
+  });
+
+  it('does not use forbidden permissions on read-only Teacher App routes', () => {
+    const readPermissions = TEACHER_APP_READ_PERMISSION_CASES.flatMap((entry) =>
+      Array.from(entry.permissions),
+    );
+
+    for (const forbiddenPermission of FORBIDDEN_TEACHER_READ_PERMISSIONS) {
+      expect(readPermissions).not.toContain(forbiddenPermission);
+    }
+    expect(readPermissions.some((code) => code.startsWith('behavior.'))).toBe(
+      false,
+    );
+    expect(
+      readPermissions.some((code) => code.startsWith('reinforcement.hero.')),
+    ).toBe(false);
+    expect(
+      readPermissions.some((code) => code.startsWith('reinforcement.rewards.')),
+    ).toBe(false);
+  });
+});
 
 describe('Teacher role seed integrity (security)', () => {
   it('keeps the TEACH-PERM-1A catalog and Teacher role target locked', () => {
@@ -273,6 +828,19 @@ function sortedStrings(values: readonly string[]): string[] {
   return [...values].sort((left, right) => left.localeCompare(right));
 }
 
+function getControllerHandler(
+  controller: ControllerClass,
+  method: string,
+): object {
+  const handler = (controller.prototype as Record<string, unknown>)[method];
+
+  if (typeof handler !== 'function') {
+    throw new Error(`${controller.name}.${method} handler not found.`);
+  }
+
+  return handler;
+}
+
 describe('Teacher App tenancy isolation (security)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
@@ -293,6 +861,7 @@ describe('Teacher App tenancy isolation (security)', () => {
   let adminUserId: string;
   let parentUserId: string;
   let studentUserId: string;
+  let teacherRoleId: string;
   let ownAllocationId: string;
   let otherTeacherAllocationId: string;
   let crossSchoolAllocationId: string;
@@ -336,6 +905,7 @@ describe('Teacher App tenancy isolation (security)', () => {
   let crossSchoolStudentIds: string[] = [];
 
   const testSuffix = `teacher-app-security-${Date.now()}`;
+  const createdRoleIds: string[] = [];
   const createdUserIds: string[] = [];
   const createdAppDeviceTokenIds: string[] = [];
   const createdStudentIds: string[] = [];
@@ -385,6 +955,7 @@ describe('Teacher App tenancy isolation (security)', () => {
         findSystemRole('parent'),
         findSystemRole('student'),
       ]);
+    teacherRoleId = teacherRole.id;
 
     const orgA = await prisma.organization.create({
       data: {
@@ -1029,6 +1600,12 @@ describe('Teacher App tenancy isolation (security)', () => {
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: { in: createdRoleIds } },
+      });
+      await prisma.role.deleteMany({
+        where: { id: { in: createdRoleIds } },
+      });
       await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
       await prisma.school.deleteMany({
         where: { id: { in: [schoolAId, schoolBId].filter(Boolean) } },
@@ -1091,6 +1668,155 @@ describe('Teacher App tenancy isolation (security)', () => {
       'platform.overview.view',
     ]) {
       expect(permissions).not.toContain(forbiddenPermission);
+    }
+  });
+
+  it('returns auth.scope.missing for representative read-only routes when one required Teacher permission is missing', async () => {
+    const membership = await prisma.membership.findFirstOrThrow({
+      where: {
+        userId: teacherAId,
+        schoolId: schoolAId,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true, roleId: true },
+    });
+    const { accessToken } = await login(teacherAEmail);
+    const placeholderId = '11111111-1111-4111-8111-111111111111';
+    const cases: Array<{ permission: string; path: string }> = [
+      { permission: 'teacher.home.view', path: '/teacher/home' },
+      { permission: 'teacher.classes.view', path: '/teacher/my-classes' },
+      {
+        permission: 'teacher.classroom.view',
+        path: `/teacher/classroom/${ownAllocationId}`,
+      },
+      {
+        permission: 'students.records.view',
+        path: `/teacher/classroom/${ownAllocationId}/roster`,
+      },
+      {
+        permission: 'attendance.sessions.view',
+        path: `/teacher/classroom/${ownAllocationId}/attendance/roster`,
+      },
+      {
+        permission: 'grades.assessments.view',
+        path: `/teacher/classroom/${ownAllocationId}/grades/assessments`,
+      },
+      {
+        permission: 'grades.questions.view',
+        path: `/teacher/classroom/${ownAllocationId}/grades/assessments/${ownAssessmentId}`,
+      },
+      {
+        permission: 'grades.gradebook.view',
+        path: `/teacher/classroom/${ownAllocationId}/grades/gradebook`,
+      },
+      {
+        permission: 'grades.items.view',
+        path: `/teacher/classroom/${ownAllocationId}/grades/gradebook`,
+      },
+      {
+        permission: 'grades.submissions.view',
+        path: `/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions`,
+      },
+      {
+        permission: 'homework.assignments.view',
+        path: '/teacher/homeworks/dashboard',
+      },
+      {
+        permission: 'homework.targets.view',
+        path: `/teacher/homeworks/classes/${placeholderId}/assignments/${placeholderId}/targets`,
+      },
+      {
+        permission: 'homework.grade_sync.view',
+        path: `/teacher/homeworks/classes/${placeholderId}/assignments/${placeholderId}/grade-sync`,
+      },
+      {
+        permission: 'homework.questions.view',
+        path: `/teacher/homeworks/classes/${placeholderId}/assignments/${placeholderId}/questions`,
+      },
+      {
+        permission: 'homework.attachments.view',
+        path: `/teacher/homeworks/classes/${placeholderId}/assignments/${placeholderId}/attachments`,
+      },
+      {
+        permission: 'homework.submissions.view',
+        path: `/teacher/homeworks/classes/${placeholderId}/assignments/${placeholderId}/submissions`,
+      },
+      { permission: 'reinforcement.tasks.view', path: '/teacher/tasks' },
+      {
+        permission: 'reinforcement.reviews.view',
+        path: '/teacher/tasks/review-queue',
+      },
+      { permission: 'reinforcement.xp.view', path: '/teacher/xp/dashboard' },
+      {
+        permission: 'communication.contacts.view',
+        path: '/teacher/messages/contacts',
+      },
+      {
+        permission: 'communication.conversations.view',
+        path: '/teacher/messages/conversations',
+      },
+      {
+        permission: 'communication.messages.view',
+        path: `/teacher/messages/conversations/${ownConversationId}/messages`,
+      },
+      {
+        permission: 'communication.notifications.view',
+        path: '/teacher/notifications',
+      },
+      {
+        permission: 'communication.notifications.preferences.manage',
+        path: '/teacher/notifications/preferences',
+      },
+      {
+        permission: 'communication.announcements.view',
+        path: '/teacher/announcements',
+      },
+      { permission: 'teacher.profile.view', path: '/teacher/profile' },
+      { permission: 'teacher.settings.view', path: '/teacher/settings/about' },
+      {
+        permission: 'academics.timetable.view',
+        path: '/teacher/schedule?date=2026-09-15',
+      },
+      {
+        permission: 'academics.calendar.view',
+        path: '/teacher/calendar/events?from=2026-09-01&to=2026-09-30',
+      },
+      {
+        permission: 'teacher.lesson_preparation.view',
+        path: '/teacher/lesson-preparation/today?date=2026-09-15',
+      },
+      {
+        permission: 'academics.lesson_plans.view',
+        path: '/teacher/lesson-preparation/today?date=2026-09-15',
+      },
+      {
+        permission: 'academics.curriculum.view',
+        path: `/teacher/lesson-preparation/${placeholderId}`,
+      },
+    ];
+
+    try {
+      for (const entry of cases) {
+        const roleId = await createTeacherRoleWithoutPermission(
+          entry.permission,
+        );
+        await prisma.membership.update({
+          where: { id: membership.id },
+          data: { roleId },
+        });
+
+        const response = await request(app.getHttpServer())
+          .get(`${GLOBAL_PREFIX}${entry.path}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(403);
+
+        expect(response.body?.error?.code).toBe('auth.scope.missing');
+      }
+    } finally {
+      await prisma.membership.update({
+        where: { id: membership.id },
+        data: { roleId: membership.roleId },
+      });
     }
   });
 
@@ -3767,6 +4493,60 @@ describe('Teacher App tenancy isolation (security)', () => {
     });
 
     return user.id;
+  }
+
+  async function createTeacherRoleWithoutPermission(
+    permissionCode: string,
+  ): Promise<string> {
+    const permissionCodes = FINAL_TEACHER_PERMISSIONS.filter(
+      (code) => code !== permissionCode,
+    );
+
+    if (permissionCodes.length !== FINAL_TEACHER_PERMISSIONS.length - 1) {
+      throw new Error(
+        `Permission ${permissionCode} is not in final Teacher permissions.`,
+      );
+    }
+
+    const permissions = await prisma.permission.findMany({
+      where: { code: { in: permissionCodes } },
+      select: { id: true, code: true },
+    });
+    const foundPermissionIdsByCode = new Map(
+      permissions.map((permission) => [permission.code, permission.id]),
+    );
+    const missingPermissions = permissionCodes.filter(
+      (code) => !foundPermissionIdsByCode.has(code),
+    );
+
+    if (missingPermissions.length > 0) {
+      throw new Error(
+        `Missing permissions for test role: ${missingPermissions.join(', ')}`,
+      );
+    }
+
+    const safeKey = permissionCode.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    const role = await prisma.role.create({
+      data: {
+        key: `${testSuffix}-without-${safeKey}-${createdRoleIds.length}`,
+        name: `${testSuffix} without ${permissionCode}`,
+        description: `Teacher test role missing ${permissionCode}`,
+        schoolId: schoolAId,
+        isSystem: false,
+      },
+      select: { id: true },
+    });
+    createdRoleIds.push(role.id);
+
+    await prisma.rolePermission.createMany({
+      data: permissionCodes.map((code) => ({
+        roleId: role.id,
+        permissionId: foundPermissionIdsByCode.get(code)!,
+      })),
+      skipDuplicates: true,
+    });
+
+    return role.id;
   }
 
   async function createAcademicFixture(params: {

@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../../common/decorators/required-permissions.decorator';
 import { GetTeacherClassroomAssessmentUseCase } from '../application/get-teacher-classroom-assessment.use-case';
 import { GetTeacherClassroomGradebookUseCase } from '../application/get-teacher-classroom-gradebook.use-case';
 import { ListTeacherClassroomAssessmentsUseCase } from '../application/list-teacher-classroom-assessments.use-case';
@@ -24,6 +25,7 @@ export class TeacherClassroomGradesController {
   ) {}
 
   @Get('assessments')
+  @RequiredPermissions('grades.assessments.view')
   @ApiOkResponse({ type: TeacherClassroomAssessmentsListResponseDto })
   listAssessments(
     @Param() params: TeacherClassroomGradesParamsDto,
@@ -33,6 +35,7 @@ export class TeacherClassroomGradesController {
   }
 
   @Get('assessments/:assessmentId')
+  @RequiredPermissions('grades.assessments.view', 'grades.questions.view')
   @ApiOkResponse({ type: TeacherClassroomAssessmentDetailResponseDto })
   getAssessment(
     @Param() params: TeacherClassroomAssessmentParamsDto,
@@ -44,6 +47,7 @@ export class TeacherClassroomGradesController {
   }
 
   @Get('gradebook')
+  @RequiredPermissions('grades.gradebook.view', 'grades.items.view')
   @ApiOkResponse({ type: TeacherClassroomGradebookResponseDto })
   getGradebook(
     @Param() params: TeacherClassroomGradesParamsDto,

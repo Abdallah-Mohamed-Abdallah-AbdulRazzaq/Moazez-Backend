@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../../common/decorators/required-permissions.decorator';
 import { ApproveTeacherTaskReviewSubmissionUseCase } from '../application/approve-teacher-task-review-submission.use-case';
 import { GetTeacherTaskReviewSubmissionUseCase } from '../application/get-teacher-task-review-submission.use-case';
 import { ListTeacherTaskReviewQueueUseCase } from '../application/list-teacher-task-review-queue.use-case';
@@ -25,6 +26,7 @@ export class TeacherTaskReviewQueueController {
   ) {}
 
   @Get()
+  @RequiredPermissions('reinforcement.reviews.view')
   @ApiOkResponse({ type: TeacherTaskReviewQueueResponseDto })
   listReviewQueue(
     @Query() query: ListTeacherTaskReviewQueueQueryDto,
@@ -33,6 +35,7 @@ export class TeacherTaskReviewQueueController {
   }
 
   @Get(':submissionId')
+  @RequiredPermissions('reinforcement.reviews.view')
   @ApiOkResponse({ type: TeacherTaskReviewSubmissionResponseDto })
   getReviewSubmission(
     @Param() params: TeacherTaskReviewSubmissionParamsDto,

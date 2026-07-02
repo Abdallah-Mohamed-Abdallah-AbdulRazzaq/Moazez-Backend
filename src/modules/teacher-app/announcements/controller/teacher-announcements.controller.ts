@@ -5,6 +5,7 @@ import {
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import {
   ArchiveTeacherAnnouncementUseCase,
   CreateTeacherAnnouncementUseCase,
@@ -36,6 +37,7 @@ export class TeacherAnnouncementsController {
   ) {}
 
   @Get()
+  @RequiredPermissions('communication.announcements.view')
   @ApiOkResponse({ type: TeacherAnnouncementsListResponseDto })
   listAnnouncements(
     @Query() query: ListTeacherAnnouncementsQueryDto,
@@ -44,6 +46,7 @@ export class TeacherAnnouncementsController {
   }
 
   @Get(':announcementId')
+  @RequiredPermissions('communication.announcements.view')
   @ApiOkResponse({ type: TeacherAnnouncementResponseDto })
   getAnnouncement(
     @Param() params: TeacherAnnouncementParamsDto,

@@ -15,6 +15,7 @@ import {
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import {
   ArchiveTeacherNotificationUseCase,
   GetTeacherNotificationPreferencesUseCase,
@@ -61,6 +62,7 @@ export class TeacherNotificationsController {
   ) {}
 
   @Get()
+  @RequiredPermissions('communication.notifications.view')
   @ApiOkResponse({ type: TeacherNotificationsListResponseDto })
   listNotifications(
     @Query() query: ListTeacherNotificationsQueryDto,
@@ -69,6 +71,7 @@ export class TeacherNotificationsController {
   }
 
   @Get('summary')
+  @RequiredPermissions('communication.notifications.view')
   @ApiOkResponse({ type: TeacherNotificationsSummaryDto })
   getSummary(): Promise<TeacherNotificationsSummaryDto> {
     return this.getTeacherNotificationsSummaryUseCase.execute();
@@ -81,6 +84,7 @@ export class TeacherNotificationsController {
   }
 
   @Get('preferences')
+  @RequiredPermissions('communication.notifications.preferences.manage')
   @ApiOkResponse({ type: TeacherNotificationPreferencesResponseDto })
   getPreferences(): Promise<TeacherNotificationPreferencesResponseDto> {
     return this.getTeacherNotificationPreferencesUseCase.execute();
@@ -111,6 +115,7 @@ export class TeacherNotificationsController {
   }
 
   @Get(':notificationId')
+  @RequiredPermissions('communication.notifications.view')
   @ApiOkResponse({ type: TeacherNotificationResponseDto })
   getNotification(
     @Param('notificationId', new ParseUUIDPipe()) notificationId: string,

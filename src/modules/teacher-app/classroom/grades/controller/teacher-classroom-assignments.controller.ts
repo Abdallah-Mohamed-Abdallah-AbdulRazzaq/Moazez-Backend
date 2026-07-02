@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../../common/decorators/required-permissions.decorator';
 import { GetTeacherClassroomAssignmentUseCase } from '../application/get-teacher-classroom-assignment.use-case';
 import { GetTeacherClassroomAssignmentSubmissionUseCase } from '../application/get-teacher-classroom-assignment-submission.use-case';
 import { ListTeacherClassroomAssignmentSubmissionsUseCase } from '../application/list-teacher-classroom-assignment-submissions.use-case';
@@ -28,6 +29,7 @@ export class TeacherClassroomAssignmentsController {
   ) {}
 
   @Get()
+  @RequiredPermissions('grades.assessments.view')
   @ApiOkResponse({ type: TeacherClassroomAssignmentsListResponseDto })
   listAssignments(
     @Param() params: TeacherClassroomGradesParamsDto,
@@ -37,6 +39,7 @@ export class TeacherClassroomAssignmentsController {
   }
 
   @Get(':assignmentId')
+  @RequiredPermissions('grades.assessments.view')
   @ApiOkResponse({ type: TeacherClassroomAssignmentDetailResponseDto })
   getAssignment(
     @Param() params: TeacherClassroomAssignmentParamsDto,
@@ -48,6 +51,7 @@ export class TeacherClassroomAssignmentsController {
   }
 
   @Get(':assignmentId/submissions')
+  @RequiredPermissions('grades.submissions.view')
   @ApiOkResponse({ type: TeacherClassroomAssignmentSubmissionsListResponseDto })
   listAssignmentSubmissions(
     @Param() params: TeacherClassroomAssignmentParamsDto,
@@ -61,6 +65,7 @@ export class TeacherClassroomAssignmentsController {
   }
 
   @Get(':assignmentId/submissions/:submissionId')
+  @RequiredPermissions('grades.submissions.view')
   @ApiOkResponse({
     type: TeacherClassroomAssignmentSubmissionDetailResponseDto,
   })

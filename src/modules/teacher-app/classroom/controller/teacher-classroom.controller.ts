@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetTeacherClassroomUseCase } from '../application/get-teacher-classroom.use-case';
 import { ListTeacherClassroomRosterUseCase } from '../application/list-teacher-classroom-roster.use-case';
 import {
@@ -19,6 +20,7 @@ export class TeacherClassroomController {
   ) {}
 
   @Get(':classId')
+  @RequiredPermissions('teacher.classroom.view')
   @ApiOkResponse({ type: TeacherClassroomDetailResponseDto })
   getClassroom(
     @Param() params: TeacherClassroomParamsDto,
@@ -27,6 +29,7 @@ export class TeacherClassroomController {
   }
 
   @Get(':classId/roster')
+  @RequiredPermissions('teacher.classroom.view', 'students.records.view')
   @ApiOkResponse({ type: TeacherClassroomRosterResponseDto })
   listRoster(
     @Param() params: TeacherClassroomParamsDto,

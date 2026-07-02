@@ -1,5 +1,6 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetTeacherClassDetailUseCase } from '../application/get-teacher-class-detail.use-case';
 import { ListTeacherClassesUseCase } from '../application/list-teacher-classes.use-case';
 import {
@@ -18,6 +19,7 @@ export class TeacherMyClassesController {
   ) {}
 
   @Get()
+  @RequiredPermissions('teacher.classes.view')
   @ApiOkResponse({ type: TeacherClassesListResponseDto })
   listMyClasses(
     @Query() query: ListTeacherClassesQueryDto,
@@ -26,6 +28,7 @@ export class TeacherMyClassesController {
   }
 
   @Get(':classId')
+  @RequiredPermissions('teacher.classes.view')
   @ApiOkResponse({ type: TeacherClassDetailResponseDto })
   getMyClassDetail(
     @Param('classId', new ParseUUIDPipe()) classId: string,

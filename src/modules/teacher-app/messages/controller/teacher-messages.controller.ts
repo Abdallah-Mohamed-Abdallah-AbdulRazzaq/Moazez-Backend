@@ -15,6 +15,7 @@ import {
   ApiTags,
   ApiTemporaryRedirectResponse,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetTeacherMessageAttachmentDownloadUrlUseCase } from '../application/get-teacher-message-attachment-download-url.use-case';
 import {
   GetTeacherMessageInfoUseCase,
@@ -70,6 +71,7 @@ export class TeacherMessagesController {
   ) {}
 
   @Get('contacts')
+  @RequiredPermissions('communication.contacts.view')
   @ApiOkResponse({ type: TeacherMessageContactsResponseDto })
   listContacts(
     @Query() query: ListTeacherMessageContactsQueryDto,
@@ -78,6 +80,7 @@ export class TeacherMessagesController {
   }
 
   @Get('conversations')
+  @RequiredPermissions('communication.conversations.view')
   @ApiOkResponse({ type: TeacherMessageConversationsResponseDto })
   listConversations(
     @Query() query: ListTeacherMessageConversationsQueryDto,
@@ -86,6 +89,7 @@ export class TeacherMessagesController {
   }
 
   @Get('conversations/:conversationId')
+  @RequiredPermissions('communication.conversations.view')
   @ApiOkResponse({ type: TeacherMessageConversationResponseDto })
   getConversation(
     @Param() params: TeacherMessageConversationParamsDto,
@@ -96,6 +100,7 @@ export class TeacherMessagesController {
   }
 
   @Get('conversations/:conversationId/search')
+  @RequiredPermissions('communication.messages.view')
   @ApiOkResponse({ type: TeacherConversationMessageSearchResponseDto })
   searchMessages(
     @Param() params: TeacherMessageConversationParamsDto,
@@ -108,6 +113,7 @@ export class TeacherMessagesController {
   }
 
   @Get('conversations/:conversationId/messages')
+  @RequiredPermissions('communication.messages.view')
   @ApiOkResponse({ type: TeacherConversationMessagesResponseDto })
   listMessages(
     @Param() params: TeacherMessageConversationParamsDto,
@@ -120,6 +126,7 @@ export class TeacherMessagesController {
   }
 
   @Get('conversations/:conversationId/messages/:messageId/readers')
+  @RequiredPermissions('communication.messages.view')
   @ApiOkResponse({ type: TeacherMessageReadersResponseDto })
   getMessageReaders(
     @Param() params: TeacherMessageInfoParamsDto,
@@ -133,6 +140,7 @@ export class TeacherMessagesController {
   }
 
   @Get('conversations/:conversationId/messages/:messageId/info')
+  @RequiredPermissions('communication.messages.view')
   @ApiOkResponse({ type: TeacherMessageInfoResponseDto })
   getMessageInfo(
     @Param() params: TeacherMessageInfoParamsDto,
@@ -148,6 +156,7 @@ export class TeacherMessagesController {
   @Get(
     'conversations/:conversationId/messages/:messageId/attachments/:attachmentId/download',
   )
+  @RequiredPermissions('communication.messages.view')
   @Redirect(undefined, 307)
   @ApiTemporaryRedirectResponse({
     description:
@@ -171,6 +180,7 @@ export class TeacherMessagesController {
   @Get(
     'conversations/:conversationId/messages/:messageId/attachments/:attachmentId/preview',
   )
+  @RequiredPermissions('communication.messages.view')
   @Redirect(undefined, 307)
   @ApiTemporaryRedirectResponse({
     description: 'Redirects to an authorized temporary attachment preview URL.',

@@ -20,6 +20,7 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import {
   BulkReviewTeacherHomeworkSubmissionAnswersUseCase,
   CancelTeacherHomeworkAssignmentUseCase,
@@ -155,6 +156,7 @@ export class TeacherHomeworksController {
   ) {}
 
   @Get('dashboard')
+  @RequiredPermissions('homework.assignments.view')
   @ApiOperation({ summary: 'Get the current teacher homework dashboard' })
   @ApiOkResponse({ type: TeacherHomeworkDashboardResponseDto })
   getDashboard(): Promise<TeacherHomeworkDashboardResponseDto> {
@@ -162,6 +164,7 @@ export class TeacherHomeworksController {
   }
 
   @Get('classes/:classId/assignments')
+  @RequiredPermissions('homework.assignments.view')
   @ApiOperation({ summary: 'List homework assignments for an owned class' })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiQuery({ name: 'status', required: false })
@@ -194,6 +197,7 @@ export class TeacherHomeworksController {
   }
 
   @Get('classes/:classId/assignments/:homeworkId')
+  @RequiredPermissions('homework.assignments.view')
   @ApiOperation({ summary: 'Get an owned homework assignment' })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
@@ -269,6 +273,7 @@ export class TeacherHomeworksController {
   }
 
   @Get('classes/:classId/assignments/:homeworkId/targets')
+  @RequiredPermissions('homework.targets.view')
   @ApiOperation({
     summary: 'List safe target rows for an owned homework assignment',
   })
@@ -299,6 +304,7 @@ export class TeacherHomeworksController {
   }
 
   @Get('classes/:classId/assignments/:homeworkId/grade-sync')
+  @RequiredPermissions('homework.grade_sync.view')
   @ApiOperation({ summary: 'Get grade sync status for an owned homework' })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
@@ -330,6 +336,7 @@ export class TeacherHomeworksController {
   }
 
   @Get('classes/:classId/assignments/:homeworkId/questions')
+  @RequiredPermissions('homework.questions.view')
   @ApiOperation({ summary: 'List questions for an owned homework assignment' })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
@@ -360,6 +367,7 @@ export class TeacherHomeworksController {
   }
 
   @Get('classes/:classId/assignments/:homeworkId/questions/:questionId')
+  @RequiredPermissions('homework.questions.view')
   @ApiOperation({
     summary: 'Get one question for an owned homework assignment',
   })
@@ -529,6 +537,7 @@ export class TeacherHomeworksController {
   }
 
   @Get('classes/:classId/assignments/:homeworkId/attachments')
+  @RequiredPermissions('homework.attachments.view')
   @ApiOperation({
     summary: 'List attachments for an owned homework assignment',
   })
@@ -624,6 +633,7 @@ export class TeacherHomeworksController {
   }
 
   @Get('classes/:classId/assignments/:homeworkId/submissions')
+  @RequiredPermissions('homework.submissions.view')
   @ApiOperation({
     summary: 'List submitted homework submissions for an owned assignment',
   })
@@ -646,6 +656,7 @@ export class TeacherHomeworksController {
   }
 
   @Get('classes/:classId/assignments/:homeworkId/submissions/:submissionId')
+  @RequiredPermissions('homework.submissions.view')
   @ApiOperation({
     summary: 'Get one submitted homework submission for an owned assignment',
   })
@@ -666,6 +677,7 @@ export class TeacherHomeworksController {
   @Get(
     'classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers',
   )
+  @RequiredPermissions('homework.submissions.view')
   @ApiOperation({
     summary: 'List submitted homework answers for an owned assignment',
   })
@@ -734,6 +746,7 @@ export class TeacherHomeworksController {
   @Get(
     'classes/:classId/assignments/:homeworkId/submissions/:submissionId/attachments',
   )
+  @RequiredPermissions('homework.submissions.view')
   @ApiOperation({
     summary: 'List submitted homework attachments for an owned assignment',
   })

@@ -5,6 +5,7 @@ import {
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { CreateTeacherTaskUseCase } from '../application/create-teacher-task.use-case';
 import { GetTeacherTaskSelectorsUseCase } from '../application/get-teacher-task-selectors.use-case';
 import { GetTeacherTaskUseCase } from '../application/get-teacher-task.use-case';
@@ -33,12 +34,14 @@ export class TeacherTasksController {
   ) {}
 
   @Get('dashboard')
+  @RequiredPermissions('reinforcement.tasks.view')
   @ApiOkResponse({ type: TeacherTaskDashboardResponseDto })
   getDashboard(): Promise<TeacherTaskDashboardResponseDto> {
     return this.getTeacherTasksDashboardUseCase.execute();
   }
 
   @Get()
+  @RequiredPermissions('reinforcement.tasks.view')
   @ApiOkResponse({ type: TeacherTasksListResponseDto })
   listTasks(
     @Query() query: ListTeacherTasksQueryDto,
@@ -47,6 +50,7 @@ export class TeacherTasksController {
   }
 
   @Get('selectors')
+  @RequiredPermissions('reinforcement.tasks.view')
   @ApiOkResponse({ type: TeacherTaskSelectorsResponseDto })
   getSelectors(): Promise<TeacherTaskSelectorsResponseDto> {
     return this.getTeacherTaskSelectorsUseCase.execute();
@@ -61,6 +65,7 @@ export class TeacherTasksController {
   }
 
   @Get(':taskId')
+  @RequiredPermissions('reinforcement.tasks.view')
   @ApiOkResponse({ type: TeacherTaskDetailResponseDto })
   getTask(
     @Param() params: TeacherTaskParamsDto,

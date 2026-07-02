@@ -6,6 +6,7 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetTeacherDailyScheduleUseCase } from '../application/get-teacher-daily-schedule.use-case';
 import { GetTeacherWeeklyScheduleUseCase } from '../application/get-teacher-weekly-schedule.use-case';
 import {
@@ -24,6 +25,7 @@ export class TeacherScheduleController {
   ) {}
 
   @Get()
+  @RequiredPermissions('academics.timetable.view')
   @ApiOperation({ summary: 'Get the current teacher daily schedule' })
   @ApiQuery({
     name: 'date',
@@ -38,6 +40,7 @@ export class TeacherScheduleController {
   }
 
   @Get('week')
+  @RequiredPermissions('academics.timetable.view')
   @ApiOperation({ summary: 'Get the current teacher weekly schedule' })
   @ApiQuery({
     name: 'date',
