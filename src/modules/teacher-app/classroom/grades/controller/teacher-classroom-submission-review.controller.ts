@@ -1,5 +1,6 @@
 import { Body, Controller, Param, Patch, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../../common/decorators/required-permissions.decorator';
 import { BulkReviewTeacherClassroomSubmissionAnswersUseCase } from '../application/bulk-review-teacher-classroom-submission-answers.use-case';
 import { FinalizeTeacherClassroomSubmissionReviewUseCase } from '../application/finalize-teacher-classroom-submission-review.use-case';
 import { ReviewTeacherClassroomSubmissionAnswerUseCase } from '../application/review-teacher-classroom-submission-answer.use-case';
@@ -31,6 +32,7 @@ export class TeacherClassroomSubmissionReviewController {
   ) {}
 
   @Patch('answers/:answerId/review')
+  @RequiredPermissions('grades.submissions.review')
   @ApiOkResponse({ type: TeacherClassroomSubmissionAnswerReviewResponseDto })
   reviewAnswer(
     @Param() params: TeacherClassroomSubmissionAnswerReviewParamsDto,
@@ -46,6 +48,7 @@ export class TeacherClassroomSubmissionReviewController {
   }
 
   @Put('answers/review')
+  @RequiredPermissions('grades.submissions.review')
   @ApiOkResponse({
     type: TeacherClassroomBulkSubmissionAnswerReviewResponseDto,
   })
@@ -62,6 +65,7 @@ export class TeacherClassroomSubmissionReviewController {
   }
 
   @Post('review/finalize')
+  @RequiredPermissions('grades.submissions.review')
   @ApiOkResponse({ type: TeacherClassroomSubmissionReviewFinalizeResponseDto })
   finalizeReview(
     @Param() params: TeacherClassroomSubmissionReviewParamsDto,
@@ -74,6 +78,7 @@ export class TeacherClassroomSubmissionReviewController {
   }
 
   @Post('sync-grade-item')
+  @RequiredPermissions('grades.items.manage')
   @ApiOkResponse({ type: TeacherClassroomSubmissionGradeItemSyncResponseDto })
   syncGradeItem(
     @Param() params: TeacherClassroomSubmissionReviewParamsDto,

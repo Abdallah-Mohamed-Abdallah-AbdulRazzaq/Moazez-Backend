@@ -52,6 +52,7 @@ export class TeacherClassroomAttendanceController {
   }
 
   @Post('session/resolve')
+  @RequiredPermissions('attendance.sessions.manage')
   @ApiOkResponse({ type: TeacherClassroomAttendanceSessionResponseDto })
   resolveSession(
     @Param() params: TeacherClassroomAttendanceParamsDto,
@@ -70,6 +71,7 @@ export class TeacherClassroomAttendanceController {
   }
 
   @Put('sessions/:sessionId/entries')
+  @RequiredPermissions('attendance.entries.manage')
   @ApiOkResponse({ type: TeacherClassroomAttendanceSessionResponseDto })
   updateEntries(
     @Param() params: TeacherClassroomAttendanceSessionParamsDto,
@@ -83,6 +85,7 @@ export class TeacherClassroomAttendanceController {
   }
 
   @Post('sessions/:sessionId/submit')
+  @RequiredPermissions('attendance.sessions.submit')
   @ApiOkResponse({ type: TeacherClassroomAttendanceSessionResponseDto })
   submitSession(
     @Param() params: TeacherClassroomAttendanceSessionParamsDto,

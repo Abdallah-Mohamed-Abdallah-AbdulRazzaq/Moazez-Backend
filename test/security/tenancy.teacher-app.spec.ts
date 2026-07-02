@@ -569,20 +569,65 @@ const TEACHER_APP_READ_PERMISSION_CASES: TeacherAppPermissionCase[] = [
   },
 ];
 
-const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [
-  { controller: TeacherClassroomAttendanceController, method: 'resolveSession' },
-  { controller: TeacherClassroomAttendanceController, method: 'updateEntries' },
-  { controller: TeacherClassroomAttendanceController, method: 'submitSession' },
-  { controller: TeacherClassroomSubmissionReviewController, method: 'reviewAnswer' },
+const TEACHER_APP_1C_ACTION_PERMISSION_CASES: TeacherAppPermissionCase[] = [
+  {
+    controller: TeacherClassroomAttendanceController,
+    method: 'resolveSession',
+    permissions: ['attendance.sessions.manage'],
+  },
+  {
+    controller: TeacherClassroomAttendanceController,
+    method: 'updateEntries',
+    permissions: ['attendance.entries.manage'],
+  },
+  {
+    controller: TeacherClassroomAttendanceController,
+    method: 'submitSession',
+    permissions: ['attendance.sessions.submit'],
+  },
+  {
+    controller: TeacherClassroomSubmissionReviewController,
+    method: 'reviewAnswer',
+    permissions: ['grades.submissions.review'],
+  },
   {
     controller: TeacherClassroomSubmissionReviewController,
     method: 'bulkReviewAnswers',
+    permissions: ['grades.submissions.review'],
   },
   {
     controller: TeacherClassroomSubmissionReviewController,
     method: 'finalizeReview',
+    permissions: ['grades.submissions.review'],
   },
-  { controller: TeacherClassroomSubmissionReviewController, method: 'syncGradeItem' },
+  {
+    controller: TeacherClassroomSubmissionReviewController,
+    method: 'syncGradeItem',
+    permissions: ['grades.items.manage'],
+  },
+  {
+    controller: TeacherTasksController,
+    method: 'createTask',
+    permissions: ['reinforcement.tasks.manage'],
+  },
+  {
+    controller: TeacherTaskReviewQueueController,
+    method: 'approveReviewSubmission',
+    permissions: ['reinforcement.reviews.manage'],
+  },
+  {
+    controller: TeacherTaskReviewQueueController,
+    method: 'rejectReviewSubmission',
+    permissions: ['reinforcement.reviews.manage'],
+  },
+  {
+    controller: TeacherLessonPreparationController,
+    method: 'updateStatus',
+    permissions: ['teacher.lesson_preparation.status.manage'],
+  },
+];
+
+const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [
   { controller: TeacherHomeworksController, method: 'createAssignment' },
   { controller: TeacherHomeworksController, method: 'updateAssignment' },
   { controller: TeacherHomeworksController, method: 'publishAssignment' },
@@ -610,15 +655,6 @@ const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [
   { controller: TeacherHomeworksController, method: 'reviewSubmission' },
   { controller: TeacherHomeworksController, method: 'patchReviewSubmission' },
   { controller: TeacherHomeworksController, method: 'syncSubmissionToGrades' },
-  { controller: TeacherTasksController, method: 'createTask' },
-  {
-    controller: TeacherTaskReviewQueueController,
-    method: 'approveReviewSubmission',
-  },
-  {
-    controller: TeacherTaskReviewQueueController,
-    method: 'rejectReviewSubmission',
-  },
   { controller: TeacherMessagesController, method: 'createConversation' },
   { controller: TeacherMessagesController, method: 'sendMessage' },
   { controller: TeacherMessagesController, method: 'markRead' },
@@ -635,10 +671,14 @@ const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [
   { controller: TeacherAnnouncementsController, method: 'updateAnnouncement' },
   { controller: TeacherAnnouncementsController, method: 'publishAnnouncement' },
   { controller: TeacherAnnouncementsController, method: 'archiveAnnouncement' },
-  { controller: TeacherLessonPreparationController, method: 'updateStatus' },
 ];
 
-const FORBIDDEN_TEACHER_READ_PERMISSIONS = [
+const TEACHER_APP_DECORATED_PERMISSION_CASES: TeacherAppPermissionCase[] = [
+  ...TEACHER_APP_READ_PERMISSION_CASES,
+  ...TEACHER_APP_1C_ACTION_PERMISSION_CASES,
+];
+
+const FORBIDDEN_TEACHER_ROUTE_PERMISSIONS = [
   ...FORBIDDEN_TEACHER_PERMISSIONS,
   'files.downloads.view',
   'communication.announcements.manage',
@@ -656,8 +696,8 @@ const FORBIDDEN_TEACHER_READ_PERMISSIONS = [
 
 jest.setTimeout(45000);
 
-describe('Teacher App read-only route permission metadata (security)', () => {
-  it('declares the TEACH-PERM-1B read-only permission inventory', () => {
+describe('Teacher App route permission metadata (security)', () => {
+  it('preserves the TEACH-PERM-1B read-only permission inventory', () => {
     expect(TEACHER_APP_READ_PERMISSION_CASES).toHaveLength(63);
 
     for (const entry of TEACHER_APP_READ_PERMISSION_CASES) {
@@ -669,8 +709,20 @@ describe('Teacher App read-only route permission metadata (security)', () => {
     }
   });
 
-  it('keeps action and write handlers deferred for later Teacher permission sprints', () => {
-    expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(48);
+  it('declares the TEACH-PERM-1C classroom action permission inventory', () => {
+    expect(TEACHER_APP_1C_ACTION_PERMISSION_CASES).toHaveLength(11);
+
+    for (const entry of TEACHER_APP_1C_ACTION_PERMISSION_CASES) {
+      const handler = getControllerHandler(entry.controller, entry.method);
+
+      expect(
+        Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler),
+      ).toEqual(entry.permissions);
+    }
+  });
+
+  it('keeps later Teacher permission sprint action handlers deferred', () => {
+    expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(37);
 
     for (const entry of TEACHER_APP_DEFERRED_ACTION_CASES) {
       const handler = getControllerHandler(entry.controller, entry.method);
@@ -685,7 +737,7 @@ describe('Teacher App read-only route permission metadata (security)', () => {
     const expectedKnownHandlers = new Set<string>();
 
     for (const entry of [
-      ...TEACHER_APP_READ_PERMISSION_CASES,
+      ...TEACHER_APP_DECORATED_PERMISSION_CASES,
       ...TEACHER_APP_DEFERRED_ACTION_CASES,
     ]) {
       const key = `${entry.controller.name}.${entry.method}`;
@@ -714,27 +766,32 @@ describe('Teacher App read-only route permission metadata (security)', () => {
       ).sort();
 
     expect(discoveredRouteHandlers).toHaveLength(111);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(74);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),
     );
   });
 
-  it('does not use forbidden permissions on read-only Teacher App routes', () => {
-    const readPermissions = TEACHER_APP_READ_PERMISSION_CASES.flatMap((entry) =>
-      Array.from(entry.permissions),
+  it('does not use forbidden permissions on decorated Teacher App routes', () => {
+    const decoratedPermissions = TEACHER_APP_DECORATED_PERMISSION_CASES.flatMap(
+      (entry) => Array.from(entry.permissions),
     );
 
-    for (const forbiddenPermission of FORBIDDEN_TEACHER_READ_PERMISSIONS) {
-      expect(readPermissions).not.toContain(forbiddenPermission);
+    for (const forbiddenPermission of FORBIDDEN_TEACHER_ROUTE_PERMISSIONS) {
+      expect(decoratedPermissions).not.toContain(forbiddenPermission);
     }
-    expect(readPermissions.some((code) => code.startsWith('behavior.'))).toBe(
-      false,
-    );
     expect(
-      readPermissions.some((code) => code.startsWith('reinforcement.hero.')),
+      decoratedPermissions.some((code) => code.startsWith('behavior.')),
     ).toBe(false);
     expect(
-      readPermissions.some((code) => code.startsWith('reinforcement.rewards.')),
+      decoratedPermissions.some((code) =>
+        code.startsWith('reinforcement.hero.'),
+      ),
+    ).toBe(false);
+    expect(
+      decoratedPermissions.some((code) =>
+        code.startsWith('reinforcement.rewards.'),
+      ),
     ).toBe(false);
   });
 });
@@ -1807,6 +1864,112 @@ describe('Teacher App tenancy isolation (security)', () => {
 
         const response = await request(app.getHttpServer())
           .get(`${GLOBAL_PREFIX}${entry.path}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(403);
+
+        expect(response.body?.error?.code).toBe('auth.scope.missing');
+      }
+    } finally {
+      await prisma.membership.update({
+        where: { id: membership.id },
+        data: { roleId: membership.roleId },
+      });
+    }
+  });
+
+  it('returns auth.scope.missing for representative 1C action routes when one required Teacher permission is missing', async () => {
+    const membership = await prisma.membership.findFirstOrThrow({
+      where: {
+        userId: teacherAId,
+        schoolId: schoolAId,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true, roleId: true },
+    });
+    const { accessToken } = await login(teacherAEmail);
+    const placeholderId = '11111111-1111-4111-8111-111111111111';
+    const cases: Array<{
+      permission: string;
+      method: 'post' | 'put' | 'patch';
+      path: string;
+      body?: Record<string, unknown>;
+    }> = [
+      {
+        permission: 'attendance.sessions.manage',
+        method: 'post',
+        path: `/teacher/classroom/${ownAllocationId}/attendance/session/resolve`,
+        body: { date: '2026-09-15' },
+      },
+      {
+        permission: 'attendance.entries.manage',
+        method: 'put',
+        path: `/teacher/classroom/${ownAllocationId}/attendance/sessions/${placeholderId}/entries`,
+        body: {
+          entries: [{ studentId: ownStudentIds[0], status: 'present' }],
+        },
+      },
+      {
+        permission: 'attendance.sessions.submit',
+        method: 'post',
+        path: `/teacher/classroom/${ownAllocationId}/attendance/sessions/${placeholderId}/submit`,
+      },
+      {
+        permission: 'grades.submissions.review',
+        method: 'patch',
+        path: `/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/answers/${ownAssignmentAnswerId}/review`,
+        body: { awardedPoints: 1 },
+      },
+      {
+        permission: 'grades.items.manage',
+        method: 'post',
+        path: `/teacher/classroom/${ownAllocationId}/assignments/${ownAssignmentId}/submissions/${ownAssignmentSubmissionId}/sync-grade-item`,
+      },
+      {
+        permission: 'reinforcement.tasks.manage',
+        method: 'post',
+        path: '/teacher/tasks',
+        body: teacherTaskCreatePayload({
+          title: `${testSuffix}-missing-task-manage-denied`,
+          classIds: [ownAllocationId],
+        }),
+      },
+      {
+        permission: 'reinforcement.reviews.manage',
+        method: 'post',
+        path: `/teacher/tasks/review-queue/${ownTaskSubmissionId}/approve`,
+        body: { comment: 'Missing permission denied' },
+      },
+      {
+        permission: 'teacher.lesson_preparation.status.manage',
+        method: 'patch',
+        path: `/teacher/lesson-preparation/${placeholderId}/status`,
+        body: { status: 'prepared' },
+      },
+    ];
+
+    try {
+      for (const entry of cases) {
+        const roleId = await createTeacherRoleWithoutPermission(
+          entry.permission,
+        );
+        await prisma.membership.update({
+          where: { id: membership.id },
+          data: { roleId },
+        });
+
+        const http = request(app.getHttpServer());
+        const pendingRequest =
+          entry.method === 'post'
+            ? http.post(`${GLOBAL_PREFIX}${entry.path}`)
+            : entry.method === 'put'
+              ? http.put(`${GLOBAL_PREFIX}${entry.path}`)
+              : http.patch(`${GLOBAL_PREFIX}${entry.path}`);
+
+        if (entry.body) {
+          pendingRequest.send(entry.body);
+        }
+
+        const response = await pendingRequest
           .set('Authorization', `Bearer ${accessToken}`)
           .expect(403);
 

@@ -46,6 +46,7 @@ export class TeacherTaskReviewQueueController {
   }
 
   @Post(':submissionId/approve')
+  @RequiredPermissions('reinforcement.reviews.manage')
   @ApiOkResponse({ type: TeacherTaskReviewSubmissionResponseDto })
   approveReviewSubmission(
     @Param() params: TeacherTaskReviewSubmissionParamsDto,
@@ -58,6 +59,7 @@ export class TeacherTaskReviewQueueController {
   }
 
   @Post(':submissionId/reject')
+  @RequiredPermissions('reinforcement.reviews.manage')
   @ApiOkResponse({ type: TeacherTaskReviewSubmissionResponseDto })
   rejectReviewSubmission(
     @Param() params: TeacherTaskReviewSubmissionParamsDto,

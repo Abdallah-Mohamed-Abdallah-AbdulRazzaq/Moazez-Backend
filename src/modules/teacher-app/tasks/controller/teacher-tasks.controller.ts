@@ -57,6 +57,7 @@ export class TeacherTasksController {
   }
 
   @Post()
+  @RequiredPermissions('reinforcement.tasks.manage')
   @ApiCreatedResponse({ type: TeacherTaskDetailResponseDto })
   createTask(
     @Body() dto: TeacherTaskCreateDto,

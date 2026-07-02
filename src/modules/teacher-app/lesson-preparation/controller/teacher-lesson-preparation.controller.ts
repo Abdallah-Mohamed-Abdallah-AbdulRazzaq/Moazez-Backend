@@ -84,6 +84,7 @@ export class TeacherLessonPreparationController {
   }
 
   @Patch(':lessonPlanItemId/status')
+  @RequiredPermissions('teacher.lesson_preparation.status.manage')
   @ApiOperation({ summary: 'Update a teacher-owned lesson-preparation status' })
   @ApiOkResponse({ type: TeacherLessonPreparationItemDto })
   updateStatus(
