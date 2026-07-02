@@ -79,6 +79,7 @@ export class ParentNotificationsController {
 
   @Post('read-all')
   @ApiCreatedResponse({ type: ParentNotificationsReadAllResponseDto })
+  @RequiredPermissions('communication.notifications.read')
   markAllRead(): Promise<ParentNotificationsReadAllResponseDto> {
     return this.markAllParentNotificationsReadUseCase.execute();
   }
@@ -92,6 +93,7 @@ export class ParentNotificationsController {
 
   @Patch('preferences')
   @ApiOkResponse({ type: ParentNotificationPreferencesResponseDto })
+  @RequiredPermissions('communication.notifications.preferences.manage')
   updatePreferences(
     @Body() body: UpdateParentNotificationPreferencesDto,
   ): Promise<ParentNotificationPreferencesResponseDto> {
@@ -100,6 +102,7 @@ export class ParentNotificationsController {
 
   @Post('device-tokens')
   @ApiCreatedResponse({ type: AppDeviceTokenDualRegisterResponseDto })
+  @RequiredPermissions('app.device_tokens.manage')
   registerDeviceToken(
     @Body() body: RegisterAppDeviceTokenDto,
   ): Promise<AppDeviceTokenDualRegisterResponseDto> {
@@ -108,6 +111,7 @@ export class ParentNotificationsController {
 
   @Delete('device-tokens/current')
   @ApiOkResponse({ type: AppDeviceTokenDualUnregisterResponseDto })
+  @RequiredPermissions('app.device_tokens.manage')
   unregisterCurrentDeviceToken(
     @Body() body: UnregisterAppDeviceTokenDto,
   ): Promise<AppDeviceTokenDualUnregisterResponseDto> {
@@ -125,6 +129,7 @@ export class ParentNotificationsController {
 
   @Post(':notificationId/read')
   @ApiCreatedResponse({ type: ParentNotificationResponseDto })
+  @RequiredPermissions('communication.notifications.read')
   markRead(
     @Param('notificationId', new ParseUUIDPipe()) notificationId: string,
   ): Promise<ParentNotificationResponseDto> {
@@ -133,6 +138,7 @@ export class ParentNotificationsController {
 
   @Post(':notificationId/archive')
   @ApiCreatedResponse({ type: ParentNotificationResponseDto })
+  @RequiredPermissions('communication.notifications.archive')
   archive(
     @Param('notificationId', new ParseUUIDPipe()) notificationId: string,
   ): Promise<ParentNotificationResponseDto> {

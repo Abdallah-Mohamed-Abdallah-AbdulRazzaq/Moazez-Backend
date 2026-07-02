@@ -56,6 +56,7 @@ export class ParentAnnouncementsController {
 
   @Post(':announcementId/read')
   @ApiCreatedResponse({ type: ParentAnnouncementReadResponseDto })
+  @RequiredPermissions('communication.announcements.read')
   markRead(
     @Param('announcementId', new ParseUUIDPipe()) announcementId: string,
   ): Promise<ParentAnnouncementReadResponseDto> {

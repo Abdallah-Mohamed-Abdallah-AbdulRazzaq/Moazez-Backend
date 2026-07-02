@@ -16,6 +16,11 @@ import {
   CommunicationConversationType,
   CommunicationMessageKind,
   CommunicationMessageStatus,
+  CommunicationNotificationPreferenceCategory,
+  CommunicationNotificationPriority,
+  CommunicationNotificationSourceModule,
+  CommunicationNotificationStatus,
+  CommunicationNotificationType,
   CommunicationParticipantRole,
   CommunicationParticipantStatus,
   FileVisibility,
@@ -129,6 +134,13 @@ type ParentAppReadPermissionCase = {
   method: string;
   permissions: string[];
   sprint: '1B';
+};
+
+type ParentAppActionPermissionCase = {
+  controller: ParentAppControllerClass;
+  method: string;
+  permissions: string[];
+  sprint: '1C';
 };
 
 const PARENT_APP_READ_PERMISSION_CASES: ParentAppReadPermissionCase[] = [
@@ -537,23 +549,75 @@ const PARENT_APP_CONTROLLER_CLASSES = [
   ParentFilesController,
 ];
 
-const PARENT_APP_DEFERRED_ACTION_HANDLER_CASES = [
-  { controller: ParentMessagesController, method: 'createConversation' },
-  { controller: ParentMessagesController, method: 'sendMessage' },
-  { controller: ParentMessagesController, method: 'markRead' },
-  { controller: ParentNotificationsController, method: 'markAllRead' },
-  { controller: ParentNotificationsController, method: 'updatePreferences' },
-  { controller: ParentNotificationsController, method: 'registerDeviceToken' },
+const PARENT_APP_ACTION_PERMISSION_CASES: ParentAppActionPermissionCase[] = [
+  {
+    controller: ParentMessagesController,
+    method: 'createConversation',
+    permissions: ['communication.conversations.create'],
+    sprint: '1C',
+  },
+  {
+    controller: ParentMessagesController,
+    method: 'sendMessage',
+    permissions: ['communication.messages.send'],
+    sprint: '1C',
+  },
+  {
+    controller: ParentMessagesController,
+    method: 'markRead',
+    permissions: ['communication.conversations.read'],
+    sprint: '1C',
+  },
+  {
+    controller: ParentAnnouncementsController,
+    method: 'markRead',
+    permissions: ['communication.announcements.read'],
+    sprint: '1C',
+  },
+  {
+    controller: ParentNotificationsController,
+    method: 'markAllRead',
+    permissions: ['communication.notifications.read'],
+    sprint: '1C',
+  },
+  {
+    controller: ParentNotificationsController,
+    method: 'updatePreferences',
+    permissions: ['communication.notifications.preferences.manage'],
+    sprint: '1C',
+  },
+  {
+    controller: ParentNotificationsController,
+    method: 'registerDeviceToken',
+    permissions: ['app.device_tokens.manage'],
+    sprint: '1C',
+  },
   {
     controller: ParentNotificationsController,
     method: 'unregisterCurrentDeviceToken',
+    permissions: ['app.device_tokens.manage'],
+    sprint: '1C',
   },
-  { controller: ParentNotificationsController, method: 'markRead' },
-  { controller: ParentNotificationsController, method: 'archive' },
-  { controller: ParentAnnouncementsController, method: 'markRead' },
+  {
+    controller: ParentNotificationsController,
+    method: 'markRead',
+    permissions: ['communication.notifications.read'],
+    sprint: '1C',
+  },
+  {
+    controller: ParentNotificationsController,
+    method: 'archive',
+    permissions: ['communication.notifications.archive'],
+    sprint: '1C',
+  },
 ];
 
-describe('Parent App read-only route permission metadata (security)', () => {
+const PARENT_APP_ROUTE_PERMISSION_CASES = [
+  ...PARENT_APP_READ_PERMISSION_CASES,
+  ...PARENT_APP_ACTION_PERMISSION_CASES,
+];
+
+describe('Parent App route permission metadata (security)', () => {
   it('declares the PARENT-PERM-1B read-only permission inventory', () => {
     expect(PARENT_APP_READ_PERMISSION_CASES).toHaveLength(58);
 
@@ -572,19 +636,44 @@ describe('Parent App read-only route permission metadata (security)', () => {
     }
   });
 
-  it('keeps the Parent App controller route inventory explicit', () => {
+  it('declares the PARENT-PERM-1C action permission inventory', () => {
+    expect(PARENT_APP_ACTION_PERMISSION_CASES).toHaveLength(10);
+
+    for (const entry of PARENT_APP_ACTION_PERMISSION_CASES) {
+      const handler = (entry.controller.prototype as Record<string, unknown>)[
+        entry.method
+      ];
+
+      expect(typeof handler).toBe('function');
+      expect(
+        Reflect.getMetadata(
+          REQUIRED_PERMISSIONS_METADATA,
+          handler as object,
+        ),
+      ).toEqual(entry.permissions);
+    }
+  });
+
+  it('keeps the complete Parent App RBAC route inventory explicit', () => {
+    expect(PARENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(68);
+
     const expectedKnownHandlers = new Set<string>();
 
-    for (const entry of PARENT_APP_READ_PERMISSION_CASES) {
+    for (const entry of PARENT_APP_ROUTE_PERMISSION_CASES) {
       const key = `${entry.controller.name}.${entry.method}`;
       expect(expectedKnownHandlers.has(key)).toBe(false);
       expectedKnownHandlers.add(key);
-    }
 
-    for (const entry of PARENT_APP_DEFERRED_ACTION_HANDLER_CASES) {
-      const key = `${entry.controller.name}.${entry.method}`;
-      expect(expectedKnownHandlers.has(key)).toBe(false);
-      expectedKnownHandlers.add(key);
+      const handler = (entry.controller.prototype as Record<string, unknown>)[
+        entry.method
+      ];
+      expect(typeof handler).toBe('function');
+      expect(
+        Reflect.getMetadata(
+          REQUIRED_PERMISSIONS_METADATA,
+          handler as object,
+        ),
+      ).toEqual(entry.permissions);
     }
 
     const discoveredRouteHandlers = PARENT_APP_CONTROLLER_CLASSES.flatMap(
@@ -1471,6 +1560,9 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       await prisma.communicationNotification.deleteMany({
         where: { recipientUserId: { in: createdUserIds } },
       });
+      await prisma.communicationNotificationPreference.deleteMany({
+        where: { userId: { in: createdUserIds } },
+      });
       await prisma.appDeviceToken.deleteMany({
         where: {
           OR: [
@@ -1868,6 +1960,129 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
           .expect(403);
 
         expect(response.body?.error?.code).toBe('auth.scope.missing');
+      }
+    } finally {
+      await prisma.membership.update({
+        where: { id: membership.id },
+        data: { roleId: membership.roleId },
+      });
+    }
+  });
+
+  it('returns auth.scope.missing for Parent App action routes when the parent role lacks permission', async () => {
+    const membership = await prisma.membership.findFirstOrThrow({
+      where: {
+        userId: parentUserId,
+        schoolId: schoolAId,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true, roleId: true },
+    });
+
+    await prisma.membership.update({
+      where: { id: membership.id },
+      data: { roleId: noPermissionParentRoleId },
+    });
+
+    try {
+      const { accessToken } = await login(parentEmail);
+      const placeholderId = '11111111-1111-4111-8111-111111111111';
+      const actionCases: {
+        method: 'post' | 'patch' | 'delete';
+        path: string;
+        body?: Record<string, unknown>;
+        expectedPermission: string;
+      }[] = [
+        {
+          method: 'post',
+          path: 'parent/messages/conversations',
+          body: {
+            contactId: 'teacher:00000000-0000-4000-8000-000000000000',
+          },
+          expectedPermission: 'communication.conversations.create',
+        },
+        {
+          method: 'post',
+          path: `parent/messages/conversations/${ownConversationAId}/messages`,
+          body: { body: 'Denied before message send use case' },
+          expectedPermission: 'communication.messages.send',
+        },
+        {
+          method: 'post',
+          path: `parent/messages/conversations/${ownConversationAId}/read`,
+          body: {},
+          expectedPermission: 'communication.conversations.read',
+        },
+        {
+          method: 'post',
+          path: `parent/announcements/${audienceAnnouncementAId}/read`,
+          body: {},
+          expectedPermission: 'communication.announcements.read',
+        },
+        {
+          method: 'post',
+          path: 'parent/notifications/read-all',
+          body: {},
+          expectedPermission: 'communication.notifications.read',
+        },
+        {
+          method: 'post',
+          path: `parent/notifications/${placeholderId}/read`,
+          body: {},
+          expectedPermission: 'communication.notifications.read',
+        },
+        {
+          method: 'post',
+          path: `parent/notifications/${placeholderId}/archive`,
+          body: {},
+          expectedPermission: 'communication.notifications.archive',
+        },
+        {
+          method: 'patch',
+          path: 'parent/notifications/preferences',
+          body: {
+            preferences: [
+              {
+                category: 'message_received',
+                inAppEnabled: true,
+              },
+            ],
+          },
+          expectedPermission:
+            'communication.notifications.preferences.manage',
+        },
+        {
+          method: 'post',
+          path: 'parent/notifications/device-tokens',
+          body: {
+            token: `${testSuffix}-denied-parent-token-value-123456`,
+            platform: 'android',
+          },
+          expectedPermission: 'app.device_tokens.manage',
+        },
+        {
+          method: 'delete',
+          path: 'parent/notifications/device-tokens/current',
+          body: {
+            token: `${testSuffix}-denied-parent-token-value-123456`,
+          },
+          expectedPermission: 'app.device_tokens.manage',
+        },
+      ];
+
+      for (const actionCase of actionCases) {
+        const call = request(app.getHttpServer())[
+          actionCase.method
+        ](`${GLOBAL_PREFIX}/${actionCase.path}`).set(
+          'Authorization',
+          `Bearer ${accessToken}`,
+        );
+        const response = await call.send(actionCase.body ?? {}).expect(403);
+
+        expect(response.body?.error?.code).toBe('auth.scope.missing');
+        expect(response.body?.error?.details?.missingPermissions).toEqual(
+          expect.arrayContaining([actionCase.expectedPermission]),
+        );
       }
     } finally {
       await prisma.membership.update({
@@ -2873,6 +3088,190 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
           `${GLOBAL_PREFIX}/parent/announcements/${inaccessibleAnnouncementId}/attachments`,
         )
         .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    }
+  });
+
+  it('linked parent can manage only own notification read, archive, and preference state', async () => {
+    const { accessToken } = await login(parentEmail);
+
+    const createNotification = async (params: {
+      marker: string;
+      schoolId: string;
+      recipientUserId: string;
+    }): Promise<string> => {
+      const notification = await prisma.communicationNotification.create({
+        data: {
+          schoolId: params.schoolId,
+          recipientUserId: params.recipientUserId,
+          sourceModule: CommunicationNotificationSourceModule.SYSTEM,
+          sourceType: 'parent_app_security',
+          type: CommunicationNotificationType.SYSTEM_ALERT,
+          title: `${testSuffix} ${params.marker}`,
+          body: `${testSuffix} ${params.marker} body`,
+          priority: CommunicationNotificationPriority.NORMAL,
+          status: CommunicationNotificationStatus.UNREAD,
+        },
+        select: { id: true },
+      });
+
+      return notification.id;
+    };
+
+    const readNotificationId = await createNotification({
+      marker: 'parent notification read',
+      schoolId: schoolAId,
+      recipientUserId: parentUserId,
+    });
+    const bulkReadNotificationId = await createNotification({
+      marker: 'parent notification read all',
+      schoolId: schoolAId,
+      recipientUserId: parentUserId,
+    });
+    const archiveNotificationId = await createNotification({
+      marker: 'parent notification archive',
+      schoolId: schoolAId,
+      recipientUserId: parentUserId,
+    });
+    const otherUserNotificationId = await createNotification({
+      marker: 'teacher notification hidden from parent',
+      schoolId: schoolAId,
+      recipientUserId: teacherUserId,
+    });
+    const crossSchoolNotificationId = await createNotification({
+      marker: 'cross school parent notification hidden',
+      schoolId: schoolBId,
+      recipientUserId: parentUserId,
+    });
+
+    const list = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/notifications`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(JSON.stringify(list.body)).toContain(readNotificationId);
+    expect(JSON.stringify(list.body)).not.toContain(otherUserNotificationId);
+    expect(JSON.stringify(list.body)).not.toContain(crossSchoolNotificationId);
+    assertNoForbiddenParentAppFields(list.body);
+
+    const detail = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/parent/notifications/${readNotificationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(detail.body.notification).toMatchObject({
+      notificationId: readNotificationId,
+      status: 'unread',
+    });
+    assertNoForbiddenParentAppFields(detail.body);
+
+    const read = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/parent/notifications/${readNotificationId}/read`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+
+    expect(read.body.notification).toMatchObject({
+      notificationId: readNotificationId,
+      status: 'read',
+      readAt: expect.any(String),
+    });
+    assertNoForbiddenParentAppFields(read.body);
+
+    const readAll = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/parent/notifications/read-all`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+
+    expect(readAll.body.markedCount).toBeGreaterThanOrEqual(1);
+    expect(readAll.body.marked_count).toBe(readAll.body.markedCount);
+    expect(readAll.body.readAt).toEqual(expect.any(String));
+    assertNoForbiddenParentAppFields(readAll.body);
+
+    const bulkReadRow = await prisma.communicationNotification.findUniqueOrThrow(
+      {
+        where: { id: bulkReadNotificationId },
+        select: { status: true, readAt: true },
+      },
+    );
+    expect(bulkReadRow.status).toBe(CommunicationNotificationStatus.READ);
+    expect(bulkReadRow.readAt).toBeTruthy();
+
+    const archived = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/parent/notifications/${archiveNotificationId}/archive`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({})
+      .expect(201);
+
+    expect(archived.body.notification).toMatchObject({
+      notificationId: archiveNotificationId,
+      status: 'archived',
+      archivedAt: expect.any(String),
+    });
+    assertNoForbiddenParentAppFields(archived.body);
+
+    const preferences = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/parent/notifications/preferences`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        preferences: [
+          {
+            category: 'message_received',
+            inAppEnabled: false,
+            pushEnabled: true,
+          },
+        ],
+      })
+      .expect(200);
+
+    expect(preferences.body.preferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: 'message_received',
+          inAppEnabled: false,
+          in_app_enabled: false,
+          pushEnabled: true,
+          push_enabled: true,
+        }),
+      ]),
+    );
+    assertNoForbiddenParentAppFields(preferences.body);
+
+    const preferenceRow =
+      await prisma.communicationNotificationPreference.findFirstOrThrow({
+        where: {
+          schoolId: schoolAId,
+          userId: parentUserId,
+          category: CommunicationNotificationPreferenceCategory.MESSAGE_RECEIVED,
+        },
+      });
+    expect(preferenceRow.inAppEnabled).toBe(false);
+    expect(preferenceRow.pushEnabled).toBe(true);
+
+    for (const inaccessibleNotificationId of [
+      otherUserNotificationId,
+      crossSchoolNotificationId,
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/parent/notifications/${inaccessibleNotificationId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/parent/notifications/${inaccessibleNotificationId}/read`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(
+          `${GLOBAL_PREFIX}/parent/notifications/${inaccessibleNotificationId}/archive`,
+        )
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({})
         .expect(404);
     }
   });

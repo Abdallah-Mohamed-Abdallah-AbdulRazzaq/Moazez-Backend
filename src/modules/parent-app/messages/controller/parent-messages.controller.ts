@@ -200,6 +200,7 @@ export class ParentMessagesController {
 
   @Post('conversations')
   @ApiCreatedResponse({ type: ParentMessageConversationResponseDto })
+  @RequiredPermissions('communication.conversations.create')
   createConversation(
     @Body() body: CreateParentMessageConversationDto,
   ): Promise<ParentMessageConversationResponseDto> {
@@ -208,6 +209,7 @@ export class ParentMessagesController {
 
   @Post('conversations/:conversationId/messages')
   @ApiCreatedResponse({ type: ParentConversationMessageResponseDto })
+  @RequiredPermissions('communication.messages.send')
   sendMessage(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Body() body: SendParentConversationMessageDto,
@@ -220,6 +222,7 @@ export class ParentMessagesController {
 
   @Post('conversations/:conversationId/read')
   @ApiCreatedResponse({ type: ParentConversationReadResponseDto })
+  @RequiredPermissions('communication.conversations.read')
   markRead(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
   ): Promise<ParentConversationReadResponseDto> {
