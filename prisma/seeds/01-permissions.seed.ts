@@ -197,6 +197,13 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'files.imports.manage', module: 'files', resource: 'imports', action: 'manage', description: 'Create file import jobs' },
   { code: 'files.imports.view', module: 'files', resource: 'imports', action: 'view', description: 'View import job status and validation reports' },
 
+  // parent app
+  { code: 'parent.home.view', module: 'parent', resource: 'home', action: 'view', description: 'View Parent App home aggregate data' },
+  { code: 'parent.children.view', module: 'parent', resource: 'children', action: 'view', description: 'View Parent App linked children data' },
+  { code: 'parent.profile.view', module: 'parent', resource: 'profile', action: 'view', description: 'View Parent App self profile data' },
+  { code: 'parent.progress.view', module: 'parent', resource: 'progress', action: 'view', description: 'View Parent App child progress aggregate data' },
+  { code: 'parent.reports.view', module: 'parent', resource: 'reports', action: 'view', description: 'View Parent App child reports aggregate data' },
+
   // student app
   { code: 'student.home.view', module: 'student', resource: 'home', action: 'view', description: 'View Student App home aggregate data' },
   { code: 'student.profile.view', module: 'student', resource: 'profile', action: 'view', description: 'View Student App self profile data' },
