@@ -113,6 +113,13 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'homework.targets.view', module: 'homework', resource: 'targets', action: 'view', description: 'View core homework assignment targets' },
   { code: 'homework.targets.manage', module: 'homework', resource: 'targets', action: 'manage', description: 'Resolve draft core homework assignment targets' },
   { code: 'homework.submissions.view', module: 'homework', resource: 'submissions', action: 'view', description: 'View core homework submission answers and attachments' },
+  { code: 'homework.questions.view', module: 'homework', resource: 'questions', action: 'view', description: 'View Teacher App homework questions for owned homework assignments' },
+  { code: 'homework.questions.manage', module: 'homework', resource: 'questions', action: 'manage', description: 'Create, update, reorder, and delete Teacher App homework questions and options for owned assignments' },
+  { code: 'homework.attachments.view', module: 'homework', resource: 'attachments', action: 'view', description: 'View Teacher App homework assignment attachments for owned assignments' },
+  { code: 'homework.attachments.manage', module: 'homework', resource: 'attachments', action: 'manage', description: 'Attach, update, reorder, and remove Teacher App homework assignment attachments for owned assignments' },
+  { code: 'homework.submissions.review', module: 'homework', resource: 'submissions', action: 'review', description: 'Review Teacher App homework submissions and submitted answers for owned assignments' },
+  { code: 'homework.grade_sync.view', module: 'homework', resource: 'grade_sync', action: 'view', description: 'View Teacher App homework-to-grades sync status for owned assignments' },
+  { code: 'homework.grade_sync.manage', module: 'homework', resource: 'grade_sync', action: 'manage', description: 'Sync reviewed Teacher App homework assignments or submissions to Grades' },
   { code: 'homework.submissions.save', module: 'homework', resource: 'submissions', action: 'save', description: 'Save app-facing self-service homework submission drafts' },
   { code: 'homework.submissions.submit', module: 'homework', resource: 'submissions', action: 'submit', description: 'Submit app-facing self-service homework submissions' },
   { code: 'homework.answers.manage', module: 'homework', resource: 'answers', action: 'manage', description: 'Create and update app-facing self-service homework answers' },
@@ -203,6 +210,16 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'parent.profile.view', module: 'parent', resource: 'profile', action: 'view', description: 'View Parent App self profile data' },
   { code: 'parent.progress.view', module: 'parent', resource: 'progress', action: 'view', description: 'View Parent App child progress aggregate data' },
   { code: 'parent.reports.view', module: 'parent', resource: 'reports', action: 'view', description: 'View Parent App child reports aggregate data' },
+
+  // teacher app
+  { code: 'teacher.home.view', module: 'teacher', resource: 'home', action: 'view', description: 'View Teacher App home aggregate data' },
+  { code: 'teacher.classes.view', module: 'teacher', resource: 'classes', action: 'view', description: 'View Teacher App owned class allocations' },
+  { code: 'teacher.classroom.view', module: 'teacher', resource: 'classroom', action: 'view', description: 'View Teacher App owned classroom data and roster summaries' },
+  { code: 'teacher.profile.view', module: 'teacher', resource: 'profile', action: 'view', description: 'View Teacher App self profile and employment data' },
+  { code: 'teacher.settings.view', module: 'teacher', resource: 'settings', action: 'view', description: 'View Teacher App school-facing about and contact settings' },
+  { code: 'teacher.lesson_preparation.view', module: 'teacher', resource: 'lesson_preparation', action: 'view', description: 'View Teacher App owned lesson-preparation items' },
+  { code: 'teacher.lesson_preparation.status.manage', module: 'teacher', resource: 'lesson_preparation.status', action: 'manage', description: 'Update Teacher App owned lesson-preparation status only' },
+  { code: 'teacher.announcements.manage', module: 'teacher', resource: 'announcements', action: 'manage', description: 'Create, update, publish, and archive Teacher-App-owned announcements for owned class targets' },
 
   // student app
   { code: 'student.home.view', module: 'student', resource: 'home', action: 'view', description: 'View Student App home aggregate data' },

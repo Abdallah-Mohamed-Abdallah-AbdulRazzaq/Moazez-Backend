@@ -1,5 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { readFileSync } from 'node:fs';
 import {
   AttendanceStatus,
   CommunicationConversationStatus,
@@ -52,7 +53,225 @@ const ARGON2_OPTIONS: argon2.Options = {
   parallelism: 1,
 };
 
+const TEACHER_PERM_1A_CATALOG_ADDITIONS = [
+  'teacher.home.view',
+  'teacher.classes.view',
+  'teacher.classroom.view',
+  'teacher.profile.view',
+  'teacher.settings.view',
+  'teacher.lesson_preparation.view',
+  'teacher.lesson_preparation.status.manage',
+  'teacher.announcements.manage',
+  'homework.questions.view',
+  'homework.questions.manage',
+  'homework.attachments.view',
+  'homework.attachments.manage',
+  'homework.submissions.review',
+  'homework.grade_sync.view',
+  'homework.grade_sync.manage',
+] as const;
+
+const FINAL_TEACHER_PERMISSIONS = [
+  'app.device_tokens.manage',
+  'academics.calendar.view',
+  'academics.curriculum.view',
+  'academics.lesson_plans.view',
+  'academics.timetable.view',
+  'attendance.entries.manage',
+  'attendance.sessions.manage',
+  'attendance.sessions.submit',
+  'attendance.sessions.view',
+  'communication.announcements.view',
+  'communication.contacts.view',
+  'communication.conversations.create',
+  'communication.conversations.read',
+  'communication.conversations.view',
+  'communication.messages.send',
+  'communication.messages.view',
+  'communication.notifications.archive',
+  'communication.notifications.preferences.manage',
+  'communication.notifications.read',
+  'communication.notifications.view',
+  'files.uploads.manage',
+  'grades.assessments.view',
+  'grades.gradebook.view',
+  'grades.items.manage',
+  'grades.items.view',
+  'grades.questions.view',
+  'grades.submissions.review',
+  'grades.submissions.view',
+  'homework.assignments.manage',
+  'homework.assignments.view',
+  'homework.attachments.manage',
+  'homework.attachments.view',
+  'homework.grade_sync.manage',
+  'homework.grade_sync.view',
+  'homework.questions.manage',
+  'homework.questions.view',
+  'homework.submissions.review',
+  'homework.submissions.view',
+  'homework.targets.manage',
+  'homework.targets.view',
+  'reinforcement.reviews.manage',
+  'reinforcement.reviews.view',
+  'reinforcement.tasks.manage',
+  'reinforcement.tasks.view',
+  'reinforcement.xp.view',
+  'students.records.view',
+  'teacher.announcements.manage',
+  'teacher.classroom.view',
+  'teacher.classes.view',
+  'teacher.home.view',
+  'teacher.lesson_preparation.status.manage',
+  'teacher.lesson_preparation.view',
+  'teacher.profile.view',
+  'teacher.settings.view',
+] as const;
+
+const FORBIDDEN_TEACHER_PERMISSIONS = [
+  'files.downloads.view',
+  'communication.announcements.manage',
+  'communication.messages.attachments.manage',
+  'communication.conversations.manage',
+  'communication.participants.manage',
+  'communication.messages.edit',
+  'communication.messages.delete',
+  'communication.messages.report',
+  'communication.messages.moderate',
+  'communication.conversations.moderate',
+  'communication.admin.view',
+  'communication.admin.manage',
+  'communication.platform.view',
+  'communication.platform.manage',
+  'communication.notifications.manage',
+  'academics.lesson_plans.manage',
+  'grades.assessments.manage',
+  'grades.questions.manage',
+  'grades.analytics.view',
+  'grades.snapshots.view',
+  'grades.assessments.approve',
+  'grades.assessments.lock',
+  'behavior.overview.view',
+  'behavior.categories.view',
+  'behavior.records.view',
+  'behavior.records.create',
+  'behavior.points.view',
+  'reinforcement.templates.view',
+  'reinforcement.hero.view',
+  'reinforcement.hero.progress.view',
+  'reinforcement.rewards.view',
+  'reinforcement.rewards.redemptions.view',
+  'reinforcement.rewards.redemptions.request',
+  'homework.submissions.save',
+  'homework.submissions.submit',
+  'homework.answers.manage',
+  'homework.submission_attachments.manage',
+  'students.records.manage',
+  'students.guardians.view',
+  'students.guardians.manage',
+  'students.documents.view',
+  'students.documents.manage',
+  'students.medical.view',
+  'students.medical.manage',
+  'admissions.leads.view',
+  'admissions.leads.manage',
+  'admissions.applications.view',
+  'admissions.applications.manage',
+  'platform.overview.view',
+  'settings.users.view',
+  'settings.users.manage',
+] as const;
+
 jest.setTimeout(45000);
+
+describe('Teacher role seed integrity (security)', () => {
+  it('keeps the TEACH-PERM-1A catalog and Teacher role target locked', () => {
+    const permissionsSeed = readFileSync(
+      `${process.cwd()}/prisma/seeds/01-permissions.seed.ts`,
+      'utf8',
+    );
+    const rolesSeed = readFileSync(
+      `${process.cwd()}/prisma/seeds/02-system-roles.seed.ts`,
+      'utf8',
+    );
+    const catalogCodes = extractPermissionCatalogCodes(permissionsSeed);
+    const catalogCodeSet = new Set(catalogCodes);
+    const teacherPermissions = extractConstStringArray(
+      rolesSeed,
+      'TEACHER_PERMISSIONS',
+    );
+    const parentPermissions = extractConstStringArray(
+      rolesSeed,
+      'PARENT_PERMISSIONS',
+    );
+    const studentPermissions = extractConstStringArray(
+      rolesSeed,
+      'STUDENT_PERMISSIONS',
+    );
+
+    expect(catalogCodes).toHaveLength(205);
+    expect(catalogCodeSet.size).toBe(catalogCodes.length);
+    expect(catalogCodes).toEqual(
+      expect.arrayContaining(Array.from(TEACHER_PERM_1A_CATALOG_ADDITIONS)),
+    );
+
+    expect(teacherPermissions).toHaveLength(54);
+    expect(new Set(teacherPermissions).size).toBe(teacherPermissions.length);
+    expect(teacherPermissions).toEqual(Array.from(FINAL_TEACHER_PERMISSIONS));
+
+    for (const forbiddenPermission of FORBIDDEN_TEACHER_PERMISSIONS) {
+      expect(teacherPermissions).not.toContain(forbiddenPermission);
+    }
+    expect(
+      teacherPermissions.some((code) => code.startsWith('dashboard.')),
+    ).toBe(false);
+    expect(teacherPermissions.some((code) => code.startsWith('platform.'))).toBe(
+      false,
+    );
+    expect(teacherPermissions.some((code) => code.startsWith('settings.'))).toBe(
+      false,
+    );
+    expect(
+      teacherPermissions.some((code) => code.startsWith('admissions.')),
+    ).toBe(false);
+
+    expect(parentPermissions).toHaveLength(43);
+    expect(studentPermissions).toHaveLength(57);
+
+    for (const rolePermissions of [
+      teacherPermissions,
+      parentPermissions,
+      studentPermissions,
+    ]) {
+      const missingPermissions = rolePermissions.filter(
+        (code) => !catalogCodeSet.has(code),
+      );
+      expect(missingPermissions).toEqual([]);
+    }
+
+    expect(rolesSeed).toContain('foundPermissionIdsByCode');
+    expect(rolesSeed).toContain(
+      'Missing permissions for system role ${role.key}',
+    );
+  });
+});
+
+function extractConstStringArray(source: string, constName: string): string[] {
+  const match = source.match(
+    new RegExp(`const ${constName} = \\[([\\s\\S]*?)\\];`),
+  );
+  if (!match) throw new Error(`${constName} seed array not found.`);
+
+  return [...match[1].matchAll(/'([^']+)'/g)].map((entry) => entry[1]);
+}
+
+function extractPermissionCatalogCodes(source: string): string[] {
+  return [...source.matchAll(/code: '([^']+)'/g)].map((entry) => entry[1]);
+}
+
+function sortedStrings(values: readonly string[]): string[] {
+  return [...values].sort((left, right) => left.localeCompare(right));
+}
 
 describe('Teacher App tenancy isolation (security)', () => {
   let app: INestApplication<App>;
@@ -822,6 +1041,56 @@ describe('Teacher App tenancy isolation (security)', () => {
     } finally {
       if (app) await app.close();
       if (prisma) await prisma.$disconnect();
+    }
+  });
+
+  it('/auth/me exposes the final Teacher role permissions without generic file or broad communication grants', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const me = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/auth/me`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const permissions = me.body.activeMembership?.permissions ?? [];
+
+    expect(me.body.activeMembership).toEqual(
+      expect.objectContaining({
+        roleKey: 'teacher',
+        schoolId: schoolAId,
+        organizationId: organizationAId,
+      }),
+    );
+    expect(permissions).toHaveLength(54);
+    expect(new Set(permissions).size).toBe(permissions.length);
+    expect(sortedStrings(permissions)).toEqual(
+      sortedStrings(FINAL_TEACHER_PERMISSIONS),
+    );
+    expect(permissions).toEqual(
+      expect.arrayContaining([
+        'teacher.home.view',
+        'teacher.classroom.view',
+        'teacher.announcements.manage',
+        'homework.submissions.review',
+        'homework.grade_sync.manage',
+        'communication.notifications.archive',
+        'app.device_tokens.manage',
+      ]),
+    );
+
+    for (const forbiddenPermission of [
+      'files.downloads.view',
+      'communication.announcements.manage',
+      'communication.conversations.manage',
+      'communication.participants.manage',
+      'communication.messages.edit',
+      'communication.messages.delete',
+      'communication.messages.attachments.manage',
+      'homework.submissions.submit',
+      'students.documents.view',
+      'settings.users.manage',
+      'platform.overview.view',
+    ]) {
+      expect(permissions).not.toContain(forbiddenPermission);
     }
   });
 
