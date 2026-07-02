@@ -778,6 +778,31 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       await prisma.teacherSubjectAllocation.deleteMany({
         where: { id: { in: createdAllocationIds } },
       });
+      await prisma.communicationNotificationPushAttempt.deleteMany({
+        where: {
+          delivery: {
+            notification: {
+              recipientUserId: { in: createdUserIds },
+            },
+          },
+        },
+      });
+      await prisma.communicationNotificationDelivery.deleteMany({
+        where: {
+          notification: {
+            recipientUserId: { in: createdUserIds },
+          },
+        },
+      });
+      await prisma.communicationNotification.deleteMany({
+        where: { recipientUserId: { in: createdUserIds } },
+      });
+      await prisma.communicationNotificationPreference.deleteMany({
+        where: { userId: { in: createdUserIds } },
+      });
+      await prisma.appDeviceToken.deleteMany({
+        where: { userId: { in: createdUserIds } },
+      });
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
@@ -820,10 +845,18 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     }
   });
 
-  it('registers the Sprint 9F Parent App route set and keeps deferred routes absent', async () => {
+  it('registers the final Parent App route set and keeps unsupported routes absent', async () => {
     const routes = listRegisteredParentRoutes();
 
+    expect(routes).toHaveLength(68);
+    expect(routes.filter((route) => route.startsWith('GET '))).toHaveLength(
+      58,
+    );
+    expect(routes.filter((route) => !route.startsWith('GET '))).toHaveLength(
+      10,
+    );
     expect(routes).toEqual([
+      'DELETE /api/v1/parent/notifications/device-tokens/current',
       'GET /api/v1/parent/announcements',
       'GET /api/v1/parent/announcements/:announcementId',
       'GET /api/v1/parent/announcements/:announcementId/attachments',
@@ -868,13 +901,29 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'GET /api/v1/parent/children/:studentId/tasks/:taskId/submissions/:submissionId',
       'GET /api/v1/parent/children/:studentId/tasks/summary',
       'GET /api/v1/parent/home',
+      'GET /api/v1/parent/messages/contacts',
       'GET /api/v1/parent/messages/conversations',
       'GET /api/v1/parent/messages/conversations/:conversationId',
       'GET /api/v1/parent/messages/conversations/:conversationId/messages',
+      'GET /api/v1/parent/messages/conversations/:conversationId/messages/:messageId/attachments/:attachmentId/download',
+      'GET /api/v1/parent/messages/conversations/:conversationId/messages/:messageId/attachments/:attachmentId/preview',
+      'GET /api/v1/parent/messages/conversations/:conversationId/messages/:messageId/info',
+      'GET /api/v1/parent/messages/conversations/:conversationId/messages/:messageId/readers',
+      'GET /api/v1/parent/messages/conversations/:conversationId/search',
+      'GET /api/v1/parent/notifications',
+      'GET /api/v1/parent/notifications/:notificationId',
+      'GET /api/v1/parent/notifications/preferences',
+      'GET /api/v1/parent/notifications/summary',
       'GET /api/v1/parent/profile',
+      'PATCH /api/v1/parent/notifications/preferences',
       'POST /api/v1/parent/announcements/:announcementId/read',
+      'POST /api/v1/parent/messages/conversations',
       'POST /api/v1/parent/messages/conversations/:conversationId/messages',
       'POST /api/v1/parent/messages/conversations/:conversationId/read',
+      'POST /api/v1/parent/notifications/:notificationId/archive',
+      'POST /api/v1/parent/notifications/:notificationId/read',
+      'POST /api/v1/parent/notifications/device-tokens',
+      'POST /api/v1/parent/notifications/read-all',
     ]);
 
     for (const absentRoute of [
@@ -884,9 +933,6 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'GET /api/v1/parent/homeworks',
       'GET /api/v1/parent/pickup',
       'GET /api/v1/parent/smart-pickup',
-      'GET /api/v1/parent/notifications',
-      'GET /api/v1/parent/messages/contacts',
-      'POST /api/v1/parent/messages/conversations',
       'POST /api/v1/parent/messages/conversations/:conversationId/attachments',
       'POST /api/v1/parent/messages/conversations/:conversationId/audio',
       'POST /api/v1/parent/children/:studentId/tasks',
@@ -2010,7 +2056,6 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'homeworks',
       'pickup',
       'messages',
-      'notifications',
       'grades',
       'behavior',
       'progress',
@@ -2041,8 +2086,6 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     }
 
     for (const route of [
-      { method: 'get' as const, path: 'messages/contacts' },
-      { method: 'post' as const, path: 'messages/conversations' },
       {
         method: 'post' as const,
         path: `messages/conversations/${ownConversationAId}/attachments`,

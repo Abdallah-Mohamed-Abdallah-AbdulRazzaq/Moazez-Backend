@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { METHOD_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
+import { readFileSync } from 'node:fs';
 import {
   AttendanceMode,
   AttendanceScopeType,
@@ -617,6 +618,70 @@ const PARENT_APP_ROUTE_PERMISSION_CASES = [
   ...PARENT_APP_ACTION_PERMISSION_CASES,
 ];
 
+const FINAL_PARENT_PERMISSIONS = [
+  'app.device_tokens.manage',
+  'academics.calendar.view',
+  'academics.curriculum.view',
+  'academics.lesson_plans.view',
+  'academics.subjects.view',
+  'academics.timetable.view',
+  'attendance.absences.view',
+  'attendance.sessions.view',
+  'behavior.points.view',
+  'behavior.records.view',
+  'communication.announcements.read',
+  'communication.announcements.view',
+  'communication.contacts.view',
+  'communication.conversations.create',
+  'communication.conversations.read',
+  'communication.conversations.view',
+  'communication.messages.send',
+  'communication.messages.view',
+  'communication.notifications.archive',
+  'communication.notifications.preferences.manage',
+  'communication.notifications.read',
+  'communication.notifications.view',
+  'discipline.timeline.view',
+  'grades.assessments.view',
+  'grades.gradebook.view',
+  'grades.submissions.view',
+  'homework.assignments.view',
+  'homework.submissions.view',
+  'parent.children.view',
+  'parent.home.view',
+  'parent.profile.view',
+  'parent.progress.view',
+  'parent.reports.view',
+  'reinforcement.hero.badges.view',
+  'reinforcement.hero.progress.view',
+  'reinforcement.hero.view',
+  'reinforcement.rewards.redemptions.view',
+  'reinforcement.rewards.view',
+  'reinforcement.submissions.view',
+  'reinforcement.tasks.view',
+  'reinforcement.xp.view',
+  'students.enrollments.view',
+  'students.records.view',
+] as const;
+
+const FORBIDDEN_PARENT_PERMISSIONS = [
+  'files.downloads.view',
+  'files.uploads.manage',
+  'students.guardians.view',
+  'students.documents.view',
+  'students.medical.view',
+  'communication.messages.attachments.manage',
+  'communication.conversations.manage',
+  'communication.participants.manage',
+  'communication.messages.edit',
+  'communication.messages.delete',
+  'communication.messages.moderate',
+  'communication.notifications.manage',
+  'communication.announcements.manage',
+  'communication.admin.view',
+  'communication.admin.manage',
+] as const;
+
 describe('Parent App route permission metadata (security)', () => {
   it('declares the PARENT-PERM-1B read-only permission inventory', () => {
     expect(PARENT_APP_READ_PERMISSION_CASES).toHaveLength(58);
@@ -699,6 +764,51 @@ describe('Parent App route permission metadata (security)', () => {
   });
 });
 
+describe('Parent role seed integrity (security)', () => {
+  it('keeps final Parent role permissions, Student count, and seed guardrail locked', () => {
+    const permissionsSeed = readFileSync(
+      `${process.cwd()}/prisma/seeds/01-permissions.seed.ts`,
+      'utf8',
+    );
+    const rolesSeed = readFileSync(
+      `${process.cwd()}/prisma/seeds/02-system-roles.seed.ts`,
+      'utf8',
+    );
+    const catalogCodes = extractPermissionCatalogCodes(permissionsSeed);
+    const parentPermissions = extractConstStringArray(
+      rolesSeed,
+      'PARENT_PERMISSIONS',
+    );
+    const studentPermissions = extractConstStringArray(
+      rolesSeed,
+      'STUDENT_PERMISSIONS',
+    );
+
+    expect(parentPermissions).toHaveLength(43);
+    expect(new Set(parentPermissions).size).toBe(parentPermissions.length);
+    expect(parentPermissions).toEqual(Array.from(FINAL_PARENT_PERMISSIONS));
+    expect(catalogCodes).toEqual(
+      expect.arrayContaining(Array.from(FINAL_PARENT_PERMISSIONS)),
+    );
+
+    for (const forbiddenPermission of FORBIDDEN_PARENT_PERMISSIONS) {
+      expect(parentPermissions).not.toContain(forbiddenPermission);
+    }
+    expect(parentPermissions.some((code) => code.startsWith('settings.'))).toBe(
+      false,
+    );
+    expect(parentPermissions.some((code) => code.startsWith('platform.'))).toBe(
+      false,
+    );
+
+    expect(studentPermissions).toHaveLength(57);
+    expect(rolesSeed).toContain('foundPermissionIdsByCode');
+    expect(rolesSeed).toContain(
+      'Missing permissions for system role ${role.key}',
+    );
+  });
+});
+
 describe('Parent App ownership foundation (security)', () => {
   it('does not allow a parent to access an unlinked same-school child', async () => {
     const { service, adapter } = createValidService();
@@ -777,6 +887,23 @@ describe('Parent App ownership foundation (security)', () => {
     expect(adapter.listCurrentSchoolGuardiansByUserId).not.toHaveBeenCalled();
   });
 });
+
+function extractConstStringArray(source: string, constName: string): string[] {
+  const match = source.match(
+    new RegExp(`const ${constName} = \\[([\\s\\S]*?)\\];`),
+  );
+  if (!match) throw new Error(`${constName} seed array not found.`);
+
+  return [...match[1].matchAll(/'([^']+)'/g)].map((entry) => entry[1]);
+}
+
+function extractPermissionCatalogCodes(source: string): string[] {
+  return [...source.matchAll(/code: '([^']+)'/g)].map((entry) => entry[1]);
+}
+
+function sortedStrings(values: readonly string[]): string[] {
+  return [...values].sort((left, right) => left.localeCompare(right));
+}
 
 async function withParentRequestContext<T>(
   fn: () => T | Promise<T>,
@@ -1893,6 +2020,41 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     assertNoForbiddenParentAppFields(profile.body);
   });
 
+  it('/auth/me exposes the final Parent role permissions without generic file or admin grants', async () => {
+    const { accessToken } = await login(parentEmail);
+
+    const me = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/auth/me`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const permissions = me.body.activeMembership?.permissions ?? [];
+
+    expect(me.body.activeMembership).toEqual(
+      expect.objectContaining({
+        roleKey: 'parent',
+        schoolId: schoolAId,
+        organizationId: organizationAId,
+      }),
+    );
+    expect(permissions).toHaveLength(43);
+    expect(sortedStrings(permissions)).toEqual(
+      sortedStrings(FINAL_PARENT_PERMISSIONS),
+    );
+    expect(permissions).toEqual(
+      expect.arrayContaining([
+        'parent.home.view',
+        'parent.children.view',
+        'communication.messages.send',
+        'communication.notifications.archive',
+        'app.device_tokens.manage',
+      ]),
+    );
+
+    for (const forbiddenPermission of FORBIDDEN_PARENT_PERMISSIONS) {
+      expect(permissions).not.toContain(forbiddenPermission);
+    }
+  });
+
   it('returns auth.scope.missing for representative read-only routes when the parent role lacks permission', async () => {
     const membership = await prisma.membership.findFirstOrThrow({
       where: {
@@ -2713,11 +2875,28 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     expect(proofDownload.headers.location).toEqual(expect.any(String));
     expect(proofDownload.headers.location).toContain('X-Amz-Expires=300');
 
-    await request(app.getHttpServer())
+    const genericDownload = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/files/${ownedTaskProofFileAId}/download`)
       .set('Authorization', `Bearer ${accessToken}`)
       .redirects(0)
       .expect(403);
+    expect(genericDownload.body?.error?.code).toBe('auth.scope.missing');
+    expect(genericDownload.body?.error?.details?.missingPermissions).toEqual(
+      expect.arrayContaining(['files.downloads.view']),
+    );
+
+    const genericUpload = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/files`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', Buffer.from('parent forbidden generic upload'), {
+        filename: `${testSuffix}-forbidden-parent-upload.txt`,
+        contentType: 'text/plain',
+      })
+      .expect(403);
+    expect(genericUpload.body?.error?.code).toBe('auth.scope.missing');
+    expect(genericUpload.body?.error?.details?.missingPermissions).toEqual(
+      expect.arrayContaining(['files.uploads.manage']),
+    );
 
     for (const blockedRoute of [
       `${GLOBAL_PREFIX}/parent/children/${sameSchoolUnlinkedStudentId}/files/${sameSchoolUnlinkedTaskProofFileAId}/download`,
