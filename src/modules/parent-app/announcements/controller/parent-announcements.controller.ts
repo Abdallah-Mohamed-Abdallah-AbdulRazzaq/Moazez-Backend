@@ -12,6 +12,7 @@ import {
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetParentAnnouncementUseCase } from '../application/get-parent-announcement.use-case';
 import { ListParentAnnouncementAttachmentsUseCase } from '../application/list-parent-announcement-attachments.use-case';
 import { ListParentAnnouncementsUseCase } from '../application/list-parent-announcements.use-case';
@@ -37,6 +38,7 @@ export class ParentAnnouncementsController {
 
   @Get()
   @ApiOkResponse({ type: ParentAnnouncementsListResponseDto })
+  @RequiredPermissions('communication.announcements.view')
   listAnnouncements(
     @Query() query: ParentAnnouncementsQueryDto,
   ): Promise<ParentAnnouncementsListResponseDto> {
@@ -45,6 +47,7 @@ export class ParentAnnouncementsController {
 
   @Get(':announcementId')
   @ApiOkResponse({ type: ParentAnnouncementResponseDto })
+  @RequiredPermissions('communication.announcements.view')
   getAnnouncement(
     @Param('announcementId', new ParseUUIDPipe()) announcementId: string,
   ): Promise<ParentAnnouncementResponseDto> {
@@ -61,6 +64,7 @@ export class ParentAnnouncementsController {
 
   @Get(':announcementId/attachments')
   @ApiOkResponse({ type: ParentAnnouncementAttachmentsResponseDto })
+  @RequiredPermissions('communication.announcements.view')
   listAttachments(
     @Param('announcementId', new ParseUUIDPipe()) announcementId: string,
   ): Promise<ParentAnnouncementAttachmentsResponseDto> {

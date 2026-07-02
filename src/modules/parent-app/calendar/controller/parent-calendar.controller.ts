@@ -6,6 +6,7 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { AppCalendarEventsQueryDto } from '../../../academics/calendar/app-facing/dto/app-calendar-events-query.dto';
 import {
   AppCalendarEventResponseDto,
@@ -27,6 +28,7 @@ export class ParentCalendarController {
   @ApiOperation({ summary: 'List owned child calendar events' })
   @ApiParam({ name: 'studentId', description: 'Owned child student id.' })
   @ApiOkResponse({ type: AppCalendarEventsListResponseDto })
+  @RequiredPermissions('academics.calendar.view')
   listEvents(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Query() query: AppCalendarEventsQueryDto,
@@ -39,6 +41,7 @@ export class ParentCalendarController {
   @ApiParam({ name: 'studentId', description: 'Owned child student id.' })
   @ApiParam({ name: 'eventId', format: 'uuid' })
   @ApiOkResponse({ type: AppCalendarEventResponseDto })
+  @RequiredPermissions('academics.calendar.view')
   getEvent(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Param('eventId', new ParseUUIDPipe()) eventId: string,

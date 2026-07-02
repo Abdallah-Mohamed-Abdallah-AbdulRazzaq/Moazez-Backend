@@ -1,5 +1,6 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import {
   DisciplineDerivedQueryDto,
   ParentDisciplineSummaryResponseDto,
@@ -19,6 +20,7 @@ export class ParentDisciplineController {
 
   @Get()
   @ApiOkResponse({ type: ParentDisciplineTimelineListResponseDto })
+  @RequiredPermissions('discipline.timeline.view')
   listDiscipline(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Query() query: DisciplineDerivedQueryDto,
@@ -28,6 +30,7 @@ export class ParentDisciplineController {
 
   @Get('summary')
   @ApiOkResponse({ type: ParentDisciplineSummaryResponseDto })
+  @RequiredPermissions('discipline.timeline.view')
   getDisciplineSummary(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Query() query: DisciplineDerivedQueryDto,

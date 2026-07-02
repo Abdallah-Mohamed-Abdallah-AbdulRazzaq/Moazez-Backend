@@ -10,6 +10,7 @@ import {
   ApiTemporaryRedirectResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetParentChildFileDownloadUrlUseCase } from '../application/get-parent-child-file-download-url.use-case';
 
 @ApiTags('parent-app')
@@ -36,6 +37,7 @@ export class ParentFilesController {
   @ApiUnauthorizedResponse({ description: 'auth.token.invalid' })
   @ApiForbiddenResponse({ description: 'parent_app.actor.required_parent' })
   @ApiNotFoundResponse({ description: 'not_found' })
+  @RequiredPermissions('reinforcement.submissions.view')
   async downloadChildFile(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Param('fileId', new ParseUUIDPipe()) fileId: string,

@@ -1,5 +1,6 @@
 import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetParentChildReportsSummaryUseCase } from '../application/get-parent-child-reports-summary.use-case';
 import { ListParentChildReportsUseCase } from '../application/list-parent-child-reports.use-case';
 import {
@@ -18,6 +19,7 @@ export class ParentReportsController {
 
   @Get()
   @ApiOkResponse({ type: ParentReportsListResponseDto })
+  @RequiredPermissions('parent.reports.view')
   listReports(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
   ): Promise<ParentReportsListResponseDto> {
@@ -26,6 +28,7 @@ export class ParentReportsController {
 
   @Get('summary')
   @ApiOkResponse({ type: ParentReportsSummaryResponseDto })
+  @RequiredPermissions('parent.reports.view')
   getSummary(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
   ): Promise<ParentReportsSummaryResponseDto> {

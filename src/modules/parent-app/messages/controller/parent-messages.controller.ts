@@ -15,6 +15,7 @@ import {
   ApiTags,
   ApiTemporaryRedirectResponse,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetParentMessageAttachmentDownloadUrlUseCase } from '../application/get-parent-message-attachment-download-url.use-case';
 import {
   GetParentMessageInfoUseCase,
@@ -69,6 +70,7 @@ export class ParentMessagesController {
 
   @Get('contacts')
   @ApiOkResponse({ type: ParentMessageContactsResponseDto })
+  @RequiredPermissions('communication.contacts.view')
   listContacts(
     @Query() query: ListParentMessageContactsQueryDto,
   ): Promise<ParentMessageContactsResponseDto> {
@@ -77,6 +79,7 @@ export class ParentMessagesController {
 
   @Get('conversations')
   @ApiOkResponse({ type: ParentMessageConversationsResponseDto })
+  @RequiredPermissions('communication.conversations.view')
   listConversations(
     @Query() query: ListParentMessageConversationsQueryDto,
   ): Promise<ParentMessageConversationsResponseDto> {
@@ -85,6 +88,7 @@ export class ParentMessagesController {
 
   @Get('conversations/:conversationId')
   @ApiOkResponse({ type: ParentMessageConversationResponseDto })
+  @RequiredPermissions('communication.conversations.view')
   getConversation(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
   ): Promise<ParentMessageConversationResponseDto> {
@@ -93,6 +97,7 @@ export class ParentMessagesController {
 
   @Get('conversations/:conversationId/search')
   @ApiOkResponse({ type: ParentConversationMessageSearchResponseDto })
+  @RequiredPermissions('communication.messages.view')
   searchMessages(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Query() query: SearchParentConversationMessagesQueryDto,
@@ -105,6 +110,7 @@ export class ParentMessagesController {
 
   @Get('conversations/:conversationId/messages')
   @ApiOkResponse({ type: ParentConversationMessagesResponseDto })
+  @RequiredPermissions('communication.messages.view')
   listMessages(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Query() query: ListParentConversationMessagesQueryDto,
@@ -117,6 +123,7 @@ export class ParentMessagesController {
 
   @Get('conversations/:conversationId/messages/:messageId/readers')
   @ApiOkResponse({ type: ParentMessageReadersResponseDto })
+  @RequiredPermissions('communication.messages.view')
   getMessageReaders(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Param('messageId', new ParseUUIDPipe()) messageId: string,
@@ -131,6 +138,7 @@ export class ParentMessagesController {
 
   @Get('conversations/:conversationId/messages/:messageId/info')
   @ApiOkResponse({ type: ParentMessageInfoResponseDto })
+  @RequiredPermissions('communication.messages.view')
   getMessageInfo(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Param('messageId', new ParseUUIDPipe()) messageId: string,
@@ -151,6 +159,7 @@ export class ParentMessagesController {
     description:
       'Redirects to an authorized temporary attachment download URL.',
   })
+  @RequiredPermissions('communication.messages.view')
   async downloadAttachment(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Param('messageId', new ParseUUIDPipe()) messageId: string,
@@ -173,6 +182,7 @@ export class ParentMessagesController {
   @ApiTemporaryRedirectResponse({
     description: 'Redirects to an authorized temporary attachment preview URL.',
   })
+  @RequiredPermissions('communication.messages.view')
   async previewAttachment(
     @Param('conversationId', new ParseUUIDPipe()) conversationId: string,
     @Param('messageId', new ParseUUIDPipe()) messageId: string,

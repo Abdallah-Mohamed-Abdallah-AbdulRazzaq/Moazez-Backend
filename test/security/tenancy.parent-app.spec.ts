@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { METHOD_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   AttendanceMode,
@@ -55,6 +56,7 @@ import {
   XpSourceType,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
+import 'reflect-metadata';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import {
@@ -64,13 +66,33 @@ import {
   setActor,
 } from '../../src/common/context/request-context';
 import { AppModule } from '../../src/app.module';
+import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { StorageService } from '../../src/infrastructure/storage/storage.service';
 import { ParentAppAccessService } from '../../src/modules/parent-app/access/parent-app-access.service';
 import { ParentAppGuardianReadAdapter } from '../../src/modules/parent-app/access/parent-app-guardian-read.adapter';
+import { ParentAnnouncementsController } from '../../src/modules/parent-app/announcements/controller/parent-announcements.controller';
+import { ParentBehaviorController } from '../../src/modules/parent-app/behavior/controller/parent-behavior.controller';
+import { ParentCalendarController } from '../../src/modules/parent-app/calendar/controller/parent-calendar.controller';
+import { ParentChildrenController } from '../../src/modules/parent-app/children/controller/parent-children.controller';
+import { ParentDisciplineController } from '../../src/modules/parent-app/discipline/controller/parent-discipline.controller';
+import { ParentFilesController } from '../../src/modules/parent-app/files/controller/parent-files.controller';
+import { ParentGradesController } from '../../src/modules/parent-app/grades/controller/parent-grades.controller';
+import { ParentHeroController } from '../../src/modules/parent-app/hero/controller/parent-hero.controller';
+import { ParentHomeController } from '../../src/modules/parent-app/home/controller/parent-home.controller';
+import { ParentHomeworksController } from '../../src/modules/parent-app/homeworks/controller/parent-homeworks.controller';
+import { ParentChildLessonsController } from '../../src/modules/parent-app/lessons/controller/parent-child-lessons.controller';
+import { ParentMessagesController } from '../../src/modules/parent-app/messages/controller/parent-messages.controller';
+import { ParentNotificationsController } from '../../src/modules/parent-app/notifications/controller/parent-notifications.controller';
+import { ParentProfileController } from '../../src/modules/parent-app/profile/controller/parent-profile.controller';
+import { ParentProgressController } from '../../src/modules/parent-app/progress/controller/parent-progress.controller';
+import { ParentReportsController } from '../../src/modules/parent-app/reports/controller/parent-reports.controller';
+import { ParentRewardsController } from '../../src/modules/parent-app/rewards/controller/parent-rewards.controller';
+import { ParentScheduleController } from '../../src/modules/parent-app/schedule/controller/parent-schedule.controller';
 import {
   ParentScheduleClock,
   parseParentScheduleDate,
 } from '../../src/modules/parent-app/schedule/application/parent-schedule-date';
+import { ParentTasksController } from '../../src/modules/parent-app/tasks/controller/parent-tasks.controller';
 import type {
   ParentAppEnrollmentRecord,
   ParentAppGuardianRecord,
@@ -96,6 +118,497 @@ const ARGON2_OPTIONS: argon2.Options = {
 };
 
 jest.setTimeout(45000);
+
+type ParentAppControllerClass = {
+  prototype: object;
+  name: string;
+};
+
+type ParentAppReadPermissionCase = {
+  controller: ParentAppControllerClass;
+  method: string;
+  permissions: string[];
+  sprint: '1B';
+};
+
+const PARENT_APP_READ_PERMISSION_CASES: ParentAppReadPermissionCase[] = [
+  {
+    controller: ParentHomeController,
+    method: 'getHome',
+    permissions: ['parent.home.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentChildrenController,
+    method: 'listChildren',
+    permissions: ['parent.children.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentChildrenController,
+    method: 'getChild',
+    permissions: [
+      'parent.children.view',
+      'students.records.view',
+      'students.enrollments.view',
+    ],
+    sprint: '1B',
+  },
+  {
+    controller: ParentProfileController,
+    method: 'getProfile',
+    permissions: ['parent.profile.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentGradesController,
+    method: 'listGrades',
+    permissions: ['grades.assessments.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentGradesController,
+    method: 'getSummary',
+    permissions: ['grades.gradebook.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentGradesController,
+    method: 'getAssessmentGrade',
+    permissions: ['grades.assessments.view', 'grades.submissions.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentHomeworksController,
+    method: 'listHomeworks',
+    permissions: ['homework.assignments.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentHomeworksController,
+    method: 'getHomework',
+    permissions: ['homework.assignments.view', 'homework.submissions.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentBehaviorController,
+    method: 'listBehavior',
+    permissions: [
+      'behavior.records.view',
+      'behavior.points.view',
+      'attendance.sessions.view',
+      'attendance.absences.view',
+    ],
+    sprint: '1B',
+  },
+  {
+    controller: ParentBehaviorController,
+    method: 'getSummary',
+    permissions: [
+      'behavior.points.view',
+      'attendance.sessions.view',
+      'attendance.absences.view',
+    ],
+    sprint: '1B',
+  },
+  {
+    controller: ParentBehaviorController,
+    method: 'getRecord',
+    permissions: ['behavior.records.view', 'behavior.points.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentDisciplineController,
+    method: 'listDiscipline',
+    permissions: ['discipline.timeline.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentDisciplineController,
+    method: 'getDisciplineSummary',
+    permissions: ['discipline.timeline.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentProgressController,
+    method: 'getProgress',
+    permissions: ['parent.progress.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentProgressController,
+    method: 'getAcademicProgress',
+    permissions: [
+      'parent.progress.view',
+      'grades.assessments.view',
+      'grades.gradebook.view',
+      'academics.subjects.view',
+    ],
+    sprint: '1B',
+  },
+  {
+    controller: ParentProgressController,
+    method: 'getBehaviorProgress',
+    permissions: [
+      'parent.progress.view',
+      'behavior.records.view',
+      'behavior.points.view',
+      'attendance.sessions.view',
+      'attendance.absences.view',
+    ],
+    sprint: '1B',
+  },
+  {
+    controller: ParentProgressController,
+    method: 'getXpProgress',
+    permissions: ['parent.progress.view', 'reinforcement.xp.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentReportsController,
+    method: 'listReports',
+    permissions: ['parent.reports.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentReportsController,
+    method: 'getSummary',
+    permissions: ['parent.reports.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentScheduleController,
+    method: 'getTodaySchedule',
+    permissions: ['academics.timetable.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentScheduleController,
+    method: 'getWeeklySchedule',
+    permissions: ['academics.timetable.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentCalendarController,
+    method: 'listEvents',
+    permissions: ['academics.calendar.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentCalendarController,
+    method: 'getEvent',
+    permissions: ['academics.calendar.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentChildLessonsController,
+    method: 'getToday',
+    permissions: ['academics.lesson_plans.view', 'academics.curriculum.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentChildLessonsController,
+    method: 'getWeek',
+    permissions: [
+      'academics.lesson_plans.view',
+      'academics.curriculum.view',
+      'academics.timetable.view',
+    ],
+    sprint: '1B',
+  },
+  {
+    controller: ParentChildLessonsController,
+    method: 'getDetail',
+    permissions: ['academics.lesson_plans.view', 'academics.curriculum.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentTasksController,
+    method: 'listTasks',
+    permissions: ['reinforcement.tasks.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentTasksController,
+    method: 'getSummary',
+    permissions: ['reinforcement.tasks.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentTasksController,
+    method: 'getTask',
+    permissions: ['reinforcement.tasks.view', 'reinforcement.submissions.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentTasksController,
+    method: 'listSubmissions',
+    permissions: ['reinforcement.submissions.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentTasksController,
+    method: 'getSubmission',
+    permissions: ['reinforcement.submissions.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentHeroController,
+    method: 'getHeroOverview',
+    permissions: [
+      'reinforcement.hero.view',
+      'reinforcement.hero.progress.view',
+      'reinforcement.xp.view',
+      'reinforcement.rewards.redemptions.view',
+    ],
+    sprint: '1B',
+  },
+  {
+    controller: ParentHeroController,
+    method: 'getHeroProgress',
+    permissions: ['reinforcement.hero.progress.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentHeroController,
+    method: 'listBadges',
+    permissions: ['reinforcement.hero.badges.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentHeroController,
+    method: 'listMissions',
+    permissions: ['reinforcement.hero.view', 'reinforcement.hero.progress.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentHeroController,
+    method: 'getMission',
+    permissions: ['reinforcement.hero.view', 'reinforcement.hero.progress.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentRewardsController,
+    method: 'listRewards',
+    permissions: ['reinforcement.rewards.view', 'reinforcement.xp.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentRewardsController,
+    method: 'listRedemptions',
+    permissions: ['reinforcement.rewards.redemptions.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentRewardsController,
+    method: 'getRedemption',
+    permissions: ['reinforcement.rewards.redemptions.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentRewardsController,
+    method: 'getReward',
+    permissions: ['reinforcement.rewards.view', 'reinforcement.xp.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentMessagesController,
+    method: 'listContacts',
+    permissions: ['communication.contacts.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentMessagesController,
+    method: 'listConversations',
+    permissions: ['communication.conversations.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentMessagesController,
+    method: 'getConversation',
+    permissions: ['communication.conversations.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentMessagesController,
+    method: 'searchMessages',
+    permissions: ['communication.messages.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentMessagesController,
+    method: 'listMessages',
+    permissions: ['communication.messages.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentMessagesController,
+    method: 'getMessageReaders',
+    permissions: ['communication.messages.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentMessagesController,
+    method: 'getMessageInfo',
+    permissions: ['communication.messages.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentMessagesController,
+    method: 'downloadAttachment',
+    permissions: ['communication.messages.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentMessagesController,
+    method: 'previewAttachment',
+    permissions: ['communication.messages.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentNotificationsController,
+    method: 'listNotifications',
+    permissions: ['communication.notifications.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentNotificationsController,
+    method: 'getSummary',
+    permissions: ['communication.notifications.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentNotificationsController,
+    method: 'getPreferences',
+    permissions: ['communication.notifications.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentNotificationsController,
+    method: 'getNotification',
+    permissions: ['communication.notifications.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentAnnouncementsController,
+    method: 'listAnnouncements',
+    permissions: ['communication.announcements.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentAnnouncementsController,
+    method: 'getAnnouncement',
+    permissions: ['communication.announcements.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentAnnouncementsController,
+    method: 'listAttachments',
+    permissions: ['communication.announcements.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentFilesController,
+    method: 'downloadChildFile',
+    permissions: ['reinforcement.submissions.view'],
+    sprint: '1B',
+  },
+];
+
+const PARENT_APP_CONTROLLER_CLASSES = [
+  ParentHomeController,
+  ParentChildrenController,
+  ParentProfileController,
+  ParentGradesController,
+  ParentHomeworksController,
+  ParentBehaviorController,
+  ParentDisciplineController,
+  ParentProgressController,
+  ParentReportsController,
+  ParentScheduleController,
+  ParentCalendarController,
+  ParentChildLessonsController,
+  ParentTasksController,
+  ParentHeroController,
+  ParentRewardsController,
+  ParentMessagesController,
+  ParentNotificationsController,
+  ParentAnnouncementsController,
+  ParentFilesController,
+];
+
+const PARENT_APP_DEFERRED_ACTION_HANDLER_CASES = [
+  { controller: ParentMessagesController, method: 'createConversation' },
+  { controller: ParentMessagesController, method: 'sendMessage' },
+  { controller: ParentMessagesController, method: 'markRead' },
+  { controller: ParentNotificationsController, method: 'markAllRead' },
+  { controller: ParentNotificationsController, method: 'updatePreferences' },
+  { controller: ParentNotificationsController, method: 'registerDeviceToken' },
+  {
+    controller: ParentNotificationsController,
+    method: 'unregisterCurrentDeviceToken',
+  },
+  { controller: ParentNotificationsController, method: 'markRead' },
+  { controller: ParentNotificationsController, method: 'archive' },
+  { controller: ParentAnnouncementsController, method: 'markRead' },
+];
+
+describe('Parent App read-only route permission metadata (security)', () => {
+  it('declares the PARENT-PERM-1B read-only permission inventory', () => {
+    expect(PARENT_APP_READ_PERMISSION_CASES).toHaveLength(58);
+
+    for (const entry of PARENT_APP_READ_PERMISSION_CASES) {
+      const handler = (entry.controller.prototype as Record<string, unknown>)[
+        entry.method
+      ];
+
+      expect(typeof handler).toBe('function');
+      expect(
+        Reflect.getMetadata(
+          REQUIRED_PERMISSIONS_METADATA,
+          handler as object,
+        ),
+      ).toEqual(entry.permissions);
+    }
+  });
+
+  it('keeps the Parent App controller route inventory explicit', () => {
+    const expectedKnownHandlers = new Set<string>();
+
+    for (const entry of PARENT_APP_READ_PERMISSION_CASES) {
+      const key = `${entry.controller.name}.${entry.method}`;
+      expect(expectedKnownHandlers.has(key)).toBe(false);
+      expectedKnownHandlers.add(key);
+    }
+
+    for (const entry of PARENT_APP_DEFERRED_ACTION_HANDLER_CASES) {
+      const key = `${entry.controller.name}.${entry.method}`;
+      expect(expectedKnownHandlers.has(key)).toBe(false);
+      expectedKnownHandlers.add(key);
+    }
+
+    const discoveredRouteHandlers = PARENT_APP_CONTROLLER_CLASSES.flatMap(
+      (controller) =>
+        Object.getOwnPropertyNames(controller.prototype)
+          .filter((method) => method !== 'constructor')
+          .filter((method) => {
+            const handler = (
+              controller.prototype as Record<string, unknown>
+            )[method];
+
+            return (
+              typeof handler === 'function' &&
+              Reflect.hasMetadata(METHOD_METADATA, handler)
+            );
+          })
+          .map((method) => `${controller.name}.${method}`),
+    ).sort();
+
+    expect(discoveredRouteHandlers).toEqual(
+      Array.from(expectedKnownHandlers).sort(),
+    );
+  });
+});
 
 describe('Parent App ownership foundation (security)', () => {
   it('does not allow a parent to access an unlinked same-school child', async () => {
@@ -321,6 +834,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   let adminUserId: string;
   let teacherUserId: string;
   let studentUserId: string;
+  let noPermissionParentRoleId: string;
   let guardianAId: string;
   let ownedStudentAId: string;
   let secondOwnedStudentAId: string;
@@ -427,6 +941,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
   const createdYearIds: string[] = [];
   const createdSchoolIds: string[] = [];
   const createdOrganizationIds: string[] = [];
+  const createdRoleIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -473,6 +988,19 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
     });
     schoolAId = schoolA.id;
     createdSchoolIds.push(schoolA.id);
+
+    const noPermissionParentRole = await prisma.role.create({
+      data: {
+        schoolId: schoolAId,
+        key: `${testSuffix}-parent-no-permissions`,
+        name: `${testSuffix} Parent No Permissions`,
+        description: 'Security fixture role with no permissions.',
+        isSystem: false,
+      },
+      select: { id: true },
+    });
+    noPermissionParentRoleId = noPermissionParentRole.id;
+    createdRoleIds.push(noPermissionParentRole.id);
 
     const schoolB = await prisma.school.create({
       data: {
@@ -957,6 +1485,12 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       await prisma.user.deleteMany({
         where: { id: { in: createdUserIds } },
       });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: { in: createdRoleIds } },
+      });
+      await prisma.role.deleteMany({
+        where: { id: { in: createdRoleIds } },
+      });
       await prisma.subject.deleteMany({
         where: { id: { in: createdSubjectIds } },
       });
@@ -1265,6 +1799,82 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       crossSchoolLinkedStudentId,
     );
     assertNoForbiddenParentAppFields(profile.body);
+  });
+
+  it('returns auth.scope.missing for representative read-only routes when the parent role lacks permission', async () => {
+    const membership = await prisma.membership.findFirstOrThrow({
+      where: {
+        userId: parentUserId,
+        schoolId: schoolAId,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true, roleId: true },
+    });
+
+    await prisma.membership.update({
+      where: { id: membership.id },
+      data: { roleId: noPermissionParentRoleId },
+    });
+
+    try {
+      const { accessToken } = await login(parentEmail);
+      const placeholderId = '11111111-1111-4111-8111-111111111111';
+
+      for (const path of [
+        'parent/home',
+        'parent/children',
+        `parent/children/${ownedStudentAId}`,
+        'parent/profile',
+        `parent/children/${ownedStudentAId}/grades`,
+        `parent/children/${ownedStudentAId}/grades/summary`,
+        `parent/children/${ownedStudentAId}/grades/assessments/${ownedAssessmentAId}`,
+        `parent/children/${ownedStudentAId}/homeworks`,
+        `parent/children/${ownedStudentAId}/homeworks/${placeholderId}`,
+        `parent/children/${ownedStudentAId}/behavior`,
+        `parent/children/${ownedStudentAId}/behavior/summary`,
+        `parent/children/${ownedStudentAId}/discipline`,
+        `parent/children/${ownedStudentAId}/progress`,
+        `parent/children/${ownedStudentAId}/progress/academic`,
+        `parent/children/${ownedStudentAId}/progress/behavior`,
+        `parent/children/${ownedStudentAId}/progress/xp`,
+        `parent/children/${ownedStudentAId}/reports`,
+        `parent/children/${ownedStudentAId}/schedule/today`,
+        `parent/children/${ownedStudentAId}/calendar/events`,
+        `parent/children/${ownedStudentAId}/calendar/events/${placeholderId}`,
+        `parent/children/${ownedStudentAId}/lessons/today?date=2026-09-14`,
+        `parent/children/${ownedStudentAId}/lessons/week?date=2026-09-14`,
+        `parent/children/${ownedStudentAId}/tasks`,
+        `parent/children/${ownedStudentAId}/tasks/${ownedTaskAId}`,
+        `parent/children/${ownedStudentAId}/tasks/${ownedTaskAId}/submissions`,
+        `parent/children/${ownedStudentAId}/files/${ownedTaskProofFileAId}/download`,
+        `parent/children/${ownedStudentAId}/hero`,
+        `parent/children/${ownedStudentAId}/hero/progress`,
+        `parent/children/${ownedStudentAId}/hero/badges`,
+        `parent/children/${ownedStudentAId}/rewards`,
+        `parent/children/${ownedStudentAId}/rewards/redemptions`,
+        'parent/messages/contacts',
+        'parent/messages/conversations',
+        `parent/messages/conversations/${ownConversationAId}/messages`,
+        `parent/messages/conversations/${ownConversationAId}/messages/${placeholderId}/attachments/${placeholderId}/download`,
+        'parent/notifications',
+        'parent/notifications/preferences',
+        `parent/notifications/${placeholderId}`,
+        'parent/announcements',
+        `parent/announcements/${audienceAnnouncementAId}/attachments`,
+      ]) {
+        const response = await request(app.getHttpServer())
+          .get(`${GLOBAL_PREFIX}/${path}`)
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(403);
+
+        expect(response.body?.error?.code).toBe('auth.scope.missing');
+      }
+    } finally {
+      await prisma.membership.update({
+        where: { id: membership.id },
+        data: { roleId: membership.roleId },
+      });
+    }
   });
 
   it('linked parent can read owned child grades and assessment grade detail', async () => {

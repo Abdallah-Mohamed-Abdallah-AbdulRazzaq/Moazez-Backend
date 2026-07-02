@@ -1,5 +1,6 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetParentChildAssessmentGradeUseCase } from '../application/get-parent-child-assessment-grade.use-case';
 import { GetParentChildGradesSummaryUseCase } from '../application/get-parent-child-grades-summary.use-case';
 import { ListParentChildGradesUseCase } from '../application/list-parent-child-grades.use-case';
@@ -22,6 +23,7 @@ export class ParentGradesController {
 
   @Get()
   @ApiOkResponse({ type: ParentGradesListResponseDto })
+  @RequiredPermissions('grades.assessments.view')
   listGrades(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Query() query: ParentGradesQueryDto,
@@ -31,6 +33,7 @@ export class ParentGradesController {
 
   @Get('summary')
   @ApiOkResponse({ type: ParentGradesSummaryResponseDto })
+  @RequiredPermissions('grades.gradebook.view')
   getSummary(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Query() query: ParentGradesQueryDto,
@@ -40,6 +43,7 @@ export class ParentGradesController {
 
   @Get('assessments/:assessmentId')
   @ApiOkResponse({ type: ParentAssessmentGradeDetailResponseDto })
+  @RequiredPermissions('grades.assessments.view', 'grades.submissions.view')
   getAssessmentGrade(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Param('assessmentId', new ParseUUIDPipe()) assessmentId: string,

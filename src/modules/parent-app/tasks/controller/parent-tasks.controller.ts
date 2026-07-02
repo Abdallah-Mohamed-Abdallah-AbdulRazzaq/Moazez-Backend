@@ -1,5 +1,6 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetParentChildTaskSubmissionUseCase } from '../application/get-parent-child-task-submission.use-case';
 import { GetParentChildTaskUseCase } from '../application/get-parent-child-task.use-case';
 import { GetParentChildTasksSummaryUseCase } from '../application/get-parent-child-tasks-summary.use-case';
@@ -28,6 +29,7 @@ export class ParentTasksController {
 
   @Get()
   @ApiOkResponse({ type: ParentTasksListResponseDto })
+  @RequiredPermissions('reinforcement.tasks.view')
   listTasks(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Query() query: ParentTasksQueryDto,
@@ -37,6 +39,7 @@ export class ParentTasksController {
 
   @Get('summary')
   @ApiOkResponse({ type: ParentTasksSummaryResponseDto })
+  @RequiredPermissions('reinforcement.tasks.view')
   getSummary(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
   ): Promise<ParentTasksSummaryResponseDto> {
@@ -45,6 +48,10 @@ export class ParentTasksController {
 
   @Get(':taskId')
   @ApiOkResponse({ type: ParentTaskResponseDto })
+  @RequiredPermissions(
+    'reinforcement.tasks.view',
+    'reinforcement.submissions.view',
+  )
   getTask(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Param('taskId', new ParseUUIDPipe()) taskId: string,
@@ -54,6 +61,7 @@ export class ParentTasksController {
 
   @Get(':taskId/submissions')
   @ApiOkResponse({ type: ParentTaskSubmissionsResponseDto })
+  @RequiredPermissions('reinforcement.submissions.view')
   listSubmissions(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Param('taskId', new ParseUUIDPipe()) taskId: string,
@@ -66,6 +74,7 @@ export class ParentTasksController {
 
   @Get(':taskId/submissions/:submissionId')
   @ApiOkResponse({ type: ParentTaskSubmissionResponseDto })
+  @RequiredPermissions('reinforcement.submissions.view')
   getSubmission(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Param('taskId', new ParseUUIDPipe()) taskId: string,

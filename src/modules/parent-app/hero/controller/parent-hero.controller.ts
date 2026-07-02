@@ -1,5 +1,6 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetParentChildHeroMissionUseCase } from '../application/get-parent-child-hero-mission.use-case';
 import { GetParentChildHeroOverviewUseCase } from '../application/get-parent-child-hero-overview.use-case';
 import { GetParentChildHeroProgressUseCase } from '../application/get-parent-child-hero-progress.use-case';
@@ -28,6 +29,12 @@ export class ParentHeroController {
 
   @Get()
   @ApiOkResponse({ type: ParentHeroOverviewResponseDto })
+  @RequiredPermissions(
+    'reinforcement.hero.view',
+    'reinforcement.hero.progress.view',
+    'reinforcement.xp.view',
+    'reinforcement.rewards.redemptions.view',
+  )
   getHeroOverview(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
   ): Promise<ParentHeroOverviewResponseDto> {
@@ -36,6 +43,7 @@ export class ParentHeroController {
 
   @Get('progress')
   @ApiOkResponse({ type: ParentHeroProgressResponseDto })
+  @RequiredPermissions('reinforcement.hero.progress.view')
   getHeroProgress(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
   ): Promise<ParentHeroProgressResponseDto> {
@@ -44,6 +52,7 @@ export class ParentHeroController {
 
   @Get('badges')
   @ApiOkResponse({ type: ParentHeroBadgesResponseDto })
+  @RequiredPermissions('reinforcement.hero.badges.view')
   listBadges(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
   ): Promise<ParentHeroBadgesResponseDto> {
@@ -52,6 +61,10 @@ export class ParentHeroController {
 
   @Get('missions')
   @ApiOkResponse({ type: ParentHeroMissionsResponseDto })
+  @RequiredPermissions(
+    'reinforcement.hero.view',
+    'reinforcement.hero.progress.view',
+  )
   listMissions(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Query() query: ParentHeroMissionsQueryDto,
@@ -61,6 +74,10 @@ export class ParentHeroController {
 
   @Get('missions/:missionId')
   @ApiOkResponse({ type: ParentHeroMissionDetailResponseDto })
+  @RequiredPermissions(
+    'reinforcement.hero.view',
+    'reinforcement.hero.progress.view',
+  )
   getMission(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Param('missionId', new ParseUUIDPipe()) missionId: string,

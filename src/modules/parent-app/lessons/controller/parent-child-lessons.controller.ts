@@ -7,6 +7,7 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetParentChildLessonDetailUseCase } from '../application/get-parent-child-lesson-detail.use-case';
 import { GetParentChildLessonsTodayUseCase } from '../application/get-parent-child-lessons-today.use-case';
 import { GetParentChildLessonsWeekUseCase } from '../application/get-parent-child-lessons-week.use-case';
@@ -36,6 +37,10 @@ export class ParentChildLessonsController {
     description: 'Calendar date in YYYY-MM-DD format.',
   })
   @ApiOkResponse({ type: ParentChildLessonsTodayResponseDto })
+  @RequiredPermissions(
+    'academics.lesson_plans.view',
+    'academics.curriculum.view',
+  )
   getToday(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Query() query: ParentChildLessonsDateQueryDto,
@@ -53,6 +58,11 @@ export class ParentChildLessonsController {
       'Calendar date in YYYY-MM-DD format. The week follows the Parent App schedule week convention.',
   })
   @ApiOkResponse({ type: ParentChildLessonsWeekResponseDto })
+  @RequiredPermissions(
+    'academics.lesson_plans.view',
+    'academics.curriculum.view',
+    'academics.timetable.view',
+  )
   getWeek(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Query() query: ParentChildLessonsDateQueryDto,
@@ -64,6 +74,10 @@ export class ParentChildLessonsController {
   @ApiOperation({ summary: 'Get one visible lesson for an owned child' })
   @ApiParam({ name: 'studentId', description: 'Owned child student id.' })
   @ApiOkResponse({ type: ParentChildLessonItemDto })
+  @RequiredPermissions(
+    'academics.lesson_plans.view',
+    'academics.curriculum.view',
+  )
   getDetail(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Param('lessonPlanItemId', new ParseUUIDPipe()) lessonPlanItemId: string,

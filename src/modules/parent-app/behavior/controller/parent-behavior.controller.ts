@@ -1,5 +1,6 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetParentChildBehaviorRecordUseCase } from '../application/get-parent-child-behavior-record.use-case';
 import { GetParentChildBehaviorSummaryUseCase } from '../application/get-parent-child-behavior-summary.use-case';
 import { ListParentChildBehaviorUseCase } from '../application/list-parent-child-behavior.use-case';
@@ -22,6 +23,12 @@ export class ParentBehaviorController {
 
   @Get()
   @ApiOkResponse({ type: ParentBehaviorListResponseDto })
+  @RequiredPermissions(
+    'behavior.records.view',
+    'behavior.points.view',
+    'attendance.sessions.view',
+    'attendance.absences.view',
+  )
   listBehavior(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Query() query: ParentBehaviorQueryDto,
@@ -31,6 +38,11 @@ export class ParentBehaviorController {
 
   @Get('summary')
   @ApiOkResponse({ type: ParentBehaviorSummaryResponseDto })
+  @RequiredPermissions(
+    'behavior.points.view',
+    'attendance.sessions.view',
+    'attendance.absences.view',
+  )
   getSummary(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Query() query: ParentBehaviorQueryDto,
@@ -40,6 +52,7 @@ export class ParentBehaviorController {
 
   @Get(':recordId')
   @ApiOkResponse({ type: ParentBehaviorRecordResponseDto })
+  @RequiredPermissions('behavior.records.view', 'behavior.points.view')
   getRecord(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Param('recordId', new ParseUUIDPipe()) recordId: string,

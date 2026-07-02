@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetParentProfileUseCase } from '../application/get-parent-profile.use-case';
 import { ParentProfileResponseDto } from '../dto/parent-profile.dto';
 
@@ -13,6 +14,7 @@ export class ParentProfileController {
 
   @Get()
   @ApiOkResponse({ type: ParentProfileResponseDto })
+  @RequiredPermissions('parent.profile.view')
   getProfile(): Promise<ParentProfileResponseDto> {
     return this.getParentProfileUseCase.execute();
   }

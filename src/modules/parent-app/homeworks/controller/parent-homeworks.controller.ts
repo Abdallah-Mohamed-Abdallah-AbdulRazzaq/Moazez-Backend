@@ -7,6 +7,7 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import {
   GetParentChildHomeworkUseCase,
   ListParentChildHomeworksUseCase,
@@ -37,6 +38,7 @@ export class ParentHomeworksController {
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiOkResponse({ type: ParentHomeworksListResponseDto })
+  @RequiredPermissions('homework.assignments.view')
   listHomeworks(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Query() query: ParentHomeworksQueryDto,
@@ -49,6 +51,7 @@ export class ParentHomeworksController {
   @ApiParam({ name: 'studentId', description: 'Owned child student id.' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
   @ApiOkResponse({ type: ParentHomeworkResponseDto })
+  @RequiredPermissions('homework.assignments.view', 'homework.submissions.view')
   getHomework(
     @Param('studentId', new ParseUUIDPipe()) studentId: string,
     @Param('homeworkId', new ParseUUIDPipe()) homeworkId: string,
