@@ -627,34 +627,131 @@ const TEACHER_APP_1C_ACTION_PERMISSION_CASES: TeacherAppPermissionCase[] = [
   },
 ];
 
+const TEACHER_APP_1D_HOMEWORK_ACTION_PERMISSION_CASES: TeacherAppPermissionCase[] =
+  [
+    {
+      controller: TeacherHomeworksController,
+      method: 'createAssignment',
+      permissions: ['homework.assignments.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'updateAssignment',
+      permissions: ['homework.assignments.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'publishAssignment',
+      permissions: ['homework.assignments.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'closeAssignment',
+      permissions: ['homework.assignments.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'cancelAssignment',
+      permissions: ['homework.assignments.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'resolveTargets',
+      permissions: ['homework.targets.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'syncAssignmentToGrades',
+      permissions: ['homework.grade_sync.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'createQuestion',
+      permissions: ['homework.questions.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'updateQuestion',
+      permissions: ['homework.questions.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'reorderQuestion',
+      permissions: ['homework.questions.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'deleteQuestion',
+      permissions: ['homework.questions.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'createOption',
+      permissions: ['homework.questions.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'updateOption',
+      permissions: ['homework.questions.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'reorderOption',
+      permissions: ['homework.questions.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'deleteOption',
+      permissions: ['homework.questions.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'createAttachment',
+      permissions: ['homework.attachments.manage', 'files.uploads.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'updateAttachment',
+      permissions: ['homework.attachments.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'reorderAttachment',
+      permissions: ['homework.attachments.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'deleteAttachment',
+      permissions: ['homework.attachments.manage'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'reviewSubmissionAnswer',
+      permissions: ['homework.submissions.review'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'bulkReviewSubmissionAnswers',
+      permissions: ['homework.submissions.review'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'reviewSubmission',
+      permissions: ['homework.submissions.review'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'patchReviewSubmission',
+      permissions: ['homework.submissions.review'],
+    },
+    {
+      controller: TeacherHomeworksController,
+      method: 'syncSubmissionToGrades',
+      permissions: ['homework.grade_sync.manage'],
+    },
+  ];
+
 const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [
-  { controller: TeacherHomeworksController, method: 'createAssignment' },
-  { controller: TeacherHomeworksController, method: 'updateAssignment' },
-  { controller: TeacherHomeworksController, method: 'publishAssignment' },
-  { controller: TeacherHomeworksController, method: 'closeAssignment' },
-  { controller: TeacherHomeworksController, method: 'cancelAssignment' },
-  { controller: TeacherHomeworksController, method: 'resolveTargets' },
-  { controller: TeacherHomeworksController, method: 'syncAssignmentToGrades' },
-  { controller: TeacherHomeworksController, method: 'createQuestion' },
-  { controller: TeacherHomeworksController, method: 'updateQuestion' },
-  { controller: TeacherHomeworksController, method: 'reorderQuestion' },
-  { controller: TeacherHomeworksController, method: 'deleteQuestion' },
-  { controller: TeacherHomeworksController, method: 'createOption' },
-  { controller: TeacherHomeworksController, method: 'updateOption' },
-  { controller: TeacherHomeworksController, method: 'reorderOption' },
-  { controller: TeacherHomeworksController, method: 'deleteOption' },
-  { controller: TeacherHomeworksController, method: 'createAttachment' },
-  { controller: TeacherHomeworksController, method: 'updateAttachment' },
-  { controller: TeacherHomeworksController, method: 'reorderAttachment' },
-  { controller: TeacherHomeworksController, method: 'deleteAttachment' },
-  { controller: TeacherHomeworksController, method: 'reviewSubmissionAnswer' },
-  {
-    controller: TeacherHomeworksController,
-    method: 'bulkReviewSubmissionAnswers',
-  },
-  { controller: TeacherHomeworksController, method: 'reviewSubmission' },
-  { controller: TeacherHomeworksController, method: 'patchReviewSubmission' },
-  { controller: TeacherHomeworksController, method: 'syncSubmissionToGrades' },
   { controller: TeacherMessagesController, method: 'createConversation' },
   { controller: TeacherMessagesController, method: 'sendMessage' },
   { controller: TeacherMessagesController, method: 'markRead' },
@@ -676,6 +773,7 @@ const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [
 const TEACHER_APP_DECORATED_PERMISSION_CASES: TeacherAppPermissionCase[] = [
   ...TEACHER_APP_READ_PERMISSION_CASES,
   ...TEACHER_APP_1C_ACTION_PERMISSION_CASES,
+  ...TEACHER_APP_1D_HOMEWORK_ACTION_PERMISSION_CASES,
 ];
 
 const FORBIDDEN_TEACHER_ROUTE_PERMISSIONS = [
@@ -721,8 +819,20 @@ describe('Teacher App route permission metadata (security)', () => {
     }
   });
 
-  it('keeps later Teacher permission sprint action handlers deferred', () => {
-    expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(37);
+  it('declares the TEACH-PERM-1D homework action permission inventory', () => {
+    expect(TEACHER_APP_1D_HOMEWORK_ACTION_PERMISSION_CASES).toHaveLength(24);
+
+    for (const entry of TEACHER_APP_1D_HOMEWORK_ACTION_PERMISSION_CASES) {
+      const handler = getControllerHandler(entry.controller, entry.method);
+
+      expect(
+        Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler),
+      ).toEqual(entry.permissions);
+    }
+  });
+
+  it('keeps TEACH-PERM-1E communication action handlers deferred', () => {
+    expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(13);
 
     for (const entry of TEACHER_APP_DEFERRED_ACTION_CASES) {
       const handler = getControllerHandler(entry.controller, entry.method);
@@ -766,7 +876,7 @@ describe('Teacher App route permission metadata (security)', () => {
       ).sort();
 
     expect(discoveredRouteHandlers).toHaveLength(111);
-    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(74);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(98);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),
     );
@@ -1964,6 +2074,112 @@ describe('Teacher App tenancy isolation (security)', () => {
             : entry.method === 'put'
               ? http.put(`${GLOBAL_PREFIX}${entry.path}`)
               : http.patch(`${GLOBAL_PREFIX}${entry.path}`);
+
+        if (entry.body) {
+          pendingRequest.send(entry.body);
+        }
+
+        const response = await pendingRequest
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(403);
+
+        expect(response.body?.error?.code).toBe('auth.scope.missing');
+      }
+    } finally {
+      await prisma.membership.update({
+        where: { id: membership.id },
+        data: { roleId: membership.roleId },
+      });
+    }
+  });
+
+  it('returns auth.scope.missing for representative 1D homework action routes when one required Teacher permission is missing', async () => {
+    const membership = await prisma.membership.findFirstOrThrow({
+      where: {
+        userId: teacherAId,
+        schoolId: schoolAId,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true, roleId: true },
+    });
+    const { accessToken } = await login(teacherAEmail);
+    const placeholderId = '11111111-1111-4111-8111-111111111111';
+    const cases: Array<{
+      permission: string;
+      method: 'post' | 'patch';
+      path: string;
+      body?: Record<string, unknown>;
+    }> = [
+      {
+        permission: 'homework.assignments.manage',
+        method: 'post',
+        path: `/teacher/homeworks/classes/${ownAllocationId}/assignments`,
+        body: {
+          title: `${testSuffix}-missing-homework-manage-denied`,
+          targetMode: 'all_students',
+          dueAt: '2026-09-20T00:00:00.000Z',
+        },
+      },
+      {
+        permission: 'homework.targets.manage',
+        method: 'post',
+        path: `/teacher/homeworks/classes/${ownAllocationId}/assignments/${placeholderId}/targets/resolve`,
+      },
+      {
+        permission: 'homework.grade_sync.manage',
+        method: 'post',
+        path: `/teacher/homeworks/classes/${ownAllocationId}/assignments/${placeholderId}/grade-sync`,
+      },
+      {
+        permission: 'homework.questions.manage',
+        method: 'post',
+        path: `/teacher/homeworks/classes/${ownAllocationId}/assignments/${placeholderId}/questions`,
+        body: {
+          prompt: 'Missing permission denied',
+          type: 'text',
+          points: 1,
+        },
+      },
+      {
+        permission: 'homework.attachments.manage',
+        method: 'post',
+        path: `/teacher/homeworks/classes/${ownAllocationId}/assignments/${placeholderId}/attachments`,
+        body: { fileId: placeholderId, title: 'Missing permission denied' },
+      },
+      {
+        permission: 'files.uploads.manage',
+        method: 'post',
+        path: `/teacher/homeworks/classes/${ownAllocationId}/assignments/${placeholderId}/attachments`,
+        body: { fileId: placeholderId, title: 'Missing upload permission' },
+      },
+      {
+        permission: 'homework.submissions.review',
+        method: 'patch',
+        path: `/teacher/homeworks/classes/${ownAllocationId}/assignments/${placeholderId}/submissions/${placeholderId}/answers/${placeholderId}/review`,
+        body: { awardedPoints: 1 },
+      },
+      {
+        permission: 'homework.grade_sync.manage',
+        method: 'post',
+        path: `/teacher/homeworks/classes/${ownAllocationId}/assignments/${placeholderId}/submissions/${placeholderId}/grade-sync`,
+      },
+    ];
+
+    try {
+      for (const entry of cases) {
+        const roleId = await createTeacherRoleWithoutPermission(
+          entry.permission,
+        );
+        await prisma.membership.update({
+          where: { id: membership.id },
+          data: { roleId },
+        });
+
+        const http = request(app.getHttpServer());
+        const pendingRequest =
+          entry.method === 'post'
+            ? http.post(`${GLOBAL_PREFIX}${entry.path}`)
+            : http.patch(`${GLOBAL_PREFIX}${entry.path}`);
 
         if (entry.body) {
           pendingRequest.send(entry.body);

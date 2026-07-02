@@ -183,6 +183,7 @@ export class TeacherHomeworksController {
   }
 
   @Post('classes/:classId/assignments')
+  @RequiredPermissions('homework.assignments.manage')
   @ApiOperation({
     summary: 'Create a draft homework assignment for an owned class',
   })
@@ -209,6 +210,7 @@ export class TeacherHomeworksController {
   }
 
   @Patch('classes/:classId/assignments/:homeworkId')
+  @RequiredPermissions('homework.assignments.manage')
   @ApiOperation({ summary: 'Update an owned draft homework assignment' })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
@@ -226,6 +228,7 @@ export class TeacherHomeworksController {
   }
 
   @Post('classes/:classId/assignments/:homeworkId/publish')
+  @RequiredPermissions('homework.assignments.manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Publish an owned draft homework assignment' })
   @ApiParam({ name: 'classId', format: 'uuid' })
@@ -241,6 +244,7 @@ export class TeacherHomeworksController {
   }
 
   @Post('classes/:classId/assignments/:homeworkId/close')
+  @RequiredPermissions('homework.assignments.manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Close an owned published homework assignment' })
   @ApiParam({ name: 'classId', format: 'uuid' })
@@ -256,6 +260,7 @@ export class TeacherHomeworksController {
   }
 
   @Post('classes/:classId/assignments/:homeworkId/cancel')
+  @RequiredPermissions('homework.assignments.manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Cancel an owned draft or published homework assignment',
@@ -287,6 +292,7 @@ export class TeacherHomeworksController {
   }
 
   @Post('classes/:classId/assignments/:homeworkId/targets/resolve')
+  @RequiredPermissions('homework.targets.manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Refresh targets for an owned draft homework assignment',
@@ -319,6 +325,7 @@ export class TeacherHomeworksController {
   }
 
   @Post('classes/:classId/assignments/:homeworkId/grade-sync')
+  @RequiredPermissions('homework.grade_sync.manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Sync reviewed owned homework submissions to Grades',
@@ -348,6 +355,7 @@ export class TeacherHomeworksController {
   }
 
   @Post('classes/:classId/assignments/:homeworkId/questions')
+  @RequiredPermissions('homework.questions.manage')
   @ApiOperation({
     summary: 'Create a question for an owned homework assignment',
   })
@@ -386,6 +394,7 @@ export class TeacherHomeworksController {
   }
 
   @Patch('classes/:classId/assignments/:homeworkId/questions/:questionId')
+  @RequiredPermissions('homework.questions.manage')
   @ApiOperation({
     summary: 'Update a question for an owned homework assignment',
   })
@@ -409,6 +418,7 @@ export class TeacherHomeworksController {
   @Patch(
     'classes/:classId/assignments/:homeworkId/questions/:questionId/reorder',
   )
+  @RequiredPermissions('homework.questions.manage')
   @ApiOperation({
     summary: 'Reorder a question for an owned homework assignment',
   })
@@ -430,6 +440,7 @@ export class TeacherHomeworksController {
   }
 
   @Delete('classes/:classId/assignments/:homeworkId/questions/:questionId')
+  @RequiredPermissions('homework.questions.manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Soft delete a question for an owned homework assignment',
@@ -450,6 +461,7 @@ export class TeacherHomeworksController {
   @Post(
     'classes/:classId/assignments/:homeworkId/questions/:questionId/options',
   )
+  @RequiredPermissions('homework.questions.manage')
   @ApiOperation({ summary: 'Create an option for an owned homework question' })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
@@ -471,6 +483,7 @@ export class TeacherHomeworksController {
   @Patch(
     'classes/:classId/assignments/:homeworkId/questions/:questionId/options/:optionId',
   )
+  @RequiredPermissions('homework.questions.manage')
   @ApiOperation({ summary: 'Update an option for an owned homework question' })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
@@ -494,6 +507,7 @@ export class TeacherHomeworksController {
   @Patch(
     'classes/:classId/assignments/:homeworkId/questions/:questionId/options/:optionId/reorder',
   )
+  @RequiredPermissions('homework.questions.manage')
   @ApiOperation({ summary: 'Reorder an option for an owned homework question' })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
@@ -517,6 +531,7 @@ export class TeacherHomeworksController {
   @Delete(
     'classes/:classId/assignments/:homeworkId/questions/:questionId/options/:optionId',
   )
+  @RequiredPermissions('homework.questions.manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Soft delete an option for an owned homework question',
@@ -554,6 +569,7 @@ export class TeacherHomeworksController {
   }
 
   @Post('classes/:classId/assignments/:homeworkId/attachments')
+  @RequiredPermissions('homework.attachments.manage', 'files.uploads.manage')
   @ApiOperation({ summary: 'Attach a file to an owned homework assignment' })
   @ApiParam({ name: 'classId', format: 'uuid' })
   @ApiParam({ name: 'homeworkId', format: 'uuid' })
@@ -571,6 +587,7 @@ export class TeacherHomeworksController {
   }
 
   @Patch('classes/:classId/assignments/:homeworkId/attachments/:attachmentId')
+  @RequiredPermissions('homework.attachments.manage')
   @ApiOperation({
     summary: 'Update an attachment for an owned homework assignment',
   })
@@ -594,6 +611,7 @@ export class TeacherHomeworksController {
   @Patch(
     'classes/:classId/assignments/:homeworkId/attachments/:attachmentId/reorder',
   )
+  @RequiredPermissions('homework.attachments.manage')
   @ApiOperation({
     summary: 'Reorder an attachment for an owned homework assignment',
   })
@@ -615,6 +633,7 @@ export class TeacherHomeworksController {
   }
 
   @Delete('classes/:classId/assignments/:homeworkId/attachments/:attachmentId')
+  @RequiredPermissions('homework.attachments.manage')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Soft delete an attachment for an owned homework assignment',
@@ -698,6 +717,7 @@ export class TeacherHomeworksController {
   @Patch(
     'classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers/:answerId/review',
   )
+  @RequiredPermissions('homework.submissions.review')
   @ApiOperation({
     summary: 'Review one submitted homework answer for an owned assignment',
   })
@@ -723,6 +743,7 @@ export class TeacherHomeworksController {
   @Put(
     'classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers/review',
   )
+  @RequiredPermissions('homework.submissions.review')
   @ApiOperation({
     summary: 'Bulk review submitted homework answers for an owned assignment',
   })
@@ -767,6 +788,7 @@ export class TeacherHomeworksController {
   @Post(
     'classes/:classId/assignments/:homeworkId/submissions/:submissionId/review',
   )
+  @RequiredPermissions('homework.submissions.review')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Review a submitted homework submission for an owned assignment',
@@ -791,6 +813,7 @@ export class TeacherHomeworksController {
   @Patch(
     'classes/:classId/assignments/:homeworkId/submissions/:submissionId/review',
   )
+  @RequiredPermissions('homework.submissions.review')
   @ApiOperation({
     summary: 'Review a submitted homework submission for an owned assignment',
   })
@@ -809,6 +832,7 @@ export class TeacherHomeworksController {
   @Post(
     'classes/:classId/assignments/:homeworkId/submissions/:submissionId/grade-sync',
   )
+  @RequiredPermissions('homework.grade_sync.manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Sync one reviewed owned homework submission to Grades',
