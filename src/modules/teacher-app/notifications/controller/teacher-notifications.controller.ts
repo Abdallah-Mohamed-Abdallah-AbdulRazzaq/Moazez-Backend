@@ -78,6 +78,7 @@ export class TeacherNotificationsController {
   }
 
   @Post('read-all')
+  @RequiredPermissions('communication.notifications.read')
   @ApiCreatedResponse({ type: TeacherNotificationsReadAllResponseDto })
   markAllRead(): Promise<TeacherNotificationsReadAllResponseDto> {
     return this.markAllTeacherNotificationsReadUseCase.execute();
@@ -91,6 +92,7 @@ export class TeacherNotificationsController {
   }
 
   @Patch('preferences')
+  @RequiredPermissions('communication.notifications.preferences.manage')
   @ApiOkResponse({ type: TeacherNotificationPreferencesResponseDto })
   updatePreferences(
     @Body() body: UpdateTeacherNotificationPreferencesDto,
@@ -99,6 +101,7 @@ export class TeacherNotificationsController {
   }
 
   @Post('device-tokens')
+  @RequiredPermissions('app.device_tokens.manage')
   @ApiCreatedResponse({ type: AppDeviceTokenRegisterResponseDto })
   registerDeviceToken(
     @Body() body: RegisterAppDeviceTokenDto,
@@ -107,6 +110,7 @@ export class TeacherNotificationsController {
   }
 
   @Delete('device-tokens/current')
+  @RequiredPermissions('app.device_tokens.manage')
   @ApiOkResponse({ type: AppDeviceTokenUnregisterResponseDto })
   unregisterCurrentDeviceToken(
     @Body() body: UnregisterAppDeviceTokenDto,
@@ -124,6 +128,7 @@ export class TeacherNotificationsController {
   }
 
   @Post(':notificationId/read')
+  @RequiredPermissions('communication.notifications.read')
   @ApiCreatedResponse({ type: TeacherNotificationResponseDto })
   markRead(
     @Param('notificationId', new ParseUUIDPipe()) notificationId: string,
@@ -132,6 +137,7 @@ export class TeacherNotificationsController {
   }
 
   @Post(':notificationId/archive')
+  @RequiredPermissions('communication.notifications.archive')
   @ApiCreatedResponse({ type: TeacherNotificationResponseDto })
   archive(
     @Param('notificationId', new ParseUUIDPipe()) notificationId: string,

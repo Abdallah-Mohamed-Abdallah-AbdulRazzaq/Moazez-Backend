@@ -751,29 +751,82 @@ const TEACHER_APP_1D_HOMEWORK_ACTION_PERMISSION_CASES: TeacherAppPermissionCase[
     },
   ];
 
-const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [
-  { controller: TeacherMessagesController, method: 'createConversation' },
-  { controller: TeacherMessagesController, method: 'sendMessage' },
-  { controller: TeacherMessagesController, method: 'markRead' },
-  { controller: TeacherNotificationsController, method: 'markAllRead' },
-  { controller: TeacherNotificationsController, method: 'updatePreferences' },
-  { controller: TeacherNotificationsController, method: 'registerDeviceToken' },
-  {
-    controller: TeacherNotificationsController,
-    method: 'unregisterCurrentDeviceToken',
-  },
-  { controller: TeacherNotificationsController, method: 'markRead' },
-  { controller: TeacherNotificationsController, method: 'archive' },
-  { controller: TeacherAnnouncementsController, method: 'createAnnouncement' },
-  { controller: TeacherAnnouncementsController, method: 'updateAnnouncement' },
-  { controller: TeacherAnnouncementsController, method: 'publishAnnouncement' },
-  { controller: TeacherAnnouncementsController, method: 'archiveAnnouncement' },
-];
+const TEACHER_APP_1E_COMMUNICATION_ACTION_PERMISSION_CASES: TeacherAppPermissionCase[] =
+  [
+    {
+      controller: TeacherMessagesController,
+      method: 'createConversation',
+      permissions: ['communication.conversations.create'],
+    },
+    {
+      controller: TeacherMessagesController,
+      method: 'sendMessage',
+      permissions: ['communication.messages.send'],
+    },
+    {
+      controller: TeacherMessagesController,
+      method: 'markRead',
+      permissions: ['communication.conversations.read'],
+    },
+    {
+      controller: TeacherNotificationsController,
+      method: 'markAllRead',
+      permissions: ['communication.notifications.read'],
+    },
+    {
+      controller: TeacherNotificationsController,
+      method: 'updatePreferences',
+      permissions: ['communication.notifications.preferences.manage'],
+    },
+    {
+      controller: TeacherNotificationsController,
+      method: 'registerDeviceToken',
+      permissions: ['app.device_tokens.manage'],
+    },
+    {
+      controller: TeacherNotificationsController,
+      method: 'unregisterCurrentDeviceToken',
+      permissions: ['app.device_tokens.manage'],
+    },
+    {
+      controller: TeacherNotificationsController,
+      method: 'markRead',
+      permissions: ['communication.notifications.read'],
+    },
+    {
+      controller: TeacherNotificationsController,
+      method: 'archive',
+      permissions: ['communication.notifications.archive'],
+    },
+    {
+      controller: TeacherAnnouncementsController,
+      method: 'createAnnouncement',
+      permissions: ['teacher.announcements.manage'],
+    },
+    {
+      controller: TeacherAnnouncementsController,
+      method: 'updateAnnouncement',
+      permissions: ['teacher.announcements.manage'],
+    },
+    {
+      controller: TeacherAnnouncementsController,
+      method: 'publishAnnouncement',
+      permissions: ['teacher.announcements.manage'],
+    },
+    {
+      controller: TeacherAnnouncementsController,
+      method: 'archiveAnnouncement',
+      permissions: ['teacher.announcements.manage'],
+    },
+  ];
+
+const TEACHER_APP_DEFERRED_ACTION_CASES: TeacherAppDeferredCase[] = [];
 
 const TEACHER_APP_DECORATED_PERMISSION_CASES: TeacherAppPermissionCase[] = [
   ...TEACHER_APP_READ_PERMISSION_CASES,
   ...TEACHER_APP_1C_ACTION_PERMISSION_CASES,
   ...TEACHER_APP_1D_HOMEWORK_ACTION_PERMISSION_CASES,
+  ...TEACHER_APP_1E_COMMUNICATION_ACTION_PERMISSION_CASES,
 ];
 
 const FORBIDDEN_TEACHER_ROUTE_PERMISSIONS = [
@@ -831,16 +884,22 @@ describe('Teacher App route permission metadata (security)', () => {
     }
   });
 
-  it('keeps TEACH-PERM-1E communication action handlers deferred', () => {
-    expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(13);
+  it('declares the TEACH-PERM-1E communication action permission inventory', () => {
+    expect(TEACHER_APP_1E_COMMUNICATION_ACTION_PERMISSION_CASES).toHaveLength(
+      13,
+    );
 
-    for (const entry of TEACHER_APP_DEFERRED_ACTION_CASES) {
+    for (const entry of TEACHER_APP_1E_COMMUNICATION_ACTION_PERMISSION_CASES) {
       const handler = getControllerHandler(entry.controller, entry.method);
 
       expect(
         Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler),
-      ).toBeUndefined();
+      ).toEqual(entry.permissions);
     }
+  });
+
+  it('has no remaining deferred Teacher App route handlers', () => {
+    expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(0);
   });
 
   it('keeps the complete Teacher App RBAC route inventory explicit', () => {
@@ -876,10 +935,31 @@ describe('Teacher App route permission metadata (security)', () => {
       ).sort();
 
     expect(discoveredRouteHandlers).toHaveLength(111);
-    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(98);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(111);
+    expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(0);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),
     );
+
+    const undecoratedRouteHandlers =
+      TEACHER_APP_CONTROLLER_CLASSES.flatMap((controller) =>
+        Object.getOwnPropertyNames(controller.prototype)
+          .filter((method) => method !== 'constructor')
+          .filter((method) => {
+            const handler = (
+              controller.prototype as Record<string, unknown>
+            )[method];
+
+            return (
+              typeof handler === 'function' &&
+              Reflect.hasMetadata(METHOD_METADATA, handler) &&
+              !Reflect.hasMetadata(REQUIRED_PERMISSIONS_METADATA, handler)
+            );
+          })
+          .map((method) => `${controller.name}.${method}`),
+      ).sort();
+
+    expect(undecoratedRouteHandlers).toEqual([]);
   });
 
   it('does not use forbidden permissions on decorated Teacher App routes', () => {
@@ -2162,6 +2242,112 @@ describe('Teacher App tenancy isolation (security)', () => {
         permission: 'homework.grade_sync.manage',
         method: 'post',
         path: `/teacher/homeworks/classes/${ownAllocationId}/assignments/${placeholderId}/submissions/${placeholderId}/grade-sync`,
+      },
+    ];
+
+    try {
+      for (const entry of cases) {
+        const roleId = await createTeacherRoleWithoutPermission(
+          entry.permission,
+        );
+        await prisma.membership.update({
+          where: { id: membership.id },
+          data: { roleId },
+        });
+
+        const http = request(app.getHttpServer());
+        const pendingRequest =
+          entry.method === 'post'
+            ? http.post(`${GLOBAL_PREFIX}${entry.path}`)
+            : http.patch(`${GLOBAL_PREFIX}${entry.path}`);
+
+        if (entry.body) {
+          pendingRequest.send(entry.body);
+        }
+
+        const response = await pendingRequest
+          .set('Authorization', `Bearer ${accessToken}`)
+          .expect(403);
+
+        expect(response.body?.error?.code).toBe('auth.scope.missing');
+      }
+    } finally {
+      await prisma.membership.update({
+        where: { id: membership.id },
+        data: { roleId: membership.roleId },
+      });
+    }
+  });
+
+  it('returns auth.scope.missing for representative 1E communication action routes when one required Teacher permission is missing', async () => {
+    const membership = await prisma.membership.findFirstOrThrow({
+      where: {
+        userId: teacherAId,
+        schoolId: schoolAId,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true, roleId: true },
+    });
+    const { accessToken } = await login(teacherAEmail);
+    const placeholderId = '11111111-1111-4111-8111-111111111111';
+    const cases: Array<{
+      permission: string;
+      method: 'post' | 'patch';
+      path: string;
+      body?: Record<string, unknown>;
+    }> = [
+      {
+        permission: 'communication.conversations.create',
+        method: 'post',
+        path: '/teacher/messages/conversations',
+        body: { contactId: `student:${ownStudentIds[0]}` },
+      },
+      {
+        permission: 'communication.messages.send',
+        method: 'post',
+        path: `/teacher/messages/conversations/${ownConversationId}/messages`,
+        body: { body: `${testSuffix}-missing-message-send-denied` },
+      },
+      {
+        permission: 'communication.conversations.read',
+        method: 'post',
+        path: `/teacher/messages/conversations/${ownConversationId}/read`,
+      },
+      {
+        permission: 'communication.notifications.read',
+        method: 'post',
+        path: '/teacher/notifications/read-all',
+      },
+      {
+        permission: 'communication.notifications.preferences.manage',
+        method: 'patch',
+        path: '/teacher/notifications/preferences',
+        body: { pushEnabled: true },
+      },
+      {
+        permission: 'app.device_tokens.manage',
+        method: 'post',
+        path: '/teacher/notifications/device-tokens',
+        body: {
+          token: `${testSuffix}-missing-device-token-permission`,
+          platform: 'web',
+          deviceId: `${testSuffix}-missing-device-token-device`,
+        },
+      },
+      {
+        permission: 'communication.notifications.archive',
+        method: 'post',
+        path: `/teacher/notifications/${placeholderId}/archive`,
+      },
+      {
+        permission: 'teacher.announcements.manage',
+        method: 'post',
+        path: '/teacher/announcements',
+        body: {
+          title: `${testSuffix}-missing-announcement-manage-denied`,
+          body: 'Missing permission denied',
+          targetClassIds: [ownAllocationId],
+        },
       },
     ];
 

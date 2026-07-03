@@ -201,6 +201,7 @@ export class TeacherMessagesController {
   }
 
   @Post('conversations')
+  @RequiredPermissions('communication.conversations.create')
   @ApiCreatedResponse({ type: TeacherMessageConversationResponseDto })
   createConversation(
     @Body() dto: CreateTeacherMessageConversationDto,
@@ -209,6 +210,7 @@ export class TeacherMessagesController {
   }
 
   @Post('conversations/:conversationId/messages')
+  @RequiredPermissions('communication.messages.send')
   @ApiCreatedResponse({ type: TeacherConversationMessageResponseDto })
   sendMessage(
     @Param() params: TeacherMessageConversationParamsDto,
@@ -221,6 +223,7 @@ export class TeacherMessagesController {
   }
 
   @Post('conversations/:conversationId/read')
+  @RequiredPermissions('communication.conversations.read')
   @ApiCreatedResponse({ type: TeacherConversationReadResponseDto })
   markRead(
     @Param() params: TeacherMessageConversationParamsDto,

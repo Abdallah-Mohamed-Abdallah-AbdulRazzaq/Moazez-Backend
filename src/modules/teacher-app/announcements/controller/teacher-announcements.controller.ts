@@ -55,6 +55,7 @@ export class TeacherAnnouncementsController {
   }
 
   @Post()
+  @RequiredPermissions('teacher.announcements.manage')
   @ApiCreatedResponse({ type: TeacherAnnouncementResponseDto })
   createAnnouncement(
     @Body() dto: CreateTeacherAnnouncementDto,
@@ -63,6 +64,7 @@ export class TeacherAnnouncementsController {
   }
 
   @Patch(':announcementId')
+  @RequiredPermissions('teacher.announcements.manage')
   @ApiOkResponse({ type: TeacherAnnouncementResponseDto })
   updateAnnouncement(
     @Param() params: TeacherAnnouncementParamsDto,
@@ -75,6 +77,7 @@ export class TeacherAnnouncementsController {
   }
 
   @Post(':announcementId/publish')
+  @RequiredPermissions('teacher.announcements.manage')
   @ApiCreatedResponse({ type: TeacherAnnouncementResponseDto })
   publishAnnouncement(
     @Param() params: TeacherAnnouncementParamsDto,
@@ -85,6 +88,7 @@ export class TeacherAnnouncementsController {
   }
 
   @Post(':announcementId/archive')
+  @RequiredPermissions('teacher.announcements.manage')
   @ApiCreatedResponse({ type: TeacherAnnouncementResponseDto })
   archiveAnnouncement(
     @Param() params: TeacherAnnouncementParamsDto,
