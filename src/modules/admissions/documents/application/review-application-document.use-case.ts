@@ -27,15 +27,12 @@ import {
   ApplicationDocumentsRepository,
   LinkedApplicantDocumentReviewRecord,
 } from '../infrastructure/application-documents.repository';
-import { presentApplicationDocument } from '../presenters/application-document.presenter';
+import {
+  isApplicationDocumentReviewableApplicationStatus,
+  presentApplicationDocument,
+} from '../presenters/application-document.presenter';
 
 type ReviewAction = 'accept' | 'reject' | 'request_replacement';
-
-const REVIEWABLE_APPLICATION_STATUSES = [
-  AdmissionApplicationStatus.SUBMITTED,
-  AdmissionApplicationStatus.DOCUMENTS_PENDING,
-  AdmissionApplicationStatus.UNDER_REVIEW,
-] as const;
 
 @Injectable()
 export class ReviewApplicationDocumentUseCase {
@@ -107,10 +104,9 @@ export class ReviewApplicationDocumentUseCase {
   }): Promise<ApplicationDocumentResponseDto> {
     const scope = requireApplicationsScope();
 
-    const application =
-      await this.applicationsRepository.findApplicationById(
-        params.applicationId,
-      );
+    const application = await this.applicationsRepository.findApplicationById(
+      params.applicationId,
+    );
     if (!application) {
       throw new NotFoundDomainException('Application not found', {
         applicationId: params.applicationId,
@@ -206,14 +202,11 @@ export class ReviewApplicationDocumentUseCase {
     status: AdmissionApplicationStatus,
     applicationId: string,
   ): void {
-    if (
-      !REVIEWABLE_APPLICATION_STATUSES.includes(
-        status as (typeof REVIEWABLE_APPLICATION_STATUSES)[number],
-      )
-    ) {
+    if (!isApplicationDocumentReviewableApplicationStatus(status)) {
       throw new DomainException({
         code: 'conflict',
-        message: 'Application documents cannot be reviewed in the current state',
+        message:
+          'Application documents cannot be reviewed in the current state',
         httpStatus: HttpStatus.CONFLICT,
         details: { applicationId },
       });

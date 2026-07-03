@@ -28,6 +28,20 @@ const APPLICATION_DOCUMENT_RECORD_ARGS =
           visibility: true,
         },
       },
+      application: {
+        select: {
+          status: true,
+        },
+      },
+      applicantAdmissionRequestDocuments: {
+        where: { deletedAt: null },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          applicationDocumentId: true,
+          status: true,
+        },
+      },
     },
   });
 
@@ -201,105 +215,105 @@ export class ApplicationDocumentsRepository {
   ): Promise<ReviewApplicantApplicationDocumentResult> {
     try {
       return await this.prisma.$transaction(async (tx) => {
-      const document = await tx.applicationDocument.findFirst({
-        where: {
-          id: params.documentId,
-          applicationId: params.applicationId,
-          schoolId: params.schoolId,
-        },
-        ...APPLICATION_DOCUMENT_REVIEW_ARGS,
-      });
-
-      if (!document) {
-        throw new ReviewDocumentNotFoundError();
-      }
-
-      const applicantDocument =
-        document.applicantAdmissionRequestDocuments.find(
-          (candidate) => candidate.id === params.applicantDocumentId,
-        );
-      if (
-        document.status !== AdmissionDocumentStatus.PENDING_REVIEW ||
-        !applicantDocument ||
-        applicantDocument.schoolId !== params.schoolId ||
-        applicantDocument.applicationDocumentId !== params.documentId ||
-        applicantDocument.status !==
-          ApplicantAdmissionRequestDocumentStatus.UPLOADED
-      ) {
-        return { status: 'invalid_state' };
-      }
-
-      const documentUpdate = await tx.applicationDocument.updateMany({
-        where: {
-          id: params.documentId,
-          applicationId: params.applicationId,
-          schoolId: params.schoolId,
-          status: AdmissionDocumentStatus.PENDING_REVIEW,
-        },
-        data: {
-          status: params.nextApplicationDocumentStatus,
-          ...(params.note !== undefined ? { notes: params.note } : {}),
-        },
-      });
-      if (documentUpdate.count !== 1) {
-        throw new ReviewDocumentInvalidStateError();
-      }
-
-      const applicantDocumentUpdate =
-        await tx.applicantAdmissionRequestDocument.updateMany({
+        const document = await tx.applicationDocument.findFirst({
           where: {
-            id: params.applicantDocumentId,
+            id: params.documentId,
+            applicationId: params.applicationId,
             schoolId: params.schoolId,
-            applicationDocumentId: params.documentId,
-            deletedAt: null,
-            status: ApplicantAdmissionRequestDocumentStatus.UPLOADED,
           },
-          data: { status: params.nextApplicantDocumentStatus },
+          ...APPLICATION_DOCUMENT_REVIEW_ARGS,
         });
-      if (applicantDocumentUpdate.count !== 1) {
-        throw new ReviewDocumentInvalidStateError();
-      }
 
-      let applicationStatusAfter = document.application.status;
-      if (params.reopenApplicationDocuments) {
-        const applicationUpdate = await tx.application.updateMany({
+        if (!document) {
+          throw new ReviewDocumentNotFoundError();
+        }
+
+        const applicantDocument =
+          document.applicantAdmissionRequestDocuments.find(
+            (candidate) => candidate.id === params.applicantDocumentId,
+          );
+        if (
+          document.status !== AdmissionDocumentStatus.PENDING_REVIEW ||
+          !applicantDocument ||
+          applicantDocument.schoolId !== params.schoolId ||
+          applicantDocument.applicationDocumentId !== params.documentId ||
+          applicantDocument.status !==
+            ApplicantAdmissionRequestDocumentStatus.UPLOADED
+        ) {
+          return { status: 'invalid_state' };
+        }
+
+        const documentUpdate = await tx.applicationDocument.updateMany({
           where: {
-            id: params.applicationId,
+            id: params.documentId,
+            applicationId: params.applicationId,
             schoolId: params.schoolId,
-            deletedAt: null,
-            status: {
-              notIn: [
-                AdmissionApplicationStatus.ACCEPTED,
-                AdmissionApplicationStatus.WAITLISTED,
-                AdmissionApplicationStatus.REJECTED,
-              ],
-            },
+            status: AdmissionDocumentStatus.PENDING_REVIEW,
           },
-          data: { status: AdmissionApplicationStatus.DOCUMENTS_PENDING },
+          data: {
+            status: params.nextApplicationDocumentStatus,
+            ...(params.note !== undefined ? { notes: params.note } : {}),
+          },
         });
-        if (applicationUpdate.count !== 1) {
+        if (documentUpdate.count !== 1) {
           throw new ReviewDocumentInvalidStateError();
         }
-        applicationStatusAfter = AdmissionApplicationStatus.DOCUMENTS_PENDING;
-      }
 
-      const updatedDocument = await tx.applicationDocument.findFirst({
-        where: {
-          id: params.documentId,
-          applicationId: params.applicationId,
-          schoolId: params.schoolId,
-        },
-        ...APPLICATION_DOCUMENT_RECORD_ARGS,
-      });
-      if (!updatedDocument) {
-        throw new ReviewDocumentNotFoundError();
-      }
+        const applicantDocumentUpdate =
+          await tx.applicantAdmissionRequestDocument.updateMany({
+            where: {
+              id: params.applicantDocumentId,
+              schoolId: params.schoolId,
+              applicationDocumentId: params.documentId,
+              deletedAt: null,
+              status: ApplicantAdmissionRequestDocumentStatus.UPLOADED,
+            },
+            data: { status: params.nextApplicantDocumentStatus },
+          });
+        if (applicantDocumentUpdate.count !== 1) {
+          throw new ReviewDocumentInvalidStateError();
+        }
 
-      return {
-        status: 'reviewed',
-        document: updatedDocument,
-        applicationStatusAfter,
-      };
+        let applicationStatusAfter = document.application.status;
+        if (params.reopenApplicationDocuments) {
+          const applicationUpdate = await tx.application.updateMany({
+            where: {
+              id: params.applicationId,
+              schoolId: params.schoolId,
+              deletedAt: null,
+              status: {
+                notIn: [
+                  AdmissionApplicationStatus.ACCEPTED,
+                  AdmissionApplicationStatus.WAITLISTED,
+                  AdmissionApplicationStatus.REJECTED,
+                ],
+              },
+            },
+            data: { status: AdmissionApplicationStatus.DOCUMENTS_PENDING },
+          });
+          if (applicationUpdate.count !== 1) {
+            throw new ReviewDocumentInvalidStateError();
+          }
+          applicationStatusAfter = AdmissionApplicationStatus.DOCUMENTS_PENDING;
+        }
+
+        const updatedDocument = await tx.applicationDocument.findFirst({
+          where: {
+            id: params.documentId,
+            applicationId: params.applicationId,
+            schoolId: params.schoolId,
+          },
+          ...APPLICATION_DOCUMENT_RECORD_ARGS,
+        });
+        if (!updatedDocument) {
+          throw new ReviewDocumentNotFoundError();
+        }
+
+        return {
+          status: 'reviewed',
+          document: updatedDocument,
+          applicationStatusAfter,
+        };
       });
     } catch (error) {
       if (error instanceof ReviewDocumentNotFoundError) {

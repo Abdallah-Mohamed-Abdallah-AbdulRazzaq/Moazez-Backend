@@ -1,14 +1,18 @@
 import { AdmissionDocumentStatus } from '@prisma/client';
 import { Injectable } from '@nestjs/common';
-import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
+import {
+  NotFoundDomainException,
+  ValidationDomainException,
+} from '../../../../common/exceptions/domain-exception';
 import { FilesNotFoundException } from '../../../files/uploads/domain/file-upload.exceptions';
 import { FilesRepository } from '../../../files/uploads/infrastructure/files.repository';
 import { requireApplicationsScope } from '../../applications/applications-scope';
-import {
-  mapApplicationDocumentStatusFromApi,
-} from '../../applications/domain/application.enums';
+import { mapApplicationDocumentStatusFromApi } from '../../applications/domain/application.enums';
 import { ApplicationsRepository } from '../../applications/infrastructure/applications.repository';
-import { CreateApplicationDocumentDto, ApplicationDocumentResponseDto } from '../dto/application-document.dto';
+import {
+  ApplicationDocumentResponseDto,
+  CreateApplicationDocumentDto,
+} from '../dto/application-document.dto';
 import { ApplicationDocumentsRepository } from '../infrastructure/application-documents.repository';
 import { presentApplicationDocument } from '../presenters/application-document.presenter';
 
@@ -25,6 +29,15 @@ export class CreateApplicationDocumentUseCase {
     command: CreateApplicationDocumentDto,
   ): Promise<ApplicationDocumentResponseDto> {
     const scope = requireApplicationsScope();
+    if (command.status === 'pending_review') {
+      throw new ValidationDomainException(
+        'pending_review is reserved for Applicant Portal documents',
+        {
+          field: 'status',
+          reason: 'pending_review_reserved_for_applicant_portal',
+        },
+      );
+    }
 
     const application =
       await this.applicationsRepository.findApplicationById(applicationId);

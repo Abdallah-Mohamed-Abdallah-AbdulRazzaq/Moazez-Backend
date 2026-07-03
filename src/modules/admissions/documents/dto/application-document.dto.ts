@@ -10,6 +10,24 @@ import {
 import { APPLICATION_DOCUMENT_STATUS_API_VALUES } from '../../applications/domain/application.enums';
 import type { ApplicationDocumentStatusApiValue } from '../../applications/domain/application.enums';
 
+export type ApplicationDocumentSourceApiValue =
+  | 'staff_upload'
+  | 'applicant_portal';
+
+export type ApplicationDocumentReviewEligibilityReason =
+  | 'reviewable'
+  | 'application_status_not_reviewable'
+  | 'document_not_pending_review'
+  | 'not_applicant_portal_document'
+  | 'applicant_document_not_uploaded';
+
+export type LinkedApplicantDocumentStatusApiValue =
+  | 'uploaded'
+  | 'accepted'
+  | 'rejected'
+  | 'needs_replacement'
+  | 'superseded';
+
 export class CreateApplicationDocumentDto {
   @IsUUID()
   fileId!: string;
@@ -51,12 +69,28 @@ export class ApplicationDocumentFileSummaryDto {
   visibility!: FileVisibility;
 }
 
+export class ApplicationDocumentReviewEligibilityDto {
+  canAccept!: boolean;
+  canReject!: boolean;
+  canRequestReplacement!: boolean;
+  reason!: ApplicationDocumentReviewEligibilityReason;
+}
+
+export class LinkedApplicantDocumentDto {
+  id!: string;
+  status!: LinkedApplicantDocumentStatusApiValue;
+}
+
 export class ApplicationDocumentResponseDto {
   id!: string;
   applicationId!: string;
   fileId!: string;
   documentType!: string;
   status!: ApplicationDocumentStatusApiValue;
+  source!: ApplicationDocumentSourceApiValue;
+  canReview!: boolean;
+  reviewEligibility!: ApplicationDocumentReviewEligibilityDto;
+  linkedApplicantDocument!: LinkedApplicantDocumentDto | null;
   notes!: string | null;
   createdAt!: string;
   updatedAt!: string;

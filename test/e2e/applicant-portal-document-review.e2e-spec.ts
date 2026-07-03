@@ -159,6 +159,35 @@ describe('Applicant Portal document review (e2e)', () => {
   it('school admin accepts a pending applicant document', async () => {
     const fixture = await createSubmittedApplicantDocument('Accept');
 
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/admissions/applications/${fixture.applicationId}/documents`,
+      )
+      .set('Authorization', bearer(schoolUserAuth))
+      .expect(200)
+      .expect(({ body }) => {
+        const document = body.find(
+          (item: { id: string }) => item.id === fixture.applicationDocumentId,
+        );
+        expect(document).toMatchObject({
+          id: fixture.applicationDocumentId,
+          status: 'pending_review',
+          source: 'applicant_portal',
+          canReview: true,
+          reviewEligibility: {
+            canAccept: true,
+            canReject: true,
+            canRequestReplacement: true,
+            reason: 'reviewable',
+          },
+          linkedApplicantDocument: {
+            id: fixture.applicantDocumentId,
+            status: 'uploaded',
+          },
+        });
+        expectNoSchoolDocumentLeaks(body);
+      });
+
     const response = await reviewDocument(
       'accept',
       fixture.applicationId,
@@ -172,6 +201,18 @@ describe('Applicant Portal document review (e2e)', () => {
       fileId: fixture.fileId,
       documentType: 'Birth certificate',
       status: 'complete',
+      source: 'applicant_portal',
+      canReview: false,
+      reviewEligibility: {
+        canAccept: false,
+        canReject: false,
+        canRequestReplacement: false,
+        reason: 'document_not_pending_review',
+      },
+      linkedApplicantDocument: {
+        id: fixture.applicantDocumentId,
+        status: 'accepted',
+      },
       notes: 'Verified',
       file: { id: fixture.fileId, originalName: 'accept.pdf' },
     });
@@ -195,6 +236,15 @@ describe('Applicant Portal document review (e2e)', () => {
       .expect(200)
       .expect(({ body }) => {
         expect(body.status).toBe('missing');
+        expect(body.source).toBe('applicant_portal');
+        expect(body.canReview).toBe(false);
+        expect(body.reviewEligibility.reason).toBe(
+          'document_not_pending_review',
+        );
+        expect(body.linkedApplicantDocument).toMatchObject({
+          id: fixture.applicantDocumentId,
+          status: 'rejected',
+        });
         expect(body.notes).toBe('Blurry scan');
         expectNoSchoolDocumentLeaks(body);
       });
@@ -229,6 +279,15 @@ describe('Applicant Portal document review (e2e)', () => {
       .expect(200)
       .expect(({ body }) => {
         expect(body.status).toBe('missing');
+        expect(body.source).toBe('applicant_portal');
+        expect(body.canReview).toBe(false);
+        expect(body.reviewEligibility.reason).toBe(
+          'document_not_pending_review',
+        );
+        expect(body.linkedApplicantDocument).toMatchObject({
+          id: fixture.applicantDocumentId,
+          status: 'needs_replacement',
+        });
         expect(body.notes).toBe('Wrong document');
         expectNoSchoolDocumentLeaks(body);
       });
@@ -307,13 +366,22 @@ describe('Applicant Portal document review (e2e)', () => {
         );
         expect(pending).toMatchObject({
           status: 'pending_review',
+          source: 'applicant_portal',
+          canReview: true,
+          reviewEligibility: { reason: 'reviewable' },
+          linkedApplicantDocument: {
+            id: replacement.body.id,
+            status: 'uploaded',
+          },
           fileId: replacement.body.file.id,
         });
         expectNoSchoolDocumentLeaks(body);
       });
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/applicant-portal/requests/${fixture.requestId}/submit`)
+      .post(
+        `${GLOBAL_PREFIX}/applicant-portal/requests/${fixture.requestId}/submit`,
+      )
       .set('Authorization', bearer(applicantAuth))
       .expect(200);
     await expect(
@@ -324,6 +392,49 @@ describe('Applicant Portal document review (e2e)', () => {
         where: { applicationId: fixture.applicationId },
       }),
     ).resolves.toBe(beforeDocuments + 1);
+  });
+
+  it('blocks staff-created pending_review documents and marks staff uploads as non-reviewable', async () => {
+    const fixture = await createSubmittedApplicantDocument('StaffUpload');
+
+    await createSchoolDocument(fixture.applicationId, {
+      fileId: fixture.fileId,
+      documentType: 'staff_pending_review',
+      status: 'pending_review',
+    })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body.error?.code).toBe('validation.failed');
+        expect(body.error?.details).toMatchObject({
+          field: 'status',
+          reason: 'pending_review_reserved_for_applicant_portal',
+        });
+      });
+
+    await createSchoolDocument(fixture.applicationId, {
+      fileId: fixture.fileId,
+      documentType: 'staff_complete',
+      status: 'complete',
+      notes: 'School office copy',
+    })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          documentType: 'staff_complete',
+          status: 'complete',
+          source: 'staff_upload',
+          canReview: false,
+          reviewEligibility: {
+            canAccept: false,
+            canReject: false,
+            canRequestReplacement: false,
+            reason: 'document_not_pending_review',
+          },
+          linkedApplicantDocument: null,
+          notes: 'School office copy',
+        });
+        expectNoSchoolDocumentLeaks(body);
+      });
   });
 
   it('creates no student, guardian, enrollment, membership, parent, or notification side effects', async () => {
@@ -346,7 +457,9 @@ describe('Applicant Portal document review (e2e)', () => {
     ).resolves.toBe(0);
   });
 
-  async function createSubmittedApplicantDocument(childFirstName: string): Promise<{
+  async function createSubmittedApplicantDocument(
+    childFirstName: string,
+  ): Promise<{
     requestId: string;
     applicantDocumentId: string;
     applicationId: string;
@@ -401,6 +514,23 @@ describe('Applicant Portal document review (e2e)', () => {
     return request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/admissions/applications/${applicationId}/documents/${documentId}/${action}`,
+      )
+      .set('Authorization', bearer(schoolUserAuth))
+      .send(body);
+  }
+
+  function createSchoolDocument(
+    applicationId: string,
+    body: {
+      fileId: string;
+      documentType: string;
+      status?: string;
+      notes?: string;
+    },
+  ) {
+    return request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/admissions/applications/${applicationId}/documents`,
       )
       .set('Authorization', bearer(schoolUserAuth))
       .send(body);
@@ -708,8 +838,13 @@ describe('Applicant Portal document review (e2e)', () => {
     for (const forbidden of [
       'applicantUserId',
       'applicantProfileId',
+      'requestId',
+      'requiredDocumentId',
+      'schoolId',
+      'organizationId',
       'bucket',
       'objectKey',
+      'provider',
       'signedUrl',
       'downloadUrl',
       'PENDING_REVIEW',

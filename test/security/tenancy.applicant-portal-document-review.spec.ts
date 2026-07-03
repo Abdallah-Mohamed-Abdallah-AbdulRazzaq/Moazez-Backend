@@ -225,11 +225,52 @@ describe('Applicant Portal document review tenancy (security)', () => {
     });
 
     await reviewDocument(applicantAuth, 'accept', fixture, {}).expect(403);
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/admissions/applications/${fixture.applicationId}/documents`,
+      )
+      .set('Authorization', bearer(applicantAuth))
+      .expect(403);
     for (const auth of [parentAuth, studentAuth, teacherAuth, viewOnlyAuth]) {
       await reviewDocument(auth, 'reject', fixture, {
         note: 'no permission',
       }).expect(403);
     }
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/admissions/applications/${fixture.applicationId}/documents`,
+      )
+      .set('Authorization', bearer(viewOnlyAuth))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: fixture.applicationDocumentId,
+              source: 'applicant_portal',
+              canReview: true,
+              reviewEligibility: expect.objectContaining({
+                reason: 'reviewable',
+              }),
+              linkedApplicantDocument: {
+                id: fixture.applicantDocumentId,
+                status: 'uploaded',
+              },
+            }),
+          ]),
+        );
+        expectNoSchoolDocumentLeaks(body);
+      });
+    await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/admissions/applications/${fixture.applicationId}/documents`,
+      )
+      .set('Authorization', bearer(viewOnlyAuth))
+      .send({
+        fileId: fixture.fileId,
+        documentType: 'view_only_forbidden_upload',
+      })
+      .expect(403);
 
     await expectDocumentStatuses(fixture, {
       applicationDocumentStatus: AdmissionDocumentStatus.PENDING_REVIEW,
@@ -339,11 +380,48 @@ describe('Applicant Portal document review tenancy (security)', () => {
       childFirstName: 'StorageSafe',
     });
 
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/admissions/applications/${fixture.applicationId}/documents`,
+      )
+      .set('Authorization', bearer(schoolAAuth))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: fixture.applicationDocumentId,
+              source: 'applicant_portal',
+              canReview: true,
+              reviewEligibility: expect.objectContaining({
+                reason: 'reviewable',
+              }),
+              linkedApplicantDocument: {
+                id: fixture.applicantDocumentId,
+                status: 'uploaded',
+              },
+            }),
+          ]),
+        );
+        expectNoSchoolDocumentLeaks(body);
+      });
+
     await reviewDocument(schoolAAuth, 'accept', fixture, {
       note: 'storage safe',
     })
       .expect(200)
-      .expect(({ body }) => expectNoSchoolDocumentLeaks(body));
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          source: 'applicant_portal',
+          canReview: false,
+          reviewEligibility: { reason: 'document_not_pending_review' },
+          linkedApplicantDocument: {
+            id: fixture.applicantDocumentId,
+            status: 'accepted',
+          },
+        });
+        expectNoSchoolDocumentLeaks(body);
+      });
 
     await expect(
       prisma.student.count({ where: { schoolId: schoolAId } }),
@@ -735,8 +813,13 @@ describe('Applicant Portal document review tenancy (security)', () => {
     for (const forbidden of [
       'applicantUserId',
       'applicantProfileId',
+      'requestId',
+      'requiredDocumentId',
+      'schoolId',
+      'organizationId',
       'bucket',
       'objectKey',
+      'provider',
       'signedUrl',
       'downloadUrl',
       'PENDING_REVIEW',
