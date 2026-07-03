@@ -12,7 +12,6 @@ export interface TeacherProfilePresenterInput {
   teacher: TeacherProfileIdentityRecord;
   school: TeacherProfileSchoolDisplayRecord;
   role: TeacherProfileRoleRecord | null;
-  fallbackRoleId: string;
   classesSummary: {
     classesCount: number;
     subjectsCount: number;
@@ -36,7 +35,6 @@ export class TeacherProfilePresenter {
       },
       school: input.school,
       role: {
-        roleId: input.role?.roleId ?? input.fallbackRoleId,
         name: input.role?.role.name ?? null,
       },
       classesSummary: input.classesSummary,

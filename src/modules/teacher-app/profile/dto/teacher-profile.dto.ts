@@ -13,7 +13,6 @@ export class TeacherProfileSchoolDto {
 }
 
 export class TeacherProfileRoleDto {
-  roleId!: string;
   name!: string | null;
 }
 

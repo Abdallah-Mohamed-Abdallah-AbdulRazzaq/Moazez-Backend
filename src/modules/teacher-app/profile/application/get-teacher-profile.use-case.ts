@@ -40,7 +40,6 @@ export class GetTeacherProfileUseCase {
       teacher,
       school,
       role,
-      fallbackRoleId: context.roleId,
       classesSummary: {
         classesCount: allocations.length,
         subjectsCount: new Set(

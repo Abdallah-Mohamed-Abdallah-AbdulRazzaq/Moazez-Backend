@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { METHOD_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   BehaviorPointLedgerEntryType,
@@ -32,7 +33,27 @@ import {
 import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
+import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { AppModule } from '../../src/app.module';
+import { TeacherAnnouncementsController } from '../../src/modules/teacher-app/announcements/controller/teacher-announcements.controller';
+import { TeacherCalendarController } from '../../src/modules/teacher-app/calendar/controller/teacher-calendar.controller';
+import { TeacherClassroomAttendanceController } from '../../src/modules/teacher-app/classroom/attendance/controller/teacher-classroom-attendance.controller';
+import { TeacherClassroomController } from '../../src/modules/teacher-app/classroom/controller/teacher-classroom.controller';
+import { TeacherClassroomAssignmentsController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-classroom-assignments.controller';
+import { TeacherClassroomGradesController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-classroom-grades.controller';
+import { TeacherClassroomSubmissionReviewController } from '../../src/modules/teacher-app/classroom/grades/controller/teacher-classroom-submission-review.controller';
+import { TeacherHomeController } from '../../src/modules/teacher-app/home/controller/teacher-home.controller';
+import { TeacherHomeworksController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homeworks.controller';
+import { TeacherLessonPreparationController } from '../../src/modules/teacher-app/lesson-preparation/controller/teacher-lesson-preparation.controller';
+import { TeacherMessagesController } from '../../src/modules/teacher-app/messages/controller/teacher-messages.controller';
+import { TeacherMyClassesController } from '../../src/modules/teacher-app/my-classes/controller/teacher-my-classes.controller';
+import { TeacherNotificationsController } from '../../src/modules/teacher-app/notifications/controller/teacher-notifications.controller';
+import { TeacherProfileController } from '../../src/modules/teacher-app/profile/controller/teacher-profile.controller';
+import { TeacherScheduleController } from '../../src/modules/teacher-app/schedule/controller/teacher-schedule.controller';
+import { TeacherSettingsController } from '../../src/modules/teacher-app/settings/controller/teacher-settings.controller';
+import { TeacherTasksController } from '../../src/modules/teacher-app/tasks/controller/teacher-tasks.controller';
+import { TeacherTaskReviewQueueController } from '../../src/modules/teacher-app/tasks/review/controller/teacher-task-review-queue.controller';
+import { TeacherXpController } from '../../src/modules/teacher-app/xp/controller/teacher-xp.controller';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'TeacherApp123!';
@@ -42,6 +63,163 @@ const ARGON2_OPTIONS: argon2.Options = {
   timeCost: 2,
   parallelism: 1,
 };
+
+const FINAL_TEACHER_PERMISSIONS = [
+  'app.device_tokens.manage',
+  'academics.calendar.view',
+  'academics.curriculum.view',
+  'academics.lesson_plans.view',
+  'academics.timetable.view',
+  'attendance.entries.manage',
+  'attendance.sessions.manage',
+  'attendance.sessions.submit',
+  'attendance.sessions.view',
+  'communication.announcements.view',
+  'communication.contacts.view',
+  'communication.conversations.create',
+  'communication.conversations.read',
+  'communication.conversations.view',
+  'communication.messages.send',
+  'communication.messages.view',
+  'communication.notifications.archive',
+  'communication.notifications.preferences.manage',
+  'communication.notifications.read',
+  'communication.notifications.view',
+  'files.uploads.manage',
+  'grades.assessments.view',
+  'grades.gradebook.view',
+  'grades.items.manage',
+  'grades.items.view',
+  'grades.questions.view',
+  'grades.submissions.review',
+  'grades.submissions.view',
+  'homework.assignments.manage',
+  'homework.assignments.view',
+  'homework.attachments.manage',
+  'homework.attachments.view',
+  'homework.grade_sync.manage',
+  'homework.grade_sync.view',
+  'homework.questions.manage',
+  'homework.questions.view',
+  'homework.submissions.review',
+  'homework.submissions.view',
+  'homework.targets.manage',
+  'homework.targets.view',
+  'reinforcement.reviews.manage',
+  'reinforcement.reviews.view',
+  'reinforcement.tasks.manage',
+  'reinforcement.tasks.view',
+  'reinforcement.xp.view',
+  'students.records.view',
+  'teacher.announcements.manage',
+  'teacher.classroom.view',
+  'teacher.classes.view',
+  'teacher.home.view',
+  'teacher.lesson_preparation.status.manage',
+  'teacher.lesson_preparation.view',
+  'teacher.profile.view',
+  'teacher.settings.view',
+] as const;
+
+const REQUIRED_FINAL_TEACHER_APP_PERMISSIONS = [
+  'teacher.home.view',
+  'teacher.classes.view',
+  'teacher.classroom.view',
+  'teacher.profile.view',
+  'teacher.settings.view',
+  'teacher.lesson_preparation.view',
+  'teacher.lesson_preparation.status.manage',
+  'teacher.announcements.manage',
+  'homework.assignments.view',
+  'homework.assignments.manage',
+  'homework.targets.view',
+  'homework.targets.manage',
+  'homework.questions.view',
+  'homework.questions.manage',
+  'homework.attachments.view',
+  'homework.attachments.manage',
+  'homework.submissions.view',
+  'homework.submissions.review',
+  'homework.grade_sync.view',
+  'homework.grade_sync.manage',
+  'communication.conversations.create',
+  'communication.conversations.read',
+  'communication.conversations.view',
+  'communication.messages.view',
+  'communication.messages.send',
+  'communication.notifications.view',
+  'communication.notifications.read',
+  'communication.notifications.archive',
+  'communication.notifications.preferences.manage',
+  'communication.announcements.view',
+  'app.device_tokens.manage',
+  'files.uploads.manage',
+] as const;
+
+const FORBIDDEN_TEACHER_PERMISSIONS = [
+  'files.downloads.view',
+  'communication.announcements.manage',
+  'communication.messages.attachments.manage',
+  'communication.conversations.manage',
+  'communication.participants.manage',
+  'communication.messages.edit',
+  'communication.messages.delete',
+  'communication.messages.report',
+  'communication.messages.moderate',
+  'communication.conversations.moderate',
+  'communication.admin.view',
+  'communication.admin.manage',
+  'communication.platform.view',
+  'communication.platform.manage',
+  'communication.notifications.manage',
+  'behavior.overview.view',
+  'behavior.categories.view',
+  'behavior.records.view',
+  'behavior.records.create',
+  'behavior.points.view',
+  'reinforcement.hero.view',
+  'reinforcement.hero.progress.view',
+  'reinforcement.rewards.view',
+  'reinforcement.rewards.redemptions.view',
+  'reinforcement.rewards.redemptions.request',
+  'grades.assessments.manage',
+  'grades.questions.manage',
+  'grades.analytics.view',
+  'grades.snapshots.view',
+  'academics.lesson_plans.manage',
+  'homework.submissions.save',
+  'homework.submissions.submit',
+  'homework.answers.manage',
+  'homework.submission_attachments.manage',
+] as const;
+
+const FORBIDDEN_TEACHER_ROUTE_PERMISSIONS = [
+  ...FORBIDDEN_TEACHER_PERMISSIONS,
+  'communication.participants.manage',
+  'communication.notifications.manage',
+] as const;
+
+const TEACHER_APP_CONTROLLER_CLASSES = [
+  TeacherHomeController,
+  TeacherMyClassesController,
+  TeacherClassroomController,
+  TeacherClassroomAttendanceController,
+  TeacherClassroomGradesController,
+  TeacherClassroomAssignmentsController,
+  TeacherClassroomSubmissionReviewController,
+  TeacherHomeworksController,
+  TeacherTasksController,
+  TeacherTaskReviewQueueController,
+  TeacherXpController,
+  TeacherMessagesController,
+  TeacherNotificationsController,
+  TeacherAnnouncementsController,
+  TeacherProfileController,
+  TeacherSettingsController,
+  TeacherScheduleController,
+  TeacherCalendarController,
+  TeacherLessonPreparationController,
+] as const;
 
 type AcademicContext = {
   academicYearId: string;
@@ -80,6 +258,17 @@ type ExpressLayer = {
   handle?: {
     stack?: ExpressLayer[];
   };
+};
+
+type ControllerClass = {
+  name: string;
+  prototype: object;
+};
+
+type TeacherRoutePermissionInventoryEntry = {
+  controllerName: string;
+  methodName: string;
+  permissions: string[];
 };
 
 jest.setTimeout(120000);
@@ -131,11 +320,13 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
   const createdAllocationIds: string[] = [];
   const createdStudentIds: string[] = [];
   const createdEnrollmentIds: string[] = [];
+  const createdAttendanceSessionIds: string[] = [];
   const createdBehaviorCategoryIds: string[] = [];
   const createdBehaviorRecordIds: string[] = [];
   const createdBehaviorPointLedgerIds: string[] = [];
   const createdXpLedgerIds: string[] = [];
   const createdFileIds: string[] = [];
+  const createdHomeworkAssignmentIds: string[] = [];
   const createdReinforcementTaskIds: string[] = [];
   const createdReinforcementTargetIds: string[] = [];
   const createdReinforcementStageIds: string[] = [];
@@ -431,103 +622,117 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     }
   });
 
-  it('registers the Sprint 7D Teacher App route set and keeps deferred routes absent', async () => {
+  it('verifies the final Teacher App route permission inventory', () => {
     const routes = listRegisteredTeacherRoutes();
+    const inventory = listTeacherRoutePermissionInventory();
+    const decorated = inventory.filter((entry) => entry.permissions.length > 0);
+    const undecorated = inventory.filter(
+      (entry) => entry.permissions.length === 0,
+    );
+    const decoratedPermissions = decorated.flatMap(
+      (entry) => entry.permissions,
+    );
 
-    expect(routes).toEqual([
-      'DELETE /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments/:attachmentId',
-      'DELETE /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId',
-      'DELETE /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId/options/:optionId',
-      'GET /api/v1/teacher/calendar/events',
-      'GET /api/v1/teacher/calendar/events/:eventId',
-      'GET /api/v1/teacher/classroom/:classId',
-      'GET /api/v1/teacher/classroom/:classId/assignments',
-      'GET /api/v1/teacher/classroom/:classId/assignments/:assignmentId',
-      'GET /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions',
-      'GET /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId',
-      'GET /api/v1/teacher/classroom/:classId/attendance/roster',
-      'GET /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId',
-      'GET /api/v1/teacher/classroom/:classId/grades/assessments',
-      'GET /api/v1/teacher/classroom/:classId/grades/assessments/:assessmentId',
-      'GET /api/v1/teacher/classroom/:classId/grades/gradebook',
-      'GET /api/v1/teacher/classroom/:classId/roster',
+    expect(routes).toHaveLength(111);
+    expect(inventory).toHaveLength(111);
+    expect(decorated).toHaveLength(111);
+    expect(undecorated).toEqual([]);
+
+    expect(routes).toEqual(
+      expect.arrayContaining([
       'GET /api/v1/teacher/home',
-      'GET /api/v1/teacher/homeworks/classes/:classId/assignments',
-      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId',
-      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments',
-      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/grade-sync',
-      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions',
-      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId',
-      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions',
-      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId',
-      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers',
-      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/attachments',
-      'GET /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/targets',
-      'GET /api/v1/teacher/homeworks/dashboard',
-      'GET /api/v1/teacher/lesson-preparation/:lessonPlanItemId',
-      'GET /api/v1/teacher/lesson-preparation/today',
-      'GET /api/v1/teacher/lesson-preparation/week',
-      'GET /api/v1/teacher/messages/conversations',
-      'GET /api/v1/teacher/messages/conversations/:conversationId',
-      'GET /api/v1/teacher/messages/conversations/:conversationId/messages',
       'GET /api/v1/teacher/my-classes',
-      'GET /api/v1/teacher/my-classes/:classId',
-      'GET /api/v1/teacher/profile',
-      'GET /api/v1/teacher/profile/employment',
-      'GET /api/v1/teacher/schedule',
-      'GET /api/v1/teacher/schedule/week',
-      'GET /api/v1/teacher/settings/about',
-      'GET /api/v1/teacher/settings/contact',
-      'GET /api/v1/teacher/tasks',
-      'GET /api/v1/teacher/tasks/:taskId',
-      'GET /api/v1/teacher/tasks/dashboard',
-      'GET /api/v1/teacher/tasks/review-queue',
-      'GET /api/v1/teacher/tasks/review-queue/:submissionId',
-      'GET /api/v1/teacher/tasks/selectors',
-      'GET /api/v1/teacher/xp/classes/:classId',
-      'GET /api/v1/teacher/xp/dashboard',
-      'GET /api/v1/teacher/xp/students/:studentId',
-      'GET /api/v1/teacher/xp/students/:studentId/history',
-      'PATCH /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/answers/:answerId/review',
-      'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId',
-      'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments/:attachmentId',
-      'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments/:attachmentId/reorder',
-      'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId',
-      'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId/options/:optionId',
-      'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId/options/:optionId/reorder',
-      'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId/reorder',
-      'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers/:answerId/review',
-      'PATCH /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/review',
-      'PATCH /api/v1/teacher/lesson-preparation/:lessonPlanItemId/status',
-      'POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/review/finalize',
-      'POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/sync-grade-item',
+      'GET /api/v1/teacher/classroom/:classId',
+      'GET /api/v1/teacher/classroom/:classId/roster',
+      'GET /api/v1/teacher/classroom/:classId/attendance/roster',
+      'GET /api/v1/teacher/classroom/:classId/attendance/today',
       'POST /api/v1/teacher/classroom/:classId/attendance/session/resolve',
-      'POST /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/submit',
+      'GET /api/v1/teacher/classroom/:classId/grades/assessments',
+      'POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/review/finalize',
+      'GET /api/v1/teacher/homeworks/dashboard',
       'POST /api/v1/teacher/homeworks/classes/:classId/assignments',
-      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments',
-      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/cancel',
-      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/close',
       'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/grade-sync',
-      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/publish',
-      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions',
-      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId/options',
-      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/grade-sync',
-      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/review',
-      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/targets/resolve',
-      'POST /api/v1/teacher/messages/conversations/:conversationId/messages',
-      'POST /api/v1/teacher/messages/conversations/:conversationId/read',
+      'GET /api/v1/teacher/tasks/dashboard',
       'POST /api/v1/teacher/tasks',
-      'POST /api/v1/teacher/tasks/review-queue/:submissionId/approve',
-      'POST /api/v1/teacher/tasks/review-queue/:submissionId/reject',
-      'PUT /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/answers/review',
-      'PUT /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/entries',
-      'PUT /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers/review',
-    ]);
+      'GET /api/v1/teacher/tasks/review-queue',
+      'GET /api/v1/teacher/xp/dashboard',
+      'GET /api/v1/teacher/messages/contacts',
+      'POST /api/v1/teacher/messages/conversations',
+      'POST /api/v1/teacher/messages/conversations/:conversationId/messages',
+      'GET /api/v1/teacher/notifications',
+      'POST /api/v1/teacher/notifications/read-all',
+      'GET /api/v1/teacher/announcements',
+      'POST /api/v1/teacher/announcements',
+      'GET /api/v1/teacher/profile',
+      'GET /api/v1/teacher/settings/about',
+      'GET /api/v1/teacher/schedule',
+      'GET /api/v1/teacher/calendar/events',
+      'GET /api/v1/teacher/lesson-preparation/today',
+      ]),
+    );
+
+    for (const forbiddenPermission of FORBIDDEN_TEACHER_ROUTE_PERMISSIONS) {
+      expect(decoratedPermissions).not.toContain(forbiddenPermission);
+    }
+    expect(
+      decoratedPermissions.some((code) => code.startsWith('behavior.')),
+    ).toBe(false);
+    expect(
+      decoratedPermissions.some((code) => code.startsWith('reinforcement.hero.')),
+    ).toBe(false);
+    expect(
+      decoratedPermissions.some((code) =>
+        code.startsWith('reinforcement.rewards.'),
+      ),
+    ).toBe(false);
+
+    expect(
+      getHandlerPermissions(TeacherMessagesController, 'downloadAttachment'),
+    ).toEqual(['communication.messages.view']);
+    expect(
+      getHandlerPermissions(TeacherMessagesController, 'previewAttachment'),
+    ).toEqual(['communication.messages.view']);
+    expect(
+      getHandlerPermissions(TeacherHomeworksController, 'createAttachment'),
+    ).toEqual(['homework.attachments.manage', 'files.uploads.manage']);
+  });
+
+  it('verifies the final Teacher role, catalog, Parent role, and Student role state', async () => {
+    expect(await prisma.permission.count()).toBe(205);
+
+    const teacherPermissions = await getSystemRolePermissionCodes('teacher');
+    expect(teacherPermissions).toHaveLength(54);
+    expect(teacherPermissions).toEqual(
+      Array.from(FINAL_TEACHER_PERMISSIONS).sort(),
+    );
+    for (const permission of REQUIRED_FINAL_TEACHER_APP_PERMISSIONS) {
+      expect(teacherPermissions).toContain(permission);
+    }
+    for (const forbiddenPermission of FORBIDDEN_TEACHER_PERMISSIONS) {
+      expect(teacherPermissions).not.toContain(forbiddenPermission);
+    }
+    expect(teacherPermissions.some((code) => code.startsWith('dashboard.'))).toBe(
+      false,
+    );
+    expect(teacherPermissions.some((code) => code.startsWith('platform.'))).toBe(
+      false,
+    );
+    expect(teacherPermissions.some((code) => code.startsWith('settings.'))).toBe(
+      false,
+    );
+    expect(teacherPermissions.some((code) => code.startsWith('admissions.'))).toBe(
+      false,
+    );
+
+    expect(await getSystemRolePermissionCodes('parent')).toHaveLength(43);
+    expect(await getSystemRolePermissionCodes('student')).toHaveLength(57);
+  });
+
+  it('keeps removed Teacher App routes absent', async () => {
+    const routes = listRegisteredTeacherRoutes();
 
     for (const absentRoute of [
       'POST /api/v1/teacher/xp/bonus',
-      'GET /api/v1/teacher/messages/contacts',
-      'POST /api/v1/teacher/messages/conversations',
       'POST /api/v1/teacher/messages/conversations/:conversationId/attachments',
       'POST /api/v1/teacher/messages/conversations/:conversationId/audio',
       'PUT /api/v1/teacher/profile',
@@ -536,30 +741,17 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       'GET /api/v1/teacher/settings/privacy',
       'POST /api/v1/teacher/settings/support-ticket',
       'POST /api/v1/teacher/settings/app-rating',
-      'GET /api/v1/teacher/announcements',
-      'GET /api/v1/teacher/notifications',
     ]) {
       expect(routes).not.toContain(absentRoute);
     }
 
     const { accessToken } = await login(teacherAEmail);
-    for (const route of [
-      '/teacher/messages/contacts',
-      '/teacher/settings/privacy',
-      '/teacher/announcements',
-      '/teacher/notifications',
-    ]) {
-      await request(app.getHttpServer())
-        .get(`${GLOBAL_PREFIX}${route}`)
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(404);
-    }
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/settings/privacy`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
 
     for (const route of [
-      '/teacher/xp/bonus',
-      '/teacher/messages/conversations',
-      `/teacher/messages/conversations/${ownConversationId}/attachments`,
-      `/teacher/messages/conversations/${ownConversationId}/messages/audio`,
       '/teacher/profile/avatar',
       '/teacher/settings/support-ticket',
       '/teacher/settings/app-rating',
@@ -636,11 +828,69 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
           .get(`${GLOBAL_PREFIX}${route}`)
           .set('Authorization', `Bearer ${actor.accessToken}`)
           .expect(403);
-        expect(response.body?.error?.code).toBe(
+        expect([
+          'auth.scope.missing',
           'teacher_app.actor.required_teacher',
-        );
+        ]).toContain(response.body?.error?.code);
       }
     }
+  });
+
+  it('covers representative 1C, 1D, and 1E Teacher App action routes', async () => {
+    const { accessToken } = await login(teacherAEmail);
+
+    const attendance = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/classroom/${ownFixture.allocationId}/attendance/session/resolve`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ date: '2026-09-19' })
+      .expect(201);
+    createdAttendanceSessionIds.push(attendance.body.session.id);
+    expect(attendance.body).toMatchObject({
+      classId: ownFixture.allocationId,
+      date: '2026-09-19',
+      session: {
+        id: attendance.body.session.id,
+        status: 'draft',
+      },
+      entries: expect.any(Array),
+    });
+    expectSafeTeacherPayload(attendance.body);
+
+    const homework = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/teacher/homeworks/classes/${ownFixture.allocationId}/assignments`,
+      )
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        title: `${testMarker}-final-homework-action`,
+        description: `${testMarker}-final-homework-action-description`,
+        targetMode: 'classroom',
+        dueAt: '2026-09-25T00:00:00.000Z',
+        estimatedMinutes: 20,
+        isGraded: false,
+      })
+      .expect(201);
+    createdHomeworkAssignmentIds.push(homework.body.id);
+    expect(homework.body).toMatchObject({
+      id: homework.body.id,
+      title: `${testMarker}-final-homework-action`,
+      status: 'draft',
+      classId: ownFixture.allocationId,
+      targetMode: 'classroom',
+    });
+    expectSafeTeacherPayload(homework.body);
+
+    const notifications = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/teacher/notifications/read-all`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(201);
+    expect(notifications.body).toMatchObject({
+      markedCount: expect.any(Number),
+      readAt: expect.any(String),
+    });
+    expectSafeTeacherPayload(notifications.body);
   });
 
   it('covers Teacher Tasks create/read and review queue actions without XP or behavior side effects', async () => {
@@ -677,7 +927,13 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         (student: { studentId: string }) => student.studentId,
       ),
     ).toEqual(ownFixture.studentIds);
-    expect(selectors.body.rewardTypes).toEqual(['moral', 'financial']);
+    expect(selectors.body.rewardTypes).toEqual([
+      'none',
+      'moral',
+      'financial',
+      'points',
+      'xp',
+    ]);
     expectSafeTeacherPayload(selectors.body);
 
     const list = await request(app.getHttpServer())
@@ -1880,6 +2136,69 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     return { accessToken: response.body.accessToken };
   }
 
+  async function getSystemRolePermissionCodes(key: string): Promise<string[]> {
+    const role = await prisma.role.findFirst({
+      where: { key, schoolId: null, isSystem: true },
+      select: {
+        rolePermissions: {
+          select: {
+            permission: { select: { code: true } },
+          },
+        },
+      },
+    });
+    if (!role) throw new Error(`${key} system role not found - run seed.`);
+
+    return role.rolePermissions
+      .map((rolePermission) => rolePermission.permission.code)
+      .sort();
+  }
+
+  function listTeacherRoutePermissionInventory(): TeacherRoutePermissionInventoryEntry[] {
+    return TEACHER_APP_CONTROLLER_CLASSES.flatMap((controller) =>
+      Object.getOwnPropertyNames(controller.prototype)
+        .filter((methodName) => methodName !== 'constructor')
+        .map((methodName) => {
+          const handler = getControllerHandler(controller, methodName);
+          return { methodName, handler };
+        })
+        .filter(
+          ({ handler }) =>
+            typeof handler === 'function' &&
+            Reflect.hasMetadata(METHOD_METADATA, handler),
+        )
+        .map(({ methodName, handler }) => ({
+          controllerName: controller.name,
+          methodName,
+          permissions:
+            Reflect.getMetadata(REQUIRED_PERMISSIONS_METADATA, handler) ?? [],
+        })),
+    ).sort((left, right) =>
+      `${left.controllerName}.${left.methodName}`.localeCompare(
+        `${right.controllerName}.${right.methodName}`,
+      ),
+    );
+  }
+
+  function getHandlerPermissions(
+    controller: ControllerClass,
+    methodName: string,
+  ): string[] {
+    return (
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_METADATA,
+        getControllerHandler(controller, methodName),
+      ) ?? []
+    );
+  }
+
+  function getControllerHandler(
+    controller: ControllerClass,
+    methodName: string,
+  ): unknown {
+    return (controller.prototype as Record<string, unknown>)[methodName];
+  }
+
   function listRegisteredTeacherRoutes(): string[] {
     const expressApp = app.getHttpAdapter().getInstance() as {
       _router?: { stack?: ExpressLayer[] };
@@ -1922,12 +2241,21 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
 
   function expectSafeTeacherPayload(value: unknown): void {
     expectNoObjectKey(value, 'schoolId');
+    expectNoObjectKey(value, 'organizationId');
+    expectNoObjectKey(value, 'membershipId');
+    expectNoObjectKey(value, 'roleId');
+    expectNoObjectKey(value, 'deletedAt');
     expectNoObjectKey(value, 'scheduleId');
     expectNoObjectKey(value, 'passwordHash');
     expectNoObjectKey(value, 'sessionId');
     expectNoObjectKey(value, 'refreshToken');
+    expectNoObjectKey(value, 'applicationId');
+    expectNoObjectKey(value, 'studentUserId');
+    expectNoObjectKey(value, 'guardianUserId');
     expectNoObjectKey(value, 'objectKey');
     expectNoObjectKey(value, 'bucket');
+    expectNoObjectKey(value, 'provider');
+    expectNoObjectKey(value, 'storageProvider');
     expectNoObjectKey(value, 'actorUserId');
     expectNoObjectKey(value, 'metadata');
 
@@ -1972,6 +2300,34 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
           { organizationId: { in: createdOrganizationIds } },
         ],
       },
+    });
+    const notificationIds = (
+      await prisma.communicationNotification.findMany({
+        where: {
+          OR: [
+            { recipientUserId: { in: createdUserIds } },
+            { actorUserId: { in: createdUserIds } },
+            { schoolId: { in: createdSchoolIds } },
+          ],
+        },
+        select: { id: true },
+      })
+    ).map((notification) => notification.id);
+    await prisma.communicationNotificationPushAttempt.deleteMany({
+      where: {
+        delivery: {
+          notificationId: { in: notificationIds },
+        },
+      },
+    });
+    await prisma.communicationNotificationDelivery.deleteMany({
+      where: { notificationId: { in: notificationIds } },
+    });
+    await prisma.communicationNotification.deleteMany({
+      where: { id: { in: notificationIds } },
+    });
+    await prisma.communicationNotificationPreference.deleteMany({
+      where: { userId: { in: createdUserIds } },
     });
     await prisma.communicationMessageAttachment.deleteMany({
       where: { id: { in: createdCommunicationAttachmentIds } },
@@ -2033,6 +2389,40 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     });
     await prisma.behaviorCategory.deleteMany({
       where: { id: { in: createdBehaviorCategoryIds } },
+    });
+    await prisma.homeworkAssignmentAttachment.deleteMany({
+      where: { homeworkAssignmentId: { in: createdHomeworkAssignmentIds } },
+    });
+    await prisma.homeworkSubmissionAttachment.deleteMany({
+      where: { homeworkAssignmentId: { in: createdHomeworkAssignmentIds } },
+    });
+    await prisma.homeworkSubmissionAnswer.deleteMany({
+      where: { homeworkAssignmentId: { in: createdHomeworkAssignmentIds } },
+    });
+    await prisma.homeworkQuestionOption.deleteMany({
+      where: {
+        homeworkQuestion: {
+          homeworkAssignmentId: { in: createdHomeworkAssignmentIds },
+        },
+      },
+    });
+    await prisma.homeworkQuestion.deleteMany({
+      where: { homeworkAssignmentId: { in: createdHomeworkAssignmentIds } },
+    });
+    await prisma.homeworkSubmission.deleteMany({
+      where: { homeworkAssignmentId: { in: createdHomeworkAssignmentIds } },
+    });
+    await prisma.homeworkTarget.deleteMany({
+      where: { homeworkAssignmentId: { in: createdHomeworkAssignmentIds } },
+    });
+    await prisma.homeworkAssignment.deleteMany({
+      where: { id: { in: createdHomeworkAssignmentIds } },
+    });
+    await prisma.attendanceEntry.deleteMany({
+      where: { sessionId: { in: createdAttendanceSessionIds } },
+    });
+    await prisma.attendanceSession.deleteMany({
+      where: { id: { in: createdAttendanceSessionIds } },
     });
     await prisma.enrollment.deleteMany({
       where: { id: { in: createdEnrollmentIds } },

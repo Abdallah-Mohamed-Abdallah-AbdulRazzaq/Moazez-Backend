@@ -27,10 +27,8 @@ const TEACHER_PROFILE_IDENTITY_ARGS =
 const TEACHER_PROFILE_ROLE_ARGS =
   Prisma.validator<Prisma.MembershipDefaultArgs>()({
     select: {
-      roleId: true,
       role: {
         select: {
-          id: true,
           name: true,
         },
       },
