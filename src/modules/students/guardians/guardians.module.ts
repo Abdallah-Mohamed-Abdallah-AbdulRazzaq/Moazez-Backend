@@ -1,4 +1,10 @@
-import { Module } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
+import type { NextFunction, Request } from 'express';
 import { AuthModule } from '../../iam/auth/auth.module';
 import { UsersModule } from '../../settings/users/users.module';
 import { CreateOrLinkGuardianAccountUseCase } from './application/create-or-link-guardian-account.use-case';
@@ -15,14 +21,46 @@ import { UpdateStudentGuardianLinkUseCase } from './application/update-student-g
 import {
   GuardianAccountsController,
   GuardiansController,
+  LegacyGuardiansController,
 } from './controller/guardians.controller';
 import { StudentGuardiansController } from './controller/student-guardians.controller';
 import { GuardiansRepository } from './infrastructure/guardians.repository';
+
+const LEGACY_GUARDIANS_ROUTE_SEGMENT =
+  '/students-guardians/students/guardians';
+const CANONICAL_GUARDIANS_ROUTE_SEGMENT = '/students-guardians/guardians';
+
+function rewriteLegacyGuardiansRoute(
+  request: Request,
+  _response: unknown,
+  next: NextFunction,
+): void {
+  const originalUrl = request.originalUrl ?? request.url;
+  const legacyRouteStart = originalUrl.indexOf(LEGACY_GUARDIANS_ROUTE_SEGMENT);
+
+  if (legacyRouteStart === -1) {
+    next();
+    return;
+  }
+
+  const suffix = originalUrl.slice(
+    legacyRouteStart + LEGACY_GUARDIANS_ROUTE_SEGMENT.length,
+  );
+  if (suffix && !suffix.startsWith('/') && !suffix.startsWith('?')) {
+    next();
+    return;
+  }
+
+  const prefix = originalUrl.slice(0, legacyRouteStart);
+  request.url = `${prefix}${CANONICAL_GUARDIANS_ROUTE_SEGMENT}${suffix}`;
+  next();
+}
 
 @Module({
   imports: [AuthModule, UsersModule],
   controllers: [
     GuardiansController,
+    LegacyGuardiansController,
     GuardianAccountsController,
     StudentGuardiansController,
   ],
@@ -42,4 +80,17 @@ import { GuardiansRepository } from './infrastructure/guardians.repository';
   ],
   exports: [GuardiansRepository, CreateOrLinkGuardianAccountUseCase],
 })
-export class GuardiansModule {}
+export class GuardiansModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(rewriteLegacyGuardiansRoute).forRoutes(
+      {
+        path: 'students-guardians/students/guardians',
+        method: RequestMethod.ALL,
+      },
+      {
+        path: 'students-guardians/students/guardians/{*path}',
+        method: RequestMethod.ALL,
+      },
+    );
+  }
+}
