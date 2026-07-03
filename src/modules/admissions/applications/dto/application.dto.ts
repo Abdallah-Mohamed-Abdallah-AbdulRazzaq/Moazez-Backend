@@ -70,6 +70,20 @@ export class ApplicationRegistrationStateDto {
   source!: 'derived_from_student_application_id';
 }
 
+export class ApplicationDocumentsSummaryDto {
+  totalCount!: number;
+  completeCount!: number;
+  missingCount!: number;
+  pendingReviewCount!: number;
+  reviewableCount!: number;
+  applicantPortalCount!: number;
+  staffUploadCount!: number;
+  needsReplacementCount!: number;
+  hasPendingReview!: boolean;
+  hasReviewableDocuments!: boolean;
+  hasMissingDocuments!: boolean;
+}
+
 export class ApplicationResponseDto {
   id!: string;
   leadId!: string | null;
@@ -82,6 +96,7 @@ export class ApplicationResponseDto {
   createdAt!: string;
   updatedAt!: string;
   registrationState!: ApplicationRegistrationStateDto;
+  documentsSummary!: ApplicationDocumentsSummaryDto;
 }
 
 export class EnrollApplicationHandoffParamsDto {

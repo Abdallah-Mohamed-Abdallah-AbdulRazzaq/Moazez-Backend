@@ -40,6 +40,23 @@ const APPLICATION_RECORD_ARGS =
           },
         },
       },
+      documents: {
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          applicationId: true,
+          status: true,
+          applicantAdmissionRequestDocuments: {
+            where: { deletedAt: null },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            select: {
+              id: true,
+              applicationDocumentId: true,
+              status: true,
+            },
+          },
+        },
+      },
     },
   });
 
