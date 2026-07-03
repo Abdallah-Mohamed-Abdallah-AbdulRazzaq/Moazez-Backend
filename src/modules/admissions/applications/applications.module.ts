@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../iam/auth/auth.module';
 import { RegistrationModule } from '../../students/registration/registration.module';
+import { WorkflowPolicyModule } from '../workflow-policy/workflow-policy.module';
 import { CreateApplicationUseCase } from './application/create-application.use-case';
 import { EnrollApplicationHandoffUseCase } from './application/enroll-application-handoff.use-case';
 import { GetApplicationRegistrationHandoffUseCase } from './application/get-application-registration-handoff.use-case';
@@ -14,7 +15,7 @@ import { ApplicationsRepository } from './infrastructure/applications.repository
 import { ApplicationEnrollmentHandoffValidator } from './validators/application-enrollment-handoff.validator';
 
 @Module({
-  imports: [AuthModule, RegistrationModule],
+  imports: [AuthModule, RegistrationModule, WorkflowPolicyModule],
   controllers: [ApplicationsController],
   providers: [
     ApplicationsRepository,

@@ -1150,6 +1150,7 @@ model Organization {
   applicantAdmissionRequests         ApplicantAdmissionRequest[]
   applicantAdmissionRequestDocuments ApplicantAdmissionRequestDocument[]
   admissionRequiredDocuments         AdmissionRequiredDocument[]
+  admissionWorkflowPolicies          AdmissionWorkflowPolicy[]
   students                           Student[]
   studentProfileCorrectionRequests   StudentProfileCorrectionRequest[]
   guardians                          Guardian[]
@@ -1218,6 +1219,7 @@ model School {
   applicantAdmissionRequests            ApplicantAdmissionRequest[]
   applicantAdmissionRequestDocuments    ApplicantAdmissionRequestDocument[]
   admissionRequiredDocuments            AdmissionRequiredDocument[]
+  admissionWorkflowPolicy               AdmissionWorkflowPolicy?
   applicationDocuments                  ApplicationDocument[]
   placementTests                        PlacementTest[]
   interviews                            Interview[]
@@ -2114,6 +2116,24 @@ model AdmissionRequiredDocument {
   @@index([schoolId, gradeId, isActive, deletedAt])
   @@index([deletedAt])
   @@map("admission_required_documents")
+}
+
+model AdmissionWorkflowPolicy {
+  id                    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId              String  @unique @map("school_id") @db.Uuid
+  organizationId        String  @map("organization_id") @db.Uuid
+  requiresPlacementTest Boolean @default(true) @map("requires_placement_test")
+  requiresInterview     Boolean @default(true) @map("requires_interview")
+  allowDirectAcceptance Boolean @default(false) @map("allow_direct_acceptance")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@map("admission_workflow_policies")
 }
 
 model ApplicationDocument {

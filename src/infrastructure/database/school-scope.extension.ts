@@ -38,6 +38,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'BackupJob',
   'Lead',
   'Application',
+  'AdmissionWorkflowPolicy',
   'ApplicationDocument',
   'PlacementTest',
   'Interview',

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { EnrollApplicationHandoffUseCase } from '../../admissions/applications/application/enroll-application-handoff.use-case';
 import { ApplicationsRepository } from '../../admissions/applications/infrastructure/applications.repository';
 import { ApplicationEnrollmentHandoffValidator } from '../../admissions/applications/validators/application-enrollment-handoff.validator';
+import { WorkflowPolicyModule } from '../../admissions/workflow-policy/workflow-policy.module';
 import { TermsRepository } from '../../academics/structure/infrastructure/terms.repository';
 import { StructureRepository } from '../../academics/structure/infrastructure/structure.repository';
 import { AuthRepository } from '../../iam/auth/infrastructure/auth.repository';
@@ -20,7 +21,7 @@ import { EnrollmentPlacementService } from './domain/enrollment-placement.servic
 import { EnrollmentsRepository } from './infrastructure/enrollments.repository';
 
 @Module({
-  imports: [StudentsRecordsModule, PlatformAdminModule],
+  imports: [StudentsRecordsModule, PlatformAdminModule, WorkflowPolicyModule],
   controllers: [EnrollmentsController],
   providers: [
     EnrollmentsRepository,

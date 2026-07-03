@@ -44,9 +44,12 @@ export class CreateAdmissionDecisionUseCase {
       });
     }
 
-    await this.decisionWorkflowValidator.ensureDecisionCanBeCreated(application);
-
     const decision = mapAdmissionDecisionFromApi(command.decision);
+    await this.decisionWorkflowValidator.ensureDecisionCanBeCreated(
+      application,
+      decision,
+    );
+
     const decidedAt = new Date();
     const admissionDecision =
       await this.admissionDecisionsRepository.createDecisionAndUpdateApplicationStatus(

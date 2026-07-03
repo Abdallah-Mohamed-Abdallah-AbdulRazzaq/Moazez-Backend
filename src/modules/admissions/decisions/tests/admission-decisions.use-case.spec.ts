@@ -12,6 +12,11 @@ import {
 } from '../../../../common/context/request-context';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { ApplicationsRepository } from '../../applications/infrastructure/applications.repository';
+import {
+  AdmissionWorkflowPolicySettings,
+  DEFAULT_ADMISSION_WORKFLOW_POLICY,
+  ResolveAdmissionWorkflowPolicyService,
+} from '../../workflow-policy/application/resolve-admission-workflow-policy.service';
 import { CreateAdmissionDecisionUseCase } from '../application/create-admission-decision.use-case';
 import {
   ApplicationAlreadyDecidedException,
@@ -155,6 +160,99 @@ describe('Admission decisions use cases', () => {
     } as unknown as AdmissionDecisionsRepository;
   }
 
+  function createWorkflowPolicyResolver(
+    policy?: Partial<AdmissionWorkflowPolicySettings>,
+  ): ResolveAdmissionWorkflowPolicyService {
+    return {
+      resolveForCurrentSchool: jest.fn().mockResolvedValue({
+        id: null,
+        ...DEFAULT_ADMISSION_WORKFLOW_POLICY,
+        ...policy,
+        source: 'default',
+        updatedAt: null,
+      }),
+    } as unknown as ResolveAdmissionWorkflowPolicyService;
+  }
+
+  async function buildApplicationForValidation(
+    status: AdmissionApplicationStatus = AdmissionApplicationStatus.SUBMITTED,
+  ) {
+    const application = await createApplicationsRepository(
+      status,
+    ).findApplicationById('application-1');
+    if (!application) {
+      throw new Error('Expected test application');
+    }
+
+    return application;
+  }
+
+  async function expectDecisionValidationAllowed(params: {
+    decision?: AdmissionDecisionType;
+    applicationStatus?: AdmissionApplicationStatus;
+    policy?: Partial<AdmissionWorkflowPolicySettings>;
+    totalPlacementTests?: number;
+    completedPlacementTests?: number;
+    totalInterviews?: number;
+    completedInterviews?: number;
+  }): Promise<void> {
+    const admissionDecisionsRepository = createAdmissionDecisionsRepository({
+      totalPlacementTests: params.totalPlacementTests,
+      completedPlacementTests: params.completedPlacementTests,
+      totalInterviews: params.totalInterviews,
+      completedInterviews: params.completedInterviews,
+    });
+    const validator = new DecisionWorkflowValidator(
+      admissionDecisionsRepository,
+      createWorkflowPolicyResolver(params.policy),
+    );
+    const application = await buildApplicationForValidation(
+      params.applicationStatus,
+    );
+
+    await expect(
+      withScope(() =>
+        validator.ensureDecisionCanBeCreated(
+          application,
+          params.decision ?? AdmissionDecisionType.ACCEPT,
+        ),
+      ),
+    ).resolves.toBeUndefined();
+  }
+
+  async function expectDecisionValidationBlocked(params: {
+    decision?: AdmissionDecisionType;
+    applicationStatus?: AdmissionApplicationStatus;
+    policy?: Partial<AdmissionWorkflowPolicySettings>;
+    totalPlacementTests?: number;
+    completedPlacementTests?: number;
+    totalInterviews?: number;
+    completedInterviews?: number;
+  }): Promise<void> {
+    const admissionDecisionsRepository = createAdmissionDecisionsRepository({
+      totalPlacementTests: params.totalPlacementTests,
+      completedPlacementTests: params.completedPlacementTests,
+      totalInterviews: params.totalInterviews,
+      completedInterviews: params.completedInterviews,
+    });
+    const validator = new DecisionWorkflowValidator(
+      admissionDecisionsRepository,
+      createWorkflowPolicyResolver(params.policy),
+    );
+    const application = await buildApplicationForValidation(
+      params.applicationStatus,
+    );
+
+    await expect(
+      withScope(() =>
+        validator.ensureDecisionCanBeCreated(
+          application,
+          params.decision ?? AdmissionDecisionType.ACCEPT,
+        ),
+      ),
+    ).rejects.toBeInstanceOf(DecisionRequiresAllStepsException);
+  }
+
   it('creates an admission decision successfully and writes an audit record', async () => {
     const applicationsRepository = createApplicationsRepository();
     const admissionDecisionsRepository = createAdmissionDecisionsRepository({
@@ -163,7 +261,10 @@ describe('Admission decisions use cases', () => {
       totalInterviews: 1,
       completedInterviews: 1,
     });
-    const validator = new DecisionWorkflowValidator(admissionDecisionsRepository);
+    const validator = new DecisionWorkflowValidator(
+      admissionDecisionsRepository,
+      createWorkflowPolicyResolver(),
+    );
     const createAuditLog = jest.fn().mockResolvedValue(undefined);
     const authRepository = {
       createAuditLog,
@@ -229,7 +330,10 @@ describe('Admission decisions use cases', () => {
       totalInterviews: 1,
       completedInterviews: 1,
     });
-    const validator = new DecisionWorkflowValidator(admissionDecisionsRepository);
+    const validator = new DecisionWorkflowValidator(
+      admissionDecisionsRepository,
+      createWorkflowPolicyResolver(),
+    );
     const authRepository = {
       createAuditLog: jest.fn().mockResolvedValue(undefined),
     } as unknown as AuthRepository;
@@ -260,7 +364,10 @@ describe('Admission decisions use cases', () => {
       totalInterviews: 1,
       completedInterviews: 1,
     });
-    const validator = new DecisionWorkflowValidator(admissionDecisionsRepository);
+    const validator = new DecisionWorkflowValidator(
+      admissionDecisionsRepository,
+      createWorkflowPolicyResolver(),
+    );
     const authRepository = {
       createAuditLog: jest.fn().mockResolvedValue(undefined),
     } as unknown as AuthRepository;
@@ -279,6 +386,123 @@ describe('Admission decisions use cases', () => {
         }),
       ),
     ).rejects.toBeInstanceOf(DecisionRequiresAllStepsException);
+  });
+
+  it('preserves default strict policy for missing and completed workflow steps', async () => {
+    await expectDecisionValidationBlocked({
+      totalPlacementTests: 0,
+      completedPlacementTests: 0,
+      totalInterviews: 0,
+      completedInterviews: 0,
+    });
+
+    await expectDecisionValidationAllowed({
+      totalPlacementTests: 1,
+      completedPlacementTests: 1,
+      totalInterviews: 1,
+      completedInterviews: 1,
+    });
+  });
+
+  it('allows interview-only decisions when placement tests are optional', async () => {
+    await expectDecisionValidationAllowed({
+      policy: { requiresPlacementTest: false },
+      totalPlacementTests: 0,
+      completedPlacementTests: 0,
+      totalInterviews: 1,
+      completedInterviews: 1,
+    });
+  });
+
+  it('allows test-only decisions when interviews are optional', async () => {
+    await expectDecisionValidationAllowed({
+      policy: { requiresInterview: false },
+      totalPlacementTests: 1,
+      completedPlacementTests: 1,
+      totalInterviews: 0,
+      completedInterviews: 0,
+    });
+  });
+
+  it('allows direct acceptance only when both steps are optional and policy permits it', async () => {
+    await expectDecisionValidationAllowed({
+      policy: {
+        requiresPlacementTest: false,
+        requiresInterview: false,
+        allowDirectAcceptance: true,
+      },
+      decision: AdmissionDecisionType.ACCEPT,
+      totalPlacementTests: 0,
+      completedPlacementTests: 0,
+      totalInterviews: 0,
+      completedInterviews: 0,
+    });
+
+    await expectDecisionValidationBlocked({
+      policy: {
+        requiresPlacementTest: false,
+        requiresInterview: false,
+        allowDirectAcceptance: false,
+      },
+      decision: AdmissionDecisionType.ACCEPT,
+      totalPlacementTests: 0,
+      completedPlacementTests: 0,
+      totalInterviews: 0,
+      completedInterviews: 0,
+    });
+  });
+
+  it('does not let optional incomplete steps block otherwise satisfied workflow decisions', async () => {
+    await expectDecisionValidationAllowed({
+      policy: { requiresPlacementTest: false },
+      totalPlacementTests: 1,
+      completedPlacementTests: 0,
+      totalInterviews: 1,
+      completedInterviews: 1,
+    });
+
+    await expectDecisionValidationAllowed({
+      policy: { requiresInterview: false },
+      totalPlacementTests: 1,
+      completedPlacementTests: 1,
+      totalInterviews: 1,
+      completedInterviews: 0,
+    });
+  });
+
+  it('keeps invalid application statuses blocked even when workflow steps are optional', async () => {
+    await expectDecisionValidationBlocked({
+      applicationStatus: AdmissionApplicationStatus.DOCUMENTS_PENDING,
+      policy: {
+        requiresPlacementTest: false,
+        requiresInterview: false,
+        allowDirectAcceptance: true,
+      },
+    });
+    await expectDecisionValidationBlocked({
+      applicationStatus: AdmissionApplicationStatus.ACCEPTED,
+      policy: {
+        requiresPlacementTest: false,
+        requiresInterview: false,
+        allowDirectAcceptance: true,
+      },
+    });
+    await expectDecisionValidationBlocked({
+      applicationStatus: AdmissionApplicationStatus.WAITLISTED,
+      policy: {
+        requiresPlacementTest: false,
+        requiresInterview: false,
+        allowDirectAcceptance: true,
+      },
+    });
+    await expectDecisionValidationBlocked({
+      applicationStatus: AdmissionApplicationStatus.REJECTED,
+      policy: {
+        requiresPlacementTest: false,
+        requiresInterview: false,
+        allowDirectAcceptance: true,
+      },
+    });
   });
 
   it('presents admission decisions with the bounded API shape', () => {

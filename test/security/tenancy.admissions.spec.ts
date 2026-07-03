@@ -580,6 +580,11 @@ describe('Admissions tenancy isolation (security)', () => {
           id: { in: [demoDocumentId, tenantBDocumentId].filter(Boolean) },
         },
       });
+      await prisma.admissionWorkflowPolicy.deleteMany({
+        where: {
+          schoolId: { in: [demoSchoolId, tenantBSchoolId].filter(Boolean) },
+        },
+      });
       await prisma.file.deleteMany({
         where: {
           id: { in: [demoFileId, tenantBFileId].filter(Boolean) },
@@ -788,6 +793,105 @@ describe('Admissions tenancy isolation (security)', () => {
     expect(serialized).not.toContain('passwordHash');
     expect(serialized).not.toContain('deletedAt');
     expect(serialized).not.toContain('applicationId');
+  });
+
+  it('returns a safe workflow policy response with view permission only', async () => {
+    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/admissions/workflow-policy`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      requiresPlacementTest: expect.any(Boolean),
+      requiresInterview: expect.any(Boolean),
+      allowDirectAcceptance: expect.any(Boolean),
+      source: expect.stringMatching(/^(default|school_override)$/),
+      updatedAt: response.body.updatedAt,
+    });
+    expect(
+      response.body.updatedAt === null ||
+        typeof response.body.updatedAt === 'string',
+    ).toBe(true);
+    expect(Object.keys(response.body).sort()).toEqual(
+      [
+        'allowDirectAcceptance',
+        'requiresInterview',
+        'requiresPlacementTest',
+        'source',
+        'updatedAt',
+      ].sort(),
+    );
+
+    const serialized = JSON.stringify(response.body);
+    expect(serialized).not.toContain('schoolId');
+    expect(serialized).not.toContain('organizationId');
+    expect(serialized).not.toContain('membershipId');
+    expect(serialized).not.toContain('roleId');
+    expect(serialized).not.toContain('actorId');
+    expect(serialized).not.toContain('userId');
+    expect(serialized).not.toContain('audit');
+  });
+
+  it('keeps workflow policy overrides scoped by school', async () => {
+    const schoolA = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const schoolB = await login(TENANT_B_ADMIN_EMAIL, TENANT_B_ADMIN_PASSWORD);
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/admissions/workflow-policy`)
+      .set('Authorization', `Bearer ${schoolA.accessToken}`)
+      .send({
+        requiresPlacementTest: false,
+        requiresInterview: false,
+        allowDirectAcceptance: true,
+      })
+      .expect(200);
+
+    const schoolBDefault = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/admissions/workflow-policy`)
+      .set('Authorization', `Bearer ${schoolB.accessToken}`)
+      .expect(200);
+
+    expect(schoolBDefault.body).toEqual({
+      requiresPlacementTest: true,
+      requiresInterview: true,
+      allowDirectAcceptance: false,
+      source: 'default',
+      updatedAt: null,
+    });
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/admissions/workflow-policy`)
+      .set('Authorization', `Bearer ${schoolB.accessToken}`)
+      .send({ requiresPlacementTest: false })
+      .expect(200);
+
+    const [schoolAAfter, schoolBAfter] = await Promise.all([
+      request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/admissions/workflow-policy`)
+        .set('Authorization', `Bearer ${schoolA.accessToken}`)
+        .expect(200),
+      request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/admissions/workflow-policy`)
+        .set('Authorization', `Bearer ${schoolB.accessToken}`)
+        .expect(200),
+    ]);
+
+    expect(schoolAAfter.body).toEqual({
+      requiresPlacementTest: false,
+      requiresInterview: false,
+      allowDirectAcceptance: true,
+      source: 'school_override',
+      updatedAt: expect.any(String),
+    });
+    expect(schoolBAfter.body).toEqual({
+      requiresPlacementTest: false,
+      requiresInterview: true,
+      allowDirectAcceptance: false,
+      source: 'school_override',
+      updatedAt: expect.any(String),
+    });
   });
 
   it('returns 404 when school A admin updates a school B application by id', async () => {
@@ -1006,6 +1110,18 @@ describe('Admissions tenancy isolation (security)', () => {
     expect(response.body?.error?.code).toBe('auth.scope.missing');
   });
 
+  it('returns 403 when the same-school actor lacks applications manage permission for workflow policy update', async () => {
+    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/admissions/workflow-policy`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ requiresPlacementTest: false })
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
   it('returns 403 when the same-school actor lacks the documents view permission', async () => {
     const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
 
@@ -1122,6 +1238,21 @@ describe('Admissions tenancy isolation (security)', () => {
 
     const response = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/admissions/applications/${demoApplicationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(403);
+
+    expect(response.body?.error?.code).toBe('auth.scope.missing');
+  });
+
+  it.each([
+    ['applicant', APPLICANT_ACTOR_EMAIL],
+    ['parent', PARENT_ACTOR_EMAIL],
+    ['student', STUDENT_ACTOR_EMAIL],
+  ])('returns 403 when %s actor requests workflow policy', async (_label, email) => {
+    const { accessToken } = await login(email, BLOCKED_ACTOR_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/admissions/workflow-policy`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(403);
 

@@ -22,6 +22,13 @@ import {
   ApplicationsRepository,
 } from '../infrastructure/applications.repository';
 import { ApplicationEnrollmentHandoffValidator } from '../validators/application-enrollment-handoff.validator';
+import {
+  AdmissionWorkflowPolicySettings,
+  DEFAULT_ADMISSION_WORKFLOW_POLICY,
+  ResolveAdmissionWorkflowPolicyService,
+} from '../../workflow-policy/application/resolve-admission-workflow-policy.service';
+import { DecisionRequiresAllStepsException } from '../../decisions/domain/admission-decision.exceptions';
+import { ApplicationNotAcceptedException } from '../domain/application.exceptions';
 
 describe('Admissions application registration handoff', () => {
   const createdAt = new Date('2026-06-01T08:00:00.000Z');
@@ -248,10 +255,30 @@ describe('Admissions application registration handoff', () => {
     } as unknown as ApplicationsRepository;
   }
 
-  function createUseCase(repository: ApplicationsRepository) {
+  function createWorkflowPolicyResolver(
+    policy?: Partial<AdmissionWorkflowPolicySettings>,
+  ): ResolveAdmissionWorkflowPolicyService {
+    return {
+      resolveForCurrentSchool: jest.fn().mockResolvedValue({
+        id: null,
+        ...DEFAULT_ADMISSION_WORKFLOW_POLICY,
+        ...policy,
+        source: 'default',
+        updatedAt: null,
+      }),
+    } as unknown as ResolveAdmissionWorkflowPolicyService;
+  }
+
+  function createUseCase(
+    repository: ApplicationsRepository,
+    policy?: Partial<AdmissionWorkflowPolicySettings>,
+  ) {
     return new GetApplicationRegistrationHandoffUseCase(
       repository,
-      new ApplicationEnrollmentHandoffValidator(repository),
+      new ApplicationEnrollmentHandoffValidator(
+        repository,
+        createWorkflowPolicyResolver(policy),
+      ),
     );
   }
 
@@ -493,6 +520,123 @@ describe('Admissions application registration handoff', () => {
     ]);
     expect(result.warnings).toContain('application.already_registered');
     expect(result.missingRequiredForRegistration).toEqual([]);
+  });
+
+  it('preserves default strict handoff workflow requirements', async () => {
+    await expect(
+      withScope(() =>
+        createUseCase(
+          createRepository({
+            totalPlacementTests: 0,
+            completedPlacementTests: 0,
+            totalInterviews: 0,
+            completedInterviews: 0,
+          }),
+        ).execute('application-1'),
+      ),
+    ).rejects.toBeInstanceOf(DecisionRequiresAllStepsException);
+  });
+
+  it('allows handoff without placement tests when placement tests are optional', async () => {
+    const result = await withScope(() =>
+      createUseCase(
+        createRepository({
+          totalPlacementTests: 0,
+          completedPlacementTests: 0,
+          totalInterviews: 1,
+          completedInterviews: 1,
+        }),
+        { requiresPlacementTest: false },
+      ).execute('application-1'),
+    );
+
+    expect(result.eligible).toBe(true);
+    expect(result.eligibility.placementTests).toEqual({
+      total: 0,
+      completed: 0,
+    });
+  });
+
+  it('allows handoff without interviews when interviews are optional', async () => {
+    const result = await withScope(() =>
+      createUseCase(
+        createRepository({
+          totalPlacementTests: 1,
+          completedPlacementTests: 1,
+          totalInterviews: 0,
+          completedInterviews: 0,
+        }),
+        { requiresInterview: false },
+      ).execute('application-1'),
+    );
+
+    expect(result.eligible).toBe(true);
+    expect(result.eligibility.interviews).toEqual({
+      total: 0,
+      completed: 0,
+    });
+  });
+
+  it('allows direct accepted handoff with no tests or interviews only when policy permits it', async () => {
+    const result = await withScope(() =>
+      createUseCase(
+        createRepository({
+          totalPlacementTests: 0,
+          completedPlacementTests: 0,
+          totalInterviews: 0,
+          completedInterviews: 0,
+        }),
+        {
+          requiresPlacementTest: false,
+          requiresInterview: false,
+          allowDirectAcceptance: true,
+        },
+      ).execute('application-1'),
+    );
+
+    expect(result.eligible).toBe(true);
+
+    await expect(
+      withScope(() =>
+        createUseCase(
+          createRepository({
+            totalPlacementTests: 0,
+            completedPlacementTests: 0,
+            totalInterviews: 0,
+            completedInterviews: 0,
+          }),
+          {
+            requiresPlacementTest: false,
+            requiresInterview: false,
+            allowDirectAcceptance: false,
+          },
+        ).execute('application-1'),
+      ),
+    ).rejects.toBeInstanceOf(DecisionRequiresAllStepsException);
+  });
+
+  it('still requires accepted application status and ACCEPT decision', async () => {
+    await expect(
+      withScope(() =>
+        createUseCase(
+          createRepository({
+            application: buildApplication({
+              status: AdmissionApplicationStatus.WAITLISTED,
+              decision: {
+                id: 'decision-1',
+                decision: AdmissionDecisionType.WAITLIST,
+                decidedAt: new Date('2026-04-22T09:00:00.000Z'),
+              },
+            }),
+          }),
+          {
+            requiresPlacementTest: false,
+            requiresInterview: false,
+            allowDirectAcceptance: true,
+          },
+        ).execute('application-1'),
+      ),
+    ).rejects.toBeInstanceOf(ApplicationNotAcceptedException);
   });
 
   it('does not expose internal ownership or credential fields', async () => {

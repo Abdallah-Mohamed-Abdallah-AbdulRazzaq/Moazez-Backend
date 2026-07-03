@@ -18,6 +18,11 @@ import {
 import { presentApplicationEnrollmentHandoff } from '../presenters/application.presenter';
 import { ApplicationEnrollmentHandoffValidator } from '../validators/application-enrollment-handoff.validator';
 import { DecisionRequiresAllStepsException } from '../../decisions/domain/admission-decision.exceptions';
+import {
+  AdmissionWorkflowPolicySettings,
+  DEFAULT_ADMISSION_WORKFLOW_POLICY,
+  ResolveAdmissionWorkflowPolicyService,
+} from '../../workflow-policy/application/resolve-admission-workflow-policy.service';
 
 describe('Admissions application enroll handoff', () => {
   async function withScope<T>(fn: () => Promise<T>): Promise<T> {
@@ -103,9 +108,26 @@ describe('Admissions application enroll handoff', () => {
     } as unknown as ApplicationsRepository;
   }
 
+  function createWorkflowPolicyResolver(
+    policy?: Partial<AdmissionWorkflowPolicySettings>,
+  ): ResolveAdmissionWorkflowPolicyService {
+    return {
+      resolveForCurrentSchool: jest.fn().mockResolvedValue({
+        id: null,
+        ...DEFAULT_ADMISSION_WORKFLOW_POLICY,
+        ...policy,
+        source: 'default',
+        updatedAt: null,
+      }),
+    } as unknown as ResolveAdmissionWorkflowPolicyService;
+  }
+
   it('returns a bounded enroll handoff preview for an accepted application', async () => {
     const repository = createRepository();
-    const validator = new ApplicationEnrollmentHandoffValidator(repository);
+    const validator = new ApplicationEnrollmentHandoffValidator(
+      repository,
+      createWorkflowPolicyResolver(),
+    );
     const useCase = new EnrollApplicationHandoffUseCase(repository, validator);
 
     const result = await withScope(() => useCase.execute('application-1'));
@@ -140,7 +162,10 @@ describe('Admissions application enroll handoff', () => {
         },
       }),
     });
-    const validator = new ApplicationEnrollmentHandoffValidator(repository);
+    const validator = new ApplicationEnrollmentHandoffValidator(
+      repository,
+      createWorkflowPolicyResolver(),
+    );
     const useCase = new EnrollApplicationHandoffUseCase(repository, validator);
 
     await expect(
@@ -151,15 +176,22 @@ describe('Admissions application enroll handoff', () => {
   it('rejects handoff when the current admissions workflow prerequisites are incomplete', async () => {
     const repository = createRepository({
       application: buildApplication({
-        status: AdmissionApplicationStatus.SUBMITTED,
-        decision: null,
+        status: AdmissionApplicationStatus.ACCEPTED,
+        decision: {
+          id: 'decision-1',
+          decision: AdmissionDecisionType.ACCEPT,
+          decidedAt: new Date('2026-04-22T09:00:00.000Z'),
+        },
       }),
       totalPlacementTests: 1,
       completedPlacementTests: 0,
       totalInterviews: 1,
       completedInterviews: 1,
     });
-    const validator = new ApplicationEnrollmentHandoffValidator(repository);
+    const validator = new ApplicationEnrollmentHandoffValidator(
+      repository,
+      createWorkflowPolicyResolver(),
+    );
     const useCase = new EnrollApplicationHandoffUseCase(repository, validator);
 
     await expect(

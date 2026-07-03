@@ -27,6 +27,11 @@ import {
 } from '../infrastructure/applications.repository';
 import { ApplicationEnrollmentHandoffValidator } from '../validators/application-enrollment-handoff.validator';
 import { DecisionRequiresAllStepsException } from '../../decisions/domain/admission-decision.exceptions';
+import {
+  AdmissionWorkflowPolicySettings,
+  DEFAULT_ADMISSION_WORKFLOW_POLICY,
+  ResolveAdmissionWorkflowPolicyService,
+} from '../../workflow-policy/application/resolve-admission-workflow-policy.service';
 
 describe('RegisterAcceptedApplicationUseCase', () => {
   const createdAt = new Date('2026-06-01T08:00:00.000Z');
@@ -377,10 +382,25 @@ describe('RegisterAcceptedApplicationUseCase', () => {
     } as unknown as ApplicationsRepository;
   }
 
+  function createWorkflowPolicyResolver(
+    policy?: Partial<AdmissionWorkflowPolicySettings>,
+  ): ResolveAdmissionWorkflowPolicyService {
+    return {
+      resolveForCurrentSchool: jest.fn().mockResolvedValue({
+        id: null,
+        ...DEFAULT_ADMISSION_WORKFLOW_POLICY,
+        ...policy,
+        source: 'default',
+        updatedAt: null,
+      }),
+    } as unknown as ResolveAdmissionWorkflowPolicyService;
+  }
+
   function createUseCase(params?: {
     repository?: ApplicationsRepository;
     wizard?: Partial<CreateSchoolRegistrationUseCase>;
     authRepository?: Partial<AuthRepository>;
+    policy?: Partial<AdmissionWorkflowPolicySettings>;
   }) {
     const repository = params?.repository ?? createRepository();
     const wizard = {
@@ -398,7 +418,10 @@ describe('RegisterAcceptedApplicationUseCase', () => {
       authRepository,
       useCase: new RegisterAcceptedApplicationUseCase(
         repository,
-        new ApplicationEnrollmentHandoffValidator(repository),
+        new ApplicationEnrollmentHandoffValidator(
+          repository,
+          createWorkflowPolicyResolver(params?.policy),
+        ),
         wizard,
         authRepository,
       ),
@@ -547,6 +570,67 @@ describe('RegisterAcceptedApplicationUseCase', () => {
 
     expect(result.alreadyRegistered).toBe(true);
     expect(result.warnings).toContain('application.already_registered');
+  });
+
+  it('registers with a completed interview and no placement test when placement tests are optional', async () => {
+    const deps = createUseCase({
+      repository: createRepository({
+        totalPlacementTests: 0,
+        completedPlacementTests: 0,
+        totalInterviews: 1,
+        completedInterviews: 1,
+      }),
+      policy: { requiresPlacementTest: false },
+    });
+
+    const result = await withScope(() =>
+      deps.useCase.execute('application-1', command()),
+    );
+
+    expect(result.registered).toBe(true);
+    expect(deps.wizard.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers with a completed placement test and no interview when interviews are optional', async () => {
+    const deps = createUseCase({
+      repository: createRepository({
+        totalPlacementTests: 1,
+        completedPlacementTests: 1,
+        totalInterviews: 0,
+        completedInterviews: 0,
+      }),
+      policy: { requiresInterview: false },
+    });
+
+    const result = await withScope(() =>
+      deps.useCase.execute('application-1', command()),
+    );
+
+    expect(result.registered).toBe(true);
+    expect(deps.wizard.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers directly with no tests or interviews when direct acceptance is allowed', async () => {
+    const deps = createUseCase({
+      repository: createRepository({
+        totalPlacementTests: 0,
+        completedPlacementTests: 0,
+        totalInterviews: 0,
+        completedInterviews: 0,
+      }),
+      policy: {
+        requiresPlacementTest: false,
+        requiresInterview: false,
+        allowDirectAcceptance: true,
+      },
+    });
+
+    const result = await withScope(() =>
+      deps.useCase.execute('application-1', command()),
+    );
+
+    expect(result.registered).toBe(true);
+    expect(deps.wizard.execute).toHaveBeenCalledTimes(1);
   });
 
   it('keeps non-accepted and incomplete workflow validation as submit blockers', async () => {
