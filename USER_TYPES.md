@@ -10,6 +10,7 @@
 - student
 - applicant
 - pickup_delegate
+- dismissal_staff
 - service_account
 
 ## Important Rule
@@ -73,6 +74,9 @@ Temporary pre-admission actor used in applicant portal flows.
 ### pickup_delegate
 Limited actor used only for pickup/delegated collection flows.
 
+### dismissal_staff
+School operational actor for the Dismissal App. This user type is for staff who handle assigned pickup and handover operations. It is not the same as `pickup_delegate`, which represents a pickup person/delegate.
+
 ### service_account
 Non-human system actor for jobs, notifications, integrations, and internal automation.
 
@@ -106,4 +110,5 @@ Examples:
 | student           | 1 enrollment                               |
 | applicant         | N/A (pre-admission)                        |
 | pickup_delegate   | Per-student, not school                    |
+| dismissal_staff   | 1 school                                   |
 | service_account   | As configured                              |

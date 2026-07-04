@@ -186,6 +186,18 @@ const STUDENT_PERMISSIONS = [
   'students.records.view',
 ];
 
+const DISMISSAL_STAFF_PERMISSIONS = [
+  'dismissal.profile.view',
+  'dismissal.gates.view',
+  'dismissal.requests.view',
+  'dismissal.requests.manage',
+  'dismissal.requests.deliver',
+  'dismissal.requests.escalate',
+  'dismissal.requests.history.view',
+  'dismissal.notifications.view',
+  'dismissal.notifications.manage',
+];
+
 const SYSTEM_ROLES: SystemRoleSeed[] = [
   {
     key: 'platform_super_admin',
@@ -222,6 +234,12 @@ const SYSTEM_ROLES: SystemRoleSeed[] = [
     name: 'Student',
     description: 'Read access to own academic data',
     permissions: STUDENT_PERMISSIONS,
+  },
+  {
+    key: 'dismissal_staff',
+    name: 'Dismissal Staff',
+    description: 'School dismissal app access for assigned pickup and handover operations',
+    permissions: DISMISSAL_STAFF_PERMISSIONS,
   },
 ];
 

@@ -8,7 +8,7 @@ Canonical definitions for every business term used in Moazez. When terms conflic
 - **Organization** — A customer entity. May represent a single school or a school group. All billing and cross-school operations happen at this level.
 - **School** — A single operational unit within an organization. Source of truth for day-to-day academic operations.
 - **User** — A person with credentials. One user has exactly one `user_type`.
-- **User Type** — Immutable category: `platform_user`, `organization_user`, `school_user`, `teacher`, `parent`, `student`, `applicant`, `pickup_delegate`, `service_account`.
+- **User Type** — Immutable category: `platform_user`, `organization_user`, `school_user`, `teacher`, `parent`, `student`, `applicant`, `pickup_delegate`, `dismissal_staff`, `service_account`.
 - **Role** — A named bundle of permissions, scoped to a school. NOT the same as `user_type`.
 - **Permission** — A single action string (`module.resource.action`).
 - **Membership** — A link between a user and a school (or organization), with a role and scope. A `teacher` has exactly one active membership enforced by DB constraint.
@@ -48,6 +48,7 @@ Canonical definitions for every business term used in Moazez. When terms conflic
 - **Relation** — `father`, `mother`, `guardian`, `relative`. A FIELD on guardian record, not a user type.
 - **Primary Guardian** — The default contact for notifications and pickup. At least one per student.
 - **Pickup Delegate** — A temporary authorized person to collect a student. A separate user type, not a parent.
+- **Dismissal Staff** — A school operational staff actor who uses the Dismissal App to handle assigned pickup and handover operations. This is not a pickup delegate.
 
 ## Attendance
 

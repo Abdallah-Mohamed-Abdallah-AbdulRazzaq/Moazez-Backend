@@ -23,6 +23,7 @@ enum UserType {
   STUDENT
   APPLICANT
   PICKUP_DELEGATE
+  DISMISSAL_STAFF
   SERVICE_ACCOUNT
 
   @@map("user_type")

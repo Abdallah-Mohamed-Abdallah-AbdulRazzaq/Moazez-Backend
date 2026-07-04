@@ -1011,7 +1011,7 @@ describe('Teacher role seed integrity (security)', () => {
       'STUDENT_PERMISSIONS',
     );
 
-    expect(catalogCodes).toHaveLength(205);
+    expect(catalogCodes).toHaveLength(219);
     expect(catalogCodeSet.size).toBe(catalogCodes.length);
     expect(catalogCodes).toEqual(
       expect.arrayContaining(Array.from(TEACHER_PERM_1A_CATALOG_ADDITIONS)),

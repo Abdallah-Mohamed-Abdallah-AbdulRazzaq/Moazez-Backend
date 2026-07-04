@@ -23,6 +23,22 @@ const PERMISSIONS: PermissionSeed[] = [
   // app-facing infrastructure
   { code: 'app.device_tokens.manage', module: 'app', resource: 'device_tokens', action: 'manage', description: 'Register and unregister app device tokens for the current actor' },
 
+  // dismissal
+  { code: 'dismissal.profile.view', module: 'dismissal', resource: 'profile', action: 'view', description: 'View Dismissal App staff profile and safe assignment summary' },
+  { code: 'dismissal.settings.view', module: 'dismissal', resource: 'settings', action: 'view', description: 'View dismissal settings and operating policy' },
+  { code: 'dismissal.settings.manage', module: 'dismissal', resource: 'settings', action: 'manage', description: 'Manage dismissal settings and operating policy' },
+  { code: 'dismissal.gates.view', module: 'dismissal', resource: 'gates', action: 'view', description: 'View dismissal gates and operational status' },
+  { code: 'dismissal.gates.manage', module: 'dismissal', resource: 'gates', action: 'manage', description: 'Create and update dismissal gates and operational status' },
+  { code: 'dismissal.staff.view', module: 'dismissal', resource: 'staff', action: 'view', description: 'View dismissal staff assignments' },
+  { code: 'dismissal.staff.manage', module: 'dismissal', resource: 'staff', action: 'manage', description: 'Create and update dismissal staff assignments' },
+  { code: 'dismissal.requests.view', module: 'dismissal', resource: 'requests', action: 'view', description: 'View assigned dismissal requests and active queue' },
+  { code: 'dismissal.requests.manage', module: 'dismissal', resource: 'requests', action: 'manage', description: 'Update assigned dismissal request lifecycle before handover' },
+  { code: 'dismissal.requests.deliver', module: 'dismissal', resource: 'requests', action: 'deliver', description: 'Verify pickup and complete dismissal handover' },
+  { code: 'dismissal.requests.escalate', module: 'dismissal', resource: 'requests', action: 'escalate', description: 'Escalate delayed or urgent dismissal requests' },
+  { code: 'dismissal.requests.history.view', module: 'dismissal', resource: 'requests.history', action: 'view', description: 'View dismissal request history and safe operational records' },
+  { code: 'dismissal.notifications.view', module: 'dismissal', resource: 'notifications', action: 'view', description: 'View Dismissal App notifications for the current staff actor' },
+  { code: 'dismissal.notifications.manage', module: 'dismissal', resource: 'notifications', action: 'manage', description: 'Manage read/archive state for Dismissal App notifications' },
+
   // settings
   { code: 'settings.overview.view', module: 'settings', resource: 'overview', action: 'view', description: 'View settings overview metrics and recent audit activity' },
   { code: 'settings.users.view', module: 'settings', resource: 'users', action: 'view', description: 'View users in the school' },
