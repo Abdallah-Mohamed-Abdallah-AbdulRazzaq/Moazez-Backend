@@ -4,10 +4,47 @@
   "type": "directory",
   "children": [
     {
+      "name": ".agents",
+      "type": "folder",
+      "icon": "📁"
+    },
+    {
       "name": "adr",
       "type": "folder",
       "icon": "📁",
       "children": [
+        {
+          "name": "Dismissal-App",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": "calls.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "gates_duties.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "notifications.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "profile.md",
+              "type": "file",
+              "icon": "📝"
+            },
+            {
+              "name": "waiting_students.md",
+              "type": "file",
+              "icon": "📝"
+            }
+          ]
+        },
         {
           "name": "Parent-App",
           "type": "folder",
@@ -157,6 +194,11 @@
           "type": "folder",
           "icon": "📁",
           "children": [
+            {
+              "name": "STUDENT_GRADES_EXAMS_BACKEND_GAPS.md",
+              "type": "file",
+              "icon": "📝"
+            },
             {
               "name": "student_ANNOUNCEMENTS_BACKEND_MODEL.md",
               "type": "file",
@@ -324,6 +366,21 @@
           "icon": "📁"
         },
         {
+          "name": "admissions-frontend-contract.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "attendance-policy-rule-logic-final-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "communication-fcm-mobile-push-handoff.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
           "name": "phase-5-final-closeout-audit.md",
           "type": "file",
           "icon": "📝"
@@ -399,6 +456,341 @@
           "icon": "📝"
         },
         {
+          "name": "sprint-19a-applicant-document-review-contract-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-19a-applicant-document-review-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-20a-academic-calendar-overview-contract-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-20a-academic-calendar-overview-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-21a-app-facing-academic-calendar-contract-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-21d-app-facing-academic-calendar-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-22a-academics-remaining-gaps-contract-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-22f-app-facing-lesson-content-preparation-contract-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-22j-app-facing-lesson-content-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-22l-full-academics-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-23a-homework-grades-assessments-reality-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-23d-teacher-app-grades-write-workflow-decision-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-23f-homework-grades-assessments-security-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-23h-homework-grades-assessments-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-23i-grades-assessment-mixed-delivery-mode-contract-repair-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-24a-student-grades-exams-gap-contract-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-24d-student-grades-exams-security-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-25a-attendance-discipline-behavior-reality-contract-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-25b-attendance-core-contract-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-25c-attendance-absence-corrections-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-25d-discipline-derived-layer-decision-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-25e-student-parent-discipline-derived-timeline-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-25f-parent-reports-discipline-alignment-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-25g-teacher-app-attendance-mapping-decision-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-25h-teacher-app-attendance-mapping-read-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-25i-attendance-behavior-discipline-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-25j-attendance-behavior-discipline-frontend-contract-handoff.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-26a-reinforcement-completion-decision-contract-lock.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-26b-reinforcement-core-policy-hardening-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-26c-teacher-reinforcement-completion-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-26d-student-task-submission-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-26e-student-hero-actions-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-26f-student-rewards-redemptions-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-26g-parent-hero-xp-rewards-reads-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-26h-parent-task-reinforcement-reads-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-26i-parent-learning-flow-final-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-26j-learning-flow-frontend-contract-handoff.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-27a-learning-flow-backlog-decision-lock.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-27a-parent-authorized-file-download-contract-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-27b-learning-flow-remaining-deferred-decisions-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28a-communication-gap-decision-lock.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28b-communication-read-receipts-realtime-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28c-communication-conversation-list-enrichment-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28d-app-facing-notification-center-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28e-message-readers-info-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28f-communication-final-contract-handoff.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28g-communication-track-a-ui-critical-plan.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28h-app-facing-media-attachments-foundation-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28i-app-facing-media-message-sending-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28j-authorized-media-download-preview-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28k-message-notification-generation-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28l-conversation-creation-contact-discovery-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28m-teacher-app-announcements-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28n-app-notification-preferences-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-28o-track-a-final-integration-audit-handoff.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-29a-communication-enhancements-decision-lock.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-29b-app-notification-filtering-grouping-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-29c-realtime-typing-presence-enrichment-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-29d-app-safe-attachment-presenter-hardening-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-29e-scheduled-announcement-publishing-replay-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-29f-app-message-search-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-29g-communication-enhancements-final-handoff.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-30a-communication-phase-c-fcm-decision-lock.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-30b-app-device-token-registry-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-30c-firebase-admin-provider-foundation-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-30d-push-delivery-worker-integration-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-30e-push-preferences-app-handoff-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
           "name": "sprint-6c-planning-audit.md",
           "type": "file",
           "icon": "📝"
@@ -420,6 +812,316 @@
         },
         {
           "name": "sprint-9a-parent-app-contract-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-dash-state-1a-admissions-dashboard-action-state-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-doc-ux-1a-admissions-document-review-eligibility-contract-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-doc-ux-1b-application-document-counters-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-fe-contract-1a-admissions-frontend-contract-final-audit-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-reg-1a-registration-reality-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-reg-1b-registration-contract-decision-lock.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-reg-1c-student-guardian-profile-persistence-repair-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-reg-1d-school-registration-wizard-foundation-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-reg-1e-accepted-applicant-conversion-audit-handoff-expansion.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-reg-1f-accepted-application-handoff-to-wizard-implementation-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-reg-1g-accepted-application-source-bound-registration-submit-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-reg-1h-post-registration-admissions-closure-audit-decision-lock.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-reg-1i-admissions-registered-state-exposure-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-reg-1j-admissions-registration-flow-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-reg-doc-1a-admissions-documents-to-student-documents-decision-lock.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-reg-doc-1b-staff-confirmed-admissions-document-import-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-reg-doc-1c-admissions-document-import-final-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-adm-workflow-policy-1a-optional-tests-interviews-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-att-pol-1-attendance-policy-contract-persistence-repair-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-att-pol-2a-attendance-policy-rule-application-reality-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-att-pol-2b-selected-period-roll-call-gating-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-att-pol-2c-timetable-period-validation-reality-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-att-pol-2d-timetable-period-existence-validation-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-att-pol-2e-threshold-semantics-reality-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-att-pol-2f-attendance-threshold-runtime-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-att-pol-2g-derived-daily-missed-periods-reality-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-att-pol-2h-derived-daily-report-only-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-att-pol-2i-attendance-notifications-reality-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-att-pol-2j-notification-infrastructure-readiness-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-att-pol-2k-guardian-absence-notification-dispatch-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-att-pol-2l-guardian-absence-notification-dispatch-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-comm-push-1a-bullmq-jobid-fix-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-hw-b-dashboard-homework-submissions-review-surface-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-parent-perm-0a-parent-app-permission-coverage-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-parent-perm-1a-permission-catalog-parent-role-seed-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-parent-perm-1b-read-only-parent-app-route-decorators-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-parent-perm-1c-communication-notifications-action-permissions-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-parent-perm-1d-final-parent-permission-closeout-regression-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-sih-1-settings-iam-health-reality-security-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-sih-2-settings-iam-security-hardening-health-readiness-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-guard-route-1a-canonical-guardians-routes-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-perm-0a-student-app-permission-coverage-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-perm-1a-permission-catalog-student-role-seed-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-perm-1b-read-only-student-app-route-decorators-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-perm-1c-homework-exams-action-permissions-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-perm-1d-reinforcement-rewards-hero-action-permissions-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-perm-1e-communication-notifications-profile-action-permissions-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-perm-1f-final-security-closeout-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-prof-1a-student-profile-avatar-self-service-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-prof-1b-student-profile-avatar-self-service-decision-lock.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-prof-1c-student-avatar-upload-foundation-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-prof-1d-student-avatar-final-closeout-profile-contract-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-prof-2a-student-profile-correction-request-decision-lock.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-prof-2b-student-profile-correction-request-foundation-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-stu-prof-2c-student-profile-correction-request-final-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-teach-perm-0a-teacher-app-permission-coverage-audit.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-teach-perm-1a-catalog-teacher-role-seed-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-teach-perm-1b-read-only-route-decorators-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-teach-perm-1c-classroom-action-permissions-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-teach-perm-1d-homework-action-permissions-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-teach-perm-1e-communication-notifications-announcements-action-permissions-closeout.md",
+          "type": "file",
+          "icon": "📝"
+        },
+        {
+          "name": "sprint-teach-perm-1f-teacher-app-permission-final-closeout.md",
           "type": "file",
           "icon": "📝"
         }
@@ -880,6 +1582,162 @@
               ]
             },
             {
+              "name": "20260613120000_0038_academic_calendar_events",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260616120000_0039_subject_allocations",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260621120000_0040_communication_notification_preferences",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260622120000_0041_app_device_tokens",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260622150000_0042_communication_notification_push_attempts",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260622170000_0043_communication_notification_push_preferences",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260625033222_0044_attendance_policy_contract_persistence_repair",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260627120000_0045_notification_idempotency_attendance_readiness",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260628120000_0046_adm_reg_1c_student_guardian_profile_fields",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260629120000_0047_adm_reg_doc_1b_student_document_source_metadata",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260629130000_0048_stu_prof_1c_student_avatar_file",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260630100000_0049_stu_prof_2b_profile_correction_requests",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
+              "name": "20260703120000_0050_admission_workflow_policy",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "migration.sql",
+                  "type": "file",
+                  "icon": "📄"
+                }
+              ]
+            },
+            {
               "name": ".gitkeep",
               "type": "file",
               "icon": "📁"
@@ -1190,6 +2048,67 @@
               ]
             },
             {
+              "name": "push",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "firebase",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "firebase-env.validation.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "firebase-push-error-normalizer.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "firebase-push.provider.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "firebase-admin.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "firebase-admin.service.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "firebase-push-error-normalizer.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "firebase-push.provider.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "firebase-push.types.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
               "name": "queue",
               "type": "folder",
               "icon": "📁",
@@ -1267,6 +2186,11 @@
                   "name": ".gitkeep",
                   "type": "file",
                   "icon": "📁"
+                },
+                {
+                  "name": "realtime-actor-card.ts",
+                  "type": "file",
+                  "icon": "📘"
                 },
                 {
                   "name": "realtime-auth.service.ts",
@@ -1374,6 +2298,261 @@
               "type": "folder",
               "icon": "📁",
               "children": [
+                {
+                  "name": "calendar",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "app-facing",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "application",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "app-calendar-query.helpers.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "get-app-calendar-event.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "list-app-calendar-events.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "dto",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "app-calendar-event-response.dto.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "app-calendar-events-query.dto.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "infrastructure",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "app-calendar-events.repository.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "presenters",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "app-calendar-event.presenter.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "tests",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "app-calendar-event.presenter.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "app-calendar-events.repository.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "app-calendar-query.helpers.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "app-calendar-visibility.service.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "visibility",
+                          "type": "folder",
+                          "icon": "📁",
+                          "children": [
+                            {
+                              "name": "app-calendar-visibility.query.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "app-calendar-visibility.service.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "app-calendar-visibility.types.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "app-calendar-read-model.module.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "calendar-event-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "create-calendar-event.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "delete-calendar-event.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-calendar-event.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-calendar-events.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-calendar-event.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "calendar-events.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "calendar-event.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "calendar-event-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "calendar-event.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-calendar-events-query.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "calendar-events.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "calendar-event.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "calendar-events.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "calendar.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
                 {
                   "name": "curriculum",
                   "type": "folder",
@@ -1531,6 +2710,11 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "lesson-plan-workflows.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "lesson-plans.use-cases.ts",
                           "type": "file",
                           "icon": "📘"
@@ -1621,6 +2805,107 @@
                     },
                     {
                       "name": "lesson-plans.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "overview",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-academics-overview.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "academics-overview.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "academics-overview.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "academics-overview-query.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "academics-overview-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "academics-overview.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "academics-overview.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "academics-overview.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "overview.module.ts",
                       "type": "file",
                       "icon": "📘"
                     }
@@ -2029,6 +3314,112 @@
                   ]
                 },
                 {
+                  "name": "subject-allocation",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "bulk-save-subject-allocations.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-subject-allocations.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "subject-allocation.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "subject-allocation.exceptions.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "subject-allocation-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "subject-allocation.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "subject-allocation.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "subject-allocation.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "subject-allocation.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "subject-allocation.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
                   "name": "subjects",
                   "type": "folder",
                   "icon": "📁",
@@ -2160,6 +3551,21 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "apply-teacher-allocation-to-grade.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "bulk-save-teacher-allocations.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "clear-teacher-allocations-by-subject.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "create-teacher-allocation.use-case.ts",
                           "type": "file",
                           "icon": "📘"
@@ -2170,7 +3576,22 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "get-teacher-loads.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "list-teacher-allocations.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-allocation-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "validate-teacher-allocations.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -2271,6 +3692,16 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "bulk-save-timetable-entries.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "check-timetable-conflicts.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "create-timetable-entry.use-case.ts",
                           "type": "file",
                           "icon": "📘"
@@ -2292,6 +3723,11 @@
                         },
                         {
                           "name": "get-timetable-config.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-timetable-dashboard-all.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -2336,6 +3772,16 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "timetable-attendance-period-reference.service.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "timetable-dashboard.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "timetable-entry-write.helpers.ts",
                           "type": "file",
                           "icon": "📘"
@@ -2351,6 +3797,11 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "unpublish-timetable.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "update-timetable-entry.use-case.ts",
                           "type": "file",
                           "icon": "📘"
@@ -2362,6 +3813,11 @@
                         },
                         {
                           "name": "upsert-timetable-config.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "validate-timetable.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -2509,12 +3965,22 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "get-application-registration-handoff.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "get-application.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         },
                         {
                           "name": "list-applications.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "register-accepted-application.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -2585,6 +4051,21 @@
                           "icon": "📁"
                         },
                         {
+                          "name": "application-dashboard-state.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "application-registration-handoff.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "application-registration-submit.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "application.dto.ts",
                           "type": "file",
                           "icon": "📘"
@@ -2619,6 +4100,21 @@
                           "icon": "📁"
                         },
                         {
+                          "name": "application-dashboard-state.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "application-registration-handoff.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "application-registration-submit.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "application.presenter.ts",
                           "type": "file",
                           "icon": "📘"
@@ -2636,12 +4132,32 @@
                           "icon": "📁"
                         },
                         {
+                          "name": "application-dashboard-state.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "application-registration-handoff.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "application.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "applications.use-case.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         },
                         {
                           "name": "enroll-application-handoff.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "register-accepted-application.use-case.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -2868,6 +4384,11 @@
                           "name": "list-application-documents.use-case.ts",
                           "type": "file",
                           "icon": "📘"
+                        },
+                        {
+                          "name": "review-application-document.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
                         }
                       ]
                     },
@@ -2960,6 +4481,11 @@
                           "name": ".gitkeep",
                           "type": "file",
                           "icon": "📁"
+                        },
+                        {
+                          "name": "application-document-review.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
                         },
                         {
                           "name": "application-documents.use-case.spec.ts",
@@ -3487,7 +5013,198 @@
                   ]
                 },
                 {
+                  "name": "workflow-policy",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "admission-workflow-policy.evaluator.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-admission-workflow-policy.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "resolve-admission-workflow-policy.service.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-admission-workflow-policy.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "admission-workflow-policy.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "admission-workflow-policy.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "admission-workflow-policy.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "admission-workflow-policy.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "workflow-policy.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
                   "name": "admissions.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "app-device-tokens",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "application",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "app-device-token.service.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "domain",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "app-device-token-crypto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "app-device-token-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "dto",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "app-device-token.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "infrastructure",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "app-device-token.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "presenters",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "app-device-token.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "tests",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "app-device-token-crypto.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "app-device-token.dto.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "app-device-token.repository.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "app-device-token.service.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "app-device-tokens.module.ts",
                   "type": "file",
                   "icon": "📘"
                 }
@@ -3760,12 +5477,22 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "correct-attendance-absence-early-leave.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "get-attendance-absence-summary.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         },
                         {
                           "name": "list-attendance-absences.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "mark-attendance-absence-excused.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -4062,6 +5789,11 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "policy-period-reference.validation.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "policy-use-case.helpers.ts",
                           "type": "file",
                           "icon": "📘"
@@ -4095,6 +5827,11 @@
                       "type": "folder",
                       "icon": "📁",
                       "children": [
+                        {
+                          "name": "policy-contract.validation.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
                         {
                           "name": "policy-scope.ts",
                           "type": "file",
@@ -4201,6 +5938,11 @@
                           "name": "get-attendance-summary-report.use-case.ts",
                           "type": "file",
                           "icon": "📘"
+                        },
+                        {
+                          "name": "get-derived-daily-absences-report.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
                         }
                       ]
                     },
@@ -4223,6 +5965,11 @@
                       "children": [
                         {
                           "name": "attendance-report.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "derived-daily-attendance.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -4275,6 +6022,11 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "attendance-reports-derived-daily.domain.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "attendance-reports.presenter.spec.ts",
                           "type": "file",
                           "icon": "📘"
@@ -4308,6 +6060,11 @@
                       "type": "folder",
                       "icon": "📁",
                       "children": [
+                        {
+                          "name": "attendance-guardian-absence-notification.service.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
                         {
                           "name": "correct-attendance-entry.use-case.ts",
                           "type": "file",
@@ -4383,6 +6140,21 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "entry-threshold-normalization.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "guardian-absence-notification.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "policy-period-selection.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "roll-call.exceptions.ts",
                           "type": "file",
                           "icon": "📘"
@@ -4441,7 +6213,17 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "attendance-guardian-absence-notification.service.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "attendance-roll-call.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "entry-threshold-normalization.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -4743,12 +6525,22 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "communication-app-notification-center.service.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-block.use-cases.ts",
                       "type": "file",
                       "icon": "📘"
                     },
                     {
                       "name": "communication-conversation.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-message-attachment-download.use-case.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -4768,7 +6560,32 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "communication-notification-command.service.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-notification-generation.service.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-preference.service.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-push-delivery.service.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-push-payload.builder.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-push-queue.service.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -4819,6 +6636,11 @@
                   "type": "folder",
                   "icon": "📁",
                   "children": [
+                    {
+                      "name": "communication-admin.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
                     {
                       "name": "communication-announcement.controller.ts",
                       "type": "file",
@@ -4897,12 +6719,22 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "communication-notification-command-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-notification-domain.ts",
                       "type": "file",
                       "icon": "📘"
                     },
                     {
                       "name": "communication-notification-generation-domain.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-preference-domain.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -4965,6 +6797,11 @@
                     },
                     {
                       "name": "communication-moderation.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-preference.dto.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -5036,12 +6873,32 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "communication-notification-command.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-notification-generation.repository.ts",
                       "type": "file",
                       "icon": "📘"
                     },
                     {
                       "name": "communication-notification-generation.worker.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-preference.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-push.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-push.worker.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -5103,6 +6960,21 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "communication-app-contact.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-app-message-attachment.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-app-notification.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-block.presenter.ts",
                       "type": "file",
                       "icon": "📘"
@@ -5144,6 +7016,11 @@
                     },
                     {
                       "name": "communication-notification-delivery.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-preference.presenter.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -5210,7 +7087,27 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "communication-announcement.repository.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-announcement.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-app-message-attachment.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-app-notification-center.service.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-app-notification.presenter.spec.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -5285,6 +7182,11 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "communication-message.repository.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "communication-message.use-case.spec.ts",
                       "type": "file",
                       "icon": "📘"
@@ -5301,6 +7203,16 @@
                     },
                     {
                       "name": "communication-moderation.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-command.repository.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-command.service.spec.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -5326,6 +7238,26 @@
                     },
                     {
                       "name": "communication-notification-generation.service.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-preference.service.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-push-delivery.service.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-push-payload.builder.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-notification-push-queue.service.spec.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -5386,6 +7318,11 @@
                     },
                     {
                       "name": "communication-reaction.use-case.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "communication-realtime-events.service.spec.ts",
                       "type": "file",
                       "icon": "📘"
                     },
@@ -5582,6 +7519,83 @@
                 },
                 {
                   "name": "dashboard.module.ts",
+                  "type": "file",
+                  "icon": "📘"
+                }
+              ]
+            },
+            {
+              "name": "discipline",
+              "type": "folder",
+              "icon": "📁",
+              "children": [
+                {
+                  "name": "application",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "discipline-derived-read.service.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "dto",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "discipline-derived.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "infrastructure",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "discipline-derived.repository.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "presenters",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "discipline-derived.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "tests",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "discipline-derived.presenter.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "discipline-derived.repository.spec.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "discipline.module.ts",
                   "type": "file",
                   "icon": "📘"
                 }
@@ -6517,6 +8531,110 @@
                   ]
                 },
                 {
+                  "name": "dashboard",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-grades-bootstrap.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-grades-overview.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grades-dashboard.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grades-bootstrap.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grades-overview.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grades-dashboard-read.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grades-bootstrap.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grades-overview.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "grades-bootstrap.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "grades-overview.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dashboard.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
                   "name": "gradebook",
                   "type": "folder",
                   "icon": "📁",
@@ -6896,6 +9014,11 @@
                   "icon": "📘"
                 },
                 {
+                  "name": "health.service.spec.ts",
+                  "type": "file",
+                  "icon": "📘"
+                },
+                {
                   "name": "health.service.ts",
                   "type": "file",
                   "icon": "📘"
@@ -6948,6 +9071,11 @@
                       "icon": "📘"
                     },
                     {
+                      "name": "homework-submission-review-surface.use-cases.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
                       "name": "homework-submissions.use-cases.ts",
                       "type": "file",
                       "icon": "📘"
@@ -6981,6 +9109,11 @@
                     },
                     {
                       "name": "homework-submission-content.controller.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-submissions.controller.ts",
                       "type": "file",
                       "icon": "📘"
                     }
@@ -7112,6 +9245,16 @@
                       "name": "homework-submission-attachment.dto.ts",
                       "type": "file",
                       "icon": "📘"
+                    },
+                    {
+                      "name": "homework-submission-response.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-submission.dto.ts",
+                      "type": "file",
+                      "icon": "📘"
                     }
                   ]
                 },
@@ -7159,6 +9302,11 @@
                     },
                     {
                       "name": "homework-submission-attachment.presenter.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    },
+                    {
+                      "name": "homework-submission.presenter.ts",
                       "type": "file",
                       "icon": "📘"
                     }
@@ -7345,6 +9493,11 @@
                       "children": [
                         {
                           "name": "change-password.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "login.use-case.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -7607,6 +9760,54 @@
                   ]
                 },
                 {
+                  "name": "calendar",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-parent-calendar-event.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-parent-calendar-events.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-calendar.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-calendar.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
                   "name": "children",
                   "type": "folder",
                   "icon": "📁",
@@ -7693,6 +9894,114 @@
                         },
                         {
                           "name": "parent-children.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "discipline",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-parent-child-discipline-summary.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-parent-child-discipline.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-discipline.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-discipline.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "files",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-parent-child-file-download-url.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-files.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-files-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-files-read.adapter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "parent-files.use-case.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -7792,6 +10101,115 @@
                         },
                         {
                           "name": "parent-grades.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "hero",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-parent-child-hero-mission.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-parent-child-hero-overview.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-parent-child-hero-progress.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-parent-child-hero-badges.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-parent-child-hero-missions.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-hero.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-hero.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-hero-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-hero.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-hero-read.adapter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "parent-hero.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "parent-hero.use-case.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -7983,6 +10401,117 @@
                   ]
                 },
                 {
+                  "name": "lessons",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-parent-child-lesson-detail.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-parent-child-lessons-today.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-parent-child-lessons-week.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-child-lessons.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-child-lesson-status.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "parent-child-lessons.errors.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-child-lessons-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "parent-child-lessons.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-child-lessons-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-child-lessons.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-child-lessons.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
                   "name": "messages",
                   "type": "folder",
                   "icon": "📁",
@@ -7993,7 +10522,17 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "get-parent-message-attachment-download-url.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "get-parent-message-conversation.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-parent-message-info.use-cases.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -8009,6 +10548,16 @@
                         },
                         {
                           "name": "mark-parent-conversation-read.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "parent-message-contacts.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "search-parent-conversation-messages.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -8084,6 +10633,66 @@
                         },
                         {
                           "name": "parent-messages.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "search-parent-conversation-messages.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "notifications",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-notifications.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-notifications.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-notifications.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-notifications.use-case.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -8371,6 +10980,110 @@
                         },
                         {
                           "name": "parent-reports.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "rewards",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-parent-child-reward-redemption.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-parent-child-reward.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-parent-child-reward-redemptions.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-parent-child-rewards.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-rewards.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-rewards.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-rewards-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-rewards.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "parent-rewards-read.adapter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "parent-rewards.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "parent-rewards.use-case.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -11577,6 +14290,102 @@
                   ]
                 },
                 {
+                  "name": "calendar",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-student-calendar-event.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-student-calendar-events.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-calendar.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-calendar.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "discipline",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-student-discipline-summary.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-student-discipline.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-discipline.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-discipline.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
                   "name": "exams",
                   "type": "folder",
                   "icon": "📁",
@@ -11586,6 +14395,11 @@
                       "type": "folder",
                       "icon": "📁",
                       "children": [
+                        {
+                          "name": "bulk-save-student-exam-answers.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
                         {
                           "name": "get-student-exam-submission.use-case.ts",
                           "type": "file",
@@ -11598,6 +14412,26 @@
                         },
                         {
                           "name": "list-student-exams.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "save-student-exam-answer.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "start-student-exam-submission.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-exam-submission-use-case.helpers.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "submit-student-exam-submission.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -11636,6 +14470,11 @@
                           "name": "student-exams-read.adapter.ts",
                           "type": "file",
                           "icon": "📘"
+                        },
+                        {
+                          "name": "student-exams-submission-write.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
                         }
                       ]
                     },
@@ -11658,6 +14497,16 @@
                       "children": [
                         {
                           "name": "student-exams-read.adapter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-exams-submission-write.adapter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-exams-submission.use-case.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -11785,6 +14634,16 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "complete-student-hero-mission.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "complete-student-hero-objective.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "get-student-hero-mission.use-case.ts",
                           "type": "file",
                           "icon": "📘"
@@ -11806,6 +14665,11 @@
                         },
                         {
                           "name": "list-student-hero-missions.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "start-student-hero-mission.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -12067,6 +14931,117 @@
                   ]
                 },
                 {
+                  "name": "lessons",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-student-lesson-detail.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-student-lessons-today.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-student-lessons-week.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-lessons.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-lesson-status.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-lessons.errors.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-lessons-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-lessons.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-lessons-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-lessons.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-lessons.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
                   "name": "messages",
                   "type": "folder",
                   "icon": "📁",
@@ -12077,7 +15052,17 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "get-student-message-attachment-download-url.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "get-student-message-conversation.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-student-message-info.use-cases.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -12097,7 +15082,17 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "search-student-conversation-messages.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "send-student-conversation-message.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-message-contacts.use-cases.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -12157,6 +15152,11 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "search-student-conversation-messages.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "student-messages-read.adapter.spec.ts",
                           "type": "file",
                           "icon": "📘"
@@ -12176,6 +15176,61 @@
                   ]
                 },
                 {
+                  "name": "notifications",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-notifications.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-notifications.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-notifications.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-notifications.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
                   "name": "profile",
                   "type": "folder",
                   "icon": "📁",
@@ -12186,7 +15241,27 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "delete-student-avatar.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "get-student-profile.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-profile-correction-requests.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-profile-response.builder.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "upload-student-avatar.use-case.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -12199,6 +15274,18 @@
                       "children": [
                         {
                           "name": "student-profile.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-avatar.constraints.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -12221,6 +15308,11 @@
                       "type": "folder",
                       "icon": "📁",
                       "children": [
+                        {
+                          "name": "student-avatar.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
                         {
                           "name": "student-profile-read.adapter.ts",
                           "type": "file",
@@ -12247,6 +15339,16 @@
                       "children": [
                         {
                           "name": "get-student-profile.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-avatar.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-profile-correction-requests.use-case.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -12361,6 +15463,115 @@
                         },
                         {
                           "name": "student-progress.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "rewards",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-student-reward-redemption.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-student-reward.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-student-reward-redemptions.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-student-rewards.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "redeem-student-reward.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-rewards.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-rewards.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-rewards-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-rewards.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "student-rewards-read.adapter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-rewards.presenter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-rewards.use-case.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -12619,6 +15830,11 @@
                           "name": "list-student-tasks.use-case.ts",
                           "type": "file",
                           "icon": "📘"
+                        },
+                        {
+                          "name": "submit-student-task-stage.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
                         }
                       ]
                     },
@@ -12775,6 +15991,11 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "import-application-documents.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "list-missing-student-documents.use-case.ts",
                           "type": "file",
                           "icon": "📘"
@@ -12873,6 +16094,11 @@
                           "name": ".gitkeep",
                           "type": "file",
                           "icon": "📁"
+                        },
+                        {
+                          "name": "student-document-import.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
                         },
                         {
                           "name": "student-document.presenter.ts",
@@ -13635,6 +16861,179 @@
                   ]
                 },
                 {
+                  "name": "profile-correction-requests",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "staff-profile-correction-requests.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "student-profile-correction-errors.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "profile-correction-requests.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "profile-correction-request.fields.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "profile-correction-request.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "profile-correction-requests.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "profile-correction-request.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "profile-correction-requests.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
+                  "name": "registration",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "create-school-registration.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "school-registration.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "school-registration.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "school-registration.repository.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "school-registration.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "school-registration.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "registration.module.ts",
+                      "type": "file",
+                      "icon": "📘"
+                    }
+                  ]
+                },
+                {
                   "name": "students",
                   "type": "folder",
                   "icon": "📁",
@@ -14067,6 +17466,150 @@
                   ]
                 },
                 {
+                  "name": "announcements",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-announcements.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-announcements.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-announcement-app-domain.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-announcements.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-announcements-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-announcements.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-announcements-read.adapter.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-announcements.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "calendar",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-teacher-calendar-event.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "list-teacher-calendar-events.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-calendar.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-calendar.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
                   "name": "classroom",
                   "type": "folder",
                   "icon": "📁",
@@ -14105,6 +17648,11 @@
                             },
                             {
                               "name": "get-teacher-classroom-attendance-session.use-case.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "get-teacher-classroom-attendance-today.use-case.ts",
                               "type": "file",
                               "icon": "📘"
                             },
@@ -14180,6 +17728,11 @@
                           "children": [
                             {
                               "name": "teacher-classroom-attendance.adapter.spec.ts",
+                              "type": "file",
+                              "icon": "📘"
+                            },
+                            {
+                              "name": "teacher-classroom-attendance.presenter.spec.ts",
                               "type": "file",
                               "icon": "📘"
                             },
@@ -14600,6 +18153,122 @@
                   ]
                 },
                 {
+                  "name": "lesson-preparation",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "get-teacher-lesson-preparation-detail.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-teacher-lesson-preparation-today.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-teacher-lesson-preparation-week.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "update-teacher-lesson-preparation-status.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-lesson-preparation.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "domain",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-lesson-preparation-status.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-lesson-preparation.errors.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-lesson-preparation-response.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-lesson-preparation.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "infrastructure",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-lesson-preparation-read.adapter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "presenters",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-lesson-preparation.presenter.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-lesson-preparation.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
                   "name": "messages",
                   "type": "folder",
                   "icon": "📁",
@@ -14610,7 +18279,17 @@
                       "icon": "📁",
                       "children": [
                         {
+                          "name": "get-teacher-message-attachment-download-url.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "get-teacher-message-conversation.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "get-teacher-message-info.use-cases.ts",
                           "type": "file",
                           "icon": "📘"
                         },
@@ -14630,7 +18309,17 @@
                           "icon": "📘"
                         },
                         {
+                          "name": "search-teacher-conversation-messages.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
                           "name": "send-teacher-conversation-message.use-case.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
+                        {
+                          "name": "teacher-message-contacts.use-cases.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -14689,6 +18378,11 @@
                       "type": "folder",
                       "icon": "📁",
                       "children": [
+                        {
+                          "name": "search-teacher-conversation-messages.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        },
                         {
                           "name": "teacher-messages-read.adapter.spec.ts",
                           "type": "file",
@@ -14778,6 +18472,61 @@
                         },
                         {
                           "name": "teacher-my-classes.use-case.spec.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "notifications",
+                  "type": "folder",
+                  "icon": "📁",
+                  "children": [
+                    {
+                      "name": "application",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-notifications.use-cases.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controller",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-notifications.controller.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "dto",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-notifications.dto.ts",
+                          "type": "file",
+                          "icon": "📘"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "tests",
+                      "type": "folder",
+                      "icon": "📁",
+                      "children": [
+                        {
+                          "name": "teacher-notifications.use-case.spec.ts",
                           "type": "file",
                           "icon": "📘"
                         }
@@ -15499,7 +19248,17 @@
               "icon": "📁"
             },
             {
+              "name": "academics-calendar-events.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "academics-curriculum-foundation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "academics-final-completion.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15509,12 +19268,72 @@
               "icon": "📘"
             },
             {
+              "name": "academics-lesson-plan-workflows.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "academics-lesson-plans-foundation.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
             },
             {
+              "name": "academics-overview.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "academics-subject-allocations.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "academics-teacher-allocation-workflows.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "academics-timetable-dashboard-workflows.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "admissions-application-document-summary.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "admissions-dashboard-state.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "admissions-document-import-to-student-document.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "admissions-flow.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "admissions-frontend-contract.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "admissions-registration-submit.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "admissions-workflow-policy.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "app-facing-academic-calendar.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15535,6 +19354,11 @@
             },
             {
               "name": "applicant-portal-document-replace-delete.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "applicant-portal-document-review.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15669,6 +19493,11 @@
               "icon": "📘"
             },
             {
+              "name": "parent-app-child-lessons.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "parent-app-final-closeout.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
@@ -15714,12 +19543,37 @@
               "icon": "📘"
             },
             {
+              "name": "school-registration-wizard.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "student-app-final-closeout.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
             },
             {
+              "name": "student-app-lessons.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "student-avatar-upload.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "student-profile-correction-requests.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "students-guardians-flow.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "students-guardians-guardians-routes.e2e-spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15745,6 +19599,23 @@
             },
             {
               "name": "teacher-app-home-my-classes.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "teacher-app-lesson-preparation.e2e-spec.ts",
+              "type": "file",
+              "icon": "📘"
+            }
+          ]
+        },
+        {
+          "name": "helpers",
+          "type": "folder",
+          "icon": "📁",
+          "children": [
+            {
+              "name": "app-facing-calendar-test-utils.ts",
               "type": "file",
               "icon": "📘"
             }
@@ -15773,7 +19644,17 @@
               "icon": "📁"
             },
             {
+              "name": "tenancy.academics-calendar-events.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "tenancy.academics-curriculum.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.academics-final-completion.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15783,7 +19664,32 @@
               "icon": "📘"
             },
             {
+              "name": "tenancy.academics-lesson-plan-workflows.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "tenancy.academics-lesson-plans.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.academics-overview.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.academics-subject-allocations.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.academics-teacher-allocation-workflows.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.academics-timetable-dashboard-workflows.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15793,7 +19699,22 @@
               "icon": "📘"
             },
             {
+              "name": "tenancy.admissions-document-import.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.admissions-registration-submit.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "tenancy.admissions.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.app-facing-academic-calendar.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15809,6 +19730,11 @@
             },
             {
               "name": "tenancy.applicant-portal-document-replace-delete.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.applicant-portal-document-review.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -15913,6 +19839,16 @@
               "icon": "📘"
             },
             {
+              "name": "tenancy.iam.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.parent-app-child-lessons.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "tenancy.parent-app.spec.ts",
               "type": "file",
               "icon": "📘"
@@ -15933,6 +19869,11 @@
               "icon": "📘"
             },
             {
+              "name": "tenancy.school-registration.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "tenancy.settings.spec.ts",
               "type": "file",
               "icon": "📘"
@@ -15943,12 +19884,32 @@
               "icon": "📘"
             },
             {
+              "name": "tenancy.student-app-lessons.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "tenancy.student-app.spec.ts",
               "type": "file",
               "icon": "📘"
             },
             {
+              "name": "tenancy.student-avatar.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.student-profile-correction-requests.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
               "name": "tenancy.students.spec.ts",
+              "type": "file",
+              "icon": "📘"
+            },
+            {
+              "name": "tenancy.teacher-app-lesson-preparation.spec.ts",
               "type": "file",
               "icon": "📘"
             },
@@ -16150,7 +20111,7 @@
     }
   ],
   "metadata": {
-    "generated": "2026-06-11T17:18:17.943Z",
+    "generated": "2026-07-04T13:05:31.386Z",
     "generator": "FileTree Pro Extension",
     "version": "0.2.0",
     "showIcons": true,
