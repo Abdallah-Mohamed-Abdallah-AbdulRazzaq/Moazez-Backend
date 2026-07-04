@@ -7,6 +7,7 @@ import type {
   ApplicationSourceApiValue,
   ApplicationStatusApiValue,
 } from '../domain/application.enums';
+import { ApplicationDashboardStateDto } from './application-dashboard-state.dto';
 
 export class ListApplicationsQueryDto {
   @IsOptional()
@@ -97,6 +98,7 @@ export class ApplicationResponseDto {
   updatedAt!: string;
   registrationState!: ApplicationRegistrationStateDto;
   documentsSummary!: ApplicationDocumentsSummaryDto;
+  dashboardState!: ApplicationDashboardStateDto;
 }
 
 export class EnrollApplicationHandoffParamsDto {

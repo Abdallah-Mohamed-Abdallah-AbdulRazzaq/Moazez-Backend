@@ -12,11 +12,13 @@ import {
 import { normalizeRequiredApplicationText } from '../domain/application-inputs';
 import { ApplicationsRepository } from '../infrastructure/applications.repository';
 import { presentApplication } from '../presenters/application.presenter';
+import { ResolveAdmissionWorkflowPolicyService } from '../../workflow-policy/application/resolve-admission-workflow-policy.service';
 
 @Injectable()
 export class CreateApplicationUseCase {
   constructor(
     private readonly applicationsRepository: ApplicationsRepository,
+    private readonly resolveAdmissionWorkflowPolicyService: ResolveAdmissionWorkflowPolicyService,
   ) {}
 
   async execute(
@@ -56,21 +58,24 @@ export class CreateApplicationUseCase {
       }
     }
 
-    const application = await this.applicationsRepository.createApplication({
-      schoolId: scope.schoolId,
-      organizationId: scope.organizationId,
-      leadId: command.leadId ?? null,
-      studentName: normalizeRequiredApplicationText(
-        command.studentName,
-        'studentName',
-      ),
-      requestedAcademicYearId: command.requestedAcademicYearId ?? null,
-      requestedGradeId: command.requestedGradeId ?? null,
-      source: mapApplicationSourceFromApi(command.source),
-      status: AdmissionApplicationStatus.DOCUMENTS_PENDING,
-      submittedAt: null,
-    });
+    const [application, workflowPolicy] = await Promise.all([
+      this.applicationsRepository.createApplication({
+        schoolId: scope.schoolId,
+        organizationId: scope.organizationId,
+        leadId: command.leadId ?? null,
+        studentName: normalizeRequiredApplicationText(
+          command.studentName,
+          'studentName',
+        ),
+        requestedAcademicYearId: command.requestedAcademicYearId ?? null,
+        requestedGradeId: command.requestedGradeId ?? null,
+        source: mapApplicationSourceFromApi(command.source),
+        status: AdmissionApplicationStatus.DOCUMENTS_PENDING,
+        submittedAt: null,
+      }),
+      this.resolveAdmissionWorkflowPolicyService.resolveForCurrentSchool(),
+    ]);
 
-    return presentApplication(application);
+    return presentApplication(application, workflowPolicy);
   }
 }

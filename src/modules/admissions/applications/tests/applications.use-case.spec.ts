@@ -13,6 +13,10 @@ import { CreateApplicationUseCase } from '../application/create-application.use-
 import { SubmitApplicationUseCase } from '../application/submit-application.use-case';
 import { ApplicationSubmitConflictException } from '../domain/application.exceptions';
 import { ApplicationsRepository } from '../infrastructure/applications.repository';
+import {
+  DEFAULT_ADMISSION_WORKFLOW_POLICY,
+  ResolveAdmissionWorkflowPolicyService,
+} from '../../workflow-policy/application/resolve-admission-workflow-policy.service';
 
 type ApplicationStoreItem = {
   id: string;
@@ -28,6 +32,10 @@ type ApplicationStoreItem = {
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+  decision: null;
+  placementTests: [];
+  interviews: [];
+  documents: [];
   student: null;
 };
 
@@ -82,6 +90,10 @@ describe('Admissions applications use cases', () => {
           createdAt: now,
           updatedAt: now,
           deletedAt: null,
+          decision: null,
+          placementTests: [],
+          interviews: [],
+          documents: [],
           student: null,
         };
         store.push(application);
@@ -106,9 +118,23 @@ describe('Admissions applications use cases', () => {
     } as unknown as ApplicationsRepository;
   }
 
+  function createWorkflowPolicyResolver(): ResolveAdmissionWorkflowPolicyService {
+    return {
+      resolveForCurrentSchool: jest.fn().mockResolvedValue({
+        id: null,
+        ...DEFAULT_ADMISSION_WORKFLOW_POLICY,
+        source: 'default',
+        updatedAt: null,
+      }),
+    } as unknown as ResolveAdmissionWorkflowPolicyService;
+  }
+
   it('creates an application successfully in documents_pending state', async () => {
     const repository = createRepository();
-    const useCase = new CreateApplicationUseCase(repository);
+    const useCase = new CreateApplicationUseCase(
+      repository,
+      createWorkflowPolicyResolver(),
+    );
 
     const result = await withScope(() =>
       useCase.execute({
@@ -120,33 +146,64 @@ describe('Admissions applications use cases', () => {
       }),
     );
 
-    expect(result).toEqual({
-      id: 'application-1',
-      leadId: 'lead-1',
-      studentName: 'Sara Ahmed',
-      requestedAcademicYearId: 'year-1',
-      requestedGradeId: 'grade-1',
-      source: 'referral',
-      status: 'documents_pending',
-      submittedAt: null,
-      createdAt: '2026-04-21T11:00:00.000Z',
-      updatedAt: '2026-04-21T11:00:00.000Z',
-      registrationState: {
-        registered: false,
-        studentId: null,
-        enrollmentId: null,
-        enrollmentStatus: null,
-        registeredVia: null,
-        registeredAt: null,
-        source: 'derived_from_student_application_id',
-      },
-    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: 'application-1',
+        leadId: 'lead-1',
+        studentName: 'Sara Ahmed',
+        requestedAcademicYearId: 'year-1',
+        requestedGradeId: 'grade-1',
+        source: 'referral',
+        status: 'documents_pending',
+        submittedAt: null,
+        createdAt: '2026-04-21T11:00:00.000Z',
+        updatedAt: '2026-04-21T11:00:00.000Z',
+        registrationState: {
+          registered: false,
+          studentId: null,
+          enrollmentId: null,
+          enrollmentStatus: null,
+          registeredVia: null,
+          registeredAt: null,
+          source: 'derived_from_student_application_id',
+        },
+        documentsSummary: {
+          totalCount: 0,
+          completeCount: 0,
+          missingCount: 0,
+          pendingReviewCount: 0,
+          reviewableCount: 0,
+          applicantPortalCount: 0,
+          staffUploadCount: 0,
+          needsReplacementCount: 0,
+          hasPendingReview: false,
+          hasReviewableDocuments: false,
+          hasMissingDocuments: false,
+        },
+        dashboardState: expect.objectContaining({
+          canProceedToDecision: false,
+          canRegister: false,
+          registrationState: 'not_accepted',
+          decisionState: expect.objectContaining({
+            canCreateDecision: false,
+            reason: 'application_status_not_decidable',
+          }),
+        }),
+      }),
+    );
   });
 
   it('submits an application once and rejects duplicate submit attempts with conflict', async () => {
     const repository = createRepository();
-    const createUseCase = new CreateApplicationUseCase(repository);
-    const submitUseCase = new SubmitApplicationUseCase(repository);
+    const workflowPolicyResolver = createWorkflowPolicyResolver();
+    const createUseCase = new CreateApplicationUseCase(
+      repository,
+      workflowPolicyResolver,
+    );
+    const submitUseCase = new SubmitApplicationUseCase(
+      repository,
+      workflowPolicyResolver,
+    );
 
     const created = await withScope(() =>
       createUseCase.execute({

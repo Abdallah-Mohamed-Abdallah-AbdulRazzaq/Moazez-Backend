@@ -9,11 +9,13 @@ import { mapApplicationSourceFromApi } from '../domain/application.enums';
 import { normalizeRequiredApplicationText } from '../domain/application-inputs';
 import { ApplicationsRepository } from '../infrastructure/applications.repository';
 import { presentApplication } from '../presenters/application.presenter';
+import { ResolveAdmissionWorkflowPolicyService } from '../../workflow-policy/application/resolve-admission-workflow-policy.service';
 
 @Injectable()
 export class UpdateApplicationUseCase {
   constructor(
     private readonly applicationsRepository: ApplicationsRepository,
+    private readonly resolveAdmissionWorkflowPolicyService: ResolveAdmissionWorkflowPolicyService,
   ) {}
 
   async execute(
@@ -54,9 +56,8 @@ export class UpdateApplicationUseCase {
       }
     }
 
-    const application = await this.applicationsRepository.updateApplication(
-      applicationId,
-      {
+    const [application, workflowPolicy] = await Promise.all([
+      this.applicationsRepository.updateApplication(applicationId, {
         ...(command.leadId !== undefined ? { leadId: command.leadId } : {}),
         ...(command.studentName !== undefined
           ? {
@@ -75,8 +76,9 @@ export class UpdateApplicationUseCase {
         ...(command.source !== undefined
           ? { source: mapApplicationSourceFromApi(command.source) }
           : {}),
-      },
-    );
+      }),
+      this.resolveAdmissionWorkflowPolicyService.resolveForCurrentSchool(),
+    ]);
 
     if (!application) {
       throw new NotFoundDomainException('Application not found', {
@@ -84,6 +86,6 @@ export class UpdateApplicationUseCase {
       });
     }
 
-    return presentApplication(application);
+    return presentApplication(application, workflowPolicy);
   }
 }

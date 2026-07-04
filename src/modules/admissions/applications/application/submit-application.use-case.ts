@@ -6,11 +6,13 @@ import { ApplicationResponseDto } from '../dto/application.dto';
 import { ApplicationSubmitConflictException } from '../domain/application.exceptions';
 import { ApplicationsRepository } from '../infrastructure/applications.repository';
 import { presentApplication } from '../presenters/application.presenter';
+import { ResolveAdmissionWorkflowPolicyService } from '../../workflow-policy/application/resolve-admission-workflow-policy.service';
 
 @Injectable()
 export class SubmitApplicationUseCase {
   constructor(
     private readonly applicationsRepository: ApplicationsRepository,
+    private readonly resolveAdmissionWorkflowPolicyService: ResolveAdmissionWorkflowPolicyService,
   ) {}
 
   async execute(applicationId: string): Promise<ApplicationResponseDto> {
@@ -34,13 +36,13 @@ export class SubmitApplicationUseCase {
       });
     }
 
-    const updated = await this.applicationsRepository.updateApplication(
-      applicationId,
-      {
+    const [updated, workflowPolicy] = await Promise.all([
+      this.applicationsRepository.updateApplication(applicationId, {
         status: AdmissionApplicationStatus.SUBMITTED,
         submittedAt: new Date(),
-      },
-    );
+      }),
+      this.resolveAdmissionWorkflowPolicyService.resolveForCurrentSchool(),
+    ]);
 
     if (!updated) {
       throw new NotFoundDomainException('Application not found', {
@@ -48,6 +50,6 @@ export class SubmitApplicationUseCase {
       });
     }
 
-    return presentApplication(updated);
+    return presentApplication(updated, workflowPolicy);
   }
 }

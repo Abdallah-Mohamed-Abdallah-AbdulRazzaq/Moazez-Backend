@@ -18,6 +18,8 @@ import {
   mapApplicationStatusToApi,
 } from '../domain/application.enums';
 import { mapEnrollmentStatusToApi } from '../../../students/enrollments/domain/enrollment-status.enums';
+import { ResolvedAdmissionWorkflowPolicy } from '../../workflow-policy/application/resolve-admission-workflow-policy.service';
+import { presentApplicationDashboardState } from './application-dashboard-state.presenter';
 
 const REVIEWABLE_APPLICATION_STATUSES = [
   AdmissionApplicationStatus.SUBMITTED,
@@ -140,7 +142,10 @@ export function presentApplicationRegistrationState(
 
 export function presentApplication(
   application: ApplicationRecord,
+  workflowPolicy: ResolvedAdmissionWorkflowPolicy,
 ): ApplicationResponseDto {
+  const documentsSummary = presentApplicationDocumentsSummary(application);
+
   return {
     id: application.id,
     leadId: application.leadId,
@@ -153,7 +158,12 @@ export function presentApplication(
     createdAt: application.createdAt.toISOString(),
     updatedAt: application.updatedAt.toISOString(),
     registrationState: presentApplicationRegistrationState(application),
-    documentsSummary: presentApplicationDocumentsSummary(application),
+    documentsSummary,
+    dashboardState: presentApplicationDashboardState({
+      application,
+      workflowPolicy,
+      documentsSummary,
+    }),
   };
 }
 

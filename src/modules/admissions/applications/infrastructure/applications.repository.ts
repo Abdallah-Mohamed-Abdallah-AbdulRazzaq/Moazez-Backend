@@ -23,6 +23,21 @@ const APPLICATION_RECORD_ARGS =
       createdAt: true,
       updatedAt: true,
       deletedAt: true,
+      decision: {
+        select: {
+          decision: true,
+        },
+      },
+      placementTests: {
+        select: {
+          status: true,
+        },
+      },
+      interviews: {
+        select: {
+          status: true,
+        },
+      },
       student: {
         select: {
           id: true,

@@ -781,6 +781,34 @@ describe('Admissions tenancy isolation (security)', () => {
           registeredAt: null,
           source: 'derived_from_student_application_id',
         },
+        dashboardState: expect.objectContaining({
+          canProceedToDecision: false,
+          canRegister: false,
+          registrationState: 'not_accepted',
+          decisionState: expect.objectContaining({
+            reason: 'already_decided',
+          }),
+          workflowReadiness: expect.objectContaining({
+            policy: expect.objectContaining({
+              requiresPlacementTest: expect.any(Boolean),
+              requiresInterview: expect.any(Boolean),
+              allowDirectAcceptance: expect.any(Boolean),
+              source: expect.stringMatching(/^(default|school_override)$/),
+            }),
+          }),
+          documentSignals: expect.objectContaining({
+            hasPendingReview: expect.any(Boolean),
+            hasReviewableDocuments: expect.any(Boolean),
+            hasMissingDocuments: expect.any(Boolean),
+            pendingReviewCount: expect.any(Number),
+            reviewableCount: expect.any(Number),
+            missingCount: expect.any(Number),
+            needsReplacementCount: expect.any(Number),
+          }),
+          blockers: expect.arrayContaining([
+            expect.objectContaining({ code: 'already_decided' }),
+          ]),
+        }),
       }),
     );
 
@@ -793,6 +821,76 @@ describe('Admissions tenancy isolation (security)', () => {
     expect(serialized).not.toContain('passwordHash');
     expect(serialized).not.toContain('deletedAt');
     expect(serialized).not.toContain('applicationId');
+
+    const serializedDashboardState = JSON.stringify(response.body.dashboardState);
+    for (const forbidden of [
+      'decisionId',
+      'policyId',
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'actorId',
+      'userId',
+      'applicantUserId',
+      'studentId',
+      'guardianId',
+      'registrationId',
+      'placementTestId',
+      'interviewId',
+      'documentId',
+      'fileId',
+      'bucket',
+      'objectKey',
+      'provider',
+      'signedUrl',
+      'passwordHash',
+      'deletedAt',
+      'createdAt',
+      'updatedAt',
+      'SUBMITTED',
+      'ACCEPTED',
+      'COMPLETED',
+    ]) {
+      expect(serializedDashboardState).not.toContain(forbidden);
+    }
+  });
+
+  it('returns dashboardState on application list and detail with view permission only', async () => {
+    const { accessToken } = await login(LIMITED_USER_EMAIL, LIMITED_USER_PASSWORD);
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/admissions/applications`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const listItem = listResponse.body.find(
+      (application: { id: string }) => application.id === demoApplicationId,
+    );
+
+    expect(listItem?.dashboardState).toEqual(
+      expect.objectContaining({
+        canProceedToDecision: expect.any(Boolean),
+        canRegister: expect.any(Boolean),
+        registrationState: expect.any(String),
+        decisionState: expect.any(Object),
+        workflowReadiness: expect.any(Object),
+        documentSignals: expect.any(Object),
+        blockers: expect.any(Array),
+      }),
+    );
+
+    const detailResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/admissions/applications/${demoApplicationId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(detailResponse.body.dashboardState).toEqual(
+      expect.objectContaining({
+        decisionState: expect.objectContaining({
+          reason: 'already_decided',
+        }),
+      }),
+    );
   });
 
   it('returns a safe workflow policy response with view permission only', async () => {
@@ -859,6 +957,20 @@ describe('Admissions tenancy isolation (security)', () => {
       allowDirectAcceptance: false,
       source: 'default',
       updatedAt: null,
+    });
+
+    const schoolBDashboardBeforePatch = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/admissions/applications/${tenantBApplicationId}`)
+      .set('Authorization', `Bearer ${schoolB.accessToken}`)
+      .expect(200);
+
+    expect(
+      schoolBDashboardBeforePatch.body.dashboardState.workflowReadiness.policy,
+    ).toEqual({
+      requiresPlacementTest: true,
+      requiresInterview: true,
+      allowDirectAcceptance: false,
+      source: 'default',
     });
 
     await request(app.getHttpServer())
