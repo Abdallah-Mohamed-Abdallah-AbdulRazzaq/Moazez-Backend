@@ -22,11 +22,11 @@ import { JwtAuthGuard } from '../../src/common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../src/common/guards/permissions.guard';
 import { ScopeResolverGuard } from '../../src/common/guards/scope-resolver.guard';
 import { SCHOOL_SCOPED_MODELS } from '../../src/infrastructure/database/school-scope.extension';
-import { DismissalGatesController } from '../../src/modules/dismissal/gates/controller/dismissal-gates.controller';
-import { DismissalSettingsController } from '../../src/modules/dismissal/settings/controller/dismissal-settings.controller';
+import { DismissalProfileController } from '../../src/modules/dismissal/profile/controller/dismissal-profile.controller';
+import { DismissalStaffAssignmentsController } from '../../src/modules/dismissal/staff-assignments/controller/dismissal-staff-assignments.controller';
 
 const GLOBAL_PREFIX = '/api/v1';
-const PASSWORD = 'DismissalCoreSecurity123!';
+const PASSWORD = 'DismissalStaffSecurity123!';
 const TEST_RUN_ID = randomUUID().slice(0, 8);
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
@@ -42,43 +42,46 @@ type ControllerClass = {
 
 const ROUTE_PERMISSION_CASES = [
   {
-    controller: DismissalSettingsController,
-    method: 'getSettings',
-    permissions: ['dismissal.settings.view'],
+    controller: DismissalProfileController,
+    method: 'getProfile',
+    permissions: ['dismissal.profile.view'],
   },
   {
-    controller: DismissalSettingsController,
-    method: 'updateSettings',
-    permissions: ['dismissal.settings.manage'],
+    controller: DismissalStaffAssignmentsController,
+    method: 'listAssignments',
+    permissions: ['dismissal.staff.view'],
   },
   {
-    controller: DismissalGatesController,
-    method: 'listGates',
-    permissions: ['dismissal.gates.view'],
+    controller: DismissalStaffAssignmentsController,
+    method: 'createAssignment',
+    permissions: ['dismissal.staff.manage'],
   },
   {
-    controller: DismissalGatesController,
-    method: 'createGate',
-    permissions: ['dismissal.gates.manage'],
+    controller: DismissalStaffAssignmentsController,
+    method: 'getAssignment',
+    permissions: ['dismissal.staff.view'],
   },
   {
-    controller: DismissalGatesController,
-    method: 'getGate',
-    permissions: ['dismissal.gates.view'],
+    controller: DismissalStaffAssignmentsController,
+    method: 'updateAssignment',
+    permissions: ['dismissal.staff.manage'],
   },
   {
-    controller: DismissalGatesController,
-    method: 'updateGate',
-    permissions: ['dismissal.gates.manage'],
+    controller: DismissalStaffAssignmentsController,
+    method: 'deleteAssignment',
+    permissions: ['dismissal.staff.manage'],
   },
 ] as const;
 
-const CONTROLLERS = [DismissalSettingsController, DismissalGatesController];
+const CONTROLLERS = [
+  DismissalProfileController,
+  DismissalStaffAssignmentsController,
+];
 
-jest.setTimeout(60_000);
+jest.setTimeout(90_000);
 
-describe('DISMISSAL-CORE-1A route metadata and deferred surface guards', () => {
-  it('declares exact RequiredPermissions metadata on every settings/gates route', () => {
+describe('DISMISSAL-STAFF-1A route metadata and deferred surface guards', () => {
+  it('declares exact RequiredPermissions metadata on every new route', () => {
     for (const entry of ROUTE_PERMISSION_CASES) {
       expect(
         Reflect.getMetadata(
@@ -99,15 +102,16 @@ describe('DISMISSAL-CORE-1A route metadata and deferred surface guards', () => {
     }
   });
 
-  it('registers dismissal models in the school-scope extension', () => {
-    expect(SCHOOL_SCOPED_MODELS.has('DismissalSettings')).toBe(true);
-    expect(SCHOOL_SCOPED_MODELS.has('DismissalGate')).toBe(true);
+  it('registers DismissalStaffAssignment in the school-scope extension', () => {
+    expect(SCHOOL_SCOPED_MODELS.has('DismissalStaffAssignment')).toBe(true);
   });
 
-  it('does not add deferred pickup/request/shift/device-token schema or routes', () => {
+  it('does not add deferred request/shift/device-token schema', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
+    expect(schemaSource).toMatch(/model\s+DismissalStaffAssignment\b/);
     expect(schemaSource).not.toMatch(/model\s+DismissalRequest\b/);
     expect(schemaSource).not.toMatch(/model\s+DismissalShift\b/);
+    expect(schemaSource).not.toMatch(/model\s+DismissalShiftAssignment\b/);
 
     const tokenSurfaceBlock = schemaSource.match(
       /enum AppDeviceTokenSurface \{([\s\S]*?)\n\}/,
@@ -117,7 +121,7 @@ describe('DISMISSAL-CORE-1A route metadata and deferred surface guards', () => {
   });
 });
 
-describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
+describe('DISMISSAL-STAFF-1A tenancy and RBAC (security)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
   let organizationAId: string;
@@ -127,8 +131,12 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
   let adminAToken: string;
   let dismissalStaffAToken: string;
   let noPermissionToken: string;
+  let staffAId: string;
   let gateAId: string;
+  let secondaryGateAId: string;
   let gateBId: string;
+  let assignmentAId: string;
+  let assignmentBId: string;
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
   const createdSchoolIds: string[] = [];
@@ -149,9 +157,7 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
       }),
     ]);
     if (!schoolAdminRole || !dismissalStaffRole) {
-      throw new Error(
-        'Required system roles not found - run `npm run seed` before tests.',
-      );
+      throw new Error('Required system roles not found - run `npm run seed`.');
     }
 
     const fixtureA = await createSchoolFixture('a');
@@ -164,8 +170,8 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
     const noPermissionRole = await prisma.role.create({
       data: {
         schoolId: schoolAId,
-        key: `dismissal-core-empty-${TEST_RUN_ID}`,
-        name: 'Dismissal Core Empty Role',
+        key: `dismissal-staff-empty-${TEST_RUN_ID}`,
+        name: 'Dismissal Staff Empty Role',
         isSystem: false,
       },
       select: { id: true },
@@ -173,21 +179,29 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
     createdRoleIds.push(noPermissionRole.id);
 
     const adminA = await createUserWithMembership({
-      email: `dismissal-core-sec-${TEST_RUN_ID}-admin-a@moazez.local`,
+      email: `dismissal-staff-sec-${TEST_RUN_ID}-admin-a@moazez.local`,
       schoolId: schoolAId,
       organizationId: organizationAId,
       roleId: schoolAdminRole.id,
       userType: UserType.SCHOOL_USER,
     });
     const dismissalStaffA = await createUserWithMembership({
-      email: `dismissal-core-sec-${TEST_RUN_ID}-staff-a@moazez.local`,
+      email: `dismissal-staff-sec-${TEST_RUN_ID}-staff-a@moazez.local`,
       schoolId: schoolAId,
       organizationId: organizationAId,
       roleId: dismissalStaffRole.id,
       userType: UserType.DISMISSAL_STAFF,
     });
+    staffAId = dismissalStaffA.userId;
+    const dismissalStaffB = await createUserWithMembership({
+      email: `dismissal-staff-sec-${TEST_RUN_ID}-staff-b@moazez.local`,
+      schoolId: schoolBId,
+      organizationId: organizationBId,
+      roleId: dismissalStaffRole.id,
+      userType: UserType.DISMISSAL_STAFF,
+    });
     const noPermissionUser = await createUserWithMembership({
-      email: `dismissal-core-sec-${TEST_RUN_ID}-noperm@moazez.local`,
+      email: `dismissal-staff-sec-${TEST_RUN_ID}-noperm@moazez.local`,
       schoolId: schoolAId,
       organizationId: organizationAId,
       roleId: noPermissionRole.id,
@@ -196,27 +210,45 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
 
     gateAId = await createGateFixture({
       schoolId: schoolAId,
-      code: `SEC-A-${TEST_RUN_ID}`,
-      name: 'Security Gate A',
+      code: `STAFF-SEC-A-${TEST_RUN_ID}`,
+      name: 'Staff Security Gate A',
       status: DismissalGateOperationalStatus.OPEN,
+    });
+    secondaryGateAId = await createGateFixture({
+      schoolId: schoolAId,
+      code: `STAFF-SEC-A2-${TEST_RUN_ID}`,
+      name: 'Staff Security Gate A2',
+      status: DismissalGateOperationalStatus.BUSY,
     });
     gateBId = await createGateFixture({
       schoolId: schoolBId,
-      code: `SEC-B-${TEST_RUN_ID}`,
-      name: 'Security Gate B',
+      code: `STAFF-SEC-B-${TEST_RUN_ID}`,
+      name: 'Staff Security Gate B',
       status: DismissalGateOperationalStatus.CLOSED,
     });
 
-    await prisma.dismissalSettings.create({
-      data: {
-        schoolId: schoolBId,
-        enabled: true,
-        timezone: 'Europe/Berlin',
-        schoolLatitude: 52.5,
-        schoolLongitude: 13.4,
-        defaultGateId: gateBId,
-      },
-    });
+    assignmentAId = (
+      await prisma.dismissalStaffAssignment.create({
+        data: {
+          schoolId: schoolAId,
+          staffUserId: staffAId,
+          gateId: gateAId,
+          isActive: true,
+        },
+        select: { id: true },
+      })
+    ).id;
+    assignmentBId = (
+      await prisma.dismissalStaffAssignment.create({
+        data: {
+          schoolId: schoolBId,
+          staffUserId: dismissalStaffB.userId,
+          gateId: gateBId,
+          isActive: true,
+        },
+        select: { id: true },
+      })
+    ).id;
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -241,6 +273,9 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
   afterAll(async () => {
     if (prisma) {
       const schoolIds = [schoolAId, schoolBId].filter(Boolean);
+      await prisma.dismissalStaffAssignment.deleteMany({
+        where: { schoolId: { in: schoolIds } },
+      });
       await prisma.dismissalSettings.deleteMany({
         where: { schoolId: { in: schoolIds } },
       });
@@ -262,9 +297,7 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
-      await prisma.user.deleteMany({
-        where: { id: { in: createdUserIds } },
-      });
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
       await prisma.rolePermission.deleteMany({
         where: { roleId: { in: createdRoleIds } },
       });
@@ -280,84 +313,94 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
     if (app) await app.close();
   });
 
-  it('rejects unauthenticated requests to every dismissal settings/gates route', async () => {
+  it('rejects unauthenticated requests to every new route', async () => {
     const randomId = randomUUID();
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/settings`)
+      .get(`${GLOBAL_PREFIX}/dismissal/profile`)
       .expect(401);
     await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/dismissal/settings`)
-      .send({ enabled: false })
+      .get(`${GLOBAL_PREFIX}/dismissal/staff-assignments`)
       .expect(401);
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/gates`)
+      .post(`${GLOBAL_PREFIX}/dismissal/staff-assignments`)
+      .send({ staffUserId: staffAId, gateId: gateAId })
       .expect(401);
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/gates`)
-      .send({ code: 'NOAUTH', name: 'No Auth' })
+      .get(`${GLOBAL_PREFIX}/dismissal/staff-assignments/${randomId}`)
       .expect(401);
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/gates/${randomId}`)
+      .patch(`${GLOBAL_PREFIX}/dismissal/staff-assignments/${randomId}`)
+      .send({ isLead: true })
       .expect(401);
     await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/dismissal/gates/${randomId}`)
-      .send({ status: 'open' })
+      .delete(`${GLOBAL_PREFIX}/dismissal/staff-assignments/${randomId}`)
       .expect(401);
   });
 
-  it('forbids authenticated users without dismissal permissions', async () => {
+  it('forbids authenticated users without dismissal staff permissions', async () => {
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/settings`)
+      .get(`${GLOBAL_PREFIX}/dismissal/profile`)
       .set('Authorization', `Bearer ${noPermissionToken}`)
       .expect(403);
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/gates`)
+      .get(`${GLOBAL_PREFIX}/dismissal/staff-assignments`)
       .set('Authorization', `Bearer ${noPermissionToken}`)
       .expect(403);
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/gates`)
+      .post(`${GLOBAL_PREFIX}/dismissal/staff-assignments`)
       .set('Authorization', `Bearer ${noPermissionToken}`)
-      .send({ code: 'NOPERM', name: 'No Permission Gate' })
+      .send({ staffUserId: staffAId, gateId: gateAId })
       .expect(403);
   });
 
-  it('allows school admin to manage settings and gates through SCHOOL_LEVEL permissions', async () => {
-    const settings = await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/dismissal/settings`)
-      .set('Authorization', `Bearer ${adminAToken}`)
-      .send({
-        enabled: true,
-        schoolLatitude: 30.1,
-        schoolLongitude: 31.2,
-        defaultGateId: gateAId,
-      })
-      .expect(200);
-    expect(settings.body.defaultGate.id).toBe(gateAId);
-    assertNoDismissalLeak(settings.body);
-
+  it('allows school admin to manage assignments', async () => {
     const created = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/gates`)
+      .post(`${GLOBAL_PREFIX}/dismissal/staff-assignments`)
       .set('Authorization', `Bearer ${adminAToken}`)
-      .send({ code: `ADMIN-${TEST_RUN_ID}`, name: 'Admin Managed Gate' })
+      .send({ staffUserId: staffAId, gateId: secondaryGateAId })
       .expect(201);
+    assertNoDismissalLeak(created.body);
 
     const patched = await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/dismissal/gates/${created.body.id}`)
+      .patch(`${GLOBAL_PREFIX}/dismissal/staff-assignments/${created.body.id}`)
       .set('Authorization', `Bearer ${adminAToken}`)
-      .send({ status: 'busy' })
+      .send({ isLead: true })
       .expect(200);
-
-    expect(patched.body.status).toBe('busy');
+    expect(patched.body.isLead).toBe(true);
     assertNoDismissalLeak(patched.body);
+
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/dismissal/staff-assignments/${created.body.id}`)
+      .set('Authorization', `Bearer ${adminAToken}`)
+      .expect(200);
   });
 
-  it('allows DISMISSAL_STAFF to view gates but not settings or gate mutations', async () => {
-    const gates = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/gates`)
+  it('allows DISMISSAL_STAFF to view own profile but not manage assignments or settings/gates', async () => {
+    const profile = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dismissal/profile`)
       .set('Authorization', `Bearer ${dismissalStaffAToken}`)
       .expect(200);
-    expect(JSON.stringify(gates.body)).toContain(gateAId);
-    assertNoDismissalLeak(gates.body);
+    expect(profile.body.readiness.hasAssignments).toBe(true);
+    assertNoDismissalLeak(profile.body);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dismissal/staff-assignments`)
+      .set('Authorization', `Bearer ${dismissalStaffAToken}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/dismissal/staff-assignments`)
+      .set('Authorization', `Bearer ${dismissalStaffAToken}`)
+      .send({ staffUserId: staffAId, gateId: gateAId })
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/dismissal/staff-assignments/${assignmentAId}`)
+      .set('Authorization', `Bearer ${dismissalStaffAToken}`)
+      .send({ isLead: true })
+      .expect(403);
+    await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/dismissal/staff-assignments/${assignmentAId}`)
+      .set('Authorization', `Bearer ${dismissalStaffAToken}`)
+      .expect(403);
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/dismissal/settings`)
@@ -366,7 +409,7 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/dismissal/gates`)
       .set('Authorization', `Bearer ${dismissalStaffAToken}`)
-      .send({ code: 'STAFF-MUTATE', name: 'Staff Mutate Gate' })
+      .send({ code: `DENY-${TEST_RUN_ID}`, name: 'Denied Gate' })
       .expect(403);
     await request(app.getHttpServer())
       .patch(`${GLOBAL_PREFIX}/dismissal/gates/${gateAId}`)
@@ -375,39 +418,30 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
       .expect(403);
   });
 
-  it('returns safe 404 for cross-school gate/default-gate access and never reads school B settings', async () => {
-    const gateRead = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/gates/${gateBId}`)
+  it('returns safe 404 for cross-school assignment reads and mutations', async () => {
+    const read = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dismissal/staff-assignments/${assignmentBId}`)
       .set('Authorization', `Bearer ${adminAToken}`)
       .expect(404);
-    expect(gateRead.body?.error?.code).toBe('dismissal.gate.not_found');
+    expect(read.body?.error?.code).toBe('dismissal.staff_assignment.not_found');
 
-    const gatePatch = await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/dismissal/gates/${gateBId}`)
+    const patch = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/dismissal/staff-assignments/${assignmentBId}`)
       .set('Authorization', `Bearer ${adminAToken}`)
-      .send({ status: 'open' })
+      .send({ isLead: true })
       .expect(404);
-    expect(gatePatch.body?.error?.code).toBe('dismissal.gate.not_found');
+    expect(patch.body?.error?.code).toBe('dismissal.staff_assignment.not_found');
 
-    const settingsPatch = await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/dismissal/settings`)
+    const deleted = await request(app.getHttpServer())
+      .delete(`${GLOBAL_PREFIX}/dismissal/staff-assignments/${assignmentBId}`)
       .set('Authorization', `Bearer ${adminAToken}`)
-      .send({ defaultGateId: gateBId })
       .expect(404);
-    expect(settingsPatch.body?.error?.code).toBe(
-      'dismissal.settings.default_gate_not_found',
+    expect(deleted.body?.error?.code).toBe(
+      'dismissal.staff_assignment.not_found',
     );
-
-    const settingsRead = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/settings`)
-      .set('Authorization', `Bearer ${adminAToken}`)
-      .expect(200);
-    expect(JSON.stringify(settingsRead.body)).not.toContain('Europe/Berlin');
-    expect(JSON.stringify(settingsRead.body)).not.toContain(gateBId);
-    assertNoDismissalLeak(settingsRead.body);
   });
 
-  it('does not expose forbidden root/app routes for deferred dismissal runtime', async () => {
+  it('does not expose forbidden deferred routes', async () => {
     await request(app.getHttpServer()).get(`${GLOBAL_PREFIX}/pickup`).expect(404);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/waiting-students`)
@@ -417,12 +451,17 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
       .expect(404);
   });
 
-  it('does not create DismissalRequest tables in the database', async () => {
+  it('does not create request or shift tables in the database', async () => {
     const rows = await prisma.$queryRaw<Array<{ table_name: string }>>`
       SELECT table_name
       FROM information_schema.tables
       WHERE table_schema = 'public'
-        AND table_name IN ('dismissal_requests', 'dismissal_request_events')
+        AND table_name IN (
+          'dismissal_requests',
+          'dismissal_request_events',
+          'dismissal_shifts',
+          'dismissal_shift_assignments'
+        )
     `;
     expect(rows).toEqual([]);
   });
@@ -433,8 +472,8 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
   }> {
     const organization = await prisma.organization.create({
       data: {
-        slug: `dismissal-core-sec-${TEST_RUN_ID}-org-${label}`,
-        name: `Dismissal Core Security Org ${label}`,
+        slug: `dismissal-staff-sec-${TEST_RUN_ID}-org-${label}`,
+        name: `Dismissal Staff Security Org ${label}`,
         status: OrganizationStatus.ACTIVE,
       },
       select: { id: true },
@@ -444,8 +483,8 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
     const school = await prisma.school.create({
       data: {
         organizationId: organization.id,
-        slug: `dismissal-core-sec-${TEST_RUN_ID}-school-${label}`,
-        name: `Dismissal Core Security School ${label}`,
+        slug: `dismissal-staff-sec-${TEST_RUN_ID}-school-${label}`,
+        name: `Dismissal Staff Security School ${label}`,
         status: SchoolStatus.ACTIVE,
       },
       select: { id: true },
@@ -535,14 +574,18 @@ function assertNoDismissalLeak(body: unknown): void {
   const serialized = JSON.stringify(body);
   for (const forbidden of [
     'schoolId',
+    'staffUserId',
+    'createdById',
     'updatedById',
     'deletedAt',
-    'actorId',
+    'organizationId',
     'membershipId',
     'roleId',
-    'organizationId',
-    'updated_by_id',
+    'actorId',
     'school_id',
+    'staff_user_id',
+    'created_by_id',
+    'updated_by_id',
     'deleted_at',
   ]) {
     expect(serialized).not.toContain(forbidden);

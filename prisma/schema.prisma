@@ -1188,6 +1188,7 @@ model School {
   schoolProfile                         SchoolProfile?
   dismissalSettings                     DismissalSettings?
   dismissalGates                        DismissalGate[]
+  dismissalStaffAssignments             DismissalStaffAssignment[]
   entitlement                           SchoolEntitlement?
   featureControls                       SchoolFeatureControl[]
   securitySetting                       SecuritySetting?
@@ -1396,6 +1397,9 @@ model User {
   filesUploaded                                  File[]                                 @relation("FileUploader")
   schoolProfilesUpdated                          SchoolProfile[]                        @relation("SchoolProfileUpdatedBy")
   dismissalSettingsUpdated                       DismissalSettings[]                    @relation("DismissalSettingsUpdatedBy")
+  dismissalStaffAssignments                      DismissalStaffAssignment[]             @relation("DismissalStaffAssignmentStaffUser")
+  dismissalStaffAssignmentsCreated               DismissalStaffAssignment[]             @relation("DismissalStaffAssignmentCreatedBy")
+  dismissalStaffAssignmentsUpdated               DismissalStaffAssignment[]             @relation("DismissalStaffAssignmentUpdatedBy")
   securitySettingsUpdated                        SecuritySetting[]                      @relation("SecuritySettingUpdatedBy")
   backupJobsCreated                              BackupJob[]                            @relation("BackupJobCreatedBy")
   attachmentsCreated                             Attachment[]                           @relation("AttachmentCreatedBy")
@@ -2022,6 +2026,7 @@ model DismissalGate {
 
   school          School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   defaultSettings DismissalSettings[] @relation("DismissalSettingsDefaultGate")
+  staffAssignments DismissalStaffAssignment[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, code])
@@ -2031,6 +2036,57 @@ model DismissalGate {
   @@index([schoolId, sortOrder])
   @@index([deletedAt])
   @@map("dismissal_gates")
+}
+
+model DismissalStaffAssignment {
+  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId    String @map("school_id") @db.Uuid
+  staffUserId String @map("staff_user_id") @db.Uuid
+
+  gateId      String? @map("gate_id") @db.Uuid
+  stageId     String? @map("stage_id") @db.Uuid
+  gradeId     String? @map("grade_id") @db.Uuid
+  sectionId   String? @map("section_id") @db.Uuid
+  classroomId String? @map("classroom_id") @db.Uuid
+
+  isLead   Boolean @default(false) @map("is_lead")
+  isActive Boolean @default(true) @map("is_active")
+
+  startsAt DateTime? @map("starts_at")
+  endsAt   DateTime? @map("ends_at")
+  notes    String?   @db.Text
+
+  createdById String? @map("created_by_id") @db.Uuid
+  updatedById String? @map("updated_by_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school    School         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  staffUser User           @relation("DismissalStaffAssignmentStaffUser", fields: [staffUserId], references: [id], onDelete: Restrict)
+  gate      DismissalGate? @relation(fields: [gateId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  stage     Stage?         @relation(fields: [stageId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  grade     Grade?         @relation(fields: [gradeId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  section   Section?       @relation(fields: [sectionId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  classroom Classroom?     @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  createdBy User?          @relation("DismissalStaffAssignmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User?          @relation("DismissalStaffAssignmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([id, schoolId])
+  @@index([schoolId])
+  @@index([staffUserId])
+  @@index([gateId])
+  @@index([stageId])
+  @@index([gradeId])
+  @@index([sectionId])
+  @@index([classroomId])
+  @@index([schoolId, staffUserId, isActive, deletedAt])
+  @@index([schoolId, gateId, isActive, deletedAt])
+  @@index([schoolId, classroomId, isActive, deletedAt])
+  @@index([schoolId, isActive, deletedAt])
+  @@index([deletedAt])
+  @@map("dismissal_staff_assignments")
 }
 
 // ============================================================
@@ -2482,6 +2538,7 @@ model Stage {
   heroMissions                       HeroMission[]
   communicationConversations         CommunicationConversation[]
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
+  dismissalStaffAssignments          DismissalStaffAssignment[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, nameAr])
@@ -2522,6 +2579,7 @@ model Grade {
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
   timetableConfigs                   TimetableConfig[]
   timetableEntries                   TimetableEntry[]
+  dismissalStaffAssignments          DismissalStaffAssignment[]
 
   @@unique([id, schoolId])
   @@unique([stageId, nameAr])
@@ -2557,6 +2615,7 @@ model Section {
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
   timetableConfigs                   TimetableConfig[]
   timetableEntries                   TimetableEntry[]
+  dismissalStaffAssignments          DismissalStaffAssignment[]
 
   @@unique([id, schoolId])
   @@unique([gradeId, nameAr])
@@ -2596,6 +2655,7 @@ model Classroom {
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
   timetableConfigs                   TimetableConfig[]
   timetableEntries                   TimetableEntry[]
+  dismissalStaffAssignments          DismissalStaffAssignment[]
 
   @@unique([id, schoolId])
   @@unique([sectionId, nameAr])

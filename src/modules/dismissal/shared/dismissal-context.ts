@@ -11,6 +11,7 @@ export interface DismissalScope {
   organizationId: string;
   schoolId: string;
   roleId: string;
+  permissions: string[];
 }
 
 export function requireDismissalScope(): DismissalScope {
@@ -30,5 +31,6 @@ export function requireDismissalScope(): DismissalScope {
     organizationId: ctx.activeMembership.organizationId,
     schoolId: ctx.activeMembership.schoolId,
     roleId: ctx.activeMembership.roleId,
+    permissions: ctx.activeMembership.permissions,
   };
 }

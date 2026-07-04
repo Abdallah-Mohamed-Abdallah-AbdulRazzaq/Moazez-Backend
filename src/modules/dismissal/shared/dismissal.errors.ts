@@ -122,3 +122,138 @@ export class DismissalCoordinatesRequiredWhenEnabledException extends DismissalE
     );
   }
 }
+
+export class DismissalProfileInvalidActorTypeException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.profile.invalid_actor_type',
+      'Dismissal profile requires a dismissal staff actor.',
+      HttpStatus.FORBIDDEN,
+    );
+  }
+}
+
+export class DismissalStaffAssignmentNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.staff_assignment.not_found',
+      'Dismissal staff assignment was not found.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
+export class DismissalStaffAssignmentStaffNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.staff_assignment.staff_not_found',
+      'Dismissal staff user was not found.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
+export class DismissalStaffAssignmentStaffNotDismissalStaffException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.staff_assignment.staff_not_dismissal_staff',
+      'Assigned user must be a dismissal staff user.',
+    );
+  }
+}
+
+export class DismissalStaffAssignmentStaffNotInSchoolException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.staff_assignment.staff_not_in_school',
+      'Dismissal staff user is not active in the current school.',
+    );
+  }
+}
+
+export class DismissalStaffAssignmentScopeRequiredException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.staff_assignment.scope_required',
+      'At least one dismissal staff assignment scope is required.',
+    );
+  }
+}
+
+export class DismissalStaffAssignmentGateNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.staff_assignment.gate_not_found',
+      'Dismissal assignment gate was not found.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
+export class DismissalStaffAssignmentStageNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.staff_assignment.stage_not_found',
+      'Dismissal assignment stage was not found.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
+export class DismissalStaffAssignmentGradeNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.staff_assignment.grade_not_found',
+      'Dismissal assignment grade was not found.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
+export class DismissalStaffAssignmentSectionNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.staff_assignment.section_not_found',
+      'Dismissal assignment section was not found.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
+export class DismissalStaffAssignmentClassroomNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.staff_assignment.classroom_not_found',
+      'Dismissal assignment classroom was not found.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
+export class DismissalStaffAssignmentScopeMismatchException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.staff_assignment.scope_mismatch',
+      'Dismissal assignment academic scope is inconsistent.',
+    );
+  }
+}
+
+export class DismissalStaffAssignmentInvalidTimeWindowException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.staff_assignment.invalid_time_window',
+      'Dismissal staff assignment time window is invalid.',
+    );
+  }
+}
+
+export class DismissalStaffAssignmentDuplicateActiveException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.staff_assignment.duplicate_active',
+      'An active dismissal staff assignment already exists for this exact scope.',
+      HttpStatus.CONFLICT,
+    );
+  }
+}
