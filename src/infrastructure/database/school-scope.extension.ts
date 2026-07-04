@@ -36,6 +36,8 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'NotificationTemplateChannelState',
   'IntegrationConnection',
   'BackupJob',
+  'DismissalSettings',
+  'DismissalGate',
   'Lead',
   'Application',
   'AdmissionWorkflowPolicy',
@@ -196,6 +198,7 @@ const SOFT_DELETE_MODELS = new Set<string>([
   'BehaviorRecord',
   'CommunicationConversation',
   'CommunicationMessageAttachment',
+  'DismissalGate',
 ]);
 
 const READ_OPERATIONS = new Set<string>([

@@ -72,6 +72,15 @@ enum SchoolFeatureControlSource {
   @@map("school_feature_control_source")
 }
 
+enum DismissalGateOperationalStatus {
+  OPEN
+  BUSY
+  CLOSED
+  MAINTENANCE
+
+  @@map("dismissal_gate_operational_status")
+}
+
 enum UserStatus {
   ACTIVE
   INVITED
@@ -1177,6 +1186,8 @@ model School {
   memberships                           Membership[]
   roles                                 Role[]
   schoolProfile                         SchoolProfile?
+  dismissalSettings                     DismissalSettings?
+  dismissalGates                        DismissalGate[]
   entitlement                           SchoolEntitlement?
   featureControls                       SchoolFeatureControl[]
   securitySetting                       SecuritySetting?
@@ -1384,6 +1395,7 @@ model User {
   auditLogsActing                                AuditLog[]                             @relation("AuditLogActor")
   filesUploaded                                  File[]                                 @relation("FileUploader")
   schoolProfilesUpdated                          SchoolProfile[]                        @relation("SchoolProfileUpdatedBy")
+  dismissalSettingsUpdated                       DismissalSettings[]                    @relation("DismissalSettingsUpdatedBy")
   securitySettingsUpdated                        SecuritySetting[]                      @relation("SecuritySettingUpdatedBy")
   backupJobsCreated                              BackupJob[]                            @relation("BackupJobCreatedBy")
   attachmentsCreated                             Attachment[]                           @relation("AttachmentCreatedBy")
@@ -1955,6 +1967,70 @@ model BackupJob {
   @@index([schoolId, type])
   @@index([createdById])
   @@map("settings_backup_jobs")
+}
+
+// ============================================================
+// DISMISSAL - settings and gates
+// ============================================================
+
+model DismissalSettings {
+  id                            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                      String   @unique @map("school_id") @db.Uuid
+  enabled                       Boolean  @default(false)
+  timezone                      String   @default("Africa/Cairo") @db.VarChar(64)
+  schoolLatitude                Decimal? @map("school_latitude") @db.Decimal(9, 6)
+  schoolLongitude               Decimal? @map("school_longitude") @db.Decimal(9, 6)
+  allowedRadiusMeters           Int      @default(150) @map("allowed_radius_meters")
+  requestWindowStartLocal       String?  @map("request_window_start_local") @db.VarChar(5)
+  requestWindowEndLocal         String?  @map("request_window_end_local") @db.VarChar(5)
+  delayThresholdMinutes         Int      @default(15) @map("delay_threshold_minutes")
+  urgentThresholdMinutes        Int      @default(30) @map("urgent_threshold_minutes")
+  requirePickupCode             Boolean  @default(true) @map("require_pickup_code")
+  allowDelegatePickup           Boolean  @default(true) @map("allow_delegate_pickup")
+  allowParentCancelBeforeCalled Boolean  @default(true) @map("allow_parent_cancel_before_called")
+  defaultGateId                 String?  @map("default_gate_id") @db.Uuid
+  updatedById                   String?  @map("updated_by_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school      School         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  defaultGate DismissalGate? @relation("DismissalSettingsDefaultGate", fields: [defaultGateId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  updatedBy   User?          @relation("DismissalSettingsUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([defaultGateId])
+  @@index([updatedById])
+  @@map("dismissal_settings")
+}
+
+model DismissalGate {
+  id           String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId     String                         @map("school_id") @db.Uuid
+  code         String                         @db.VarChar(50)
+  name         String                         @db.VarChar(160)
+  campus       String?                        @db.VarChar(160)
+  status       DismissalGateOperationalStatus @default(CLOSED)
+  isActive     Boolean                        @default(true) @map("is_active")
+  sortOrder    Int                            @default(0) @map("sort_order")
+  latitude     Decimal?                       @db.Decimal(9, 6)
+  longitude    Decimal?                       @db.Decimal(9, 6)
+  waitingZones String[]                       @default([]) @map("waiting_zones")
+  notes        String?                        @db.Text
+  createdAt    DateTime                       @default(now()) @map("created_at")
+  updatedAt    DateTime                       @updatedAt @map("updated_at")
+  deletedAt    DateTime?                      @map("deleted_at")
+
+  school          School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  defaultSettings DismissalSettings[] @relation("DismissalSettingsDefaultGate")
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, code])
+  @@index([schoolId])
+  @@index([schoolId, status])
+  @@index([schoolId, isActive, deletedAt])
+  @@index([schoolId, sortOrder])
+  @@index([deletedAt])
+  @@map("dismissal_gates")
 }
 
 // ============================================================

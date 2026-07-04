@@ -228,10 +228,10 @@ describe('DISMISSAL-IAM-1A - user type and permission seed contract', () => {
     }
   });
 
-  it('does not create dismissal runtime source files', () => {
-    expect(existsSync(join(process.cwd(), 'src', 'modules', 'dismissal'))).toBe(
-      false,
-    );
+  it('keeps IAM migration limited now that dismissal runtime is implemented separately', () => {
+    expect(
+      existsSync(join(process.cwd(), 'src', 'modules', 'dismissal')),
+    ).toBe(true);
   });
 });
 
