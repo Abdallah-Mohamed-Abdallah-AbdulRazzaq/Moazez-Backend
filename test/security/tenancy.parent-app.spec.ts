@@ -98,6 +98,7 @@ import {
   ParentScheduleClock,
   parseParentScheduleDate,
 } from '../../src/modules/parent-app/schedule/application/parent-schedule-date';
+import { ParentSmartPickupController } from '../../src/modules/parent-app/smart-pickup/controller/parent-smart-pickup.controller';
 import { ParentTasksController } from '../../src/modules/parent-app/tasks/controller/parent-tasks.controller';
 import type {
   ParentAppEnrollmentRecord,
@@ -171,6 +172,12 @@ const PARENT_APP_READ_PERMISSION_CASES: ParentAppReadPermissionCase[] = [
     controller: ParentProfileController,
     method: 'getProfile',
     permissions: ['parent.profile.view'],
+    sprint: '1B',
+  },
+  {
+    controller: ParentSmartPickupController,
+    method: 'getReadiness',
+    permissions: ['parent.smart_pickup.view'],
     sprint: '1B',
   },
   {
@@ -548,6 +555,7 @@ const PARENT_APP_CONTROLLER_CLASSES = [
   ParentNotificationsController,
   ParentAnnouncementsController,
   ParentFilesController,
+  ParentSmartPickupController,
 ];
 
 const PARENT_APP_ACTION_PERMISSION_CASES: ParentAppActionPermissionCase[] = [
@@ -652,6 +660,7 @@ const FINAL_PARENT_PERMISSIONS = [
   'parent.profile.view',
   'parent.progress.view',
   'parent.reports.view',
+  'parent.smart_pickup.view',
   'reinforcement.hero.badges.view',
   'reinforcement.hero.progress.view',
   'reinforcement.hero.view',
@@ -680,11 +689,13 @@ const FORBIDDEN_PARENT_PERMISSIONS = [
   'communication.announcements.manage',
   'communication.admin.view',
   'communication.admin.manage',
+  'parent.smart_pickup.request',
+  'parent.smart_pickup.cancel',
 ] as const;
 
 describe('Parent App route permission metadata (security)', () => {
   it('declares the PARENT-PERM-1B read-only permission inventory', () => {
-    expect(PARENT_APP_READ_PERMISSION_CASES).toHaveLength(58);
+    expect(PARENT_APP_READ_PERMISSION_CASES).toHaveLength(59);
 
     for (const entry of PARENT_APP_READ_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
@@ -720,7 +731,7 @@ describe('Parent App route permission metadata (security)', () => {
   });
 
   it('keeps the complete Parent App RBAC route inventory explicit', () => {
-    expect(PARENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(68);
+    expect(PARENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(69);
 
     const expectedKnownHandlers = new Set<string>();
 
@@ -784,7 +795,7 @@ describe('Parent role seed integrity (security)', () => {
       'STUDENT_PERMISSIONS',
     );
 
-    expect(parentPermissions).toHaveLength(43);
+    expect(parentPermissions).toHaveLength(44);
     expect(new Set(parentPermissions).size).toBe(parentPermissions.length);
     expect(parentPermissions).toEqual(Array.from(FINAL_PARENT_PERMISSIONS));
     expect(catalogCodes).toEqual(
@@ -2036,7 +2047,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         organizationId: organizationAId,
       }),
     );
-    expect(permissions).toHaveLength(43);
+    expect(permissions).toHaveLength(44);
     expect(sortedStrings(permissions)).toEqual(
       sortedStrings(FINAL_PARENT_PERMISSIONS),
     );

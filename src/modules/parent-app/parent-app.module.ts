@@ -4,6 +4,7 @@ import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app
 import { AppDeviceTokensModule } from '../app-device-tokens/app-device-tokens.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { DisciplineModule } from '../discipline/discipline.module';
+import { IamModule } from '../iam/iam.module';
 import { ParentAppAccessService } from './access/parent-app-access.service';
 import { ParentAppGuardianReadAdapter } from './access/parent-app-guardian-read.adapter';
 import { GetParentAnnouncementUseCase } from './announcements/application/get-parent-announcement.use-case';
@@ -112,6 +113,10 @@ import { ListParentChildTaskSubmissionsUseCase } from './tasks/application/list-
 import { ListParentChildTasksUseCase } from './tasks/application/list-parent-child-tasks.use-case';
 import { ParentTasksController } from './tasks/controller/parent-tasks.controller';
 import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read.adapter';
+import { GetParentSmartPickupReadinessUseCase } from './smart-pickup/application/get-parent-smart-pickup-readiness.use-case';
+import { ParentSmartPickupClock } from './smart-pickup/application/parent-smart-pickup-window';
+import { ParentSmartPickupController } from './smart-pickup/controller/parent-smart-pickup.controller';
+import { ParentSmartPickupReadAdapter } from './smart-pickup/infrastructure/parent-smart-pickup-read.adapter';
 
 @Module({
   imports: [
@@ -119,6 +124,7 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     AppDeviceTokensModule,
     CommunicationModule,
     DisciplineModule,
+    IamModule,
     ParentHomeworksModule,
     StorageModule,
   ],
@@ -141,6 +147,7 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     ParentHeroController,
     ParentRewardsController,
     ParentFilesController,
+    ParentSmartPickupController,
   ],
   providers: [
     ParentAppAccessService,
@@ -226,6 +233,9 @@ import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read
     GetParentChildLessonsTodayUseCase,
     GetParentChildLessonsWeekUseCase,
     GetParentChildLessonDetailUseCase,
+    ParentSmartPickupClock,
+    ParentSmartPickupReadAdapter,
+    GetParentSmartPickupReadinessUseCase,
   ],
   exports: [ParentAppAccessService],
 })

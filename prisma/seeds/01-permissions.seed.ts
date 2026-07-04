@@ -226,6 +226,7 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'parent.profile.view', module: 'parent', resource: 'profile', action: 'view', description: 'View Parent App self profile data' },
   { code: 'parent.progress.view', module: 'parent', resource: 'progress', action: 'view', description: 'View Parent App child progress aggregate data' },
   { code: 'parent.reports.view', module: 'parent', resource: 'reports', action: 'view', description: 'View Parent App child reports aggregate data' },
+  { code: 'parent.smart_pickup.view', module: 'parent', resource: 'smart_pickup', action: 'view', description: 'View Parent App smart pickup readiness for linked children' },
 
   // teacher app
   { code: 'teacher.home.view', module: 'teacher', resource: 'home', action: 'view', description: 'View Teacher App home aggregate data' },
