@@ -81,6 +81,26 @@ enum DismissalGateOperationalStatus {
   @@map("dismissal_gate_operational_status")
 }
 
+enum DismissalRequestStatus {
+  REQUESTED
+  QUEUED
+  CALLED
+  MOVING
+  AT_GATE
+  READY
+  HANDED_OVER
+  CANCELLED
+  EXPIRED
+
+  @@map("dismissal_request_status")
+}
+
+enum DismissalRequestEventType {
+  REQUEST_CREATED
+
+  @@map("dismissal_request_event_type")
+}
+
 enum UserStatus {
   ACTIVE
   INVITED
@@ -1189,6 +1209,8 @@ model School {
   dismissalSettings                     DismissalSettings?
   dismissalGates                        DismissalGate[]
   dismissalStaffAssignments             DismissalStaffAssignment[]
+  dismissalRequests                     DismissalRequest[]
+  dismissalRequestEvents                DismissalRequestEvent[]
   entitlement                           SchoolEntitlement?
   featureControls                       SchoolFeatureControl[]
   securitySetting                       SecuritySetting?
@@ -1400,6 +1422,8 @@ model User {
   dismissalStaffAssignments                      DismissalStaffAssignment[]             @relation("DismissalStaffAssignmentStaffUser")
   dismissalStaffAssignmentsCreated               DismissalStaffAssignment[]             @relation("DismissalStaffAssignmentCreatedBy")
   dismissalStaffAssignmentsUpdated               DismissalStaffAssignment[]             @relation("DismissalStaffAssignmentUpdatedBy")
+  dismissalRequestsCreated                       DismissalRequest[]                     @relation("DismissalRequestRequestedBy")
+  dismissalRequestEvents                         DismissalRequestEvent[]                @relation("DismissalRequestEventActor")
   securitySettingsUpdated                        SecuritySetting[]                      @relation("SecuritySettingUpdatedBy")
   backupJobsCreated                              BackupJob[]                            @relation("BackupJobCreatedBy")
   attachmentsCreated                             Attachment[]                           @relation("AttachmentCreatedBy")
@@ -2027,6 +2051,7 @@ model DismissalGate {
   school          School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   defaultSettings DismissalSettings[] @relation("DismissalSettingsDefaultGate")
   staffAssignments DismissalStaffAssignment[]
+  dismissalRequests DismissalRequest[]
 
   @@unique([id, schoolId])
   @@unique([schoolId, code])
@@ -2087,6 +2112,81 @@ model DismissalStaffAssignment {
   @@index([schoolId, isActive, deletedAt])
   @@index([deletedAt])
   @@map("dismissal_staff_assignments")
+}
+
+model DismissalRequest {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  schoolId      String @map("school_id") @db.Uuid
+  studentId     String @map("student_id") @db.Uuid
+  enrollmentId  String @map("enrollment_id") @db.Uuid
+  guardianId    String @map("guardian_id") @db.Uuid
+  requestedById String @map("requested_by_id") @db.Uuid
+  gateId        String @map("gate_id") @db.Uuid
+
+  status DismissalRequestStatus @default(REQUESTED)
+
+  clientRequestId String? @map("client_request_id") @db.VarChar(120)
+
+  parentLatitude  Decimal @map("parent_latitude") @db.Decimal(9, 6)
+  parentLongitude Decimal @map("parent_longitude") @db.Decimal(9, 6)
+  distanceMeters  Int?    @map("distance_meters")
+  geofencePassed  Boolean @default(false) @map("geofence_passed")
+
+  requestedAt DateTime  @default(now()) @map("requested_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  school      School        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student     Student       @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment  Enrollment    @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  guardian    Guardian      @relation(fields: [guardianId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  requestedBy User          @relation("DismissalRequestRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  gate        DismissalGate @relation(fields: [gateId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  events DismissalRequestEvent[]
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, requestedById, clientRequestId])
+  @@index([schoolId])
+  @@index([schoolId, status])
+  @@index([schoolId, studentId, status])
+  @@index([schoolId, gateId, status])
+  @@index([schoolId, requestedAt])
+  @@index([requestedById])
+  @@index([guardianId])
+  @@index([enrollmentId])
+  @@index([deletedAt])
+  @@map("dismissal_requests")
+}
+
+model DismissalRequestEvent {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId  String @map("school_id") @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+
+  type DismissalRequestEventType
+
+  actorUserId String? @map("actor_user_id") @db.Uuid
+
+  statusFrom DismissalRequestStatus? @map("status_from")
+  statusTo   DismissalRequestStatus? @map("status_to")
+
+  note     String? @db.Text
+  metadata Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  school    School           @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  request   DismissalRequest @relation(fields: [requestId, schoolId], references: [id, schoolId], onDelete: Cascade)
+  actorUser User?            @relation("DismissalRequestEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId])
+  @@index([schoolId, requestId, createdAt])
+  @@index([schoolId, type, createdAt])
+  @@index([actorUserId])
+  @@map("dismissal_request_events")
 }
 
 // ============================================================
@@ -3344,6 +3444,7 @@ model Student {
   avatarFile                         File?                               @relation("StudentAvatarFile", fields: [avatarFileId], references: [id], onDelete: SetNull)
   guardians                          StudentGuardian[]
   enrollments                        Enrollment[]
+  dismissalRequests                  DismissalRequest[]
   documents                          StudentDocument[]
   profileCorrectionRequests          StudentProfileCorrectionRequest[]
   medicalProfile                     StudentMedicalProfile?
@@ -3405,6 +3506,7 @@ model Guardian {
   organization                       Organization                        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   user                               User?                               @relation("GuardianUser", fields: [userId], references: [id], onDelete: SetNull)
   students                           StudentGuardian[]
+  dismissalRequests                  DismissalRequest[]
   communicationAnnouncementAudiences CommunicationAnnouncementAudience[]
 
   @@unique([id, schoolId])
@@ -3459,6 +3561,7 @@ model Enrollment {
   academicYear               AcademicYear              @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
   term                       Term?                     @relation(fields: [termId, schoolId], references: [id, schoolId], onDelete: Restrict)
   classroom                  Classroom                 @relation(fields: [classroomId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  dismissalRequests          DismissalRequest[]
   attendanceEntries          AttendanceEntry[]
   gradeItems                 GradeItem[]
   gradeSubmissions           GradeSubmission[]

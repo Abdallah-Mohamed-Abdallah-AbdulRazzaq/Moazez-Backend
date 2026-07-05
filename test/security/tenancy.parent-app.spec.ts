@@ -619,6 +619,12 @@ const PARENT_APP_ACTION_PERMISSION_CASES: ParentAppActionPermissionCase[] = [
     permissions: ['communication.notifications.archive'],
     sprint: '1C',
   },
+  {
+    controller: ParentSmartPickupController,
+    method: 'createRequest',
+    permissions: ['parent.smart_pickup.request'],
+    sprint: 'PARENT-DISMISSAL-1B',
+  },
 ];
 
 const PARENT_APP_ROUTE_PERMISSION_CASES = [
@@ -661,6 +667,7 @@ const FINAL_PARENT_PERMISSIONS = [
   'parent.progress.view',
   'parent.reports.view',
   'parent.smart_pickup.view',
+  'parent.smart_pickup.request',
   'reinforcement.hero.badges.view',
   'reinforcement.hero.progress.view',
   'reinforcement.hero.view',
@@ -689,7 +696,6 @@ const FORBIDDEN_PARENT_PERMISSIONS = [
   'communication.announcements.manage',
   'communication.admin.view',
   'communication.admin.manage',
-  'parent.smart_pickup.request',
   'parent.smart_pickup.cancel',
 ] as const;
 
@@ -713,7 +719,7 @@ describe('Parent App route permission metadata (security)', () => {
   });
 
   it('declares the PARENT-PERM-1C action permission inventory', () => {
-    expect(PARENT_APP_ACTION_PERMISSION_CASES).toHaveLength(10);
+    expect(PARENT_APP_ACTION_PERMISSION_CASES).toHaveLength(11);
 
     for (const entry of PARENT_APP_ACTION_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
@@ -731,7 +737,7 @@ describe('Parent App route permission metadata (security)', () => {
   });
 
   it('keeps the complete Parent App RBAC route inventory explicit', () => {
-    expect(PARENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(69);
+    expect(PARENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(70);
 
     const expectedKnownHandlers = new Set<string>();
 
@@ -795,7 +801,7 @@ describe('Parent role seed integrity (security)', () => {
       'STUDENT_PERMISSIONS',
     );
 
-    expect(parentPermissions).toHaveLength(44);
+    expect(parentPermissions).toHaveLength(45);
     expect(new Set(parentPermissions).size).toBe(parentPermissions.length);
     expect(parentPermissions).toEqual(Array.from(FINAL_PARENT_PERMISSIONS));
     expect(catalogCodes).toEqual(
@@ -2047,7 +2053,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
         organizationId: organizationAId,
       }),
     );
-    expect(permissions).toHaveLength(44);
+    expect(permissions).toHaveLength(45);
     expect(sortedStrings(permissions)).toEqual(
       sortedStrings(FINAL_PARENT_PERMISSIONS),
     );
@@ -2055,6 +2061,7 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       expect.arrayContaining([
         'parent.home.view',
         'parent.children.view',
+        'parent.smart_pickup.request',
         'communication.messages.send',
         'communication.notifications.archive',
         'app.device_tokens.manage',

@@ -106,10 +106,9 @@ describe('DISMISSAL-STAFF-1A route metadata and deferred surface guards', () => 
     expect(SCHOOL_SCOPED_MODELS.has('DismissalStaffAssignment')).toBe(true);
   });
 
-  it('does not add deferred request/shift/device-token schema', () => {
+  it('does not add deferred shift/device-token schema', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
     expect(schemaSource).toMatch(/model\s+DismissalStaffAssignment\b/);
-    expect(schemaSource).not.toMatch(/model\s+DismissalRequest\b/);
     expect(schemaSource).not.toMatch(/model\s+DismissalShift\b/);
     expect(schemaSource).not.toMatch(/model\s+DismissalShiftAssignment\b/);
 
@@ -447,9 +446,6 @@ describe('DISMISSAL-STAFF-1A tenancy and RBAC (security)', () => {
       .get(`${GLOBAL_PREFIX}/waiting-students`)
       .expect(404);
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/parent/smart-pickup/requests`)
-      .expect(404);
-    await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/parent/smart-pickup/recent-calls`)
       .expect(404);
     await request(app.getHttpServer())
@@ -457,14 +453,12 @@ describe('DISMISSAL-STAFF-1A tenancy and RBAC (security)', () => {
       .expect(404);
   });
 
-  it('does not create request or shift tables in the database', async () => {
+  it('does not create shift tables in the database', async () => {
     const rows = await prisma.$queryRaw<Array<{ table_name: string }>>`
       SELECT table_name
       FROM information_schema.tables
       WHERE table_schema = 'public'
         AND table_name IN (
-          'dismissal_requests',
-          'dismissal_request_events',
           'dismissal_shifts',
           'dismissal_shift_assignments'
         )

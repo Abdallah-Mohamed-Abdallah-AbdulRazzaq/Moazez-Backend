@@ -113,10 +113,12 @@ import { ListParentChildTaskSubmissionsUseCase } from './tasks/application/list-
 import { ListParentChildTasksUseCase } from './tasks/application/list-parent-child-tasks.use-case';
 import { ParentTasksController } from './tasks/controller/parent-tasks.controller';
 import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read.adapter';
+import { CreateParentSmartPickupRequestUseCase } from './smart-pickup/application/create-parent-smart-pickup-request.use-case';
 import { GetParentSmartPickupReadinessUseCase } from './smart-pickup/application/get-parent-smart-pickup-readiness.use-case';
 import { ParentSmartPickupClock } from './smart-pickup/application/parent-smart-pickup-window';
 import { ParentSmartPickupController } from './smart-pickup/controller/parent-smart-pickup.controller';
 import { ParentSmartPickupReadAdapter } from './smart-pickup/infrastructure/parent-smart-pickup-read.adapter';
+import { ParentSmartPickupRequestRepository } from './smart-pickup/infrastructure/parent-smart-pickup-request.repository';
 
 @Module({
   imports: [
@@ -235,7 +237,9 @@ import { ParentSmartPickupReadAdapter } from './smart-pickup/infrastructure/pare
     GetParentChildLessonDetailUseCase,
     ParentSmartPickupClock,
     ParentSmartPickupReadAdapter,
+    ParentSmartPickupRequestRepository,
     GetParentSmartPickupReadinessUseCase,
+    CreateParentSmartPickupRequestUseCase,
   ],
   exports: [ParentAppAccessService],
 })

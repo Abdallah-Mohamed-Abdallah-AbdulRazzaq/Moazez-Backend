@@ -104,9 +104,8 @@ describe('DISMISSAL-CORE-1A route metadata and deferred surface guards', () => {
     expect(SCHOOL_SCOPED_MODELS.has('DismissalGate')).toBe(true);
   });
 
-  it('does not add deferred pickup/request/shift/device-token schema or routes', () => {
+  it('does not add deferred pickup/shift/device-token schema or routes', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
-    expect(schemaSource).not.toMatch(/model\s+DismissalRequest\b/);
     expect(schemaSource).not.toMatch(/model\s+DismissalShift\b/);
 
     const tokenSurfaceBlock = schemaSource.match(
@@ -413,24 +412,11 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
       .get(`${GLOBAL_PREFIX}/waiting-students`)
       .expect(404);
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/parent/smart-pickup/requests`)
-      .expect(404);
-    await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/parent/smart-pickup/recent-calls`)
       .expect(404);
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/parent/smart-pickup/requests/${randomUUID()}/cancel`)
       .expect(404);
-  });
-
-  it('does not create DismissalRequest tables in the database', async () => {
-    const rows = await prisma.$queryRaw<Array<{ table_name: string }>>`
-      SELECT table_name
-      FROM information_schema.tables
-      WHERE table_schema = 'public'
-        AND table_name IN ('dismissal_requests', 'dismissal_request_events')
-    `;
-    expect(rows).toEqual([]);
   });
 
   async function createSchoolFixture(label: string): Promise<{

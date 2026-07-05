@@ -39,6 +39,8 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'DismissalSettings',
   'DismissalGate',
   'DismissalStaffAssignment',
+  'DismissalRequest',
+  'DismissalRequestEvent',
   'Lead',
   'Application',
   'AdmissionWorkflowPolicy',
@@ -201,6 +203,7 @@ const SOFT_DELETE_MODELS = new Set<string>([
   'CommunicationMessageAttachment',
   'DismissalGate',
   'DismissalStaffAssignment',
+  'DismissalRequest',
 ]);
 
 const READ_OPERATIONS = new Set<string>([
