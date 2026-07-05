@@ -257,3 +257,41 @@ export class DismissalStaffAssignmentDuplicateActiveException extends DismissalE
     );
   }
 }
+
+export class DismissalRequestNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.request.not_found',
+      'Dismissal request was not found.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
+export class DismissalRequestInvalidStatusFilterException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.request.invalid_status_filter',
+      'Dismissal request status filter is invalid.',
+    );
+  }
+}
+
+export class DismissalRequestInvalidQueueFilterException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.request.invalid_queue_filter',
+      'Dismissal request queue filter is invalid.',
+    );
+  }
+}
+
+export class DismissalRequestSchoolContextRequiredException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.request.school_context_required',
+      'A school context is required for dismissal requests.',
+      HttpStatus.FORBIDDEN,
+    );
+  }
+}

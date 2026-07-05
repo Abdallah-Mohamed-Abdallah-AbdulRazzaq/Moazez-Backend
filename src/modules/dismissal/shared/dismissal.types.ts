@@ -1,11 +1,25 @@
-import { DismissalGateOperationalStatus } from '@prisma/client';
-import { DismissalInvalidStatusException } from './dismissal.errors';
+import {
+  DismissalGateOperationalStatus,
+  DismissalRequestStatus,
+} from '@prisma/client';
+import {
+  DismissalInvalidStatusException,
+  DismissalRequestInvalidStatusFilterException,
+} from './dismissal.errors';
 
 export type PublicDismissalGateStatus =
   | 'open'
   | 'busy'
   | 'closed'
   | 'maintenance';
+
+export type PublicDismissalRequestStatus =
+  | 'requested'
+  | 'queued'
+  | 'called'
+  | 'moving'
+  | 'at_gate'
+  | 'ready';
 
 export function presentGateStatus(
   status: DismissalGateOperationalStatus,
@@ -48,4 +62,45 @@ export function parseOptionalBoolean(value: unknown): boolean | undefined {
   if (normalized === 'false') return false;
 
   return undefined;
+}
+
+export const ACTIVE_DISMISSAL_REQUEST_STATUSES: DismissalRequestStatus[] = [
+  DismissalRequestStatus.REQUESTED,
+  DismissalRequestStatus.QUEUED,
+  DismissalRequestStatus.CALLED,
+  DismissalRequestStatus.MOVING,
+  DismissalRequestStatus.AT_GATE,
+  DismissalRequestStatus.READY,
+];
+
+export function presentRequestStatus(
+  status: DismissalRequestStatus,
+): PublicDismissalRequestStatus {
+  return status.toLowerCase() as PublicDismissalRequestStatus;
+}
+
+export function parseActiveRequestStatus(
+  value: unknown,
+): DismissalRequestStatus | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+
+  if (typeof value !== 'string') {
+    throw new DismissalRequestInvalidStatusFilterException();
+  }
+
+  const normalized = value.trim().toUpperCase();
+  const candidate =
+    normalized === 'AT_GATE'
+      ? DismissalRequestStatus.AT_GATE
+      : DismissalRequestStatus[
+          normalized as keyof typeof DismissalRequestStatus
+        ];
+
+  if (!candidate || !ACTIVE_DISMISSAL_REQUEST_STATUSES.includes(candidate)) {
+    throw new DismissalRequestInvalidStatusFilterException();
+  }
+
+  return candidate;
 }

@@ -8,6 +8,10 @@ import { DismissalGatesController } from './gates/controller/dismissal-gates.con
 import { DismissalGatesRepository } from './gates/infrastructure/dismissal-gates.repository';
 import { GetDismissalProfileUseCase } from './profile/application/get-dismissal-profile.use-case';
 import { DismissalProfileController } from './profile/controller/dismissal-profile.controller';
+import { GetDismissalRequestDetailUseCase } from './requests/application/get-dismissal-request-detail.use-case';
+import { ListActiveDismissalRequestsUseCase } from './requests/application/list-active-dismissal-requests.use-case';
+import { DismissalRequestsController } from './requests/controller/dismissal-requests.controller';
+import { DismissalRequestsReadRepository } from './requests/infrastructure/dismissal-requests-read.repository';
 import { GetDismissalSettingsUseCase } from './settings/application/get-dismissal-settings.use-case';
 import { UpdateDismissalSettingsUseCase } from './settings/application/update-dismissal-settings.use-case';
 import { DismissalSettingsController } from './settings/controller/dismissal-settings.controller';
@@ -27,11 +31,13 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DismissalGatesController,
     DismissalProfileController,
     DismissalStaffAssignmentsController,
+    DismissalRequestsController,
   ],
   providers: [
     DismissalSettingsRepository,
     DismissalGatesRepository,
     DismissalStaffAssignmentsRepository,
+    DismissalRequestsReadRepository,
     GetDismissalSettingsUseCase,
     UpdateDismissalSettingsUseCase,
     ListDismissalGatesUseCase,
@@ -44,11 +50,14 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     GetDismissalStaffAssignmentUseCase,
     UpdateDismissalStaffAssignmentUseCase,
     DeleteDismissalStaffAssignmentUseCase,
+    ListActiveDismissalRequestsUseCase,
+    GetDismissalRequestDetailUseCase,
   ],
   exports: [
     DismissalSettingsRepository,
     DismissalGatesRepository,
     DismissalStaffAssignmentsRepository,
+    DismissalRequestsReadRepository,
   ],
 })
 export class DismissalModule {}

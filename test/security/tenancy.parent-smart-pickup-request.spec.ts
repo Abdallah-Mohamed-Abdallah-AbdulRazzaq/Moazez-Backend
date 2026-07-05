@@ -456,7 +456,7 @@ describe('PARENT-DISMISSAL-1B tenancy and RBAC (security)', () => {
     ).resolves.toBe(0);
   });
 
-  it('keeps deferred smart-pickup and dismissal staff queue routes absent', async () => {
+  it('keeps deferred smart-pickup and dismissal mutation routes absent', async () => {
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/parent/smart-pickup/recent-calls`)
       .set('Authorization', `Bearer ${parentToken}`)
@@ -468,10 +468,6 @@ describe('PARENT-DISMISSAL-1B tenancy and RBAC (security)', () => {
     await request(app.getHttpServer()).get(`${GLOBAL_PREFIX}/pickup`).expect(404);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/waiting-students`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/requests/active`)
-      .set('Authorization', `Bearer ${parentToken}`)
       .expect(404);
     await request(app.getHttpServer())
       .patch(`${GLOBAL_PREFIX}/dismissal/requests/${randomUUID()}/status`)
