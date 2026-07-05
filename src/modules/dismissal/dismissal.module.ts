@@ -14,6 +14,9 @@ import { UpdateDismissalRequestStatusUseCase } from './requests/application/upda
 import { DismissalRequestsController } from './requests/controller/dismissal-requests.controller';
 import { DismissalRequestsReadRepository } from './requests/infrastructure/dismissal-requests-read.repository';
 import { DismissalRequestsWriteRepository } from './requests/infrastructure/dismissal-requests-write.repository';
+import { ConfirmStudentArrivalUseCase } from './waiting-students/application/confirm-student-arrival.use-case';
+import { ListWaitingStudentsUseCase } from './waiting-students/application/list-waiting-students.use-case';
+import { DismissalWaitingStudentsController } from './waiting-students/controller/dismissal-waiting-students.controller';
 import { GetDismissalSettingsUseCase } from './settings/application/get-dismissal-settings.use-case';
 import { UpdateDismissalSettingsUseCase } from './settings/application/update-dismissal-settings.use-case';
 import { DismissalSettingsController } from './settings/controller/dismissal-settings.controller';
@@ -34,6 +37,7 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DismissalProfileController,
     DismissalStaffAssignmentsController,
     DismissalRequestsController,
+    DismissalWaitingStudentsController,
   ],
   providers: [
     DismissalSettingsRepository,
@@ -56,6 +60,8 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     ListActiveDismissalRequestsUseCase,
     GetDismissalRequestDetailUseCase,
     UpdateDismissalRequestStatusUseCase,
+    ListWaitingStudentsUseCase,
+    ConfirmStudentArrivalUseCase,
   ],
   exports: [
     DismissalSettingsRepository,

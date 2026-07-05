@@ -324,3 +324,32 @@ export class DismissalRequestSchoolContextRequiredException extends DismissalExc
     );
   }
 }
+
+export class DismissalWaitingStudentNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.waiting.not_found',
+      'Waiting student request was not found.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
+export class DismissalWaitingStudentInvalidArrivalStatusException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.waiting.invalid_arrival_status',
+      'This dismissal request cannot be marked as arrived yet.',
+      HttpStatus.CONFLICT,
+    );
+  }
+}
+
+export class DismissalWaitingStudentInvalidFilterException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.waiting.invalid_filter',
+      'Waiting-students filter is invalid.',
+    );
+  }
+}

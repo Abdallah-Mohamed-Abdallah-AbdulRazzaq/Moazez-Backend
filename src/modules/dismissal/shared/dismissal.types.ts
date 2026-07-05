@@ -7,6 +7,7 @@ import {
   DismissalRequestInvalidStatusException,
   DismissalRequestInvalidStatusFilterException,
   DismissalRequestTerminalStatusException,
+  DismissalWaitingStudentInvalidFilterException,
 } from './dismissal.errors';
 
 export type PublicDismissalGateStatus =
@@ -21,6 +22,17 @@ export type PublicDismissalRequestStatus =
   | 'called'
   | 'moving'
   | 'at_gate'
+  | 'ready';
+
+export type PublicDismissalWaitingStudentStatus = Extract<
+  PublicDismissalRequestStatus,
+  'called' | 'moving' | 'at_gate' | 'ready'
+>;
+
+export type PublicDismissalArrivalState =
+  | 'called'
+  | 'in_transit'
+  | 'arrived'
   | 'ready';
 
 export function presentGateStatus(
@@ -75,6 +87,13 @@ export const ACTIVE_DISMISSAL_REQUEST_STATUSES: DismissalRequestStatus[] = [
   DismissalRequestStatus.READY,
 ];
 
+export const WAITING_DISMISSAL_REQUEST_STATUSES: DismissalRequestStatus[] = [
+  DismissalRequestStatus.CALLED,
+  DismissalRequestStatus.MOVING,
+  DismissalRequestStatus.AT_GATE,
+  DismissalRequestStatus.READY,
+];
+
 export function presentRequestStatus(
   status: DismissalRequestStatus,
 ): PublicDismissalRequestStatus {
@@ -105,6 +124,48 @@ export function parseActiveRequestStatus(
   }
 
   return candidate;
+}
+
+export function parseWaitingRequestStatus(
+  value: unknown,
+): DismissalRequestStatus | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+
+  if (typeof value !== 'string') {
+    throw new DismissalWaitingStudentInvalidFilterException();
+  }
+
+  const normalized = value.trim().toUpperCase();
+  const candidate =
+    normalized === 'AT_GATE'
+      ? DismissalRequestStatus.AT_GATE
+      : DismissalRequestStatus[
+          normalized as keyof typeof DismissalRequestStatus
+        ];
+
+  if (!candidate || !WAITING_DISMISSAL_REQUEST_STATUSES.includes(candidate)) {
+    throw new DismissalWaitingStudentInvalidFilterException();
+  }
+
+  return candidate;
+}
+
+export function presentArrivalState(
+  status: DismissalRequestStatus,
+): PublicDismissalArrivalState {
+  switch (status) {
+    case DismissalRequestStatus.CALLED:
+      return 'called';
+    case DismissalRequestStatus.MOVING:
+      return 'in_transit';
+    case DismissalRequestStatus.AT_GATE:
+      return 'arrived';
+    case DismissalRequestStatus.READY:
+    default:
+      return 'ready';
+  }
 }
 
 export function parseDismissalRequestTransitionTarget(
