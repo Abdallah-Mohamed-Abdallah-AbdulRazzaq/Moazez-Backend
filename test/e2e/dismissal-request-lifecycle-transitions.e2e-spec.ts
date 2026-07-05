@@ -250,6 +250,15 @@ describe('DISMISSAL-CALLS-1B request lifecycle transitions (e2e)', () => {
   afterAll(async () => {
     if (prisma) {
       const schoolIds = [schoolAId, schoolBId].filter(Boolean);
+      await prisma.communicationNotificationPushAttempt.deleteMany({
+        where: { schoolId: { in: schoolIds } },
+      });
+      await prisma.communicationNotificationDelivery.deleteMany({
+        where: { schoolId: { in: schoolIds } },
+      });
+      await prisma.communicationNotification.deleteMany({
+        where: { schoolId: { in: schoolIds } },
+      });
       await prisma.auditLog.deleteMany({
         where: { schoolId: { in: schoolIds } },
       });

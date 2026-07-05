@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import {
   AuditOutcome,
+  CommunicationNotificationType,
   DismissalRequestEventType,
   DismissalRequestStatus,
   Prisma,
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { createDismissalParentNotificationForRequestEvent } from '../../notifications/application/create-dismissal-notification.service';
 
 const DISMISSAL_REQUEST_DELIVERY_ACADEMIC_ARGS =
   Prisma.validator<Prisma.EnrollmentDefaultArgs>()({
@@ -204,6 +206,14 @@ export class DismissalRequestsDeliveryRepository {
             note: Boolean(params.note),
           },
         },
+      });
+
+      await createDismissalParentNotificationForRequestEvent(tx, {
+        schoolId: params.schoolId,
+        requestId: params.requestId,
+        eventType:
+          CommunicationNotificationType.DISMISSAL_REQUEST_HANDED_OVER,
+        now: params.deliveredAt,
       });
 
       return tx.dismissalRequest.findFirstOrThrow({

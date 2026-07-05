@@ -21,6 +21,7 @@ export type CommunicationNotificationSourceModuleValue =
   | 'REINFORCEMENT'
   | 'ADMISSIONS'
   | 'STUDENTS'
+  | 'DISMISSAL'
   | 'SYSTEM';
 
 export type CommunicationNotificationTypeValue =
@@ -33,6 +34,11 @@ export type CommunicationNotificationTypeValue =
   | 'GRADE_POSTED'
   | 'BEHAVIOR_RECORD_CREATED'
   | 'REINFORCEMENT_REWARD_GRANTED'
+  | 'DISMISSAL_REQUEST_CREATED'
+  | 'DISMISSAL_REQUEST_CANCELLED'
+  | 'DISMISSAL_REQUEST_CALLED'
+  | 'DISMISSAL_REQUEST_READY'
+  | 'DISMISSAL_REQUEST_HANDED_OVER'
   | 'SYSTEM_ALERT';
 
 export type CommunicationNotificationDeliveryChannelValue =
@@ -88,6 +94,7 @@ const NOTIFICATION_SOURCE_MODULE_MAP: Record<
   reinforcement: 'REINFORCEMENT',
   admissions: 'ADMISSIONS',
   students: 'STUDENTS',
+  dismissal: 'DISMISSAL',
   system: 'SYSTEM',
 };
 
@@ -102,6 +109,16 @@ const NOTIFICATION_TYPE_MAP: Record<string, CommunicationNotificationTypeValue> 
     grade_posted: 'GRADE_POSTED',
     behavior_record_created: 'BEHAVIOR_RECORD_CREATED',
     reinforcement_reward_granted: 'REINFORCEMENT_REWARD_GRANTED',
+    dismissal_request_created: 'DISMISSAL_REQUEST_CREATED',
+    dismissal_request_cancelled: 'DISMISSAL_REQUEST_CANCELLED',
+    dismissal_request_called: 'DISMISSAL_REQUEST_CALLED',
+    dismissal_request_ready: 'DISMISSAL_REQUEST_READY',
+    dismissal_request_handed_over: 'DISMISSAL_REQUEST_HANDED_OVER',
+    request_created: 'DISMISSAL_REQUEST_CREATED',
+    request_cancelled: 'DISMISSAL_REQUEST_CANCELLED',
+    request_called: 'DISMISSAL_REQUEST_CALLED',
+    request_ready: 'DISMISSAL_REQUEST_READY',
+    request_handed_over: 'DISMISSAL_REQUEST_HANDED_OVER',
     system_alert: 'SYSTEM_ALERT',
   };
 

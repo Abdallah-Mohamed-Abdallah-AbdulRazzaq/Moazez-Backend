@@ -976,6 +976,7 @@ enum CommunicationNotificationSourceModule {
   REINFORCEMENT
   ADMISSIONS
   STUDENTS
+  DISMISSAL
   SYSTEM
 
   @@map("communication_notification_source_module")
@@ -991,6 +992,11 @@ enum CommunicationNotificationType {
   GRADE_POSTED
   BEHAVIOR_RECORD_CREATED
   REINFORCEMENT_REWARD_GRANTED
+  DISMISSAL_REQUEST_CREATED
+  DISMISSAL_REQUEST_CANCELLED
+  DISMISSAL_REQUEST_CALLED
+  DISMISSAL_REQUEST_READY
+  DISMISSAL_REQUEST_HANDED_OVER
   SYSTEM_ALERT
 
   @@map("communication_notification_type")

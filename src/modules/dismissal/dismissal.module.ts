@@ -6,6 +6,11 @@ import { ListDismissalGatesUseCase } from './gates/application/list-dismissal-ga
 import { UpdateDismissalGateUseCase } from './gates/application/update-dismissal-gate.use-case';
 import { DismissalGatesController } from './gates/controller/dismissal-gates.controller';
 import { DismissalGatesRepository } from './gates/infrastructure/dismissal-gates.repository';
+import { ListDismissalNotificationsUseCase } from './notifications/application/list-dismissal-notifications.use-case';
+import { MarkAllDismissalNotificationsReadUseCase } from './notifications/application/mark-all-dismissal-notifications-read.use-case';
+import { MarkDismissalNotificationReadUseCase } from './notifications/application/mark-dismissal-notification-read.use-case';
+import { DismissalNotificationsController } from './notifications/controller/dismissal-notifications.controller';
+import { DismissalNotificationsRepository } from './notifications/infrastructure/dismissal-notifications.repository';
 import { GetDismissalProfileUseCase } from './profile/application/get-dismissal-profile.use-case';
 import { DismissalProfileController } from './profile/controller/dismissal-profile.controller';
 import { GetDismissalRequestDetailUseCase } from './requests/application/get-dismissal-request-detail.use-case';
@@ -40,6 +45,7 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DismissalStaffAssignmentsController,
     DismissalRequestsController,
     DismissalWaitingStudentsController,
+    DismissalNotificationsController,
   ],
   providers: [
     DismissalSettingsRepository,
@@ -48,6 +54,7 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DismissalRequestsReadRepository,
     DismissalRequestsWriteRepository,
     DismissalRequestsDeliveryRepository,
+    DismissalNotificationsRepository,
     GetDismissalSettingsUseCase,
     UpdateDismissalSettingsUseCase,
     ListDismissalGatesUseCase,
@@ -66,6 +73,9 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DeliverDismissalRequestUseCase,
     ListWaitingStudentsUseCase,
     ConfirmStudentArrivalUseCase,
+    ListDismissalNotificationsUseCase,
+    MarkDismissalNotificationReadUseCase,
+    MarkAllDismissalNotificationsReadUseCase,
   ],
   exports: [
     DismissalSettingsRepository,

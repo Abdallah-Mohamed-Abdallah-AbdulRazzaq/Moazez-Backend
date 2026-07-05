@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import {
+  CommunicationNotificationType,
   DismissalRequestEventType,
   DismissalRequestStatus,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { createDismissalParentNotificationForRequestEvent } from '../../notifications/application/create-dismissal-notification.service';
 
 const DISMISSAL_REQUEST_STATUS_ACADEMIC_ARGS =
   Prisma.validator<Prisma.EnrollmentDefaultArgs>()({
@@ -102,6 +104,7 @@ export class DismissalRequestsWriteRepository {
     note: string | null;
   }): Promise<DismissalRequestStatusUpdateRecord> {
     return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
       await tx.dismissalRequest.update({
         where: {
           id_schoolId: {
@@ -126,6 +129,24 @@ export class DismissalRequestsWriteRepository {
           note: params.note,
         },
       });
+
+      if (params.statusTo === DismissalRequestStatus.CALLED) {
+        await createDismissalParentNotificationForRequestEvent(tx, {
+          schoolId: params.schoolId,
+          requestId: params.requestId,
+          eventType: CommunicationNotificationType.DISMISSAL_REQUEST_CALLED,
+          now,
+        });
+      }
+
+      if (params.statusTo === DismissalRequestStatus.READY) {
+        await createDismissalParentNotificationForRequestEvent(tx, {
+          schoolId: params.schoolId,
+          requestId: params.requestId,
+          eventType: CommunicationNotificationType.DISMISSAL_REQUEST_READY,
+          now,
+        });
+      }
 
       return tx.dismissalRequest.findFirstOrThrow({
         where: {

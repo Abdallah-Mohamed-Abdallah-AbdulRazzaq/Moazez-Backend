@@ -230,6 +230,13 @@ describe('DISMISSAL-CALLS-1B tenancy and RBAC (security)', () => {
 
   afterAll(async () => {
     if (prisma) {
+      await prisma.communicationNotificationPushAttempt.deleteMany({
+        where: { schoolId },
+      });
+      await prisma.communicationNotificationDelivery.deleteMany({
+        where: { schoolId },
+      });
+      await prisma.communicationNotification.deleteMany({ where: { schoolId } });
       await prisma.auditLog.deleteMany({ where: { schoolId } });
       await prisma.dismissalRequestEvent.deleteMany({ where: { schoolId } });
       await prisma.dismissalRequest.deleteMany({ where: { schoolId } });

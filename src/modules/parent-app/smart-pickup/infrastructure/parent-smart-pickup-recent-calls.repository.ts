@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   AuditOutcome,
+  CommunicationNotificationType,
   DismissalRequestEventType,
   DismissalRequestStatus,
   Prisma,
@@ -9,6 +10,7 @@ import {
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { createDismissalStaffNotificationsForRequestEvent } from '../../../dismissal/notifications/application/create-dismissal-notification.service';
 
 const SMART_PICKUP_RECENT_CALL_ENROLLMENT_ARGS =
   Prisma.validator<Prisma.EnrollmentDefaultArgs>()({
@@ -178,6 +180,7 @@ export class ParentSmartPickupRecentCallsRepository {
     note: string | null;
   }): Promise<ParentSmartPickupRecentCallRecord> {
     return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
       await tx.dismissalRequest.update({
         where: {
           id_schoolId: {
@@ -222,6 +225,13 @@ export class ParentSmartPickupRecentCallsRepository {
             note: Boolean(params.note),
           },
         },
+      });
+
+      await createDismissalStaffNotificationsForRequestEvent(tx, {
+        schoolId: params.schoolId,
+        requestId: params.requestId,
+        eventType: CommunicationNotificationType.DISMISSAL_REQUEST_CANCELLED,
+        now,
       });
 
       return tx.dismissalRequest.findFirstOrThrow({

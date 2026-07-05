@@ -420,3 +420,34 @@ export class DismissalDeliveryInvalidPayloadException extends DismissalException
     );
   }
 }
+
+export class DismissalNotificationNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.notification.not_found',
+      'Dismissal notification was not found.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
+export class DismissalNotificationInvalidFilterException extends DismissalException {
+  constructor(details?: Record<string, unknown>) {
+    super(
+      'dismissal.notification.invalid_filter',
+      'Dismissal notification filter is invalid.',
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    );
+  }
+}
+
+export class DismissalNotificationSchoolContextRequiredException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.notification.school_context_required',
+      'A school context is required for dismissal notifications.',
+      HttpStatus.FORBIDDEN,
+    );
+  }
+}
