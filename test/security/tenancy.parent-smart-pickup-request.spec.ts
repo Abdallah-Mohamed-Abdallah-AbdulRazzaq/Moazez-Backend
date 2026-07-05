@@ -89,10 +89,10 @@ describe('PARENT-DISMISSAL-1B route metadata and seed boundaries', () => {
     expect(permissionsSeed).toContain(
       'Create Parent App smart pickup requests for linked children',
     );
-    expect(parentPermissions).toHaveLength(45);
+    expect(parentPermissions).toHaveLength(46);
     expect(parentPermissions).toContain('parent.smart_pickup.view');
     expect(parentPermissions).toContain('parent.smart_pickup.request');
-    expect(parentPermissions).not.toContain('parent.smart_pickup.cancel');
+    expect(parentPermissions).toContain('parent.smart_pickup.cancel');
     expect(parentPermissions.some((code) => code.startsWith('dismissal.'))).toBe(
       false,
     );
@@ -103,6 +103,7 @@ describe('PARENT-DISMISSAL-1B route metadata and seed boundaries', () => {
       dismissalStaffPermissions,
     ]) {
       expect(permissions).not.toContain('parent.smart_pickup.request');
+      expect(permissions).not.toContain('parent.smart_pickup.cancel');
     }
   });
 
@@ -172,7 +173,7 @@ describe('PARENT-DISMISSAL-1B tenancy and RBAC (security)', () => {
     );
     expect(parentRolePermissionCodes).toContain('parent.smart_pickup.view');
     expect(parentRolePermissionCodes).toContain('parent.smart_pickup.request');
-    expect(parentRolePermissionCodes).not.toContain('parent.smart_pickup.cancel');
+    expect(parentRolePermissionCodes).toContain('parent.smart_pickup.cancel');
     expect(parentRolePermissionCodes.some((code) => code.startsWith('dismissal.'))).toBe(
       false,
     );
@@ -456,15 +457,7 @@ describe('PARENT-DISMISSAL-1B tenancy and RBAC (security)', () => {
     ).resolves.toBe(0);
   });
 
-  it('keeps deferred smart-pickup and dismissal action routes absent', async () => {
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/parent/smart-pickup/recent-calls`)
-      .set('Authorization', `Bearer ${parentToken}`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/parent/smart-pickup/requests/${randomUUID()}/cancel`)
-      .set('Authorization', `Bearer ${parentToken}`)
-      .expect(404);
+  it('keeps deferred root routes absent', async () => {
     await request(app.getHttpServer()).get(`${GLOBAL_PREFIX}/pickup`).expect(404);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/waiting-students`)

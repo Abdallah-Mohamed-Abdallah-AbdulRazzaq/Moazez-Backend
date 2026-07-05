@@ -422,14 +422,6 @@ describe('DISMISSAL-DELIVERY-1A tenancy and RBAC (security)', () => {
       .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${id}/deliver`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/parent/smart-pickup/recent-calls`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/parent/smart-pickup/requests/${id}/cancel`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(404);
     await request(app.getHttpServer()).get(`${GLOBAL_PREFIX}/pickup`).expect(404);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/waiting-students`)

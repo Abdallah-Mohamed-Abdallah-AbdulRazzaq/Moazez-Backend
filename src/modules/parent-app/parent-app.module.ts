@@ -114,11 +114,14 @@ import { ListParentChildTasksUseCase } from './tasks/application/list-parent-chi
 import { ParentTasksController } from './tasks/controller/parent-tasks.controller';
 import { ParentTasksReadAdapter } from './tasks/infrastructure/parent-tasks-read.adapter';
 import { CreateParentSmartPickupRequestUseCase } from './smart-pickup/application/create-parent-smart-pickup-request.use-case';
+import { CancelParentSmartPickupRequestUseCase } from './smart-pickup/application/cancel-parent-smart-pickup-request.use-case';
 import { GetParentSmartPickupReadinessUseCase } from './smart-pickup/application/get-parent-smart-pickup-readiness.use-case';
+import { ListParentSmartPickupRecentCallsUseCase } from './smart-pickup/application/list-parent-smart-pickup-recent-calls.use-case';
 import { ParentSmartPickupClock } from './smart-pickup/application/parent-smart-pickup-window';
 import { ParentSmartPickupController } from './smart-pickup/controller/parent-smart-pickup.controller';
 import { ParentSmartPickupReadAdapter } from './smart-pickup/infrastructure/parent-smart-pickup-read.adapter';
 import { ParentSmartPickupRequestRepository } from './smart-pickup/infrastructure/parent-smart-pickup-request.repository';
+import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastructure/parent-smart-pickup-recent-calls.repository';
 
 @Module({
   imports: [
@@ -238,8 +241,11 @@ import { ParentSmartPickupRequestRepository } from './smart-pickup/infrastructur
     ParentSmartPickupClock,
     ParentSmartPickupReadAdapter,
     ParentSmartPickupRequestRepository,
+    ParentSmartPickupRecentCallsRepository,
     GetParentSmartPickupReadinessUseCase,
     CreateParentSmartPickupRequestUseCase,
+    ListParentSmartPickupRecentCallsUseCase,
+    CancelParentSmartPickupRequestUseCase,
   ],
   exports: [ParentAppAccessService],
 })

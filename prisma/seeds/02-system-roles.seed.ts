@@ -116,6 +116,7 @@ const PARENT_PERMISSIONS = [
   'parent.reports.view',
   'parent.smart_pickup.view',
   'parent.smart_pickup.request',
+  'parent.smart_pickup.cancel',
   'reinforcement.hero.badges.view',
   'reinforcement.hero.progress.view',
   'reinforcement.hero.view',

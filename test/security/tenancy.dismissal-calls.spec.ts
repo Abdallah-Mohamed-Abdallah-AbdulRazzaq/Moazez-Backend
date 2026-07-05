@@ -91,7 +91,7 @@ describe('DISMISSAL-CALLS-1A route metadata and permission boundaries', () => {
     expect(studentPermissions).not.toContain('dismissal.requests.view');
     expect(parentPermissions).toContain('parent.smart_pickup.view');
     expect(parentPermissions).toContain('parent.smart_pickup.request');
-    expect(parentPermissions).not.toContain('parent.smart_pickup.cancel');
+    expect(parentPermissions).toContain('parent.smart_pickup.cancel');
   });
 
   it('does not add forbidden dismissal device-token or waiting-student surfaces', () => {
@@ -317,7 +317,7 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
       .expect(404);
   });
 
-  it('does not expose deferred action, parent history, or root pickup routes', async () => {
+  it('does not expose deferred action or root pickup routes', async () => {
     const id = randomUUID();
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/call`)
@@ -325,14 +325,6 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
       .expect(404);
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/ready`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/parent/smart-pickup/recent-calls`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/parent/smart-pickup/requests/${id}/cancel`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
     await request(app.getHttpServer()).get(`${GLOBAL_PREFIX}/pickup`).expect(404);

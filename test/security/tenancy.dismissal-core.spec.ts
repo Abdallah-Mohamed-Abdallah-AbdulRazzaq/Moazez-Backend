@@ -411,12 +411,6 @@ describe('DISMISSAL-CORE-1A tenancy and RBAC (security)', () => {
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/waiting-students`)
       .expect(404);
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/parent/smart-pickup/recent-calls`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/parent/smart-pickup/requests/${randomUUID()}/cancel`)
-      .expect(404);
   });
 
   async function createSchoolFixture(label: string): Promise<{

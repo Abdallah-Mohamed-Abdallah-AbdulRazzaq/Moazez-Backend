@@ -366,7 +366,7 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
       .expect(403);
   });
 
-  it('does not expose deferred action, delivery, parent history, or root pickup routes', async () => {
+  it('does not expose deferred action, delivery, or root pickup routes', async () => {
     const id = randomUUID();
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/call`)
@@ -386,14 +386,6 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
       .expect(404);
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${id}/deliver`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/parent/smart-pickup/recent-calls`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/parent/smart-pickup/requests/${id}/cancel`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
     await request(app.getHttpServer()).get(`${GLOBAL_PREFIX}/pickup`).expect(404);

@@ -334,7 +334,7 @@ describe('DISMISSAL-CALLS-1B tenancy and RBAC (security)', () => {
     expect(hidden.body?.error?.code).toBe('dismissal.request.not_found');
   });
 
-  it('does not expose deferred action, parent history, or root pickup routes', async () => {
+  it('does not expose deferred action or root pickup routes', async () => {
     const id = randomUUID();
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/call`)
@@ -346,14 +346,6 @@ describe('DISMISSAL-CALLS-1B tenancy and RBAC (security)', () => {
       .expect(404);
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/escalate`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/parent/smart-pickup/recent-calls`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/parent/smart-pickup/requests/${id}/cancel`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
     await request(app.getHttpServer()).get(`${GLOBAL_PREFIX}/pickup`).expect(404);

@@ -86,7 +86,7 @@ describe('PARENT-DISMISSAL-1A route metadata and seed boundaries', () => {
     expect(permissionsSeed).toContain("resource: 'smart_pickup'");
     expect(parentPermissions).toContain('parent.smart_pickup.view');
     expect(parentPermissions).toContain('parent.smart_pickup.request');
-    expect(parentPermissions).not.toContain('parent.smart_pickup.cancel');
+    expect(parentPermissions).toContain('parent.smart_pickup.cancel');
     expect(parentPermissions.some((code) => code.startsWith('dismissal.'))).toBe(
       false,
     );
@@ -98,6 +98,7 @@ describe('PARENT-DISMISSAL-1A route metadata and seed boundaries', () => {
     ]) {
       expect(permissions).not.toContain('parent.smart_pickup.view');
       expect(permissions).not.toContain('parent.smart_pickup.request');
+      expect(permissions).not.toContain('parent.smart_pickup.cancel');
     }
   });
 
@@ -406,15 +407,7 @@ describe('PARENT-DISMISSAL-1A tenancy and RBAC (security)', () => {
     assertNoSmartPickupLeak(response.body);
   });
 
-  it('does not expose deferred follow-up/root routes', async () => {
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/parent/smart-pickup/recent-calls`)
-      .set('Authorization', `Bearer ${parentAToken}`)
-      .expect(404);
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/parent/smart-pickup/requests/${randomUUID()}/cancel`)
-      .set('Authorization', `Bearer ${parentAToken}`)
-      .expect(404);
+  it('does not expose deferred root routes', async () => {
     await request(app.getHttpServer()).get(`${GLOBAL_PREFIX}/pickup`).expect(404);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/waiting-students`)

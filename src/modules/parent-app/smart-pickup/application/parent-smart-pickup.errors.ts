@@ -133,6 +133,61 @@ export class DismissalRequestDuplicateActiveException extends DomainException {
   }
 }
 
+export class DismissalRequestNotFoundForParentException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'dismissal.request.not_found',
+      message: 'Dismissal request was not found',
+      httpStatus: HttpStatus.NOT_FOUND,
+      details,
+    });
+  }
+}
+
+export class DismissalRequestCancelDisabledException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'dismissal.request.cancel_disabled',
+      message: 'Parent cancellation is disabled for this school',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class DismissalRequestCancelNotAllowedException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'dismissal.request.cancel_not_allowed',
+      message: 'Dismissal request cannot be cancelled in its current state',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class DismissalRequestAlreadyTerminalException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'dismissal.request.already_terminal',
+      message: 'Dismissal request is already terminal',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export class DismissalRequestInvalidRecentFilterException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'dismissal.request.invalid_recent_filter',
+      message: 'Dismissal recent-calls filter is invalid',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details,
+    });
+  }
+}
+
 export class DismissalRequestGateRequiredException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({

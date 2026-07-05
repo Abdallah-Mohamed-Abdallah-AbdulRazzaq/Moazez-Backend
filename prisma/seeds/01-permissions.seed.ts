@@ -228,6 +228,7 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'parent.reports.view', module: 'parent', resource: 'reports', action: 'view', description: 'View Parent App child reports aggregate data' },
   { code: 'parent.smart_pickup.view', module: 'parent', resource: 'smart_pickup', action: 'view', description: 'View Parent App smart pickup readiness for linked children' },
   { code: 'parent.smart_pickup.request', module: 'parent', resource: 'smart_pickup', action: 'request', description: 'Create Parent App smart pickup requests for linked children' },
+  { code: 'parent.smart_pickup.cancel', module: 'parent', resource: 'smart_pickup', action: 'cancel', description: 'Cancel Parent App smart pickup requests before school-side processing starts' },
 
   // teacher app
   { code: 'teacher.home.view', module: 'teacher', resource: 'home', action: 'view', description: 'View Teacher App home aggregate data' },
