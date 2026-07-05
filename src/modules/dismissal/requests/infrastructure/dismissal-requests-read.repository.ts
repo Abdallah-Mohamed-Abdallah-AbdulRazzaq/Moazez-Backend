@@ -48,6 +48,7 @@ const DISMISSAL_REQUEST_QUEUE_ARGS =
       id: true,
       status: true,
       requestedAt: true,
+      updatedAt: true,
       gateId: true,
       student: {
         select: {

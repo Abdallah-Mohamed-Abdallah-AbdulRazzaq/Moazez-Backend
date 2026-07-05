@@ -6,6 +6,7 @@ import {
   DismissalRequestDetailResponseDto,
   DismissalRequestTimelineEventDto,
 } from '../dto/dismissal-request-query.dto';
+import { DismissalRequestStatusUpdateResponseDto } from '../dto/update-dismissal-request-status.dto';
 import {
   computeDismissalRequestSignals,
   DismissalRequestSignalThresholds,
@@ -14,6 +15,7 @@ import {
   DismissalRequestDetailRecord,
   DismissalRequestQueueRecord,
 } from '../infrastructure/dismissal-requests-read.repository';
+import { DismissalRequestStatusUpdateRecord } from '../infrastructure/dismissal-requests-write.repository';
 import { presentGateStatus, presentRequestStatus } from '../../shared/dismissal.types';
 
 function displayName(parts: Array<string | null | undefined>): string | null {
@@ -122,6 +124,64 @@ export function presentDismissalRequestDetail(params: {
   };
 }
 
+export function presentDismissalRequestStatusUpdate(params: {
+  request: DismissalRequestStatusUpdateRecord;
+  previousStatus: DismissalRequestStatus | null;
+  changed: boolean;
+  thresholds: DismissalRequestSignalThresholds;
+  now: Date;
+}): DismissalRequestStatusUpdateResponseDto {
+  const signals = computeDismissalRequestSignals({
+    requestedAt: params.request.requestedAt,
+    now: params.now,
+    thresholds: params.thresholds,
+  });
+  const classroom = params.request.enrollment.classroom;
+  const section = classroom.section;
+  const grade = section.grade;
+
+  return {
+    request: {
+      id: params.request.id,
+      status: presentRequestStatus(params.request.status) as Exclude<
+        ReturnType<typeof presentRequestStatus>,
+        'requested'
+      >,
+      previousStatus: params.previousStatus
+        ? presentRequestStatus(params.previousStatus)
+        : null,
+      changed: params.changed,
+      requestedAt: params.request.requestedAt.toISOString(),
+      updatedAt: params.request.updatedAt.toISOString(),
+      waitMinutes: signals.waitMinutes,
+      signals: {
+        delayed: signals.delayed,
+        urgent: signals.urgent,
+        delayThresholdMinutes: signals.delayThresholdMinutes,
+        urgentThresholdMinutes: signals.urgentThresholdMinutes,
+      },
+      child: {
+        id: params.request.student.id,
+        displayName:
+          displayName([
+            params.request.student.firstName,
+            params.request.student.lastName,
+          ]) ?? 'Student',
+        grade: label(grade),
+        section: label(section),
+        classroom: label(classroom),
+      },
+      gate: {
+        id: params.request.gate.id,
+        code: params.request.gate.code,
+        name: params.request.gate.name,
+        status: presentGateStatus(params.request.gate.status),
+      },
+      timeline: params.request.events.map(presentTimelineEvent),
+    },
+  };
+}
+
 function summarizeRequests(
   requests: DismissalRequestQueueRecord[],
   thresholds: DismissalRequestSignalThresholds,
@@ -179,13 +239,22 @@ function presentTimelineEvent(
   event: DismissalRequestDetailRecord['events'][number],
 ): DismissalRequestTimelineEventDto {
   return {
-    type:
-      event.type === DismissalRequestEventType.REQUEST_CREATED
-        ? 'request_created'
-        : 'request_created',
+    type: presentTimelineEventType(event.type),
     statusFrom: event.statusFrom ? presentRequestStatus(event.statusFrom) : null,
     statusTo: event.statusTo ? presentRequestStatus(event.statusTo) : null,
     createdAt: event.createdAt.toISOString(),
     note: event.note ?? null,
   };
+}
+
+function presentTimelineEventType(
+  type: DismissalRequestEventType,
+): DismissalRequestTimelineEventDto['type'] {
+  switch (type) {
+    case DismissalRequestEventType.REQUEST_STATUS_CHANGED:
+      return 'request_status_changed';
+    case DismissalRequestEventType.REQUEST_CREATED:
+    default:
+      return 'request_created';
+  }
 }

@@ -28,7 +28,7 @@ import { ScopeResolverGuard } from '../../src/common/guards/scope-resolver.guard
 import { DismissalRequestsController } from '../../src/modules/dismissal/requests/controller/dismissal-requests.controller';
 
 const GLOBAL_PREFIX = '/api/v1';
-const PASSWORD = 'DismissalCallsSecurity123!';
+const PASSWORD = 'DismissalTransitionsSecurity123!';
 const TEST_RUN_ID = randomUUID().slice(0, 8);
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
@@ -39,20 +39,14 @@ const ARGON2_OPTIONS: argon2.Options = {
 
 jest.setTimeout(90_000);
 
-describe('DISMISSAL-CALLS-1A route metadata and permission boundaries', () => {
-  it('declares exact RequiredPermissions metadata for active queue routes', () => {
+describe('DISMISSAL-CALLS-1B route metadata and permission boundaries', () => {
+  it('declares exact RequiredPermissions metadata for status transitions', () => {
     expect(
       Reflect.getMetadata(
         REQUIRED_PERMISSIONS_METADATA,
-        DismissalRequestsController.prototype.listActiveRequests,
+        DismissalRequestsController.prototype.updateRequestStatus,
       ),
-    ).toEqual(['dismissal.requests.view']);
-    expect(
-      Reflect.getMetadata(
-        REQUIRED_PERMISSIONS_METADATA,
-        DismissalRequestsController.prototype.getRequestDetail,
-      ),
-    ).toEqual(['dismissal.requests.view']);
+    ).toEqual(['dismissal.requests.manage']);
   });
 
   it('declares the required JwtAuth, ScopeResolver, Permissions guard chain', () => {
@@ -63,7 +57,7 @@ describe('DISMISSAL-CALLS-1A route metadata and permission boundaries', () => {
     ]);
   });
 
-  it('uses existing dismissal.requests.view permission without role leakage', () => {
+  it('uses existing dismissal.requests.manage permission without role leakage', () => {
     const rolesSeed = readFileSync(
       `${process.cwd()}/prisma/seeds/02-system-roles.seed.ts`,
       'utf8',
@@ -85,42 +79,49 @@ describe('DISMISSAL-CALLS-1A route metadata and permission boundaries', () => {
       'STUDENT_PERMISSIONS',
     );
 
-    expect(dismissalStaffPermissions).toContain('dismissal.requests.view');
-    expect(parentPermissions).not.toContain('dismissal.requests.view');
-    expect(teacherPermissions).not.toContain('dismissal.requests.view');
-    expect(studentPermissions).not.toContain('dismissal.requests.view');
-    expect(parentPermissions).toContain('parent.smart_pickup.view');
-    expect(parentPermissions).toContain('parent.smart_pickup.request');
-    expect(parentPermissions).not.toContain('parent.smart_pickup.cancel');
+    expect(dismissalStaffPermissions).toContain('dismissal.requests.manage');
+    expect(parentPermissions).not.toContain('dismissal.requests.manage');
+    expect(teacherPermissions).not.toContain('dismissal.requests.manage');
+    expect(studentPermissions).not.toContain('dismissal.requests.manage');
   });
 
-  it('does not add forbidden dismissal device-token or waiting-student surfaces', () => {
+  it('adds only the status-changed event enum and no forbidden surfaces', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
+    const migrationSource = readFileSync(
+      'prisma/migrations/20260705130000_dismissal_request_status_changed_event/migration.sql',
+      'utf8',
+    );
+
+    expect(schemaSource).toMatch(/REQUEST_STATUS_CHANGED/);
+    expect(migrationSource.trim()).toBe(
+      'ALTER TYPE "dismissal_request_event_type" ADD VALUE \'REQUEST_STATUS_CHANGED\';',
+    );
+    expect(migrationSource).not.toMatch(/CREATE TABLE|CREATE INDEX|INSERT INTO/i);
 
     const tokenSurfaceBlock = schemaSource.match(
       /enum AppDeviceTokenSurface \{([\s\S]*?)\n\}/,
     )?.[1];
     expect(tokenSurfaceBlock).toBeTruthy();
     expect(tokenSurfaceBlock).not.toContain('DISMISSAL_STAFF');
-    expect(schemaSource).not.toMatch(/model\s+DismissalShift\b/);
     expect(schemaSource).not.toMatch(/model\s+DismissalWaitingStudent\b/);
+    expect(schemaSource).not.toMatch(/model\s+DismissalShift\b/);
   });
 });
 
-describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
+describe('DISMISSAL-CALLS-1B tenancy and RBAC (security)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
   let organizationId: string;
   let schoolId: string;
+  let classroomId: string;
+  let gateId: string;
+  let otherGateId: string;
   let adminToken: string;
   let noPermissionToken: string;
   let staffToken: string;
+  let parentToken: string;
   let parentUserId: string;
   let guardianId: string;
-  let gateId: string;
-  let otherGateId: string;
-  let visibleRequestId: string;
-  let hiddenRequestId: string;
   const createdUserIds: string[] = [];
   const createdSchoolIds: string[] = [];
   const createdOrganizationIds: string[] = [];
@@ -151,14 +152,15 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     organizationId = fixture.organizationId;
     schoolId = fixture.schoolId;
     const academic = await createAcademicFixture(schoolId);
-    gateId = await createGate('VISIBLE', DismissalGateOperationalStatus.OPEN);
-    otherGateId = await createGate('HIDDEN', DismissalGateOperationalStatus.OPEN);
+    classroomId = academic.classroomId;
+    gateId = await createGate('VISIBLE');
+    otherGateId = await createGate('HIDDEN');
 
     const noPermissionRole = await prisma.role.create({
       data: {
         schoolId,
-        key: `dismissal-calls-no-perm-${TEST_RUN_ID}`,
-        name: 'Dismissal Calls No Permission',
+        key: `dismissal-trans-no-perm-${TEST_RUN_ID}`,
+        name: 'Dismissal Transitions No Permission',
         description: 'No dismissal request permissions',
         isSystem: false,
       },
@@ -166,28 +168,28 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     });
 
     const admin = await createUserWithMembership({
-      email: `dismissal-calls-sec-${TEST_RUN_ID}-admin@moazez.local`,
+      email: `dismissal-trans-sec-${TEST_RUN_ID}-admin@moazez.local`,
       roleId: schoolAdminRole.id,
       userType: UserType.SCHOOL_USER,
       firstName: 'School',
       lastName: 'Admin',
     });
     const noPermission = await createUserWithMembership({
-      email: `dismissal-calls-sec-${TEST_RUN_ID}-noperm@moazez.local`,
+      email: `dismissal-trans-sec-${TEST_RUN_ID}-noperm@moazez.local`,
       roleId: noPermissionRole.id,
       userType: UserType.SCHOOL_USER,
       firstName: 'No',
       lastName: 'Permission',
     });
     const staff = await createUserWithMembership({
-      email: `dismissal-calls-sec-${TEST_RUN_ID}-staff@moazez.local`,
+      email: `dismissal-trans-sec-${TEST_RUN_ID}-staff@moazez.local`,
       roleId: dismissalStaffRole.id,
       userType: UserType.DISMISSAL_STAFF,
       firstName: 'Assigned',
       lastName: 'Staff',
     });
     const parent = await createUserWithMembership({
-      email: `dismissal-calls-sec-${TEST_RUN_ID}-parent@moazez.local`,
+      email: `dismissal-trans-sec-${TEST_RUN_ID}-parent@moazez.local`,
       roleId: parentRole.id,
       userType: UserType.PARENT,
       firstName: 'Parent',
@@ -203,19 +205,6 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
         gateId,
         isActive: true,
       },
-    });
-
-    visibleRequestId = await createRequest({
-      classroomId: academic.classroomId,
-      gateId,
-      firstName: 'Visible',
-      lastName: 'Queue',
-    });
-    hiddenRequestId = await createRequest({
-      classroomId: academic.classroomId,
-      gateId: otherGateId,
-      firstName: 'Hidden',
-      lastName: 'Queue',
     });
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -236,10 +225,12 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     adminToken = await login(admin.email);
     noPermissionToken = await login(noPermission.email);
     staffToken = await login(staff.email);
+    parentToken = await login(parent.email);
   });
 
   afterAll(async () => {
     if (prisma) {
+      await prisma.auditLog.deleteMany({ where: { schoolId } });
       await prisma.dismissalRequestEvent.deleteMany({ where: { schoolId } });
       await prisma.dismissalRequest.deleteMany({ where: { schoolId } });
       await prisma.dismissalStaffAssignment.deleteMany({ where: { schoolId } });
@@ -261,7 +252,7 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
       await prisma.role.deleteMany({
         where: {
           schoolId,
-          key: { startsWith: `dismissal-calls-no-perm-${TEST_RUN_ID}` },
+          key: { startsWith: `dismissal-trans-no-perm-${TEST_RUN_ID}` },
         },
       });
       await prisma.school.deleteMany({ where: { id: { in: createdSchoolIds } } });
@@ -273,48 +264,74 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     if (app) await app.close();
   });
 
-  it('rejects unauthenticated active queue requests', async () => {
+  it('rejects unauthenticated PATCH requests', async () => {
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/requests/active`)
+      .patch(`${GLOBAL_PREFIX}/dismissal/requests/${randomUUID()}/status`)
+      .send({ status: 'called' })
       .expect(401);
   });
 
-  it('forbids authenticated users without dismissal.requests.view', async () => {
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/requests/active`)
-      .set('Authorization', `Bearer ${noPermissionToken}`)
-      .expect(403);
-  });
+  it('forbids authenticated users without dismissal.requests.manage', async () => {
+    const requestId = await createRequest({
+      gateId,
+      firstName: 'NoPerm',
+      lastName: 'Student',
+    });
 
-  it('allows school admin to access the current-school active queue', async () => {
-    const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/requests/active`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
-
-    expect(response.body.data.map((item: { id: string }) => item.id)).toEqual(
-      expect.arrayContaining([visibleRequestId, hiddenRequestId]),
+    await patchStatus(noPermissionToken, requestId, { status: 'called' }).expect(
+      403,
     );
   });
 
-  it('scopes DISMISSAL_STAFF queue and details by assignment', async () => {
-    const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/requests/active`)
-      .set('Authorization', `Bearer ${staffToken}`)
-      .expect(200);
+  it('allows school admin to transition a current-school active request', async () => {
+    const requestId = await createRequest({
+      gateId,
+      firstName: 'Admin',
+      lastName: 'Visible',
+    });
 
-    expect(response.body.data.map((item: { id: string }) => item.id)).toEqual([
-      visibleRequestId,
-    ]);
+    const response = await patchStatus(adminToken, requestId, {
+      status: 'called',
+    }).expect(200);
 
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/requests/${visibleRequestId}`)
-      .set('Authorization', `Bearer ${staffToken}`)
-      .expect(200);
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/requests/${hiddenRequestId}`)
-      .set('Authorization', `Bearer ${staffToken}`)
-      .expect(404);
+    expect(response.body.request).toEqual(
+      expect.objectContaining({
+        id: requestId,
+        status: 'called',
+        changed: true,
+      }),
+    );
+  });
+
+  it('forbids parent actors through permissions', async () => {
+    const requestId = await createRequest({
+      gateId,
+      firstName: 'Parent',
+      lastName: 'Forbidden',
+    });
+
+    await patchStatus(parentToken, requestId, { status: 'called' }).expect(403);
+  });
+
+  it('scopes DISMISSAL_STAFF status mutation by assignment', async () => {
+    const visibleRequestId = await createRequest({
+      gateId,
+      firstName: 'Visible',
+      lastName: 'Request',
+    });
+    const hiddenRequestId = await createRequest({
+      gateId: otherGateId,
+      firstName: 'Hidden',
+      lastName: 'Request',
+    });
+
+    await patchStatus(staffToken, visibleRequestId, { status: 'called' }).expect(
+      200,
+    );
+    const hidden = await patchStatus(staffToken, hiddenRequestId, {
+      status: 'called',
+    }).expect(404);
+    expect(hidden.body?.error?.code).toBe('dismissal.request.not_found');
   });
 
   it('does not expose deferred action, waiting-student, parent history, or root pickup routes', async () => {
@@ -332,7 +349,15 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
     await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/escalate`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/dismissal/waiting-students`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${id}/arrival`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
     await request(app.getHttpServer())
@@ -349,14 +374,25 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
       .expect(404);
   });
 
+  function patchStatus(
+    token: string,
+    requestId: string,
+    body: Record<string, unknown>,
+  ) {
+    return request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/dismissal/requests/${requestId}/status`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+  }
+
   async function createSchoolFixture(): Promise<{
     organizationId: string;
     schoolId: string;
   }> {
     const organization = await prisma.organization.create({
       data: {
-        slug: `dismissal-calls-sec-${TEST_RUN_ID}-org`,
-        name: `Dismissal Calls Security Org ${TEST_RUN_ID}`,
+        slug: `dismissal-trans-sec-${TEST_RUN_ID}-org`,
+        name: `Dismissal Transitions Security Org ${TEST_RUN_ID}`,
         status: OrganizationStatus.ACTIVE,
       },
       select: { id: true },
@@ -366,8 +402,8 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     const school = await prisma.school.create({
       data: {
         organizationId: organization.id,
-        slug: `dismissal-calls-sec-${TEST_RUN_ID}-school`,
-        name: `Dismissal Calls Security School ${TEST_RUN_ID}`,
+        slug: `dismissal-trans-sec-${TEST_RUN_ID}-school`,
+        name: `Dismissal Transitions Security School ${TEST_RUN_ID}`,
         status: SchoolStatus.ACTIVE,
       },
       select: { id: true },
@@ -381,8 +417,8 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     const academicYear = await prisma.academicYear.create({
       data: {
         schoolId: currentSchoolId,
-        nameAr: `calls-sec-year-${TEST_RUN_ID}-ar`,
-        nameEn: `Calls Sec Year ${TEST_RUN_ID}`,
+        nameAr: `trans-sec-year-${TEST_RUN_ID}-ar`,
+        nameEn: `Transitions Sec Year ${TEST_RUN_ID}`,
         startDate: new Date('2026-09-01T00:00:00.000Z'),
         endDate: new Date('2027-06-30T00:00:00.000Z'),
         isActive: true,
@@ -393,8 +429,8 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
       data: {
         schoolId: currentSchoolId,
         academicYearId: academicYear.id,
-        nameAr: `calls-sec-term-${TEST_RUN_ID}-ar`,
-        nameEn: `Calls Sec Term ${TEST_RUN_ID}`,
+        nameAr: `trans-sec-term-${TEST_RUN_ID}-ar`,
+        nameEn: `Transitions Sec Term ${TEST_RUN_ID}`,
         startDate: new Date('2026-09-01T00:00:00.000Z'),
         endDate: new Date('2027-01-15T00:00:00.000Z'),
         isActive: true,
@@ -404,8 +440,8 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     const stage = await prisma.stage.create({
       data: {
         schoolId: currentSchoolId,
-        nameAr: `calls-sec-stage-${TEST_RUN_ID}-ar`,
-        nameEn: 'Calls Security Stage',
+        nameAr: `trans-sec-stage-${TEST_RUN_ID}-ar`,
+        nameEn: 'Transitions Security Stage',
       },
       select: { id: true },
     });
@@ -413,8 +449,8 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
       data: {
         schoolId: currentSchoolId,
         stageId: stage.id,
-        nameAr: `calls-sec-grade-${TEST_RUN_ID}-ar`,
-        nameEn: 'Calls Security Grade',
+        nameAr: `trans-sec-grade-${TEST_RUN_ID}-ar`,
+        nameEn: 'Transitions Security Grade',
       },
       select: { id: true },
     });
@@ -422,8 +458,8 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
       data: {
         schoolId: currentSchoolId,
         gradeId: grade.id,
-        nameAr: `calls-sec-section-${TEST_RUN_ID}-ar`,
-        nameEn: 'Calls Security Section',
+        nameAr: `trans-sec-section-${TEST_RUN_ID}-ar`,
+        nameEn: 'Transitions Security Section',
       },
       select: { id: true },
     });
@@ -431,8 +467,8 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
       data: {
         schoolId: currentSchoolId,
         sectionId: section.id,
-        nameAr: `calls-sec-classroom-${TEST_RUN_ID}-ar`,
-        nameEn: 'Calls Security Classroom',
+        nameAr: `trans-sec-classroom-${TEST_RUN_ID}-ar`,
+        nameEn: 'Transitions Security Classroom',
       },
       select: { id: true },
     });
@@ -444,16 +480,13 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     };
   }
 
-  async function createGate(
-    code: string,
-    status: DismissalGateOperationalStatus,
-  ): Promise<string> {
+  async function createGate(code: string): Promise<string> {
     const gate = await prisma.dismissalGate.create({
       data: {
         schoolId,
         code: `${code}-${TEST_RUN_ID}`,
         name: `${code} Gate`,
-        status,
+        status: DismissalGateOperationalStatus.OPEN,
         isActive: true,
       },
       select: { id: true },
@@ -463,6 +496,15 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
 
   async function createUserWithMembership(params: {
     email: string;
+    roleId: string;
+    userType: UserType;
+    firstName: string;
+    lastName: string;
+  }): Promise<{ userId: string; email: string }>;
+  async function createUserWithMembership(params: {
+    email: string;
+    schoolId?: string;
+    organizationId?: string;
     roleId: string;
     userType: UserType;
     firstName: string;
@@ -479,8 +521,8 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
         passwordHash: await argon2.hash(PASSWORD, ARGON2_OPTIONS),
         memberships: {
           create: {
-            schoolId,
-            organizationId,
+            schoolId: params.schoolId ?? schoolId,
+            organizationId: params.organizationId ?? organizationId,
             roleId: params.roleId,
             status: MembershipStatus.ACTIVE,
             userType: params.userType,
@@ -499,7 +541,7 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
         schoolId,
         organizationId,
         userId: parentUserId,
-        firstName: 'Calls Security',
+        firstName: 'Transitions Security',
         lastName: `Guardian ${TEST_RUN_ID}`,
         relation: 'guardian',
         phone: '0100000000',
@@ -512,7 +554,6 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
   }
 
   async function createRequest(params: {
-    classroomId: string;
     gateId: string;
     firstName: string;
     lastName: string;
@@ -549,7 +590,7 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
         studentId: student.id,
         academicYearId: year.id,
         termId: term.id,
-        classroomId: params.classroomId,
+        classroomId,
         status: StudentEnrollmentStatus.ACTIVE,
         enrolledAt: new Date('2026-09-01T00:00:00.000Z'),
       },
@@ -564,7 +605,7 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
         requestedById: parentUserId,
         gateId: params.gateId,
         status: DismissalRequestStatus.REQUESTED,
-        clientRequestId: `calls-sec-${TEST_RUN_ID}-${student.id}`,
+        clientRequestId: `trans-sec-${TEST_RUN_ID}-${student.id}`,
         parentLatitude: 30.04442,
         parentLongitude: 31.235712,
         distanceMeters: 10,

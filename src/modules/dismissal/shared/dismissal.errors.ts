@@ -277,6 +277,35 @@ export class DismissalRequestInvalidStatusFilterException extends DismissalExcep
   }
 }
 
+export class DismissalRequestInvalidStatusException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.request.invalid_status',
+      'Dismissal request status is invalid.',
+    );
+  }
+}
+
+export class DismissalRequestInvalidTransitionException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.request.invalid_transition',
+      'Dismissal request status transition is invalid.',
+      HttpStatus.CONFLICT,
+    );
+  }
+}
+
+export class DismissalRequestTerminalStatusException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.request.terminal_status',
+      'Terminal dismissal request statuses are not allowed in this operation.',
+      HttpStatus.CONFLICT,
+    );
+  }
+}
+
 export class DismissalRequestInvalidQueueFilterException extends DismissalException {
   constructor() {
     super(

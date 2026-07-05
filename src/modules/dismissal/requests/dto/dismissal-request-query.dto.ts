@@ -113,7 +113,7 @@ export class ActiveDismissalRequestsListResponseDto {
 }
 
 export class DismissalRequestTimelineEventDto {
-  type!: 'request_created';
+  type!: 'request_created' | 'request_status_changed';
   statusFrom!: string | null;
   statusTo!: string | null;
   createdAt!: string;

@@ -4,7 +4,9 @@ import {
 } from '@prisma/client';
 import {
   DismissalInvalidStatusException,
+  DismissalRequestInvalidStatusException,
   DismissalRequestInvalidStatusFilterException,
+  DismissalRequestTerminalStatusException,
 } from './dismissal.errors';
 
 export type PublicDismissalGateStatus =
@@ -103,4 +105,31 @@ export function parseActiveRequestStatus(
   }
 
   return candidate;
+}
+
+export function parseDismissalRequestTransitionTarget(
+  value: unknown,
+): DismissalRequestStatus {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new DismissalRequestInvalidStatusException();
+  }
+
+  switch (value.trim().toLowerCase()) {
+    case 'queued':
+      return DismissalRequestStatus.QUEUED;
+    case 'called':
+      return DismissalRequestStatus.CALLED;
+    case 'moving':
+      return DismissalRequestStatus.MOVING;
+    case 'at_gate':
+      return DismissalRequestStatus.AT_GATE;
+    case 'ready':
+      return DismissalRequestStatus.READY;
+    case 'handed_over':
+    case 'cancelled':
+    case 'expired':
+      throw new DismissalRequestTerminalStatusException();
+    default:
+      throw new DismissalRequestInvalidStatusException();
+  }
 }

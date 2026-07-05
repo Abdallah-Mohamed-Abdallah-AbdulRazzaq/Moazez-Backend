@@ -97,6 +97,7 @@ enum DismissalRequestStatus {
 
 enum DismissalRequestEventType {
   REQUEST_CREATED
+  REQUEST_STATUS_CHANGED
 
   @@map("dismissal_request_event_type")
 }

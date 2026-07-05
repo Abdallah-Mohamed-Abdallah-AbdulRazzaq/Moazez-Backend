@@ -18,6 +18,7 @@ export interface DismissalRequestQueueScope {
   actorId: string;
   userType: UserType;
   schoolId: string;
+  organizationId: string | null;
 }
 
 export interface DismissalRequestSignalThresholds {
@@ -48,6 +49,7 @@ export function requireDismissalRequestQueueScope(): DismissalRequestQueueScope 
     actorId: ctx.actor.id,
     userType: ctx.actor.userType,
     schoolId: ctx.activeMembership.schoolId,
+    organizationId: ctx.activeMembership.organizationId ?? null,
   };
 }
 

@@ -1,4 +1,13 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard';
@@ -6,11 +15,16 @@ import { PermissionsGuard } from '../../../../common/guards/permissions.guard';
 import { ScopeResolverGuard } from '../../../../common/guards/scope-resolver.guard';
 import { GetDismissalRequestDetailUseCase } from '../application/get-dismissal-request-detail.use-case';
 import { ListActiveDismissalRequestsUseCase } from '../application/list-active-dismissal-requests.use-case';
+import { UpdateDismissalRequestStatusUseCase } from '../application/update-dismissal-request-status.use-case';
 import {
   ActiveDismissalRequestsListResponseDto,
   DismissalRequestDetailResponseDto,
   ListActiveDismissalRequestsQueryDto,
 } from '../dto/dismissal-request-query.dto';
+import {
+  DismissalRequestStatusUpdateResponseDto,
+  UpdateDismissalRequestStatusDto,
+} from '../dto/update-dismissal-request-status.dto';
 
 @ApiTags('dismissal-requests')
 @ApiBearerAuth()
@@ -20,6 +34,7 @@ export class DismissalRequestsController {
   constructor(
     private readonly listActiveDismissalRequestsUseCase: ListActiveDismissalRequestsUseCase,
     private readonly getDismissalRequestDetailUseCase: GetDismissalRequestDetailUseCase,
+    private readonly updateDismissalRequestStatusUseCase: UpdateDismissalRequestStatusUseCase,
   ) {}
 
   @Get('active')
@@ -38,5 +53,15 @@ export class DismissalRequestsController {
     @Param('id', new ParseUUIDPipe()) requestId: string,
   ): Promise<DismissalRequestDetailResponseDto> {
     return this.getDismissalRequestDetailUseCase.execute(requestId);
+  }
+
+  @Patch(':id/status')
+  @RequiredPermissions('dismissal.requests.manage')
+  @ApiOkResponse({ type: DismissalRequestStatusUpdateResponseDto })
+  updateRequestStatus(
+    @Param('id', new ParseUUIDPipe()) requestId: string,
+    @Body() command: UpdateDismissalRequestStatusDto,
+  ): Promise<DismissalRequestStatusUpdateResponseDto> {
+    return this.updateDismissalRequestStatusUseCase.execute(requestId, command);
   }
 }

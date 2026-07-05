@@ -10,8 +10,10 @@ import { GetDismissalProfileUseCase } from './profile/application/get-dismissal-
 import { DismissalProfileController } from './profile/controller/dismissal-profile.controller';
 import { GetDismissalRequestDetailUseCase } from './requests/application/get-dismissal-request-detail.use-case';
 import { ListActiveDismissalRequestsUseCase } from './requests/application/list-active-dismissal-requests.use-case';
+import { UpdateDismissalRequestStatusUseCase } from './requests/application/update-dismissal-request-status.use-case';
 import { DismissalRequestsController } from './requests/controller/dismissal-requests.controller';
 import { DismissalRequestsReadRepository } from './requests/infrastructure/dismissal-requests-read.repository';
+import { DismissalRequestsWriteRepository } from './requests/infrastructure/dismissal-requests-write.repository';
 import { GetDismissalSettingsUseCase } from './settings/application/get-dismissal-settings.use-case';
 import { UpdateDismissalSettingsUseCase } from './settings/application/update-dismissal-settings.use-case';
 import { DismissalSettingsController } from './settings/controller/dismissal-settings.controller';
@@ -38,6 +40,7 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DismissalGatesRepository,
     DismissalStaffAssignmentsRepository,
     DismissalRequestsReadRepository,
+    DismissalRequestsWriteRepository,
     GetDismissalSettingsUseCase,
     UpdateDismissalSettingsUseCase,
     ListDismissalGatesUseCase,
@@ -52,12 +55,14 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DeleteDismissalStaffAssignmentUseCase,
     ListActiveDismissalRequestsUseCase,
     GetDismissalRequestDetailUseCase,
+    UpdateDismissalRequestStatusUseCase,
   ],
   exports: [
     DismissalSettingsRepository,
     DismissalGatesRepository,
     DismissalStaffAssignmentsRepository,
     DismissalRequestsReadRepository,
+    DismissalRequestsWriteRepository,
   ],
 })
 export class DismissalModule {}
