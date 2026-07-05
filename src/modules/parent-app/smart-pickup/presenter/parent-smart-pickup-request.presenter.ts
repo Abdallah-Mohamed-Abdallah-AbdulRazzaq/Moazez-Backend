@@ -10,8 +10,13 @@ export class ParentSmartPickupRequestPresenter {
   static present(params: {
     request: ParentSmartPickupRequestRecord;
     policies: ParentSmartPickupRequestPoliciesDto;
+    pickup: {
+      codeRequired: boolean;
+      codeIssued: boolean;
+      pickupCode?: string;
+    };
   }): CreateParentSmartPickupRequestResponseDto {
-    return {
+    const response: CreateParentSmartPickupRequestResponseDto = {
       request: {
         id: params.request.id,
         status: presentRequestStatus(params.request.status),
@@ -31,7 +36,17 @@ export class ParentSmartPickupRequestPresenter {
         },
         policies: params.policies,
       },
+      pickup: {
+        codeRequired: params.pickup.codeRequired,
+        codeIssued: params.pickup.codeIssued,
+      },
     };
+
+    if (params.pickup.pickupCode) {
+      response.pickup.pickupCode = params.pickup.pickupCode;
+    }
+
+    return response;
   }
 }
 

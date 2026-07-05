@@ -5,6 +5,7 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -16,6 +17,7 @@ import { ScopeResolverGuard } from '../../../../common/guards/scope-resolver.gua
 import { GetDismissalRequestDetailUseCase } from '../application/get-dismissal-request-detail.use-case';
 import { ListActiveDismissalRequestsUseCase } from '../application/list-active-dismissal-requests.use-case';
 import { UpdateDismissalRequestStatusUseCase } from '../application/update-dismissal-request-status.use-case';
+import { DeliverDismissalRequestUseCase } from '../application/deliver-dismissal-request.use-case';
 import {
   ActiveDismissalRequestsListResponseDto,
   DismissalRequestDetailResponseDto,
@@ -25,6 +27,10 @@ import {
   DismissalRequestStatusUpdateResponseDto,
   UpdateDismissalRequestStatusDto,
 } from '../dto/update-dismissal-request-status.dto';
+import {
+  DeliverDismissalRequestDto,
+  DeliverDismissalRequestResponseDto,
+} from '../dto/deliver-dismissal-request.dto';
 
 @ApiTags('dismissal-requests')
 @ApiBearerAuth()
@@ -35,6 +41,7 @@ export class DismissalRequestsController {
     private readonly listActiveDismissalRequestsUseCase: ListActiveDismissalRequestsUseCase,
     private readonly getDismissalRequestDetailUseCase: GetDismissalRequestDetailUseCase,
     private readonly updateDismissalRequestStatusUseCase: UpdateDismissalRequestStatusUseCase,
+    private readonly deliverDismissalRequestUseCase: DeliverDismissalRequestUseCase,
   ) {}
 
   @Get('active')
@@ -63,5 +70,15 @@ export class DismissalRequestsController {
     @Body() command: UpdateDismissalRequestStatusDto,
   ): Promise<DismissalRequestStatusUpdateResponseDto> {
     return this.updateDismissalRequestStatusUseCase.execute(requestId, command);
+  }
+
+  @Post(':id/deliver')
+  @RequiredPermissions('dismissal.requests.deliver')
+  @ApiOkResponse({ type: DeliverDismissalRequestResponseDto })
+  deliverRequest(
+    @Param('id', new ParseUUIDPipe()) requestId: string,
+    @Body() command: DeliverDismissalRequestDto,
+  ): Promise<DeliverDismissalRequestResponseDto> {
+    return this.deliverDismissalRequestUseCase.execute(requestId, command);
   }
 }

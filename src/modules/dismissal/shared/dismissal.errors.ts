@@ -353,3 +353,70 @@ export class DismissalWaitingStudentInvalidFilterException extends DismissalExce
     );
   }
 }
+
+export class DismissalDeliveryNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.delivery.not_found',
+      'Dismissal delivery request was not found.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
+export class DismissalDeliveryNotReadyException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.delivery.not_ready',
+      'Dismissal request is not ready for delivery.',
+      HttpStatus.CONFLICT,
+    );
+  }
+}
+
+export class DismissalDeliveryAlreadyDeliveredException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.delivery.already_delivered',
+      'Dismissal request was already handed over.',
+      HttpStatus.CONFLICT,
+    );
+  }
+}
+
+export class DismissalDeliveryPickupCodeRequiredException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.delivery.pickup_code_required',
+      'Pickup code is required for dismissal delivery.',
+    );
+  }
+}
+
+export class DismissalDeliveryInvalidPickupCodeException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.delivery.invalid_pickup_code',
+      'Pickup code is invalid.',
+    );
+  }
+}
+
+export class DismissalDeliveryPickupCodeNotIssuedException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.delivery.pickup_code_not_issued',
+      'Pickup code was not issued for this dismissal request.',
+      HttpStatus.CONFLICT,
+    );
+  }
+}
+
+export class DismissalDeliveryInvalidPayloadException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.delivery.invalid_payload',
+      'Dismissal delivery payload is invalid.',
+    );
+  }
+}

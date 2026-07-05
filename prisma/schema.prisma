@@ -1424,6 +1424,7 @@ model User {
   dismissalStaffAssignmentsCreated               DismissalStaffAssignment[]             @relation("DismissalStaffAssignmentCreatedBy")
   dismissalStaffAssignmentsUpdated               DismissalStaffAssignment[]             @relation("DismissalStaffAssignmentUpdatedBy")
   dismissalRequestsCreated                       DismissalRequest[]                     @relation("DismissalRequestRequestedBy")
+  dismissalRequestsHandedOver                    DismissalRequest[]                     @relation("DismissalRequestHandedOverBy")
   dismissalRequestEvents                         DismissalRequestEvent[]                @relation("DismissalRequestEventActor")
   securitySettingsUpdated                        SecuritySetting[]                      @relation("SecuritySettingUpdatedBy")
   backupJobsCreated                              BackupJob[]                            @relation("BackupJobCreatedBy")
@@ -1532,7 +1533,7 @@ model User {
   communicationAnnouncementAttachmentsCreated    CommunicationAnnouncementAttachment[]  @relation("CommunicationAnnouncementAttachmentsCreatedByUser")
   communicationNotificationsReceived             CommunicationNotification[]            @relation("CommunicationNotificationsRecipientUser")
   communicationNotificationsActed                CommunicationNotification[]            @relation("CommunicationNotificationsActorUser")
-  communicationNotificationPreferences           CommunicationNotificationPreference[]   @relation("CommunicationNotificationPreferencesUser")
+  communicationNotificationPreferences           CommunicationNotificationPreference[]  @relation("CommunicationNotificationPreferencesUser")
   schoolEmailDeliveryRecipients                  SchoolEmailDeliveryRecipient[]         @relation("SchoolEmailDeliveryRecipientsUser")
   appDeviceTokens                                AppDeviceToken[]                       @relation("AppDeviceTokensUser")
 
@@ -2049,9 +2050,9 @@ model DismissalGate {
   updatedAt    DateTime                       @updatedAt @map("updated_at")
   deletedAt    DateTime?                      @map("deleted_at")
 
-  school          School              @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  defaultSettings DismissalSettings[] @relation("DismissalSettingsDefaultGate")
-  staffAssignments DismissalStaffAssignment[]
+  school            School                     @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  defaultSettings   DismissalSettings[]        @relation("DismissalSettingsDefaultGate")
+  staffAssignments  DismissalStaffAssignment[]
   dismissalRequests DismissalRequest[]
 
   @@unique([id, schoolId])
@@ -2134,17 +2135,29 @@ model DismissalRequest {
   distanceMeters  Int?    @map("distance_meters")
   geofencePassed  Boolean @default(false) @map("geofence_passed")
 
+  pickupCodeHash       String?   @map("pickup_code_hash") @db.VarChar(255)
+  pickupCodeSalt       String?   @map("pickup_code_salt") @db.VarChar(64)
+  pickupCodeIssuedAt   DateTime? @map("pickup_code_issued_at")
+  pickupCodeVerifiedAt DateTime? @map("pickup_code_verified_at")
+
+  handedOverAt             DateTime? @map("handed_over_at")
+  handedOverById           String?   @map("handed_over_by_id") @db.Uuid
+  handoverReceiverName     String?   @map("handover_receiver_name") @db.VarChar(120)
+  handoverReceiverRelation String?   @map("handover_receiver_relation") @db.VarChar(80)
+  handoverNote             String?   @map("handover_note") @db.Text
+
   requestedAt DateTime  @default(now()) @map("requested_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
-  school      School        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  student     Student       @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  enrollment  Enrollment    @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  guardian    Guardian      @relation(fields: [guardianId, schoolId], references: [id, schoolId], onDelete: Restrict)
-  requestedBy User          @relation("DismissalRequestRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
-  gate        DismissalGate @relation(fields: [gateId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  school       School        @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  student      Student       @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  enrollment   Enrollment    @relation(fields: [enrollmentId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  guardian     Guardian      @relation(fields: [guardianId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  requestedBy  User          @relation("DismissalRequestRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  handedOverBy User?         @relation("DismissalRequestHandedOverBy", fields: [handedOverById], references: [id], onDelete: SetNull)
+  gate         DismissalGate @relation(fields: [gateId, schoolId], references: [id, schoolId], onDelete: Restrict)
 
   events DismissalRequestEvent[]
 
@@ -2156,6 +2169,8 @@ model DismissalRequest {
   @@index([schoolId, gateId, status])
   @@index([schoolId, requestedAt])
   @@index([requestedById])
+  @@index([handedOverById])
+  @@index([schoolId, handedOverAt])
   @@index([guardianId])
   @@index([enrollmentId])
   @@index([deletedAt])
@@ -2673,7 +2688,7 @@ model Grade {
   gradeAssessments                   GradeAssessment[]
   gradeRules                         GradeRule[]
   academicCalendarEvents             AcademicCalendarEvent[]
-  subjectAllocations                  SubjectAllocation[]
+  subjectAllocations                 SubjectAllocation[]
   curricula                          Curriculum[]
   reinforcementTaskTargets           ReinforcementTaskTarget[]
   communicationConversations         CommunicationConversation[]
@@ -2894,28 +2909,28 @@ model Room {
 }
 
 model AcademicCalendarEvent {
-  id             String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId       String                         @map("school_id") @db.Uuid
-  academicYearId String                         @map("academic_year_id") @db.Uuid
-  termId         String                         @map("term_id") @db.Uuid
-  title          String
-  description    String?
-  notes          String?
-  type           AcademicCalendarEventType
-  scopeType      AcademicCalendarEventScopeType @map("scope_type")
-  scopeKey       String?                        @map("scope_key") @db.Uuid
-  stageId        String?                        @map("stage_id") @db.Uuid
-  gradeId        String?                        @map("grade_id") @db.Uuid
-  sectionId      String?                        @map("section_id") @db.Uuid
-  allDay         Boolean                        @default(true) @map("all_day")
-  startDate      DateTime                       @map("start_date")
-  endDate        DateTime                       @map("end_date")
-  createdByUserId String?                       @map("created_by_user_id") @db.Uuid
-  updatedByUserId String?                       @map("updated_by_user_id") @db.Uuid
-  deletedByUserId String?                       @map("deleted_by_user_id") @db.Uuid
-  createdAt      DateTime                       @default(now()) @map("created_at")
-  updatedAt      DateTime                       @updatedAt @map("updated_at")
-  deletedAt      DateTime?                      @map("deleted_at")
+  id              String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId        String                         @map("school_id") @db.Uuid
+  academicYearId  String                         @map("academic_year_id") @db.Uuid
+  termId          String                         @map("term_id") @db.Uuid
+  title           String
+  description     String?
+  notes           String?
+  type            AcademicCalendarEventType
+  scopeType       AcademicCalendarEventScopeType @map("scope_type")
+  scopeKey        String?                        @map("scope_key") @db.Uuid
+  stageId         String?                        @map("stage_id") @db.Uuid
+  gradeId         String?                        @map("grade_id") @db.Uuid
+  sectionId       String?                        @map("section_id") @db.Uuid
+  allDay          Boolean                        @default(true) @map("all_day")
+  startDate       DateTime                       @map("start_date")
+  endDate         DateTime                       @map("end_date")
+  createdByUserId String?                        @map("created_by_user_id") @db.Uuid
+  updatedByUserId String?                        @map("updated_by_user_id") @db.Uuid
+  deletedByUserId String?                        @map("deleted_by_user_id") @db.Uuid
+  createdAt       DateTime                       @default(now()) @map("created_at")
+  updatedAt       DateTime                       @updatedAt @map("updated_at")
+  deletedAt       DateTime?                      @map("deleted_at")
 
   school       School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
   academicYear AcademicYear @relation(fields: [academicYearId, schoolId], references: [id, schoolId], onDelete: Restrict)
@@ -3410,12 +3425,12 @@ model TimetableConflict {
 // ============================================================
 
 model Student {
-  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId       String        @map("school_id") @db.Uuid
-  organizationId String        @map("organization_id") @db.Uuid
-  applicationId  String?       @map("application_id") @db.Uuid
-  userId         String?       @unique @map("user_id") @db.Uuid
-  avatarFileId   String?       @map("avatar_file_id") @db.Uuid
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId          String        @map("school_id") @db.Uuid
+  organizationId    String        @map("organization_id") @db.Uuid
+  applicationId     String?       @map("application_id") @db.Uuid
+  userId            String?       @unique @map("user_id") @db.Uuid
+  avatarFileId      String?       @map("avatar_file_id") @db.Uuid
   firstName         String        @map("first_name")
   fatherNameEn      String?       @map("father_name_en")
   grandfatherNameEn String?       @map("grandfather_name_en")
@@ -3482,22 +3497,22 @@ model Student {
 }
 
 model Guardian {
-  id                         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schoolId                   String   @map("school_id") @db.Uuid
-  organizationId             String   @map("organization_id") @db.Uuid
-  userId                     String?  @map("user_id") @db.Uuid
-  firstName                  String   @map("first_name")
-  lastName                   String   @map("last_name")
-  phone                      String
-  phoneSecondary             String?  @map("phone_secondary")
-  email                      String?
-  nationalId                 String?  @map("national_id")
-  jobTitle                   String?  @map("job_title")
-  workplace                  String?
-  relation                   String
-  isPrimary                  Boolean  @default(false) @map("is_primary")
-  canPickup                  Boolean? @map("can_pickup")
-  canReceiveNotifications    Boolean? @map("can_receive_notifications")
+  id                      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId                String   @map("school_id") @db.Uuid
+  organizationId          String   @map("organization_id") @db.Uuid
+  userId                  String?  @map("user_id") @db.Uuid
+  firstName               String   @map("first_name")
+  lastName                String   @map("last_name")
+  phone                   String
+  phoneSecondary          String?  @map("phone_secondary")
+  email                   String?
+  nationalId              String?  @map("national_id")
+  jobTitle                String?  @map("job_title")
+  workplace               String?
+  relation                String
+  isPrimary               Boolean  @default(false) @map("is_primary")
+  canPickup               Boolean? @map("can_pickup")
+  canReceiveNotifications Boolean? @map("can_receive_notifications")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -3614,6 +3629,7 @@ model StudentDocument {
   student Student @relation(fields: [studentId, schoolId], references: [id, schoolId], onDelete: Restrict)
   file    File    @relation(fields: [fileId], references: [id], onDelete: Restrict)
 
+  @@unique([schoolId, studentId, sourceApplicationDocumentId], name: "studentDocumentSourceImport", map: "student_documents_source_import_key")
   @@index([schoolId])
   @@index([studentId])
   @@index([fileId])
@@ -3623,15 +3639,14 @@ model StudentDocument {
   @@index([sourceApplicationDocumentId])
   @@index([sourceApplicantRequestDocumentId])
   @@index([sourceFileId])
-  @@unique([schoolId, studentId, sourceApplicationDocumentId], name: "studentDocumentSourceImport", map: "student_documents_source_import_key")
   @@map("student_documents")
 }
 
 model StudentProfileCorrectionRequest {
-  id             String                                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String                                @map("organization_id") @db.Uuid
-  schoolId       String                                @map("school_id") @db.Uuid
-  studentId      String                                @map("student_id") @db.Uuid
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  schoolId       String @map("school_id") @db.Uuid
+  studentId      String @map("student_id") @db.Uuid
 
   requestedByUserId String? @map("requested_by_user_id") @db.Uuid
   requestedByType   String  @map("requested_by_type")
@@ -6178,8 +6193,8 @@ model CommunicationNotificationDelivery {
   createdAt         DateTime                                 @default(now()) @map("created_at")
   updatedAt         DateTime                                 @updatedAt @map("updated_at")
 
-  school       School                    @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  notification CommunicationNotification @relation(fields: [notificationId, schoolId], references: [id, schoolId], onDelete: Restrict)
+  school       School                                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  notification CommunicationNotification              @relation(fields: [notificationId, schoolId], references: [id, schoolId], onDelete: Restrict)
   pushAttempts CommunicationNotificationPushAttempt[]
 
   @@unique([id, schoolId])
@@ -6266,8 +6281,8 @@ model AppDeviceToken {
   createdAt       DateTime               @default(now()) @map("created_at")
   updatedAt       DateTime               @updatedAt @map("updated_at")
 
-  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  user   User   @relation("AppDeviceTokensUser", fields: [userId], references: [id], onDelete: Restrict)
+  school       School                                 @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  user         User                                   @relation("AppDeviceTokensUser", fields: [userId], references: [id], onDelete: Restrict)
   pushAttempts CommunicationNotificationPushAttempt[]
 
   @@unique([id, schoolId])
@@ -6348,7 +6363,7 @@ model File {
   applicationDocuments                 ApplicationDocument[]
   applicantAdmissionRequestDocuments   ApplicantAdmissionRequestDocument[]
   studentDocuments                     StudentDocument[]
-  studentAvatars                       Student[]                            @relation("StudentAvatarFile")
+  studentAvatars                       Student[]                             @relation("StudentAvatarFile")
   importJobsUploaded                   ImportJob[]                           @relation("ImportJobUploadedFile")
   heroBadges                           HeroBadge[]
   rewardCatalogItemImages              RewardCatalogItem[]                   @relation("RewardCatalogItemImageFile")

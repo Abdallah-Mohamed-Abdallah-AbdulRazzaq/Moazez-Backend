@@ -56,6 +56,12 @@ export class ParentSmartPickupRequestPoliciesDto {
   allowParentCancelBeforeCalled!: boolean;
 }
 
+export class ParentSmartPickupRequestPickupDto {
+  codeRequired!: boolean;
+  codeIssued!: boolean;
+  pickupCode?: string;
+}
+
 export class ParentSmartPickupRequestDto {
   id!: string;
   status!: 'requested';
@@ -67,4 +73,5 @@ export class ParentSmartPickupRequestDto {
 
 export class CreateParentSmartPickupRequestResponseDto {
   request!: ParentSmartPickupRequestDto;
+  pickup!: ParentSmartPickupRequestPickupDto;
 }

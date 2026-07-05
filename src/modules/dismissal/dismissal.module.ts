@@ -11,7 +11,9 @@ import { DismissalProfileController } from './profile/controller/dismissal-profi
 import { GetDismissalRequestDetailUseCase } from './requests/application/get-dismissal-request-detail.use-case';
 import { ListActiveDismissalRequestsUseCase } from './requests/application/list-active-dismissal-requests.use-case';
 import { UpdateDismissalRequestStatusUseCase } from './requests/application/update-dismissal-request-status.use-case';
+import { DeliverDismissalRequestUseCase } from './requests/application/deliver-dismissal-request.use-case';
 import { DismissalRequestsController } from './requests/controller/dismissal-requests.controller';
+import { DismissalRequestsDeliveryRepository } from './requests/infrastructure/dismissal-requests-delivery.repository';
 import { DismissalRequestsReadRepository } from './requests/infrastructure/dismissal-requests-read.repository';
 import { DismissalRequestsWriteRepository } from './requests/infrastructure/dismissal-requests-write.repository';
 import { ConfirmStudentArrivalUseCase } from './waiting-students/application/confirm-student-arrival.use-case';
@@ -45,6 +47,7 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DismissalStaffAssignmentsRepository,
     DismissalRequestsReadRepository,
     DismissalRequestsWriteRepository,
+    DismissalRequestsDeliveryRepository,
     GetDismissalSettingsUseCase,
     UpdateDismissalSettingsUseCase,
     ListDismissalGatesUseCase,
@@ -60,6 +63,7 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     ListActiveDismissalRequestsUseCase,
     GetDismissalRequestDetailUseCase,
     UpdateDismissalRequestStatusUseCase,
+    DeliverDismissalRequestUseCase,
     ListWaitingStudentsUseCase,
     ConfirmStudentArrivalUseCase,
   ],
@@ -69,6 +73,7 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DismissalStaffAssignmentsRepository,
     DismissalRequestsReadRepository,
     DismissalRequestsWriteRepository,
+    DismissalRequestsDeliveryRepository,
   ],
 })
 export class DismissalModule {}

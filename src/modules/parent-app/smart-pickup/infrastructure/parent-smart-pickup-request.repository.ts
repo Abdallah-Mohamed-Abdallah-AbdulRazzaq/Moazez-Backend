@@ -107,6 +107,7 @@ const SMART_PICKUP_REQUEST_RESPONSE_ARGS =
       id: true,
       status: true,
       requestedAt: true,
+      pickupCodeIssuedAt: true,
       studentId: true,
       gateId: true,
       student: {
@@ -292,6 +293,9 @@ export class ParentSmartPickupRequestRepository {
     parentLatitude: number;
     parentLongitude: number;
     distanceMeters: number;
+    pickupCodeHash: string | null;
+    pickupCodeSalt: string | null;
+    pickupCodeIssuedAt: Date | null;
   }): Promise<ParentSmartPickupRequestRecord> {
     return this.prisma.$transaction(async (tx) => {
       const request = await tx.dismissalRequest.create({
@@ -308,6 +312,9 @@ export class ParentSmartPickupRequestRepository {
           parentLongitude: params.parentLongitude,
           distanceMeters: params.distanceMeters,
           geofencePassed: true,
+          pickupCodeHash: params.pickupCodeHash,
+          pickupCodeSalt: params.pickupCodeSalt,
+          pickupCodeIssuedAt: params.pickupCodeIssuedAt,
         },
         ...SMART_PICKUP_REQUEST_RESPONSE_ARGS,
       });

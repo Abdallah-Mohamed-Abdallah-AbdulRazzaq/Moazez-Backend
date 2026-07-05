@@ -6,6 +6,7 @@ import {
 } from '@prisma/client';
 import { getRequestContext } from '../../../../common/context/request-context';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
+import { issuePickupCode } from '../../../dismissal/shared/pickup-code.service';
 import {
   CreateParentSmartPickupRequestDto,
   CreateParentSmartPickupRequestResponseDto,
@@ -136,6 +137,9 @@ export class CreateParentSmartPickupRequestUseCase {
       settings,
       availableGates,
     });
+    const pickupCodeIssue = settings.requirePickupCode
+      ? issuePickupCode(this.clock.now())
+      : null;
 
     try {
       const request = await this.requestRepository.createRequestWithEvent({
@@ -149,6 +153,9 @@ export class CreateParentSmartPickupRequestUseCase {
         parentLatitude: command.latitude,
         parentLongitude: command.longitude,
         distanceMeters,
+        pickupCodeHash: pickupCodeIssue?.hash ?? null,
+        pickupCodeSalt: pickupCodeIssue?.salt ?? null,
+        pickupCodeIssuedAt: pickupCodeIssue?.issuedAt ?? null,
       });
 
       await this.authRepository.createAuditLog({
@@ -167,12 +174,18 @@ export class CreateParentSmartPickupRequestUseCase {
           gateId: gate.id,
           clientRequestId: Boolean(clientRequestId),
           geofencePassed: true,
+          pickupCodeIssued: Boolean(pickupCodeIssue),
         },
       });
 
       return ParentSmartPickupRequestPresenter.present({
         request,
         policies: this.resolvePolicies(settings),
+        pickup: {
+          codeRequired: settings.requirePickupCode,
+          codeIssued: Boolean(pickupCodeIssue),
+          pickupCode: pickupCodeIssue?.code,
+        },
       });
     } catch (error) {
       if (isPrismaUniqueConflict(error)) {
@@ -238,6 +251,10 @@ export class CreateParentSmartPickupRequestUseCase {
     return ParentSmartPickupRequestPresenter.present({
       request: existing,
       policies: this.resolvePolicies(settings),
+      pickup: {
+        codeRequired: settings?.requirePickupCode ?? true,
+        codeIssued: Boolean(existing.pickupCodeIssuedAt),
+      },
     });
   }
 
@@ -367,6 +384,10 @@ export class CreateParentSmartPickupRequestUseCase {
         return ParentSmartPickupRequestPresenter.present({
           request: existing,
           policies: this.resolvePolicies(params.settings),
+          pickup: {
+            codeRequired: params.settings.requirePickupCode,
+            codeIssued: Boolean(existing.pickupCodeIssuedAt),
+          },
         });
       }
     }

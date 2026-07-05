@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -26,9 +26,10 @@ import { JwtAuthGuard } from '../../src/common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../src/common/guards/permissions.guard';
 import { ScopeResolverGuard } from '../../src/common/guards/scope-resolver.guard';
 import { DismissalRequestsController } from '../../src/modules/dismissal/requests/controller/dismissal-requests.controller';
+import { issuePickupCode } from '../../src/modules/dismissal/shared/pickup-code.service';
 
 const GLOBAL_PREFIX = '/api/v1';
-const PASSWORD = 'DismissalCallsSecurity123!';
+const PASSWORD = 'DismissalDeliverySecurity123!';
 const TEST_RUN_ID = randomUUID().slice(0, 8);
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
@@ -39,20 +40,14 @@ const ARGON2_OPTIONS: argon2.Options = {
 
 jest.setTimeout(90_000);
 
-describe('DISMISSAL-CALLS-1A route metadata and permission boundaries', () => {
-  it('declares exact RequiredPermissions metadata for active queue routes', () => {
+describe('DISMISSAL-DELIVERY-1A route metadata and schema boundaries', () => {
+  it('declares exact RequiredPermissions metadata for delivery route', () => {
     expect(
       Reflect.getMetadata(
         REQUIRED_PERMISSIONS_METADATA,
-        DismissalRequestsController.prototype.listActiveRequests,
+        DismissalRequestsController.prototype.deliverRequest,
       ),
-    ).toEqual(['dismissal.requests.view']);
-    expect(
-      Reflect.getMetadata(
-        REQUIRED_PERMISSIONS_METADATA,
-        DismissalRequestsController.prototype.getRequestDetail,
-      ),
-    ).toEqual(['dismissal.requests.view']);
+    ).toEqual(['dismissal.requests.deliver']);
   });
 
   it('declares the required JwtAuth, ScopeResolver, Permissions guard chain', () => {
@@ -63,9 +58,13 @@ describe('DISMISSAL-CALLS-1A route metadata and permission boundaries', () => {
     ]);
   });
 
-  it('uses existing dismissal.requests.view permission without role leakage', () => {
+  it('uses existing dismissal.requests.deliver permission without role leakage', () => {
     const rolesSeed = readFileSync(
       `${process.cwd()}/prisma/seeds/02-system-roles.seed.ts`,
+      'utf8',
+    );
+    const permissionsSeed = readFileSync(
+      `${process.cwd()}/prisma/seeds/01-permissions.seed.ts`,
       'utf8',
     );
     const dismissalStaffPermissions = extractConstStringArray(
@@ -85,42 +84,65 @@ describe('DISMISSAL-CALLS-1A route metadata and permission boundaries', () => {
       'STUDENT_PERMISSIONS',
     );
 
-    expect(dismissalStaffPermissions).toContain('dismissal.requests.view');
-    expect(parentPermissions).not.toContain('dismissal.requests.view');
-    expect(teacherPermissions).not.toContain('dismissal.requests.view');
-    expect(studentPermissions).not.toContain('dismissal.requests.view');
-    expect(parentPermissions).toContain('parent.smart_pickup.view');
-    expect(parentPermissions).toContain('parent.smart_pickup.request');
-    expect(parentPermissions).not.toContain('parent.smart_pickup.cancel');
+    expect(permissionsSeed).toContain("code: 'dismissal.requests.deliver'");
+    expect(permissionsSeed).not.toContain('dismissal.delivery');
+    expect(dismissalStaffPermissions).toContain('dismissal.requests.deliver');
+    expect(parentPermissions).not.toContain('dismissal.requests.deliver');
+    expect(teacherPermissions).not.toContain('dismissal.requests.deliver');
+    expect(studentPermissions).not.toContain('dismissal.requests.deliver');
   });
 
-  it('does not add forbidden dismissal device-token or waiting-student surfaces', () => {
+  it('adds only expected delivery fields and migration without forbidden surfaces', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
+    const migrationNames = readdirSync('prisma/migrations');
+    const migrationSource = readFileSync(
+      'prisma/migrations/20260705170000_dismissal_delivery_handover/migration.sql',
+      'utf8',
+    );
+
+    for (const field of [
+      'pickupCodeHash',
+      'pickupCodeSalt',
+      'pickupCodeIssuedAt',
+      'pickupCodeVerifiedAt',
+      'handedOverAt',
+      'handedOverById',
+      'handoverReceiverName',
+      'handoverReceiverRelation',
+      'handoverNote',
+      'DismissalRequestHandedOverBy',
+    ]) {
+      expect(schemaSource).toContain(field);
+    }
+    expect(migrationNames).toContain('20260705170000_dismissal_delivery_handover');
+    expect(migrationSource).toContain('pickup_code_hash');
+    expect(migrationSource).toContain('handed_over_by_id');
+    expect(migrationSource).not.toMatch(/CREATE TABLE|CREATE TYPE|ALTER TYPE/i);
+    expect(schemaSource).not.toMatch(/model\s+DismissalDelivery\b/);
+    expect(schemaSource).not.toMatch(/model\s+PickupCode\b/);
 
     const tokenSurfaceBlock = schemaSource.match(
       /enum AppDeviceTokenSurface \{([\s\S]*?)\n\}/,
     )?.[1];
     expect(tokenSurfaceBlock).toBeTruthy();
     expect(tokenSurfaceBlock).not.toContain('DISMISSAL_STAFF');
-    expect(schemaSource).not.toMatch(/model\s+DismissalShift\b/);
-    expect(schemaSource).not.toMatch(/model\s+DismissalWaitingStudent\b/);
   });
 });
 
-describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
+describe('DISMISSAL-DELIVERY-1A tenancy and RBAC (security)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
   let organizationId: string;
   let schoolId: string;
+  let classroomId: string;
+  let gateId: string;
+  let otherGateId: string;
+  let parentUserId: string;
+  let guardianId: string;
   let adminToken: string;
   let noPermissionToken: string;
   let staffToken: string;
-  let parentUserId: string;
-  let guardianId: string;
-  let gateId: string;
-  let otherGateId: string;
-  let visibleRequestId: string;
-  let hiddenRequestId: string;
+  let parentToken: string;
   const createdUserIds: string[] = [];
   const createdSchoolIds: string[] = [];
   const createdOrganizationIds: string[] = [];
@@ -150,44 +172,44 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     const fixture = await createSchoolFixture();
     organizationId = fixture.organizationId;
     schoolId = fixture.schoolId;
-    const academic = await createAcademicFixture(schoolId);
-    gateId = await createGate('VISIBLE', DismissalGateOperationalStatus.OPEN);
-    otherGateId = await createGate('HIDDEN', DismissalGateOperationalStatus.OPEN);
+    classroomId = (await createAcademicFixture()).classroomId;
+    gateId = await createGate('VISIBLE');
+    otherGateId = await createGate('HIDDEN');
 
     const noPermissionRole = await prisma.role.create({
       data: {
         schoolId,
-        key: `dismissal-calls-no-perm-${TEST_RUN_ID}`,
-        name: 'Dismissal Calls No Permission',
-        description: 'No dismissal request permissions',
+        key: `dismissal-delivery-no-perm-${TEST_RUN_ID}`,
+        name: 'Dismissal Delivery No Permission',
+        description: 'No dismissal delivery permission',
         isSystem: false,
       },
       select: { id: true },
     });
 
     const admin = await createUserWithMembership({
-      email: `dismissal-calls-sec-${TEST_RUN_ID}-admin@moazez.local`,
+      email: `dismissal-delivery-sec-${TEST_RUN_ID}-admin@moazez.local`,
       roleId: schoolAdminRole.id,
       userType: UserType.SCHOOL_USER,
       firstName: 'School',
       lastName: 'Admin',
     });
     const noPermission = await createUserWithMembership({
-      email: `dismissal-calls-sec-${TEST_RUN_ID}-noperm@moazez.local`,
+      email: `dismissal-delivery-sec-${TEST_RUN_ID}-noperm@moazez.local`,
       roleId: noPermissionRole.id,
       userType: UserType.SCHOOL_USER,
       firstName: 'No',
       lastName: 'Permission',
     });
     const staff = await createUserWithMembership({
-      email: `dismissal-calls-sec-${TEST_RUN_ID}-staff@moazez.local`,
+      email: `dismissal-delivery-sec-${TEST_RUN_ID}-staff@moazez.local`,
       roleId: dismissalStaffRole.id,
       userType: UserType.DISMISSAL_STAFF,
       firstName: 'Assigned',
       lastName: 'Staff',
     });
     const parent = await createUserWithMembership({
-      email: `dismissal-calls-sec-${TEST_RUN_ID}-parent@moazez.local`,
+      email: `dismissal-delivery-sec-${TEST_RUN_ID}-parent@moazez.local`,
       roleId: parentRole.id,
       userType: UserType.PARENT,
       firstName: 'Parent',
@@ -196,6 +218,13 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     parentUserId = parent.userId;
 
     guardianId = await createGuardian();
+    await prisma.dismissalSettings.create({
+      data: {
+        schoolId,
+        enabled: true,
+        requirePickupCode: false,
+      },
+    });
     await prisma.dismissalStaffAssignment.create({
       data: {
         schoolId,
@@ -203,19 +232,6 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
         gateId,
         isActive: true,
       },
-    });
-
-    visibleRequestId = await createRequest({
-      classroomId: academic.classroomId,
-      gateId,
-      firstName: 'Visible',
-      lastName: 'Queue',
-    });
-    hiddenRequestId = await createRequest({
-      classroomId: academic.classroomId,
-      gateId: otherGateId,
-      firstName: 'Hidden',
-      lastName: 'Queue',
     });
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -236,13 +252,16 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     adminToken = await login(admin.email);
     noPermissionToken = await login(noPermission.email);
     staffToken = await login(staff.email);
+    parentToken = await login(parent.email);
   });
 
   afterAll(async () => {
     if (prisma) {
+      await prisma.auditLog.deleteMany({ where: { schoolId } });
       await prisma.dismissalRequestEvent.deleteMany({ where: { schoolId } });
       await prisma.dismissalRequest.deleteMany({ where: { schoolId } });
       await prisma.dismissalStaffAssignment.deleteMany({ where: { schoolId } });
+      await prisma.dismissalSettings.deleteMany({ where: { schoolId } });
       await prisma.dismissalGate.deleteMany({ where: { schoolId } });
       await prisma.studentGuardian.deleteMany({ where: { schoolId } });
       await prisma.enrollment.deleteMany({ where: { schoolId } });
@@ -261,7 +280,7 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
       await prisma.role.deleteMany({
         where: {
           schoolId,
-          key: { startsWith: `dismissal-calls-no-perm-${TEST_RUN_ID}` },
+          key: { startsWith: `dismissal-delivery-no-perm-${TEST_RUN_ID}` },
         },
       });
       await prisma.school.deleteMany({ where: { id: { in: createdSchoolIds } } });
@@ -273,51 +292,115 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     if (app) await app.close();
   });
 
-  it('rejects unauthenticated active queue requests', async () => {
+  it('rejects unauthenticated and unauthorized delivery requests', async () => {
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/requests/active`)
+      .post(`${GLOBAL_PREFIX}/dismissal/requests/${randomUUID()}/deliver`)
+      .send({})
       .expect(401);
-  });
 
-  it('forbids authenticated users without dismissal.requests.view', async () => {
+    const requestId = await createRequest({ gateId, firstName: 'NoPerm' });
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/requests/active`)
+      .post(`${GLOBAL_PREFIX}/dismissal/requests/${requestId}/deliver`)
       .set('Authorization', `Bearer ${noPermissionToken}`)
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/dismissal/requests/${requestId}/deliver`)
+      .set('Authorization', `Bearer ${parentToken}`)
+      .send({})
       .expect(403);
   });
 
-  it('allows school admin to access the current-school active queue', async () => {
+  it('allows school admin to deliver current-school READY requests', async () => {
+    const requestId = await createRequest({ gateId, firstName: 'Admin' });
     const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/requests/active`)
+      .post(`${GLOBAL_PREFIX}/dismissal/requests/${requestId}/deliver`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
+      .send({ receiverName: 'School Receiver' })
+      .expect(201);
 
-    expect(response.body.data.map((item: { id: string }) => item.id)).toEqual(
-      expect.arrayContaining([visibleRequestId, hiddenRequestId]),
+    expect(response.body.delivery).toEqual(
+      expect.objectContaining({
+        id: requestId,
+        status: 'handed_over',
+        pickupCodeVerified: false,
+      }),
     );
+    expect(response.body.delivery.pickupCode).toBeUndefined();
   });
 
-  it('scopes DISMISSAL_STAFF queue and details by assignment', async () => {
-    const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/requests/active`)
-      .set('Authorization', `Bearer ${staffToken}`)
-      .expect(200);
-
-    expect(response.body.data.map((item: { id: string }) => item.id)).toEqual([
-      visibleRequestId,
-    ]);
+  it('assignment-scopes DISMISSAL_STAFF delivery', async () => {
+    const visibleRequestId = await createRequest({
+      gateId,
+      firstName: 'Visible',
+    });
+    const hiddenRequestId = await createRequest({
+      gateId: otherGateId,
+      firstName: 'Hidden',
+    });
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/requests/${visibleRequestId}`)
+      .post(`${GLOBAL_PREFIX}/dismissal/requests/${visibleRequestId}/deliver`)
       .set('Authorization', `Bearer ${staffToken}`)
-      .expect(200);
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/requests/${hiddenRequestId}`)
+      .send({})
+      .expect(201);
+
+    const hidden = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/dismissal/requests/${hiddenRequestId}/deliver`)
       .set('Authorization', `Bearer ${staffToken}`)
+      .send({})
       .expect(404);
+    expect(hidden.body?.error?.code).toBe('dismissal.delivery.not_found');
   });
 
-  it('does not expose deferred action, parent history, or root pickup routes', async () => {
+  it('does not leak raw pickup code into staff/admin response, event, or audit payloads', async () => {
+    await prisma.dismissalSettings.update({
+      where: { schoolId },
+      data: { requirePickupCode: true },
+    });
+    const issued = issuePickupCode();
+    const requestId = await createRequest({
+      gateId,
+      firstName: 'Code',
+      pickupCodeHash: issued.hash,
+      pickupCodeSalt: issued.salt,
+      pickupCodeIssuedAt: issued.issuedAt,
+    });
+
+    const response = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/dismissal/requests/${requestId}/deliver`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ pickupCode: issued.code, note: 'Safe handover' })
+      .expect(201);
+    expect(response.body.delivery.pickupCode).toBeUndefined();
+    expect(JSON.stringify(response.body)).not.toContain(issued.code);
+
+    const event = await prisma.dismissalRequestEvent.findFirstOrThrow({
+      where: {
+        requestId,
+        type: DismissalRequestEventType.REQUEST_STATUS_CHANGED,
+      },
+      select: { note: true, metadata: true },
+    });
+    expect(JSON.stringify(event)).not.toContain(issued.code);
+    expect(event.metadata).toBeNull();
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        resourceId: requestId,
+        action: 'dismissal.request.delivered',
+      },
+      select: { before: true, after: true },
+    });
+    expect(JSON.stringify(audit)).not.toContain(issued.code);
+
+    await prisma.dismissalSettings.update({
+      where: { schoolId },
+      data: { requirePickupCode: false },
+    });
+  });
+
+  it('does not expose forbidden deferred delivery-adjacent routes', async () => {
     const id = randomUUID();
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/call`)
@@ -325,6 +408,18 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
       .expect(404);
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/ready`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/escalate`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${id}/ready`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${id}/deliver`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
     await request(app.getHttpServer())
@@ -341,14 +436,11 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
       .expect(404);
   });
 
-  async function createSchoolFixture(): Promise<{
-    organizationId: string;
-    schoolId: string;
-  }> {
+  async function createSchoolFixture() {
     const organization = await prisma.organization.create({
       data: {
-        slug: `dismissal-calls-sec-${TEST_RUN_ID}-org`,
-        name: `Dismissal Calls Security Org ${TEST_RUN_ID}`,
+        slug: `dismissal-delivery-sec-${TEST_RUN_ID}-org`,
+        name: `Dismissal Delivery Security Org ${TEST_RUN_ID}`,
         status: OrganizationStatus.ACTIVE,
       },
       select: { id: true },
@@ -358,8 +450,8 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     const school = await prisma.school.create({
       data: {
         organizationId: organization.id,
-        slug: `dismissal-calls-sec-${TEST_RUN_ID}-school`,
-        name: `Dismissal Calls Security School ${TEST_RUN_ID}`,
+        slug: `dismissal-delivery-sec-${TEST_RUN_ID}-school`,
+        name: `Dismissal Delivery Security School ${TEST_RUN_ID}`,
         status: SchoolStatus.ACTIVE,
       },
       select: { id: true },
@@ -369,12 +461,12 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     return { organizationId: organization.id, schoolId: school.id };
   }
 
-  async function createAcademicFixture(currentSchoolId: string) {
+  async function createAcademicFixture() {
     const academicYear = await prisma.academicYear.create({
       data: {
-        schoolId: currentSchoolId,
-        nameAr: `calls-sec-year-${TEST_RUN_ID}-ar`,
-        nameEn: `Calls Sec Year ${TEST_RUN_ID}`,
+        schoolId,
+        nameAr: `delivery-sec-year-${TEST_RUN_ID}-ar`,
+        nameEn: `Delivery Sec Year ${TEST_RUN_ID}`,
         startDate: new Date('2026-09-01T00:00:00.000Z'),
         endDate: new Date('2027-06-30T00:00:00.000Z'),
         isActive: true,
@@ -383,10 +475,10 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     });
     const term = await prisma.term.create({
       data: {
-        schoolId: currentSchoolId,
+        schoolId,
         academicYearId: academicYear.id,
-        nameAr: `calls-sec-term-${TEST_RUN_ID}-ar`,
-        nameEn: `Calls Sec Term ${TEST_RUN_ID}`,
+        nameAr: `delivery-sec-term-${TEST_RUN_ID}-ar`,
+        nameEn: `Delivery Sec Term ${TEST_RUN_ID}`,
         startDate: new Date('2026-09-01T00:00:00.000Z'),
         endDate: new Date('2027-01-15T00:00:00.000Z'),
         isActive: true,
@@ -395,36 +487,36 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     });
     const stage = await prisma.stage.create({
       data: {
-        schoolId: currentSchoolId,
-        nameAr: `calls-sec-stage-${TEST_RUN_ID}-ar`,
-        nameEn: 'Calls Security Stage',
+        schoolId,
+        nameAr: `delivery-sec-stage-${TEST_RUN_ID}-ar`,
+        nameEn: 'Delivery Security Stage',
       },
       select: { id: true },
     });
     const grade = await prisma.grade.create({
       data: {
-        schoolId: currentSchoolId,
+        schoolId,
         stageId: stage.id,
-        nameAr: `calls-sec-grade-${TEST_RUN_ID}-ar`,
-        nameEn: 'Calls Security Grade',
+        nameAr: `delivery-sec-grade-${TEST_RUN_ID}-ar`,
+        nameEn: 'Delivery Security Grade',
       },
       select: { id: true },
     });
     const section = await prisma.section.create({
       data: {
-        schoolId: currentSchoolId,
+        schoolId,
         gradeId: grade.id,
-        nameAr: `calls-sec-section-${TEST_RUN_ID}-ar`,
-        nameEn: 'Calls Security Section',
+        nameAr: `delivery-sec-section-${TEST_RUN_ID}-ar`,
+        nameEn: 'Delivery Security Section',
       },
       select: { id: true },
     });
     const classroom = await prisma.classroom.create({
       data: {
-        schoolId: currentSchoolId,
+        schoolId,
         sectionId: section.id,
-        nameAr: `calls-sec-classroom-${TEST_RUN_ID}-ar`,
-        nameEn: 'Calls Security Classroom',
+        nameAr: `delivery-sec-classroom-${TEST_RUN_ID}-ar`,
+        nameEn: 'Delivery Security Classroom',
       },
       select: { id: true },
     });
@@ -436,16 +528,13 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
     };
   }
 
-  async function createGate(
-    code: string,
-    status: DismissalGateOperationalStatus,
-  ): Promise<string> {
+  async function createGate(code: string): Promise<string> {
     const gate = await prisma.dismissalGate.create({
       data: {
         schoolId,
         code: `${code}-${TEST_RUN_ID}`,
         name: `${code} Gate`,
-        status,
+        status: DismissalGateOperationalStatus.OPEN,
         isActive: true,
       },
       select: { id: true },
@@ -491,7 +580,7 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
         schoolId,
         organizationId,
         userId: parentUserId,
-        firstName: 'Calls Security',
+        firstName: 'Delivery Security',
         lastName: `Guardian ${TEST_RUN_ID}`,
         relation: 'guardian',
         phone: '0100000000',
@@ -504,10 +593,11 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
   }
 
   async function createRequest(params: {
-    classroomId: string;
     gateId: string;
     firstName: string;
-    lastName: string;
+    pickupCodeHash?: string | null;
+    pickupCodeSalt?: string | null;
+    pickupCodeIssuedAt?: Date | null;
   }): Promise<string> {
     const year = await prisma.academicYear.findFirstOrThrow({
       where: { schoolId },
@@ -522,7 +612,7 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
         schoolId,
         organizationId,
         firstName: params.firstName,
-        lastName: params.lastName,
+        lastName: 'Delivery',
         status: StudentStatus.ACTIVE,
       },
       select: { id: true },
@@ -541,7 +631,7 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
         studentId: student.id,
         academicYearId: year.id,
         termId: term.id,
-        classroomId: params.classroomId,
+        classroomId,
         status: StudentEnrollmentStatus.ACTIVE,
         enrolledAt: new Date('2026-09-01T00:00:00.000Z'),
       },
@@ -555,13 +645,16 @@ describe('DISMISSAL-CALLS-1A tenancy and RBAC (security)', () => {
         guardianId,
         requestedById: parentUserId,
         gateId: params.gateId,
-        status: DismissalRequestStatus.REQUESTED,
-        clientRequestId: `calls-sec-${TEST_RUN_ID}-${student.id}`,
+        status: DismissalRequestStatus.READY,
+        clientRequestId: null,
         parentLatitude: 30.04442,
         parentLongitude: 31.235712,
         distanceMeters: 10,
         geofencePassed: true,
         requestedAt: new Date(Date.now() - 5 * 60_000),
+        pickupCodeHash: params.pickupCodeHash ?? null,
+        pickupCodeSalt: params.pickupCodeSalt ?? null,
+        pickupCodeIssuedAt: params.pickupCodeIssuedAt ?? null,
       },
       select: { id: true },
     });

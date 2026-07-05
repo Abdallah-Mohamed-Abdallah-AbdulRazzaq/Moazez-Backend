@@ -94,7 +94,7 @@ export function resolveThresholds(
 }
 
 export function isRequestVisibleToStaff(
-  request: DismissalRequestQueueRecord,
+  request: DismissalRequestAssignmentVisibilityRecord,
   assignments: DismissalStaffQueueAssignmentRecord[],
 ): boolean {
   return assignments.some((assignment) =>
@@ -104,7 +104,7 @@ export function isRequestVisibleToStaff(
 
 function doesAssignmentMatchRequest(
   assignment: DismissalStaffQueueAssignmentRecord,
-  request: DismissalRequestQueueRecord,
+  request: DismissalRequestAssignmentVisibilityRecord,
 ): boolean {
   const classroom = request.enrollment.classroom;
   const section = classroom.section;
@@ -121,6 +121,24 @@ function doesAssignmentMatchRequest(
   if (assignment.stageId && assignment.stageId !== grade.stage.id) return false;
 
   return true;
+}
+
+interface DismissalRequestAssignmentVisibilityRecord {
+  gateId: string;
+  enrollment: {
+    classroom: {
+      id: string;
+      section: {
+        id: string;
+        grade: {
+          id: string;
+          stage: {
+            id: string;
+          };
+        };
+      };
+    };
+  };
 }
 
 function sortRequests(

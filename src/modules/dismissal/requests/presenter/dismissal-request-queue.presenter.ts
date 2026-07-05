@@ -7,6 +7,7 @@ import {
   DismissalRequestTimelineEventDto,
 } from '../dto/dismissal-request-query.dto';
 import { DismissalRequestStatusUpdateResponseDto } from '../dto/update-dismissal-request-status.dto';
+import { DeliverDismissalRequestResponseDto } from '../dto/deliver-dismissal-request.dto';
 import {
   computeDismissalRequestSignals,
   DismissalRequestSignalThresholds,
@@ -15,6 +16,7 @@ import {
   DismissalRequestDetailRecord,
   DismissalRequestQueueRecord,
 } from '../infrastructure/dismissal-requests-read.repository';
+import { DismissalRequestDeliveryRecord } from '../infrastructure/dismissal-requests-delivery.repository';
 import { DismissalRequestStatusUpdateRecord } from '../infrastructure/dismissal-requests-write.repository';
 import { presentGateStatus, presentRequestStatus } from '../../shared/dismissal.types';
 
@@ -182,6 +184,47 @@ export function presentDismissalRequestStatusUpdate(params: {
   };
 }
 
+export function presentDismissalRequestDelivery(params: {
+  request: DismissalRequestDeliveryRecord;
+  previousStatus: DismissalRequestStatus;
+}): DeliverDismissalRequestResponseDto {
+  const classroom = params.request.enrollment.classroom;
+  const section = classroom.section;
+  const grade = section.grade;
+
+  return {
+    delivery: {
+      id: params.request.id,
+      status: 'handed_over',
+      previousStatus: presentTimelineStatus(params.previousStatus) as 'ready',
+      handedOverAt: (params.request.handedOverAt ?? params.request.updatedAt).toISOString(),
+      pickupCodeVerified: Boolean(params.request.pickupCodeVerifiedAt),
+      child: {
+        id: params.request.student.id,
+        displayName:
+          displayName([
+            params.request.student.firstName,
+            params.request.student.lastName,
+          ]) ?? 'Student',
+        grade: label(grade),
+        section: label(section),
+        classroom: label(classroom),
+      },
+      gate: {
+        id: params.request.gate.id,
+        code: params.request.gate.code,
+        name: params.request.gate.name,
+        status: presentGateStatus(params.request.gate.status),
+      },
+      receiver: {
+        name: params.request.handoverReceiverName ?? null,
+        relation: params.request.handoverReceiverRelation ?? null,
+      },
+      timeline: params.request.events.map(presentDeliveryTimelineEvent),
+    },
+  };
+}
+
 function summarizeRequests(
   requests: DismissalRequestQueueRecord[],
   thresholds: DismissalRequestSignalThresholds,
@@ -245,6 +288,22 @@ function presentTimelineEvent(
     createdAt: event.createdAt.toISOString(),
     note: event.note ?? null,
   };
+}
+
+function presentDeliveryTimelineEvent(
+  event: DismissalRequestDeliveryRecord['events'][number],
+): DismissalRequestTimelineEventDto {
+  return {
+    type: presentTimelineEventType(event.type),
+    statusFrom: event.statusFrom ? presentTimelineStatus(event.statusFrom) : null,
+    statusTo: event.statusTo ? presentTimelineStatus(event.statusTo) : null,
+    createdAt: event.createdAt.toISOString(),
+    note: event.note ?? null,
+  };
+}
+
+function presentTimelineStatus(status: DismissalRequestStatus): string {
+  return status.toLowerCase();
 }
 
 function presentTimelineEventType(

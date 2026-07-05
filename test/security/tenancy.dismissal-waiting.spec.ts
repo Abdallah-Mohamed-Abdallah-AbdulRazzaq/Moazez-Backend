@@ -377,10 +377,6 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/deliver`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(404);
-    await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/escalate`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
