@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DismissalRequestStatus } from '@prisma/client';
+import { DismissalRealtimeEventsService } from '../../../dismissal/realtime/dismissal-realtime-events.service';
 import {
   CancelParentSmartPickupRequestDto,
   CancelParentSmartPickupRequestResponseDto,
@@ -21,6 +22,7 @@ import { resolveParentSmartPickupScope } from './list-parent-smart-pickup-recent
 export class CancelParentSmartPickupRequestUseCase {
   constructor(
     private readonly recentCallsRepository: ParentSmartPickupRecentCallsRepository,
+    private readonly dismissalRealtimeEvents: DismissalRealtimeEventsService,
   ) {}
 
   async execute(
@@ -83,6 +85,12 @@ export class CancelParentSmartPickupRequestUseCase {
         statusFrom: request.status,
         note,
       });
+
+    await this.dismissalRealtimeEvents.publishRequestCancelled({
+      schoolId: scope.schoolId,
+      requestId: cancelled.id,
+      previousStatus: request.status,
+    });
 
     return ParentSmartPickupRecentCallsPresenter.presentCancel({
       request: cancelled,

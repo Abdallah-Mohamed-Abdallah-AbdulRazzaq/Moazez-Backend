@@ -4,6 +4,7 @@ import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository
 import {
   DismissalRequestNotFoundException,
 } from '../../shared/dismissal.errors';
+import { DismissalRealtimeEventsService } from '../../realtime/dismissal-realtime-events.service';
 import { parseDismissalRequestTransitionTarget } from '../../shared/dismissal.types';
 import {
   DismissalRequestStatusUpdateResponseDto,
@@ -25,6 +26,7 @@ export class UpdateDismissalRequestStatusUseCase {
     private readonly dismissalRequestsReadRepository: DismissalRequestsReadRepository,
     private readonly dismissalRequestsWriteRepository: DismissalRequestsWriteRepository,
     private readonly authRepository: AuthRepository,
+    private readonly dismissalRealtimeEvents: DismissalRealtimeEventsService,
   ) {}
 
   async execute(
@@ -99,6 +101,12 @@ export class UpdateDismissalRequestStatusUseCase {
         status: updated.status,
         note: Boolean(note),
       },
+    });
+
+    await this.dismissalRealtimeEvents.publishStatusChanged({
+      schoolId: scope.schoolId,
+      requestId: updated.id,
+      previousStatus: request.status,
     });
 
     return presentDismissalRequestStatusUpdate({

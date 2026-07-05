@@ -12,6 +12,7 @@ import {
   normalizePickupCode,
   verifyPickupCode,
 } from '../../shared/pickup-code.service';
+import { DismissalRealtimeEventsService } from '../../realtime/dismissal-realtime-events.service';
 import { requireDismissalRequestQueueScope } from './dismissal-request-queue-scope';
 import { isRequestVisibleToStaff } from './list-active-dismissal-requests.use-case';
 import { DeliverDismissalRequestDto } from '../dto/deliver-dismissal-request.dto';
@@ -27,6 +28,7 @@ export class DeliverDismissalRequestUseCase {
   constructor(
     private readonly dismissalRequestsDeliveryRepository: DismissalRequestsDeliveryRepository,
     private readonly dismissalRequestsReadRepository: DismissalRequestsReadRepository,
+    private readonly dismissalRealtimeEvents: DismissalRealtimeEventsService,
   ) {}
 
   async execute(requestId: string, command: DeliverDismissalRequestDto) {
@@ -95,6 +97,12 @@ export class DeliverDismissalRequestUseCase {
         receiverRelation,
         note,
       });
+
+    await this.dismissalRealtimeEvents.publishDelivered({
+      schoolId: scope.schoolId,
+      requestId: delivered.id,
+      previousStatus: DismissalRequestStatus.READY,
+    });
 
     return presentDismissalRequestDelivery({
       request: delivered,

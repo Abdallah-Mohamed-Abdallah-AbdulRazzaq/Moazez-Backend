@@ -7,6 +7,7 @@ import {
 import { getRequestContext } from '../../../../common/context/request-context';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { issuePickupCode } from '../../../dismissal/shared/pickup-code.service';
+import { DismissalRealtimeEventsService } from '../../../dismissal/realtime/dismissal-realtime-events.service';
 import {
   CreateParentSmartPickupRequestDto,
   CreateParentSmartPickupRequestResponseDto,
@@ -72,6 +73,7 @@ export class CreateParentSmartPickupRequestUseCase {
     private readonly requestRepository: ParentSmartPickupRequestRepository,
     private readonly clock: ParentSmartPickupClock,
     private readonly authRepository: AuthRepository,
+    private readonly dismissalRealtimeEvents: DismissalRealtimeEventsService,
   ) {}
 
   async execute(
@@ -176,6 +178,11 @@ export class CreateParentSmartPickupRequestUseCase {
           geofencePassed: true,
           pickupCodeIssued: Boolean(pickupCodeIssue),
         },
+      });
+
+      await this.dismissalRealtimeEvents.publishRequestCreated({
+        schoolId: scope.schoolId,
+        requestId: request.id,
       });
 
       return ParentSmartPickupRequestPresenter.present({

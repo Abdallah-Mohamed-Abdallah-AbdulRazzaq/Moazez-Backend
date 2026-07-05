@@ -20,6 +20,16 @@ describe('realtime event names', () => {
       'communication.announcement.published',
       'communication.notification.created',
       'communication.notification.read',
+      'dismissal.request.created',
+      'dismissal.request.cancelled',
+      'dismissal.request.status_changed',
+      'dismissal.request.arrival_confirmed',
+      'dismissal.request.delivered',
+      'dismissal.queue.changed',
+      'parent.smart_pickup.request.changed',
+      'dismissal.notification.created',
+      'dismissal.notification.read',
+      'dismissal.notifications.read_all',
     ]);
   });
 

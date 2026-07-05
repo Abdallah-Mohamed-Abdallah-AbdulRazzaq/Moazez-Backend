@@ -4,6 +4,7 @@ import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app
 import { AppDeviceTokensModule } from '../app-device-tokens/app-device-tokens.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { DisciplineModule } from '../discipline/discipline.module';
+import { DismissalModule } from '../dismissal/dismissal.module';
 import { IamModule } from '../iam/iam.module';
 import { ParentAppAccessService } from './access/parent-app-access.service';
 import { ParentAppGuardianReadAdapter } from './access/parent-app-guardian-read.adapter';
@@ -129,6 +130,7 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
     AppDeviceTokensModule,
     CommunicationModule,
     DisciplineModule,
+    DismissalModule,
     IamModule,
     ParentHomeworksModule,
     StorageModule,

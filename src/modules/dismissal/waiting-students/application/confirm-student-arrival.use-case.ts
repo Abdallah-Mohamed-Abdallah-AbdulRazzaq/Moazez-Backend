@@ -5,6 +5,7 @@ import {
   DismissalWaitingStudentInvalidArrivalStatusException,
   DismissalWaitingStudentNotFoundException,
 } from '../../shared/dismissal.errors';
+import { DismissalRealtimeEventsService } from '../../realtime/dismissal-realtime-events.service';
 import { WAITING_DISMISSAL_REQUEST_STATUSES } from '../../shared/dismissal.types';
 import { requireDismissalRequestQueueScope } from '../../requests/application/dismissal-request-queue-scope';
 import {
@@ -26,6 +27,7 @@ export class ConfirmStudentArrivalUseCase {
     private readonly dismissalRequestsReadRepository: DismissalRequestsReadRepository,
     private readonly dismissalRequestsWriteRepository: DismissalRequestsWriteRepository,
     private readonly authRepository: AuthRepository,
+    private readonly dismissalRealtimeEvents: DismissalRealtimeEventsService,
   ) {}
 
   async execute(
@@ -111,6 +113,12 @@ export class ConfirmStudentArrivalUseCase {
         status: updated.status,
         note: Boolean(note),
       },
+    });
+
+    await this.dismissalRealtimeEvents.publishArrivalConfirmed({
+      schoolId: scope.schoolId,
+      requestId: updated.id,
+      previousStatus: request.status,
     });
 
     return presentStudentArrivalConfirmation({

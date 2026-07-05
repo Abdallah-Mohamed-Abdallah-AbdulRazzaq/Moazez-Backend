@@ -14,6 +14,18 @@ export const REALTIME_SERVER_EVENTS = Object.freeze({
   COMMUNICATION_ANNOUNCEMENT_PUBLISHED: 'communication.announcement.published',
   COMMUNICATION_NOTIFICATION_CREATED: 'communication.notification.created',
   COMMUNICATION_NOTIFICATION_READ: 'communication.notification.read',
+  DISMISSAL_REQUEST_CREATED: 'dismissal.request.created',
+  DISMISSAL_REQUEST_CANCELLED: 'dismissal.request.cancelled',
+  DISMISSAL_REQUEST_STATUS_CHANGED: 'dismissal.request.status_changed',
+  DISMISSAL_REQUEST_ARRIVAL_CONFIRMED:
+    'dismissal.request.arrival_confirmed',
+  DISMISSAL_REQUEST_DELIVERED: 'dismissal.request.delivered',
+  DISMISSAL_QUEUE_CHANGED: 'dismissal.queue.changed',
+  PARENT_SMART_PICKUP_REQUEST_CHANGED:
+    'parent.smart_pickup.request.changed',
+  DISMISSAL_NOTIFICATION_CREATED: 'dismissal.notification.created',
+  DISMISSAL_NOTIFICATION_READ: 'dismissal.notification.read',
+  DISMISSAL_NOTIFICATIONS_READ_ALL: 'dismissal.notifications.read_all',
 } as const);
 
 export const REALTIME_CLIENT_COMMANDS = Object.freeze({

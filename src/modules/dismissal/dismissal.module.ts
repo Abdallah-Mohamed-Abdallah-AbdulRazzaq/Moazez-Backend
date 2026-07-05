@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { RealtimeModule } from '../../infrastructure/realtime/realtime.module';
 import { IamModule } from '../iam/iam.module';
 import { CreateDismissalGateUseCase } from './gates/application/create-dismissal-gate.use-case';
 import { GetDismissalGateUseCase } from './gates/application/get-dismissal-gate.use-case';
@@ -21,6 +22,8 @@ import { DismissalRequestsController } from './requests/controller/dismissal-req
 import { DismissalRequestsDeliveryRepository } from './requests/infrastructure/dismissal-requests-delivery.repository';
 import { DismissalRequestsReadRepository } from './requests/infrastructure/dismissal-requests-read.repository';
 import { DismissalRequestsWriteRepository } from './requests/infrastructure/dismissal-requests-write.repository';
+import { DismissalRealtimeEventsService } from './realtime/dismissal-realtime-events.service';
+import { DismissalRealtimeRepository } from './realtime/dismissal-realtime.repository';
 import { ConfirmStudentArrivalUseCase } from './waiting-students/application/confirm-student-arrival.use-case';
 import { ListWaitingStudentsUseCase } from './waiting-students/application/list-waiting-students.use-case';
 import { DismissalWaitingStudentsController } from './waiting-students/controller/dismissal-waiting-students.controller';
@@ -37,7 +40,7 @@ import { DismissalStaffAssignmentsController } from './staff-assignments/control
 import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrastructure/dismissal-staff-assignments.repository';
 
 @Module({
-  imports: [IamModule],
+  imports: [IamModule, RealtimeModule],
   controllers: [
     DismissalSettingsController,
     DismissalGatesController,
@@ -54,6 +57,8 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DismissalRequestsReadRepository,
     DismissalRequestsWriteRepository,
     DismissalRequestsDeliveryRepository,
+    DismissalRealtimeRepository,
+    DismissalRealtimeEventsService,
     DismissalNotificationsRepository,
     GetDismissalSettingsUseCase,
     UpdateDismissalSettingsUseCase,
@@ -84,6 +89,7 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DismissalRequestsReadRepository,
     DismissalRequestsWriteRepository,
     DismissalRequestsDeliveryRepository,
+    DismissalRealtimeEventsService,
   ],
 })
 export class DismissalModule {}
