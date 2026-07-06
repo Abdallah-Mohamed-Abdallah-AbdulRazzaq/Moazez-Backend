@@ -14,14 +14,18 @@ import { DismissalNotificationsController } from './notifications/controller/dis
 import { DismissalNotificationsRepository } from './notifications/infrastructure/dismissal-notifications.repository';
 import { GetDismissalProfileUseCase } from './profile/application/get-dismissal-profile.use-case';
 import { DismissalProfileController } from './profile/controller/dismissal-profile.controller';
+import { EscalateDismissalRequestUseCase } from './requests/application/escalate-dismissal-request.use-case';
 import { GetDismissalRequestDetailUseCase } from './requests/application/get-dismissal-request-detail.use-case';
+import { GetDismissalRequestHistoryDetailUseCase } from './requests/application/get-dismissal-request-history-detail.use-case';
 import { ListDismissalPickupRecipientsUseCase } from './requests/application/list-dismissal-pickup-recipients.use-case';
 import { ListActiveDismissalRequestsUseCase } from './requests/application/list-active-dismissal-requests.use-case';
+import { ListDismissalRequestHistoryUseCase } from './requests/application/list-dismissal-request-history.use-case';
 import { PickupRecipientTokenService } from './requests/application/pickup-recipient-token.service';
 import { UpdateDismissalRequestStatusUseCase } from './requests/application/update-dismissal-request-status.use-case';
 import { DeliverDismissalRequestUseCase } from './requests/application/deliver-dismissal-request.use-case';
 import { DismissalRequestsController } from './requests/controller/dismissal-requests.controller';
 import { DismissalRequestsDeliveryRepository } from './requests/infrastructure/dismissal-requests-delivery.repository';
+import { DismissalRequestsHistoryRepository } from './requests/infrastructure/dismissal-requests-history.repository';
 import { DismissalRequestsReadRepository } from './requests/infrastructure/dismissal-requests-read.repository';
 import { DismissalRequestsWriteRepository } from './requests/infrastructure/dismissal-requests-write.repository';
 import { DismissalRealtimeEventsService } from './realtime/dismissal-realtime-events.service';
@@ -59,6 +63,7 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DismissalRequestsReadRepository,
     DismissalRequestsWriteRepository,
     DismissalRequestsDeliveryRepository,
+    DismissalRequestsHistoryRepository,
     DismissalRealtimeRepository,
     DismissalRealtimeEventsService,
     DismissalNotificationsRepository,
@@ -76,8 +81,11 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DeleteDismissalStaffAssignmentUseCase,
     ListActiveDismissalRequestsUseCase,
     GetDismissalRequestDetailUseCase,
+    ListDismissalRequestHistoryUseCase,
+    GetDismissalRequestHistoryDetailUseCase,
     ListDismissalPickupRecipientsUseCase,
     UpdateDismissalRequestStatusUseCase,
+    EscalateDismissalRequestUseCase,
     DeliverDismissalRequestUseCase,
     PickupRecipientTokenService,
     ListWaitingStudentsUseCase,
@@ -93,6 +101,7 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DismissalRequestsReadRepository,
     DismissalRequestsWriteRepository,
     DismissalRequestsDeliveryRepository,
+    DismissalRequestsHistoryRepository,
     DismissalRealtimeEventsService,
   ],
 })

@@ -498,3 +498,79 @@ export class DismissalNotificationSchoolContextRequiredException extends Dismiss
     );
   }
 }
+
+export class DismissalHistoryNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.history.not_found',
+      'Dismissal request history was not found.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
+export class DismissalHistoryInvalidStatusFilterException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.history.invalid_status_filter',
+      'Dismissal history status filter is invalid.',
+    );
+  }
+}
+
+export class DismissalHistoryInvalidDateRangeException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.history.invalid_date_range',
+      'Dismissal history date range is invalid.',
+    );
+  }
+}
+
+export class DismissalHistoryInvalidFilterCombinationException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.history.invalid_filter_combination',
+      'Dismissal history filters are mutually exclusive.',
+    );
+  }
+}
+
+export class DismissalEscalationNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.escalation.not_found',
+      'Dismissal request escalation target was not found.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
+export class DismissalEscalationNotAllowedException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.escalation.not_allowed',
+      'Dismissal request escalation is not allowed.',
+      HttpStatus.FORBIDDEN,
+    );
+  }
+}
+
+export class DismissalEscalationInvalidReasonException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.escalation.invalid_reason',
+      'Dismissal request escalation reason is invalid.',
+    );
+  }
+}
+
+export class DismissalEscalationTerminalRequestException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.escalation.terminal_request',
+      'Terminal dismissal requests cannot be escalated.',
+      HttpStatus.CONFLICT,
+    );
+  }
+}

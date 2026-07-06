@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -25,10 +25,10 @@ import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/requi
 import { JwtAuthGuard } from '../../src/common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../src/common/guards/permissions.guard';
 import { ScopeResolverGuard } from '../../src/common/guards/scope-resolver.guard';
-import { DismissalWaitingStudentsController } from '../../src/modules/dismissal/waiting-students/controller/dismissal-waiting-students.controller';
+import { DismissalRequestsController } from '../../src/modules/dismissal/requests/controller/dismissal-requests.controller';
 
 const GLOBAL_PREFIX = '/api/v1';
-const PASSWORD = 'DismissalWaitingSecurity123!';
+const PASSWORD = 'DismissalHistorySecurity123!';
 const TEST_RUN_ID = randomUUID().slice(0, 8);
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
@@ -37,31 +37,39 @@ const ARGON2_OPTIONS: argon2.Options = {
   parallelism: 1,
 };
 
-jest.setTimeout(90_000);
+jest.setTimeout(120_000);
 
-describe('DISMISSAL-WAITING-1A route metadata and permission boundaries', () => {
-  it('declares exact RequiredPermissions metadata for waiting students routes', () => {
+describe('DISMISSAL-HISTORY-1A route metadata and boundaries', () => {
+  it('declares exact RequiredPermissions metadata for history and escalation routes', () => {
     expect(
       Reflect.getMetadata(
         REQUIRED_PERMISSIONS_METADATA,
-        DismissalWaitingStudentsController.prototype.listWaitingStudents,
+        DismissalRequestsController.prototype.listRequestHistory,
       ),
-    ).toEqual(['dismissal.requests.view']);
+    ).toEqual(['dismissal.requests.history.view']);
     expect(
       Reflect.getMetadata(
         REQUIRED_PERMISSIONS_METADATA,
-        DismissalWaitingStudentsController.prototype.confirmArrival,
+        DismissalRequestsController.prototype.getRequestHistoryDetail,
       ),
-    ).toEqual(['dismissal.requests.manage']);
+    ).toEqual(['dismissal.requests.history.view']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_METADATA,
+        DismissalRequestsController.prototype.escalateRequest,
+      ),
+    ).toEqual(['dismissal.requests.escalate']);
   });
 
   it('declares the required JwtAuth, ScopeResolver, Permissions guard chain', () => {
-    expect(
-      Reflect.getMetadata(GUARDS_METADATA, DismissalWaitingStudentsController),
-    ).toEqual([JwtAuthGuard, ScopeResolverGuard, PermissionsGuard]);
+    expect(Reflect.getMetadata(GUARDS_METADATA, DismissalRequestsController)).toEqual([
+      JwtAuthGuard,
+      ScopeResolverGuard,
+      PermissionsGuard,
+    ]);
   });
 
-  it('uses existing dismissal request permissions without role leakage', () => {
+  it('uses existing dismissal history/escalation permissions without role leakage or seed expansion', () => {
     const rolesSeed = readFileSync(
       `${process.cwd()}/prisma/seeds/02-system-roles.seed.ts`,
       'utf8',
@@ -86,73 +94,118 @@ describe('DISMISSAL-WAITING-1A route metadata and permission boundaries', () => 
       rolesSeed,
       'STUDENT_PERMISSIONS',
     );
+    const dismissalPermissionCodes = [
+      ...permissionsSeed.matchAll(/code: '(dismissal\.[^']+)'/g),
+    ].map((match) => match[1]);
 
-    expect(dismissalStaffPermissions).toContain('dismissal.requests.view');
-    expect(dismissalStaffPermissions).toContain('dismissal.requests.manage');
-    expect(parentPermissions).not.toContain('dismissal.requests.view');
-    expect(parentPermissions).not.toContain('dismissal.requests.manage');
-    expect(teacherPermissions).not.toContain('dismissal.requests.view');
-    expect(teacherPermissions).not.toContain('dismissal.requests.manage');
-    expect(studentPermissions).not.toContain('dismissal.requests.view');
-    expect(studentPermissions).not.toContain('dismissal.requests.manage');
-    expect(permissionsSeed).not.toContain('dismissal.waiting');
+    expect(dismissalPermissionCodes).toHaveLength(14);
+    expect(permissionsSeed).toContain("code: 'dismissal.requests.history.view'");
+    expect(permissionsSeed).toContain("code: 'dismissal.requests.escalate'");
+    expect(dismissalStaffPermissions).toEqual(
+      expect.arrayContaining([
+        'dismissal.requests.history.view',
+        'dismissal.requests.escalate',
+      ]),
+    );
+    expect(parentPermissions).not.toContain('dismissal.requests.history.view');
+    expect(parentPermissions).not.toContain('dismissal.requests.escalate');
+    expect(teacherPermissions).not.toContain('dismissal.requests.history.view');
+    expect(teacherPermissions).not.toContain('dismissal.requests.escalate');
+    expect(studentPermissions).not.toContain('dismissal.requests.history.view');
+    expect(studentPermissions).not.toContain('dismissal.requests.escalate');
+    expect(dismissalStaffPermissions).not.toContain('parent.smart_pickup.view');
+    expect(dismissalStaffPermissions).not.toContain('parent.smart_pickup.request');
+    expect(dismissalStaffPermissions).not.toContain('parent.smart_pickup.cancel');
   });
 
-  it('does not add schema, migration, waiting-student model, or device-token surface', () => {
+  it('adds only REQUEST_ESCALATED event enum and no forbidden status/device/realtime surfaces', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
-    const migrationNames = readdirSync('prisma/migrations');
-
-    expect(schemaSource).not.toMatch(/model\s+DismissalWaitingStudent\b/);
-    expect(schemaSource).not.toMatch(/model\s+DismissalShift\b/);
-    expect(migrationNames.some((name) => name.includes('waiting'))).toBe(false);
-
+    const migrationSource = readFileSync(
+      'prisma/migrations/20260706100000_dismissal_history_escalation_event/migration.sql',
+      'utf8',
+    );
+    const statusBlock = schemaSource.match(
+      /enum DismissalRequestStatus \{([\s\S]*?)\n\}/,
+    )?.[1];
     const tokenSurfaceBlock = schemaSource.match(
       /enum AppDeviceTokenSurface \{([\s\S]*?)\n\}/,
     )?.[1];
+    const realtimeNames = readFileSync(
+      'src/infrastructure/realtime/realtime-event-names.ts',
+      'utf8',
+    );
+
+    expect(schemaSource).toContain('REQUEST_ESCALATED');
+    expect(migrationSource.trim()).toBe(
+      'ALTER TYPE "dismissal_request_event_type" ADD VALUE \'REQUEST_ESCALATED\';',
+    );
+    expect(migrationSource).not.toMatch(/CREATE\s+TABLE|ALTER\s+TABLE/i);
+    expect(statusBlock).toBeTruthy();
+    for (const forbiddenStatus of ['DELAYED', 'URGENT', 'ESCALATED', 'RESOLVED']) {
+      expect(statusBlock).not.toContain(forbiddenStatus);
+    }
     expect(tokenSurfaceBlock).toBeTruthy();
     expect(tokenSurfaceBlock).not.toContain('DISMISSAL_STAFF');
+    expect(realtimeNames).not.toContain('ESCALATED');
+    expect(realtimeNames).not.toContain('escalated');
   });
 });
 
-describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
+describe('DISMISSAL-HISTORY-1A tenancy and RBAC (security)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
   let organizationId: string;
   let schoolId: string;
   let classroomId: string;
   let gateId: string;
-  let otherGateId: string;
-  let parentUserId: string;
-  let guardianId: string;
+  let requestId: string;
   let adminToken: string;
   let noPermissionToken: string;
   let staffToken: string;
   let parentToken: string;
-  let visibleRequestId: string;
-  let hiddenRequestId: string;
+  let teacherToken: string;
+  let studentToken: string;
+  let parentUserId: string;
+  let guardianId: string;
   const createdUserIds: string[] = [];
   const createdSchoolIds: string[] = [];
   const createdOrganizationIds: string[] = [];
+  const createdRoleIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient();
     await prisma.$connect();
 
-    const [schoolAdminRole, dismissalStaffRole, parentRole] = await Promise.all([
-      prisma.role.findFirst({
-        where: { key: 'school_admin', schoolId: null, isSystem: true },
-        select: { id: true },
-      }),
-      prisma.role.findFirst({
-        where: { key: 'dismissal_staff', schoolId: null, isSystem: true },
-        select: { id: true },
-      }),
-      prisma.role.findFirst({
-        where: { key: 'parent', schoolId: null, isSystem: true },
-        select: { id: true },
-      }),
-    ]);
-    if (!schoolAdminRole || !dismissalStaffRole || !parentRole) {
+    const [schoolAdminRole, dismissalStaffRole, parentRole, teacherRole, studentRole] =
+      await Promise.all([
+        prisma.role.findFirst({
+          where: { key: 'school_admin', schoolId: null, isSystem: true },
+          select: { id: true },
+        }),
+        prisma.role.findFirst({
+          where: { key: 'dismissal_staff', schoolId: null, isSystem: true },
+          select: { id: true },
+        }),
+        prisma.role.findFirst({
+          where: { key: 'parent', schoolId: null, isSystem: true },
+          select: { id: true },
+        }),
+        prisma.role.findFirst({
+          where: { key: 'teacher', schoolId: null, isSystem: true },
+          select: { id: true },
+        }),
+        prisma.role.findFirst({
+          where: { key: 'student', schoolId: null, isSystem: true },
+          select: { id: true },
+        }),
+      ]);
+    if (
+      !schoolAdminRole ||
+      !dismissalStaffRole ||
+      !parentRole ||
+      !teacherRole ||
+      !studentRole
+    ) {
       throw new Error('Required system roles not found - run `npm run seed`.');
     }
 
@@ -161,51 +214,66 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
     schoolId = fixture.schoolId;
     const academic = await createAcademicFixture(schoolId);
     classroomId = academic.classroomId;
-    gateId = await createGate('VISIBLE');
-    otherGateId = await createGate('HIDDEN');
+    gateId = await createGate();
 
     const noPermissionRole = await prisma.role.create({
       data: {
         schoolId,
-        key: `dismissal-wait-no-perm-${TEST_RUN_ID}`,
-        name: 'Dismissal Waiting No Permission',
-        description: 'No dismissal request permissions',
+        key: `dismissal-history-no-perm-${TEST_RUN_ID}`,
+        name: 'Dismissal History No Permission',
+        description: 'No dismissal history or escalation permissions',
         isSystem: false,
       },
       select: { id: true },
     });
+    createdRoleIds.push(noPermissionRole.id);
 
     const admin = await createUserWithMembership({
-      email: `dismissal-wait-sec-${TEST_RUN_ID}-admin@moazez.local`,
+      email: `dismissal-history-sec-${TEST_RUN_ID}-admin@moazez.local`,
       roleId: schoolAdminRole.id,
       userType: UserType.SCHOOL_USER,
-      firstName: 'School',
+      firstName: 'History',
       lastName: 'Admin',
     });
     const noPermission = await createUserWithMembership({
-      email: `dismissal-wait-sec-${TEST_RUN_ID}-noperm@moazez.local`,
+      email: `dismissal-history-sec-${TEST_RUN_ID}-noperm@moazez.local`,
       roleId: noPermissionRole.id,
       userType: UserType.SCHOOL_USER,
       firstName: 'No',
       lastName: 'Permission',
     });
     const staff = await createUserWithMembership({
-      email: `dismissal-wait-sec-${TEST_RUN_ID}-staff@moazez.local`,
+      email: `dismissal-history-sec-${TEST_RUN_ID}-staff@moazez.local`,
       roleId: dismissalStaffRole.id,
       userType: UserType.DISMISSAL_STAFF,
       firstName: 'Assigned',
-      lastName: 'Staff',
+      lastName: 'History',
     });
     const parent = await createUserWithMembership({
-      email: `dismissal-wait-sec-${TEST_RUN_ID}-parent@moazez.local`,
+      email: `dismissal-history-sec-${TEST_RUN_ID}-parent@moazez.local`,
       roleId: parentRole.id,
       userType: UserType.PARENT,
       firstName: 'Parent',
-      lastName: 'Caller',
+      lastName: 'History',
+    });
+    const teacher = await createUserWithMembership({
+      email: `dismissal-history-sec-${TEST_RUN_ID}-teacher@moazez.local`,
+      roleId: teacherRole.id,
+      userType: UserType.TEACHER,
+      firstName: 'Teacher',
+      lastName: 'History',
+    });
+    const studentUser = await createUserWithMembership({
+      email: `dismissal-history-sec-${TEST_RUN_ID}-student@moazez.local`,
+      roleId: studentRole.id,
+      userType: UserType.STUDENT,
+      firstName: 'Student',
+      lastName: 'History',
     });
     parentUserId = parent.userId;
-
     guardianId = await createGuardian();
+    requestId = await createRequest();
+
     await prisma.dismissalStaffAssignment.create({
       data: {
         schoolId,
@@ -213,19 +281,6 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
         gateId,
         isActive: true,
       },
-    });
-
-    visibleRequestId = await createRequest({
-      classroomId,
-      gateId,
-      firstName: 'Visible',
-      lastName: 'Waiting',
-    });
-    hiddenRequestId = await createRequest({
-      classroomId,
-      gateId: otherGateId,
-      firstName: 'Hidden',
-      lastName: 'Waiting',
     });
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -247,10 +302,19 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
     noPermissionToken = await login(noPermission.email);
     staffToken = await login(staff.email);
     parentToken = await login(parent.email);
+    teacherToken = await login(teacher.email);
+    studentToken = await login(studentUser.email);
   });
 
   afterAll(async () => {
     if (prisma) {
+      await prisma.communicationNotificationPushAttempt.deleteMany({
+        where: { schoolId },
+      });
+      await prisma.communicationNotificationDelivery.deleteMany({
+        where: { schoolId },
+      });
+      await prisma.communicationNotification.deleteMany({ where: { schoolId } });
       await prisma.auditLog.deleteMany({ where: { schoolId } });
       await prisma.dismissalRequestEvent.deleteMany({ where: { schoolId } });
       await prisma.dismissalRequest.deleteMany({ where: { schoolId } });
@@ -269,13 +333,8 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
       await prisma.membership.deleteMany({
         where: { userId: { in: createdUserIds } },
       });
+      await prisma.role.deleteMany({ where: { id: { in: createdRoleIds } } });
       await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-      await prisma.role.deleteMany({
-        where: {
-          schoolId,
-          key: { startsWith: `dismissal-wait-no-perm-${TEST_RUN_ID}` },
-        },
-      });
       await prisma.school.deleteMany({ where: { id: { in: createdSchoolIds } } });
       await prisma.organization.deleteMany({
         where: { id: { in: createdOrganizationIds } },
@@ -285,110 +344,94 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
     if (app) await app.close();
   });
 
-  it('rejects unauthenticated waiting-student requests', async () => {
+  it('rejects unauthenticated and unauthorized history/escalation calls', async () => {
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/waiting-students`)
+      .get(`${GLOBAL_PREFIX}/dismissal/requests/history`)
       .expect(401);
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${randomUUID()}/arrival`)
-      .send({})
+      .post(`${GLOBAL_PREFIX}/dismissal/requests/${requestId}/escalate`)
+      .send({ reason: 'other' })
       .expect(401);
+
+    await listHistory(noPermissionToken).expect(403);
+    await getHistoryDetail(noPermissionToken, requestId).expect(403);
+    await escalate(noPermissionToken, requestId).expect(403);
+
+    for (const token of [parentToken, teacherToken, studentToken]) {
+      await listHistory(token).expect(403);
+      await getHistoryDetail(token, requestId).expect(403);
+      await escalate(token, requestId).expect(403);
+    }
   });
 
-  it('forbids authenticated users without the required waiting permissions', async () => {
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/waiting-students`)
-      .set('Authorization', `Bearer ${noPermissionToken}`)
-      .expect(403);
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${visibleRequestId}/arrival`)
-      .set('Authorization', `Bearer ${noPermissionToken}`)
-      .send({})
-      .expect(403);
-  });
-
-  it('allows school admin to list and confirm current-school waiting students', async () => {
-    const list = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/waiting-students`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
-
-    expect(list.body.data.map((item: { id: string }) => item.id)).toEqual(
-      expect.arrayContaining([visibleRequestId, hiddenRequestId]),
+  it('allows school admin and assignment-scoped dismissal staff only', async () => {
+    const adminList = await listHistory(adminToken).expect(200);
+    expect(adminList.body.data.map((item: { id: string }) => item.id)).toContain(
+      requestId,
     );
 
-    const arrival = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${visibleRequestId}/arrival`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ note: 'Security arrival' })
-      .expect(201);
-    expect(arrival.body.student).toEqual(
-      expect.objectContaining({
-        id: visibleRequestId,
-        status: 'at_gate',
-        changed: true,
-      }),
+    const staffList = await listHistory(staffToken).expect(200);
+    expect(staffList.body.data.map((item: { id: string }) => item.id)).toContain(
+      requestId,
     );
+
+    await getHistoryDetail(staffToken, requestId).expect(200);
+    const escalation = await escalate(staffToken, requestId).expect(201);
+    expect(escalation.body.escalation.changed).toBe(true);
   });
 
-  it('assignment-scopes DISMISSAL_STAFF list and arrival confirmation', async () => {
-    const list = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/waiting-students`)
-      .set('Authorization', `Bearer ${staffToken}`)
-      .expect(200);
-    expect(list.body.data.map((item: { id: string }) => item.id)).toEqual([
-      visibleRequestId,
-    ]);
+  it('keeps route ordering and forbidden root/deferred routes intact', async () => {
+    await listHistory(adminToken).expect(200);
+    await getHistoryDetail(adminToken, requestId).expect(200);
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${visibleRequestId}/arrival`)
-      .set('Authorization', `Bearer ${staffToken}`)
-      .send({})
-      .expect(201);
-
-    const hidden = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${hiddenRequestId}/arrival`)
-      .set('Authorization', `Bearer ${staffToken}`)
-      .send({})
-      .expect(404);
-    expect(hidden.body?.error?.code).toBe('dismissal.waiting.not_found');
-  });
-
-  it('forbids parent actors through permissions', async () => {
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dismissal/waiting-students`)
-      .set('Authorization', `Bearer ${parentToken}`)
-      .expect(403);
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${visibleRequestId}/arrival`)
-      .set('Authorization', `Bearer ${parentToken}`)
-      .send({})
-      .expect(403);
-  });
-
-  it('does not expose deferred action, delivery, or root pickup routes', async () => {
-    const id = randomUUID();
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/call`)
+      .get(`${GLOBAL_PREFIX}/history`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/ready`)
+      .get(`${GLOBAL_PREFIX}/requests/history`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${id}/ready`)
+      .get(`${GLOBAL_PREFIX}/pickup`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${id}/deliver`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(404);
-    await request(app.getHttpServer()).get(`${GLOBAL_PREFIX}/pickup`).expect(404);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/waiting-students`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/notifications`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/dismissal/requests/${requestId}/resend-code`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/dismissal/delegates/invitations`)
+      .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
   });
+
+  function listHistory(token: string) {
+    return request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dismissal/requests/history`)
+      .set('Authorization', `Bearer ${token}`);
+  }
+
+  function getHistoryDetail(token: string, id: string) {
+    return request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dismissal/requests/history/${id}`)
+      .set('Authorization', `Bearer ${token}`);
+  }
+
+  function escalate(token: string, id: string) {
+    return request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/escalate`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ reason: 'other' });
+  }
 
   async function createSchoolFixture(): Promise<{
     organizationId: string;
@@ -396,8 +439,8 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
   }> {
     const organization = await prisma.organization.create({
       data: {
-        slug: `dismissal-wait-sec-${TEST_RUN_ID}-org`,
-        name: `Dismissal Waiting Security Org ${TEST_RUN_ID}`,
+        slug: `dismissal-history-sec-${TEST_RUN_ID}-org`,
+        name: `Dismissal History Security Org ${TEST_RUN_ID}`,
         status: OrganizationStatus.ACTIVE,
       },
       select: { id: true },
@@ -407,8 +450,8 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
     const school = await prisma.school.create({
       data: {
         organizationId: organization.id,
-        slug: `dismissal-wait-sec-${TEST_RUN_ID}-school`,
-        name: `Dismissal Waiting Security School ${TEST_RUN_ID}`,
+        slug: `dismissal-history-sec-${TEST_RUN_ID}-school`,
+        name: `Dismissal History Security School ${TEST_RUN_ID}`,
         status: SchoolStatus.ACTIVE,
       },
       select: { id: true },
@@ -418,12 +461,12 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
     return { organizationId: organization.id, schoolId: school.id };
   }
 
-  async function createAcademicFixture(currentSchoolId: string) {
+  async function createAcademicFixture(targetSchoolId: string) {
     const academicYear = await prisma.academicYear.create({
       data: {
-        schoolId: currentSchoolId,
-        nameAr: `wait-sec-year-${TEST_RUN_ID}-ar`,
-        nameEn: `Waiting Sec Year ${TEST_RUN_ID}`,
+        schoolId: targetSchoolId,
+        nameAr: `history-sec-year-${TEST_RUN_ID}-ar`,
+        nameEn: `History Security Year ${TEST_RUN_ID}`,
         startDate: new Date('2026-09-01T00:00:00.000Z'),
         endDate: new Date('2027-06-30T00:00:00.000Z'),
         isActive: true,
@@ -432,10 +475,10 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
     });
     const term = await prisma.term.create({
       data: {
-        schoolId: currentSchoolId,
+        schoolId: targetSchoolId,
         academicYearId: academicYear.id,
-        nameAr: `wait-sec-term-${TEST_RUN_ID}-ar`,
-        nameEn: `Waiting Sec Term ${TEST_RUN_ID}`,
+        nameAr: `history-sec-term-${TEST_RUN_ID}-ar`,
+        nameEn: `History Security Term ${TEST_RUN_ID}`,
         startDate: new Date('2026-09-01T00:00:00.000Z'),
         endDate: new Date('2027-01-15T00:00:00.000Z'),
         isActive: true,
@@ -444,36 +487,36 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
     });
     const stage = await prisma.stage.create({
       data: {
-        schoolId: currentSchoolId,
-        nameAr: `wait-sec-stage-${TEST_RUN_ID}-ar`,
-        nameEn: 'Waiting Security Stage',
+        schoolId: targetSchoolId,
+        nameAr: `history-sec-stage-${TEST_RUN_ID}-ar`,
+        nameEn: `History Security Stage ${TEST_RUN_ID}`,
       },
       select: { id: true },
     });
     const grade = await prisma.grade.create({
       data: {
-        schoolId: currentSchoolId,
+        schoolId: targetSchoolId,
         stageId: stage.id,
-        nameAr: `wait-sec-grade-${TEST_RUN_ID}-ar`,
-        nameEn: 'Waiting Security Grade',
+        nameAr: `history-sec-grade-${TEST_RUN_ID}-ar`,
+        nameEn: `History Security Grade ${TEST_RUN_ID}`,
       },
       select: { id: true },
     });
     const section = await prisma.section.create({
       data: {
-        schoolId: currentSchoolId,
+        schoolId: targetSchoolId,
         gradeId: grade.id,
-        nameAr: `wait-sec-section-${TEST_RUN_ID}-ar`,
-        nameEn: 'Waiting Security Section',
+        nameAr: `history-sec-section-${TEST_RUN_ID}-ar`,
+        nameEn: `History Security Section ${TEST_RUN_ID}`,
       },
       select: { id: true },
     });
     const classroom = await prisma.classroom.create({
       data: {
-        schoolId: currentSchoolId,
+        schoolId: targetSchoolId,
         sectionId: section.id,
-        nameAr: `wait-sec-classroom-${TEST_RUN_ID}-ar`,
-        nameEn: 'Waiting Security Classroom',
+        nameAr: `history-sec-classroom-${TEST_RUN_ID}-ar`,
+        nameEn: `History Security Classroom ${TEST_RUN_ID}`,
       },
       select: { id: true },
     });
@@ -485,12 +528,12 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
     };
   }
 
-  async function createGate(code: string): Promise<string> {
+  async function createGate(): Promise<string> {
     const gate = await prisma.dismissalGate.create({
       data: {
         schoolId,
-        code: `${code}-${TEST_RUN_ID}`,
-        name: `${code} Gate`,
+        code: `HIST-SEC-${TEST_RUN_ID}`,
+        name: 'History Security Gate',
         status: DismissalGateOperationalStatus.OPEN,
         isActive: true,
       },
@@ -537,10 +580,10 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
         schoolId,
         organizationId,
         userId: parentUserId,
-        firstName: 'Waiting Security',
-        lastName: `Guardian ${TEST_RUN_ID}`,
+        firstName: 'Security',
+        lastName: 'Guardian',
         relation: 'guardian',
-        phone: '0100000000',
+        phone: '0109333000',
         canPickup: true,
         canReceiveNotifications: true,
       },
@@ -549,17 +592,12 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
     return guardian.id;
   }
 
-  async function createRequest(params: {
-    classroomId: string;
-    gateId: string;
-    firstName: string;
-    lastName: string;
-  }): Promise<string> {
+  async function createRequest(): Promise<string> {
     const year = await prisma.academicYear.findFirstOrThrow({
       where: { schoolId },
       select: { id: true },
     });
-    const term = await prisma.term.findFirstOrThrow({
+    const term = await prisma.term.findFirst({
       where: { schoolId },
       select: { id: true },
     });
@@ -567,8 +605,8 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
       data: {
         schoolId,
         organizationId,
-        firstName: params.firstName,
-        lastName: params.lastName,
+        firstName: 'Security',
+        lastName: 'Student',
         status: StudentStatus.ACTIVE,
       },
       select: { id: true },
@@ -586,8 +624,8 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
         schoolId,
         studentId: student.id,
         academicYearId: year.id,
-        termId: term.id,
-        classroomId: params.classroomId,
+        termId: term?.id,
+        classroomId,
         status: StudentEnrollmentStatus.ACTIVE,
         enrolledAt: new Date('2026-09-01T00:00:00.000Z'),
       },
@@ -600,12 +638,12 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
         enrollmentId: enrollment.id,
         guardianId,
         requestedById: parentUserId,
-        gateId: params.gateId,
-        status: DismissalRequestStatus.CALLED,
-        clientRequestId: `waiting-sec-${TEST_RUN_ID}-${student.id}`,
+        gateId,
+        status: DismissalRequestStatus.REQUESTED,
+        clientRequestId: `history-security-${TEST_RUN_ID}-${student.id}`,
         parentLatitude: 30.04442,
         parentLongitude: 31.235712,
-        distanceMeters: 10,
+        distanceMeters: 20,
         geofencePassed: true,
         requestedAt: new Date(Date.now() - 5 * 60_000),
       },
@@ -633,11 +671,10 @@ describe('DISMISSAL-WAITING-1A tenancy and RBAC (security)', () => {
   }
 });
 
-function extractConstStringArray(source: string, constName: string): string[] {
-  const match = source.match(
-    new RegExp(`const ${constName} = \\[([\\s\\S]*?)\\];`),
-  );
-  expect(match).not.toBeNull();
+function extractConstStringArray(source: string, name: string): string[] {
+  const pattern = new RegExp(`const ${name} = \\[([\\s\\S]*?)\\]`, 'm');
+  const match = source.match(pattern);
+  if (!match) throw new Error(`Could not find ${name}`);
 
-  return [...match![1].matchAll(/'([^']+)'/g)].map((item) => item[1]);
+  return [...match[1].matchAll(/'([^']+)'/g)].map((entry) => entry[1]);
 }

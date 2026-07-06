@@ -399,7 +399,7 @@ describe('PARENT-DISMISSAL-1C tenancy and RBAC (security)', () => {
       .post(`${GLOBAL_PREFIX}/dismissal/requests/${id}/escalate`)
       .set('Authorization', `Bearer ${parentToken}`)
       .send({})
-      .expect(404);
+      .expect(403);
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/dismissal/waiting-students/${id}/ready`)
       .set('Authorization', `Bearer ${parentToken}`)
