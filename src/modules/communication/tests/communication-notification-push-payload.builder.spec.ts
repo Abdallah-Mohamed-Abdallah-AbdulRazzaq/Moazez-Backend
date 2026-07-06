@@ -1,6 +1,7 @@
 import {
   CommunicationNotificationSourceModule,
   CommunicationNotificationType,
+  UserType,
 } from '@prisma/client';
 import { CommunicationNotificationPushPayloadBuilder } from '../application/communication-notification-push-payload.builder';
 
@@ -68,5 +69,46 @@ describe('CommunicationNotificationPushPayloadBuilder', () => {
       },
     });
     expect(JSON.stringify(payload)).not.toContain('recipientUserId');
+  });
+
+  it('builds a safe dismissal staff notification FCM payload', () => {
+    const payload = builder.build({
+      id: 'notification-1',
+      type: CommunicationNotificationType.DISMISSAL_REQUEST_CREATED,
+      sourceModule: CommunicationNotificationSourceModule.DISMISSAL,
+      sourceType: 'dismissal_request',
+      sourceId: 'request-1',
+      title: 'New pickup request',
+      body: 'A pickup request was created.',
+      metadata: {
+        request: {
+          id: 'request-1',
+          status: 'requested',
+          schoolId: 'must-not-pass-through',
+        },
+        pickupCode: 'must-not-pass-through',
+      },
+      recipientUser: {
+        userType: UserType.DISMISSAL_STAFF,
+      },
+    });
+
+    expect(payload).toEqual({
+      notification: {
+        title: 'New pickup request',
+        body: 'A pickup request was created.',
+      },
+      data: {
+        notificationId: 'notification-1',
+        module: 'dismissal',
+        surface: 'dismissal_staff',
+        type: 'request_created',
+        requestId: 'request-1',
+        status: 'requested',
+        screen: 'dismissal.notifications',
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain('schoolId');
+    expect(JSON.stringify(payload)).not.toContain('pickupCode');
   });
 });

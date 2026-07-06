@@ -131,7 +131,7 @@ describe('DISMISSAL-DELIVERY-1A route metadata and schema boundaries', () => {
       /enum AppDeviceTokenSurface \{([\s\S]*?)\n\}/,
     )?.[1];
     expect(tokenSurfaceBlock).toBeTruthy();
-    expect(tokenSurfaceBlock).not.toContain('DISMISSAL_STAFF');
+    expect(tokenSurfaceBlock).toContain('DISMISSAL_STAFF');
   });
 });
 

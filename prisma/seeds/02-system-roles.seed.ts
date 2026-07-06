@@ -190,6 +190,7 @@ const STUDENT_PERMISSIONS = [
 ];
 
 const DISMISSAL_STAFF_PERMISSIONS = [
+  'app.device_tokens.manage',
   'dismissal.profile.view',
   'dismissal.gates.view',
   'dismissal.requests.view',

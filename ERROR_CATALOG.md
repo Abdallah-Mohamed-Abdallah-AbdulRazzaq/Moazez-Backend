@@ -570,6 +570,7 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `dismissal.notification.not_found`               | 404  | Dismissal notification was not found                              |
 | `dismissal.notification.invalid_filter`          | 422  | Dismissal notification filter is invalid                          |
 | `dismissal.notification.school_context_required` | 403  | A school context is required for dismissal notifications          |
+| `dismissal.notification.invalid_actor_type`      | 403  | Dismissal notification device tokens require dismissal staff      |
 | `dismissal.history.not_found`                    | 404  | Dismissal request history was not found                           |
 | `dismissal.history.invalid_status_filter`        | 422  | Dismissal history status filter is invalid                        |
 | `dismissal.history.invalid_date_range`           | 422  | Dismissal history date range is invalid                           |

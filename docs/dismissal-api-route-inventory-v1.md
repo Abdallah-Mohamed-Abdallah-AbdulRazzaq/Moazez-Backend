@@ -80,8 +80,12 @@ No public route is registered for expiration. The internal BullMQ worker runs `E
 | Method | Path | Permission | DTO | Response | Read/write | Side effects | Scope |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | GET | `/api/v1/dismissal/notifications` | `dismissal.notifications.view` | `ListDismissalNotificationsQueryDto` | `DismissalNotificationsListResponseDto` | read-only | none | Current actor recipient and current school only. |
+| POST | `/api/v1/dismissal/notifications/device-tokens` | `app.device_tokens.manage` | `RegisterAppDeviceTokenDto` | `AppDeviceTokenRegisterResponseDto` | mutating | upserts encrypted/hash device token for `DISMISSAL_STAFF` app surface | Requires `UserType.DISMISSAL_STAFF`; current actor/current school only; raw token is never returned. |
+| DELETE | `/api/v1/dismissal/notifications/device-tokens/current` | `app.device_tokens.manage` | `UnregisterAppDeviceTokenDto` | `AppDeviceTokenUnregisterResponseDto` | mutating | revokes current actor's Dismissal Staff app token by token or device id | Requires `UserType.DISMISSAL_STAFF`; current actor/current school only; raw token is never returned. |
 | PATCH | `/api/v1/dismissal/notifications/:id/read` | `dismissal.notifications.manage` | path UUID | `DismissalNotificationReadResponseDto` | mutating | marks recipient notification read; publishes `dismissal.notification.read` | Current actor recipient/current school only; idempotent. |
 | PATCH | `/api/v1/dismissal/notifications/read-all` | `dismissal.notifications.manage` | none | `DismissalNotificationsReadAllResponseDto` | mutating | marks current actor unread dismissal notifications read; publishes `dismissal.notifications.read_all` when rows changed | Current actor recipient/current school only. |
+
+Dismissal notification creation also creates idempotent `PUSH` delivery rows for supported Dismissal notification types and enqueues existing communication push delivery jobs after commit. Push is best-effort and does not expose delivery internals through REST.
 
 ## Dismissal History and Escalation
 

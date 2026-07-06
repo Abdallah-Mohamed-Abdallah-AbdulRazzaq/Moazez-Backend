@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { CommunicationNotificationType, Prisma } from '@prisma/client';
+import {
+  CommunicationNotificationSourceModule,
+  CommunicationNotificationType,
+  Prisma,
+  UserType,
+} from '@prisma/client';
 import {
   COMMUNICATION_MESSAGE_NOTIFICATION_SOURCE_TYPE,
   COMMUNICATION_ANNOUNCEMENT_NOTIFICATION_SOURCE_TYPE,
@@ -14,6 +19,9 @@ export interface CommunicationNotificationPushPayloadRecord {
   title: string;
   body: string;
   metadata: Prisma.JsonValue | null;
+  recipientUser?: {
+    userType: UserType;
+  };
 }
 
 export interface CommunicationNotificationPushPayload {
@@ -29,6 +37,17 @@ export class CommunicationNotificationPushPayloadBuilder {
   build(
     notification: CommunicationNotificationPushPayloadRecord,
   ): CommunicationNotificationPushPayload {
+    const dismissalData = buildDismissalPushData(notification);
+    if (dismissalData) {
+      return {
+        notification: {
+          title: notification.title,
+          body: notification.body,
+        },
+        data: dismissalData,
+      };
+    }
+
     const data: Record<string, string> = {
       notificationId: notification.id,
       type: presentEnum(notification.type),
@@ -48,6 +67,42 @@ export class CommunicationNotificationPushPayloadBuilder {
       data,
     };
   }
+}
+
+function buildDismissalPushData(
+  notification: CommunicationNotificationPushPayloadRecord,
+): Record<string, string> | null {
+  if (
+    notification.sourceModule !== CommunicationNotificationSourceModule.DISMISSAL
+  ) {
+    return null;
+  }
+
+  const type = presentDismissalNotificationType(notification.type);
+  if (!type) return null;
+
+  const metadata = asRecord(notification.metadata);
+  const request = asRecord(metadata?.request);
+  const requestId =
+    readString(notification.sourceId) ?? readString(request?.id) ?? null;
+  const status = readString(request?.status);
+  const isParentRecipient =
+    notification.recipientUser?.userType === UserType.PARENT;
+
+  const data: Record<string, string> = {
+    notificationId: notification.id,
+    module: isParentRecipient ? 'parent_smart_pickup' : 'dismissal',
+    surface: isParentRecipient ? 'parent' : 'dismissal_staff',
+    type,
+    screen: isParentRecipient
+      ? 'parent.smart_pickup.recent_calls'
+      : 'dismissal.notifications',
+  };
+
+  if (requestId) data.requestId = requestId;
+  if (status) data.status = status;
+
+  return data;
 }
 
 function buildDeepLink(
@@ -88,6 +143,27 @@ function buildDeepLink(
 
 function presentEnum(value: string): string {
   return value.toLowerCase();
+}
+
+function presentDismissalNotificationType(
+  type: CommunicationNotificationType,
+): string | null {
+  switch (type) {
+    case CommunicationNotificationType.DISMISSAL_REQUEST_CREATED:
+      return 'request_created';
+    case CommunicationNotificationType.DISMISSAL_REQUEST_CANCELLED:
+      return 'request_cancelled';
+    case CommunicationNotificationType.DISMISSAL_REQUEST_CALLED:
+      return 'request_called';
+    case CommunicationNotificationType.DISMISSAL_REQUEST_READY:
+      return 'request_ready';
+    case CommunicationNotificationType.DISMISSAL_REQUEST_HANDED_OVER:
+      return 'request_handed_over';
+    case CommunicationNotificationType.DISMISSAL_REQUEST_EXPIRED:
+      return 'request_expired';
+    default:
+      return null;
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

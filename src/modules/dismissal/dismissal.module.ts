@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { QueueModule } from '../../infrastructure/queue/queue.module';
 import { RealtimeModule } from '../../infrastructure/realtime/realtime.module';
+import { AppDeviceTokensModule } from '../app-device-tokens/app-device-tokens.module';
+import { CommunicationModule } from '../communication/communication.module';
 import { IamModule } from '../iam/iam.module';
 import { CreateDismissalGateUseCase } from './gates/application/create-dismissal-gate.use-case';
 import { GetDismissalGateUseCase } from './gates/application/get-dismissal-gate.use-case';
@@ -11,7 +13,13 @@ import { DismissalGatesRepository } from './gates/infrastructure/dismissal-gates
 import { ListDismissalNotificationsUseCase } from './notifications/application/list-dismissal-notifications.use-case';
 import { MarkAllDismissalNotificationsReadUseCase } from './notifications/application/mark-all-dismissal-notifications-read.use-case';
 import { MarkDismissalNotificationReadUseCase } from './notifications/application/mark-dismissal-notification-read.use-case';
+import { DismissalPushNotificationService } from './notifications/application/dismissal-push-notification.service';
+import {
+  RegisterDismissalDeviceTokenUseCase,
+  UnregisterDismissalDeviceTokenUseCase,
+} from './notifications/application/dismissal-device-token.use-cases';
 import { DismissalNotificationsController } from './notifications/controller/dismissal-notifications.controller';
+import { DismissalPushNotificationRepository } from './notifications/infrastructure/dismissal-push-notification.repository';
 import { DismissalNotificationsRepository } from './notifications/infrastructure/dismissal-notifications.repository';
 import { GetDismissalProfileUseCase } from './profile/application/get-dismissal-profile.use-case';
 import { DismissalProfileController } from './profile/controller/dismissal-profile.controller';
@@ -50,7 +58,13 @@ import { DismissalStaffAssignmentsController } from './staff-assignments/control
 import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrastructure/dismissal-staff-assignments.repository';
 
 @Module({
-  imports: [IamModule, QueueModule, RealtimeModule],
+  imports: [
+    AppDeviceTokensModule,
+    CommunicationModule,
+    IamModule,
+    QueueModule,
+    RealtimeModule,
+  ],
   controllers: [
     DismissalSettingsController,
     DismissalGatesController,
@@ -72,6 +86,8 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DismissalRealtimeRepository,
     DismissalRealtimeEventsService,
     DismissalNotificationsRepository,
+    DismissalPushNotificationRepository,
+    DismissalPushNotificationService,
     GetDismissalSettingsUseCase,
     UpdateDismissalSettingsUseCase,
     ListDismissalGatesUseCase,
@@ -100,6 +116,8 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     ListDismissalNotificationsUseCase,
     MarkDismissalNotificationReadUseCase,
     MarkAllDismissalNotificationsReadUseCase,
+    RegisterDismissalDeviceTokenUseCase,
+    UnregisterDismissalDeviceTokenUseCase,
   ],
   exports: [
     DismissalSettingsRepository,

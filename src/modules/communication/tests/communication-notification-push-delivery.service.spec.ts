@@ -3,6 +3,7 @@ import {
   CommunicationNotificationDeliveryStatus,
   CommunicationNotificationSourceModule,
   CommunicationNotificationType,
+  UserType,
 } from '@prisma/client';
 import { AppDeviceTokenCrypto } from '../../app-device-tokens/domain/app-device-token-crypto';
 import { AppDeviceTokenRepository } from '../../app-device-tokens/infrastructure/app-device-token.repository';
@@ -308,6 +309,9 @@ function pushDeliveryRecord(
       metadata: {
         conversationId: 'conversation-1',
         messageId: 'message-1',
+      },
+      recipientUser: {
+        userType: UserType.PARENT,
       },
     },
     ...(overrides ?? {}),

@@ -14,16 +14,17 @@ This document freezes implemented backend behavior for frontend/mobile teams. It
 - Best-effort realtime queue/request/notification events through the existing realtime gateway.
 - History, delay/urgent computed signals, and manual escalation event/audit.
 - Automatic request expiration worker for stale active requests.
+- Best-effort push delivery for Dismissal / Smart Pickup notification rows using existing app-device-token and communication push infrastructure.
+- Dismissal Staff device-token registration through `/api/v1/dismissal/notifications/device-tokens`.
 
 ## Implemented but Best-Effort
 
 - Realtime delivery is best-effort. There is no durable outbox or replay.
-- Notification runtime is in-app only. No push delivery or device-token registration is implemented for Dismissal Staff.
+- Push delivery is best-effort. REST remains the source of truth and clients must refetch after push/realtime hints. No durable Dismissal-specific push outbox or replay was added.
 
 ## Not Implemented Yet
 
 - Durable realtime reconnect replay.
-- Push notifications and `AppDeviceTokenSurface.DISMISSAL_STAFF`.
 - Temporary external delegate authorization, delegate OTP, delegate QR, pickup-code resend/rotation.
 - Staff-parent chat, files, CSV/PDF export, analytics dashboards, shifts/duty handover.
 
@@ -84,8 +85,9 @@ Computed signals:
 | `dismissal.requests.history.view` | history list/detail |
 | `dismissal.notifications.view` | notifications list |
 | `dismissal.notifications.manage` | mark notification read/read-all |
+| `app.device_tokens.manage` | register/unregister current actor device tokens |
 
-Parent role receives only the three `parent.smart_pickup.*` permissions. Dismissal Staff receives the operational dismissal permissions but not settings/staff assignment management. Parent does not receive `dismissal.*`.
+Parent role receives only the three `parent.smart_pickup.*` permissions plus shared app-device-token management for Parent App notifications. Dismissal Staff receives the operational dismissal permissions plus shared app-device-token management for the Dismissal Staff app surface, but not settings/staff assignment management. Parent does not receive `dismissal.*`.
 
 ## Parent App Contract
 
@@ -437,7 +439,7 @@ Implemented dismissal notification public types:
 
 Parent-facing dismissal updates are represented through Parent Smart Pickup REST/realtime behavior; expiration also creates a parent in-app notification row without adding a dedicated Parent Smart Pickup notification route.
 
-No push/device-token work exists yet. Escalation does not create notification.
+Push delivery is implemented as best-effort for supported Dismissal / Smart Pickup notification rows. Escalation does not create notification or push.
 
 ## Realtime Event Contract
 

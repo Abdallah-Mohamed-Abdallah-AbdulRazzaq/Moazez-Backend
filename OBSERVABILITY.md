@@ -158,6 +158,12 @@ Both co-exist. A password reset emits both:
 - An audit log row in `audit_logs` (`iam.user.password_reset`, compliance).
 - An application log line (`info`, correlation + debugging).
 
+## 8. Dismissal Push Notifications
+
+Dismissal push delivery uses the existing communication push queue and Firebase/FCM provider abstraction. Push is best-effort; failures must not roll back Dismissal request state changes, notification rows, audit rows, or realtime events.
+
+Allowed log fields for Dismissal push are notification type, recipient/attempt counts, success/failure counts, surface, provider error code/class, and duration. Do not log raw device tokens, pickup codes, pickup-recipient tokens, guardian ids, student-guardian ids, parent coordinates, client request ids, socket rooms, socket ids, raw metadata, token hashes, or token ciphertext.
+
 ## 8. Performance Budget
 
 - P95 HTTP response time: **< 500ms** for authenticated API in V1.

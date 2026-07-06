@@ -1043,6 +1043,7 @@ enum AppDeviceTokenSurface {
   PARENT
   STUDENT
   TEACHER
+  DISMISSAL_STAFF
 
   @@map("app_device_token_surface")
 }

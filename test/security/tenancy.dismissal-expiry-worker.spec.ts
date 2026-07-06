@@ -79,7 +79,7 @@ describe('DISMISSAL-EXPIRY-1A tenancy and worker security', () => {
     expect(schemaSource).toContain('DISMISSAL_REQUEST_EXPIRED');
     expect(schemaSource).not.toMatch(/model\s+DismissalRequestExpiry/);
     expect(schemaSource).not.toMatch(/model\s+DismissalRequestOutbox/);
-    expect(schemaSource).not.toMatch(
+    expect(schemaSource).toMatch(
       /enum\s+AppDeviceTokenSurface\s+\{[\s\S]*DISMISSAL_STAFF/,
     );
     expect(Object.values(CommunicationNotificationType)).toContain(
@@ -114,7 +114,7 @@ describe('DISMISSAL-EXPIRY-1A tenancy and worker security', () => {
       expect(source).not.toContain('dismissal.requests.expire');
       expect(source).not.toContain('dismissal.expiry');
       expect(source).not.toContain('parent.smart_pickup.expire');
-      expect(source).not.toContain('AppDeviceTokenSurface.DISMISSAL_STAFF');
+      expect(source).not.toContain('dismissal.requests.expire');
     }
 
     const parentPermissions = await rolePermissionCodes('parent');

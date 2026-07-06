@@ -104,7 +104,7 @@ describe('PARENT-DISMISSAL-1D Parent Smart Pickup contract hardening (security)'
       /enum AppDeviceTokenSurface \{([\s\S]*?)\n\}/,
     )?.[1];
     expect(tokenSurfaceBlock).toBeTruthy();
-    expect(tokenSurfaceBlock).not.toContain('DISMISSAL_STAFF');
+    expect(tokenSurfaceBlock).toContain('DISMISSAL_STAFF');
 
     const migrationNames = readdirSync('prisma/migrations');
     expect(

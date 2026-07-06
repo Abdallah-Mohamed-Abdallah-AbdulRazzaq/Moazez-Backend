@@ -5,6 +5,7 @@ import {
 } from '@prisma/client';
 import { REALTIME_SERVER_EVENTS } from '../../../infrastructure/realtime/realtime-event-names';
 import { RealtimePublisherService } from '../../../infrastructure/realtime/realtime-publisher.service';
+import { DismissalPushNotificationService } from '../notifications/application/dismissal-push-notification.service';
 import { DismissalRealtimeRepository } from './dismissal-realtime.repository';
 import {
   DismissalRealtimeNotificationRecord,
@@ -23,6 +24,7 @@ export class DismissalRealtimeEventsService {
   constructor(
     private readonly repository: DismissalRealtimeRepository,
     private readonly publisher: RealtimePublisherService,
+    private readonly dismissalPushNotifications?: DismissalPushNotificationService,
   ) {}
 
   publishRequestCreated(params: {
@@ -241,6 +243,11 @@ export class DismissalRealtimeEventsService {
     );
 
     await this.publishCreatedNotifications({
+      schoolId: params.schoolId,
+      requestId: params.request.id,
+      eventTypes: params.notificationTypes,
+    });
+    await this.dismissalPushNotifications?.enqueuePushForRequestEvent({
       schoolId: params.schoolId,
       requestId: params.request.id,
       eventTypes: params.notificationTypes,

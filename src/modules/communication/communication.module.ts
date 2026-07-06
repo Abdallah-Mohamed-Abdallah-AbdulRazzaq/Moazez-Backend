@@ -283,6 +283,7 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     CommunicationAppNotificationCenterService,
     CommunicationNotificationCommandService,
     CommunicationNotificationPreferenceService,
+    CommunicationNotificationPushQueueService,
   ],
 })
 export class CommunicationModule {}

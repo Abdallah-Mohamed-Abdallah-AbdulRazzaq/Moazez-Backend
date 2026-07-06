@@ -212,7 +212,7 @@ describe('DISMISSAL-OPERATIONS-AUDIT-1A production hardening security', () => {
     }
   });
 
-  it('keeps schema/migration hardening limited to indexes and excludes device-token/outbox expansion', () => {
+  it('keeps operations hardening migration limited to indexes and excludes outbox expansion', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
     const migrationSource = readFileSync(
       'prisma/migrations/20260706153000_dismissal_operations_hardening_indexes/migration.sql',
@@ -222,7 +222,7 @@ describe('DISMISSAL-OPERATIONS-AUDIT-1A production hardening security', () => {
     expect(schemaSource).not.toMatch(/model\s+DismissalRequestOutbox/);
     expect(schemaSource).not.toMatch(/model\s+DismissalRealtimeOutbox/);
     expect(schemaSource).not.toMatch(/model\s+DismissalRequestExpiry/);
-    expect(schemaSource).not.toMatch(
+    expect(schemaSource).toMatch(
       /enum\s+AppDeviceTokenSurface\s+\{[\s\S]*DISMISSAL_STAFF/,
     );
     expect(migrationSource).toMatch(/CREATE INDEX IF NOT EXISTS/g);

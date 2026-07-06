@@ -40,6 +40,8 @@ const EXPECTED_ROUTES = [
   'GET /api/v1/dismissal/requests/:id/pickup-recipients',
   'POST /api/v1/dismissal/requests/:id/deliver',
   'GET /api/v1/dismissal/notifications',
+  'POST /api/v1/dismissal/notifications/device-tokens',
+  'DELETE /api/v1/dismissal/notifications/device-tokens/current',
   'PATCH /api/v1/dismissal/notifications/:id/read',
   'PATCH /api/v1/dismissal/notifications/read-all',
   'GET /api/v1/dismissal/requests/history',
@@ -95,7 +97,7 @@ describe('DISMISSAL-FE-CONTRACT-1A contract security and inventory', () => {
       'No `/api/v1/requests/history`',
       'No root `/api/v1/waiting-students`',
       'No root `/api/v1/notifications`',
-      'No `/api/v1/parent/notifications`',
+      'No Smart Pickup-specific parent notification route',
       'No pickup-code resend route',
       'No pickup-code rotation route',
       'No delegate OTP route',
@@ -283,7 +285,7 @@ describe('DISMISSAL-FE-CONTRACT-1A contract security and inventory', () => {
       /enum AppDeviceTokenSurface \{([\s\S]*?)\n\}/,
     )?.[1];
     expect(tokenSurfaceBlock).toBeTruthy();
-    expect(tokenSurfaceBlock).not.toContain('DISMISSAL_STAFF');
+    expect(tokenSurfaceBlock).toContain('DISMISSAL_STAFF');
   });
 
   it('keeps route ordering, forbidden roots, chat/file expansions, and realtime event names exact', () => {

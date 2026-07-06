@@ -145,7 +145,7 @@ describe('DISMISSAL-HISTORY-1A route metadata and boundaries', () => {
       expect(statusBlock).not.toContain(forbiddenStatus);
     }
     expect(tokenSurfaceBlock).toBeTruthy();
-    expect(tokenSurfaceBlock).not.toContain('DISMISSAL_STAFF');
+    expect(tokenSurfaceBlock).toContain('DISMISSAL_STAFF');
     expect(realtimeNames).not.toContain('ESCALATED');
     expect(realtimeNames).not.toContain('escalated');
   });

@@ -122,7 +122,7 @@ export function presentAppDeviceTokenPlatform(
 
 export function presentAppDeviceTokenSurface(
   value: AppDeviceTokenSurface,
-): 'parent' | 'student' | 'teacher' {
+): 'parent' | 'student' | 'teacher' | 'dismissal_staff' {
   switch (value) {
     case AppDeviceTokenSurface.PARENT:
       return 'parent';
@@ -130,6 +130,8 @@ export function presentAppDeviceTokenSurface(
       return 'student';
     case AppDeviceTokenSurface.TEACHER:
       return 'teacher';
+    case AppDeviceTokenSurface.DISMISSAL_STAFF:
+      return 'dismissal_staff';
   }
 }
 

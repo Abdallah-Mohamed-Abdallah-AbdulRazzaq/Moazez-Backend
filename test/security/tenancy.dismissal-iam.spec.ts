@@ -47,6 +47,7 @@ const EXPECTED_DISMISSAL_PERMISSION_CODES = [
 ] as const;
 
 const EXPECTED_DISMISSAL_STAFF_PERMISSIONS = [
+  'app.device_tokens.manage',
   'dismissal.profile.view',
   'dismissal.gates.view',
   'dismissal.requests.view',
@@ -135,16 +136,16 @@ describe('DISMISSAL-IAM-1A - user type and permission seed contract', () => {
     expect(userTypeBlock).toContain('SERVICE_ACCOUNT');
   });
 
-  it('does not add DISMISSAL_STAFF to AppDeviceTokenSurface', () => {
+  it('now includes DISMISSAL_STAFF in AppDeviceTokenSurface', () => {
     const tokenSurfaceBlock = schemaSource.match(
       /enum AppDeviceTokenSurface \{([\s\S]*?)\n\}/,
     )?.[1];
 
     expect(tokenSurfaceBlock).toBeTruthy();
-    expect(tokenSurfaceBlock).not.toContain('DISMISSAL_STAFF');
+    expect(tokenSurfaceBlock).toContain('DISMISSAL_STAFF');
   });
 
-  it('migration only adds DISMISSAL_STAFF to the mapped user_type enum', () => {
+  it('original IAM migration only adds DISMISSAL_STAFF to the mapped user_type enum', () => {
     const migrationSql = findMigrationSql().trim();
 
     expect(migrationSql).toBe(

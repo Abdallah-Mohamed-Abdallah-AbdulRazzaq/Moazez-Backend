@@ -60,6 +60,7 @@ Safe retry:
 9. Use one returned `pickupRecipientToken` immediately in `POST /api/v1/dismissal/requests/:id/deliver`, along with pickup code if policy requires it.
 10. Use `GET /api/v1/dismissal/notifications` for staff notification center.
 11. Use history and escalation only from history/detail or active detail screens where user has permission.
+12. Register push tokens with `POST /api/v1/dismissal/notifications/device-tokens` after login and unregister with `DELETE /api/v1/dismissal/notifications/device-tokens/current` on logout/device reset. The response contains `deviceTokenId` and `appSurface`, never the raw token.
 
 ## School Admin Flow
 
@@ -137,6 +138,25 @@ If offline/reconnected, refetch readiness, recent-calls, queue, waiting, notific
 
 No durable replay exists yet.
 
+## Push Notifications
+
+Push is a best-effort hint, not the source of truth. On any Dismissal push, navigate using the safe `data.screen` key when appropriate and refetch the relevant REST endpoint.
+
+Supported Dismissal push `data.type` values:
+
+- `request_created`
+- `request_cancelled`
+- `request_called`
+- `request_ready`
+- `request_handed_over`
+- `request_expired`
+
+Dismissal Staff push data uses `module=dismissal`, `surface=dismissal_staff`, and `screen=dismissal.notifications`.
+
+Parent Smart Pickup push data uses `module=parent_smart_pickup`, `surface=parent`, and `screen=parent.smart_pickup.recent_calls`.
+
+Push payloads do not contain pickup codes, pickup-recipient tokens, parent coordinates, guardian ids, actor ids, assignment ids, raw metadata, or device-token material.
+
 ## Polling Strategy
 
 Suggested fallback intervals:
@@ -203,7 +223,7 @@ Use machine `error.code`; do not branch on English messages.
 - No pickup-code resend or rotation.
 - No pickup QR.
 - No delegate OTP or external invitation.
-- No push notification/device-token surface for Dismissal Staff.
+- No durable push retry/outbox beyond the existing communication push infrastructure.
 - No durable realtime replay.
 - No staff-parent chat or files.
 - No CSV/PDF export or analytics dashboards.

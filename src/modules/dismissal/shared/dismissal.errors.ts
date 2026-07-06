@@ -499,6 +499,16 @@ export class DismissalNotificationSchoolContextRequiredException extends Dismiss
   }
 }
 
+export class DismissalNotificationInvalidActorTypeException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.notification.invalid_actor_type',
+      'Dismissal notification device tokens require a dismissal staff actor.',
+      HttpStatus.FORBIDDEN,
+    );
+  }
+}
+
 export class DismissalHistoryNotFoundException extends DismissalException {
   constructor() {
     super(

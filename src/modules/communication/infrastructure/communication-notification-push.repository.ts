@@ -28,6 +28,11 @@ const PUSH_DELIVERY_FOR_PROCESSING_ARGS =
           title: true,
           body: true,
           metadata: true,
+          recipientUser: {
+            select: {
+              userType: true,
+            },
+          },
         },
       },
     },

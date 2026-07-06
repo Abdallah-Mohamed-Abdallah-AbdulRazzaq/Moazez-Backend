@@ -140,10 +140,8 @@ describe('DISMISSAL-REALTIME-1A tenancy and realtime security', () => {
     expect(realtimePermissions).toEqual([]);
   });
 
-  it('does not add forbidden device-token surface or root realtime/rest routes', async () => {
-    expect(Object.values(AppDeviceTokenSurface)).not.toContain(
-      'DISMISSAL_STAFF',
-    );
+  it('keeps the Dismissal Staff device-token surface and no root realtime/rest routes', async () => {
+    expect(Object.values(AppDeviceTokenSurface)).toContain('DISMISSAL_STAFF');
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/notifications`)

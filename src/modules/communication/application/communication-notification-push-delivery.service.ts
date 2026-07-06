@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { CommunicationNotificationDeliveryStatus } from '@prisma/client';
+import {
+  AppDeviceTokenSurface,
+  CommunicationNotificationDeliveryStatus,
+  CommunicationNotificationSourceModule,
+  UserType,
+} from '@prisma/client';
 import { AppDeviceTokenCrypto } from '../../app-device-tokens/domain/app-device-token-crypto';
 import {
   AppDeviceTokenRepository,
@@ -12,7 +17,10 @@ import {
 } from '../../../infrastructure/push/firebase/firebase-push.types';
 import { FirebasePushProvider } from '../../../infrastructure/push/firebase/firebase-push.provider';
 import { CommunicationNotificationPushPayloadBuilder } from './communication-notification-push-payload.builder';
-import { CommunicationNotificationPushRepository } from '../infrastructure/communication-notification-push.repository';
+import {
+  CommunicationNotificationPushRepository,
+  CommunicationPushDeliveryForProcessing,
+} from '../infrastructure/communication-notification-push.repository';
 
 const NO_ACTIVE_TOKENS_CODE = 'push/no-active-device-tokens';
 const ALREADY_SENT_CODE = 'push/already-sent';
@@ -79,6 +87,7 @@ export class CommunicationNotificationPushDeliveryService {
       await this.appDeviceTokenRepository.listActiveCurrentSchoolUserTokens({
         schoolId: delivery.schoolId,
         userId: delivery.notification.recipientUserId,
+        appSurface: resolveDeliveryTokenSurface(delivery.notification),
       });
 
     if (activeDeviceTokens.length === 0) {
@@ -332,4 +341,24 @@ function isInvalidOrUnregisteredTokenError(errorCode: string): boolean {
     errorCode === 'fcm/registration-token-not-registered' ||
     errorCode === 'fcm/invalid-registration-token'
   );
+}
+
+function resolveDeliveryTokenSurface(
+  notification: CommunicationPushDeliveryForProcessing['notification'],
+): AppDeviceTokenSurface | undefined {
+  if (
+    notification.sourceModule !== CommunicationNotificationSourceModule.DISMISSAL
+  ) {
+    return undefined;
+  }
+
+  if (notification.recipientUser.userType === UserType.PARENT) {
+    return AppDeviceTokenSurface.PARENT;
+  }
+
+  if (notification.recipientUser.userType === UserType.DISMISSAL_STAFF) {
+    return AppDeviceTokenSurface.DISMISSAL_STAFF;
+  }
+
+  return undefined;
 }

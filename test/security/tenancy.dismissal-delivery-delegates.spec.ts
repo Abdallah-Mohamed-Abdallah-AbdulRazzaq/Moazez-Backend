@@ -95,7 +95,7 @@ describe('DISMISSAL-DELIVERY-1B pickup-recipient route metadata and boundaries',
       /enum AppDeviceTokenSurface \{([\s\S]*?)\n\}/,
     )?.[1];
     expect(tokenSurfaceBlock).toBeTruthy();
-    expect(tokenSurfaceBlock).not.toContain('DISMISSAL_STAFF');
+    expect(tokenSurfaceBlock).toContain('DISMISSAL_STAFF');
   });
 });
 

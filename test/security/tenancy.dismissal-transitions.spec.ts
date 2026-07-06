@@ -102,7 +102,7 @@ describe('DISMISSAL-CALLS-1B route metadata and permission boundaries', () => {
       /enum AppDeviceTokenSurface \{([\s\S]*?)\n\}/,
     )?.[1];
     expect(tokenSurfaceBlock).toBeTruthy();
-    expect(tokenSurfaceBlock).not.toContain('DISMISSAL_STAFF');
+    expect(tokenSurfaceBlock).toContain('DISMISSAL_STAFF');
     expect(schemaSource).not.toMatch(/model\s+DismissalWaitingStudent\b/);
     expect(schemaSource).not.toMatch(/model\s+DismissalShift\b/);
   });
