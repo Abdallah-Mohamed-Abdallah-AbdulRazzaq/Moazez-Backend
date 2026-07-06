@@ -96,7 +96,7 @@ export class RealtimeGateway
       });
     } catch (error) {
       this.logger.warn(
-        `Rejected realtime socket ${client.id}: ${this.getErrorCode(error)}`,
+        `Rejected realtime socket connection: ${this.getErrorCode(error)}`,
       );
       client.disconnect(true);
     }

@@ -124,7 +124,7 @@ These are intentionally absent in V1:
 - No root `/api/v1/waiting-students`
 - No root `/api/v1/notifications`
 - No public request-expiration trigger route
-- No Smart Pickup-specific parent notification route such as /api/v1/parent/smart-pickup/notifications. Any broader Parent App communication notification surface is outside the Dismissal Smart Pickup route inventory and was not added or changed by this feature.
+- No Smart Pickup-specific parent notification route such as `/api/v1/parent/smart-pickup/notifications`. Any broader Parent App communication notification surface is outside the Dismissal Smart Pickup route inventory and was not added or changed by this feature.
 - No pickup-code resend route
 - No pickup-code rotation route
 - No delegate OTP route

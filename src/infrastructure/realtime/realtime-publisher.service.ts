@@ -58,7 +58,7 @@ export class RealtimePublisherService {
       return true;
     } catch (error) {
       this.logger.warn(
-        `Realtime publish failed for event ${normalizedEventName} in room ${roomName}: ${this.getErrorMessage(
+        `Realtime publish failed for event ${normalizedEventName}: ${this.getErrorMessage(
           error,
         )}`,
       );

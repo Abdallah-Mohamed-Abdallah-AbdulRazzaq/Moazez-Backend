@@ -481,6 +481,104 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `parent_app.classroom.not_found`          | 404  | Parent App classroom was not found              |
 | `parent_app.lessons.not_found`            | 404  | Parent child lesson was not found               |
 
+### Parent Smart Pickup
+
+| Code                                           | HTTP | Message                                                     |
+| ---------------------------------------------- | ---- | ----------------------------------------------------------- |
+| `parent.smart_pickup.invalid_actor_type`       | 403  | Parent Smart Pickup requires a parent actor                 |
+| `parent.smart_pickup.parent_context_not_found` | 404  | Parent Smart Pickup parent context was not found            |
+| `parent.smart_pickup.school_context_required`  | 403  | Parent Smart Pickup requires an active school context       |
+| `parent.smart_pickup.invalid_status_filter`    | 422  | Parent Smart Pickup recent-calls filter is invalid          |
+
+### Dismissal Settings and Gates
+
+| Code                                                   | HTTP | Message                                                       |
+| ------------------------------------------------------ | ---- | ------------------------------------------------------------- |
+| `dismissal.settings.invalid_timezone`                  | 422  | Dismissal settings timezone is invalid                        |
+| `dismissal.settings.invalid_coordinates`               | 422  | Dismissal settings coordinates are invalid                    |
+| `dismissal.settings.invalid_radius`                    | 422  | Dismissal settings allowed radius is invalid                  |
+| `dismissal.settings.invalid_window`                    | 422  | Dismissal request window is invalid                           |
+| `dismissal.settings.invalid_thresholds`                | 422  | Dismissal thresholds are invalid, including expiry threshold  |
+| `dismissal.settings.default_gate_not_found`            | 404  | Default dismissal gate was not found in the current school    |
+| `dismissal.settings.coordinates_required_when_enabled` | 422  | School coordinates are required when dismissal is enabled     |
+| `dismissal.settings.disabled`                          | 409  | Dismissal is disabled for this school                         |
+| `dismissal.settings.coordinates_required`              | 422  | Dismissal school zone coordinates are required                |
+| `dismissal.gate.not_found`                             | 404  | Dismissal gate was not found                                  |
+| `dismissal.gate.duplicate_code`                        | 409  | A dismissal gate with this code already exists in this school |
+| `dismissal.gate.invalid_status`                        | 422  | Dismissal gate status is invalid                              |
+| `dismissal.gate.invalid_coordinates`                   | 422  | Dismissal gate coordinates are invalid                        |
+| `dismissal.gate.invalid_waiting_zones`                 | 422  | Dismissal gate waiting zones are invalid                      |
+| `dismissal.gate.closed`                                | 409  | Dismissal gate is not available for pickup requests           |
+
+### Dismissal Staff Assignments
+
+| Code                                                   | HTTP | Message                                                          |
+| ------------------------------------------------------ | ---- | ---------------------------------------------------------------- |
+| `dismissal.profile.invalid_actor_type`                 | 403  | Dismissal profile requires a dismissal staff actor               |
+| `dismissal.staff_assignment.not_found`                 | 404  | Dismissal staff assignment was not found                         |
+| `dismissal.staff_assignment.staff_not_found`           | 404  | Dismissal staff user was not found                               |
+| `dismissal.staff_assignment.staff_not_dismissal_staff` | 422  | Assigned user must be a dismissal staff user                     |
+| `dismissal.staff_assignment.staff_not_in_school`       | 422  | Dismissal staff user is not active in the current school         |
+| `dismissal.staff_assignment.scope_required`            | 422  | At least one dismissal staff assignment scope is required        |
+| `dismissal.staff_assignment.gate_not_found`            | 404  | Dismissal assignment gate was not found                          |
+| `dismissal.staff_assignment.stage_not_found`           | 404  | Dismissal assignment stage was not found                         |
+| `dismissal.staff_assignment.grade_not_found`           | 404  | Dismissal assignment grade was not found                         |
+| `dismissal.staff_assignment.section_not_found`         | 404  | Dismissal assignment section was not found                       |
+| `dismissal.staff_assignment.classroom_not_found`       | 404  | Dismissal assignment classroom was not found                     |
+| `dismissal.staff_assignment.scope_mismatch`            | 422  | Dismissal assignment academic scope is inconsistent              |
+| `dismissal.staff_assignment.invalid_time_window`       | 422  | Dismissal staff assignment time window is invalid                |
+| `dismissal.staff_assignment.duplicate_active`          | 409  | An active dismissal assignment already exists for this scope     |
+
+### Dismissal Requests, Waiting, Delivery, Notifications, and History
+
+| Code                                             | HTTP | Message                                                           |
+| ------------------------------------------------ | ---- | ----------------------------------------------------------------- |
+| `dismissal.request.not_found`                    | 404  | Dismissal request was not found                                   |
+| `dismissal.request.invalid_status_filter`        | 422  | Dismissal request status filter is invalid                        |
+| `dismissal.request.invalid_status`               | 422  | Dismissal request status is invalid                               |
+| `dismissal.request.invalid_transition`           | 409  | Dismissal request status transition is invalid                    |
+| `dismissal.request.terminal_status`              | 409  | Terminal dismissal request statuses are not allowed here          |
+| `dismissal.request.invalid_queue_filter`         | 422  | Dismissal request queue filter is invalid                         |
+| `dismissal.request.school_context_required`      | 403  | A school context is required for dismissal requests               |
+| `dismissal.request.outside_window`               | 422  | Dismissal request is outside the configured request window        |
+| `dismissal.request.outside_geofence`             | 422  | Parent location is outside the allowed school zone                |
+| `dismissal.request.student_not_owned`            | 404  | Dismissal request child was not found                             |
+| `dismissal.request.student_not_active`           | 409  | Dismissal request student is not active                           |
+| `dismissal.request.no_active_enrollment`         | 404  | Dismissal request student has no active enrollment                |
+| `dismissal.request.guardian_not_allowed`         | 403  | Guardian is not allowed to request pickup for this child          |
+| `dismissal.request.duplicate_active`             | 409  | Student already has an active dismissal request                   |
+| `dismissal.request.cancel_disabled`              | 409  | Parent cancellation is disabled for this school                   |
+| `dismissal.request.cancel_not_allowed`           | 409  | Dismissal request cannot be cancelled in its current state        |
+| `dismissal.request.already_terminal`             | 409  | Dismissal request is already terminal                             |
+| `dismissal.request.gate_required`                | 422  | A deterministic available dismissal gate is required              |
+| `dismissal.request.idempotency_conflict`         | 409  | Client request id was reused for a different dismissal request    |
+| `dismissal.waiting.not_found`                    | 404  | Waiting student request was not found                             |
+| `dismissal.waiting.invalid_arrival_status`       | 409  | This dismissal request cannot be marked as arrived yet            |
+| `dismissal.waiting.invalid_filter`               | 422  | Waiting-students filter is invalid                                |
+| `dismissal.delivery.not_found`                   | 404  | Dismissal delivery request was not found                          |
+| `dismissal.delivery.not_ready`                   | 409  | Dismissal request is not ready for delivery                       |
+| `dismissal.delivery.already_delivered`           | 409  | Dismissal request was already handed over                         |
+| `dismissal.delivery.pickup_code_required`        | 422  | Pickup code is required for dismissal delivery                    |
+| `dismissal.delivery.invalid_pickup_code`         | 422  | Pickup code is invalid                                            |
+| `dismissal.delivery.pickup_code_not_issued`      | 409  | Pickup code was not issued for this dismissal request             |
+| `dismissal.delivery.pickup_recipient_required`   | 422  | Pickup recipient token is required for dismissal delivery         |
+| `dismissal.delivery.invalid_pickup_recipient`    | 422  | Pickup recipient token is invalid                                 |
+| `dismissal.delivery.pickup_recipient_expired`    | 422  | Pickup recipient token has expired                                |
+| `dismissal.delivery.pickup_recipient_not_allowed`| 403  | Pickup recipient is not allowed for this dismissal request        |
+| `dismissal.delivery.pickup_recipient_not_found`  | 404  | Pickup recipient was not found for this dismissal request         |
+| `dismissal.delivery.invalid_payload`             | 422  | Dismissal delivery payload is invalid                             |
+| `dismissal.notification.not_found`               | 404  | Dismissal notification was not found                              |
+| `dismissal.notification.invalid_filter`          | 422  | Dismissal notification filter is invalid                          |
+| `dismissal.notification.school_context_required` | 403  | A school context is required for dismissal notifications          |
+| `dismissal.history.not_found`                    | 404  | Dismissal request history was not found                           |
+| `dismissal.history.invalid_status_filter`        | 422  | Dismissal history status filter is invalid                        |
+| `dismissal.history.invalid_date_range`           | 422  | Dismissal history date range is invalid                           |
+| `dismissal.history.invalid_filter_combination`   | 422  | Dismissal history filters are mutually exclusive                  |
+| `dismissal.escalation.not_found`                 | 404  | Dismissal request escalation target was not found                 |
+| `dismissal.escalation.not_allowed`               | 403  | Dismissal request escalation is not allowed                       |
+| `dismissal.escalation.invalid_reason`            | 422  | Dismissal request escalation reason is invalid                    |
+| `dismissal.escalation.terminal_request`          | 409  | Terminal dismissal requests cannot be escalated                   |
+
 ### Cross-cutting
 
 | Code                  | HTTP | Message                                               |
