@@ -998,6 +998,7 @@ enum CommunicationNotificationType {
   DISMISSAL_REQUEST_CALLED
   DISMISSAL_REQUEST_READY
   DISMISSAL_REQUEST_HANDED_OVER
+  DISMISSAL_REQUEST_EXPIRED
   SYSTEM_ALERT
 
   @@map("communication_notification_type")
@@ -2022,6 +2023,7 @@ model DismissalSettings {
   requestWindowEndLocal         String?  @map("request_window_end_local") @db.VarChar(5)
   delayThresholdMinutes         Int      @default(15) @map("delay_threshold_minutes")
   urgentThresholdMinutes        Int      @default(30) @map("urgent_threshold_minutes")
+  expiryThresholdMinutes        Int      @default(180) @map("expiry_threshold_minutes")
   requirePickupCode             Boolean  @default(true) @map("require_pickup_code")
   allowDelegatePickup           Boolean  @default(true) @map("allow_delegate_pickup")
   allowParentCancelBeforeCalled Boolean  @default(true) @map("allow_parent_cancel_before_called")

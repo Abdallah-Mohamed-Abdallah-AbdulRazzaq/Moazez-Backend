@@ -67,7 +67,7 @@ Settings:
 
 - Read with `GET /api/v1/dismissal/settings`.
 - Save with `PATCH /api/v1/dismissal/settings`.
-- Keep timezone, coordinates, radius, window, thresholds, code policy, delegate policy, cancel policy, and default gate in the admin form.
+- Keep timezone, coordinates, radius, window, delay/urgent/expiry thresholds, code policy, delegate policy, cancel policy, and default gate in the admin form.
 
 Gates:
 
@@ -108,6 +108,7 @@ Terminal transitions:
 
 - `ready -> handed_over` only through delivery.
 - `requested/queued -> cancelled` only through parent cancel.
+- active status -> `expired` only through the internal expiration worker.
 
 Never send terminal statuses through generic PATCH.
 
@@ -123,7 +124,7 @@ On event, refetch the affected REST endpoint:
 | --- | --- |
 | `dismissal.request.created` | active queue |
 | `dismissal.request.cancelled` | active queue, history |
-| `dismissal.request.status_changed` | active queue/detail/waiting |
+| `dismissal.request.status_changed` | active queue/detail/waiting/recent calls/history |
 | `dismissal.request.arrival_confirmed` | waiting students/detail |
 | `dismissal.request.delivered` | active queue/history |
 | `dismissal.queue.changed` | active queue |
@@ -204,7 +205,6 @@ Use machine `error.code`; do not branch on English messages.
 - No delegate OTP or external invitation.
 - No push notification/device-token surface for Dismissal Staff.
 - No durable realtime replay.
-- No request expiration worker.
 - No staff-parent chat or files.
 - No CSV/PDF export or analytics dashboards.
 - No shifts or duty handover.

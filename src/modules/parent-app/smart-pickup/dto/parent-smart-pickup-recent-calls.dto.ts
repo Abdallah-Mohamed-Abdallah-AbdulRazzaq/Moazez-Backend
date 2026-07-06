@@ -89,6 +89,7 @@ export class ParentSmartPickupRecentCallDto {
   readyAt!: string | null;
   handedOverAt!: string | null;
   cancelledAt!: string | null;
+  expiredAt!: string | null;
   child!: ParentSmartPickupRecentCallChildDto;
   gate!: ParentSmartPickupRecentCallGateDto;
   pickup!: ParentSmartPickupRecentCallPickupDto;

@@ -43,6 +43,7 @@ export interface DismissalNotificationSummaryCounts {
   requestCalledCount: number;
   requestReadyCount: number;
   requestHandedOverCount: number;
+  requestExpiredCount: number;
 }
 
 export interface DismissalNotificationListResult {
@@ -226,6 +227,10 @@ function summarizeNotificationCounts(params: {
     requestHandedOverCount:
       countByType.get(
         CommunicationNotificationType.DISMISSAL_REQUEST_HANDED_OVER,
+      ) ?? 0,
+    requestExpiredCount:
+      countByType.get(
+        CommunicationNotificationType.DISMISSAL_REQUEST_EXPIRED,
       ) ?? 0,
   };
 }

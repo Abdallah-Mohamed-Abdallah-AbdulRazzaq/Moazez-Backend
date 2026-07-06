@@ -24,6 +24,7 @@ const DEFAULT_TIMEZONE = 'Africa/Cairo';
 const DEFAULT_ALLOWED_RADIUS_METERS = 150;
 const DEFAULT_DELAY_THRESHOLD_MINUTES = 15;
 const DEFAULT_URGENT_THRESHOLD_MINUTES = 30;
+const DEFAULT_EXPIRY_THRESHOLD_MINUTES = 180;
 const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 @Injectable()
@@ -84,9 +85,16 @@ export class UpdateDismissalSettingsUseCase {
       'urgentThresholdMinutes',
       existing?.urgentThresholdMinutes ?? DEFAULT_URGENT_THRESHOLD_MINUTES,
     );
+    const expiryThresholdMinutes = this.resolveInteger(
+      command,
+      'expiryThresholdMinutes',
+      existing?.expiryThresholdMinutes ?? DEFAULT_EXPIRY_THRESHOLD_MINUTES,
+    );
     if (
       delayThresholdMinutes < 1 ||
-      urgentThresholdMinutes < delayThresholdMinutes
+      urgentThresholdMinutes < delayThresholdMinutes ||
+      expiryThresholdMinutes <= urgentThresholdMinutes ||
+      expiryThresholdMinutes > 1440
     ) {
       throw new DismissalSettingsInvalidThresholdsException();
     }
@@ -128,6 +136,7 @@ export class UpdateDismissalSettingsUseCase {
         requestWindowEndLocal,
         delayThresholdMinutes,
         urgentThresholdMinutes,
+        expiryThresholdMinutes,
         requirePickupCode: this.hasOwn(command, 'requirePickupCode')
           ? Boolean(command.requirePickupCode)
           : existing?.requirePickupCode ?? true,
@@ -195,7 +204,8 @@ export class UpdateDismissalSettingsUseCase {
     key:
       | 'allowedRadiusMeters'
       | 'delayThresholdMinutes'
-      | 'urgentThresholdMinutes',
+      | 'urgentThresholdMinutes'
+      | 'expiryThresholdMinutes',
     fallback: number,
   ): number {
     const value = this.hasOwn(command, key) ? command[key] : fallback;
@@ -291,6 +301,7 @@ export class UpdateDismissalSettingsUseCase {
       requestWindowEndLocal: settings.requestWindowEndLocal,
       delayThresholdMinutes: settings.delayThresholdMinutes,
       urgentThresholdMinutes: settings.urgentThresholdMinutes,
+      expiryThresholdMinutes: settings.expiryThresholdMinutes,
       requirePickupCode: settings.requirePickupCode,
       allowDelegatePickup: settings.allowDelegatePickup,
       allowParentCancelBeforeCalled: settings.allowParentCancelBeforeCalled,

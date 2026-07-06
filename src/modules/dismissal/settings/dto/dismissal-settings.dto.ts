@@ -54,6 +54,11 @@ export class UpdateDismissalSettingsDto {
   urgentThresholdMinutes?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  expiryThresholdMinutes?: number;
+
+  @IsOptional()
   @IsBoolean()
   requirePickupCode?: boolean;
 
@@ -85,6 +90,7 @@ export class DismissalSettingsRequestWindowDto {
 export class DismissalSettingsThresholdsDto {
   delayMinutes!: number;
   urgentMinutes!: number;
+  expiryMinutes!: number;
 }
 
 export class DismissalSettingsPoliciesDto {

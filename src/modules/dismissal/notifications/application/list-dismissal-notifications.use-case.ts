@@ -72,6 +72,8 @@ export function parseNotificationType(
       return CommunicationNotificationType.DISMISSAL_REQUEST_READY;
     case 'request_handed_over':
       return CommunicationNotificationType.DISMISSAL_REQUEST_HANDED_OVER;
+    case 'request_expired':
+      return CommunicationNotificationType.DISMISSAL_REQUEST_EXPIRED;
     default:
       throw new DismissalNotificationInvalidFilterException({
         field: 'type',

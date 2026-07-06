@@ -32,7 +32,8 @@ export type PublicDismissalNotificationType =
   | 'request_cancelled'
   | 'request_called'
   | 'request_ready'
-  | 'request_handed_over';
+  | 'request_handed_over'
+  | 'request_expired';
 
 export type PublicDismissalNotificationRequestStatus =
   | 'requested'
@@ -84,6 +85,7 @@ export class DismissalNotificationsSummaryDto {
   requestCalledCount!: number;
   requestReadyCount!: number;
   requestHandedOverCount!: number;
+  requestExpiredCount!: number;
 }
 
 export class DismissalNotificationsPaginationDto {

@@ -98,6 +98,7 @@ function presentRequest(
       request.handedOverAt?.toISOString() ??
       statusChangedAt(request, DismissalRequestStatus.HANDED_OVER),
     cancelledAt: statusChangedAt(request, DismissalRequestStatus.CANCELLED),
+    expiredAt: statusChangedAt(request, DismissalRequestStatus.EXPIRED),
     child: {
       id: request.student.id,
       displayName:

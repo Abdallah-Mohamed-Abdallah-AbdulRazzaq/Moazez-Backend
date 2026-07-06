@@ -13,6 +13,7 @@ This document freezes implemented backend behavior for frontend/mobile teams. It
 - Dismissal in-app notifications for staff/recipient users.
 - Best-effort realtime queue/request/notification events through the existing realtime gateway.
 - History, delay/urgent computed signals, and manual escalation event/audit.
+- Automatic request expiration worker for stale active requests.
 
 ## Implemented but Best-Effort
 
@@ -21,7 +22,6 @@ This document freezes implemented backend behavior for frontend/mobile teams. It
 
 ## Not Implemented Yet
 
-- Request expiration worker.
 - Durable realtime reconnect replay.
 - Push notifications and `AppDeviceTokenSurface.DISMISSAL_STAFF`.
 - Temporary external delegate authorization, delegate OTP, delegate QR, pickup-code resend/rotation.
@@ -317,7 +317,7 @@ Rules:
 
 ### Settings and Gates
 
-Settings response contains enabled flag, timezone, schoolZone, radius, requestWindow, thresholds, policies, defaultGate, configured, and updatedAt.
+Settings response contains enabled flag, timezone, schoolZone, radius, requestWindow, thresholds, policies, defaultGate, configured, and updatedAt. Thresholds include `delayMinutes`, `urgentMinutes`, and `expiryMinutes`.
 
 Gate response contains id, code, name, campus, public status, isActive, sortOrder, location, waitingZones, notes, createdAt, and updatedAt.
 
@@ -347,8 +347,13 @@ Profile is for `DISMISSAL_STAFF` only and returns identity, school, assignments,
 | `READY` | `HANDED_OVER` | `POST /dismissal/requests/:id/deliver` only |
 | `REQUESTED` | `CANCELLED` | `POST /parent/smart-pickup/requests/:id/cancel` only |
 | `QUEUED` | `CANCELLED` | `POST /parent/smart-pickup/requests/:id/cancel` only |
+| active statuses | `EXPIRED` | internal expiration worker only |
 
 Same-status lifecycle PATCH is an idempotent no-op. Generic PATCH cannot set terminal statuses.
+
+### Automatic Expiration
+
+The internal expiration worker runs as a BullMQ repeatable job and has no public REST trigger. It marks stale `requested`, `queued`, `called`, `moving`, `at_gate`, and `ready` requests as `expired` using `DismissalSettings.thresholds.expiryMinutes`, falling back to 180 minutes when no settings row exists. Expiration creates one safe `request_status_changed` timeline event, a service-account audit log, in-app notification rows for the requesting parent and matching dismissal staff, and existing realtime status/queue/parent/notification events after commit.
 
 ### Waiting Students
 
@@ -428,8 +433,9 @@ Implemented dismissal notification public types:
 - `request_called`
 - `request_ready`
 - `request_handed_over`
+- `request_expired`
 
-Parent-facing dismissal updates are represented through Parent Smart Pickup REST/realtime behavior, not a parent notification route.
+Parent-facing dismissal updates are represented through Parent Smart Pickup REST/realtime behavior; expiration also creates a parent in-app notification row without adding a dedicated Parent Smart Pickup notification route.
 
 No push/device-token work exists yet. Escalation does not create notification.
 
@@ -464,7 +470,7 @@ Realtime payloads contain safe request/child/gate/notification summaries only. T
 | `dismissal.settings.invalid_coordinates` | Invalid settings coordinates | 422 | validate admin form | no |
 | `dismissal.settings.invalid_radius` | Invalid radius | 422 | validate admin form | no |
 | `dismissal.settings.invalid_window` | Invalid HH:mm window | 422 | validate admin form | no |
-| `dismissal.settings.invalid_thresholds` | Urgent threshold below delay or invalid | 422 | validate admin form | no |
+| `dismissal.settings.invalid_thresholds` | Urgent threshold below delay, expiry threshold not above urgent, or threshold out of bounds | 422 | validate admin form | no |
 | `dismissal.settings.default_gate_not_found` | Default gate outside scope/deleted | 404/422 | refetch gates | yes |
 | `dismissal.settings.coordinates_required_when_enabled` | Enabled settings need coordinates | 422 | require coordinates | no |
 | `dismissal.gate.not_found` | Gate hidden/not found | 404 | refetch list | yes |

@@ -200,7 +200,7 @@ describe('DISMISSAL-CORE-1A settings and gates (e2e)', () => {
       },
       allowedRadiusMeters: 150,
       requestWindow: { startLocal: null, endLocal: null },
-      thresholds: { delayMinutes: 15, urgentMinutes: 30 },
+      thresholds: { delayMinutes: 15, urgentMinutes: 30, expiryMinutes: 180 },
       policies: {
         requirePickupCode: true,
         allowDelegatePickup: true,
@@ -340,7 +340,7 @@ describe('DISMISSAL-CORE-1A settings and gates (e2e)', () => {
       },
       allowedRadiusMeters: 250,
       requestWindow: { startLocal: '12:30', endLocal: '15:45' },
-      thresholds: { delayMinutes: 10, urgentMinutes: 20 },
+      thresholds: { delayMinutes: 10, urgentMinutes: 20, expiryMinutes: 180 },
       policies: {
         requirePickupCode: true,
         allowDelegatePickup: false,

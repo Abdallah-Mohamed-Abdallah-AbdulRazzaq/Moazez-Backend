@@ -294,6 +294,8 @@ function resolveStatusNotificationTypes(
       return [CommunicationNotificationType.DISMISSAL_REQUEST_CALLED];
     case DismissalRequestStatus.READY:
       return [CommunicationNotificationType.DISMISSAL_REQUEST_READY];
+    case DismissalRequestStatus.EXPIRED:
+      return [CommunicationNotificationType.DISMISSAL_REQUEST_EXPIRED];
     default:
       return [];
   }

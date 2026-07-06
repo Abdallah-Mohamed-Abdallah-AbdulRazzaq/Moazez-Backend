@@ -405,6 +405,11 @@ function buildDismissalNotificationMessage(params: {
         title: 'Pickup completed',
         body: `Pickup for ${childDisplayName} has been completed.`,
       };
+    case CommunicationNotificationType.DISMISSAL_REQUEST_EXPIRED:
+      return {
+        title: 'Pickup request expired',
+        body: `The pickup request for ${childDisplayName} expired automatically.`,
+      };
     default:
       return {
         title: 'Dismissal update',

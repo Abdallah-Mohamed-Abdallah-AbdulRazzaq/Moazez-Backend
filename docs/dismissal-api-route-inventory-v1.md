@@ -57,6 +57,10 @@ Guard chain: every Dismissal and Parent Smart Pickup REST route uses `JwtAuthGua
 
 Implemented transition targets are `queued`, `called`, `moving`, `at_gate`, and `ready`.
 
+## Dismissal Automatic Expiration Worker
+
+No public route is registered for expiration. The internal BullMQ worker runs `ExpireDismissalRequestsUseCase.runOnce()` on a repeatable one-minute cadence outside tests. It changes stale active requests to `EXPIRED` using `DismissalSettings.expiryThresholdMinutes` with a 180-minute fallback, creates one safe status-change event and service-account audit record per changed request, creates safe in-app notification rows, and publishes existing realtime events after commit.
+
 ## Dismissal Waiting Students
 
 | Method | Path | Permission | DTO | Response | Read/write | Side effects | Scope |
@@ -99,11 +103,11 @@ Implemented server event names:
 | --- | --- | --- | --- |
 | `dismissal.request.created` | assignment-matching staff users | parent request creation commits | `GET /dismissal/requests/active` |
 | `dismissal.request.cancelled` | assignment-matching staff users | parent cancellation changes state | `GET /dismissal/requests/active`, `GET /parent/smart-pickup/recent-calls` |
-| `dismissal.request.status_changed` | assignment-matching staff users | status PATCH changes state | `GET /dismissal/requests/:id`, `GET /dismissal/requests/active` |
+| `dismissal.request.status_changed` | assignment-matching staff users | status PATCH or automatic expiration changes state | `GET /dismissal/requests/:id`, `GET /dismissal/requests/active`, `GET /dismissal/requests/history/:id` |
 | `dismissal.request.arrival_confirmed` | assignment-matching staff users | arrival endpoint changes `CALLED/MOVING` to `AT_GATE` | `GET /dismissal/waiting-students` |
 | `dismissal.request.delivered` | assignment-matching staff users | delivery commits | `GET /dismissal/requests/history/:id` |
-| `dismissal.queue.changed` | assignment-matching staff users | request creation/cancel/status/arrival/delivery changes queue | `GET /dismissal/requests/active` |
-| `parent.smart_pickup.request.changed` | requesting parent user | request creation/cancel/status/arrival/delivery changes request | `GET /parent/smart-pickup/recent-calls` |
+| `dismissal.queue.changed` | assignment-matching staff users | request creation/cancel/status/arrival/delivery/expiration changes queue | `GET /dismissal/requests/active` |
+| `parent.smart_pickup.request.changed` | requesting parent user | request creation/cancel/status/arrival/delivery/expiration changes request | `GET /parent/smart-pickup/recent-calls` |
 | `dismissal.notification.created` | notification recipient user | in-app dismissal notification row is created | `GET /dismissal/notifications` |
 | `dismissal.notification.read` | current actor user | one notification is marked read | `GET /dismissal/notifications` |
 | `dismissal.notifications.read_all` | current actor user | read-all changes unread rows | `GET /dismissal/notifications` |
@@ -119,7 +123,8 @@ These are intentionally absent in V1:
 - No `/api/v1/requests/history`
 - No root `/api/v1/waiting-students`
 - No root `/api/v1/notifications`
-- No `/api/v1/parent/notifications`
+- No public request-expiration trigger route
+- No Smart Pickup-specific parent notification route such as /api/v1/parent/smart-pickup/notifications. Any broader Parent App communication notification surface is outside the Dismissal Smart Pickup route inventory and was not added or changed by this feature.
 - No pickup-code resend route
 - No pickup-code rotation route
 - No delegate OTP route

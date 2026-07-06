@@ -9,6 +9,7 @@ const DEFAULT_TIMEZONE = 'Africa/Cairo';
 const DEFAULT_ALLOWED_RADIUS_METERS = 150;
 const DEFAULT_DELAY_THRESHOLD_MINUTES = 15;
 const DEFAULT_URGENT_THRESHOLD_MINUTES = 30;
+const DEFAULT_EXPIRY_THRESHOLD_MINUTES = 180;
 
 function toNumber(value: { toNumber(): number } | null | undefined): number | null {
   return value ? value.toNumber() : null;
@@ -79,6 +80,8 @@ export function presentDismissalSettings(
         settings?.delayThresholdMinutes ?? DEFAULT_DELAY_THRESHOLD_MINUTES,
       urgentMinutes:
         settings?.urgentThresholdMinutes ?? DEFAULT_URGENT_THRESHOLD_MINUTES,
+      expiryMinutes:
+        settings?.expiryThresholdMinutes ?? DEFAULT_EXPIRY_THRESHOLD_MINUTES,
     },
     policies: {
       requirePickupCode: settings?.requirePickupCode ?? true,

@@ -39,6 +39,7 @@ export type CommunicationNotificationTypeValue =
   | 'DISMISSAL_REQUEST_CALLED'
   | 'DISMISSAL_REQUEST_READY'
   | 'DISMISSAL_REQUEST_HANDED_OVER'
+  | 'DISMISSAL_REQUEST_EXPIRED'
   | 'SYSTEM_ALERT';
 
 export type CommunicationNotificationDeliveryChannelValue =
@@ -114,11 +115,13 @@ const NOTIFICATION_TYPE_MAP: Record<string, CommunicationNotificationTypeValue> 
     dismissal_request_called: 'DISMISSAL_REQUEST_CALLED',
     dismissal_request_ready: 'DISMISSAL_REQUEST_READY',
     dismissal_request_handed_over: 'DISMISSAL_REQUEST_HANDED_OVER',
+    dismissal_request_expired: 'DISMISSAL_REQUEST_EXPIRED',
     request_created: 'DISMISSAL_REQUEST_CREATED',
     request_cancelled: 'DISMISSAL_REQUEST_CANCELLED',
     request_called: 'DISMISSAL_REQUEST_CALLED',
     request_ready: 'DISMISSAL_REQUEST_READY',
     request_handed_over: 'DISMISSAL_REQUEST_HANDED_OVER',
+    request_expired: 'DISMISSAL_REQUEST_EXPIRED',
     system_alert: 'SYSTEM_ALERT',
   };
 

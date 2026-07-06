@@ -69,6 +69,8 @@ function presentNotificationType(
       return 'request_ready';
     case CommunicationNotificationType.DISMISSAL_REQUEST_HANDED_OVER:
       return 'request_handed_over';
+    case CommunicationNotificationType.DISMISSAL_REQUEST_EXPIRED:
+      return 'request_expired';
     case CommunicationNotificationType.DISMISSAL_REQUEST_CREATED:
     default:
       return 'request_created';
