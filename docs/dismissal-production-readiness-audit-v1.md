@@ -171,10 +171,13 @@ Known operational consideration:
 
 - Expiry worker logs start/end counts at the application log layer. Metrics and dashboards remain an operational deployment concern for V1.
 
-## Remaining Approved Completion Sprint
+## Final Acceptance Status
 
-Remaining Approved Completion Sprint:
-DISMISSAL-FINAL-ACCEPTANCE-1A — End-to-End Product Acceptance
+Final acceptance completed:
+
+```text
+DISMISSAL-FINAL-ACCEPTANCE-1A - End-to-End Product Acceptance
+```
 
 ## Final Production-Readiness Verdict
 
@@ -182,5 +185,5 @@ Ready:
 
 - The Dismissal / Smart Pickup V1 backend is production-ready for REST-backed operation with best-effort realtime and in-app notifications.
 - The push delivery/device-token gap is now closed through the existing communication push infrastructure.
-- The remaining step is DISMISSAL-FINAL-ACCEPTANCE-1A — End-to-End Product Acceptance.
+- Final product acceptance is documented in `docs/dismissal-final-acceptance-v1.md`.
 - `npx prisma migrate dev --name dismissal_staff_device_token_surface` was also blocked by the same pre-existing shadow replay drift. No reset was performed. The enum-only migration was applied with `npx prisma db execute` and marked applied with `npx prisma migrate resolve --applied 20260706170000_dismissal_staff_device_token_surface`.
