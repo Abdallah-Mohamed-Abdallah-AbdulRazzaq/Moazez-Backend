@@ -511,8 +511,10 @@ describe('DISMISSAL-REALTIME-1A queue realtime events (e2e)', () => {
       .set('Authorization', `Bearer ${staffAssignedToken}`)
       .send({
         pickupCode: deliveredRequest.pickupCode,
-        receiverName: 'Parent Realtime',
-        receiverRelation: 'guardian',
+        pickupRecipientToken: await getPickupRecipientToken(
+          staffAssignedToken,
+          deliveredRequest.id,
+        ),
       })
       .expect(201);
     expect(
@@ -693,6 +695,18 @@ describe('DISMISSAL-REALTIME-1A queue realtime events (e2e)', () => {
       .patch(`${GLOBAL_PREFIX}/dismissal/requests/${requestId}/status`)
       .set('Authorization', `Bearer ${staffAssignedToken}`)
       .send({ status });
+  }
+
+  async function getPickupRecipientToken(
+    token: string,
+    requestId: string,
+  ): Promise<string> {
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dismissal/requests/${requestId}/pickup-recipients`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    return response.body.recipients[0].pickupRecipientToken as string;
   }
 
   async function createStaffNotification(requestId: string): Promise<string> {

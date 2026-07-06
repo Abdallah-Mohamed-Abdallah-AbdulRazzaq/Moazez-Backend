@@ -15,7 +15,9 @@ import { DismissalNotificationsRepository } from './notifications/infrastructure
 import { GetDismissalProfileUseCase } from './profile/application/get-dismissal-profile.use-case';
 import { DismissalProfileController } from './profile/controller/dismissal-profile.controller';
 import { GetDismissalRequestDetailUseCase } from './requests/application/get-dismissal-request-detail.use-case';
+import { ListDismissalPickupRecipientsUseCase } from './requests/application/list-dismissal-pickup-recipients.use-case';
 import { ListActiveDismissalRequestsUseCase } from './requests/application/list-active-dismissal-requests.use-case';
+import { PickupRecipientTokenService } from './requests/application/pickup-recipient-token.service';
 import { UpdateDismissalRequestStatusUseCase } from './requests/application/update-dismissal-request-status.use-case';
 import { DeliverDismissalRequestUseCase } from './requests/application/deliver-dismissal-request.use-case';
 import { DismissalRequestsController } from './requests/controller/dismissal-requests.controller';
@@ -74,8 +76,10 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DeleteDismissalStaffAssignmentUseCase,
     ListActiveDismissalRequestsUseCase,
     GetDismissalRequestDetailUseCase,
+    ListDismissalPickupRecipientsUseCase,
     UpdateDismissalRequestStatusUseCase,
     DeliverDismissalRequestUseCase,
+    PickupRecipientTokenService,
     ListWaitingStudentsUseCase,
     ConfirmStudentArrivalUseCase,
     ListDismissalNotificationsUseCase,

@@ -461,7 +461,12 @@ describe('DISMISSAL-NOTIFICATIONS-1A runtime (e2e)', () => {
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/dismissal/requests/${deliveredRequestId}/deliver`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ receiverName: 'Safe Receiver' })
+      .send({
+        pickupRecipientToken: await getPickupRecipientToken(
+          adminToken,
+          deliveredRequestId,
+        ),
+      })
       .expect(201);
     await expectNotificationCount({
       recipientUserId: parentAId,
@@ -633,6 +638,18 @@ describe('DISMISSAL-NOTIFICATIONS-1A runtime (e2e)', () => {
       .patch(`${GLOBAL_PREFIX}/dismissal/requests/${requestId}/status`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ status });
+  }
+
+  async function getPickupRecipientToken(
+    token: string,
+    requestId: string,
+  ): Promise<string> {
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dismissal/requests/${requestId}/pickup-recipients`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    return response.body.recipients[0].pickupRecipientToken as string;
   }
 
   async function clearRuntimeState(): Promise<void> {

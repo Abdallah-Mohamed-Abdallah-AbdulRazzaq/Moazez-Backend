@@ -412,6 +412,53 @@ export class DismissalDeliveryPickupCodeNotIssuedException extends DismissalExce
   }
 }
 
+export class DismissalDeliveryPickupRecipientRequiredException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.delivery.pickup_recipient_required',
+      'Pickup recipient token is required for dismissal delivery.',
+    );
+  }
+}
+
+export class DismissalDeliveryInvalidPickupRecipientException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.delivery.invalid_pickup_recipient',
+      'Pickup recipient token is invalid.',
+    );
+  }
+}
+
+export class DismissalDeliveryPickupRecipientExpiredException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.delivery.pickup_recipient_expired',
+      'Pickup recipient token has expired.',
+    );
+  }
+}
+
+export class DismissalDeliveryPickupRecipientNotAllowedException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.delivery.pickup_recipient_not_allowed',
+      'Pickup recipient is not allowed for this dismissal request.',
+      HttpStatus.FORBIDDEN,
+    );
+  }
+}
+
+export class DismissalDeliveryPickupRecipientNotFoundException extends DismissalException {
+  constructor() {
+    super(
+      'dismissal.delivery.pickup_recipient_not_found',
+      'Pickup recipient was not found for this dismissal request.',
+      HttpStatus.NOT_FOUND,
+    );
+  }
+}
+
 export class DismissalDeliveryInvalidPayloadException extends DismissalException {
   constructor() {
     super(

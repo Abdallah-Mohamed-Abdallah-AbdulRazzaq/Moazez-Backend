@@ -407,10 +407,10 @@ describe('DISMISSAL-DELIVERY-1A pickup code and handover (e2e)', () => {
       pickupCodeIssuedAt: issued.issuedAt,
     });
 
+    const pickupRecipientToken = await getPickupRecipientToken(adminToken, requestId);
     const response = await deliver(adminToken, requestId, {
       pickupCode: issued.code,
-      receiverName: '  Parent Receiver  ',
-      receiverRelation: '  Father  ',
+      pickupRecipientToken,
       note: '  Delivered at main gate  ',
     }).expect(201);
 
@@ -421,9 +421,12 @@ describe('DISMISSAL-DELIVERY-1A pickup code and handover (e2e)', () => {
         previousStatus: 'ready',
         handedOverAt: expect.any(String),
         pickupCodeVerified: true,
+        pickupRecipientVerified: true,
         receiver: {
-          name: 'Parent Receiver',
-          relation: 'Father',
+          name: 'Delivery Guardian a',
+          relation: 'guardian',
+          verified: true,
+          source: 'guardian_link',
         },
       }),
     );
@@ -446,8 +449,8 @@ describe('DISMISSAL-DELIVERY-1A pickup code and handover (e2e)', () => {
     expect(stored.handedOverAt).toBeInstanceOf(Date);
     expect(stored.handedOverById).toEqual(expect.any(String));
     expect(stored.pickupCodeVerifiedAt).toBeInstanceOf(Date);
-    expect(stored.handoverReceiverName).toBe('Parent Receiver');
-    expect(stored.handoverReceiverRelation).toBe('Father');
+    expect(stored.handoverReceiverName).toBe('Delivery Guardian a');
+    expect(stored.handoverReceiverRelation).toBe('guardian');
     expect(stored.handoverNote).toBe('Delivered at main gate');
 
     const event = await prisma.dismissalRequestEvent.findFirstOrThrow({
@@ -461,7 +464,10 @@ describe('DISMISSAL-DELIVERY-1A pickup code and handover (e2e)', () => {
       statusFrom: DismissalRequestStatus.READY,
       statusTo: DismissalRequestStatus.HANDED_OVER,
       note: 'Delivered at main gate',
-      metadata: null,
+      metadata: {
+        pickupRecipientVerified: true,
+        pickupRecipientSource: 'guardian_link',
+      },
     });
 
     const audit = await prisma.auditLog.findFirst({
@@ -479,6 +485,8 @@ describe('DISMISSAL-DELIVERY-1A pickup code and handover (e2e)', () => {
         after: expect.objectContaining({
           status: 'HANDED_OVER',
           pickupCodeVerified: true,
+          pickupRecipientVerified: true,
+          pickupRecipientSource: 'guardian_link',
           note: true,
         }),
       }),
@@ -501,12 +509,13 @@ describe('DISMISSAL-DELIVERY-1A pickup code and handover (e2e)', () => {
       lastName: 'Deliver',
     });
 
-    const response = await deliver(adminToken, requestId, {}).expect(201);
+    const response = await deliverWithRecipient(adminToken, requestId);
     expect(response.body.delivery).toEqual(
       expect.objectContaining({
         id: requestId,
         status: 'handed_over',
         pickupCodeVerified: false,
+        pickupRecipientVerified: true,
       }),
     );
 
@@ -682,7 +691,7 @@ describe('DISMISSAL-DELIVERY-1A pickup code and handover (e2e)', () => {
       .send({ status: 'handed_over' })
       .expect(409);
 
-    await deliver(adminToken, requestId, {}).expect(201);
+    await deliverWithRecipient(adminToken, requestId);
     await expectDeliveredRequestHidden(requestId);
 
     await request(app.getHttpServer())
@@ -739,8 +748,8 @@ describe('DISMISSAL-DELIVERY-1A pickup code and handover (e2e)', () => {
       lastName: 'Assignment',
     });
 
-    await deliver(staffGateToken, gateVisibleId, {}).expect(201);
-    await deliver(staffClassroomToken, classroomVisibleId, {}).expect(201);
+    await deliverWithRecipient(staffGateToken, gateVisibleId);
+    await deliverWithRecipient(staffClassroomToken, classroomVisibleId);
 
     for (const [token, requestId] of [
       [staffNonMatchingToken, hiddenId],
@@ -782,6 +791,33 @@ describe('DISMISSAL-DELIVERY-1A pickup code and handover (e2e)', () => {
       .post(`${GLOBAL_PREFIX}/dismissal/requests/${requestId}/deliver`)
       .set('Authorization', `Bearer ${token}`)
       .send(body);
+  }
+
+  async function deliverWithRecipient(
+    token: string,
+    requestId: string,
+    body: Record<string, unknown> = {},
+  ) {
+    return deliver(token, requestId, {
+      ...body,
+      pickupRecipientToken: await getPickupRecipientToken(token, requestId),
+    }).expect(201);
+  }
+
+  async function getPickupRecipientToken(
+    token: string,
+    requestId: string,
+    index = 0,
+  ): Promise<string> {
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dismissal/requests/${requestId}/pickup-recipients`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    assertNoPickupRecipientsLeak(response.body);
+    expect(response.body.recipients[index]?.pickupRecipientToken).toEqual(
+      expect.any(String),
+    );
+    return response.body.recipients[index].pickupRecipientToken as string;
   }
 
   async function expectDeliveredRequestHidden(requestId: string) {
@@ -1293,8 +1329,15 @@ function assertNoParentRequestLeak(
 function assertNoDeliveryLeak(body: unknown): void {
   assertNoForbiddenKeys(body);
   assertNoExactKey(body, 'pickupCode');
+  assertNoExactKey(body, 'pickupRecipientToken');
   expect(JSON.stringify(body)).not.toContain('pickupCodeHash');
   expect(JSON.stringify(body)).not.toContain('pickupCodeSalt');
+}
+
+function assertNoPickupRecipientsLeak(body: unknown): void {
+  assertNoForbiddenKeys(body);
+  expect(JSON.stringify(body)).not.toContain('0102000');
+  expect(JSON.stringify(body)).not.toContain('guardian.userId');
 }
 
 function assertNoForbiddenKeys(body: unknown): void {
@@ -1304,6 +1347,7 @@ function assertNoForbiddenKeys(body: unknown): void {
     'membershipId',
     'roleId',
     'guardianId',
+    'studentGuardianId',
     'userId',
     'applicationId',
     'enrollmentId',

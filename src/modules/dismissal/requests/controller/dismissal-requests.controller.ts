@@ -15,6 +15,7 @@ import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../../../common/guards/permissions.guard';
 import { ScopeResolverGuard } from '../../../../common/guards/scope-resolver.guard';
 import { GetDismissalRequestDetailUseCase } from '../application/get-dismissal-request-detail.use-case';
+import { ListDismissalPickupRecipientsUseCase } from '../application/list-dismissal-pickup-recipients.use-case';
 import { ListActiveDismissalRequestsUseCase } from '../application/list-active-dismissal-requests.use-case';
 import { UpdateDismissalRequestStatusUseCase } from '../application/update-dismissal-request-status.use-case';
 import { DeliverDismissalRequestUseCase } from '../application/deliver-dismissal-request.use-case';
@@ -31,6 +32,7 @@ import {
   DeliverDismissalRequestDto,
   DeliverDismissalRequestResponseDto,
 } from '../dto/deliver-dismissal-request.dto';
+import { DismissalPickupRecipientsResponseDto } from '../dto/list-pickup-recipients.dto';
 
 @ApiTags('dismissal-requests')
 @ApiBearerAuth()
@@ -42,6 +44,7 @@ export class DismissalRequestsController {
     private readonly getDismissalRequestDetailUseCase: GetDismissalRequestDetailUseCase,
     private readonly updateDismissalRequestStatusUseCase: UpdateDismissalRequestStatusUseCase,
     private readonly deliverDismissalRequestUseCase: DeliverDismissalRequestUseCase,
+    private readonly listDismissalPickupRecipientsUseCase: ListDismissalPickupRecipientsUseCase,
   ) {}
 
   @Get('active')
@@ -60,6 +63,15 @@ export class DismissalRequestsController {
     @Param('id', new ParseUUIDPipe()) requestId: string,
   ): Promise<DismissalRequestDetailResponseDto> {
     return this.getDismissalRequestDetailUseCase.execute(requestId);
+  }
+
+  @Get(':id/pickup-recipients')
+  @RequiredPermissions('dismissal.requests.deliver')
+  @ApiOkResponse({ type: DismissalPickupRecipientsResponseDto })
+  listPickupRecipients(
+    @Param('id', new ParseUUIDPipe()) requestId: string,
+  ): Promise<DismissalPickupRecipientsResponseDto> {
+    return this.listDismissalPickupRecipientsUseCase.execute(requestId);
   }
 
   @Patch(':id/status')

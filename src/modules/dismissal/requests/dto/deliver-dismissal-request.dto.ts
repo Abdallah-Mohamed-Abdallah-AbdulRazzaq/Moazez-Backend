@@ -8,18 +8,13 @@ import {
 export class DeliverDismissalRequestDto {
   @IsOptional()
   @IsString()
+  @MaxLength(2048)
+  pickupRecipientToken?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(32)
   pickupCode?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  receiverName?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(80)
-  receiverRelation?: string | null;
 
   @IsOptional()
   @IsString()
@@ -30,6 +25,8 @@ export class DeliverDismissalRequestDto {
 export class DismissalRequestDeliveryReceiverDto {
   name!: string | null;
   relation!: string | null;
+  verified!: true;
+  source!: 'guardian_link';
 }
 
 export class DismissalRequestDeliveryItemDto {
@@ -38,6 +35,7 @@ export class DismissalRequestDeliveryItemDto {
   previousStatus!: 'ready';
   handedOverAt!: string;
   pickupCodeVerified!: boolean;
+  pickupRecipientVerified!: true;
   child!: DismissalRequestChildDto;
   gate!: DismissalRequestGateDto;
   receiver!: DismissalRequestDeliveryReceiverDto;

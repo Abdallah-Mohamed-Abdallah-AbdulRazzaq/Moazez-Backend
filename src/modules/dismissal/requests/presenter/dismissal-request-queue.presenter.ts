@@ -199,6 +199,7 @@ export function presentDismissalRequestDelivery(params: {
       previousStatus: presentTimelineStatus(params.previousStatus) as 'ready',
       handedOverAt: (params.request.handedOverAt ?? params.request.updatedAt).toISOString(),
       pickupCodeVerified: Boolean(params.request.pickupCodeVerifiedAt),
+      pickupRecipientVerified: true,
       child: {
         id: params.request.student.id,
         displayName:
@@ -219,6 +220,8 @@ export function presentDismissalRequestDelivery(params: {
       receiver: {
         name: params.request.handoverReceiverName ?? null,
         relation: params.request.handoverReceiverRelation ?? null,
+        verified: true,
+        source: 'guardian_link',
       },
       timeline: params.request.events.map(presentDeliveryTimelineEvent),
     },

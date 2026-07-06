@@ -3,10 +3,14 @@ import { DismissalRequestStatus, UserType } from '@prisma/client';
 import {
   DismissalDeliveryAlreadyDeliveredException,
   DismissalDeliveryInvalidPickupCodeException,
+  DismissalDeliveryInvalidPickupRecipientException,
   DismissalDeliveryNotFoundException,
   DismissalDeliveryNotReadyException,
   DismissalDeliveryPickupCodeNotIssuedException,
   DismissalDeliveryPickupCodeRequiredException,
+  DismissalDeliveryPickupRecipientNotAllowedException,
+  DismissalDeliveryPickupRecipientNotFoundException,
+  DismissalDeliveryPickupRecipientRequiredException,
 } from '../../shared/dismissal.errors';
 import {
   normalizePickupCode,
@@ -18,10 +22,14 @@ import { isRequestVisibleToStaff } from './list-active-dismissal-requests.use-ca
 import { DeliverDismissalRequestDto } from '../dto/deliver-dismissal-request.dto';
 import {
   DismissalRequestDeliveryRecord,
+  DismissalPickupRecipientRecord,
   DismissalRequestsDeliveryRepository,
+  isRequestStillEligibleForVerifiedDelivery,
 } from '../infrastructure/dismissal-requests-delivery.repository';
 import { DismissalRequestsReadRepository } from '../infrastructure/dismissal-requests-read.repository';
 import { presentDismissalRequestDelivery } from '../presenter/dismissal-request-queue.presenter';
+import { presentVerifiedReceiver } from '../presenter/dismissal-pickup-recipients.presenter';
+import { PickupRecipientTokenService } from './pickup-recipient-token.service';
 
 @Injectable()
 export class DeliverDismissalRequestUseCase {
@@ -29,14 +37,13 @@ export class DeliverDismissalRequestUseCase {
     private readonly dismissalRequestsDeliveryRepository: DismissalRequestsDeliveryRepository,
     private readonly dismissalRequestsReadRepository: DismissalRequestsReadRepository,
     private readonly dismissalRealtimeEvents: DismissalRealtimeEventsService,
+    private readonly pickupRecipientTokenService: PickupRecipientTokenService,
   ) {}
 
   async execute(requestId: string, command: DeliverDismissalRequestDto) {
     const scope = requireDismissalRequestQueueScope();
     const now = new Date();
     const note = normalizeOptionalText(command.note);
-    const receiverName = normalizeOptionalText(command.receiverName);
-    const receiverRelation = normalizeOptionalText(command.receiverRelation);
 
     const [request, settings, assignments] = await Promise.all([
       this.dismissalRequestsDeliveryRepository.findRequestForDeliveryById(
@@ -77,12 +84,22 @@ export class DeliverDismissalRequestUseCase {
       throw new DismissalDeliveryNotReadyException();
     }
 
+    if (!isRequestStillEligibleForVerifiedDelivery(request)) {
+      throw new DismissalDeliveryPickupRecipientNotAllowedException();
+    }
+
     const pickupCodeRequired = settings?.requirePickupCode ?? true;
     const pickupCodeVerified = this.assertPickupCode({
       request,
       pickupCodeRequired,
       pickupCode: command.pickupCode,
     });
+    const pickupRecipient = await this.assertPickupRecipient({
+      request,
+      token: command.pickupRecipientToken,
+      allowDelegatePickup: settings?.allowDelegatePickup ?? false,
+    });
+    const receiver = presentVerifiedReceiver({ recipient: pickupRecipient });
 
     const delivered =
       await this.dismissalRequestsDeliveryRepository.deliverWithEventAndAudit({
@@ -93,8 +110,8 @@ export class DeliverDismissalRequestUseCase {
         organizationId: scope.organizationId,
         deliveredAt: now,
         pickupCodeVerified,
-        receiverName,
-        receiverRelation,
+        receiverName: receiver.name,
+        receiverRelation: receiver.relation,
         note,
       });
 
@@ -154,6 +171,51 @@ export class DeliverDismissalRequestUseCase {
     }
 
     return true;
+  }
+
+  private async assertPickupRecipient(params: {
+    request: DismissalRequestDeliveryRecord;
+    token: string | undefined;
+    allowDelegatePickup: boolean;
+  }): Promise<DismissalPickupRecipientRecord> {
+    const token = params.token?.trim();
+    if (!token) {
+      throw new DismissalDeliveryPickupRecipientRequiredException();
+    }
+
+    const payload = this.pickupRecipientTokenService.verify(token);
+    if (
+      payload.requestId !== params.request.id ||
+      payload.schoolId !== params.request.schoolId ||
+      payload.studentId !== params.request.studentId
+    ) {
+      throw new DismissalDeliveryInvalidPickupRecipientException();
+    }
+
+    const recipient =
+      await this.dismissalRequestsDeliveryRepository.findPickupRecipientLinkByIds(
+        {
+          studentId: params.request.studentId,
+          studentGuardianId: payload.studentGuardianId,
+          guardianId: payload.guardianId,
+        },
+      );
+    if (!recipient) {
+      throw new DismissalDeliveryPickupRecipientNotFoundException();
+    }
+
+    if (recipient.guardian.canPickup !== true) {
+      throw new DismissalDeliveryPickupRecipientNotAllowedException();
+    }
+
+    if (
+      !params.allowDelegatePickup &&
+      recipient.guardian.userId !== params.request.requestedById
+    ) {
+      throw new DismissalDeliveryPickupRecipientNotAllowedException();
+    }
+
+    return recipient;
   }
 }
 
