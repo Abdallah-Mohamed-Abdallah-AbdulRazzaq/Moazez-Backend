@@ -1,4 +1,5 @@
 import type { PublicDismissalGateStatus } from '../../../dismissal/shared/dismissal.types';
+import type { ParentSmartPickupRecentStatus } from './parent-smart-pickup-recent-calls.dto';
 
 export type ParentSmartPickupZoneSource =
   | 'settings'
@@ -34,6 +35,58 @@ export class ParentSmartPickupPoliciesDto {
   allowParentCancelBeforeCalled!: boolean;
 }
 
+export class ParentSmartPickupPolicyRequestWindowDto {
+  start!: string | null;
+  end!: string | null;
+  timezone!: string;
+  isOpenNow!: boolean;
+}
+
+export class ParentSmartPickupPolicyDto {
+  geofenceRequired!: boolean;
+  requestWindow!: ParentSmartPickupPolicyRequestWindowDto;
+  pickupCodeRequired!: boolean;
+  parentCancelBeforeCalledAllowed!: boolean;
+  delegatePickupAllowed!: boolean;
+}
+
+export class ParentSmartPickupSchoolDto {
+  name!: string | null;
+}
+
+export type ParentSmartPickupChildBlockedReason =
+  | null
+  | 'dismissal_disabled'
+  | 'outside_request_window'
+  | 'missing_school_location'
+  | 'no_active_enrollment'
+  | 'guardian_not_allowed'
+  | 'active_request_exists';
+
+export class ParentSmartPickupChildActiveRequestGateDto {
+  id!: string;
+  code!: string;
+  name!: string;
+}
+
+export class ParentSmartPickupChildActiveRequestPickupDto {
+  codeRequired!: boolean;
+  codeIssued!: boolean;
+  codeIssuedAt!: string | null;
+}
+
+export class ParentSmartPickupChildActiveRequestDto {
+  id!: string;
+  status!: ParentSmartPickupRecentStatus;
+  isActive!: true;
+  isTerminal!: false;
+  canCancel!: boolean;
+  canTrack!: boolean;
+  requestedAt!: string;
+  gate!: ParentSmartPickupChildActiveRequestGateDto | null;
+  pickup!: ParentSmartPickupChildActiveRequestPickupDto;
+}
+
 export class ParentSmartPickupChildDto {
   id!: string;
   displayName!: string;
@@ -43,6 +96,9 @@ export class ParentSmartPickupChildDto {
   canPickup!: boolean;
   pickupEligible!: boolean;
   eligibilityReasons!: string[];
+  canRequestPickup!: boolean;
+  blockedReason!: ParentSmartPickupChildBlockedReason;
+  activeRequest!: ParentSmartPickupChildActiveRequestDto | null;
 }
 
 export class ParentSmartPickupGateDto {
@@ -62,6 +118,9 @@ export class ParentSmartPickupSummaryDto {
 }
 
 export class ParentSmartPickupReadinessResponseDto {
+  enabled!: boolean;
+  school!: ParentSmartPickupSchoolDto;
+  policy!: ParentSmartPickupPolicyDto;
   status!: ParentSmartPickupStatusDto;
   schoolZone!: ParentSmartPickupSchoolZoneDto;
   requestWindow!: ParentSmartPickupRequestWindowDto;

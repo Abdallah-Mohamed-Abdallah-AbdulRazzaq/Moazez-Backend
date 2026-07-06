@@ -412,8 +412,12 @@ describe('PARENT-DISMISSAL-1C recent calls and cancel (e2e)', () => {
     expect(retry.body.request).toMatchObject({
       id: requested.requestId,
       status: 'cancelled',
-      previousStatus: null,
+      previousStatus: 'cancelled',
       changed: false,
+      isActive: false,
+      isTerminal: true,
+      canCancel: false,
+      canTrack: false,
     });
     await expect(countStatusChangeEvents(requested.requestId)).resolves.toBe(
       eventCountBefore,

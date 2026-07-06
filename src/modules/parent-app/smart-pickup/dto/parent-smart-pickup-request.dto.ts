@@ -9,6 +9,7 @@ import {
   Min,
 } from 'class-validator';
 import type { PublicDismissalGateStatus } from '../../../dismissal/shared/dismissal.types';
+import type { ParentSmartPickupRecentStatus } from './parent-smart-pickup-recent-calls.dto';
 
 export class CreateParentSmartPickupRequestDto {
   @IsUUID()
@@ -59,15 +60,22 @@ export class ParentSmartPickupRequestPoliciesDto {
 export class ParentSmartPickupRequestPickupDto {
   codeRequired!: boolean;
   codeIssued!: boolean;
+  codeIssuedAt?: string | null;
+  code?: string;
   pickupCode?: string;
 }
 
 export class ParentSmartPickupRequestDto {
   id!: string;
-  status!: 'requested';
+  status!: Extract<ParentSmartPickupRecentStatus, 'requested'>;
+  isActive!: true;
+  isTerminal!: false;
+  canCancel!: boolean;
+  canTrack!: true;
   requestedAt!: string;
   child!: ParentSmartPickupRequestChildDto;
   gate!: ParentSmartPickupRequestGateDto;
+  pickup!: ParentSmartPickupRequestPickupDto;
   policies!: ParentSmartPickupRequestPoliciesDto;
 }
 

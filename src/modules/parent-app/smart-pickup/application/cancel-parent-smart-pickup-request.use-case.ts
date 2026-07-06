@@ -48,7 +48,7 @@ export class CancelParentSmartPickupRequestUseCase {
       return ParentSmartPickupRecentCallsPresenter.presentCancel({
         request,
         settings,
-        previousStatus: null,
+        previousStatus: request.status,
         changed: false,
       });
     }

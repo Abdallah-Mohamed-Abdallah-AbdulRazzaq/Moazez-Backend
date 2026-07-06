@@ -57,6 +57,11 @@ export class ParentSmartPickupRecentCallsPresenter {
           ? presentRequestStatus(params.previousStatus) as 'requested' | 'queued' | 'cancelled'
           : null,
         changed: params.changed,
+        isActive: false,
+        isTerminal: true,
+        canCancel: false,
+        canTrack: false,
+        cancelledAt: item.cancelledAt,
         requestedAt: item.requestedAt,
         updatedAt: item.updatedAt,
         child: item.child,
@@ -75,13 +80,24 @@ function presentRequest(
   const classroom = request.enrollment.classroom;
   const section = classroom.section;
   const grade = section.grade;
+  const isActive = isActiveStatus(request.status);
+  const isTerminal = isTerminalStatus(request.status);
 
   return {
     id: request.id,
     status: presentRequestStatus(request.status),
+    isActive,
+    isTerminal,
     requestedAt: request.requestedAt.toISOString(),
     updatedAt: request.updatedAt.toISOString(),
     canCancel: canCancelRequest(request, settings),
+    canTrack: isActive,
+    calledAt: statusChangedAt(request, DismissalRequestStatus.CALLED),
+    readyAt: statusChangedAt(request, DismissalRequestStatus.READY),
+    handedOverAt:
+      request.handedOverAt?.toISOString() ??
+      statusChangedAt(request, DismissalRequestStatus.HANDED_OVER),
+    cancelledAt: statusChangedAt(request, DismissalRequestStatus.CANCELLED),
     child: {
       id: request.student.id,
       displayName:
@@ -100,6 +116,7 @@ function presentRequest(
     pickup: {
       codeRequired: settings?.requirePickupCode ?? true,
       codeIssued: Boolean(request.pickupCodeIssuedAt),
+      codeIssuedAt: request.pickupCodeIssuedAt?.toISOString() ?? null,
     },
     timeline: request.events.map(presentTimelineEvent),
   };
@@ -133,11 +150,17 @@ function summarizeRequests(
     cancelledCount: 0,
     expiredCount: 0,
     cancellableCount: 0,
+    terminalCount: 0,
+    canCancelCount: 0,
   };
 
   for (const request of requests) {
     if (isActiveStatus(request.status)) summary.activeCount += 1;
-    if (canCancelRequest(request, settings)) summary.cancellableCount += 1;
+    if (isTerminalStatus(request.status)) summary.terminalCount += 1;
+    if (canCancelRequest(request, settings)) {
+      summary.cancellableCount += 1;
+      summary.canCancelCount += 1;
+    }
 
     switch (request.status) {
       case DismissalRequestStatus.REQUESTED:
@@ -214,6 +237,22 @@ function isActiveStatus(status: DismissalRequestStatus): boolean {
     status === DismissalRequestStatus.AT_GATE ||
     status === DismissalRequestStatus.READY
   );
+}
+
+function isTerminalStatus(status: DismissalRequestStatus): boolean {
+  return (
+    status === DismissalRequestStatus.HANDED_OVER ||
+    status === DismissalRequestStatus.CANCELLED ||
+    status === DismissalRequestStatus.EXPIRED
+  );
+}
+
+function statusChangedAt(
+  request: ParentSmartPickupRecentCallRecord,
+  status: DismissalRequestStatus,
+): string | null {
+  const event = request.events.find((candidate) => candidate.statusTo === status);
+  return event?.createdAt.toISOString() ?? null;
 }
 
 function displayName(parts: Array<string | null | undefined>): string | null {

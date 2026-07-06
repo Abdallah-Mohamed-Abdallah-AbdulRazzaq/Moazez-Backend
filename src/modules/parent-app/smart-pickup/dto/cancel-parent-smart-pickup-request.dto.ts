@@ -22,6 +22,11 @@ export class CancelParentSmartPickupRequestItemDto {
     'requested' | 'queued' | 'cancelled'
   > | null;
   changed!: boolean;
+  isActive!: false;
+  isTerminal!: true;
+  canCancel!: false;
+  canTrack!: false;
+  cancelledAt!: string | null;
   requestedAt!: string;
   updatedAt!: string;
   child!: ParentSmartPickupRecentCallChildDto;

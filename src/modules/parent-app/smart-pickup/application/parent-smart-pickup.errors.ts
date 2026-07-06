@@ -180,8 +180,8 @@ export class DismissalRequestAlreadyTerminalException extends DomainException {
 export class DismissalRequestInvalidRecentFilterException extends DomainException {
   constructor(details?: Record<string, unknown>) {
     super({
-      code: 'dismissal.request.invalid_recent_filter',
-      message: 'Dismissal recent-calls filter is invalid',
+      code: 'parent.smart_pickup.invalid_status_filter',
+      message: 'Parent Smart Pickup recent-calls filter is invalid',
       httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
       details,
     });

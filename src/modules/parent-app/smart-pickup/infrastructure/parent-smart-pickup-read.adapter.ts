@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   DismissalGateOperationalStatus,
+  DismissalRequestStatus,
   Prisma,
   StudentEnrollmentStatus,
   UserStatus,
@@ -81,11 +82,31 @@ const SMART_PICKUP_SETTINGS_ARGS =
 const SMART_PICKUP_SCHOOL_PROFILE_ARGS =
   Prisma.validator<Prisma.SchoolProfileDefaultArgs>()({
     select: {
+      schoolName: true,
+      shortName: true,
       timezone: true,
       latitude: true,
       longitude: true,
       mapPlaceLabel: true,
       formattedAddress: true,
+    },
+  });
+
+const SMART_PICKUP_ACTIVE_REQUEST_ARGS =
+  Prisma.validator<Prisma.DismissalRequestDefaultArgs>()({
+    select: {
+      id: true,
+      studentId: true,
+      status: true,
+      requestedAt: true,
+      pickupCodeIssuedAt: true,
+      gate: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+        },
+      },
     },
   });
 
@@ -122,6 +143,18 @@ export type ParentSmartPickupSchoolProfileRecord =
 export type ParentSmartPickupGateRecord = Prisma.DismissalGateGetPayload<
   typeof SMART_PICKUP_GATE_ARGS
 >;
+
+export type ParentSmartPickupActiveRequestRecord =
+  Prisma.DismissalRequestGetPayload<typeof SMART_PICKUP_ACTIVE_REQUEST_ARGS>;
+
+const ACTIVE_DISMISSAL_REQUEST_STATUSES: DismissalRequestStatus[] = [
+  DismissalRequestStatus.REQUESTED,
+  DismissalRequestStatus.QUEUED,
+  DismissalRequestStatus.CALLED,
+  DismissalRequestStatus.MOVING,
+  DismissalRequestStatus.AT_GATE,
+  DismissalRequestStatus.READY,
+];
 
 @Injectable()
 export class ParentSmartPickupReadAdapter {
@@ -218,6 +251,22 @@ export class ParentSmartPickupReadAdapter {
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { code: 'asc' }],
       ...SMART_PICKUP_GATE_ARGS,
+    });
+  }
+
+  listActiveRequestsForStudents(
+    studentIds: string[],
+  ): Promise<ParentSmartPickupActiveRequestRecord[]> {
+    if (studentIds.length === 0) return Promise.resolve([]);
+
+    return this.scopedPrisma.dismissalRequest.findMany({
+      where: {
+        studentId: { in: studentIds },
+        status: { in: ACTIVE_DISMISSAL_REQUEST_STATUSES },
+        deletedAt: null,
+      },
+      orderBy: [{ requestedAt: 'desc' }, { id: 'asc' }],
+      ...SMART_PICKUP_ACTIVE_REQUEST_ARGS,
     });
   }
 }

@@ -50,6 +50,7 @@ const SMART_PICKUP_RECENT_CALL_ARGS =
       requestedAt: true,
       updatedAt: true,
       pickupCodeIssuedAt: true,
+      handedOverAt: true,
       student: {
         select: {
           id: true,

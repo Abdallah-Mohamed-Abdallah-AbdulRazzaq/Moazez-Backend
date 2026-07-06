@@ -65,6 +65,7 @@ export class ParentSmartPickupRecentCallGateDto {
 export class ParentSmartPickupRecentCallPickupDto {
   codeRequired!: boolean;
   codeIssued!: boolean;
+  codeIssuedAt!: string | null;
 }
 
 export class ParentSmartPickupRecentCallTimelineEventDto {
@@ -78,9 +79,16 @@ export class ParentSmartPickupRecentCallTimelineEventDto {
 export class ParentSmartPickupRecentCallDto {
   id!: string;
   status!: ParentSmartPickupRecentStatus;
+  isActive!: boolean;
+  isTerminal!: boolean;
+  canCancel!: boolean;
+  canTrack!: boolean;
   requestedAt!: string;
   updatedAt!: string;
-  canCancel!: boolean;
+  calledAt!: string | null;
+  readyAt!: string | null;
+  handedOverAt!: string | null;
+  cancelledAt!: string | null;
   child!: ParentSmartPickupRecentCallChildDto;
   gate!: ParentSmartPickupRecentCallGateDto;
   pickup!: ParentSmartPickupRecentCallPickupDto;
@@ -100,6 +108,8 @@ export class ParentSmartPickupRecentCallsSummaryDto {
   cancelledCount!: number;
   expiredCount!: number;
   cancellableCount!: number;
+  terminalCount!: number;
+  canCancelCount!: number;
 }
 
 export class ParentSmartPickupRecentCallsPaginationDto {

@@ -20,6 +20,10 @@ export class ParentSmartPickupRequestPresenter {
       request: {
         id: params.request.id,
         status: presentRequestStatus(params.request.status),
+        isActive: true,
+        isTerminal: false,
+        canCancel: params.policies.allowParentCancelBeforeCalled,
+        canTrack: true,
         requestedAt: params.request.requestedAt.toISOString(),
         child: {
           id: params.request.student.id,
@@ -34,6 +38,12 @@ export class ParentSmartPickupRequestPresenter {
           name: params.request.gate.name,
           status: presentGateStatus(params.request.gate.status) as 'open' | 'busy',
         },
+        pickup: {
+          codeRequired: params.pickup.codeRequired,
+          codeIssued: params.pickup.codeIssued,
+          codeIssuedAt:
+            params.request.pickupCodeIssuedAt?.toISOString() ?? null,
+        },
         policies: params.policies,
       },
       pickup: {
@@ -43,6 +53,7 @@ export class ParentSmartPickupRequestPresenter {
     };
 
     if (params.pickup.pickupCode) {
+      response.request.pickup.code = params.pickup.pickupCode;
       response.pickup.pickupCode = params.pickup.pickupCode;
     }
 

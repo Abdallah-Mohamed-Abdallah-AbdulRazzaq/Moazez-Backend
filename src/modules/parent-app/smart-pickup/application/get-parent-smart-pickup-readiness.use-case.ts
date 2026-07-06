@@ -53,12 +53,14 @@ export class GetParentSmartPickupReadinessUseCase {
     const links = await this.readAdapter.listLinkedChildren(guardianIds);
     const studentIds = [...new Set(links.map((link) => link.studentId))];
 
-    const [settings, schoolProfile, enrollments, gates] = await Promise.all([
-      this.readAdapter.findSettings(),
-      this.readAdapter.findSchoolProfile(),
-      this.readAdapter.listActiveEnrollments(studentIds),
-      this.readAdapter.listAvailableGates(),
-    ]);
+    const [settings, schoolProfile, enrollments, gates, activeRequests] =
+      await Promise.all([
+        this.readAdapter.findSettings(),
+        this.readAdapter.findSchoolProfile(),
+        this.readAdapter.listActiveEnrollments(studentIds),
+        this.readAdapter.listAvailableGates(),
+        this.readAdapter.listActiveRequestsForStudents(studentIds),
+      ]);
     const timezone =
       settings?.timezone ?? schoolProfile?.timezone ?? 'Africa/Cairo';
     const window = calculateParentSmartPickupWindow({
@@ -75,6 +77,7 @@ export class GetParentSmartPickupReadinessUseCase {
       links,
       enrollments,
       gates,
+      activeRequests,
       window,
     });
   }
