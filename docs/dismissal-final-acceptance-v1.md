@@ -4,11 +4,13 @@ Status: accepted backend V1 release baseline.
 
 ## Release Baseline Commit
 
-Expected and actual baseline:
+Expected and actual final accepted baseline:
 
 ```text
-78192a0a feat: add dismissal push notifications
+adcf4b34 fix: expose dismissal staff role in settings
 ```
+
+This final accepted backend baseline includes the post-acceptance Settings IAM bridge fix for Dismissal Staff.
 
 ## Accepted Product Surfaces
 
@@ -43,6 +45,8 @@ Dismissal school-side operations:
 | Student | `STUDENT` | No Dismissal operational or Parent Smart Pickup permissions. |
 | Pickup delegate | `PICKUP_DELEGATE` | No login surface in V1; pickup-recipient verification is token based and request scoped. |
 | Service account | `SERVICE_ACCOUNT` | Internal expiration worker/audit actor only; no public REST actor surface. |
+
+Dismissal Staff is visible and assignable from Settings Roles/Users through the existing `dismissal_staff` system role. Settings-created Dismissal Staff users persist `UserType.DISMISSAL_STAFF`.
 
 ## Route Acceptance Matrix
 
@@ -83,6 +87,8 @@ All paths are served with the framework global `/api/v1` prefix.
 | `app.device_tokens.manage` | Current actor device-token registration/unregistration |
 
 Parent receives `parent.smart_pickup.*` plus shared app-device-token management only. Parent receives no `dismissal.*` permission. Dismissal Staff receives operational dismissal permissions plus `app.device_tokens.manage`; it does not receive settings or staff-assignment management. Teacher and Student do not receive Dismissal operational access.
+
+Settings Roles exposes the existing `dismissal_staff` system role, and Settings Users create/invite/update can assign it without adding new permissions or routes.
 
 ## Lifecycle Acceptance Matrix
 
@@ -194,6 +200,7 @@ Acceptance relies on the existing focused and regression suites:
 - Dismissal core settings/gates, staff assignments/profile, active queue, lifecycle transitions, waiting students, delivery/handover, delegate verification, history/escalation.
 - Parent, Teacher, Student, Dismissal IAM, and Dismissal security regressions.
 - Communication push delivery and payload builder unit tests.
+- Settings Dismissal Staff role integration tests verify role visibility, permissions listing, create/invite/update assignment, persisted user/membership type, Dismissal profile access, and denial of Settings management by default.
 
 ## Final V1 Acceptance Verdict
 

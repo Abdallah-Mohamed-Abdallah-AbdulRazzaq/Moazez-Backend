@@ -10,6 +10,7 @@ Ready:
 - Notifications runtime and best-effort realtime queue/request/notification events.
 - History/detail, escalation, full golden path smoke coverage, frontend contract snapshots, and automatic request expiration.
 - Dismissal Staff device-token surface and best-effort push delivery for Dismissal notification rows.
+- Dismissal Staff Settings/IAM bridge is complete: the `dismissal_staff` system role is visible in Settings Roles, assignable through Settings Users create/invite/update, and maps to `UserType.DISMISSAL_STAFF`.
 
 Not implemented by design:
 
@@ -117,6 +118,7 @@ Ready:
 - Dismissal routes use only `dismissal.*` permissions.
 - Parent, teacher, and student roles do not receive dismissal permissions.
 - Dismissal staff visibility remains assignment-scoped for queue/detail/history/delivery flows.
+- The `dismissal_staff` system role is exposed through Settings Roles and assignable through Settings Users without granting Settings management permissions to Dismissal Staff by default.
 
 Verified by tests:
 
@@ -186,4 +188,5 @@ Ready:
 - The Dismissal / Smart Pickup V1 backend is production-ready for REST-backed operation with best-effort realtime and in-app notifications.
 - The push delivery/device-token gap is now closed through the existing communication push infrastructure.
 - Final product acceptance is documented in `docs/dismissal-final-acceptance-v1.md`.
+- Final closure baseline includes `adcf4b34 fix: expose dismissal staff role in settings`.
 - `npx prisma migrate dev --name dismissal_staff_device_token_surface` was also blocked by the same pre-existing shadow replay drift. No reset was performed. The enum-only migration was applied with `npx prisma db execute` and marked applied with `npx prisma migrate resolve --applied 20260706170000_dismissal_staff_device_token_surface`.
