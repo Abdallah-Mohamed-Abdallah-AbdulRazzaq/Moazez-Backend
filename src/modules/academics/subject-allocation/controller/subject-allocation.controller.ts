@@ -22,7 +22,7 @@ export class SubjectAllocationController {
   ) {}
 
   @Get()
-  @RequiredPermissions('academics.subjects.view')
+  @RequiredPermissions('academics.structure.view')
   listSubjectAllocations(
     @Query() query: ListSubjectAllocationsQueryDto,
   ): Promise<SubjectAllocationsListResponseDto> {
@@ -30,7 +30,7 @@ export class SubjectAllocationController {
   }
 
   @Put('bulk')
-  @RequiredPermissions('academics.subjects.manage')
+  @RequiredPermissions('academics.structure.manage')
   bulkSaveSubjectAllocations(
     @Body() dto: BulkSaveSubjectAllocationsDto,
   ): Promise<SubjectAllocationsBulkResponseDto> {

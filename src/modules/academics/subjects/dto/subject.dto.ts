@@ -4,14 +4,9 @@ import {
   IsOptional,
   IsString,
   MaxLength,
-  IsUUID,
 } from 'class-validator';
 
 export class CreateSubjectDto {
-  @IsOptional()
-  @IsUUID()
-  termId?: string;
-
   @IsOptional()
   @IsString()
   @MaxLength(120)
@@ -31,11 +26,6 @@ export class CreateSubjectDto {
   @IsString()
   @MaxLength(60)
   code?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  stage?: string | null;
 
   @IsOptional()
   @IsHexColor()

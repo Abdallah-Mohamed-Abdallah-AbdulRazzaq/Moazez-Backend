@@ -6,8 +6,6 @@ export class SubjectResponseDto {
   code!: string | null;
   color!: string | null;
   isActive!: boolean;
-  termId!: string | null;
-  stage!: string | null;
 }
 
 export class SubjectsListResponseDto {

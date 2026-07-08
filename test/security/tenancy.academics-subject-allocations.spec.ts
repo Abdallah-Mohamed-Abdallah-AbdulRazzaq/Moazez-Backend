@@ -92,8 +92,10 @@ describe('Academics subject allocation tenancy isolation (security)', () => {
       teacherRole,
       studentRole,
       parentRole,
-      viewPermission,
-      managePermission,
+      subjectViewPermission,
+      subjectManagePermission,
+      structureViewPermission,
+      structureManagePermission,
     ] = await Promise.all([
       findSystemRole('teacher'),
       findSystemRole('student'),
@@ -109,6 +111,18 @@ describe('Academics subject allocation tenancy isolation (security)', () => {
         resource: 'subjects',
         action: 'manage',
         description: 'Manage academics subjects.',
+      }),
+      findOrCreatePermission({
+        code: 'academics.structure.view',
+        resource: 'structure',
+        action: 'view',
+        description: 'View academic structure.',
+      }),
+      findOrCreatePermission({
+        code: 'academics.structure.manage',
+        resource: 'structure',
+        action: 'manage',
+        description: 'Manage academic structure.',
       }),
     ]);
 
@@ -165,13 +179,23 @@ describe('Academics subject allocation tenancy isolation (security)', () => {
       schoolId: schoolAId,
       key: `${marker}-admin-a`,
       name: `Sprint 22B Subject Allocation Admin A ${suffix}`,
-      permissionIds: [viewPermission.id, managePermission.id],
+      permissionIds: [
+        subjectViewPermission.id,
+        subjectManagePermission.id,
+        structureViewPermission.id,
+        structureManagePermission.id,
+      ],
     });
     const adminBRoleId = await createCustomRole({
       schoolId: schoolBId,
       key: `${marker}-admin-b`,
       name: `Sprint 22B Subject Allocation Admin B ${suffix}`,
-      permissionIds: [viewPermission.id, managePermission.id],
+      permissionIds: [
+        subjectViewPermission.id,
+        subjectManagePermission.id,
+        structureViewPermission.id,
+        structureManagePermission.id,
+      ],
     });
     const noPermissionRoleId = await createCustomRole({
       schoolId: schoolAId,
@@ -183,13 +207,13 @@ describe('Academics subject allocation tenancy isolation (security)', () => {
       schoolId: schoolAId,
       key: `${marker}-view`,
       name: `Sprint 22B Subject Allocation Viewer ${suffix}`,
-      permissionIds: [viewPermission.id],
+      permissionIds: [structureViewPermission.id],
     });
     const manageOnlyRoleId = await createCustomRole({
       schoolId: schoolAId,
       key: `${marker}-manage`,
       name: `Sprint 22B Subject Allocation Manager Only ${suffix}`,
-      permissionIds: [managePermission.id],
+      permissionIds: [structureManagePermission.id],
     });
 
     adminAEmail = `${marker}-admin-a@example.test`;
@@ -309,7 +333,7 @@ describe('Academics subject allocation tenancy isolation (security)', () => {
     }
   });
 
-  it('enforces subject view and manage permissions independently', async () => {
+  it('enforces subject allocation view and manage permissions independently', async () => {
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/academics/subject-allocations`)
       .query({ termId: academicA.termId })
@@ -342,6 +366,44 @@ describe('Academics subject allocation tenancy isolation (security)', () => {
       .set('Authorization', bearer(viewOnlyAuth))
       .send(validBulkPayload())
       .expect(403);
+  });
+
+  it('keeps subject catalog responses school-scoped and catalog-only', async () => {
+    const catalog = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/subjects`)
+      .query({ termId: academicA.termId })
+      .set('Authorization', bearer(adminAAuth))
+      .expect(200);
+
+    const catalogSubjectIds = catalog.body.items.map(
+      (item: { id: string }) => item.id,
+    );
+    expect(catalogSubjectIds).toContain(subjectAId);
+    expect(catalogSubjectIds).not.toContain(subjectBId);
+    expect(catalogSubjectIds).not.toContain(deletedSubjectAId);
+    expectSafeSubjectCatalogPayload(catalog.body);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/subjects`)
+      .set('Authorization', bearer(adminAAuth))
+      .send({
+        nameAr: `${marker}-invalid-term-ar`,
+        nameEn: `${marker}-invalid-term`,
+        termId: academicA.termId,
+      })
+      .expect(400)
+      .expect((response) => {
+        expectValidationRejectedUnknownField(response.body, 'termId');
+      });
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/academics/subjects/${subjectAId}`)
+      .set('Authorization', bearer(adminAAuth))
+      .send({ stage: 'Primary' })
+      .expect(400)
+      .expect((response) => {
+        expectValidationRejectedUnknownField(response.body, 'stage');
+      });
   });
 
   it('rejects cross-school term, grade, and subject ids without creating rows', async () => {
@@ -423,15 +485,15 @@ describe('Academics subject allocation tenancy isolation (security)', () => {
       .set('Authorization', bearer(adminAAuth))
       .expect(200);
 
-    expect(response.body.items.map((item: { id: string }) => item.id)).toContain(
-      allocationAId,
-    );
-    expect(response.body.items.map((item: { id: string }) => item.id)).not.toContain(
-      allocationBId,
-    );
-    expect(response.body.items.map((item: { id: string }) => item.id)).not.toContain(
-      softDeletedAllocationAId,
-    );
+    expect(
+      response.body.items.map((item: { id: string }) => item.id),
+    ).toContain(allocationAId);
+    expect(
+      response.body.items.map((item: { id: string }) => item.id),
+    ).not.toContain(allocationBId);
+    expect(
+      response.body.items.map((item: { id: string }) => item.id),
+    ).not.toContain(softDeletedAllocationAId);
     expectSafeAllocationPayload(response.body);
 
     await request(app.getHttpServer())
@@ -473,7 +535,7 @@ describe('Academics subject allocation tenancy isolation (security)', () => {
   });
 
   it('denies teacher, student, and parent system roles by default', async () => {
-    const rolePermissions = await listAppRoleSubjectPermissions();
+    const rolePermissions = await listAppRoleAllocationPermissions();
     expect(rolePermissions).toEqual({
       parent: [],
       student: [],
@@ -733,7 +795,7 @@ describe('Academics subject allocation tenancy isolation (security)', () => {
     };
   }
 
-  async function listAppRoleSubjectPermissions(): Promise<
+  async function listAppRoleAllocationPermissions(): Promise<
     Record<'parent' | 'student' | 'teacher', string[]>
   > {
     const roles = await prisma.role.findMany({
@@ -766,7 +828,7 @@ describe('Academics subject allocation tenancy isolation (security)', () => {
       ) {
         result[role.key] = role.rolePermissions
           .map((rolePermission) => rolePermission.permission.code)
-          .filter((code) => code.startsWith('academics.subjects.'))
+          .filter((code) => code.startsWith('academics.structure.'))
           .sort();
       }
     }
@@ -812,8 +874,46 @@ describe('Academics subject allocation tenancy isolation (security)', () => {
     return `Bearer ${tokens.accessToken}`;
   }
 
+  function expectValidationRejectedUnknownField(
+    body: unknown,
+    field: string,
+  ): void {
+    expect((body as { error?: { code?: string } })?.error?.code).toBe(
+      'validation.failed',
+    );
+    expect(JSON.stringify(body)).toContain(field);
+    expect(JSON.stringify(body)).toContain('should not exist');
+  }
+
+  function expectSafeSubjectCatalogPayload(value: unknown): void {
+    for (const forbiddenKey of [
+      'academicYearId',
+      'termId',
+      'gradeId',
+      'weeklyHours',
+      'stage',
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'deletedAt',
+      'createdAt',
+      'updatedAt',
+      '_count',
+    ]) {
+      expectNoObjectKey(value, forbiddenKey);
+    }
+  }
+
   function expectSafeAllocationPayload(value: unknown): void {
-    for (const forbiddenKey of ['schoolId', 'organizationId', 'deletedAt']) {
+    for (const forbiddenKey of [
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'deletedAt',
+      '_count',
+    ]) {
       expectNoObjectKey(value, forbiddenKey);
     }
   }

@@ -74,7 +74,12 @@ describe('Academics subject allocations (e2e)', () => {
     prisma = new PrismaClient();
     await prisma.$connect();
 
-    const [viewPermission, managePermission] = await Promise.all([
+    const [
+      subjectViewPermission,
+      subjectManagePermission,
+      structureViewPermission,
+      structureManagePermission,
+    ] = await Promise.all([
       findOrCreatePermission({
         code: 'academics.subjects.view',
         resource: 'subjects',
@@ -87,6 +92,18 @@ describe('Academics subject allocations (e2e)', () => {
         action: 'manage',
         description: 'Manage academics subjects.',
       }),
+      findOrCreatePermission({
+        code: 'academics.structure.view',
+        resource: 'structure',
+        action: 'view',
+        description: 'View academic structure.',
+      }),
+      findOrCreatePermission({
+        code: 'academics.structure.manage',
+        resource: 'structure',
+        action: 'manage',
+        description: 'Manage academic structure.',
+      }),
     ]);
 
     organizationId = await createOrganization();
@@ -98,7 +115,12 @@ describe('Academics subject allocations (e2e)', () => {
     const allocationAdminRoleId = await createCustomRole({
       key: `${marker}-subject-allocation-admin`,
       name: `Sprint 22B Subject Allocation Admin ${suffix}`,
-      permissionIds: [viewPermission.id, managePermission.id],
+      permissionIds: [
+        subjectViewPermission.id,
+        subjectManagePermission.id,
+        structureViewPermission.id,
+        structureManagePermission.id,
+      ],
     });
     adminEmail = `${marker}-admin@example.test`;
     await createUserWithMembership({
@@ -150,6 +172,58 @@ describe('Academics subject allocations (e2e)', () => {
         'DELETE /api/v1/academics/subjects/:id',
       ]),
     );
+  });
+
+  it('rejects term and stage fields on subject catalog writes', async () => {
+    const postWithTerm = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/subjects`)
+      .set('Authorization', bearer(adminAuth))
+      .send({
+        nameAr: `${marker}-invalid-term-ar`,
+        nameEn: `${marker}-invalid-term`,
+        termId: academic.termId,
+      })
+      .expect(400);
+    expectValidationRejectedUnknownField(postWithTerm.body, 'termId');
+
+    const postWithStage = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/subjects`)
+      .set('Authorization', bearer(adminAuth))
+      .send({
+        nameAr: `${marker}-invalid-stage-ar`,
+        nameEn: `${marker}-invalid-stage`,
+        stage: 'Primary',
+      })
+      .expect(400);
+    expectValidationRejectedUnknownField(postWithStage.body, 'stage');
+
+    const patchWithTerm = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/academics/subjects/${subjectId}`)
+      .set('Authorization', bearer(adminAuth))
+      .send({ termId: academic.termId })
+      .expect(400);
+    expectValidationRejectedUnknownField(patchWithTerm.body, 'termId');
+
+    const patchWithStage = await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/academics/subjects/${subjectId}`)
+      .set('Authorization', bearer(adminAuth))
+      .send({ stage: 'Primary' })
+      .expect(400);
+    expectValidationRejectedUnknownField(patchWithStage.body, 'stage');
+  });
+
+  it('keeps subject catalog reads catalog-only even when termId is supplied', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/subjects`)
+      .query({ termId: academic.termId })
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+
+    expect(response.body.items.length).toBeGreaterThanOrEqual(2);
+    expect(response.body.items.map((item: { id: string }) => item.id)).toEqual(
+      expect.arrayContaining([subjectId, secondSubjectId]),
+    );
+    expectSafeSubjectCatalogPayload(response.body);
   });
 
   it('lets a permissioned dashboard actor list an empty matrix', async () => {
@@ -212,9 +286,9 @@ describe('Academics subject allocations (e2e)', () => {
       .expect(200);
 
     expect(termList.body.items).toHaveLength(2);
-    expect(termList.body.items.map((item: { subjectId: string }) => item.subjectId)).toEqual(
-      expect.arrayContaining([subjectId, secondSubjectId]),
-    );
+    expect(
+      termList.body.items.map((item: { subjectId: string }) => item.subjectId),
+    ).toEqual(expect.arrayContaining([subjectId, secondSubjectId]));
 
     const gradeList = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/academics/subject-allocations`)
@@ -361,6 +435,7 @@ describe('Academics subject allocations (e2e)', () => {
       nameEn: `${marker}-crud-subject`,
       code: `${marker}-CRUD`,
     });
+    expectSafeSubjectCatalogPayload(created.body);
 
     await request(app.getHttpServer())
       .patch(`${GLOBAL_PREFIX}/academics/subjects/${createdCrudSubjectId}`)
@@ -369,6 +444,7 @@ describe('Academics subject allocations (e2e)', () => {
       .expect(200)
       .expect((response) => {
         expect(response.body.nameEn).toBe(`${marker}-crud-subject-updated`);
+        expectSafeSubjectCatalogPayload(response.body);
       });
 
     await request(app.getHttpServer())
@@ -378,6 +454,90 @@ describe('Academics subject allocations (e2e)', () => {
       .expect((response) => {
         expect(response.body).toEqual({ ok: true });
       });
+  });
+
+  it('creates a catalog subject, allocates it, and reads it through subject allocations', async () => {
+    const createdSubject = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/academics/subjects`)
+      .set('Authorization', bearer(adminAuth))
+      .send({
+        nameAr: `${marker}-flow-subject-ar`,
+        nameEn: `${marker}-flow-subject`,
+        code: `${marker}-FLOW`,
+        color: '#0891b2',
+      })
+      .expect(201);
+
+    expect(createdSubject.body).toMatchObject({
+      id: expect.any(String),
+      nameAr: `${marker}-flow-subject-ar`,
+      nameEn: `${marker}-flow-subject`,
+      code: `${marker}-FLOW`,
+      color: '#0891b2',
+      isActive: true,
+    });
+    expectSafeSubjectCatalogPayload(createdSubject.body);
+
+    const savedAllocation = await request(app.getHttpServer())
+      .put(`${GLOBAL_PREFIX}/academics/subject-allocations/bulk`)
+      .set('Authorization', bearer(adminAuth))
+      .send({
+        termId: academic.termId,
+        items: [
+          {
+            gradeId: academic.gradeId,
+            subjectId: createdSubject.body.id,
+            weeklyHours: 6,
+          },
+        ],
+      })
+      .expect(200);
+
+    expect(savedAllocation.body.items).toHaveLength(1);
+    expect(savedAllocation.body.items[0]).toMatchObject({
+      academicYearId: academic.academicYearId,
+      termId: academic.termId,
+      gradeId: academic.gradeId,
+      subjectId: createdSubject.body.id,
+      weeklyHours: 6,
+      grade: {
+        id: academic.gradeId,
+        nameAr: `${marker}-grade-ar`,
+        nameEn: `${marker}-grade`,
+      },
+      subject: {
+        id: createdSubject.body.id,
+        nameAr: `${marker}-flow-subject-ar`,
+        nameEn: `${marker}-flow-subject`,
+        code: `${marker}-FLOW`,
+        color: '#0891b2',
+      },
+    });
+    expectSafeAllocationPayload(savedAllocation.body);
+
+    const listedAllocation = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/subject-allocations`)
+      .query({
+        termId: academic.termId,
+        gradeId: academic.gradeId,
+      })
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+
+    const allocation = listedAllocation.body.items.find(
+      (item: { subjectId: string }) =>
+        item.subjectId === createdSubject.body.id,
+    );
+    expect(allocation).toMatchObject({
+      academicYearId: academic.academicYearId,
+      termId: academic.termId,
+      gradeId: academic.gradeId,
+      subjectId: createdSubject.body.id,
+      weeklyHours: 6,
+      grade: expect.objectContaining({ id: academic.gradeId }),
+      subject: expect.objectContaining({ id: createdSubject.body.id }),
+    });
+    expectSafeAllocationPayload(listedAllocation.body);
   });
 
   async function findOrCreatePermission(params: {
@@ -648,8 +808,46 @@ describe('Academics subject allocations (e2e)', () => {
     return `Bearer ${tokens.accessToken}`;
   }
 
+  function expectValidationRejectedUnknownField(
+    body: unknown,
+    field: string,
+  ): void {
+    expect((body as { error?: { code?: string } })?.error?.code).toBe(
+      'validation.failed',
+    );
+    expect(JSON.stringify(body)).toContain(field);
+    expect(JSON.stringify(body)).toContain('should not exist');
+  }
+
+  function expectSafeSubjectCatalogPayload(value: unknown): void {
+    for (const forbiddenKey of [
+      'academicYearId',
+      'termId',
+      'gradeId',
+      'weeklyHours',
+      'stage',
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'deletedAt',
+      'createdAt',
+      'updatedAt',
+      '_count',
+    ]) {
+      expectNoObjectKey(value, forbiddenKey);
+    }
+  }
+
   function expectSafeAllocationPayload(value: unknown): void {
-    for (const forbiddenKey of ['schoolId', 'organizationId', 'deletedAt']) {
+    for (const forbiddenKey of [
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'deletedAt',
+      '_count',
+    ]) {
       expectNoObjectKey(value, forbiddenKey);
     }
   }

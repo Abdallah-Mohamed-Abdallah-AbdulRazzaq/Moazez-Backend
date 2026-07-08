@@ -17,8 +17,6 @@ export function presentSubject(subject: Subject): SubjectResponseDto {
     code: subject.code ?? null,
     color: subject.color ?? null,
     isActive: subject.isActive,
-    termId: null,
-    stage: null,
   };
 }
 

@@ -45,23 +45,28 @@ describe('Subjects use cases', () => {
     const store = [...seed];
 
     return {
-      listSubjects: jest.fn().mockImplementation(async () =>
-        store
-          .filter((subject) => subject.deletedAt === null)
-          .sort((left, right) => left.nameEn.localeCompare(right.nameEn)),
-      ),
-      findSubjectById: jest.fn().mockImplementation(async (subjectId: string) =>
-        store.find(
-          (subject) => subject.id === subjectId && subject.deletedAt === null,
-        ) ?? null,
-      ),
+      listSubjects: jest
+        .fn()
+        .mockImplementation(async () =>
+          store
+            .filter((subject) => subject.deletedAt === null)
+            .sort((left, right) => left.nameEn.localeCompare(right.nameEn)),
+        ),
+      findSubjectById: jest
+        .fn()
+        .mockImplementation(
+          async (subjectId: string) =>
+            store.find(
+              (subject) =>
+                subject.id === subjectId && subject.deletedAt === null,
+            ) ?? null,
+        ),
       createSubject: jest.fn().mockImplementation(async (data) => {
         if (
           data.code &&
           store.some(
             (subject) =>
-              subject.schoolId === data.schoolId &&
-              subject.code === data.code,
+              subject.schoolId === data.schoolId && subject.code === data.code,
           )
         ) {
           throw { code: 'P2002' };
@@ -82,41 +87,45 @@ describe('Subjects use cases', () => {
         store.push(subject);
         return subject;
       }),
-      updateSubject: jest.fn().mockImplementation(async (subjectId: string, data) => {
-        const subject = store.find(
-          (item) => item.id === subjectId && item.deletedAt === null,
-        );
-        if (!subject) {
-          throw new Error('Subject not found');
-        }
+      updateSubject: jest
+        .fn()
+        .mockImplementation(async (subjectId: string, data) => {
+          const subject = store.find(
+            (item) => item.id === subjectId && item.deletedAt === null,
+          );
+          if (!subject) {
+            throw new Error('Subject not found');
+          }
 
-        if (
-          data.code !== undefined &&
-          store.some(
-            (item) =>
-              item.id !== subjectId &&
-              item.schoolId === subject.schoolId &&
-              item.code === data.code,
-          )
-        ) {
-          throw { code: 'P2002' };
-        }
+          if (
+            data.code !== undefined &&
+            store.some(
+              (item) =>
+                item.id !== subjectId &&
+                item.schoolId === subject.schoolId &&
+                item.code === data.code,
+            )
+          ) {
+            throw { code: 'P2002' };
+          }
 
-        Object.assign(subject, data, { updatedAt: new Date() });
-        return subject;
-      }),
-      softDeleteSubject: jest.fn().mockImplementation(async (subjectId: string) => {
-        const subject = store.find(
-          (item) => item.id === subjectId && item.deletedAt === null,
-        );
-        if (!subject) {
-          return { status: 'not_found' as const };
-        }
+          Object.assign(subject, data, { updatedAt: new Date() });
+          return subject;
+        }),
+      softDeleteSubject: jest
+        .fn()
+        .mockImplementation(async (subjectId: string) => {
+          const subject = store.find(
+            (item) => item.id === subjectId && item.deletedAt === null,
+          );
+          if (!subject) {
+            return { status: 'not_found' as const };
+          }
 
-        subject.deletedAt = new Date();
-        subject.updatedAt = new Date();
-        return { status: 'deleted' as const };
-      }),
+          subject.deletedAt = new Date();
+          subject.updatedAt = new Date();
+          return { status: 'deleted' as const };
+        }),
     } as unknown as SubjectsRepository;
   }
 
@@ -137,10 +146,18 @@ describe('Subjects use cases', () => {
       });
 
       expect(created.code).toBe('MATH-101');
+      expectSafeSubjectCatalogPayload(created);
+      expect(
+        (repository.createSubject as jest.Mock).mock.calls[0][0],
+      ).not.toHaveProperty('termId');
+      expect(
+        (repository.createSubject as jest.Mock).mock.calls[0][0],
+      ).not.toHaveProperty('stage');
 
       const listed = await listSubjectsUseCase.execute();
       expect(listed.items).toHaveLength(1);
       expect(listed.items[0].nameEn).toBe('Mathematics');
+      expectSafeSubjectCatalogPayload(listed);
 
       const updated = await updateSubjectUseCase.execute(created.id, {
         nameEn: 'Advanced Mathematics',
@@ -151,6 +168,7 @@ describe('Subjects use cases', () => {
       expect(updated.nameEn).toBe('Advanced Mathematics');
       expect(updated.isActive).toBe(false);
       expect(updated.color).toBe('#00ff00');
+      expectSafeSubjectCatalogPayload(updated);
 
       await expect(deleteSubjectUseCase.execute(created.id)).resolves.toEqual({
         ok: true,
@@ -188,4 +206,34 @@ describe('Subjects use cases', () => {
       ).rejects.toBeInstanceOf(SubjectCodeConflictException);
     });
   });
+
+  function expectSafeSubjectCatalogPayload(value: unknown): void {
+    for (const forbiddenKey of [
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'deletedAt',
+      'createdAt',
+      'updatedAt',
+      'termId',
+      'stage',
+    ]) {
+      expectNoObjectKey(value, forbiddenKey);
+    }
+  }
+
+  function expectNoObjectKey(value: unknown, forbiddenKey: string): void {
+    if (!value || typeof value !== 'object') return;
+
+    if (Array.isArray(value)) {
+      for (const item of value) expectNoObjectKey(item, forbiddenKey);
+      return;
+    }
+
+    for (const [key, nested] of Object.entries(value)) {
+      expect(key).not.toBe(forbiddenKey);
+      expectNoObjectKey(nested, forbiddenKey);
+    }
+  }
 });
