@@ -8,6 +8,8 @@ export function userTypeFromRoleKey(roleKey: string): UserType {
       return UserType.PARENT;
     case 'student':
       return UserType.STUDENT;
+    case 'dismissal_staff':
+      return UserType.DISMISSAL_STAFF;
     default:
       return UserType.SCHOOL_USER;
   }

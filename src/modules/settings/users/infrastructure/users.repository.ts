@@ -15,6 +15,7 @@ const ASSIGNABLE_SYSTEM_ROLE_KEYS = [
   'teacher',
   'parent',
   'student',
+  'dismissal_staff',
 ] as const;
 
 const SCOPED_MEMBERSHIP_ARGS = Prisma.validator<Prisma.MembershipDefaultArgs>()(

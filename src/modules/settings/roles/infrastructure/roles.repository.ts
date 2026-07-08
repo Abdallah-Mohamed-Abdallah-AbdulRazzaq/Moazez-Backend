@@ -13,6 +13,7 @@ const VISIBLE_SYSTEM_ROLE_KEYS = [
   'teacher',
   'parent',
   'student',
+  'dismissal_staff',
 ] as const;
 
 const VISIBLE_ROLE_ARGS = Prisma.validator<Prisma.RoleDefaultArgs>()({
