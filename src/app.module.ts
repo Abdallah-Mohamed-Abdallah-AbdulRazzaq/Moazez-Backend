@@ -28,6 +28,7 @@ import { ParentAppModule } from './modules/parent-app/parent-app.module';
 import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module';
 import { ReinforcementModule } from './modules/reinforcement/reinforcement.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { SchoolSupportModule } from './modules/school-support/school-support.module';
 import { StudentAppModule } from './modules/student-app/student-app.module';
 import { StudentsModule } from './modules/students/students.module';
 import { TeacherAppModule } from './modules/teacher-app/teacher-app.module';
@@ -57,6 +58,7 @@ import { TeacherAppModule } from './modules/teacher-app/teacher-app.module';
     BehaviorModule,
     DismissalModule,
     CommunicationModule,
+    SchoolSupportModule,
     DashboardModule,
     TeacherAppModule,
     StudentAppModule,

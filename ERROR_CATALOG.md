@@ -112,6 +112,16 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `platform.feature.duplicate_key`                   | 422  | Feature keys must be unique in a bulk update     |
 | `platform.feature.school_archived`                 | 409  | School is archived and cannot receive feature control changes |
 
+### Platform Support
+
+| Code                                             | HTTP | Message                                            |
+| ------------------------------------------------ | ---- | -------------------------------------------------- |
+| `platform_support.actor.invalid_type`            | 403  | Platform support requires a platform actor without school membership |
+| `platform_support.conversation.not_found`        | 404  | Platform support conversation was not found        |
+| `platform_support.conversation.closed`           | 409  | Platform support conversation is closed            |
+| `platform_support.conversation.invalid_state`    | 409  | Platform support conversation state is invalid     |
+| `platform_support.message.empty`                 | 422  | Support reply cannot be empty                      |
+
 ### Settings
 
 | Code                                     | HTTP | Message                                           |
@@ -446,6 +456,14 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `communication.user.restricted`                      | 403  | User is restricted                                |
 | `communication.user.restriction_conflict`            | 409  | User restriction conflicts with an active state   |
 | `communication.scope.invalid`                        | 422  | Communication scope is invalid                    |
+
+### School Support
+
+| Code                                      | HTTP | Message                                         |
+| ----------------------------------------- | ---- | ----------------------------------------------- |
+| `school_support.conversation.not_found`   | 404  | School support conversation was not found       |
+| `school_support.conversation.closed`      | 409  | School support conversation is closed           |
+| `school_support.message.empty`            | 422  | Support message cannot be empty                 |
 
 ### Teacher App
 

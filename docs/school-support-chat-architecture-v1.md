@@ -4,7 +4,28 @@
 
 Design the V1 backend architecture for a School Dashboard Help page support chat between a school-scoped user and Moazez Platform Support.
 
-This sprint is documentation-only. It does not add runtime code, controllers, modules, use cases, repositories, Prisma schema, migrations, seeds, tests, package changes, or environment changes.
+The initial `SCHOOL-SUPPORT-CHAT-0A` sprint was documentation-only. `SCHOOL-SUPPORT-CHAT-1A` implements the core REST and IAM wrapper described here without Prisma schema or migration changes.
+
+## 1A Implementation Status
+
+Implemented in `SCHOOL-SUPPORT-CHAT-1A`:
+
+- `src/modules/school-support/**` module with school and platform support controllers.
+- School Dashboard routes under `/api/v1/school-support/*`.
+- Platform Admin routes under `/api/v1/platform-admin/support/*`.
+- Five support permissions in the permission seed.
+- One persistent `CommunicationConversationType.SUPPORT` conversation per school, enforced in application code.
+- Text-only support messages.
+- Per-current-user unread semantics using `CommunicationMessageRead` and participant `lastReadAt`.
+- Platform support participant rows for opened/replied support conversations without creating school memberships.
+- Closed conversations reject school sends and platform replies with `409`.
+- Focused e2e/security coverage for route surface, IAM, tenancy, no-leak payloads, generic `/communication` separation, and platform membership boundaries.
+
+Not implemented in 1A:
+
+- Support-specific realtime room access.
+- Support-specific push notification delivery.
+- Ticketing, assignment, SLA, categories, internal notes, email, or bot/AI support.
 
 ## Product Scope
 
@@ -149,6 +170,16 @@ Recommended implementation sprint structure:
 - Reusable support composition services can live under the support module/application layer and may delegate to Communication repositories/services where their tenancy assumptions match the actor surface.
 
 Do not put business logic in controllers. Do not use Prisma in controllers. Keep all response shaping in presenters.
+
+Actual 1A structure:
+
+- `src/modules/school-support/controller/school-support.controller.ts`
+- `src/modules/school-support/controller/platform-support.controller.ts`
+- `src/modules/school-support/application/school-support.use-cases.ts`
+- `src/modules/school-support/infrastructure/school-support.repository.ts`
+- `src/modules/school-support/presenters/school-support.presenter.ts`
+- `src/modules/school-support/dto/*.dto.ts`
+- `src/modules/school-support/domain/*`
 
 ## Data Model Strategy
 
@@ -317,7 +348,7 @@ Implementation note:
 
 - Current seed behavior grants `platform_super_admin` all permission codes through `ALL`.
 - Current `school_admin` receives `SCHOOL_LEVEL = NON_PLATFORM`.
-- If `school.support.*` is seeded as non-platform, `school_admin` may receive it automatically through `NON_PLATFORM`. This must be verified in the implementation sprint.
+- `school.support.*` is seeded as non-platform, so `school_admin` receives it through `NON_PLATFORM` / `SCHOOL_LEVEL` after the seed is rerun.
 - Teacher, Parent, Student, and Dismissal Staff use explicit permission arrays, so they should not receive `school.support.*` unless deliberately added.
 
 Do not reuse generic `communication.*` permissions as the only support-chat permission model. Support chat is a distinct product surface and needs narrower, auditable permissions.
@@ -341,6 +372,12 @@ Current realtime constraints:
 
 Do not claim platform support realtime room access until implementation verifies the platform-safe join behavior.
 
+1A runtime status:
+
+- No support-specific realtime publish or platform-safe room join was added.
+- REST remains the source of truth for conversation, messages, and read state.
+- Platform Admin support inbox uses REST listing/detail/refresh.
+
 ## Notification Strategy
 
 Expected V1 behavior:
@@ -356,6 +393,11 @@ Do not overclaim:
 - Do not claim push delivery for platform support unless the implementation verifies platform participant device tokens/preferences and queue behavior.
 - Do not claim email/SMS support.
 - Do not claim a durable support-specific notification replay mechanism.
+
+1A runtime status:
+
+- No support-specific push or notification queue path was added.
+- REST unread counts remain the implemented source of truth.
 
 ## Read / Unread Strategy
 
@@ -375,11 +417,7 @@ Platform-side unread:
 
 - Count unread visible/listable support messages sent by school participants.
 - Exclude platform actor's own messages.
-- For V1 inbox counts, the implementation may use the platform actor participant row if one exists, or a support-specific aggregate if the team decides the platform inbox is shared by all platform support admins.
-
-Open implementation decision:
-
-- Whether platform unread is per platform user, shared across all platform support admins, or both. V1 should choose one and document it before implementation.
+- 1A uses per-platform-user unread semantics. Each Platform Admin actor marks only their own support inbox read state.
 
 ## No-Leak Rules
 
@@ -540,12 +578,10 @@ Rejected: store frontend response shape in the database.
 ## Open Decisions
 
 - Should the one-support-conversation-per-school invariant be enforced only in application code for V1, or with a future DB uniqueness strategy?
-- Should platform unread count be per platform user, shared across platform support inbox, or both?
-- Should platform replies display as "Moazez Support" only, or expose a safe support operator display name?
-- Should school-side support messages allow attachments in V1, or text-only until attachment authorization/product copy is approved?
-- Should Platform Admin support realtime join be implemented in V1, or should Platform Admin rely on polling/inbox refresh first?
-- Should support conversation close prevent school sending, or should school sending automatically reopen the conversation?
-- Should `school.support.*` permissions be seeded as a new `school` module or another module/resource naming convention?
+- Should a future implementation enforce uniqueness with a database constraint or partial index?
+- Should Platform Admin support realtime join be implemented in 1B, or should Platform Admin continue to use polling/inbox refresh?
+- Should support messages add attachments in a later sprint after file authorization and presenter contracts are approved?
+- Should support-specific push/in-app notification delivery be added in 1B or remain REST-unread only?
 
 ## Proposed Implementation Sequence
 
@@ -558,6 +594,8 @@ SCHOOL-SUPPORT-CHAT-1A - Core REST and IAM
 - Add platform-safe repositories/use cases.
 - Add support presenters and no-leak tests.
 - Reuse existing Communication tables.
+
+1A status: implemented.
 
 SCHOOL-SUPPORT-CHAT-1B - Realtime / Notifications / Unread Polish
 

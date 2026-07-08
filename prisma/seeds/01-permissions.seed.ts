@@ -19,9 +19,16 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'platform.entitlements.manage', module: 'platform', resource: 'entitlements', action: 'manage', description: 'Create and update school subscription entitlements' },
   { code: 'platform.features.view', module: 'platform', resource: 'features', action: 'view', description: 'View school feature controls' },
   { code: 'platform.features.manage', module: 'platform', resource: 'features', action: 'manage', description: 'Create and update school feature controls' },
+  { code: 'platform.support.view', module: 'platform', resource: 'support', action: 'view', description: 'View Platform Admin school support inbox, conversations, and messages.' },
+  { code: 'platform.support.reply', module: 'platform', resource: 'support', action: 'reply', description: 'Reply to school support conversations as Moazez Support.' },
+  { code: 'platform.support.manage', module: 'platform', resource: 'support', action: 'manage', description: 'Close and reopen school support conversations.' },
 
   // app-facing infrastructure
   { code: 'app.device_tokens.manage', module: 'app', resource: 'device_tokens', action: 'manage', description: 'Register and unregister app device tokens for the current actor' },
+
+  // school support
+  { code: 'school.support.view', module: 'school', resource: 'support', action: 'view', description: "View the current school's support conversation and messages." },
+  { code: 'school.support.send', module: 'school', resource: 'support', action: 'send', description: "Send messages in the current school's support conversation." },
 
   // dismissal
   { code: 'dismissal.profile.view', module: 'dismissal', resource: 'profile', action: 'view', description: 'View Dismissal App staff profile and safe assignment summary' },

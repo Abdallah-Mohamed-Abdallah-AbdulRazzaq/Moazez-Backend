@@ -4,7 +4,7 @@
 
 Define the proposed V1 REST contract for School Dashboard Help support chat between a school-scoped user and Moazez Platform Support.
 
-This is a planning contract only. It does not indicate that these routes are implemented in the current runtime.
+This contract was initially planned in `SCHOOL-SUPPORT-CHAT-0A`. The core REST and IAM route surface is implemented in `SCHOOL-SUPPORT-CHAT-1A`.
 
 All routes are under the mandatory global prefix:
 
@@ -25,7 +25,7 @@ All routes are under the mandatory global prefix:
 
 ## Permissions
 
-New permissions to add in the implementation sprint:
+Permissions implemented in `SCHOOL-SUPPORT-CHAT-1A`:
 
 | Permission | Intended surface | Purpose |
 | --- | --- | --- |
@@ -44,7 +44,19 @@ Intended role assignment:
 
 Implementation verification:
 
-- If current seed behavior automatically grants `school.support.*` to `school_admin` through `NON_PLATFORM`, verify that deliberately during the implementation sprint.
+- `platform_super_admin` receives `platform.support.*` through `ALL`.
+- `school_admin` receives `school.support.*` through `NON_PLATFORM` / `SCHOOL_LEVEL` after the seed is rerun.
+- Teacher, Parent, Student, and Dismissal Staff explicit permission arrays do not include `school.support.*`.
+
+## 1A Runtime Choices
+
+- Messages are text-only.
+- `clientMessageId` is supported for per-sender idempotent message creation.
+- School sends and platform replies to closed conversations return `409`.
+- School messages do not auto-reopen closed conversations.
+- Platform unread state is per platform user, not shared across all platform admins.
+- Platform support actors may be inserted as conversation participants, but no school membership is created.
+- Support-specific realtime and push notification behavior is not implemented in 1A; REST is the source of truth.
 
 ## School Dashboard Routes
 
@@ -282,7 +294,7 @@ Platform inbox response notes:
 - School and organization ids are allowed on Platform Admin responses as safe operational identifiers.
 - `lastMessage.preview` must be truncated and must mask hidden/deleted content.
 - `senderKind` should be `school`, `support`, or `system`.
-- `unread.count` semantics must be finalized in implementation as per-platform-user or shared platform inbox count.
+- `unread.count` is per current platform actor in 1A.
 
 ## `GET /api/v1/platform-admin/support/conversations/:conversationId`
 
@@ -372,7 +384,7 @@ Request validation:
 
 - `body` is required for V1 text replies.
 - `clientMessageId` is optional but recommended for idempotency.
-- The conversation must be `SUPPORT`, non-deleted, and not closed unless the product decides replies reopen closed conversations.
+- The conversation must be `SUPPORT`, non-deleted, and active. Closed conversations return `409`.
 
 Response:
 
@@ -486,13 +498,15 @@ Expected status patterns:
 Suggested future support error codes:
 
 - `school_support.conversation.not_found`
+- `school_support.conversation.closed`
 - `school_support.message.empty`
-- `school_support.message.too_long`
 - `platform_support.conversation.not_found`
 - `platform_support.conversation.closed`
 - `platform_support.conversation.invalid_state`
+- `platform_support.actor.invalid_type`
+- `platform_support.message.empty`
 
-Implementation sprint should either add these to `ERROR_CATALOG.md` or reuse existing Communication domain errors where the API contract remains clear.
+These are registered in `ERROR_CATALOG.md` in 1A. DTO validation still uses the global `validation.failed` envelope for malformed body/query input.
 
 ## Realtime Contract
 
