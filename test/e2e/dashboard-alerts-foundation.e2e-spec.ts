@@ -223,6 +223,24 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
       limitedResponse.body.alerts.length,
     );
     expectNoTenantIds(zeroCountResponse.body);
+
+    const settingsResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
+      .query({ source: 'settings', includeZeroCount: 'true' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const emailAlert = settingsResponse.body.alerts.find(
+      (alert: { key: string }) =>
+        alert.key === 'settings.email_connection_missing',
+    );
+
+    expect(emailAlert).toBeDefined();
+    expect(emailAlert.action).toEqual({
+      label: 'Configure email',
+      target: '/settings/email/connection',
+    });
+    expect(emailAlert.action.target).not.toBe('/settings/email');
+    expectNoTenantIds(settingsResponse.body);
   });
 
   it('validates alert query parameters', async () => {

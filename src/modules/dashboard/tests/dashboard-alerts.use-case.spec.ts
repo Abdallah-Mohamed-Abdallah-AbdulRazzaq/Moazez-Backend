@@ -17,6 +17,24 @@ import {
 } from '../infrastructure/dashboard-alerts.repository';
 
 describe('ListDashboardAlertsUseCase', () => {
+  it('buildDashboardAlerts returns settings.email_connection_missing action.target as /settings/email/connection', () => {
+    const alerts = buildDashboardAlerts(
+      signals({
+        settings: { missingActiveEmailConnection: 1 },
+      }),
+    );
+    const emailAlert = alerts.find(
+      (alert) => alert.key === 'settings.email_connection_missing',
+    );
+
+    expect(emailAlert).toBeDefined();
+    expect(emailAlert?.action).toEqual({
+      label: 'Configure email',
+      target: '/settings/email/connection',
+    });
+    expect(emailAlert?.action.target).not.toBe('/settings/email');
+  });
+
   it('requires school scope and delegates signal loading to the repository', async () => {
     const repository = repositoryMock(signals());
     const useCase = new ListDashboardAlertsUseCase(repository as any);

@@ -392,7 +392,7 @@ export function buildDashboardAlerts(
       count: signals.settings.missingActiveEmailConnection,
       action: {
         label: 'Configure email',
-        target: '/settings/email',
+        target: '/settings/email/connection',
       },
     }),
   ];
