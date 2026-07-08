@@ -8,6 +8,7 @@ import {
   CommunicationParticipantRole,
   CommunicationParticipantStatus,
   Prisma,
+  UserStatus,
   UserType,
 } from '@prisma/client';
 import { platformBypassScope } from '../../../infrastructure/database/platform-bypass.helper';
@@ -160,9 +161,19 @@ export interface SupportMessageListResult {
 }
 
 export interface SupportReadResult {
+  schoolId: string;
   conversationId: string;
   readAt: Date;
   markedCount: number;
+}
+
+export interface SupportMessageCreateResult {
+  message: SupportMessageRecord;
+  wasCreated: boolean;
+}
+
+export interface SupportNotificationRecipient {
+  userId: string;
 }
 
 export interface PlatformSupportConversationFilters {
@@ -237,7 +248,7 @@ export class SchoolSupportRepository {
     scope: SchoolSupportScope;
     body: string;
     clientMessageId?: string | null;
-  }): Promise<SupportMessageRecord> {
+  }): Promise<SupportMessageCreateResult> {
     return this.scopedPrisma.$transaction(async (tx) => {
       const conversationState = await this.getOrCreateSchoolConversationInTx(
         tx,
@@ -258,7 +269,7 @@ export class SchoolSupportRepository {
         auditAction: 'school_support.message.create',
       });
 
-      return result.message;
+      return result;
     });
   }
 
@@ -422,7 +433,7 @@ export class SchoolSupportRepository {
     conversationId: string;
     body: string;
     clientMessageId?: string | null;
-  }): Promise<SupportMessageRecord | null> {
+  }): Promise<SupportMessageCreateResult | null> {
     return platformBypassScope(() =>
       this.prisma.$transaction(async (tx) => {
         const conversation = await this.findSupportConversationByIdInTx(
@@ -454,7 +465,7 @@ export class SchoolSupportRepository {
           auditAction: 'platform_support.message.reply',
         });
 
-        return result.message;
+        return result;
       }),
     );
   }
@@ -529,6 +540,46 @@ export class SchoolSupportRepository {
     return platformBypassScope(() =>
       this.prisma.$transaction((tx) => this.getUnreadStateInTx(tx, input)),
     );
+  }
+
+  async listSupportNotificationRecipients(input: {
+    schoolId: string;
+    conversationId: string;
+    senderUserId: string | null;
+    target: 'school' | 'platform';
+  }): Promise<SupportNotificationRecipient[]> {
+    return platformBypassScope(async () => {
+      const participants =
+        await this.prisma.communicationConversationParticipant.findMany({
+          where: {
+            schoolId: input.schoolId,
+            conversationId: input.conversationId,
+            status: CommunicationParticipantStatus.ACTIVE,
+            ...(input.senderUserId
+              ? { userId: { not: input.senderUserId } }
+              : {}),
+            OR: [{ mutedUntil: null }, { mutedUntil: { lte: new Date() } }],
+            conversation: {
+              ...this.supportConversationWhere(),
+              status: CommunicationConversationStatus.ACTIVE,
+            },
+            user: {
+              status: UserStatus.ACTIVE,
+              deletedAt: null,
+              userType:
+                input.target === 'platform'
+                  ? UserType.PLATFORM_USER
+                  : { not: UserType.PLATFORM_USER },
+            },
+          },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: { userId: true },
+        });
+
+      return deduplicateUserIds(participants.map((item) => item.userId)).map(
+        (userId) => ({ userId }),
+      );
+    });
   }
 
   private async transitionPlatformConversation(
@@ -806,6 +857,7 @@ export class SchoolSupportRepository {
     });
 
     return {
+      schoolId: input.schoolId,
       conversationId: input.conversationId,
       readAt: input.readAt,
       markedCount,
@@ -1161,4 +1213,8 @@ export class SchoolSupportRepository {
       },
     });
   }
+}
+
+function deduplicateUserIds(userIds: string[]): string[] {
+  return [...new Set(userIds.filter((userId) => userId.trim().length > 0))];
 }

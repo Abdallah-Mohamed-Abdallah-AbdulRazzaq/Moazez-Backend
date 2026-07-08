@@ -58,6 +58,19 @@ Implementation verification:
 - Platform support actors may be inserted as conversation participants, but no school membership is created.
 - Support-specific realtime and push notification behavior is not implemented in 1A; REST is the source of truth.
 
+## 1B Runtime Choices
+
+- Support message-created events are best-effort and use `communication.chat.message.created`.
+- Support read events are best-effort and use `communication.chat.message.read`.
+- Support realtime payloads are support-specific safe payloads, not raw generic Communication message/read presenter payloads.
+- Realtime side-effect failure does not roll back message creation or read marking.
+- Platform replies create in-app `MESSAGE_RECEIVED` notification records for active school support participants.
+- School messages create in-app `MESSAGE_RECEIVED` notification records only for existing platform support participants in the same support conversation.
+- If a platform actor has not opened/read/replied yet, no platform notification row is created for that actor; REST inbox unread still counts school-authored messages for that actor.
+- Support notification records use `sourceType = "school_support_message"` and `actorUserId = null`.
+- Support push delivery is not implemented in 1B.
+- Platform-safe socket room join is not implemented in 1B; Platform Admin inbox freshness remains REST polling/refresh.
+
 ## School Dashboard Routes
 
 | Method | Path | Permission | Purpose |
@@ -510,26 +523,62 @@ These are registered in `ERROR_CATALOG.md` in 1A. DTO validation still uses the 
 
 ## Realtime Contract
 
-Expected V1:
+Implemented in 1B:
 
-- School clients load the support conversation through REST, then join the conversation room if the existing realtime client supports it.
-- Use existing server event names where possible:
-  - `communication.chat.message.created`
-  - `communication.chat.message.updated`
-  - `communication.chat.message.deleted`
-  - `communication.chat.message.read`
-  - `communication.notification.created`
-- Platform clients may subscribe to opened support conversation rooms only after a platform-safe realtime access path exists.
-- Platform inbox may rely on REST polling/refresh in V1.
+- School clients load the support conversation through REST, then may join the existing conversation room with the existing school-scoped realtime command.
+- Message creation publishes `communication.chat.message.created` to the support conversation room when the publisher is available.
+- Read marking publishes `communication.chat.message.read` to the support conversation room when the publisher is available.
+- Notification creation publishes `communication.notification.created` to the recipient user room when the publisher is available.
+- Event payloads omit raw `schoolId`, `organizationId`, `membershipId`, `roleId`, participant ids, raw platform user ids, platform email, raw metadata, socket room ids, and storage internals.
+- Events are best-effort.
 - REST remains source of truth.
 - No durable support-specific realtime replay is part of V1.
+- Platform Admin clients should continue to rely on REST polling/refresh until a platform-safe realtime room join is explicitly implemented.
+
+Message-created event payload:
+
+```json
+{
+  "conversationId": "uuid",
+  "message": {
+    "id": "uuid",
+    "conversationId": "uuid",
+    "body": "شكرًا لتواصلكم.",
+    "sender": {
+      "kind": "support",
+      "displayName": "Moazez Support"
+    },
+    "sentAt": "2026-07-08T12:10:00.000Z"
+  },
+  "eventAt": "2026-07-08T12:10:00.100Z"
+}
+```
+
+Read event payload:
+
+```json
+{
+  "conversationId": "uuid",
+  "reader": {
+    "kind": "school"
+  },
+  "readAt": "2026-07-08T12:15:00.000Z",
+  "markedCount": 1,
+  "eventAt": "2026-07-08T12:15:00.100Z"
+}
+```
 
 ## Notification Contract
 
-Expected V1:
+Implemented in 1B:
 
-- School message should make the support conversation visible/unread in Platform Admin support inbox.
-- Platform reply should notify eligible school participant(s) through existing in-app notification center where implementation verifies support participants and notification generation.
+- School message makes the support conversation visible/unread in Platform Admin REST inbox.
+- School message creates in-app notification records for active platform support participants already present in that support conversation.
+- Platform reply creates in-app notification records for active non-platform support participants in that support conversation.
+- Sender is not notified.
+- Unrelated schools and non-participants are not notified.
+- Support notification records are in-app only and use `sourceType = "school_support_message"`.
+- Support notification records use `actorUserId = null` to avoid exposing raw platform user ids through generic notification response shapes.
 - Push behavior must not be promised until verified for this support surface.
 - Email/SMS support is out of scope.
 

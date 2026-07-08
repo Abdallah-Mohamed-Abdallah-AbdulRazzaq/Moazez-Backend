@@ -42,6 +42,7 @@ import {
   presentSupportRead,
   presentSupportTransition,
 } from '../presenters/school-support.presenter';
+import { SchoolSupportSideEffectsService } from './school-support-side-effects.service';
 
 @Injectable()
 export class GetSchoolSupportConversationUseCase {
@@ -73,26 +74,38 @@ export class ListSchoolSupportMessagesUseCase {
 
 @Injectable()
 export class SendSchoolSupportMessageUseCase {
-  constructor(private readonly repository: SchoolSupportRepository) {}
+  constructor(
+    private readonly repository: SchoolSupportRepository,
+    private readonly sideEffects: SchoolSupportSideEffectsService,
+  ) {}
 
   async execute(
     dto: SendSchoolSupportMessageDto,
   ): Promise<SchoolSupportMessageResponseDto> {
     const scope = requireSchoolSupportScope();
     const body = normalizeBody(dto.body, () => new SchoolSupportMessageEmptyException());
-    const message = await this.repository.createSchoolMessage({
+    const result = await this.repository.createSchoolMessage({
       scope,
       body,
       clientMessageId: dto.clientMessageId,
     });
+    if (result.wasCreated) {
+      await this.sideEffects.afterSchoolMessageCreated({
+        scope,
+        message: result.message,
+      });
+    }
 
-    return presentSupportMessage(message, scope.actorId);
+    return presentSupportMessage(result.message, scope.actorId);
   }
 }
 
 @Injectable()
 export class MarkSchoolSupportReadUseCase {
-  constructor(private readonly repository: SchoolSupportRepository) {}
+  constructor(
+    private readonly repository: SchoolSupportRepository,
+    private readonly sideEffects: SchoolSupportSideEffectsService,
+  ) {}
 
   async execute(
     dto: MarkSchoolSupportReadDto,
@@ -102,6 +115,7 @@ export class MarkSchoolSupportReadUseCase {
       scope,
       readAt: dto.readAt ? new Date(dto.readAt) : new Date(),
     });
+    this.sideEffects.afterSchoolConversationRead({ scope, result });
 
     return presentSupportRead(result);
   }
@@ -173,7 +187,10 @@ export class ListPlatformSupportMessagesUseCase {
 
 @Injectable()
 export class SendPlatformSupportMessageUseCase {
-  constructor(private readonly repository: SchoolSupportRepository) {}
+  constructor(
+    private readonly repository: SchoolSupportRepository,
+    private readonly sideEffects: SchoolSupportSideEffectsService,
+  ) {}
 
   async execute(
     conversationId: string,
@@ -181,21 +198,30 @@ export class SendPlatformSupportMessageUseCase {
   ): Promise<SchoolSupportMessageResponseDto> {
     const scope = requirePlatformSupportScope();
     const body = normalizeBody(dto.body, () => new PlatformSupportMessageEmptyException());
-    const message = await this.repository.createPlatformReply({
+    const result = await this.repository.createPlatformReply({
       scope,
       conversationId,
       body,
       clientMessageId: dto.clientMessageId,
     });
-    if (!message) throw new PlatformSupportConversationNotFoundException();
+    if (!result) throw new PlatformSupportConversationNotFoundException();
+    if (result.wasCreated) {
+      await this.sideEffects.afterPlatformReplyCreated({
+        scope,
+        message: result.message,
+      });
+    }
 
-    return presentSupportMessage(message, scope.actorId);
+    return presentSupportMessage(result.message, scope.actorId);
   }
 }
 
 @Injectable()
 export class MarkPlatformSupportReadUseCase {
-  constructor(private readonly repository: SchoolSupportRepository) {}
+  constructor(
+    private readonly repository: SchoolSupportRepository,
+    private readonly sideEffects: SchoolSupportSideEffectsService,
+  ) {}
 
   async execute(
     conversationId: string,
@@ -208,6 +234,7 @@ export class MarkPlatformSupportReadUseCase {
       readAt: dto.readAt ? new Date(dto.readAt) : new Date(),
     });
     if (!result) throw new PlatformSupportConversationNotFoundException();
+    this.sideEffects.afterPlatformConversationRead({ scope, result });
 
     return presentPlatformSupportRead(result);
   }

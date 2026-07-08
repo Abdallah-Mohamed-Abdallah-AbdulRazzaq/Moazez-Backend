@@ -27,6 +27,20 @@ Not implemented in 1A:
 - Support-specific push notification delivery.
 - Ticketing, assignment, SLA, categories, internal notes, email, or bot/AI support.
 
+## 1B Implementation Status
+
+Implemented in `SCHOOL-SUPPORT-CHAT-1B`:
+
+- Best-effort support message-created realtime events using `communication.chat.message.created`.
+- Best-effort support read realtime events using `communication.chat.message.read`.
+- Support realtime payloads use support-specific presenters and do not expose raw platform user ids, participant ids, memberships, metadata, room names, or storage internals.
+- Support side effects run after the REST mutation commits; realtime or notification failures are logged and do not roll back message/read persistence.
+- In-app `CommunicationNotification` records are created for eligible active support conversation participants only.
+- Platform reply notifications target school support participants, exclude the sender, and store `actorUserId = null` to avoid exposing raw platform user ids through generic notification presenters.
+- School message notifications target existing platform support participants only. If no platform actor has opened/read/replied to the conversation yet, no platform notification row is created; Platform Admin inbox REST unread remains the source of truth.
+- Notification delivery is limited to `IN_APP`; support push delivery is not implemented in 1B.
+- Platform inbox unread remains per platform user. If a platform actor has no participant/read row, school-authored support messages count as unread for that actor.
+
 ## Product Scope
 
 V1 product behavior:
@@ -372,11 +386,13 @@ Current realtime constraints:
 
 Do not claim platform support realtime room access until implementation verifies the platform-safe join behavior.
 
-1A runtime status:
+1B runtime status:
 
-- No support-specific realtime publish or platform-safe room join was added.
-- REST remains the source of truth for conversation, messages, and read state.
-- Platform Admin support inbox uses REST listing/detail/refresh.
+- Support message-created and read events are published to the existing conversation room using support-safe payloads.
+- School clients can subscribe after loading the support conversation through REST and joining the existing conversation room.
+- Platform-safe socket room join is still not implemented. Platform Admin clients should continue to use REST inbox polling/refresh for V1, although opened platform participants may receive notification records and best-effort user-room notification events if the current realtime infrastructure can deliver them.
+- REST remains the source of truth for conversation, messages, read state, and inbox freshness.
+- No durable support-specific realtime replay is implemented.
 
 ## Notification Strategy
 
@@ -394,10 +410,16 @@ Do not overclaim:
 - Do not claim email/SMS support.
 - Do not claim a durable support-specific notification replay mechanism.
 
-1A runtime status:
+1B runtime status:
 
-- No support-specific push or notification queue path was added.
-- REST unread counts remain the implemented source of truth.
+- Platform replies create in-app `MESSAGE_RECEIVED` notifications for active non-platform support participants in the same support conversation.
+- School messages create in-app `MESSAGE_RECEIVED` notifications for active platform support participants already present in the same support conversation.
+- Sender is excluded from notification recipients.
+- Unrelated schools and non-participants are not notification recipients.
+- Support notification records use `sourceModule = COMMUNICATION`, `sourceType = school_support_message`, and `type = MESSAGE_RECEIVED`.
+- Support notification records intentionally set `actorUserId = null` so school notification readers do not receive raw platform user ids for support replies.
+- Support notification delivery is `IN_APP` only in 1B.
+- Push delivery, email, SMS, and notification replay are not implemented for support chat in 1B.
 
 ## Read / Unread Strategy
 
@@ -418,6 +440,9 @@ Platform-side unread:
 - Count unread visible/listable support messages sent by school participants.
 - Exclude platform actor's own messages.
 - 1A uses per-platform-user unread semantics. Each Platform Admin actor marks only their own support inbox read state.
+- 1B keeps the same per-platform-user model.
+- If a platform actor has not yet opened/read/replied and therefore has no support participant/read row, school-authored messages still count as unread for that actor in the Platform Admin REST inbox.
+- Marking read for one platform actor does not clear unread for another platform actor.
 
 ## No-Leak Rules
 
@@ -603,6 +628,8 @@ SCHOOL-SUPPORT-CHAT-1B - Realtime / Notifications / Unread Polish
 - Verify notification generation for school participants and platform support inbox.
 - Add platform-safe realtime room access if included in V1.
 - Keep REST as source of truth.
+
+1B status: implemented with support-safe message/read publish, in-app-only participant notifications, per-platform-user unread polish, and REST polling as Platform Admin inbox source of truth. Platform-safe socket room join and push delivery remain deferred.
 
 SCHOOL-SUPPORT-CHAT-1C - Security and Final Acceptance
 

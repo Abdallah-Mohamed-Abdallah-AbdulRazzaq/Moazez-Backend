@@ -9,3 +9,6 @@ export const SCHOOL_SUPPORT_METADATA = {
 } as const;
 
 export const SCHOOL_SUPPORT_MESSAGE_METADATA_VERSION = 1;
+
+export const SCHOOL_SUPPORT_NOTIFICATION_SOURCE_TYPE =
+  'school_support_message';

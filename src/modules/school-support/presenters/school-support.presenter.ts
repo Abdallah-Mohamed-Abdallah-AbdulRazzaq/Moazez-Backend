@@ -80,6 +80,30 @@ export function presentSupportMessage(
   };
 }
 
+export function presentSupportMessageEvent(message: SupportMessageRecord): {
+  id: string;
+  conversationId: string;
+  body: string | null;
+  sender: {
+    kind: 'school' | 'support' | 'system';
+    displayName: string;
+  };
+  sentAt: string;
+} {
+  const kind = presentSenderKind(message);
+
+  return {
+    id: message.id,
+    conversationId: message.conversationId,
+    body: shouldHideMessageBody(message) ? null : message.body,
+    sender: {
+      kind,
+      displayName: presentSenderDisplayName(message, kind),
+    },
+    sentAt: message.sentAt.toISOString(),
+  };
+}
+
 export function presentSupportRead(
   result: SupportReadResult,
 ): SchoolSupportReadResponseDto {

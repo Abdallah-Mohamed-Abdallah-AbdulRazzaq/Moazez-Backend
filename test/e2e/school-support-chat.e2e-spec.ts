@@ -2,6 +2,9 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   CommunicationConversationStatus,
+  CommunicationNotificationDeliveryChannel,
+  CommunicationNotificationSourceModule,
+  CommunicationNotificationType,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
@@ -14,6 +17,9 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
+import { REALTIME_SERVER_EVENTS } from '../../src/infrastructure/realtime/realtime-event-names';
+import { RealtimePublisherService } from '../../src/infrastructure/realtime/realtime-publisher.service';
+import { SCHOOL_SUPPORT_NOTIFICATION_SOURCE_TYPE } from '../../src/modules/school-support/domain/school-support.constants';
 
 const GLOBAL_PREFIX = '/api/v1';
 const TEST_PREFIX = `school-support-e2e-${Date.now()}`;
@@ -88,10 +94,15 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
   let schoolAdminAEmail: string;
   let schoolAdminBEmail: string;
   let platformEmail: string;
+  let platformSecondEmail: string;
+  let schoolAdminAId: string;
+  let schoolAdminBId: string;
   let platformUserId: string;
+  let platformSecondUserId: string;
   let schoolAdminAToken: string;
   let schoolAdminBToken: string;
   let platformToken: string;
+  let platformSecondToken: string;
 
   const createdOrganizationIds: string[] = [];
   const createdSchoolIds: string[] = [];
@@ -114,15 +125,16 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
     schoolAdminAEmail = `${TEST_PREFIX}-school-a-admin@moazez.local`;
     schoolAdminBEmail = `${TEST_PREFIX}-school-b-admin@moazez.local`;
     platformEmail = `${TEST_PREFIX}-platform@moazez.local`;
+    platformSecondEmail = `${TEST_PREFIX}-platform-second@moazez.local`;
 
-    await createSystemRoleActor({
+    schoolAdminAId = await createSystemRoleActor({
       email: schoolAdminAEmail,
       userType: UserType.SCHOOL_USER,
       roleKey: 'school_admin',
       organizationId: organizationAId,
       schoolId: schoolAId,
     });
-    await createSystemRoleActor({
+    schoolAdminBId = await createSystemRoleActor({
       email: schoolAdminBEmail,
       userType: UserType.SCHOOL_USER,
       roleKey: 'school_admin',
@@ -131,6 +143,10 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
     });
     platformUserId = await createNoMembershipUser(
       platformEmail,
+      UserType.PLATFORM_USER,
+    );
+    platformSecondUserId = await createNoMembershipUser(
+      platformSecondEmail,
       UserType.PLATFORM_USER,
     );
 
@@ -155,6 +171,7 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
     schoolAdminAToken = await login(schoolAdminAEmail);
     schoolAdminBToken = await login(schoolAdminBEmail);
     platformToken = await login(platformEmail);
+    platformSecondToken = await login(platformSecondEmail);
   });
 
   afterAll(async () => {
@@ -168,6 +185,15 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
             { schoolId: { in: createdSchoolIds } },
           ],
         },
+      });
+      await prisma.communicationNotificationPushAttempt.deleteMany({
+        where: { schoolId: { in: createdSchoolIds } },
+      });
+      await prisma.communicationNotificationDelivery.deleteMany({
+        where: { schoolId: { in: createdSchoolIds } },
+      });
+      await prisma.communicationNotification.deleteMany({
+        where: { schoolId: { in: createdSchoolIds } },
       });
       await prisma.communicationMessageRead.deleteMany({
         where: { schoolId: { in: createdSchoolIds } },
@@ -487,6 +513,212 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
     expect(stored.status).toBe(CommunicationConversationStatus.ACTIVE);
   });
 
+  it('emits safe realtime events, creates in-app notifications, and keeps platform unread per actor', async () => {
+    const conversation = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/school-support/conversation`)
+      .set('Authorization', `Bearer ${schoolAdminAToken}`)
+      .expect(200);
+    const conversationId = conversation.body.conversation.id;
+
+    const publisher = app.get(RealtimePublisherService);
+    const conversationSpy = jest.spyOn(publisher, 'publishToConversation');
+    const userSpy = jest.spyOn(publisher, 'publishToUser');
+
+    const schoolFollowUp = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/school-support/messages`)
+      .set('Authorization', `Bearer ${schoolAdminAToken}`)
+      .send({
+        body: 'Support follow-up after platform participant exists.',
+        clientMessageId: `${TEST_PREFIX}-school-follow-up-1b`,
+      })
+      .expect(201);
+
+    const schoolMessageEvent = publishedConversationPayload(
+      conversationSpy,
+      conversationId,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_MESSAGE_CREATED,
+      (payload) => payload.message?.id === schoolFollowUp.body.id,
+    );
+    expect(schoolMessageEvent).toMatchObject({
+      conversationId,
+      message: {
+        id: schoolFollowUp.body.id,
+        conversationId,
+        body: 'Support follow-up after platform participant exists.',
+        sender: { kind: 'school' },
+        sentAt: expect.any(String),
+      },
+      eventAt: expect.any(String),
+    });
+    expectNoSchoolRealtimeLeaks(schoolMessageEvent);
+
+    const platformNotifications = await readNotificationsForMessage(
+      schoolFollowUp.body.id,
+    );
+    expect(platformNotifications).toHaveLength(1);
+    expect(platformNotifications[0]).toMatchObject({
+      recipientUserId: platformUserId,
+      actorUserId: null,
+      sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+      sourceType: SCHOOL_SUPPORT_NOTIFICATION_SOURCE_TYPE,
+      sourceId: schoolFollowUp.body.id,
+      type: CommunicationNotificationType.MESSAGE_RECEIVED,
+    });
+    expect(platformNotifications[0].recipientUserId).not.toBe(schoolAdminAId);
+    expect(platformNotifications[0].recipientUserId).not.toBe(schoolAdminBId);
+    expect(platformNotifications[0].deliveries).toEqual([
+      expect.objectContaining({
+        channel: CommunicationNotificationDeliveryChannel.IN_APP,
+      }),
+    ]);
+    expectNotificationRealtimeFor(
+      userSpy,
+      platformUserId,
+      schoolFollowUp.body.id,
+    );
+    await expect(countPushAttempts()).resolves.toBe(0);
+
+    const platformUnreadBeforeRead = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/platform-admin/support/conversations`)
+      .query({ schoolId: schoolAId })
+      .set('Authorization', `Bearer ${platformToken}`)
+      .expect(200);
+    expect(platformUnreadBeforeRead.body.items[0].unread.count).toBeGreaterThan(
+      0,
+    );
+
+    const platformRead = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/platform-admin/support/conversations/${conversationId}/read`,
+      )
+      .set('Authorization', `Bearer ${platformToken}`)
+      .send({})
+      .expect(200);
+    expect(platformRead.body.markedCount).toBeGreaterThan(0);
+
+    const platformReadEvent = publishedConversationPayload(
+      conversationSpy,
+      conversationId,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_MESSAGE_READ,
+      (payload) => payload.reader?.kind === 'support',
+    );
+    expect(platformReadEvent).toMatchObject({
+      conversationId,
+      reader: { kind: 'support' },
+      readAt: expect.any(String),
+      markedCount: expect.any(Number),
+      eventAt: expect.any(String),
+    });
+    expect(JSON.stringify(platformReadEvent)).not.toContain(platformUserId);
+
+    const platformUnreadAfterRead = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/platform-admin/support/conversations`)
+      .query({ schoolId: schoolAId })
+      .set('Authorization', `Bearer ${platformToken}`)
+      .expect(200);
+    expect(platformUnreadAfterRead.body.items[0].unread.count).toBe(0);
+
+    const secondPlatformUnread = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/platform-admin/support/conversations`)
+      .query({ schoolId: schoolAId })
+      .set('Authorization', `Bearer ${platformSecondToken}`)
+      .expect(200);
+    expect(secondPlatformUnread.body.items[0].unread.count).toBeGreaterThan(0);
+
+    const platformReply = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/platform-admin/support/conversations/${conversationId}/messages`,
+      )
+      .set('Authorization', `Bearer ${platformToken}`)
+      .send({
+        body: 'Realtime-safe support reply from platform.',
+        clientMessageId: `${TEST_PREFIX}-platform-reply-1b`,
+      })
+      .expect(201);
+
+    const platformMessageEvent = publishedConversationPayload(
+      conversationSpy,
+      conversationId,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_MESSAGE_CREATED,
+      (payload) => payload.message?.id === platformReply.body.id,
+    );
+    expect(platformMessageEvent).toMatchObject({
+      conversationId,
+      message: {
+        id: platformReply.body.id,
+        sender: {
+          kind: 'support',
+          displayName: 'Moazez Support',
+        },
+        body: 'Realtime-safe support reply from platform.',
+      },
+      eventAt: expect.any(String),
+    });
+    expectNoSchoolRealtimeLeaks(platformMessageEvent);
+    expect(JSON.stringify(platformMessageEvent)).not.toContain(platformUserId);
+    expect(JSON.stringify(platformMessageEvent)).not.toContain(platformEmail);
+
+    const schoolNotifications = await readNotificationsForMessage(
+      platformReply.body.id,
+    );
+    expect(schoolNotifications).toHaveLength(1);
+    expect(schoolNotifications[0]).toMatchObject({
+      recipientUserId: schoolAdminAId,
+      actorUserId: null,
+      sourceType: SCHOOL_SUPPORT_NOTIFICATION_SOURCE_TYPE,
+      sourceId: platformReply.body.id,
+      type: CommunicationNotificationType.MESSAGE_RECEIVED,
+    });
+    expect(schoolNotifications[0].recipientUserId).not.toBe(platformUserId);
+    expectNotificationRealtimeFor(
+      userSpy,
+      schoolNotifications[0].recipientUserId,
+      platformReply.body.id,
+    );
+
+    const schoolUnread = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/school-support/conversation`)
+      .set('Authorization', `Bearer ${schoolAdminAToken}`)
+      .expect(200);
+    expect(schoolUnread.body.unread.count).toBeGreaterThan(0);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/school-support/read`)
+      .set('Authorization', `Bearer ${schoolAdminAToken}`)
+      .send({})
+      .expect(200);
+
+    const schoolReadEvent = publishedConversationPayload(
+      conversationSpy,
+      conversationId,
+      REALTIME_SERVER_EVENTS.COMMUNICATION_CHAT_MESSAGE_READ,
+      (payload) => payload.reader?.kind === 'school',
+    );
+    expect(schoolReadEvent).toMatchObject({
+      conversationId,
+      reader: { kind: 'school' },
+      readAt: expect.any(String),
+      markedCount: expect.any(Number),
+      eventAt: expect.any(String),
+    });
+    expect(JSON.stringify(schoolReadEvent)).not.toContain('readerId');
+
+    conversationSpy.mockImplementationOnce(() => {
+      throw new Error('socket adapter unavailable');
+    });
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/school-support/messages`)
+      .set('Authorization', `Bearer ${schoolAdminAToken}`)
+      .send({
+        body: 'Message still commits when realtime publish fails.',
+        clientMessageId: `${TEST_PREFIX}-publish-failure-1b`,
+      })
+      .expect(201);
+
+    conversationSpy.mockRestore();
+    userSpy.mockRestore();
+  });
+
   async function ensureSupportPermissions(): Promise<void> {
     for (const permission of SUPPORT_PERMISSIONS) {
       await prisma.permission.upsert({
@@ -653,6 +885,114 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
+  }
+
+  function expectNoSchoolRealtimeLeaks(payload: unknown): void {
+    const serialized = JSON.stringify(payload);
+    for (const forbiddenKey of [
+      'schoolId',
+      'organizationId',
+      'membershipId',
+      'roleId',
+      'participant',
+      'senderUserId',
+      'readerId',
+      'metadata',
+      'deletedAt',
+      'objectKey',
+      'tokenHash',
+      'session',
+      'socket',
+      'room',
+    ]) {
+      expect(serialized).not.toContain(`"${forbiddenKey}"`);
+    }
+
+    for (const forbiddenValue of [
+      platformEmail,
+      platformSecondEmail,
+      platformUserId,
+      platformSecondUserId,
+    ]) {
+      expect(serialized).not.toContain(forbiddenValue);
+    }
+  }
+
+  function publishedConversationPayload(
+    spy: jest.SpyInstance,
+    expectedConversationId: string,
+    expectedEventName: string,
+    predicate: (payload: any) => boolean,
+  ): any {
+    const call = spy.mock.calls.find(
+      ([schoolId, conversationId, eventName, payload]) =>
+        schoolId === schoolAId &&
+        conversationId === expectedConversationId &&
+        eventName === expectedEventName &&
+        predicate(payload),
+    );
+    expect(call).toBeDefined();
+    return call?.[3];
+  }
+
+  function expectNotificationRealtimeFor(
+    spy: jest.SpyInstance,
+    recipientUserId: string,
+    sourceId: string,
+  ): void {
+    const call = spy.mock.calls.find(
+      ([schoolId, userId, eventName, payload]) =>
+        schoolId === schoolAId &&
+        userId === recipientUserId &&
+        eventName ===
+          REALTIME_SERVER_EVENTS.COMMUNICATION_NOTIFICATION_CREATED &&
+        payload?.notification?.sourceId === sourceId,
+    );
+    expect(call).toBeDefined();
+    const serialized = JSON.stringify(call?.[3]);
+    expect(serialized).not.toContain('schoolId');
+    expect(serialized).not.toContain('recipientUserId');
+    expect(serialized).not.toContain('actorUserId');
+    expect(serialized).not.toContain('metadata');
+    expect(serialized).not.toContain('passwordHash');
+    expect(serialized).not.toContain('tokenHash');
+  }
+
+  async function readNotificationsForMessage(messageId: string) {
+    return prisma.communicationNotification.findMany({
+      where: {
+        schoolId: schoolAId,
+        sourceModule: CommunicationNotificationSourceModule.COMMUNICATION,
+        sourceType: SCHOOL_SUPPORT_NOTIFICATION_SOURCE_TYPE,
+        sourceId: messageId,
+        type: CommunicationNotificationType.MESSAGE_RECEIVED,
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        recipientUserId: true,
+        actorUserId: true,
+        sourceModule: true,
+        sourceType: true,
+        sourceId: true,
+        type: true,
+        metadata: true,
+        deliveries: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: {
+            channel: true,
+            status: true,
+            provider: true,
+          },
+        },
+      },
+    });
+  }
+
+  function countPushAttempts(): Promise<number> {
+    return prisma.communicationNotificationPushAttempt.count({
+      where: { schoolId: { in: [schoolAId, schoolBId] } },
+    });
   }
 
   function listRegisteredRoutes(): string[] {

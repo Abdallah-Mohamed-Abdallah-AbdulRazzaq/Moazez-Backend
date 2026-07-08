@@ -186,6 +186,15 @@ describe('School support chat tenancy and IAM contracts', () => {
           ],
         },
       });
+      await prisma.communicationNotificationPushAttempt.deleteMany({
+        where: { schoolId: { in: createdSchoolIds } },
+      });
+      await prisma.communicationNotificationDelivery.deleteMany({
+        where: { schoolId: { in: createdSchoolIds } },
+      });
+      await prisma.communicationNotification.deleteMany({
+        where: { schoolId: { in: createdSchoolIds } },
+      });
       await prisma.communicationMessageRead.deleteMany({
         where: { schoolId: { in: createdSchoolIds } },
       });
