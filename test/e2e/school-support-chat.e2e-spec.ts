@@ -19,6 +19,7 @@ import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import { REALTIME_SERVER_EVENTS } from '../../src/infrastructure/realtime/realtime-event-names';
 import { RealtimePublisherService } from '../../src/infrastructure/realtime/realtime-publisher.service';
+import { CommunicationNotificationCommandService } from '../../src/modules/communication/application/communication-notification-command.service';
 import { SCHOOL_SUPPORT_NOTIFICATION_SOURCE_TYPE } from '../../src/modules/school-support/domain/school-support.constants';
 
 const GLOBAL_PREFIX = '/api/v1';
@@ -84,7 +85,7 @@ type ExpressLayer = {
 
 jest.setTimeout(90000);
 
-describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
+describe('School support chat V1 final acceptance (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
   let organizationAId: string;
@@ -234,21 +235,37 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
   });
 
   it('registers the school and platform support REST surface', () => {
-    expect(listRegisteredRoutes()).toEqual(
-      expect.arrayContaining([
-        'GET /api/v1/school-support/conversation',
-        'GET /api/v1/school-support/messages',
-        'POST /api/v1/school-support/messages',
-        'POST /api/v1/school-support/read',
-        'GET /api/v1/platform-admin/support/conversations',
-        'GET /api/v1/platform-admin/support/conversations/:conversationId',
-        'GET /api/v1/platform-admin/support/conversations/:conversationId/messages',
-        'POST /api/v1/platform-admin/support/conversations/:conversationId/messages',
-        'POST /api/v1/platform-admin/support/conversations/:conversationId/read',
-        'POST /api/v1/platform-admin/support/conversations/:conversationId/close',
-        'POST /api/v1/platform-admin/support/conversations/:conversationId/reopen',
-      ]),
+    const routes = listRegisteredRoutes();
+    const supportRoutes = routes.filter(
+      (route) =>
+        route.includes('/api/v1/school-support') ||
+        route.includes('/api/v1/platform-admin/support'),
     );
+
+    expect(supportRoutes).toEqual([
+      'GET /api/v1/platform-admin/support/conversations',
+      'GET /api/v1/platform-admin/support/conversations/:conversationId',
+      'GET /api/v1/platform-admin/support/conversations/:conversationId/messages',
+      'GET /api/v1/school-support/conversation',
+      'GET /api/v1/school-support/messages',
+      'POST /api/v1/platform-admin/support/conversations/:conversationId/close',
+      'POST /api/v1/platform-admin/support/conversations/:conversationId/messages',
+      'POST /api/v1/platform-admin/support/conversations/:conversationId/read',
+      'POST /api/v1/platform-admin/support/conversations/:conversationId/reopen',
+      'POST /api/v1/school-support/messages',
+      'POST /api/v1/school-support/read',
+    ]);
+    expect(
+      routes.filter(
+        (route) =>
+          route.includes('/api/v1/communication') &&
+          route.toLowerCase().includes('support'),
+      ),
+    ).toEqual([]);
+    expect(JSON.stringify(supportRoutes)).not.toContain('ticket');
+    expect(JSON.stringify(supportRoutes)).not.toContain('sla');
+    expect(JSON.stringify(supportRoutes)).not.toContain('assignment');
+    expect(JSON.stringify(supportRoutes)).not.toContain('category');
   });
 
   it('supports the school-to-platform-to-school chat loop without leaking school-side internals', async () => {
@@ -304,6 +321,21 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
       })
       .expect(201);
     expect(duplicateSchoolMessage.body.id).toBe(schoolMessage.body.id);
+
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/school-support/messages`)
+      .set('Authorization', `Bearer ${schoolAdminAToken}`)
+      .send({
+        body: 'Tenant override must be rejected.',
+        schoolId: schoolBId,
+        organizationId: organizationBId,
+        membershipId: 'client-supplied-membership',
+        participantId: 'client-supplied-participant',
+      })
+      .expect(400)
+      .expect((response) => {
+        expect(response.body?.error?.code).toBe('validation.failed');
+      });
 
     const schoolBConversation = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/school-support/conversation`)
@@ -442,6 +474,14 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
         });
       });
 
+    const publisher = app.get(RealtimePublisherService);
+    const conversationSpy = jest.spyOn(publisher, 'publishToConversation');
+    const userSpy = jest.spyOn(publisher, 'publishToUser');
+    const notificationCountBeforeRejectedSend =
+      await prisma.communicationNotification.count({
+        where: { schoolId: schoolAId },
+      });
+
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/school-support/messages`)
       .set('Authorization', `Bearer ${schoolAdminAToken}`)
@@ -465,6 +505,16 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
           'platform_support.conversation.closed',
         );
       });
+
+    expect(conversationSpy).not.toHaveBeenCalled();
+    expect(userSpy).not.toHaveBeenCalled();
+    await expect(
+      prisma.communicationNotification.count({
+        where: { schoolId: schoolAId },
+      }),
+    ).resolves.toBe(notificationCountBeforeRejectedSend);
+    conversationSpy.mockRestore();
+    userSpy.mockRestore();
 
     await request(app.getHttpServer())
       .post(
@@ -576,6 +626,28 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
       platformUserId,
       schoolFollowUp.body.id,
     );
+
+    const sideEffectCallsBeforeSchoolReplay = {
+      conversation: conversationSpy.mock.calls.length,
+      user: userSpy.mock.calls.length,
+      notifications: platformNotifications.length,
+    };
+    const duplicateSchoolFollowUp = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/school-support/messages`)
+      .set('Authorization', `Bearer ${schoolAdminAToken}`)
+      .send({
+        body: 'Support follow-up after platform participant exists.',
+        clientMessageId: `${TEST_PREFIX}-school-follow-up-1b`,
+      })
+      .expect(201);
+    expect(duplicateSchoolFollowUp.body.id).toBe(schoolFollowUp.body.id);
+    expect(conversationSpy).toHaveBeenCalledTimes(
+      sideEffectCallsBeforeSchoolReplay.conversation,
+    );
+    expect(userSpy).toHaveBeenCalledTimes(sideEffectCallsBeforeSchoolReplay.user);
+    await expect(readNotificationsForMessage(schoolFollowUp.body.id)).resolves
+      .toHaveLength(sideEffectCallsBeforeSchoolReplay.notifications);
+
     await expect(countPushAttempts()).resolves.toBe(0);
 
     const platformUnreadBeforeRead = await request(app.getHttpServer())
@@ -676,6 +748,31 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
       platformReply.body.id,
     );
 
+    const sideEffectCallsBeforePlatformReplay = {
+      conversation: conversationSpy.mock.calls.length,
+      user: userSpy.mock.calls.length,
+      notifications: schoolNotifications.length,
+    };
+    const duplicatePlatformReply = await request(app.getHttpServer())
+      .post(
+        `${GLOBAL_PREFIX}/platform-admin/support/conversations/${conversationId}/messages`,
+      )
+      .set('Authorization', `Bearer ${platformToken}`)
+      .send({
+        body: 'Realtime-safe support reply from platform.',
+        clientMessageId: `${TEST_PREFIX}-platform-reply-1b`,
+      })
+      .expect(201);
+    expect(duplicatePlatformReply.body.id).toBe(platformReply.body.id);
+    expect(conversationSpy).toHaveBeenCalledTimes(
+      sideEffectCallsBeforePlatformReplay.conversation,
+    );
+    expect(userSpy).toHaveBeenCalledTimes(
+      sideEffectCallsBeforePlatformReplay.user,
+    );
+    await expect(readNotificationsForMessage(platformReply.body.id)).resolves
+      .toHaveLength(sideEffectCallsBeforePlatformReplay.notifications);
+
     const schoolUnread = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/school-support/conversation`)
       .set('Authorization', `Bearer ${schoolAdminAToken}`)
@@ -714,6 +811,29 @@ describe('SCHOOL-SUPPORT-CHAT-1A core REST and IAM (e2e)', () => {
         clientMessageId: `${TEST_PREFIX}-publish-failure-1b`,
       })
       .expect(201);
+
+    const notificationCommandService = app.get(
+      CommunicationNotificationCommandService,
+    );
+    const notificationCommandSpy = jest
+      .spyOn(notificationCommandService, 'createOrReuseNotification')
+      .mockRejectedValueOnce(new Error('notification writer unavailable'));
+    const notificationFailureMessage = await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/school-support/messages`)
+      .set('Authorization', `Bearer ${schoolAdminAToken}`)
+      .send({
+        body: 'Message still commits when notification creation fails.',
+        clientMessageId: `${TEST_PREFIX}-notification-failure-1c`,
+      })
+      .expect(201);
+    await expect(
+      prisma.communicationMessage.findUnique({
+        where: { id: notificationFailureMessage.body.id },
+        select: { id: true },
+      }),
+    ).resolves.toEqual({ id: notificationFailureMessage.body.id });
+    notificationCommandSpy.mockRestore();
+    await expect(countPushAttempts()).resolves.toBe(0);
 
     conversationSpy.mockRestore();
     userSpy.mockRestore();

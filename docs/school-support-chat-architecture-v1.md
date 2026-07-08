@@ -41,6 +41,19 @@ Implemented in `SCHOOL-SUPPORT-CHAT-1B`:
 - Notification delivery is limited to `IN_APP`; support push delivery is not implemented in 1B.
 - Platform inbox unread remains per platform user. If a platform actor has no participant/read row, school-authored support messages count as unread for that actor.
 
+## 1C Final Acceptance Status
+
+Validated and hardened in `SCHOOL-SUPPORT-CHAT-1C`:
+
+- The support route surface remains limited to `/api/v1/school-support/*` and `/api/v1/platform-admin/support/*`.
+- No platform support route is exposed through generic `/api/v1/communication/*`.
+- Platform support controller metadata uses `@PlatformScope()` and every platform support handler has a support-specific `platform.support.*` permission.
+- School support DTO validation rejects client-supplied tenant override fields such as `schoolId`, `organizationId`, `membershipId`, and `participantId`.
+- Idempotent `clientMessageId` replays return the persisted message without duplicating realtime events or notification records.
+- Closed-conversation rejected sends/replies do not emit realtime events or notification records.
+- Best-effort realtime and notification failure paths keep the REST mutation committed.
+- Support error codes are present in `ERROR_CATALOG.md`; support English and Arabic translation catalog entries now exist under `src/common/i18n/`.
+
 ## Product Scope
 
 V1 product behavior:

@@ -14,6 +14,7 @@ import {
 import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
+import { PLATFORM_SCOPE_METADATA } from '../../src/common/decorators/platform-scope.decorator';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
 import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
@@ -225,6 +226,13 @@ describe('School support chat tenancy and IAM contracts', () => {
   });
 
   it('guards support controllers with the sprint-specific permissions', () => {
+    expect(Reflect.getMetadata(PLATFORM_SCOPE_METADATA, PlatformSupportController)).toBe(
+      true,
+    );
+    expect(Reflect.getMetadata(PLATFORM_SCOPE_METADATA, SchoolSupportController)).toBe(
+      undefined,
+    );
+
     expect(readPermissions(SchoolSupportController, 'getConversation')).toEqual([
       'school.support.view',
     ]);
@@ -338,6 +346,52 @@ describe('School support chat tenancy and IAM contracts', () => {
       });
   });
 
+  it('denies platform support routes when the platform role lacks required support permissions', async () => {
+    await withPlatformPermissionTemporarilyRemoved(
+      'platform.support.view',
+      async () => {
+        await request(app.getHttpServer())
+          .get(`${GLOBAL_PREFIX}/platform-admin/support/conversations`)
+          .set('Authorization', `Bearer ${platformToken}`)
+          .expect(403);
+      },
+    );
+
+    await withPlatformPermissionTemporarilyRemoved(
+      'platform.support.reply',
+      async () => {
+        await request(app.getHttpServer())
+          .post(
+            `${GLOBAL_PREFIX}/platform-admin/support/conversations/${conversationId}/messages`,
+          )
+          .set('Authorization', `Bearer ${platformToken}`)
+          .send({ body: 'Reply must require platform.support.reply.' })
+          .expect(403);
+      },
+    );
+
+    await withPlatformPermissionTemporarilyRemoved(
+      'platform.support.manage',
+      async () => {
+        await request(app.getHttpServer())
+          .post(
+            `${GLOBAL_PREFIX}/platform-admin/support/conversations/${conversationId}/close`,
+          )
+          .set('Authorization', `Bearer ${platformToken}`)
+          .send({ reason: 'Permission check only.' })
+          .expect(403);
+
+        await request(app.getHttpServer())
+          .post(
+            `${GLOBAL_PREFIX}/platform-admin/support/conversations/${conversationId}/reopen`,
+          )
+          .set('Authorization', `Bearer ${platformToken}`)
+          .send({ reason: 'Permission check only.' })
+          .expect(403);
+      },
+    );
+  });
+
   it('keeps support payloads free of forbidden school and platform secrets', async () => {
     const schoolMessages = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/school-support/messages`)
@@ -421,6 +475,44 @@ describe('School support chat tenancy and IAM contracts', () => {
       })),
       skipDuplicates: true,
     });
+  }
+
+  async function withPlatformPermissionTemporarilyRemoved(
+    permissionCode: string,
+    callback: () => Promise<void>,
+  ): Promise<void> {
+    const rolePermission = await prisma.rolePermission.findFirst({
+      where: {
+        role: {
+          key: 'platform_super_admin',
+          schoolId: null,
+          isSystem: true,
+        },
+        permission: { code: permissionCode },
+      },
+      select: { roleId: true, permissionId: true },
+    });
+    if (!rolePermission) {
+      throw new Error(
+        `platform_super_admin is missing expected permission ${permissionCode}`,
+      );
+    }
+
+    await prisma.rolePermission.deleteMany({
+      where: {
+        roleId: rolePermission.roleId,
+        permissionId: rolePermission.permissionId,
+      },
+    });
+
+    try {
+      await callback();
+    } finally {
+      await prisma.rolePermission.createMany({
+        data: [rolePermission],
+        skipDuplicates: true,
+      });
+    }
   }
 
   async function createSystemRoleActor(params: {

@@ -71,6 +71,16 @@ Implementation verification:
 - Support push delivery is not implemented in 1B.
 - Platform-safe socket room join is not implemented in 1B; Platform Admin inbox freshness remains REST polling/refresh.
 
+## 1C Final Acceptance Notes
+
+- The final accepted route surface is unchanged from 1A.
+- School Dashboard routes do not accept client-supplied tenant identifiers.
+- Platform support routes remain platform-scoped and permission-gated by `platform.support.view`, `platform.support.reply`, or `platform.support.manage`.
+- Generic `/api/v1/communication/*` routes remain school-scoped and are not used for Platform Admin support replies.
+- Realtime and in-app notification side effects are emitted only for newly-created messages; `clientMessageId` replay does not duplicate side effects.
+- Rejected closed-conversation sends/replies return `409` and do not emit support realtime or notification side effects.
+- Support push, email, SMS, attachments, tickets, SLA, assignment, categories, internal notes, and bot/AI behavior remain outside V1.
+
 ## School Dashboard Routes
 
 | Method | Path | Permission | Purpose |

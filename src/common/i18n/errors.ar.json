@@ -1,0 +1,10 @@
+{
+  "school_support.conversation.not_found": "لم يتم العثور على محادثة دعم المدرسة",
+  "school_support.conversation.closed": "محادثة دعم المدرسة مغلقة",
+  "school_support.message.empty": "لا يمكن أن تكون رسالة الدعم فارغة",
+  "platform_support.actor.invalid_type": "يتطلب دعم المنصة مستخدم منصة دون عضوية مدرسة",
+  "platform_support.conversation.not_found": "لم يتم العثور على محادثة دعم المنصة",
+  "platform_support.conversation.closed": "محادثة دعم المنصة مغلقة",
+  "platform_support.conversation.invalid_state": "حالة محادثة دعم المنصة غير صالحة",
+  "platform_support.message.empty": "لا يمكن أن يكون رد الدعم فارغًا"
+}

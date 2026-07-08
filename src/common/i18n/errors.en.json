@@ -1,0 +1,10 @@
+{
+  "school_support.conversation.not_found": "School support conversation was not found",
+  "school_support.conversation.closed": "School support conversation is closed",
+  "school_support.message.empty": "Support message cannot be empty",
+  "platform_support.actor.invalid_type": "Platform support requires a platform actor without school membership",
+  "platform_support.conversation.not_found": "Platform support conversation was not found",
+  "platform_support.conversation.closed": "Platform support conversation is closed",
+  "platform_support.conversation.invalid_state": "Platform support conversation state is invalid",
+  "platform_support.message.empty": "Support reply cannot be empty"
+}
