@@ -122,6 +122,8 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
         'GET /api/v1/dashboard/analytics/charts',
         'GET /api/v1/dashboard/analytics/charts/:chartKey',
         'GET /api/v1/dashboard/analytics/charts/:chartKey/data',
+        'GET /api/v1/dashboard/modules',
+        'GET /api/v1/dashboard/modules/:moduleKey',
         'GET /api/v1/dashboard/widgets',
         'GET /api/v1/dashboard/widgets/:widgetKey',
         'GET /api/v1/dashboard/summary',
@@ -138,7 +140,6 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
       'POST /api/v1/dashboard/alerts/:alertKey/acknowledge',
       'POST /api/v1/dashboard/alerts/:alertKey/dismiss',
       'POST /api/v1/dashboard/alerts/:alertKey/snooze',
-      'GET /api/v1/dashboard/modules/:moduleKey',
     ]) {
       expect(routes).not.toContain(absentRoute);
     }

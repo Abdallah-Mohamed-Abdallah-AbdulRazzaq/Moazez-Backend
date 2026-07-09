@@ -16,6 +16,8 @@ describe('Dashboard summary tenancy/security contracts', () => {
       'listAnalyticsCharts',
       'getAnalyticsChart',
       'getAnalyticsChartData',
+      'listModules',
+      'getModulePage',
       'listWidgets',
       'getWidget',
       'getSummary',
@@ -36,6 +38,10 @@ describe('Dashboard summary tenancy/security contracts', () => {
     ]);
     expect(readPermissions('getAnalyticsChartData')).toEqual([
       'dashboard.analytics.view',
+    ]);
+    expect(readPermissions('listModules')).toEqual(['dashboard.modules.view']);
+    expect(readPermissions('getModulePage')).toEqual([
+      'dashboard.modules.view',
     ]);
     expect(readPermissions('listWidgets')).toEqual(['dashboard.widgets.view']);
     expect(readPermissions('getWidget')).toEqual(['dashboard.widgets.view']);
@@ -89,6 +95,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
       'dashboard.command_center.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
+      'dashboard.modules.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.widgets.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
@@ -105,6 +114,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.command_center.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
+      'dashboard.modules.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.widgets.view',
@@ -123,6 +135,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.command_center.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
+      'dashboard.modules.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.widgets.view',

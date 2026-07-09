@@ -136,6 +136,8 @@ describe('Dashboard alerts tenancy/security contracts', () => {
       'listAnalyticsCharts',
       'getAnalyticsChart',
       'getAnalyticsChartData',
+      'listModules',
+      'getModulePage',
       'listWidgets',
       'getWidget',
       'getSummary',

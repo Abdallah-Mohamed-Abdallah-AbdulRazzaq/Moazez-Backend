@@ -122,6 +122,8 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
         'GET /api/v1/dashboard/analytics/charts',
         'GET /api/v1/dashboard/analytics/charts/:chartKey',
         'GET /api/v1/dashboard/analytics/charts/:chartKey/data',
+        'GET /api/v1/dashboard/modules',
+        'GET /api/v1/dashboard/modules/:moduleKey',
         'GET /api/v1/dashboard/widgets',
         'GET /api/v1/dashboard/widgets/:widgetKey',
         'GET /api/v1/dashboard/summary',
@@ -130,7 +132,6 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       ]),
     );
     for (const absentRoute of [
-      'GET /api/v1/dashboard/modules/:moduleKey',
       'GET /api/v1/dashboard/light-mode-dropdown',
       'GET /api/v1/dashboard/light-mode-dropdown/todos',
       'POST /api/v1/dashboard/light-mode-dropdown/todos',

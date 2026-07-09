@@ -17,7 +17,7 @@ const GLOBAL_PREFIX = '/api/v1';
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
 const DEMO_ADMIN_PASSWORD = 'School123!';
 const DEMO_SCHOOL_SLUG = 'moazez-academy';
-const PASSWORD = 'DashboardAnalyticsData123!';
+const PASSWORD = 'DashboardModules123!';
 
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
@@ -46,9 +46,9 @@ type CreatedPrincipal = {
 
 jest.setTimeout(90000);
 
-describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
+describe('DASHBOARD-MODULE-PAGES-1A foundation (e2e)', () => {
   const suffix = randomUUID().split('-')[0];
-  const marker = `analytics-data-${suffix}`;
+  const marker = `modules1a-${suffix}`;
 
   let app: INestApplication<App>;
   let prisma: PrismaClient;
@@ -111,7 +111,7 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     }
   });
 
-  it('registers only the analytics data route beyond the existing dashboard inventory', () => {
+  it('registers module routes and keeps out-of-scope dashboard routes absent', () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toEqual(
@@ -120,10 +120,10 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
         'GET /api/v1/dashboard/alerts',
         'GET /api/v1/dashboard/activity-feed',
         'GET /api/v1/dashboard/command-center',
-        'GET /api/v1/dashboard/widgets',
-        'GET /api/v1/dashboard/widgets/:widgetKey',
         'GET /api/v1/dashboard/modules',
         'GET /api/v1/dashboard/modules/:moduleKey',
+        'GET /api/v1/dashboard/widgets',
+        'GET /api/v1/dashboard/widgets/:widgetKey',
         'GET /api/v1/dashboard/analytics/catalog',
         'GET /api/v1/dashboard/analytics/charts',
         'GET /api/v1/dashboard/analytics/charts/:chartKey',
@@ -147,209 +147,281 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     }
   });
 
-  it('returns 401 without a token and 403 without dashboard.analytics.view', async () => {
+  it('returns 401 without a token and 403 without dashboard.modules.view', async () => {
     const deniedToken = await login(deniedPrincipal.email, PASSWORD);
 
     await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.pending_sessions/data`,
-      )
+      .get(`${GLOBAL_PREFIX}/dashboard/modules`)
       .expect(401);
 
     await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.pending_sessions/data`,
-      )
+      .get(`${GLOBAL_PREFIX}/dashboard/modules`)
       .set('Authorization', `Bearer ${deniedToken}`)
       .expect(403);
   });
 
-  it('returns computed snapshot data for an authorized school admin and available chart', async () => {
+  it('returns the module list for an authorized school admin', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
-    const summaryResponse = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/summary`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
 
     const response = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.pending_sessions/data`,
-      )
-      .query({
-        range: '90d',
-        granularity: 'month',
-        academicYearId: 'future-academic-year-filter',
-      })
+      .get(`${GLOBAL_PREFIX}/dashboard/modules`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
-    const expectedPending =
-      summaryResponse.body.cards.attendance.pendingSessionsToday;
     expect(response.body).toMatchObject({
       generatedAt: expect.any(String),
-      chartKey: 'attendance.pending_sessions',
-      source: 'attendance',
-      title: 'Pending attendance sessions',
-      type: 'bar',
-      status: 'available',
-      range: '90d',
-      granularity: 'month',
+      modules: expect.any(Array),
+      summary: {
+        total: 10,
+        byStatus: { available: 10 },
+        bySource: expect.any(Object),
+      },
       filters: {
-        range: '90d',
-        granularity: 'month',
-        dateFrom: null,
-        dateTo: null,
-        academicYearId: 'future-academic-year-filter',
-        termId: null,
-        gradeId: null,
-        sectionId: null,
-        classroomId: null,
+        status: null,
+        source: null,
+        limit: 20,
       },
-      data: {
-        series: [
-          {
-            key: 'pending',
-            label: 'Pending',
-            points: [{ x: 'snapshot', y: expectedPending }],
-          },
-        ],
-        totals: { pending: expectedPending },
-        summary: {
-          value: expectedPending,
-          label: 'Pending attendance sessions',
-        },
-        empty: expectedPending === 0,
+      deferred: {
+        customLayouts: 'deferred',
+        userPreferences: 'deferred',
+        exports: 'deferred',
+        realtime: 'deferred',
       },
       meta: {
-        source: 'dashboard_analytics_data_pack',
-        pack: 'operational_snapshot_v1',
-        dataAvailability: 'computed_snapshot',
-        computation: 'dashboard_summary_snapshot',
-        deferred: {
-          historicalSeries: 'deferred',
-          drilldown: 'deferred',
-          exports: 'deferred',
-          realtime: 'deferred',
-        },
+        source: 'dashboard_module_pages',
+        version: 'v1',
       },
     });
-    expect(response.body).toHaveProperty('emptyState');
-    expectNoInternalLeaks(response.body);
-    expect(JSON.stringify(response.body.data.series)).not.toContain(
-      'YYYY-MM-DD',
+    expect(
+      response.body.modules.map(
+        (modulePage: { moduleKey: string }) => modulePage.moduleKey,
+      ),
+    ).toEqual([
+      'admissions',
+      'students',
+      'academics',
+      'attendance',
+      'grades',
+      'homework',
+      'behavior',
+      'reinforcement',
+      'communication',
+      'settings',
+    ]);
+    expect(response.body.modules).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ moduleKey: 'platform-admin' }),
+      ]),
     );
+    expectNoInternalLeaks(response.body);
   });
 
-  it('returns a safe not_implemented envelope for known unsupported charts', async () => {
+  it('supports module list query controls and rejects override-shaped input', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.daily_trend/data`)
+      .get(`${GLOBAL_PREFIX}/dashboard/modules`)
+      .query({ status: 'available', source: 'settings', limit: '1' })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
-    expect(response.body).toMatchObject({
-      generatedAt: expect.any(String),
-      chartKey: 'attendance.daily_trend',
-      source: 'attendance',
-      title: 'Daily attendance trend',
-      type: 'line',
-      status: 'planned',
-      range: '30d',
-      granularity: 'day',
-      data: {
-        series: [],
-        totals: {},
-        summary: null,
-        empty: true,
+    expect(response.body.filters).toEqual({
+      status: 'available',
+      source: 'settings',
+      limit: 1,
+    });
+    expect(response.body.modules).toHaveLength(1);
+    expect(response.body.modules[0]).toMatchObject({
+      moduleKey: 'settings',
+      summary: {
+        widgetCount: 2,
+        chartCount: 3,
+        availableChartDataCount: 2,
       },
-      emptyState: {
-        reason: 'not_implemented',
-      },
-      meta: {
-        source: 'dashboard_analytics_data_pack',
-        pack: null,
-        dataAvailability: 'definition_only',
+      capabilities: {
+        analyticsData: 'partial',
       },
     });
-    expectNoInternalLeaks(response.body);
-  });
-
-  it('returns 404 for unknown chart keys and rejects invalid/unsupported query input', async () => {
-    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/unknown.chart/data`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(404);
-
-    await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.pending_sessions/data`,
-      )
-      .query({ range: 'wallet' })
+      .get(`${GLOBAL_PREFIX}/dashboard/modules`)
+      .query({ source: 'platform' })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(400);
-
     await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.pending_sessions/data`,
-      )
-      .query({ granularity: 'minute' })
+      .get(`${GLOBAL_PREFIX}/dashboard/modules`)
+      .query({ status: 'live' })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(400);
-
     await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.pending_sessions/data`,
-      )
-      .query({ dateFrom: 'not-a-date' })
+      .get(`${GLOBAL_PREFIX}/dashboard/modules`)
+      .query({ limit: '51' })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(400);
-
     await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.pending_sessions/data`,
-      )
+      .get(`${GLOBAL_PREFIX}/dashboard/modules`)
       .query({ schoolId: demoSchoolId })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(400);
   });
 
-  it('keeps analytics catalog and existing dashboard routes working', async () => {
+  it('returns a known attendance module page and 404 for an unknown module', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/modules/attendance`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      generatedAt: expect.any(String),
+      module: {
+        moduleKey: 'attendance',
+        source: 'attendance',
+        title: 'Attendance',
+        frontendRoute: '/dashboard/modules/attendance',
+        sourceRoute: '/attendance/roll-call',
+      },
+      overview: {
+        quickStats: expect.any(Array),
+        risks: expect.any(Array),
+        actions: expect.any(Array),
+      },
+      widgets: expect.any(Array),
+      analytics: {
+        charts: expect.any(Array),
+        availableData: expect.any(Array),
+        plannedCharts: expect.any(Array),
+      },
+      sections: expect.any(Array),
+      capabilities: {
+        widgets: 'available',
+        analyticsDefinitions: 'available',
+        analyticsData: 'partial',
+        drilldowns: 'deferred',
+        exports: 'deferred',
+        realtime: 'deferred',
+      },
+      emptyState: null,
+      meta: {
+        source: 'dashboard_module_page',
+        version: 'v1',
+        dataFreshness: 'live',
+      },
+    });
+    expect(
+      response.body.widgets.map(
+        (widget: { widgetKey: string }) => widget.widgetKey,
+      ),
+    ).toEqual(['attendance.pending_today', 'attendance.absences_today']);
+    expect(
+      response.body.analytics.charts.map(
+        (chart: { chartKey: string }) => chart.chartKey,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        'attendance.daily_trend',
+        'attendance.pending_sessions',
+        'attendance.excuse_status',
+      ]),
+    );
+    expect(
+      response.body.analytics.availableData.map(
+        (data: { chartKey: string }) => data.chartKey,
+      ),
+    ).toEqual(['attendance.pending_sessions']);
+    expect(
+      response.body.analytics.plannedCharts.map(
+        (chart: { chartKey: string }) => chart.chartKey,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        'attendance.daily_trend',
+        'attendance.status_distribution',
+        'attendance.absence_rate',
+        'attendance.late_rate',
+        'attendance.excuse_status',
+      ]),
+    );
+    expect(JSON.stringify(response.body.analytics.plannedCharts)).not.toContain(
+      'points',
+    );
+    expectNoInternalLeaks(response.body);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/modules/platform-admin`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+  });
+
+  it('returns settings readiness data only for operational_snapshot_v1 charts', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/modules/settings`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(
+      response.body.widgets.map(
+        (widget: { widgetKey: string }) => widget.widgetKey,
+      ),
+    ).toEqual(['settings.email_connection', 'settings.login_identity']);
+    expect(
+      response.body.analytics.availableData.map(
+        (data: { chartKey: string }) => data.chartKey,
+      ),
+    ).toEqual([
+      'settings.email_connection_readiness',
+      'settings.login_identity_readiness',
+    ]);
+    expect(
+      response.body.analytics.availableData.every(
+        (data: { meta: { pack: string; dataAvailability: string } }) =>
+          data.meta.pack === 'operational_snapshot_v1' &&
+          data.meta.dataAvailability === 'computed_snapshot',
+      ),
+    ).toBe(true);
+    expect(
+      response.body.analytics.plannedCharts.map(
+        (chart: { chartKey: string }) => chart.chartKey,
+      ),
+    ).toEqual(['settings.notification_readiness']);
+    expect(JSON.stringify(response.body.analytics.plannedCharts)).not.toContain(
+      'points',
+    );
+    expectNoInternalLeaks(response.body);
+  });
+
+  it('keeps existing dashboard routes working', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/catalog`)
+      .get(`${GLOBAL_PREFIX}/dashboard/summary`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200)
       .expect((response) => {
-        expect(response.body.catalog.charts).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              chartKey: 'attendance.pending_sessions',
-              status: 'available',
-              meta: { dataAvailability: 'computed_snapshot' },
-            }),
-          ]),
-        );
+        expect(response.body).toHaveProperty('cards');
         expectNoInternalLeaks(response.body);
       });
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
-
-    await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toHaveProperty('alerts');
+        expectNoInternalLeaks(response.body);
+      });
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/dashboard/activity-feed`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toHaveProperty('items');
+        expectNoInternalLeaks(response.body);
+      });
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/dashboard/command-center`)
@@ -360,10 +432,21 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
       .get(`${GLOBAL_PREFIX}/dashboard/widgets`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/analytics/catalog`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
   });
 
   async function ensureDashboardPermissions(): Promise<Record<string, string>> {
     const definitions = [
+      {
+        key: 'modules',
+        code: 'dashboard.modules.view',
+        resource: 'modules',
+        description: 'View read-only dashboard module pages registry',
+      },
       {
         key: 'analytics',
         code: 'dashboard.analytics.view',
@@ -471,8 +554,8 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
       data: {
         schoolId: input.schoolId,
         key: `${marker}-${input.label}-role`,
-        name: `Dashboard Analytics Data ${input.label} role`,
-        description: `Dashboard analytics data ${input.label} role`,
+        name: `Dashboard Modules ${input.label} role`,
+        description: `Dashboard modules ${input.label} role`,
         isSystem: false,
       },
       select: { id: true },

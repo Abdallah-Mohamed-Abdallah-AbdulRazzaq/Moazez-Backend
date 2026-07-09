@@ -274,6 +274,7 @@ const PERMISSIONS: PermissionSeed[] = [
   // dashboard
   { code: 'dashboard.command_center.view', module: 'dashboard', resource: 'command_center', action: 'view', description: 'View Dashboard Command Center V2 overview' },
   { code: 'dashboard.analytics.view', module: 'dashboard', resource: 'analytics', action: 'view', description: 'View internal Dashboard Analytics catalog definitions' },
+  { code: 'dashboard.modules.view', module: 'dashboard', resource: 'modules', action: 'view', description: 'View read-only dashboard module pages registry' },
   { code: 'dashboard.widgets.view', module: 'dashboard', resource: 'widgets', action: 'view', description: 'View read-only dashboard widgets registry' },
   { code: 'dashboard.summary.view', module: 'dashboard', resource: 'summary', action: 'view', description: 'View dashboard summary KPIs' },
   { code: 'dashboard.alerts.view', module: 'dashboard', resource: 'alerts', action: 'view', description: 'View computed dashboard operational alerts' },

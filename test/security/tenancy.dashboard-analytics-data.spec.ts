@@ -92,6 +92,8 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
       'listAnalyticsCharts',
       'getAnalyticsChart',
       'getAnalyticsChartData',
+      'listModules',
+      'getModulePage',
       'listWidgets',
       'getWidget',
       'getSummary',
@@ -109,6 +111,10 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
     ]);
     expect(readPermissions('getAnalyticsChartData')).toEqual([
       'dashboard.analytics.view',
+    ]);
+    expect(readPermissions('listModules')).toEqual(['dashboard.modules.view']);
+    expect(readPermissions('getModulePage')).toEqual([
+      'dashboard.modules.view',
     ]);
     expect(controllerMethods(DashboardController)).not.toEqual(
       expect.arrayContaining([

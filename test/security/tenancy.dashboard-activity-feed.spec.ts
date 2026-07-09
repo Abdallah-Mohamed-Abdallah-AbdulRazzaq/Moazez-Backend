@@ -131,6 +131,8 @@ describe('Dashboard activity feed tenancy/security contracts', () => {
       'listAnalyticsCharts',
       'getAnalyticsChart',
       'getAnalyticsChartData',
+      'listModules',
+      'getModulePage',
       'listWidgets',
       'getWidget',
       'getSummary',

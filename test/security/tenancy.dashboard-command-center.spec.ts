@@ -114,6 +114,8 @@ describe('Dashboard command center tenancy/security contracts', () => {
       'listAnalyticsCharts',
       'getAnalyticsChart',
       'getAnalyticsChartData',
+      'listModules',
+      'getModulePage',
       'listWidgets',
       'getWidget',
       'getSummary',
@@ -134,6 +136,10 @@ describe('Dashboard command center tenancy/security contracts', () => {
     ]);
     expect(readPermissions('getAnalyticsChartData')).toEqual([
       'dashboard.analytics.view',
+    ]);
+    expect(readPermissions('listModules')).toEqual(['dashboard.modules.view']);
+    expect(readPermissions('getModulePage')).toEqual([
+      'dashboard.modules.view',
     ]);
     expect(readPermissions('listWidgets')).toEqual(['dashboard.widgets.view']);
     expect(readPermissions('getWidget')).toEqual(['dashboard.widgets.view']);

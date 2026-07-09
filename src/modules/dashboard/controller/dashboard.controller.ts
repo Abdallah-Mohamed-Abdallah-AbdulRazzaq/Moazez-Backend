@@ -5,11 +5,13 @@ import { GetDashboardAnalyticsCatalogUseCase } from '../application/get-dashboar
 import { GetDashboardAnalyticsChartDataUseCase } from '../application/get-dashboard-analytics-chart-data.use-case';
 import { GetDashboardAnalyticsChartUseCase } from '../application/get-dashboard-analytics-chart.use-case';
 import { GetDashboardCommandCenterUseCase } from '../application/get-dashboard-command-center.use-case';
+import { GetDashboardModulePageUseCase } from '../application/get-dashboard-module-page.use-case';
 import { GetDashboardWidgetUseCase } from '../application/get-dashboard-widget.use-case';
 import { GetDashboardSummaryUseCase } from '../application/get-dashboard-summary.use-case';
 import { ListDashboardActivityFeedUseCase } from '../application/list-dashboard-activity-feed.use-case';
 import { ListDashboardAlertsUseCase } from '../application/list-dashboard-alerts.use-case';
 import { ListDashboardAnalyticsChartsUseCase } from '../application/list-dashboard-analytics-charts.use-case';
+import { ListDashboardModulesUseCase } from '../application/list-dashboard-modules.use-case';
 import { ListDashboardWidgetsUseCase } from '../application/list-dashboard-widgets.use-case';
 import {
   DashboardActivityFeedResponseDto,
@@ -30,6 +32,11 @@ import {
   GetDashboardAnalyticsChartDataQueryDto,
 } from '../dto/dashboard-analytics-data.dto';
 import { DashboardCommandCenterResponseDto } from '../dto/dashboard-command-center.dto';
+import {
+  DashboardModulePageResponseDto,
+  DashboardModulesResponseDto,
+  ListDashboardModulesQueryDto,
+} from '../dto/dashboard-modules.dto';
 import { DashboardSummaryResponseDto } from '../dto/dashboard-summary.dto';
 import {
   DashboardWidgetResponseDto,
@@ -46,11 +53,13 @@ export class DashboardController {
     private readonly getDashboardAnalyticsChartDataUseCase: GetDashboardAnalyticsChartDataUseCase,
     private readonly getDashboardAnalyticsChartUseCase: GetDashboardAnalyticsChartUseCase,
     private readonly getDashboardCommandCenterUseCase: GetDashboardCommandCenterUseCase,
+    private readonly getDashboardModulePageUseCase: GetDashboardModulePageUseCase,
     private readonly getDashboardWidgetUseCase: GetDashboardWidgetUseCase,
     private readonly getDashboardSummaryUseCase: GetDashboardSummaryUseCase,
     private readonly listDashboardAlertsUseCase: ListDashboardAlertsUseCase,
     private readonly listDashboardActivityFeedUseCase: ListDashboardActivityFeedUseCase,
     private readonly listDashboardAnalyticsChartsUseCase: ListDashboardAnalyticsChartsUseCase,
+    private readonly listDashboardModulesUseCase: ListDashboardModulesUseCase,
     private readonly listDashboardWidgetsUseCase: ListDashboardWidgetsUseCase,
   ) {}
 
@@ -89,6 +98,22 @@ export class DashboardController {
     @Query() query: GetDashboardAnalyticsChartDataQueryDto,
   ): Promise<DashboardAnalyticsChartDataResponseDto> {
     return this.getDashboardAnalyticsChartDataUseCase.execute(chartKey, query);
+  }
+
+  @Get('modules')
+  @RequiredPermissions('dashboard.modules.view')
+  listModules(
+    @Query() query: ListDashboardModulesQueryDto,
+  ): Promise<DashboardModulesResponseDto> {
+    return this.listDashboardModulesUseCase.execute(query);
+  }
+
+  @Get('modules/:moduleKey')
+  @RequiredPermissions('dashboard.modules.view')
+  getModulePage(
+    @Param('moduleKey') moduleKey: string,
+  ): Promise<DashboardModulePageResponseDto> {
+    return this.getDashboardModulePageUseCase.execute(moduleKey);
   }
 
   @Get('widgets')
