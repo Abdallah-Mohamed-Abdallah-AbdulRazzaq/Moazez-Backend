@@ -12,6 +12,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
   it('registers school dashboard routes guarded by explicit dashboard permissions', () => {
     expect(controllerMethods(DashboardController)).toEqual([
       'getCommandCenter',
+      'getAnalyticsCatalog',
+      'listAnalyticsCharts',
+      'getAnalyticsChart',
       'listWidgets',
       'getWidget',
       'getSummary',
@@ -20,6 +23,15 @@ describe('Dashboard summary tenancy/security contracts', () => {
     ]);
     expect(readPermissions('getCommandCenter')).toEqual([
       'dashboard.command_center.view',
+    ]);
+    expect(readPermissions('getAnalyticsCatalog')).toEqual([
+      'dashboard.analytics.view',
+    ]);
+    expect(readPermissions('listAnalyticsCharts')).toEqual([
+      'dashboard.analytics.view',
+    ]);
+    expect(readPermissions('getAnalyticsChart')).toEqual([
+      'dashboard.analytics.view',
     ]);
     expect(readPermissions('listWidgets')).toEqual(['dashboard.widgets.view']);
     expect(readPermissions('getWidget')).toEqual(['dashboard.widgets.view']);
@@ -76,6 +88,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
       'dashboard.widgets.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
+      'dashboard.analytics.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.summary.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
@@ -91,6 +106,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
       'dashboard.widgets.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
+      'dashboard.analytics.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.summary.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
@@ -104,6 +122,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.widgets.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
+      'dashboard.analytics.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.summary.view',

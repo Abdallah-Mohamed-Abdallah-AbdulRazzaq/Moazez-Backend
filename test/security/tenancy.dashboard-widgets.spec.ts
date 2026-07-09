@@ -111,11 +111,23 @@ describe('Dashboard widgets tenancy/security contracts', () => {
   it('registers widget routes with dashboard.widgets.view and no write methods', () => {
     expect(controllerMethods(DashboardController)).toEqual([
       'getCommandCenter',
+      'getAnalyticsCatalog',
+      'listAnalyticsCharts',
+      'getAnalyticsChart',
       'listWidgets',
       'getWidget',
       'getSummary',
       'listAlerts',
       'listActivityFeed',
+    ]);
+    expect(readPermissions('getAnalyticsCatalog')).toEqual([
+      'dashboard.analytics.view',
+    ]);
+    expect(readPermissions('listAnalyticsCharts')).toEqual([
+      'dashboard.analytics.view',
+    ]);
+    expect(readPermissions('getAnalyticsChart')).toEqual([
+      'dashboard.analytics.view',
     ]);
     expect(readPermissions('listWidgets')).toEqual(['dashboard.widgets.view']);
     expect(readPermissions('getWidget')).toEqual(['dashboard.widgets.view']);
@@ -124,8 +136,6 @@ describe('Dashboard widgets tenancy/security contracts', () => {
         'createWidget',
         'updateWidgetLayout',
         'saveWidgetPreference',
-        'listAnalyticsCatalog',
-        'listAnalyticsCharts',
         'getLightModeDropdown',
         'createTodo',
         'acknowledgeAlert',
@@ -146,18 +156,29 @@ describe('Dashboard widgets tenancy/security contracts', () => {
     );
 
     expect(permissionsSeed).toContain("'dashboard.widgets.view'");
+    expect(permissionsSeed).toContain("'dashboard.analytics.view'");
     expect(permissionsSeed).toContain("resource: 'widgets'");
+    expect(permissionsSeed).toContain("resource: 'analytics'");
     expect(rolesSeed).toContain('const ALL = PERMISSION_CODES;');
     expect(rolesSeed).toContain('const NON_PLATFORM = ALL.filter');
     expect(rolesSeed).toContain('const SCHOOL_LEVEL = NON_PLATFORM;');
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.widgets.view',
     );
+    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
+      'dashboard.analytics.view',
+    );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.widgets.view',
     );
+    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
+      'dashboard.analytics.view',
+    );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.widgets.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
+      'dashboard.analytics.view',
     );
   });
 

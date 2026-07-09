@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../iam/auth/auth.module';
+import { GetDashboardAnalyticsCatalogUseCase } from './application/get-dashboard-analytics-catalog.use-case';
+import { GetDashboardAnalyticsChartUseCase } from './application/get-dashboard-analytics-chart.use-case';
 import { GetDashboardCommandCenterUseCase } from './application/get-dashboard-command-center.use-case';
 import { GetDashboardWidgetUseCase } from './application/get-dashboard-widget.use-case';
 import { GetDashboardSummaryUseCase } from './application/get-dashboard-summary.use-case';
 import { ListDashboardActivityFeedUseCase } from './application/list-dashboard-activity-feed.use-case';
 import { ListDashboardAlertsUseCase } from './application/list-dashboard-alerts.use-case';
+import { ListDashboardAnalyticsChartsUseCase } from './application/list-dashboard-analytics-charts.use-case';
 import { ListDashboardWidgetsUseCase } from './application/list-dashboard-widgets.use-case';
 import { DashboardController } from './controller/dashboard.controller';
 import { DashboardActivityFeedRepository } from './infrastructure/dashboard-activity-feed.repository';
@@ -18,11 +21,14 @@ import { DashboardSummaryRepository } from './infrastructure/dashboard-summary.r
     DashboardSummaryRepository,
     DashboardAlertsRepository,
     DashboardActivityFeedRepository,
+    GetDashboardAnalyticsCatalogUseCase,
+    GetDashboardAnalyticsChartUseCase,
     GetDashboardCommandCenterUseCase,
     GetDashboardWidgetUseCase,
     GetDashboardSummaryUseCase,
     ListDashboardAlertsUseCase,
     ListDashboardActivityFeedUseCase,
+    ListDashboardAnalyticsChartsUseCase,
     ListDashboardWidgetsUseCase,
   ],
 })

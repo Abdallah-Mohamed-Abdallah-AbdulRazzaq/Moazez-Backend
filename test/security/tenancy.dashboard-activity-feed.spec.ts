@@ -108,6 +108,15 @@ describe('Dashboard activity feed tenancy/security contracts', () => {
     expect(readPermissions('getCommandCenter')).toEqual([
       'dashboard.command_center.view',
     ]);
+    expect(readPermissions('getAnalyticsCatalog')).toEqual([
+      'dashboard.analytics.view',
+    ]);
+    expect(readPermissions('listAnalyticsCharts')).toEqual([
+      'dashboard.analytics.view',
+    ]);
+    expect(readPermissions('getAnalyticsChart')).toEqual([
+      'dashboard.analytics.view',
+    ]);
     expect(readPermissions('listWidgets')).toEqual(['dashboard.widgets.view']);
     expect(readPermissions('getWidget')).toEqual(['dashboard.widgets.view']);
     expect(readPermissions('listActivityFeed')).toEqual([
@@ -115,6 +124,9 @@ describe('Dashboard activity feed tenancy/security contracts', () => {
     ]);
     expect(controllerMethods(DashboardController)).toEqual([
       'getCommandCenter',
+      'getAnalyticsCatalog',
+      'listAnalyticsCharts',
+      'getAnalyticsChart',
       'listWidgets',
       'getWidget',
       'getSummary',
@@ -135,6 +147,7 @@ describe('Dashboard activity feed tenancy/security contracts', () => {
 
     expect(permissionsSeed).toContain("'dashboard.activity_feed.view'");
     expect(permissionsSeed).toContain("'dashboard.command_center.view'");
+    expect(permissionsSeed).toContain("'dashboard.analytics.view'");
     expect(permissionsSeed).toContain("'dashboard.widgets.view'");
     expect(rolesSeed).toContain('const ALL = PERMISSION_CODES;');
     expect(rolesSeed).toContain('const SCHOOL_LEVEL = NON_PLATFORM;');
@@ -145,6 +158,9 @@ describe('Dashboard activity feed tenancy/security contracts', () => {
       'dashboard.widgets.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
+      'dashboard.analytics.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.activity_feed.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
@@ -154,6 +170,9 @@ describe('Dashboard activity feed tenancy/security contracts', () => {
       'dashboard.widgets.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
+      'dashboard.analytics.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.activity_feed.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
@@ -161,6 +180,9 @@ describe('Dashboard activity feed tenancy/security contracts', () => {
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.widgets.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
+      'dashboard.analytics.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.activity_feed.view',

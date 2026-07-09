@@ -1,11 +1,14 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../common/decorators/required-permissions.decorator';
+import { GetDashboardAnalyticsCatalogUseCase } from '../application/get-dashboard-analytics-catalog.use-case';
+import { GetDashboardAnalyticsChartUseCase } from '../application/get-dashboard-analytics-chart.use-case';
 import { GetDashboardCommandCenterUseCase } from '../application/get-dashboard-command-center.use-case';
 import { GetDashboardWidgetUseCase } from '../application/get-dashboard-widget.use-case';
 import { GetDashboardSummaryUseCase } from '../application/get-dashboard-summary.use-case';
 import { ListDashboardActivityFeedUseCase } from '../application/list-dashboard-activity-feed.use-case';
 import { ListDashboardAlertsUseCase } from '../application/list-dashboard-alerts.use-case';
+import { ListDashboardAnalyticsChartsUseCase } from '../application/list-dashboard-analytics-charts.use-case';
 import { ListDashboardWidgetsUseCase } from '../application/list-dashboard-widgets.use-case';
 import {
   DashboardActivityFeedResponseDto,
@@ -15,6 +18,12 @@ import {
   DashboardAlertsResponseDto,
   ListDashboardAlertsQueryDto,
 } from '../dto/dashboard-alerts.dto';
+import {
+  DashboardAnalyticsCatalogResponseDto,
+  DashboardAnalyticsChartResponseDto,
+  DashboardAnalyticsChartsResponseDto,
+  ListDashboardAnalyticsChartsQueryDto,
+} from '../dto/dashboard-analytics.dto';
 import { DashboardCommandCenterResponseDto } from '../dto/dashboard-command-center.dto';
 import { DashboardSummaryResponseDto } from '../dto/dashboard-summary.dto';
 import {
@@ -28,11 +37,14 @@ import {
 @Controller('dashboard')
 export class DashboardController {
   constructor(
+    private readonly getDashboardAnalyticsCatalogUseCase: GetDashboardAnalyticsCatalogUseCase,
+    private readonly getDashboardAnalyticsChartUseCase: GetDashboardAnalyticsChartUseCase,
     private readonly getDashboardCommandCenterUseCase: GetDashboardCommandCenterUseCase,
     private readonly getDashboardWidgetUseCase: GetDashboardWidgetUseCase,
     private readonly getDashboardSummaryUseCase: GetDashboardSummaryUseCase,
     private readonly listDashboardAlertsUseCase: ListDashboardAlertsUseCase,
     private readonly listDashboardActivityFeedUseCase: ListDashboardActivityFeedUseCase,
+    private readonly listDashboardAnalyticsChartsUseCase: ListDashboardAnalyticsChartsUseCase,
     private readonly listDashboardWidgetsUseCase: ListDashboardWidgetsUseCase,
   ) {}
 
@@ -40,6 +52,28 @@ export class DashboardController {
   @RequiredPermissions('dashboard.command_center.view')
   getCommandCenter(): Promise<DashboardCommandCenterResponseDto> {
     return this.getDashboardCommandCenterUseCase.execute();
+  }
+
+  @Get('analytics/catalog')
+  @RequiredPermissions('dashboard.analytics.view')
+  getAnalyticsCatalog(): DashboardAnalyticsCatalogResponseDto {
+    return this.getDashboardAnalyticsCatalogUseCase.execute();
+  }
+
+  @Get('analytics/charts')
+  @RequiredPermissions('dashboard.analytics.view')
+  listAnalyticsCharts(
+    @Query() query: ListDashboardAnalyticsChartsQueryDto,
+  ): DashboardAnalyticsChartsResponseDto {
+    return this.listDashboardAnalyticsChartsUseCase.execute(query);
+  }
+
+  @Get('analytics/charts/:chartKey')
+  @RequiredPermissions('dashboard.analytics.view')
+  getAnalyticsChart(
+    @Param('chartKey') chartKey: string,
+  ): DashboardAnalyticsChartResponseDto {
+    return this.getDashboardAnalyticsChartUseCase.execute(chartKey);
   }
 
   @Get('widgets')

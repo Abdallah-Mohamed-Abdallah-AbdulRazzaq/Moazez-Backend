@@ -110,6 +110,9 @@ describe('Dashboard command center tenancy/security contracts', () => {
   it('registers only read-only dashboard controller methods with explicit permissions', () => {
     expect(controllerMethods(DashboardController)).toEqual([
       'getCommandCenter',
+      'getAnalyticsCatalog',
+      'listAnalyticsCharts',
+      'getAnalyticsChart',
       'listWidgets',
       'getWidget',
       'getSummary',
@@ -118,6 +121,15 @@ describe('Dashboard command center tenancy/security contracts', () => {
     ]);
     expect(readPermissions('getCommandCenter')).toEqual([
       'dashboard.command_center.view',
+    ]);
+    expect(readPermissions('getAnalyticsCatalog')).toEqual([
+      'dashboard.analytics.view',
+    ]);
+    expect(readPermissions('listAnalyticsCharts')).toEqual([
+      'dashboard.analytics.view',
+    ]);
+    expect(readPermissions('getAnalyticsChart')).toEqual([
+      'dashboard.analytics.view',
     ]);
     expect(readPermissions('listWidgets')).toEqual(['dashboard.widgets.view']);
     expect(readPermissions('getWidget')).toEqual(['dashboard.widgets.view']);
@@ -128,8 +140,6 @@ describe('Dashboard command center tenancy/security contracts', () => {
     ]);
     expect(controllerMethods(DashboardController)).not.toEqual(
       expect.arrayContaining([
-        'listAnalyticsCatalog',
-        'listAnalyticsCharts',
         'getLightModeDropdown',
         'createTodo',
         'acknowledgeAlert',
@@ -150,8 +160,10 @@ describe('Dashboard command center tenancy/security contracts', () => {
     );
 
     expect(permissionsSeed).toContain("'dashboard.command_center.view'");
+    expect(permissionsSeed).toContain("'dashboard.analytics.view'");
     expect(permissionsSeed).toContain("'dashboard.widgets.view'");
     expect(permissionsSeed).toContain("resource: 'command_center'");
+    expect(permissionsSeed).toContain("resource: 'analytics'");
     expect(permissionsSeed).toContain("resource: 'widgets'");
     expect(rolesSeed).toContain('const ALL = PERMISSION_CODES;');
     expect(rolesSeed).toContain('const SCHOOL_LEVEL = NON_PLATFORM;');
@@ -161,17 +173,26 @@ describe('Dashboard command center tenancy/security contracts', () => {
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.widgets.view',
     );
+    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
+      'dashboard.analytics.view',
+    );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.command_center.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.widgets.view',
     );
+    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
+      'dashboard.analytics.view',
+    );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.command_center.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.widgets.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
+      'dashboard.analytics.view',
     );
   });
 
