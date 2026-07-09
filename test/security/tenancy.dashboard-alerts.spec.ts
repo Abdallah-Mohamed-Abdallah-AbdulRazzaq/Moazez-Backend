@@ -113,11 +113,15 @@ describe('Dashboard alerts tenancy/security contracts', () => {
     expect(readPermissions('getCommandCenter')).toEqual([
       'dashboard.command_center.view',
     ]);
+    expect(readPermissions('listWidgets')).toEqual(['dashboard.widgets.view']);
+    expect(readPermissions('getWidget')).toEqual(['dashboard.widgets.view']);
     expect(readPermissions('listActivityFeed')).toEqual([
       'dashboard.activity_feed.view',
     ]);
     expect(controllerMethods(DashboardController)).toEqual([
       'getCommandCenter',
+      'listWidgets',
+      'getWidget',
       'getSummary',
       'listAlerts',
       'listActivityFeed',
@@ -143,10 +147,14 @@ describe('Dashboard alerts tenancy/security contracts', () => {
 
     expect(permissionsSeed).toContain("'dashboard.alerts.view'");
     expect(permissionsSeed).toContain("'dashboard.command_center.view'");
+    expect(permissionsSeed).toContain("'dashboard.widgets.view'");
     expect(rolesSeed).toContain('const ALL = PERMISSION_CODES;');
     expect(rolesSeed).toContain('const SCHOOL_LEVEL = NON_PLATFORM;');
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.command_center.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
+      'dashboard.widgets.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.alerts.view',
@@ -156,6 +164,9 @@ describe('Dashboard alerts tenancy/security contracts', () => {
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.command_center.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
+      'dashboard.widgets.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.alerts.view',
@@ -165,6 +176,9 @@ describe('Dashboard alerts tenancy/security contracts', () => {
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.command_center.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
+      'dashboard.widgets.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.alerts.view',

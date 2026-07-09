@@ -17,7 +17,7 @@ const GLOBAL_PREFIX = '/api/v1';
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
 const DEMO_ADMIN_PASSWORD = 'School123!';
 const DEMO_SCHOOL_SLUG = 'moazez-academy';
-const PASSWORD = 'DashboardCommand123!';
+const PASSWORD = 'DashboardWidgets123!';
 
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
@@ -46,15 +46,15 @@ type CreatedPrincipal = {
 
 jest.setTimeout(90000);
 
-describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
+describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
   const suffix = randomUUID().split('-')[0];
-  const marker = `dcc1a-${suffix}`;
+  const marker = `widgets1a-${suffix}`;
 
   let app: INestApplication<App>;
   let prisma: PrismaClient;
   let demoSchoolId = '';
   let demoOrganizationId = '';
-  let commandCenterPermissionId = '';
+  let widgetsPermissionId = '';
   let deniedPrincipal: CreatedPrincipal;
 
   const createdUserIds: string[] = [];
@@ -74,8 +74,8 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
     demoSchoolId = demoSchool.id;
     demoOrganizationId = demoSchool.organizationId;
 
-    commandCenterPermissionId = await ensureCommandCenterPermission();
-    await ensureDemoAdminHasCommandCenterPermission();
+    widgetsPermissionId = await ensureWidgetsPermission();
+    await ensureDemoAdminHasWidgetsPermission();
     deniedPrincipal = await createPrincipal({
       label: 'denied',
       organizationId: demoOrganizationId,
@@ -112,7 +112,7 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
     }
   });
 
-  it('registers command-center and keeps future dashboard routes absent', () => {
+  it('registers widget routes and keeps out-of-scope dashboard routes absent', () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toEqual(
@@ -129,6 +129,7 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
       'GET /api/v1/dashboard/analytics/catalog',
       'GET /api/v1/dashboard/analytics/charts',
       'GET /api/v1/dashboard/analytics/charts/:chartKey',
+      'GET /api/v1/dashboard/modules/:moduleKey',
       'GET /api/v1/dashboard/light-mode-dropdown',
       'GET /api/v1/dashboard/light-mode-dropdown/todos',
       'POST /api/v1/dashboard/light-mode-dropdown/todos',
@@ -137,100 +138,165 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
       'POST /api/v1/dashboard/alerts/:alertKey/acknowledge',
       'POST /api/v1/dashboard/alerts/:alertKey/dismiss',
       'POST /api/v1/dashboard/alerts/:alertKey/snooze',
-      'GET /api/v1/dashboard/modules/:moduleKey',
     ]) {
       expect(routes).not.toContain(absentRoute);
     }
   });
 
-  it('returns 401 without a token and 403 without dashboard.command_center.view', async () => {
+  it('returns 401 without a token and 403 without dashboard.widgets.view', async () => {
     const deniedToken = await login(deniedPrincipal.email, PASSWORD);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/command-center`)
+      .get(`${GLOBAL_PREFIX}/dashboard/widgets`)
       .expect(401);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/command-center`)
+      .get(`${GLOBAL_PREFIX}/dashboard/widgets`)
       .set('Authorization', `Bearer ${deniedToken}`)
       .expect(403);
   });
 
-  it('returns the command-center contract for an authorized school admin', async () => {
+  it('returns the widget registry for an authorized school admin', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/command-center`)
+      .get(`${GLOBAL_PREFIX}/dashboard/widgets`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
     expect(response.body).toMatchObject({
       generatedAt: expect.any(String),
-      school: {
-        name: expect.any(String),
+      widgets: expect.any(Array),
+      summary: {
+        total: expect.any(Number),
+        byType: expect.any(Object),
+        bySource: expect.any(Object),
       },
-      operator: {
-        displayName: expect.any(String),
-        userType: expect.any(String),
+      filters: {
+        source: null,
+        type: null,
+        limit: 20,
       },
-      today: {
-        date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-        dayOfWeek: expect.any(String),
-        timezone: expect.any(String),
-      },
-      quickStats: expect.any(Array),
-      operationalHealth: expect.any(Array),
-      moduleReadiness: expect.any(Array),
-      topRisks: expect.any(Array),
-      topActions: expect.any(Array),
-      alertsPreview: expect.any(Array),
-      activityPreview: expect.any(Array),
-      meta: {
-        source: 'dashboard_command_center',
-        version: 'v2',
-        dataFreshness: 'live',
-        deferred: {
-          widgets: 'deferred',
-          analytics: 'deferred',
-          lightModeDropdown: 'deferred',
-          todos: 'deferred',
-          weather: 'deferred',
-          planner: 'deferred',
-          alertLifecycle: 'deferred',
-          realtime: 'deferred',
-        },
+      deferred: {
+        customLayouts: 'deferred',
+        widgetPreferences: 'deferred',
+        analyticsCharts: 'deferred',
+        weatherWidgets: 'deferred',
+        todoWidgets: 'deferred',
       },
     });
-    expect(response.body.academicContext).toHaveProperty('academicYear');
-    expect(response.body.academicContext).toHaveProperty('term');
-    expect(response.body.quickStats).toEqual(
+    expect(
+      response.body.widgets.map(
+        (widget: { widgetKey: string }) => widget.widgetKey,
+      ),
+    ).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          key: 'students.active',
-          value: expect.any(Number),
-          action: expect.objectContaining({
-            kind: 'frontend-route',
-          }),
-        }),
+        'students.active',
+        'admissions.open_applications',
+        'attendance.pending_today',
+        'attendance.absences_today',
+        'homework.waiting_review',
+        'grades.pending_review',
+        'behavior.pending_review',
+        'reinforcement.pending_reviews',
+        'communication.moderation_queue',
+        'settings.email_connection',
+        'settings.login_identity',
+        'activity.recent',
       ]),
     );
-    expect(
-      response.body.moduleReadiness.map(
-        (entry: { source: string }) => entry.source,
-      ),
-    ).toEqual([
-      'admissions',
-      'students',
-      'academics',
-      'attendance',
-      'grades',
-      'homework',
-      'behavior',
-      'reinforcement',
-      'communication',
-      'settings',
-    ]);
+    expect(response.body.widgets[0]).toMatchObject({
+      widgetKey: expect.any(String),
+      type: expect.any(String),
+      source: expect.any(String),
+      title: expect.any(String),
+      iconKey: expect.any(String),
+      tone: expect.any(String),
+      data: expect.any(Object),
+      meta: {
+        freshness: 'live',
+      },
+    });
     expectNoInternalLeaks(response.body);
+  });
+
+  it('supports source, type, and limit query controls', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/widgets`)
+      .query({ source: 'attendance', type: 'risk-card', limit: '1' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body.filters).toEqual({
+      source: 'attendance',
+      type: 'risk-card',
+      limit: 1,
+    });
+    expect(response.body.widgets).toHaveLength(1);
+    expect(response.body.widgets[0]).toMatchObject({
+      widgetKey: 'attendance.absences_today',
+      source: 'attendance',
+      type: 'risk-card',
+    });
+    expectNoInternalLeaks(response.body);
+  });
+
+  it('returns one known widget and 404 for an unknown widget', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const knownResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/widgets/students.active`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(knownResponse.body).toMatchObject({
+      generatedAt: expect.any(String),
+      widget: {
+        widgetKey: 'students.active',
+        type: 'stat-card',
+        source: 'students',
+        data: {
+          value: expect.any(Number),
+          unit: null,
+          label: 'Active students',
+        },
+      },
+      deferred: {
+        customLayouts: 'deferred',
+        widgetPreferences: 'deferred',
+        analyticsCharts: 'deferred',
+        weatherWidgets: 'deferred',
+        todoWidgets: 'deferred',
+      },
+    });
+    expectNoInternalLeaks(knownResponse.body);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/widgets/unknown.widget`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+  });
+
+  it('validates widget query parameters', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/widgets`)
+      .query({ source: 'wallet' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/widgets`)
+      .query({ type: 'mini-chart-card' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/widgets`)
+      .query({ limit: '51' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
   });
 
   it('keeps the existing dashboard routes working', async () => {
@@ -262,23 +328,32 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
         expect(response.body).toHaveProperty('items');
         expectNoInternalLeaks(response.body);
       });
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/command-center`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toHaveProperty('quickStats');
+        expectNoInternalLeaks(response.body);
+      });
   });
 
-  async function ensureCommandCenterPermission(): Promise<string> {
+  async function ensureWidgetsPermission(): Promise<string> {
     const permission = await prisma.permission.upsert({
-      where: { code: 'dashboard.command_center.view' },
+      where: { code: 'dashboard.widgets.view' },
       update: {
         module: 'dashboard',
-        resource: 'command_center',
+        resource: 'widgets',
         action: 'view',
-        description: 'View Dashboard Command Center V2 overview',
+        description: 'View read-only dashboard widgets registry',
       },
       create: {
-        code: 'dashboard.command_center.view',
+        code: 'dashboard.widgets.view',
         module: 'dashboard',
-        resource: 'command_center',
+        resource: 'widgets',
         action: 'view',
-        description: 'View Dashboard Command Center V2 overview',
+        description: 'View read-only dashboard widgets registry',
       },
       select: { id: true },
     });
@@ -286,7 +361,7 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
     return permission.id;
   }
 
-  async function ensureDemoAdminHasCommandCenterPermission(): Promise<void> {
+  async function ensureDemoAdminHasWidgetsPermission(): Promise<void> {
     const admin = await prisma.user.findUnique({
       where: { email: DEMO_ADMIN_EMAIL },
       select: { id: true },
@@ -310,12 +385,7 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
     }
 
     await prisma.rolePermission.createMany({
-      data: [
-        {
-          roleId: membership.roleId,
-          permissionId: commandCenterPermissionId,
-        },
-      ],
+      data: [{ roleId: membership.roleId, permissionId: widgetsPermissionId }],
       skipDuplicates: true,
     });
   }
@@ -330,8 +400,8 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
       data: {
         schoolId: input.schoolId,
         key: `${marker}-${input.label}-role`,
-        name: `Dashboard Command ${input.label} role`,
-        description: `Dashboard command center ${input.label} role`,
+        name: `Dashboard Widgets ${input.label} role`,
+        description: `Dashboard widgets ${input.label} role`,
         isSystem: false,
       },
       select: { id: true },
