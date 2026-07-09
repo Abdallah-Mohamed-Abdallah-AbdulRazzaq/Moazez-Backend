@@ -111,6 +111,7 @@ describe('Dashboard widgets tenancy/security contracts', () => {
   it('registers widget routes with dashboard.widgets.view and no write methods', () => {
     expect(controllerMethods(DashboardController)).toEqual([
       'getCommandCenter',
+      'getLightModeDropdown',
       'getAnalyticsCatalog',
       'listAnalyticsCharts',
       'getAnalyticsChart',
@@ -146,7 +147,6 @@ describe('Dashboard widgets tenancy/security contracts', () => {
         'createWidget',
         'updateWidgetLayout',
         'saveWidgetPreference',
-        'getLightModeDropdown',
         'createTodo',
         'acknowledgeAlert',
         'dismissAlert',

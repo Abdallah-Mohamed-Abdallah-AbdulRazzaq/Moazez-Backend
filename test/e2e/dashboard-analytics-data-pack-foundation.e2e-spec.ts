@@ -120,6 +120,7 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
         'GET /api/v1/dashboard/alerts',
         'GET /api/v1/dashboard/activity-feed',
         'GET /api/v1/dashboard/command-center',
+        'GET /api/v1/dashboard/light-mode-dropdown',
         'GET /api/v1/dashboard/widgets',
         'GET /api/v1/dashboard/widgets/:widgetKey',
         'GET /api/v1/dashboard/modules',
@@ -131,7 +132,6 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
       ]),
     );
     for (const absentRoute of [
-      'GET /api/v1/dashboard/light-mode-dropdown',
       'GET /api/v1/dashboard/light-mode-dropdown/todos',
       'POST /api/v1/dashboard/light-mode-dropdown/todos',
       'PATCH /api/v1/dashboard/light-mode-dropdown/todos/:todoId',

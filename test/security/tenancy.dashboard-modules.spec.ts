@@ -116,6 +116,7 @@ describe('Dashboard modules tenancy/security contracts', () => {
   it('registers module routes with dashboard.modules.view and no write methods', () => {
     expect(controllerMethods(DashboardController)).toEqual([
       'getCommandCenter',
+      'getLightModeDropdown',
       'getAnalyticsCatalog',
       'listAnalyticsCharts',
       'getAnalyticsChart',
@@ -137,7 +138,6 @@ describe('Dashboard modules tenancy/security contracts', () => {
         'createDashboardModule',
         'saveDashboardModuleLayout',
         'updateDashboardModulePreferences',
-        'getLightModeDropdown',
         'createTodo',
         'acknowledgeAlert',
         'dismissAlert',

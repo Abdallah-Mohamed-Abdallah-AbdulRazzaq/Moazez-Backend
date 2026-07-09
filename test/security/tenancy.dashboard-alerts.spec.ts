@@ -132,6 +132,7 @@ describe('Dashboard alerts tenancy/security contracts', () => {
     ]);
     expect(controllerMethods(DashboardController)).toEqual([
       'getCommandCenter',
+      'getLightModeDropdown',
       'getAnalyticsCatalog',
       'listAnalyticsCharts',
       'getAnalyticsChart',

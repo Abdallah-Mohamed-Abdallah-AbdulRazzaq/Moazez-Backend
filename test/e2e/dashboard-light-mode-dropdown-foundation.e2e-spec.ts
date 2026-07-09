@@ -14,11 +14,7 @@ import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 
 const GLOBAL_PREFIX = '/api/v1';
-const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
-const DEMO_ADMIN_PASSWORD = 'School123!';
-const DEMO_SCHOOL_SLUG = 'moazez-academy';
-const PASSWORD = 'DashboardAnalytics123!';
-
+const PASSWORD = 'DashboardLightMode123!';
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
   memoryCost: 19 * 1024,
@@ -46,14 +42,15 @@ type CreatedPrincipal = {
 
 jest.setTimeout(90000);
 
-describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
+describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
   const suffix = randomUUID().split('-')[0];
-  const marker = `analytics1a-${suffix}`;
+  const marker = `light-mode-${suffix}`;
 
   let app: INestApplication<App>;
   let prisma: PrismaClient;
-  let demoSchoolId = '';
-  let demoOrganizationId = '';
+  let organizationId = '';
+  let schoolId = '';
+  let adminPrincipal: CreatedPrincipal;
   let deniedPrincipal: CreatedPrincipal;
 
   const createdUserIds: string[] = [];
@@ -63,22 +60,49 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
     prisma = new PrismaClient();
     await prisma.$connect();
 
-    const demoSchool = await prisma.school.findFirst({
-      where: { slug: DEMO_SCHOOL_SLUG },
-      select: { id: true, organizationId: true },
+    const organization = await prisma.organization.create({
+      data: {
+        slug: `${marker}-org`,
+        name: `Dashboard LightMode Org ${suffix}`,
+      },
+      select: { id: true },
     });
-    if (!demoSchool) {
-      throw new Error('Demo school not found - run `npm run seed` first.');
-    }
-    demoSchoolId = demoSchool.id;
-    demoOrganizationId = demoSchool.organizationId;
+    organizationId = organization.id;
+
+    const school = await prisma.school.create({
+      data: {
+        organizationId,
+        slug: `${marker}-school`,
+        name: `Dashboard LightMode School ${suffix}`,
+      },
+      select: { id: true },
+    });
+    schoolId = school.id;
+
+    await prisma.schoolProfile.create({
+      data: {
+        schoolId,
+        schoolName: `Dashboard LightMode School ${suffix}`,
+        timezone: 'Africa/Cairo',
+        formattedAddress: 'New Cairo, Cairo Governorate, Egypt',
+        city: 'Cairo',
+        country: 'Egypt',
+        latitude: '30.044400',
+        longitude: '31.235700',
+      },
+    });
 
     const permissionIds = await ensureDashboardPermissions();
-    await ensureDemoAdminHasDashboardPermissions(Object.values(permissionIds));
+    adminPrincipal = await createPrincipal({
+      label: 'admin',
+      organizationId,
+      schoolId,
+      permissionIds: Object.values(permissionIds),
+    });
     deniedPrincipal = await createPrincipal({
       label: 'denied',
-      organizationId: demoOrganizationId,
-      schoolId: demoSchoolId,
+      organizationId,
+      schoolId,
       permissionIds: [],
     });
 
@@ -111,7 +135,7 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
     }
   });
 
-  it('registers analytics routes and keeps out-of-scope routes absent', () => {
+  it('registers only the LightModeDropdown read route and keeps out-of-scope routes absent', () => {
     const routes = listRegisteredRoutes();
 
     expect(routes).toEqual(
@@ -123,12 +147,12 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         'GET /api/v1/dashboard/light-mode-dropdown',
         'GET /api/v1/dashboard/widgets',
         'GET /api/v1/dashboard/widgets/:widgetKey',
-        'GET /api/v1/dashboard/modules',
-        'GET /api/v1/dashboard/modules/:moduleKey',
         'GET /api/v1/dashboard/analytics/catalog',
         'GET /api/v1/dashboard/analytics/charts',
         'GET /api/v1/dashboard/analytics/charts/:chartKey',
         'GET /api/v1/dashboard/analytics/charts/:chartKey/data',
+        'GET /api/v1/dashboard/modules',
+        'GET /api/v1/dashboard/modules/:moduleKey',
       ]),
     );
     for (const absentRoute of [
@@ -139,287 +163,175 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       'POST /api/v1/dashboard/alerts/:alertKey/acknowledge',
       'POST /api/v1/dashboard/alerts/:alertKey/dismiss',
       'POST /api/v1/dashboard/alerts/:alertKey/snooze',
+      'GET /api/v1/dashboard/exports/:exportKey',
+      'POST /api/v1/dashboard/reports/:reportKey',
       'GET /api/v1/dashboard/realtime',
     ]) {
       expect(routes).not.toContain(absentRoute);
     }
   });
 
-  it('returns 401 without a token and 403 without dashboard.analytics.view', async () => {
+  it('returns 401 without a token and 403 without dashboard.light_mode_dropdown.view', async () => {
     const deniedToken = await login(deniedPrincipal.email, PASSWORD);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/catalog`)
+      .get(`${GLOBAL_PREFIX}/dashboard/light-mode-dropdown`)
       .expect(401);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/catalog`)
+      .get(`${GLOBAL_PREFIX}/dashboard/light-mode-dropdown`)
       .set('Authorization', `Bearer ${deniedToken}`)
       .expect(403);
   });
 
-  it('returns the analytics catalog for an authorized school admin', async () => {
-    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+  it('returns the stable LightModeDropdown contract for an authorized school admin', async () => {
+    const adminToken = await login(adminPrincipal.email, PASSWORD);
 
     const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/catalog`)
+      .get(`${GLOBAL_PREFIX}/dashboard/light-mode-dropdown`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
     expect(response.body).toMatchObject({
       generatedAt: expect.any(String),
-      catalog: {
-        version: 'v1',
-        sources: expect.any(Array),
-        supportedChartTypes: [
-          'line',
-          'bar',
-          'stacked-bar',
-          'area',
-          'donut',
-          'pie',
-          'funnel',
-          'heatmap',
-          'radial-progress',
-          'table',
-          'timeline',
-        ],
-        supportedRanges: ['7d', '30d', '90d', 'term', 'academic_year', 'custom'],
-        supportedGranularities: ['day', 'week', 'month'],
-        filters: expect.any(Array),
-        metrics: expect.any(Array),
-        kpis: expect.any(Array),
-        charts: expect.any(Array),
+      location: {
+        label: 'New Cairo, Cairo Governorate, Egypt',
+        city: 'Cairo',
+        country: 'Egypt',
+        timezone: 'Africa/Cairo',
+        source: 'school_profile',
       },
-      deferred: {
-        computedSeries: 'deferred',
-        drilldownData: 'deferred',
-        savedReports: 'deferred',
-        customDashboards: 'deferred',
-        exports: 'deferred',
-        realtime: 'deferred',
+      weather: {
+        status: 'provider_not_configured',
+        provider: null,
+        current: {
+          temperature: null,
+          lowTemperature: null,
+          feelsLike: null,
+          condition: 'Weather unavailable',
+          conditionCode: 'provider_not_configured',
+          iconKey: 'cloud',
+          observedAt: null,
+        },
+        emptyState: {
+          reason: 'provider_not_configured',
+        },
+      },
+      hints: [],
+      highlights: [],
+      cities: [],
+      forecast: [],
+      planner: {
+        timezone: 'Africa/Cairo',
+        date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        eventDates: [],
+        events: [],
+        todos: [],
       },
       meta: {
-        source: 'dashboard_analytics_catalog',
-        dataFreshness: 'catalog',
+        source: 'dashboard_light_mode_dropdown',
+        version: 'v1',
+        locale: 'en',
+        units: 'metric',
+        weatherStatus: 'provider_not_configured',
+        plannerStatus: 'foundation_only',
+        todosStatus: 'not_persisted',
+        deferred: {
+          weatherProvider: 'deferred',
+          weatherCache: 'deferred',
+          todoPersistence: 'deferred',
+          plannerCalendar: 'deferred',
+          crossModulePlannerItems: 'deferred',
+          realtime: 'deferred',
+        },
       },
     });
-    expect(
-      response.body.catalog.sources.map(
-        (source: { source: string }) => source.source,
-      ),
-    ).toEqual([
-      'admissions',
-      'students',
-      'academics',
-      'attendance',
-      'grades',
-      'homework',
-      'behavior',
-      'reinforcement',
-      'communication',
-      'settings',
-    ]);
-    expect(
-      response.body.catalog.charts.map(
-        (chart: { chartKey: string }) => chart.chartKey,
-      ),
-    ).toEqual(
-      expect.arrayContaining([
-        'admissions.funnel',
-        'attendance.daily_trend',
-        'academics.structure_readiness',
-        'grades.gradebook_completion',
-        'homework.grade_sync_coverage',
-        'communication.moderation_queue',
-        'settings.notification_readiness',
-      ]),
-    );
+    expect(response.body.forecast).toEqual([]);
+    expect(response.body.planner.todos).toEqual([]);
+    expect(response.body.planner.eventDates.every(isDateOnly)).toBe(true);
+    expectIconKeysAreSemanticStrings(response.body);
     expectNoInternalLeaks(response.body);
-    expect(JSON.stringify(response.body.catalog.charts)).not.toContain('points');
+    expect(JSON.stringify(response.body)).not.toContain('React');
+    expect(JSON.stringify(response.body)).not.toContain('jsx');
+    expect(JSON.stringify(response.body)).not.toMatch(/[<](svg|div|span)/i);
   });
 
-  it('returns chart definitions and supports source/type/status/limit filters', async () => {
-    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+  it('supports allowed query controls and rejects invalid or override-shaped input', async () => {
+    const adminToken = await login(adminPrincipal.email, PASSWORD);
 
     const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts`)
-      .query({ source: 'attendance', type: 'line', status: 'planned', limit: '2' })
+      .get(`${GLOBAL_PREFIX}/dashboard/light-mode-dropdown`)
+      .query({
+        locale: 'ar',
+        timezone: 'Europe/Berlin',
+        units: 'imperial',
+        date: '2026-07-09',
+      })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
-    expect(response.body).toMatchObject({
-      generatedAt: expect.any(String),
-      charts: expect.any(Array),
-      summary: {
-        total: 2,
-        bySource: { attendance: 2 },
-        byType: { line: 2 },
-        byStatus: { planned: 2 },
-      },
-      filters: {
-        source: 'attendance',
-        type: 'line',
-        status: 'planned',
-        limit: 2,
-      },
-      deferred: {
-        computedSeries: 'deferred',
-        drilldownData: 'deferred',
-      },
+    expect(response.body.location.timezone).toBe('Europe/Berlin');
+    expect(response.body.planner).toMatchObject({
+      timezone: 'Europe/Berlin',
+      date: '2026-07-09',
+      events: [],
+      todos: [],
     });
-    expect(response.body.charts).toHaveLength(2);
-    expect(
-      response.body.charts.every(
-        (chart: { source: string; type: string; status: string }) =>
-          chart.source === 'attendance' &&
-          chart.type === 'line' &&
-          chart.status === 'planned',
-      ),
-    ).toBe(true);
+    expect(response.body.meta).toMatchObject({
+      locale: 'ar',
+      units: 'imperial',
+    });
     expectNoInternalLeaks(response.body);
-  });
 
-  it('returns one known chart and 404 for an unknown chart', async () => {
-    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
-
-    const knownResponse = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.daily_trend`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
-
-    expect(knownResponse.body).toMatchObject({
-      generatedAt: expect.any(String),
-      chart: {
-        chartKey: 'attendance.daily_trend',
-        source: 'attendance',
-        type: 'line',
-        status: 'planned',
-        requiredPermission: 'dashboard.analytics.view',
-        endpoint: '/dashboard/analytics/charts/attendance.daily_trend',
-        futureDataContract: {
-          series: [
-            {
-              key: 'present',
-              label: 'Present',
-              points: [
-                {
-                  x: 'YYYY-MM-DD',
-                  y: 0,
-                  metadata: {
-                    drilldown: {
-                      source: 'attendance',
-                      filters: {},
-                    },
-                  },
-                },
-              ],
-            },
-            {
-              key: 'absent',
-              label: 'Absent',
-              points: expect.any(Array),
-            },
-            {
-              key: 'late',
-              label: 'Late',
-              points: expect.any(Array),
-            },
-          ],
-        },
-        meta: {
-          dataAvailability: 'definition_only',
-        },
-      },
-      deferred: {
-        computedSeries: 'deferred',
-        drilldownData: 'deferred',
-      },
-    });
-    expectNoInternalLeaks(knownResponse.body);
-
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/unknown.chart`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(404);
-  });
-
-  it('validates analytics chart query parameters', async () => {
-    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
-
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts`)
-      .query({ source: 'platform' })
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(400);
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts`)
-      .query({ type: 'scatter' })
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(400);
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts`)
-      .query({ status: 'live' })
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(400);
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts`)
-      .query({ limit: '101' })
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(400);
+    for (const query of [
+      { locale: 'fr' },
+      { timezone: 'Invalid/Timezone' },
+      { units: 'kelvin' },
+      { date: 'not-a-date' },
+      { schoolId },
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/dashboard/light-mode-dropdown`)
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    }
   });
 
   it('keeps existing dashboard routes working', async () => {
-    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const adminToken = await login(adminPrincipal.email, PASSWORD);
 
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/summary`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200)
-      .expect((response) => {
-        expect(response.body).toHaveProperty('cards');
-        expectNoInternalLeaks(response.body);
-      });
-
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200)
-      .expect((response) => {
-        expect(response.body).toHaveProperty('alerts');
-        expectNoInternalLeaks(response.body);
-      });
-
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/activity-feed`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200)
-      .expect((response) => {
-        expect(response.body).toHaveProperty('items');
-        expectNoInternalLeaks(response.body);
-      });
-
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/command-center`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200)
-      .expect((response) => {
-        expect(response.body).toHaveProperty('quickStats');
-        expectNoInternalLeaks(response.body);
-      });
-
-    await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/widgets`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200)
-      .expect((response) => {
-        expect(response.body).toHaveProperty('widgets');
-        expectNoInternalLeaks(response.body);
-      });
+    for (const path of [
+      '/dashboard/summary',
+      '/dashboard/alerts',
+      '/dashboard/activity-feed',
+      '/dashboard/command-center',
+      '/dashboard/widgets',
+      '/dashboard/analytics/catalog',
+      '/dashboard/modules',
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}${path}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200)
+        .expect((response) => expectNoInternalLeaks(response.body));
+    }
   });
 
   async function ensureDashboardPermissions(): Promise<Record<string, string>> {
     const definitions = [
+      {
+        key: 'lightModeDropdown',
+        code: 'dashboard.light_mode_dropdown.view',
+        resource: 'light_mode_dropdown',
+        description: 'View read-only Dashboard LightModeDropdown contract',
+      },
+      {
+        key: 'modules',
+        code: 'dashboard.modules.view',
+        resource: 'modules',
+        description: 'View read-only dashboard module pages registry',
+      },
       {
         key: 'analytics',
         code: 'dashboard.analytics.view',
@@ -483,40 +395,6 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
     return permissionIds;
   }
 
-  async function ensureDemoAdminHasDashboardPermissions(
-    permissionIds: string[],
-  ): Promise<void> {
-    const admin = await prisma.user.findUnique({
-      where: { email: DEMO_ADMIN_EMAIL },
-      select: { id: true },
-    });
-    if (!admin) {
-      throw new Error('Demo admin not found - run `npm run seed` first.');
-    }
-
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId: admin.id,
-        schoolId: demoSchoolId,
-        status: MembershipStatus.ACTIVE,
-        deletedAt: null,
-      },
-      orderBy: { startedAt: 'desc' },
-      select: { roleId: true },
-    });
-    if (!membership) {
-      throw new Error('Demo admin school membership missing.');
-    }
-
-    await prisma.rolePermission.createMany({
-      data: permissionIds.map((permissionId) => ({
-        roleId: membership.roleId,
-        permissionId,
-      })),
-      skipDuplicates: true,
-    });
-  }
-
   async function createPrincipal(input: {
     label: string;
     organizationId: string;
@@ -527,8 +405,8 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       data: {
         schoolId: input.schoolId,
         key: `${marker}-${input.label}-role`,
-        name: `Dashboard Analytics ${input.label} role`,
-        description: `Dashboard analytics ${input.label} role`,
+        name: `Dashboard LightMode ${input.label} role`,
+        description: `Dashboard LightMode ${input.label} role`,
         isSystem: false,
       },
       select: { id: true },
@@ -647,8 +525,63 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         where: { id: { in: createdRoleIds } },
       });
     }
+    if (schoolId) {
+      await prisma.schoolProfile.deleteMany({ where: { schoolId } });
+      await prisma.school.deleteMany({ where: { id: schoolId } });
+    }
+    if (organizationId) {
+      await prisma.organization.deleteMany({ where: { id: organizationId } });
+    }
   }
 });
+
+function isDateOnly(value: unknown): boolean {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function expectIconKeysAreSemanticStrings(body: unknown): void {
+  const iconKeys: unknown[] = [];
+  const allowedIconKeys = [
+    'sun',
+    'cloud',
+    'cloud-rain',
+    'cloud-snow',
+    'wind',
+    'droplets',
+    'sunrise',
+    'sunset',
+    'eye',
+    'gauge',
+    'thermometer',
+    'calendar',
+    'clock',
+    'check-circle',
+  ];
+
+  function visit(value: unknown): void {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+
+    for (const [key, child] of Object.entries(value)) {
+      if (key === 'iconKey') {
+        iconKeys.push(child);
+      }
+      visit(child);
+    }
+  }
+
+  visit(body);
+  expect(iconKeys.length).toBeGreaterThan(0);
+  expect(
+    iconKeys.every(
+      (iconKey) =>
+        typeof iconKey === 'string' && allowedIconKeys.includes(iconKey),
+    ),
+  ).toBe(true);
+}
 
 function expectNoInternalLeaks(body: unknown): void {
   const serialized = JSON.stringify(body);
@@ -657,19 +590,23 @@ function expectNoInternalLeaks(body: unknown): void {
     'organizationId',
     'membershipId',
     'roleId',
+    'ownerUserId',
+    'userId',
     'passwordHash',
     'deletedAt',
     'actorId',
-    'userId',
     'resourceId',
     'bucket',
     'objectKey',
-    'platform_admin',
-    'platform-admin',
+    'latitude',
+    'longitude',
+    'providerSecret',
+    'smtp',
   ]) {
     expect(serialized).not.toContain(forbidden);
   }
   expect(serialized).not.toMatch(/(^|[^A-Za-z0-9])raw([^A-Za-z0-9]|$)/i);
+  expect(serialized).not.toMatch(/[<](svg|div|span)/i);
 }
 
 function createNoopBullmqService(): Pick<

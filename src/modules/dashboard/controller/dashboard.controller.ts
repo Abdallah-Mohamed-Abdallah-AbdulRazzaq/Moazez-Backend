@@ -5,6 +5,7 @@ import { GetDashboardAnalyticsCatalogUseCase } from '../application/get-dashboar
 import { GetDashboardAnalyticsChartDataUseCase } from '../application/get-dashboard-analytics-chart-data.use-case';
 import { GetDashboardAnalyticsChartUseCase } from '../application/get-dashboard-analytics-chart.use-case';
 import { GetDashboardCommandCenterUseCase } from '../application/get-dashboard-command-center.use-case';
+import { GetDashboardLightModeDropdownUseCase } from '../application/get-dashboard-light-mode-dropdown.use-case';
 import { GetDashboardModulePageUseCase } from '../application/get-dashboard-module-page.use-case';
 import { GetDashboardWidgetUseCase } from '../application/get-dashboard-widget.use-case';
 import { GetDashboardSummaryUseCase } from '../application/get-dashboard-summary.use-case';
@@ -33,6 +34,10 @@ import {
 } from '../dto/dashboard-analytics-data.dto';
 import { DashboardCommandCenterResponseDto } from '../dto/dashboard-command-center.dto';
 import {
+  DashboardLightModeDropdownResponseDto,
+  GetDashboardLightModeDropdownQueryDto,
+} from '../dto/dashboard-light-mode-dropdown.dto';
+import {
   DashboardModulePageResponseDto,
   DashboardModulesResponseDto,
   ListDashboardModulesQueryDto,
@@ -53,6 +58,7 @@ export class DashboardController {
     private readonly getDashboardAnalyticsChartDataUseCase: GetDashboardAnalyticsChartDataUseCase,
     private readonly getDashboardAnalyticsChartUseCase: GetDashboardAnalyticsChartUseCase,
     private readonly getDashboardCommandCenterUseCase: GetDashboardCommandCenterUseCase,
+    private readonly getDashboardLightModeDropdownUseCase: GetDashboardLightModeDropdownUseCase,
     private readonly getDashboardModulePageUseCase: GetDashboardModulePageUseCase,
     private readonly getDashboardWidgetUseCase: GetDashboardWidgetUseCase,
     private readonly getDashboardSummaryUseCase: GetDashboardSummaryUseCase,
@@ -67,6 +73,14 @@ export class DashboardController {
   @RequiredPermissions('dashboard.command_center.view')
   getCommandCenter(): Promise<DashboardCommandCenterResponseDto> {
     return this.getDashboardCommandCenterUseCase.execute();
+  }
+
+  @Get('light-mode-dropdown')
+  @RequiredPermissions('dashboard.light_mode_dropdown.view')
+  getLightModeDropdown(
+    @Query() query: GetDashboardLightModeDropdownQueryDto,
+  ): Promise<DashboardLightModeDropdownResponseDto> {
+    return this.getDashboardLightModeDropdownUseCase.execute(query);
   }
 
   @Get('analytics/catalog')

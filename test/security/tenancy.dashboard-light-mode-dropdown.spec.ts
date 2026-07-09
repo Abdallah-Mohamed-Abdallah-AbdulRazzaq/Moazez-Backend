@@ -10,18 +10,17 @@ import {
   setActor,
 } from '../../src/common/context/request-context';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
-import { GetDashboardCommandCenterUseCase } from '../../src/modules/dashboard/application/get-dashboard-command-center.use-case';
-import { DashboardController } from '../../src/modules/dashboard/controller/dashboard.controller';
-import { DashboardActivityFeedRepository } from '../../src/modules/dashboard/infrastructure/dashboard-activity-feed.repository';
-import { DashboardAlertsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-alerts.repository';
-import { DashboardSummaryRepository } from '../../src/modules/dashboard/infrastructure/dashboard-summary.repository';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
+import { GetDashboardLightModeDropdownUseCase } from '../../src/modules/dashboard/application/get-dashboard-light-mode-dropdown.use-case';
+import { DashboardController } from '../../src/modules/dashboard/controller/dashboard.controller';
+import { DashboardLightModeDropdownRepository } from '../../src/modules/dashboard/infrastructure/dashboard-light-mode-dropdown.repository';
+import { presentDashboardLightModeDropdown } from '../../src/modules/dashboard/presenters/dashboard-light-mode-dropdown.presenter';
 
 jest.setTimeout(60000);
 
-describe('Dashboard command center tenancy/security contracts', () => {
+describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
   const suffix = randomUUID().split('-')[0];
-  const marker = `dcc-security-${suffix}`;
+  const marker = `light-mode-security-${suffix}`;
 
   let prisma: PrismaService;
   let organizationId = '';
@@ -35,7 +34,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
     const organization = await prisma.organization.create({
       data: {
         slug: `${marker}-org`,
-        name: `Command Center Security Org ${suffix}`,
+        name: `Dashboard LightMode Security Org ${suffix}`,
       },
       select: { id: true },
     });
@@ -46,7 +45,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
         data: {
           organizationId,
           slug: `${marker}-school-a`,
-          name: `Command Center School A ${suffix}`,
+          name: `Dashboard LightMode School A ${suffix}`,
         },
         select: { id: true },
       }),
@@ -54,7 +53,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
         data: {
           organizationId,
           slug: `${marker}-school-b`,
-          name: `Command Center School B ${suffix}`,
+          name: `Dashboard LightMode School B ${suffix}`,
         },
         select: { id: true },
       }),
@@ -62,31 +61,27 @@ describe('Dashboard command center tenancy/security contracts', () => {
     schoolAId = schoolA.id;
     schoolBId = schoolB.id;
 
-    await prisma.student.createMany({
+    await prisma.schoolProfile.createMany({
       data: [
         {
-          organizationId,
           schoolId: schoolAId,
-          firstName: `${marker} A`,
-          lastName: 'Student 1',
+          schoolName: `Dashboard LightMode School A ${suffix}`,
+          timezone: 'Africa/Cairo',
+          formattedAddress: 'School A Address',
+          city: 'Cairo',
+          country: 'Egypt',
+          latitude: '30.044400',
+          longitude: '31.235700',
         },
         {
-          organizationId,
           schoolId: schoolBId,
-          firstName: `${marker} B`,
-          lastName: 'Student 1',
-        },
-        {
-          organizationId,
-          schoolId: schoolBId,
-          firstName: `${marker} B`,
-          lastName: 'Student 2',
-        },
-        {
-          organizationId,
-          schoolId: schoolBId,
-          firstName: `${marker} B`,
-          lastName: 'Student 3',
+          schoolName: `Dashboard LightMode School B ${suffix}`,
+          timezone: 'Europe/Berlin',
+          formattedAddress: 'School B Address',
+          city: 'Berlin',
+          country: 'Germany',
+          latitude: '52.520000',
+          longitude: '13.405000',
         },
       ],
     });
@@ -95,7 +90,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
   afterAll(async () => {
     if (!prisma) return;
 
-    await prisma.student.deleteMany({
+    await prisma.schoolProfile.deleteMany({
       where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
     });
     await prisma.school.deleteMany({
@@ -107,7 +102,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
     await prisma.$disconnect();
   });
 
-  it('registers only read-only dashboard controller methods with explicit permissions', () => {
+  it('registers LightModeDropdown with dashboard.light_mode_dropdown.view and no write methods', () => {
     expect(controllerMethods(DashboardController)).toEqual([
       'getCommandCenter',
       'getLightModeDropdown',
@@ -123,46 +118,28 @@ describe('Dashboard command center tenancy/security contracts', () => {
       'listAlerts',
       'listActivityFeed',
     ]);
-    expect(readPermissions('getCommandCenter')).toEqual([
-      'dashboard.command_center.view',
-    ]);
     expect(readPermissions('getLightModeDropdown')).toEqual([
       'dashboard.light_mode_dropdown.view',
     ]);
-    expect(readPermissions('getAnalyticsCatalog')).toEqual([
-      'dashboard.analytics.view',
-    ]);
-    expect(readPermissions('listAnalyticsCharts')).toEqual([
-      'dashboard.analytics.view',
-    ]);
-    expect(readPermissions('getAnalyticsChart')).toEqual([
-      'dashboard.analytics.view',
-    ]);
-    expect(readPermissions('getAnalyticsChartData')).toEqual([
-      'dashboard.analytics.view',
-    ]);
-    expect(readPermissions('listModules')).toEqual(['dashboard.modules.view']);
-    expect(readPermissions('getModulePage')).toEqual([
-      'dashboard.modules.view',
-    ]);
-    expect(readPermissions('listWidgets')).toEqual(['dashboard.widgets.view']);
-    expect(readPermissions('getWidget')).toEqual(['dashboard.widgets.view']);
-    expect(readPermissions('getSummary')).toEqual(['dashboard.summary.view']);
-    expect(readPermissions('listAlerts')).toEqual(['dashboard.alerts.view']);
-    expect(readPermissions('listActivityFeed')).toEqual([
-      'dashboard.activity_feed.view',
-    ]);
     expect(controllerMethods(DashboardController)).not.toEqual(
       expect.arrayContaining([
-        'createTodo',
+        'createLightModeDropdownTodo',
+        'listLightModeDropdownTodos',
+        'updateLightModeDropdownTodo',
+        'deleteLightModeDropdownTodo',
+        'refreshWeatherProvider',
+        'syncPlannerCalendar',
         'acknowledgeAlert',
         'dismissAlert',
         'snoozeAlert',
+        'subscribeRealtime',
+        'exportDashboard',
+        'createDashboardReport',
       ]),
     );
   });
 
-  it('adds dashboard.command_center.view to admin-like seed inheritance only', () => {
+  it('adds dashboard.light_mode_dropdown.view to admin-like seed inheritance only', () => {
     const permissionsSeed = readFileSync(
       join(process.cwd(), 'prisma/seeds/01-permissions.seed.ts'),
       'utf8',
@@ -172,76 +149,97 @@ describe('Dashboard command center tenancy/security contracts', () => {
       'utf8',
     );
 
-    expect(permissionsSeed).toContain("'dashboard.command_center.view'");
-    expect(permissionsSeed).toContain("'dashboard.analytics.view'");
-    expect(permissionsSeed).toContain("'dashboard.widgets.view'");
-    expect(permissionsSeed).toContain("resource: 'command_center'");
-    expect(permissionsSeed).toContain("resource: 'analytics'");
-    expect(permissionsSeed).toContain("resource: 'widgets'");
+    expect(permissionsSeed).toContain("'dashboard.light_mode_dropdown.view'");
+    expect(permissionsSeed).toContain("resource: 'light_mode_dropdown'");
     expect(rolesSeed).toContain('const ALL = PERMISSION_CODES;');
+    expect(rolesSeed).toContain('const NON_PLATFORM = ALL.filter');
     expect(rolesSeed).toContain('const SCHOOL_LEVEL = NON_PLATFORM;');
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
-      'dashboard.command_center.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
-      'dashboard.widgets.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
-      'dashboard.analytics.view',
+      'dashboard.light_mode_dropdown.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
-      'dashboard.command_center.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
-      'dashboard.widgets.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
-      'dashboard.analytics.view',
+      'dashboard.light_mode_dropdown.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
-      'dashboard.command_center.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
-      'dashboard.widgets.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
-      'dashboard.analytics.view',
+      'dashboard.light_mode_dropdown.view',
     );
   });
 
-  it('keeps school A from observing school B command center data and ignores override-shaped input', async () => {
-    const useCase = new GetDashboardCommandCenterUseCase(
-      new DashboardSummaryRepository(prisma),
-      new DashboardAlertsRepository(prisma),
-      new DashboardActivityFeedRepository(prisma),
+  it('keeps school A from observing school B location/timezone and ignores schoolId overrides', async () => {
+    const useCase = new GetDashboardLightModeDropdownUseCase(
+      new DashboardLightModeDropdownRepository(prisma),
     );
 
     const response = await withSchoolScope(schoolAId, () =>
-      (useCase.execute as unknown as (input: unknown) => Promise<unknown>).call(
+      (useCase.execute as unknown as (query: unknown) => Promise<unknown>).call(
         useCase,
         {
           schoolId: schoolBId,
           organizationId,
+          ownerUserId: 'owner-b',
         },
       ),
     );
+    const serialized = JSON.stringify(response);
 
     expect(response).toMatchObject({
-      school: {
-        name: `Command Center School A ${suffix}`,
+      location: {
+        label: 'School A Address',
+        city: 'Cairo',
+        country: 'Egypt',
+        timezone: 'Africa/Cairo',
+        source: 'school_profile',
+      },
+      weather: {
+        status: 'provider_not_configured',
+        provider: null,
+      },
+      forecast: [],
+      planner: {
+        timezone: 'Africa/Cairo',
+        events: [],
+        todos: [],
       },
     });
-    const body = response as {
-      quickStats: Array<{ key: string; value: number }>;
-    };
-    expect(
-      body.quickStats.find((stat) => stat.key === 'students.active')?.value,
-    ).toBe(1);
-
-    const serialized = JSON.stringify(response);
-    expect(serialized).not.toContain(`Command Center School B ${suffix}`);
+    expect(serialized).not.toContain('School B Address');
+    expect(serialized).not.toContain('Berlin');
+    expect(serialized).not.toContain('Europe/Berlin');
     expect(serialized).not.toContain(schoolAId);
     expect(serialized).not.toContain(schoolBId);
+    expect(serialized).not.toContain(organizationId);
+    expect(serialized).not.toContain('owner-b');
+    expectNoInternalLeaks(response);
+  });
+
+  it('does not expose tenant ids, latitude/longitude, provider secrets, or raw payloads in presenter output', () => {
+    const response = presentDashboardLightModeDropdown({
+      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      schoolLocation: {
+        schoolName: 'School A',
+        profile: {
+          timezone: 'Africa/Cairo',
+          formattedAddress: 'School A Address',
+          city: 'Cairo',
+          country: 'Egypt',
+          schoolId: 'school-a',
+          organizationId: 'org-a',
+          latitude: '30.044400',
+          longitude: '31.235700',
+          raw: { providerPayload: 'secret' },
+        } as any,
+      },
+      query: {
+        locale: 'en',
+        timezone: 'Africa/Cairo',
+        units: 'metric',
+        date: '2026-07-09',
+        providerKey: 'provider-secret',
+      } as any,
+    });
+
+    expect(response.weather.provider).toBeNull();
+    expect(response.forecast).toEqual([]);
+    expect(response.planner.todos).toEqual([]);
     expectNoInternalLeaks(response);
   });
 
@@ -256,7 +254,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
         organizationId,
         schoolId,
         roleId: `role-${schoolId}`,
-        permissions: ['dashboard.command_center.view'],
+        permissions: ['dashboard.light_mode_dropdown.view'],
       });
 
       return fn();
@@ -291,13 +289,23 @@ function expectNoInternalLeaks(body: unknown): void {
     'organizationId',
     'membershipId',
     'roleId',
+    'ownerUserId',
+    'userId',
     'passwordHash',
     'deletedAt',
     'actorId',
     'resourceId',
     'bucket',
     'objectKey',
+    'latitude',
+    'longitude',
+    'provider-secret',
+    'providerPayload',
+    'providerKey',
+    'smtp',
+    'raw',
   ]) {
     expect(serialized).not.toContain(forbidden);
   }
+  expect(serialized).not.toMatch(/[<](svg|div|span)/i);
 }

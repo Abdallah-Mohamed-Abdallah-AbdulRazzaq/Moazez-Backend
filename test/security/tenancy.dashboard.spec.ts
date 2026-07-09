@@ -12,6 +12,7 @@ describe('Dashboard summary tenancy/security contracts', () => {
   it('registers school dashboard routes guarded by explicit dashboard permissions', () => {
     expect(controllerMethods(DashboardController)).toEqual([
       'getCommandCenter',
+      'getLightModeDropdown',
       'getAnalyticsCatalog',
       'listAnalyticsCharts',
       'getAnalyticsChart',
@@ -26,6 +27,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
     ]);
     expect(readPermissions('getCommandCenter')).toEqual([
       'dashboard.command_center.view',
+    ]);
+    expect(readPermissions('getLightModeDropdown')).toEqual([
+      'dashboard.light_mode_dropdown.view',
     ]);
     expect(readPermissions('getAnalyticsCatalog')).toEqual([
       'dashboard.analytics.view',
@@ -95,6 +99,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
       'dashboard.command_center.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
+      'dashboard.light_mode_dropdown.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.modules.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
@@ -114,6 +121,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.command_center.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
+      'dashboard.light_mode_dropdown.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.modules.view',
@@ -135,6 +145,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.command_center.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
+      'dashboard.light_mode_dropdown.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.modules.view',

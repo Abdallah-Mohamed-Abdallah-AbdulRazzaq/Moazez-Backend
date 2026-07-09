@@ -4,6 +4,7 @@ import { GetDashboardAnalyticsCatalogUseCase } from './application/get-dashboard
 import { GetDashboardAnalyticsChartDataUseCase } from './application/get-dashboard-analytics-chart-data.use-case';
 import { GetDashboardAnalyticsChartUseCase } from './application/get-dashboard-analytics-chart.use-case';
 import { GetDashboardCommandCenterUseCase } from './application/get-dashboard-command-center.use-case';
+import { GetDashboardLightModeDropdownUseCase } from './application/get-dashboard-light-mode-dropdown.use-case';
 import { GetDashboardModulePageUseCase } from './application/get-dashboard-module-page.use-case';
 import { GetDashboardWidgetUseCase } from './application/get-dashboard-widget.use-case';
 import { GetDashboardSummaryUseCase } from './application/get-dashboard-summary.use-case';
@@ -15,6 +16,7 @@ import { ListDashboardWidgetsUseCase } from './application/list-dashboard-widget
 import { DashboardController } from './controller/dashboard.controller';
 import { DashboardActivityFeedRepository } from './infrastructure/dashboard-activity-feed.repository';
 import { DashboardAlertsRepository } from './infrastructure/dashboard-alerts.repository';
+import { DashboardLightModeDropdownRepository } from './infrastructure/dashboard-light-mode-dropdown.repository';
 import { DashboardSummaryRepository } from './infrastructure/dashboard-summary.repository';
 
 @Module({
@@ -24,10 +26,12 @@ import { DashboardSummaryRepository } from './infrastructure/dashboard-summary.r
     DashboardSummaryRepository,
     DashboardAlertsRepository,
     DashboardActivityFeedRepository,
+    DashboardLightModeDropdownRepository,
     GetDashboardAnalyticsCatalogUseCase,
     GetDashboardAnalyticsChartDataUseCase,
     GetDashboardAnalyticsChartUseCase,
     GetDashboardCommandCenterUseCase,
+    GetDashboardLightModeDropdownUseCase,
     GetDashboardModulePageUseCase,
     GetDashboardWidgetUseCase,
     GetDashboardSummaryUseCase,

@@ -88,6 +88,7 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
   it('registers analytics data route with dashboard.analytics.view and no write methods', () => {
     expect(controllerMethods(DashboardController)).toEqual([
       'getCommandCenter',
+      'getLightModeDropdown',
       'getAnalyticsCatalog',
       'listAnalyticsCharts',
       'getAnalyticsChart',
@@ -122,7 +123,6 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
         'saveDashboard',
         'createDashboardReport',
         'getDashboardModulePage',
-        'getLightModeDropdown',
         'createTodo',
         'acknowledgeAlert',
         'dismissAlert',
