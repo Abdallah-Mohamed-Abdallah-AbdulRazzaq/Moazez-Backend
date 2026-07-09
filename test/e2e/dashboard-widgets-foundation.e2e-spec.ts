@@ -121,6 +121,7 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
         'GET /api/v1/dashboard/analytics/catalog',
         'GET /api/v1/dashboard/analytics/charts',
         'GET /api/v1/dashboard/analytics/charts/:chartKey',
+        'GET /api/v1/dashboard/analytics/charts/:chartKey/data',
         'GET /api/v1/dashboard/widgets',
         'GET /api/v1/dashboard/widgets/:widgetKey',
         'GET /api/v1/dashboard/summary',

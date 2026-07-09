@@ -224,11 +224,19 @@ describe('Dashboard analytics presenter', () => {
     expectNoInternalLeaks(response);
   });
 
-  it('keeps all catalog statuses definition-only or future-pack states', () => {
+  it('marks only the first snapshot data pack charts as computed and available', () => {
     const response = presentDashboardAnalyticsCatalog({
       generatedAt: new Date('2026-07-09T12:00:00.000Z'),
       catalog: DASHBOARD_ANALYTICS_CATALOG,
     });
+    const computedSnapshotChartKeys = [
+      'attendance.pending_sessions',
+      'grades.pending_submission_reviews',
+      'grades.pending_answer_reviews',
+      'communication.moderation_queue',
+      'settings.email_connection_readiness',
+      'settings.login_identity_readiness',
+    ];
 
     expect(
       response.catalog.sources.every((source) =>
@@ -246,11 +254,22 @@ describe('Dashboard analytics presenter', () => {
       ),
     ).toBe(true);
     expect(
-      response.catalog.charts.every(
-        (chart) =>
-          ['available', 'planned', 'deferred'].includes(chart.status) &&
-          chart.meta.dataAvailability === 'definition_only',
-      ),
+      response.catalog.charts
+        .filter((chart) => computedSnapshotChartKeys.includes(chart.chartKey))
+        .every(
+          (chart) =>
+            chart.status === 'available' &&
+            chart.meta.dataAvailability === 'computed_snapshot',
+        ),
+    ).toBe(true);
+    expect(
+      response.catalog.charts
+        .filter((chart) => !computedSnapshotChartKeys.includes(chart.chartKey))
+        .every(
+          (chart) =>
+            chart.status === 'planned' &&
+            chart.meta.dataAvailability === 'definition_only',
+        ),
     ).toBe(true);
   });
 });

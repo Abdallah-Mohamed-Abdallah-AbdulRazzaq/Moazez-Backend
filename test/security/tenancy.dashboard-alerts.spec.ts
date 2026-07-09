@@ -122,6 +122,9 @@ describe('Dashboard alerts tenancy/security contracts', () => {
     expect(readPermissions('getAnalyticsChart')).toEqual([
       'dashboard.analytics.view',
     ]);
+    expect(readPermissions('getAnalyticsChartData')).toEqual([
+      'dashboard.analytics.view',
+    ]);
     expect(readPermissions('listWidgets')).toEqual(['dashboard.widgets.view']);
     expect(readPermissions('getWidget')).toEqual(['dashboard.widgets.view']);
     expect(readPermissions('listActivityFeed')).toEqual([
@@ -132,6 +135,7 @@ describe('Dashboard alerts tenancy/security contracts', () => {
       'getAnalyticsCatalog',
       'listAnalyticsCharts',
       'getAnalyticsChart',
+      'getAnalyticsChartData',
       'listWidgets',
       'getWidget',
       'getSummary',

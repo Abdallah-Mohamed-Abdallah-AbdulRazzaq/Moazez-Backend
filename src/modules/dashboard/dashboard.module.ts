@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../iam/auth/auth.module';
 import { GetDashboardAnalyticsCatalogUseCase } from './application/get-dashboard-analytics-catalog.use-case';
+import { GetDashboardAnalyticsChartDataUseCase } from './application/get-dashboard-analytics-chart-data.use-case';
 import { GetDashboardAnalyticsChartUseCase } from './application/get-dashboard-analytics-chart.use-case';
 import { GetDashboardCommandCenterUseCase } from './application/get-dashboard-command-center.use-case';
 import { GetDashboardWidgetUseCase } from './application/get-dashboard-widget.use-case';
@@ -22,6 +23,7 @@ import { DashboardSummaryRepository } from './infrastructure/dashboard-summary.r
     DashboardAlertsRepository,
     DashboardActivityFeedRepository,
     GetDashboardAnalyticsCatalogUseCase,
+    GetDashboardAnalyticsChartDataUseCase,
     GetDashboardAnalyticsChartUseCase,
     GetDashboardCommandCenterUseCase,
     GetDashboardWidgetUseCase,

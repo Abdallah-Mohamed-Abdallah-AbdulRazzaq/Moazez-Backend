@@ -13,6 +13,7 @@ import {
 import type {
   DashboardAnalyticsChartType,
   DashboardAnalyticsDataAvailability,
+  DashboardAnalyticsChartEmptyStateReason,
   DashboardAnalyticsFilterKey,
   DashboardAnalyticsGranularity,
   DashboardAnalyticsMetricAggregation,
@@ -90,7 +91,7 @@ export class DashboardAnalyticsSeriesDto {
 }
 
 export class DashboardAnalyticsChartEmptyStateDto {
-  reason!: 'not_implemented';
+  reason!: DashboardAnalyticsChartEmptyStateReason;
   message!: string;
 }
 

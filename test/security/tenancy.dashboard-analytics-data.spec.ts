@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { UserType } from '@prisma/client';
+import { SchoolLoginSettingsStatus, UserType } from '@prisma/client';
 import {
   createRequestContext,
   runWithRequestContext,
@@ -10,18 +10,17 @@ import {
   setActor,
 } from '../../src/common/context/request-context';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../src/common/decorators/required-permissions.decorator';
-import { GetDashboardCommandCenterUseCase } from '../../src/modules/dashboard/application/get-dashboard-command-center.use-case';
+import { PrismaService } from '../../src/infrastructure/database/prisma.service';
+import { GetDashboardAnalyticsChartDataUseCase } from '../../src/modules/dashboard/application/get-dashboard-analytics-chart-data.use-case';
 import { DashboardController } from '../../src/modules/dashboard/controller/dashboard.controller';
-import { DashboardActivityFeedRepository } from '../../src/modules/dashboard/infrastructure/dashboard-activity-feed.repository';
 import { DashboardAlertsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-alerts.repository';
 import { DashboardSummaryRepository } from '../../src/modules/dashboard/infrastructure/dashboard-summary.repository';
-import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 
 jest.setTimeout(60000);
 
-describe('Dashboard command center tenancy/security contracts', () => {
+describe('Dashboard analytics data tenancy/security contracts', () => {
   const suffix = randomUUID().split('-')[0];
-  const marker = `dcc-security-${suffix}`;
+  const marker = `analytics-data-security-${suffix}`;
 
   let prisma: PrismaService;
   let organizationId = '';
@@ -35,7 +34,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
     const organization = await prisma.organization.create({
       data: {
         slug: `${marker}-org`,
-        name: `Command Center Security Org ${suffix}`,
+        name: `Dashboard Analytics Data Security Org ${suffix}`,
       },
       select: { id: true },
     });
@@ -46,7 +45,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
         data: {
           organizationId,
           slug: `${marker}-school-a`,
-          name: `Command Center School A ${suffix}`,
+          name: `Dashboard Analytics Data School A ${suffix}`,
         },
         select: { id: true },
       }),
@@ -54,7 +53,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
         data: {
           organizationId,
           slug: `${marker}-school-b`,
-          name: `Command Center School B ${suffix}`,
+          name: `Dashboard Analytics Data School B ${suffix}`,
         },
         select: { id: true },
       }),
@@ -62,40 +61,19 @@ describe('Dashboard command center tenancy/security contracts', () => {
     schoolAId = schoolA.id;
     schoolBId = schoolB.id;
 
-    await prisma.student.createMany({
-      data: [
-        {
-          organizationId,
-          schoolId: schoolAId,
-          firstName: `${marker} A`,
-          lastName: 'Student 1',
-        },
-        {
-          organizationId,
-          schoolId: schoolBId,
-          firstName: `${marker} B`,
-          lastName: 'Student 1',
-        },
-        {
-          organizationId,
-          schoolId: schoolBId,
-          firstName: `${marker} B`,
-          lastName: 'Student 2',
-        },
-        {
-          organizationId,
-          schoolId: schoolBId,
-          firstName: `${marker} B`,
-          lastName: 'Student 3',
-        },
-      ],
+    await prisma.schoolLoginSettings.create({
+      data: {
+        schoolId: schoolBId,
+        loginDomain: `${marker}-school-b.moazez.test`,
+        status: SchoolLoginSettingsStatus.ACTIVE,
+      },
     });
   });
 
   afterAll(async () => {
     if (!prisma) return;
 
-    await prisma.student.deleteMany({
+    await prisma.schoolLoginSettings.deleteMany({
       where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
     });
     await prisma.school.deleteMany({
@@ -107,7 +85,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
     await prisma.$disconnect();
   });
 
-  it('registers only read-only dashboard controller methods with explicit permissions', () => {
+  it('registers analytics data route with dashboard.analytics.view and no write methods', () => {
     expect(controllerMethods(DashboardController)).toEqual([
       'getCommandCenter',
       'getAnalyticsCatalog',
@@ -119,9 +97,6 @@ describe('Dashboard command center tenancy/security contracts', () => {
       'getSummary',
       'listAlerts',
       'listActivityFeed',
-    ]);
-    expect(readPermissions('getCommandCenter')).toEqual([
-      'dashboard.command_center.view',
     ]);
     expect(readPermissions('getAnalyticsCatalog')).toEqual([
       'dashboard.analytics.view',
@@ -135,25 +110,24 @@ describe('Dashboard command center tenancy/security contracts', () => {
     expect(readPermissions('getAnalyticsChartData')).toEqual([
       'dashboard.analytics.view',
     ]);
-    expect(readPermissions('listWidgets')).toEqual(['dashboard.widgets.view']);
-    expect(readPermissions('getWidget')).toEqual(['dashboard.widgets.view']);
-    expect(readPermissions('getSummary')).toEqual(['dashboard.summary.view']);
-    expect(readPermissions('listAlerts')).toEqual(['dashboard.alerts.view']);
-    expect(readPermissions('listActivityFeed')).toEqual([
-      'dashboard.activity_feed.view',
-    ]);
     expect(controllerMethods(DashboardController)).not.toEqual(
       expect.arrayContaining([
+        'createAnalyticsChart',
+        'saveDashboard',
+        'createDashboardReport',
+        'getDashboardModulePage',
         'getLightModeDropdown',
         'createTodo',
         'acknowledgeAlert',
         'dismissAlert',
         'snoozeAlert',
+        'subscribeRealtime',
+        'exportAnalytics',
       ]),
     );
   });
 
-  it('adds dashboard.command_center.view to admin-like seed inheritance only', () => {
+  it('does not introduce a new dashboard permission', () => {
     const permissionsSeed = readFileSync(
       join(process.cwd(), 'prisma/seeds/01-permissions.seed.ts'),
       'utf8',
@@ -163,76 +137,87 @@ describe('Dashboard command center tenancy/security contracts', () => {
       'utf8',
     );
 
-    expect(permissionsSeed).toContain("'dashboard.command_center.view'");
     expect(permissionsSeed).toContain("'dashboard.analytics.view'");
-    expect(permissionsSeed).toContain("'dashboard.widgets.view'");
-    expect(permissionsSeed).toContain("resource: 'command_center'");
-    expect(permissionsSeed).toContain("resource: 'analytics'");
-    expect(permissionsSeed).toContain("resource: 'widgets'");
+    expect(permissionsSeed).not.toContain('dashboard.analytics.data.view');
     expect(rolesSeed).toContain('const ALL = PERMISSION_CODES;');
+    expect(rolesSeed).toContain('const NON_PLATFORM = ALL.filter');
     expect(rolesSeed).toContain('const SCHOOL_LEVEL = NON_PLATFORM;');
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
-      'dashboard.command_center.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
-      'dashboard.widgets.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.analytics.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
-      'dashboard.command_center.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
-      'dashboard.widgets.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.analytics.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
-      'dashboard.command_center.view',
-    );
-    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
-      'dashboard.widgets.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.analytics.view',
     );
   });
 
-  it('keeps school A from observing school B command center data and ignores override-shaped input', async () => {
-    const useCase = new GetDashboardCommandCenterUseCase(
+  it('keeps school A from observing school B analytics readiness and ignores override-shaped input', async () => {
+    const useCase = new GetDashboardAnalyticsChartDataUseCase(
       new DashboardSummaryRepository(prisma),
       new DashboardAlertsRepository(prisma),
-      new DashboardActivityFeedRepository(prisma),
+    );
+
+    const schoolAResponse = await withSchoolScope(schoolAId, () =>
+      useCase.execute('settings.login_identity_readiness', {
+        schoolId: schoolBId,
+        organizationId,
+      } as any),
+    );
+    const schoolBResponse = await withSchoolScope(schoolBId, () =>
+      useCase.execute('settings.login_identity_readiness', {}),
+    );
+
+    expect(schoolAResponse).toMatchObject({
+      chartKey: 'settings.login_identity_readiness',
+      status: 'available',
+      data: {
+        totals: { ready: 0, missing: 1 },
+        summary: { value: 0 },
+      },
+    });
+    expect(schoolBResponse).toMatchObject({
+      chartKey: 'settings.login_identity_readiness',
+      status: 'available',
+      data: {
+        totals: { ready: 1, missing: 0 },
+        summary: { value: 100 },
+      },
+    });
+
+    expect(JSON.stringify(schoolAResponse)).not.toContain(schoolAId);
+    expect(JSON.stringify(schoolAResponse)).not.toContain(schoolBId);
+    expectNoInternalLeaks(schoolAResponse);
+  });
+
+  it('returns only safe public metadata for known unsupported charts', async () => {
+    const useCase = new GetDashboardAnalyticsChartDataUseCase(
+      new DashboardSummaryRepository(prisma),
+      new DashboardAlertsRepository(prisma),
     );
 
     const response = await withSchoolScope(schoolAId, () =>
-      (useCase.execute as unknown as (input: unknown) => Promise<unknown>).call(
-        useCase,
-        {
-          schoolId: schoolBId,
-          organizationId,
-        },
-      ),
+      useCase.execute('attendance.daily_trend', {}),
     );
 
     expect(response).toMatchObject({
-      school: {
-        name: `Command Center School A ${suffix}`,
+      chartKey: 'attendance.daily_trend',
+      source: 'attendance',
+      title: 'Daily attendance trend',
+      status: 'planned',
+      data: {
+        series: [],
+        totals: {},
+        summary: null,
+        empty: true,
+      },
+      meta: {
+        pack: null,
+        dataAvailability: 'definition_only',
       },
     });
-    const body = response as {
-      quickStats: Array<{ key: string; value: number }>;
-    };
-    expect(
-      body.quickStats.find((stat) => stat.key === 'students.active')?.value,
-    ).toBe(1);
-
-    const serialized = JSON.stringify(response);
-    expect(serialized).not.toContain(`Command Center School B ${suffix}`);
-    expect(serialized).not.toContain(schoolAId);
-    expect(serialized).not.toContain(schoolBId);
+    expect(JSON.stringify(response)).not.toContain('sourceModels');
     expectNoInternalLeaks(response);
   });
 
@@ -247,7 +232,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
         organizationId,
         schoolId,
         roleId: `role-${schoolId}`,
-        permissions: ['dashboard.command_center.view'],
+        permissions: ['dashboard.analytics.view'],
       });
 
       return fn();
@@ -285,10 +270,14 @@ function expectNoInternalLeaks(body: unknown): void {
     'passwordHash',
     'deletedAt',
     'actorId',
+    'userId',
     'resourceId',
     'bucket',
     'objectKey',
+    'platform_admin',
+    'platform-admin',
   ]) {
     expect(serialized).not.toContain(forbidden);
   }
+  expect(serialized).not.toMatch(/(^|[^A-Za-z0-9])raw([^A-Za-z0-9]|$)/i);
 }

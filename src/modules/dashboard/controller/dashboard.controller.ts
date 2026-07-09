@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../common/decorators/required-permissions.decorator';
 import { GetDashboardAnalyticsCatalogUseCase } from '../application/get-dashboard-analytics-catalog.use-case';
+import { GetDashboardAnalyticsChartDataUseCase } from '../application/get-dashboard-analytics-chart-data.use-case';
 import { GetDashboardAnalyticsChartUseCase } from '../application/get-dashboard-analytics-chart.use-case';
 import { GetDashboardCommandCenterUseCase } from '../application/get-dashboard-command-center.use-case';
 import { GetDashboardWidgetUseCase } from '../application/get-dashboard-widget.use-case';
@@ -24,6 +25,10 @@ import {
   DashboardAnalyticsChartsResponseDto,
   ListDashboardAnalyticsChartsQueryDto,
 } from '../dto/dashboard-analytics.dto';
+import {
+  DashboardAnalyticsChartDataResponseDto,
+  GetDashboardAnalyticsChartDataQueryDto,
+} from '../dto/dashboard-analytics-data.dto';
 import { DashboardCommandCenterResponseDto } from '../dto/dashboard-command-center.dto';
 import { DashboardSummaryResponseDto } from '../dto/dashboard-summary.dto';
 import {
@@ -38,6 +43,7 @@ import {
 export class DashboardController {
   constructor(
     private readonly getDashboardAnalyticsCatalogUseCase: GetDashboardAnalyticsCatalogUseCase,
+    private readonly getDashboardAnalyticsChartDataUseCase: GetDashboardAnalyticsChartDataUseCase,
     private readonly getDashboardAnalyticsChartUseCase: GetDashboardAnalyticsChartUseCase,
     private readonly getDashboardCommandCenterUseCase: GetDashboardCommandCenterUseCase,
     private readonly getDashboardWidgetUseCase: GetDashboardWidgetUseCase,
@@ -74,6 +80,15 @@ export class DashboardController {
     @Param('chartKey') chartKey: string,
   ): DashboardAnalyticsChartResponseDto {
     return this.getDashboardAnalyticsChartUseCase.execute(chartKey);
+  }
+
+  @Get('analytics/charts/:chartKey/data')
+  @RequiredPermissions('dashboard.analytics.view')
+  getAnalyticsChartData(
+    @Param('chartKey') chartKey: string,
+    @Query() query: GetDashboardAnalyticsChartDataQueryDto,
+  ): Promise<DashboardAnalyticsChartDataResponseDto> {
+    return this.getDashboardAnalyticsChartDataUseCase.execute(chartKey, query);
   }
 
   @Get('widgets')

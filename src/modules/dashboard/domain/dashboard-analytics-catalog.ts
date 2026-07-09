@@ -101,7 +101,12 @@ export type DashboardAnalyticsTone =
   | 'success'
   | 'warning'
   | 'critical';
-export type DashboardAnalyticsDataAvailability = 'definition_only';
+export type DashboardAnalyticsDataAvailability =
+  | 'definition_only'
+  | 'computed_snapshot';
+export type DashboardAnalyticsChartEmptyStateReason =
+  | 'not_implemented'
+  | 'no_data';
 
 export interface DashboardAnalyticsSourceDefinition {
   source: DashboardAnalyticsSource;
@@ -149,7 +154,7 @@ export interface DashboardAnalyticsSeriesDefinition {
 }
 
 export interface DashboardAnalyticsChartEmptyState {
-  reason: 'not_implemented';
+  reason: DashboardAnalyticsChartEmptyStateReason;
   message: string;
 }
 
@@ -209,6 +214,18 @@ const REVIEW_FILTERS: readonly DashboardAnalyticsFilterKey[] = [
   'sectionId',
   'classroomId',
 ];
+
+export const DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS = [
+  'attendance.pending_sessions',
+  'grades.pending_submission_reviews',
+  'grades.pending_answer_reviews',
+  'communication.moderation_queue',
+  'settings.email_connection_readiness',
+  'settings.login_identity_readiness',
+] as const;
+
+export type DashboardAnalyticsComputedSnapshotChartKey =
+  (typeof DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS)[number];
 
 export const DASHBOARD_ANALYTICS_SOURCES_CATALOG: readonly DashboardAnalyticsSourceDefinition[] =
   [
@@ -435,7 +452,7 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
     ]),
     chart('attendance.pending_sessions', 'attendance', 'Pending attendance sessions', 'Attendance sessions waiting for submission.', 'bar', [
       series('pending_sessions', 'Pending sessions'),
-    ]),
+    ], STANDARD_OPERATIONAL_FILTERS, computedSnapshotOptions('No pending attendance sessions found for this school.')),
     chart('attendance.excuse_status', 'attendance', 'Excuse status', 'Attendance excuse requests by review status.', 'pie', [
       series('pending', 'Pending'),
       series('approved', 'Approved'),
@@ -472,10 +489,10 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
     ]),
     chart('grades.pending_submission_reviews', 'grades', 'Pending submission reviews', 'Grade submissions waiting for review.', 'bar', [
       series('pending_submissions', 'Pending submissions'),
-    ], REVIEW_FILTERS),
+    ], REVIEW_FILTERS, computedSnapshotOptions('No pending grade submissions found for this school.')),
     chart('grades.pending_answer_reviews', 'grades', 'Pending answer reviews', 'Grade submission answers waiting for review.', 'bar', [
       series('pending_answers', 'Pending answers'),
-    ], REVIEW_FILTERS),
+    ], REVIEW_FILTERS, computedSnapshotOptions('No pending grade answers found for this school.')),
     chart('grades.gradebook_completion', 'grades', 'Gradebook completion', 'Gradebook completion coverage.', 'radial-progress', [
       series('complete', 'Complete'),
       series('missing', 'Missing'),
@@ -527,13 +544,13 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
     ]),
     chart('communication.moderation_queue', 'communication', 'Moderation queue', 'Communication reports waiting for moderation.', 'table', [
       series('pending_reports', 'Pending reports'),
-    ], REVIEW_FILTERS),
+    ], REVIEW_FILTERS, computedSnapshotOptions('No pending communication moderation reports found for this school.')),
     chart('settings.email_connection_readiness', 'settings', 'Email connection readiness', 'School email connection readiness.', 'radial-progress', [
       series('ready', 'Ready'),
-    ], ['status']),
+    ], ['status'], computedSnapshotOptions('School email connection readiness can be computed from current settings.')),
     chart('settings.login_identity_readiness', 'settings', 'Login identity readiness', 'School login identity readiness.', 'radial-progress', [
       series('configured', 'Configured'),
-    ], ['status']),
+    ], ['status'], computedSnapshotOptions('School login identity readiness can be computed from current settings.')),
     chart('settings.notification_readiness', 'settings', 'Notification readiness', 'Notification channel readiness.', 'radial-progress', [
       series('ready', 'Ready'),
     ], ['status']),
@@ -617,6 +634,11 @@ function chart(
   type: DashboardAnalyticsChartType,
   seriesDefinitions: readonly DashboardAnalyticsSeriesDefinition[],
   filters: readonly DashboardAnalyticsFilterKey[] = STANDARD_OPERATIONAL_FILTERS,
+  options: {
+    status?: DashboardAnalyticsStatus;
+    dataAvailability?: DashboardAnalyticsDataAvailability;
+    emptyState?: DashboardAnalyticsChartEmptyState;
+  } = {},
 ): DashboardAnalyticsChartDefinition {
   return {
     chartKey,
@@ -624,7 +646,7 @@ function chart(
     title,
     description,
     type,
-    status: 'planned',
+    status: options.status ?? 'planned',
     defaultRange: '30d',
     supportedRanges: DASHBOARD_ANALYTICS_RANGES,
     supportedGranularities: DASHBOARD_ANALYTICS_GRANULARITIES,
@@ -632,12 +654,29 @@ function chart(
     endpoint: `/dashboard/analytics/charts/${chartKey}`,
     series: seriesDefinitions,
     filters,
-    emptyState: {
+    emptyState: options.emptyState ?? {
       reason: 'not_implemented',
       message: 'Chart data will be implemented in a future analytics pack.',
     },
     meta: {
-      dataAvailability: 'definition_only',
+      dataAvailability: options.dataAvailability ?? 'definition_only',
+    },
+  };
+}
+
+function computedSnapshotOptions(
+  emptyStateMessage: string,
+): {
+  status: 'available';
+  dataAvailability: 'computed_snapshot';
+  emptyState: DashboardAnalyticsChartEmptyState;
+} {
+  return {
+    status: 'available',
+    dataAvailability: 'computed_snapshot',
+    emptyState: {
+      reason: 'no_data',
+      message: emptyStateMessage,
     },
   };
 }

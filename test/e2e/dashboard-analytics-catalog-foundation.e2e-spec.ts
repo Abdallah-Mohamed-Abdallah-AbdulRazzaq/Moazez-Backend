@@ -125,6 +125,7 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         'GET /api/v1/dashboard/analytics/catalog',
         'GET /api/v1/dashboard/analytics/charts',
         'GET /api/v1/dashboard/analytics/charts/:chartKey',
+        'GET /api/v1/dashboard/analytics/charts/:chartKey/data',
       ]),
     );
     for (const absentRoute of [
