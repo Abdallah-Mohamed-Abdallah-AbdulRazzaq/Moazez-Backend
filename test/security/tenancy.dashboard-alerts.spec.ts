@@ -110,10 +110,14 @@ describe('Dashboard alerts tenancy/security contracts', () => {
 
   it('registers read-only dashboard actions and keeps alert lifecycle absent', () => {
     expect(readPermissions('listAlerts')).toEqual(['dashboard.alerts.view']);
+    expect(readPermissions('getCommandCenter')).toEqual([
+      'dashboard.command_center.view',
+    ]);
     expect(readPermissions('listActivityFeed')).toEqual([
       'dashboard.activity_feed.view',
     ]);
     expect(controllerMethods(DashboardController)).toEqual([
+      'getCommandCenter',
       'getSummary',
       'listAlerts',
       'listActivityFeed',
@@ -138,19 +142,29 @@ describe('Dashboard alerts tenancy/security contracts', () => {
     );
 
     expect(permissionsSeed).toContain("'dashboard.alerts.view'");
+    expect(permissionsSeed).toContain("'dashboard.command_center.view'");
     expect(rolesSeed).toContain('const ALL = PERMISSION_CODES;');
     expect(rolesSeed).toContain('const SCHOOL_LEVEL = NON_PLATFORM;');
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
+      'dashboard.command_center.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.alerts.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.activity_feed.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
+      'dashboard.command_center.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.alerts.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.activity_feed.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
+      'dashboard.command_center.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.alerts.view',

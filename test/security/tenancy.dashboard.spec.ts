@@ -11,9 +11,13 @@ import { presentDashboardSummary } from '../../src/modules/dashboard/presenters/
 describe('Dashboard summary tenancy/security contracts', () => {
   it('registers school dashboard routes guarded by explicit dashboard permissions', () => {
     expect(controllerMethods(DashboardController)).toEqual([
+      'getCommandCenter',
       'getSummary',
       'listAlerts',
       'listActivityFeed',
+    ]);
+    expect(readPermissions('getCommandCenter')).toEqual([
+      'dashboard.command_center.view',
     ]);
     expect(readPermissions('getSummary')).toEqual(['dashboard.summary.view']);
     expect(readPermissions('listAlerts')).toEqual(['dashboard.alerts.view']);
@@ -62,6 +66,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
     );
 
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
+      'dashboard.command_center.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.summary.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
@@ -71,6 +78,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
       'dashboard.activity_feed.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
+      'dashboard.command_center.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.summary.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
@@ -78,6 +88,9 @@ describe('Dashboard summary tenancy/security contracts', () => {
     );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.activity_feed.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
+      'dashboard.command_center.view',
     );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.summary.view',
