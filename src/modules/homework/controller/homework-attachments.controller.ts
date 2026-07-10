@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -35,9 +36,11 @@ import {
   HomeworkAttachmentDetailResponseDto,
   HomeworkAttachmentsListResponseDto,
 } from '../dto/homework-attachment-response.dto';
+import { HomeworkCoreAccessGuard } from '../guards/homework-core-access.guard';
 
 @ApiTags('Homework')
 @ApiBearerAuth()
+@UseGuards(HomeworkCoreAccessGuard)
 @Controller('homework/assignments/:homeworkId/attachments')
 export class HomeworkAttachmentsController {
   constructor(

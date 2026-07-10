@@ -102,6 +102,7 @@ describe('Homework tenancy isolation (security)', () => {
 
   let viewOnlyEmail: string;
   let manageOnlyEmail: string;
+  let organizationUserEmail: string;
   let teacherEmail: string;
   let studentEmail: string;
   let parentEmail: string;
@@ -227,6 +228,7 @@ describe('Homework tenancy isolation (security)', () => {
 
     viewOnlyEmail = `viewer@${suffix}.moazez.local`;
     manageOnlyEmail = `manager@${suffix}.moazez.local`;
+    organizationUserEmail = `organization-user@${suffix}.moazez.local`;
     teacherEmail = `teacher@${suffix}.moazez.local`;
     studentEmail = `student@${suffix}.moazez.local`;
     parentEmail = `parent@${suffix}.moazez.local`;
@@ -242,6 +244,12 @@ describe('Homework tenancy isolation (security)', () => {
       password: 'HomeworkManage123!',
       roleId: manageOnlyRole.id,
       userType: UserType.SCHOOL_USER,
+    });
+    await createUserWithMembership({
+      email: organizationUserEmail,
+      password: 'HomeworkOrganization123!',
+      roleId: schoolAdminRole.id,
+      userType: UserType.ORGANIZATION_USER,
     });
     demoTeacherId = await createUserWithMembership({
       email: teacherEmail,
@@ -1536,6 +1544,12 @@ describe('Homework tenancy isolation (security)', () => {
       .get(`${GLOBAL_PREFIX}/homework/assignments`)
       .set('Authorization', `Bearer ${teacher.accessToken}`)
       .expect(403);
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/homework/assignments/${otherTeacherHomeworkId}`)
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .send({ title: `${suffix} forbidden core mutation` })
+      .expect(403);
   });
 
   it('allows school admin to continue managing homework through Core APIs', async () => {
@@ -1565,6 +1579,21 @@ describe('Homework tenancy isolation (security)', () => {
       )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
+  });
+
+  it('allows an organization user where its existing role permission allows core access', async () => {
+    const { accessToken } = await login(
+      organizationUserEmail,
+      'HomeworkOrganization123!',
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/homework/assignments/${demoHomeworkId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({ id: demoHomeworkId });
+    expectNoTenantIds(response.body);
   });
 
   it('lets teachers manage owned homework through Teacher App routes only', async () => {
