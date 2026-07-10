@@ -143,20 +143,27 @@ describe('Communication Core Chat closeout flow (e2e)', () => {
   });
 
   afterAll(async () => {
-    if (prisma) {
-      await cleanupCloseoutData();
-      await prisma.$disconnect();
-    }
-
-    if (uploadedBucket && uploadedObjectKey && storageService) {
-      await storageService.deleteObject({
-        bucket: uploadedBucket,
-        objectKey: uploadedObjectKey,
-      });
-    }
-
-    if (app) {
-      await app.close();
+    try {
+      if (uploadedBucket && uploadedObjectKey && storageService) {
+        await storageService.deleteObject({
+          bucket: uploadedBucket,
+          objectKey: uploadedObjectKey,
+        });
+      }
+    } finally {
+      try {
+        if (app) {
+          await app.close();
+        }
+      } finally {
+        if (prisma) {
+          try {
+            await cleanupCloseoutData();
+          } finally {
+            await prisma.$disconnect();
+          }
+        }
+      }
     }
   });
 
@@ -1042,6 +1049,18 @@ describe('Communication Core Chat closeout flow (e2e)', () => {
     const userIds = [...cleanupState.userIds];
     const roleIds = [...cleanupState.roleIds];
     const fileIds = [...cleanupState.fileIds];
+    const notificationIds = (
+      await prisma.communicationNotification.findMany({
+        where: {
+          OR: [
+            { recipientUserId: { in: userIds } },
+            { actorUserId: { in: userIds } },
+            { sourceId: { in: [...conversationIds, ...messageIds] } },
+          ],
+        },
+        select: { id: true },
+      })
+    ).map((notification) => notification.id);
 
     await prisma.auditLog.deleteMany({
       where: {
@@ -1052,6 +1071,27 @@ describe('Communication Core Chat closeout flow (e2e)', () => {
           { resourceId: { in: [...conversationIds, ...messageIds] } },
         ],
       },
+    });
+
+    await prisma.communicationNotificationPushAttempt.deleteMany({
+      where: {
+        OR: [
+          { delivery: { notificationId: { in: notificationIds } } },
+          { deviceToken: { userId: { in: userIds } } },
+        ],
+      },
+    });
+    await prisma.communicationNotificationDelivery.deleteMany({
+      where: { notificationId: { in: notificationIds } },
+    });
+    await prisma.communicationNotification.deleteMany({
+      where: { id: { in: notificationIds } },
+    });
+    await prisma.communicationNotificationPreference.deleteMany({
+      where: { userId: { in: userIds } },
+    });
+    await prisma.appDeviceToken.deleteMany({
+      where: { userId: { in: userIds } },
     });
 
     await prisma.communicationMessageAttachment.deleteMany({

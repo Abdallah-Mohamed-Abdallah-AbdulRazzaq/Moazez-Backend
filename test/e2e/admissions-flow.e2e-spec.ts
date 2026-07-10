@@ -570,6 +570,108 @@ describe('Admissions Sprint 2A closeout flow (e2e)', () => {
     };
   }
 
+  function emptyDocumentsSummary() {
+    return {
+      totalCount: 0,
+      completeCount: 0,
+      missingCount: 0,
+      pendingReviewCount: 0,
+      reviewableCount: 0,
+      applicantPortalCount: 0,
+      staffUploadCount: 0,
+      needsReplacementCount: 0,
+      hasPendingReview: false,
+      hasReviewableDocuments: false,
+      hasMissingDocuments: false,
+    };
+  }
+
+  function completeStaffDocumentSummary() {
+    return {
+      ...emptyDocumentsSummary(),
+      totalCount: 1,
+      completeCount: 1,
+      staffUploadCount: 1,
+    };
+  }
+
+  function documentsPendingDashboardState() {
+    return {
+      canProceedToDecision: false,
+      canRegister: false,
+      registrationState: 'not_accepted',
+      decisionState: {
+        canCreateDecision: false,
+        canAccept: false,
+        canWaitlist: false,
+        canReject: false,
+        reason: 'application_status_not_decidable',
+      },
+      workflowReadiness: {
+        policy: {
+          requiresPlacementTest: true,
+          requiresInterview: true,
+          allowDirectAcceptance: false,
+          source: 'default',
+        },
+        placementTests: {
+          required: true,
+          total: 0,
+          completed: 0,
+          satisfied: false,
+        },
+        interviews: {
+          required: true,
+          total: 0,
+          completed: 0,
+          satisfied: false,
+        },
+      },
+      documentSignals: {
+        hasPendingReview: false,
+        hasReviewableDocuments: false,
+        hasMissingDocuments: false,
+        pendingReviewCount: 0,
+        reviewableCount: 0,
+        missingCount: 0,
+        needsReplacementCount: 0,
+      },
+      blockers: [
+        {
+          code: 'application_status_not_decidable',
+          message: 'Application status does not allow decision creation.',
+        },
+        {
+          code: 'not_accepted',
+          message: 'Application is not accepted.',
+        },
+      ],
+    };
+  }
+
+  function submittedDashboardState() {
+    return {
+      ...documentsPendingDashboardState(),
+      decisionState: {
+        canCreateDecision: false,
+        canAccept: false,
+        canWaitlist: false,
+        canReject: false,
+        reason: 'workflow_policy_not_satisfied',
+      },
+      blockers: [
+        {
+          code: 'workflow_policy_not_satisfied',
+          message: 'Required admissions workflow steps are not satisfied.',
+        },
+        {
+          code: 'not_accepted',
+          message: 'Application is not accepted.',
+        },
+      ],
+    };
+  }
+
   it('covers the admissions intake flow from login through application submission', async () => {
     const { accessToken } = await login();
     const lead = await createLead(accessToken, 'Sprint2A Intake');
@@ -629,6 +731,8 @@ describe('Admissions Sprint 2A closeout flow (e2e)', () => {
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
       registrationState: expectUnregisteredState(),
+      documentsSummary: emptyDocumentsSummary(),
+      dashboardState: documentsPendingDashboardState(),
     });
 
     const listedApplications = await request(app.getHttpServer())
@@ -675,6 +779,15 @@ describe('Admissions Sprint 2A closeout flow (e2e)', () => {
       documentType: 'birth_certificate',
       status: 'complete',
       notes: 'Uploaded by admissions admin',
+      source: 'staff_upload',
+      canReview: false,
+      reviewEligibility: {
+        canAccept: false,
+        canReject: false,
+        canRequestReplacement: false,
+        reason: 'document_not_pending_review',
+      },
+      linkedApplicantDocument: null,
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
       file: {
@@ -701,6 +814,15 @@ describe('Admissions Sprint 2A closeout flow (e2e)', () => {
         documentType: 'birth_certificate',
         status: 'complete',
         notes: 'Uploaded by admissions admin',
+        source: 'staff_upload',
+        canReview: false,
+        reviewEligibility: {
+          canAccept: false,
+          canReject: false,
+          canRequestReplacement: false,
+          reason: 'document_not_pending_review',
+        },
+        linkedApplicantDocument: null,
         createdAt: expect.any(String),
         updatedAt: expect.any(String),
         file: {
@@ -729,6 +851,8 @@ describe('Admissions Sprint 2A closeout flow (e2e)', () => {
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
       registrationState: expectUnregisteredState(),
+      documentsSummary: completeStaffDocumentSummary(),
+      dashboardState: submittedDashboardState(),
     });
   });
 
