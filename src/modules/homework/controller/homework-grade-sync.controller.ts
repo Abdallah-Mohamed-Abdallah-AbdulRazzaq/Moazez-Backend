@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -28,9 +29,11 @@ import {
   HomeworkGradeSyncStatusResponseDto,
   LinkHomeworkGradeAssessmentDto,
 } from '../dto/homework-grade-sync.dto';
+import { HomeworkCoreAccessGuard } from '../guards/homework-core-access.guard';
 
 @ApiTags('Homework')
 @ApiBearerAuth()
+@UseGuards(HomeworkCoreAccessGuard)
 @Controller('homework/assignments/:homeworkId')
 export class HomeworkGradeSyncController {
   constructor(

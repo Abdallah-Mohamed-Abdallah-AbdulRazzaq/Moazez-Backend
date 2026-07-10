@@ -1,8 +1,19 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { GUARDS_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
+import { HomeworkAssignmentsController } from '../../src/modules/homework/controller/homework-assignments.controller';
+import { HomeworkAttachmentsController } from '../../src/modules/homework/controller/homework-attachments.controller';
+import { HomeworkGradeSyncController } from '../../src/modules/homework/controller/homework-grade-sync.controller';
+import { HomeworkQuestionsController } from '../../src/modules/homework/controller/homework-questions.controller';
+import { HomeworkSubmissionContentController } from '../../src/modules/homework/controller/homework-submission-content.controller';
+import { HomeworkSubmissionsController } from '../../src/modules/homework/controller/homework-submissions.controller';
+import { HomeworkCoreAccessGuard } from '../../src/modules/homework/guards/homework-core-access.guard';
+import { ParentHomeworksController } from '../../src/modules/parent-app/homeworks/controller/parent-homeworks.controller';
+import { StudentHomeworksController } from '../../src/modules/student-app/homeworks/controller/student-homeworks.controller';
+import { TeacherHomeworksController } from '../../src/modules/teacher-app/homeworks/controller/teacher-homeworks.controller';
 
 type ExpressLayer = {
   route?: {
@@ -13,6 +24,46 @@ type ExpressLayer = {
     stack?: ExpressLayer[];
   };
 };
+
+const HOMEWORK_CORE_ROUTES = [
+  'GET /api/v1/homework/assignments',
+  'POST /api/v1/homework/assignments',
+  'GET /api/v1/homework/assignments/:homeworkId',
+  'PATCH /api/v1/homework/assignments/:homeworkId',
+  'POST /api/v1/homework/assignments/:homeworkId/publish',
+  'POST /api/v1/homework/assignments/:homeworkId/close',
+  'POST /api/v1/homework/assignments/:homeworkId/cancel',
+  'GET /api/v1/homework/assignments/:homeworkId/questions',
+  'POST /api/v1/homework/assignments/:homeworkId/questions',
+  'GET /api/v1/homework/assignments/:homeworkId/questions/:questionId',
+  'PATCH /api/v1/homework/assignments/:homeworkId/questions/:questionId',
+  'PATCH /api/v1/homework/assignments/:homeworkId/questions/:questionId/reorder',
+  'DELETE /api/v1/homework/assignments/:homeworkId/questions/:questionId',
+  'POST /api/v1/homework/assignments/:homeworkId/questions/:questionId/options',
+  'PATCH /api/v1/homework/assignments/:homeworkId/questions/:questionId/options/:optionId',
+  'PATCH /api/v1/homework/assignments/:homeworkId/questions/:questionId/options/:optionId/reorder',
+  'DELETE /api/v1/homework/assignments/:homeworkId/questions/:questionId/options/:optionId',
+  'GET /api/v1/homework/assignments/:homeworkId/attachments',
+  'POST /api/v1/homework/assignments/:homeworkId/attachments',
+  'PATCH /api/v1/homework/assignments/:homeworkId/attachments/:attachmentId',
+  'PATCH /api/v1/homework/assignments/:homeworkId/attachments/:attachmentId/reorder',
+  'DELETE /api/v1/homework/assignments/:homeworkId/attachments/:attachmentId',
+  'GET /api/v1/homework/assignments/:homeworkId/targets',
+  'POST /api/v1/homework/assignments/:homeworkId/targets/resolve',
+  'GET /api/v1/homework/assignments/:homeworkId/submissions',
+  'GET /api/v1/homework/assignments/:homeworkId/submissions/:submissionId',
+  'POST /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/review',
+  'PATCH /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/review',
+  'GET /api/v1/homework/assignments/:homeworkId/grade-sync',
+  'POST /api/v1/homework/assignments/:homeworkId/grade-sync/link',
+  'POST /api/v1/homework/assignments/:homeworkId/grade-sync',
+  'POST /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/grade-sync',
+  'GET /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/answers',
+  'GET /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/answers/:answerId',
+  'PATCH /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/answers/:answerId/review',
+  'PUT /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/answers/review',
+  'GET /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/attachments',
+] as const;
 
 describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
   let app: INestApplication<App>;
@@ -47,34 +98,7 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
 
     expect(routes).toEqual(
       expect.arrayContaining([
-        'GET /api/v1/homework/assignments',
-        'POST /api/v1/homework/assignments',
-        'GET /api/v1/homework/assignments/:homeworkId',
-        'PATCH /api/v1/homework/assignments/:homeworkId',
-        'POST /api/v1/homework/assignments/:homeworkId/publish',
-        'POST /api/v1/homework/assignments/:homeworkId/close',
-        'POST /api/v1/homework/assignments/:homeworkId/cancel',
-        'GET /api/v1/homework/assignments/:homeworkId/questions',
-        'POST /api/v1/homework/assignments/:homeworkId/questions',
-        'GET /api/v1/homework/assignments/:homeworkId/questions/:questionId',
-        'PATCH /api/v1/homework/assignments/:homeworkId/questions/:questionId',
-        'PATCH /api/v1/homework/assignments/:homeworkId/questions/:questionId/reorder',
-        'DELETE /api/v1/homework/assignments/:homeworkId/questions/:questionId',
-        'POST /api/v1/homework/assignments/:homeworkId/questions/:questionId/options',
-        'PATCH /api/v1/homework/assignments/:homeworkId/questions/:questionId/options/:optionId',
-        'PATCH /api/v1/homework/assignments/:homeworkId/questions/:questionId/options/:optionId/reorder',
-        'DELETE /api/v1/homework/assignments/:homeworkId/questions/:questionId/options/:optionId',
-        'GET /api/v1/homework/assignments/:homeworkId/attachments',
-        'POST /api/v1/homework/assignments/:homeworkId/attachments',
-        'PATCH /api/v1/homework/assignments/:homeworkId/attachments/:attachmentId',
-        'PATCH /api/v1/homework/assignments/:homeworkId/attachments/:attachmentId/reorder',
-        'DELETE /api/v1/homework/assignments/:homeworkId/attachments/:attachmentId',
-        'GET /api/v1/homework/assignments/:homeworkId/targets',
-        'POST /api/v1/homework/assignments/:homeworkId/targets/resolve',
-        'GET /api/v1/homework/assignments/:homeworkId/submissions',
-        'GET /api/v1/homework/assignments/:homeworkId/submissions/:submissionId',
-        'POST /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/review',
-        'PATCH /api/v1/homework/assignments/:homeworkId/submissions/:submissionId/review',
+        ...HOMEWORK_CORE_ROUTES,
         'GET /api/v1/teacher/homeworks/dashboard',
         'GET /api/v1/teacher/homeworks/classes/:classId/assignments',
         'POST /api/v1/teacher/homeworks/classes/:classId/assignments',
@@ -118,6 +142,53 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
         'GET /api/v1/parent/children/:studentId/homeworks/:homeworkId',
       ]),
     );
+
+    expect(
+      routes.filter((route) => route.includes(' /api/v1/homework/')),
+    ).toEqual([...HOMEWORK_CORE_ROUTES].sort());
+  });
+
+  it('applies the core guard only to controllers with /homework paths', () => {
+    const guardedCoreControllers = [
+      [HomeworkAssignmentsController, 'homework/assignments'],
+      [
+        HomeworkAttachmentsController,
+        'homework/assignments/:homeworkId/attachments',
+      ],
+      [HomeworkGradeSyncController, 'homework/assignments/:homeworkId'],
+      [
+        HomeworkQuestionsController,
+        'homework/assignments/:homeworkId/questions',
+      ],
+      [
+        HomeworkSubmissionContentController,
+        'homework/assignments/:homeworkId/submissions/:submissionId',
+      ],
+      [
+        HomeworkSubmissionsController,
+        'homework/assignments/:homeworkId/submissions',
+      ],
+    ] as const;
+
+    for (const [controller, path] of guardedCoreControllers) {
+      expect(Reflect.getMetadata(PATH_METADATA, controller)).toBe(path);
+      expect(Reflect.getMetadata(GUARDS_METADATA, controller)).toEqual([
+        HomeworkCoreAccessGuard,
+      ]);
+    }
+
+    const ownershipCheckedAdapters = [
+      [TeacherHomeworksController, 'teacher/homeworks'],
+      [StudentHomeworksController, 'student/homeworks'],
+      [ParentHomeworksController, 'parent/children/:studentId/homeworks'],
+    ] as const;
+
+    for (const [controller, path] of ownershipCheckedAdapters) {
+      expect(Reflect.getMetadata(PATH_METADATA, controller)).toBe(path);
+      expect(
+        Reflect.getMetadata(GUARDS_METADATA, controller) ?? [],
+      ).not.toContain(HomeworkCoreAccessGuard);
+    }
   });
 
   it('keeps deferred Homework and adjacent app routes unregistered', () => {
@@ -142,7 +213,6 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
       'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/sync-grade-item',
       'GET /api/v1/student/pickup',
       'GET /api/v1/parent/pickup',
-      'GET /api/v1/parent/smart-pickup',
     ]) {
       expect(routes).not.toContain(absentRoute);
     }
@@ -217,9 +287,6 @@ describe('Sprint 13F Homework final closeout route inventory (e2e)', () => {
         close: jest.fn().mockResolvedValue(undefined),
         on: jest.fn(),
       })),
-    } as unknown as Pick<
-      BullmqService,
-      'addJob' | 'createWorker' | 'getQueue'
-    >;
+    } as unknown as Pick<BullmqService, 'addJob' | 'createWorker' | 'getQueue'>;
   }
 });

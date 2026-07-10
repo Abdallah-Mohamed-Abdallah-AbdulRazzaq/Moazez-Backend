@@ -75,6 +75,7 @@ import { HomeworkGradeSyncController } from './controller/homework-grade-sync.co
 import { HomeworkQuestionsController } from './controller/homework-questions.controller';
 import { HomeworkSubmissionContentController } from './controller/homework-submission-content.controller';
 import { HomeworkSubmissionsController } from './controller/homework-submissions.controller';
+import { HomeworkCoreAccessGuard } from './guards/homework-core-access.guard';
 import { HomeworkRepository } from './infrastructure/homework.repository';
 
 @Module({
@@ -88,6 +89,7 @@ import { HomeworkRepository } from './infrastructure/homework.repository';
     HomeworkSubmissionContentController,
   ],
   providers: [
+    HomeworkCoreAccessGuard,
     HomeworkRepository,
     ListHomeworkAssignmentsUseCase,
     GetHomeworkAssignmentUseCase,

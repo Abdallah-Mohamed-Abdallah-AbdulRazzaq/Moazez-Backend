@@ -2,106 +2,317 @@
 
 ## Status and scope
 
-- **Migration recovery integrity: PASS**
-- **Repository-wide regression debt: OPEN**
+- **Required baseline:** `3504c9c33e3539172c1ab70cfbb079cce81862b0`
+- **Working branch:** `fix/post-rebaseline-regressions`
+- **Migration recovery integrity:** PASS
+- **Findings 1–5:** RESOLVED WITH TEST EVIDENCE
+- **Current repair branch:** READY FOR REVIEW
+- **Communication security-contract debt:** OPEN / NEEDS SEPARATE DECISION
 
-These findings were observed while verifying `MIGRATION-RECOVERY-0A`, but they
-are not migration-integrity failures and are not part of the migration
-rebaseline change set. This register preserves the failures without silently
-ignoring them or changing runtime behavior, permissions, feature contracts, or
-existing tests during the migration incident.
-
-All required follow-up work must be handled separately. The open items must be
-resolved before the Live rebuild.
+This repair did not change `prisma/schema.prisma`, the canonical baseline
+migration, migration governance, or any migration file. It did not access Live
+or apply, pop, delete, or modify the Dashboard Todos stash.
 
 ## 1. Homework stale route expectation
 
-### Observed
+### Root cause
 
-The Homework final-closeout test expects
-`GET /api/v1/parent/smart-pickup` to be absent.
+The Sprint 13F Homework route inventory retained an absence assertion for
+`GET /api/v1/parent/smart-pickup` from before the Smart Pickup domain shipped.
+The route itself is not a Homework route and is now an approved Parent App V1
+route.
 
-### Current runtime
+### Canonical contract evidence
 
-The route is intentionally registered by the completed Smart Pickup domain at
-the current repository HEAD.
+- `V1_SCOPE.md` includes Parent App smart pickup basic.
+- `MODULES.md` includes `parent-app/smart-pickup`.
+- `docs/dismissal-api-route-inventory-v1.md` registers the exact GET route with
+  `parent.smart_pickup.view`.
+- `docs/dismissal-fe-contract-v1.md` and
+  `docs/dismissal-final-acceptance-v1.md` publish the same route.
+- `src/modules/parent-app/smart-pickup/controller/parent-smart-pickup.controller.ts`
+  implements it without weakening its approved guards or permission metadata.
 
-### Classification
+### Files changed
 
-Likely stale test contract.
+- `test/e2e/homework-final-closeout.e2e-spec.ts`
 
-### Required follow-up
+### Resolution
 
-Confirm the current canonical route contract and update only the obsolete test
-expectation if the route is approved.
+Removed only the obsolete Smart Pickup absence entry from the Homework
+deferred-route list. No Smart Pickup runtime route or authorization was changed.
+
+### Tests proving the resolution
+
+- `test/e2e/homework-final-closeout.e2e-spec.ts`: 3/3 passed, including
+  exact runtime route inventory and controller guard metadata.
+- Parent/Smart Pickup security regression group: 4 suites, 31/31 passed.
+
+### Final status
+
+**RESOLVED**
 
 ## 2. Communication teardown ordering
 
-### Observed
+### Root cause
 
-The functional assertions pass, but teardown fails on
-`communication_notifications_recipient_user_id_fkey` while deleting a user
-before its dependent communication notification rows.
+Creating a communication message generates recipient
+`CommunicationNotification` rows. The closeout cleanup removed message-owned
+rows and memberships, then attempted to delete users without first deleting
+notification push attempts, deliveries, notifications, preferences, and device
+tokens. The canonical `communication_notifications_recipient_user_id_fkey` is
+`ON DELETE RESTRICT`, so the user deletion correctly failed.
 
-### Classification
+The test also performed database cleanup while the Nest application and its
+workers were still open, leaving lifecycle providers active during teardown.
 
-Test cleanup defect.
+### Canonical contract evidence
 
-### Required follow-up
+- `PRISMA_CONVENTIONS.md` defines `onDelete: Restrict` as the default and permits
+  cascade only for clearly owned children.
+- `prisma/schema.prisma` models the notification recipient relation with
+  `onDelete: Restrict`; deliveries and push attempts are dependent rows.
+- Existing notification-aware test cleanup uses the same dependent-first order.
+- Communication message creation intentionally generates recipient
+  notifications through `CommunicationNotificationGenerationService`.
 
-Delete dependent communication notification and related rows before deleting
-recipient users, using the established test cleanup order.
+### Files changed
+
+- `test/e2e/communication-core-chat.e2e-spec.ts`
+
+### Resolution
+
+The test now identifies its notification rows and deletes, in order, push
+attempts, deliveries, notifications, preferences, and app device tokens before
+deleting recipient users. It closes the Nest application before database
+cleanup and guarantees both application closure and external Prisma disconnect
+with nested `finally` blocks. The foreign key and cascade behavior are unchanged.
+
+### Tests proving the resolution
+
+- `test/e2e/communication-core-chat.e2e-spec.ts`: 1/1 passed independently in
+  12.557 seconds.
+
+### Final status
+
+**RESOLVED**
 
 ## 3. Admissions response assertion
 
-### Observed
+### Root cause
 
-An exact response assertion omits the existing `documentsSummary` property.
+The Sprint 2A flow used exact equality against application and document response
+shapes that predated the approved additive Admissions frontend contract. The
+application assertions omitted `documentsSummary` and `dashboardState`; the
+same flow also omitted the later approved document-review fields.
 
-### Classification
+### Canonical contract evidence
 
-Likely stale response-contract assertion.
+- `docs/admissions-frontend-contract.md` requires `documentsSummary` and
+  `dashboardState` on application create/list/detail responses and defines all
+  fields exactly.
+- `ApplicationResponseDto` declares both properties.
+- `presentApplication()` computes both properties and derives
+  `dashboardState.documentSignals` from `documentsSummary`.
+- `docs/sprint-adm-fe-contract-1a-admissions-frontend-contract-final-audit-closeout.md`
+  accepts these additions and the document-review response fields.
+- Focused Admissions document-summary, dashboard-state, frontend-contract, and
+  security tests already lock the same contract.
 
-### Required follow-up
+### Files changed
 
-Compare the assertion against the approved Admissions response contract before
-modifying the test.
+- `test/e2e/admissions-flow.e2e-spec.ts`
+
+### Resolution
+
+Updated the exact assertions with precise empty and one-staff-document summary
+values, default-policy dashboard states, and the approved staff-upload review
+fields. No presenter or response property was removed.
+
+### Tests proving the resolution
+
+- `test/e2e/admissions-flow.e2e-spec.ts`: 3/3 passed.
+- Admissions frontend contract plus security regressions: 2 suites, 49/49
+  passed.
+
+### Final status
+
+**RESOLVED**
 
 ## 4. Homework authorization mismatch
 
-### Observed
+### Security decision
 
-A security test expects HTTP 403, while the runtime returns HTTP 201.
+The HTTP 201 was an authorization vulnerability. The authenticated actor was a
+correctly provisioned `UserType.TEACHER` with an active Teacher system-role
+membership. Later Teacher App permission work intentionally granted
+`homework.assignments.manage` so teachers can use the ownership-checked
+`/teacher/homeworks/**` adapter. The School Dashboard/core
+`POST /homework/assignments` route uses the same permission, but its core use
+case is school-scoped rather than teacher-allocation-owned. Permission metadata
+alone therefore admitted a Teacher App actor to the broader core surface.
 
-### Classification
+The test actor and expected 403 were correct. The route permission string and
+Teacher role permission are both needed by their respective approved contracts;
+the missing control was the user-type boundary on the core HTTP surface.
 
-**SECURITY DECISION REQUIRED.**
+### Canonical contract evidence
 
-### Required follow-up
+- `SECURITY_MODEL.md` requires authorization by user type, role, membership,
+  scope, permission, and ownership—not permission alone.
+- `docs/sprint-13a-homework-core-contract-audit.md` defines `/homework/**` as
+  Dashboard/core and `/teacher/homeworks/**` as the teacher-owned adapter.
+- `docs/sprint-23f-homework-grades-assessments-security-closeout.md` explicitly
+  states that teacher, student, and parent actors cannot use Dashboard Homework
+  core routes.
+- `docs/sprint-23h-homework-grades-assessments-final-closeout-audit.md` preserves
+  the same route and ownership split.
+- `prisma/seeds/02-system-roles.seed.ts` intentionally grants Teacher the
+  Homework capabilities needed by Teacher App routes.
+- Global guard registration remains unchanged in the required order:
+  `JwtAuthGuard`, `ScopeResolverGuard`, `PermissionsGuard`.
 
-Audit route permission metadata, seeded role permissions, the authenticated
-actor, and the intended product contract. Do not assume that either the test or
-the runtime is correct.
+### Files changed
+
+- `src/modules/homework/guards/homework-core-access.guard.ts`
+- `src/modules/homework/guards/homework-core-access.guard.spec.ts`
+- all six `src/modules/homework/controller/homework-*.controller.ts` core
+  controllers
+- `src/modules/homework/homework.module.ts`
+- `test/e2e/homework-final-closeout.e2e-spec.ts`
+- `test/security/tenancy.homework.spec.ts`
+
+### Resolution
+
+Added a route-local `HomeworkCoreAccessGuard` to every `/homework/**` core
+controller. It permits `ORGANIZATION_USER` and `SCHOOL_USER` dashboard actors
+after the unchanged global auth/scope/permission guards, while rejecting
+Teacher, Student, Parent, and other app actors. Teacher App use cases and their
+allocation ownership checks are untouched.
+
+The guard reads only the AsyncLocalStorage request actor written by the global
+authentication path. It accepts no execution context and therefore cannot read
+actor type from headers, query parameters, route parameters, or request bodies.
+Missing or malformed actor identity fails with the canonical invalid-token
+contract; missing, unknown, or disallowed user type fails with the canonical
+forbidden `auth.scope.missing` contract without policy details. The guard has no
+injected dependency, repository access, mutation, or authorization side effect.
+
+The route closeout now asserts the exact 37-route `/api/v1/homework/**` runtime
+inventory and reads Nest controller path/guard metadata. All six core controller
+classes have `HomeworkCoreAccessGuard`; the Teacher, Student, and Parent
+homework adapter controller classes explicitly do not.
+
+The security regression now also proves that a teacher cannot patch another
+teacher's core homework assignment, preventing a fix limited only to creation.
+
+### Tests proving the resolution
+
+- Guard unit regression: 1 suite, 7/7 passed.
+- Exact `test/security/tenancy.homework.spec.ts`: 27/27 passed.
+- Other Homework security regressions: 4 suites, 22/22 passed.
+- Teacher App security regression: 55/55 passed.
+- Parent App security regression: 30/30 passed.
+- Smart Pickup security regression: 4 suites, 31/31 passed.
+- Admissions frontend/security regression: 2 suites, 49/49 passed.
+- IAM/tenancy regressions: 2 suites, 11/11 passed.
+
+### Final status
+
+**RESOLVED — PRODUCTION AUTHORIZATION FIX**
 
 ## 5. Asynchronous handles
 
-### Observed
+### Root cause
 
-Some combined E2E invocations retain asynchronous handles after their test
-work completes.
+The lifecycle providers themselves already implement cleanup: Nest application
+closure invokes Prisma, BullMQ queue/worker, realtime Redis, Socket.io, and
+presence-timer teardown. The actual leak path was the Communication test's
+`afterAll`: a foreign-key exception occurred before `prisma.$disconnect()` and
+`app.close()`, so those existing lifecycle hooks never ran. Cleanup also ran
+before the app/workers were stopped.
 
-### Classification
+### Canonical contract evidence
 
-Test infrastructure cleanup issue.
+- `PrismaService`, `BullmqService`, notification workers, realtime gateway/state
+  services, and presence service implement `OnModuleDestroy` cleanup.
+- `RealtimePresenceService` clears its interval on module destruction.
+- The pre-repair Communication run timed out after the teardown failure; the
+  repaired independent and combined runs terminate normally.
 
-### Required follow-up
+### Files changed
 
-Identify unclosed Nest applications, Prisma clients, queues, Redis
-connections, timers, sockets, or workers. Do not normalize `--forceExit` as the
-permanent fix.
+- `test/e2e/communication-core-chat.e2e-spec.ts`
+
+### Resolution
+
+Reordered teardown to stop the Nest application and its owned infrastructure
+before external database cleanup, and used `finally` blocks so both Nest closure
+and Prisma disconnect execute even if cleanup fails. No `--forceExit` was added.
+
+### Tests proving the resolution
+
+- Communication Core Chat exits naturally: 1/1 passed independently in 12.557
+  seconds.
+- Every focused and affected group listed in this closeout exited naturally.
+- No post-repair command used `--forceExit`; no Jest open-handle warning was
+  emitted.
+
+### Final status
+
+**RESOLVED**
+
+## Additional contract-backed regression repair
+
+`test/security/tenancy.teacher-app.spec.ts` still locked the pre-Dismissal
+global permission-catalog size at 222. The migration rebaseline closeout records
+the current canonical seed as 232 permissions, and the seed contains the later
+approved Dismissal/Smart Pickup permissions. The exact global count was updated
+to 232 without changing the Teacher role's exact 54-permission assertion. The
+suite then passed 55/55.
+
+## Separate future task: COMMUNICATION-SECURITY-CONTRACT-AUDIT-1A
+
+The unchanged broad `test/security/tenancy.communication.spec.ts` run exits
+naturally but remains **60/68**, with the following eight failures. They are not
+caused by the focused teardown or Homework authorization repairs. They are open
+security-contract debt and require a separate product/security decision; this
+register does not label the broad tests obsolete as a group.
+
+| # | Test name | Actual result | Expected result | Probable classification | Canonical evidence still needed | Security risk if runtime is wrong |
+| - | --- | --- | --- | --- | --- | --- |
+| 1 | `teacher cannot manage policy and parent/student cannot access dashboard communication routes` | The first app actor, `PARENT`, received 200 from `GET /api/v1/communication/conversations`; the loop stopped before `STUDENT` was observed. | 403 for Parent and Student across the core policy/admin/conversation routes. | Probable runtime core/app user-type-boundary gap. The Parent app permission needed for its participant-scoped adapter also admits the school-wide core list. | An accepted rule/ADR naming the user types allowed on core `/communication/**` reads and deciding whether core view permissions need a distinct permission or route-local guard. | A Parent or Student could enumerate same-school conversations beyond the actor-participant inbox contract. |
+| 2 | `teacher access follows seeded conversation permissions` | Teacher list returned 200 and create returned 201, but core conversation PATCH returned 403. | PATCH 200 after creation. | Probable stale permission-only expectation. The accepted Teacher role omits `communication.conversations.manage`, and Sprint 28F marks core PATCH management-only. | Formal confirmation that Teacher has no core conversation-metadata mutation contract and must remain on participant-scoped Teacher App routes. | Granting the expected access without a new ownership contract could let teachers mutate school-management conversation metadata. |
+| 3 | `teacher access follows seeded message permissions for participant messages` | Teacher send returned 201 and list returned 200, but core message PATCH returned 403; DELETE was not reached. | PATCH 200 and DELETE 200. | Probable stale expectation. The accepted Teacher role has message view/send but omits edit/delete, and the Teacher App route matrix has no edit/delete routes. | A product decision on whether teachers may edit/delete their own messages; if approved, define adapter paths, permission codes, ownership, time/state limits, and audit behavior. | Loosening the core permission could enable message tampering outside the intended participant/ownership boundary. |
+| 4 | `parent and student cannot access dashboard participant management routes` | The first actor, `PARENT`, received 200 from the core participant list; later assertions and `STUDENT` were not reached. | 403 for Parent and Student on participant, invite, and join-request management surfaces. | Probable runtime core/app boundary gap caused by reusing `communication.conversations.view` on a core management participant list. | An explicit user-type and ownership rule for core participant-list visibility, separate from app conversation-detail participant cards. | Same-school participant identities and communication relationship graphs may be disclosed to unrelated app actors. |
+| 5 | `teacher access follows seeded participant permissions` | Teacher received 403 from the core participant list; the invite-list assertion was not reached. | 200 for both participant and invite lists. | Probable stale permission-only expectation. Teacher is not a participant in the fixture conversation, lacks participant management permission, and accepted app routes are participant scoped. | A decision on whether teachers may use core participant/invite lists at all and, if so, the required participant/allocation/management boundary. | Returning 200 without that boundary could disclose member and invitation information from unrelated conversations. |
+| 6 | `publishing a school announcement enqueues and generates current-school in-app notifications only` | Runtime emitted deterministic hyphenated job ID `communication-announcement-notifications-<schoolId>-<announcementId>`. | Colon-delimited job ID `communication-announcement-notifications:<schoolId>:<announcementId>`. | Definitively stale assertion after the accepted BullMQ production repair. | None: `COMM-PUSH-1A` documents that BullMQ rejects `:`; focused domain/queue tests lock the hyphenated form. | Restoring the expected colon form would make BullMQ reject the custom ID and leave notification work unqueued/pending. |
+| 7 | `parent student and teacher default boundaries deny dashboard announcement routes` | The first actor, `PARENT`, received 200 from the core announcement list; later assertions and actors were not reached. | 403 for Parent, Student, and Teacher on core announcement/admin replay routes. | Probable runtime core/app boundary gap. App roles need `communication.announcements.view` for audience-filtered adapters, while the core list is school-scoped management output. | An explicit core-announcement user-type allowlist or a distinct core permission, including a decision for Teacher now that app-facing Teacher announcements exist. | App actors may see draft, unpublished, or non-audience announcements outside their app visibility rules. |
+| 8 | `parent student and teacher default boundaries deny notification center routes` | The first actor, `PARENT`, received 200 from the core notification list; the delivery-list assertion and later actors were not reached. | 403 for Parent, Student, and Teacher on core notification and delivery routes. | Probable runtime core/app boundary gap. App roles need notification view for recipient-owned adapters, while core presenters include management fields. | A decision on allowed core notification user types plus proof of recipient filtering and safe field exposure for every core read. | App actors may enumerate other recipients' notification records or receive core-only recipient/actor/delivery metadata. |
+
+Canonical evidence already points to an important split: Sprint 28F says app
+clients must use actor-scoped Parent, Student, and Teacher route families, while
+core Communication remains a permissioned school-management surface. It does
+not fully lock the core user-type allowlists. The future task must resolve that
+gap without weakening participant, audience, recipient, or tenant ownership.
+
+## Verification summary
+
+- `npx prisma validate`: PASS
+- `npx prisma migrate status`: PASS; database schema up to date
+- `npm run build`: PASS
+- `npx tsc -p tsconfig.build.json --noEmit`: PASS
+- `npm run test:migration-governance`: PASS; 39/39
+- `npm run db:migrations:check`: PASS; active migration count 1, new count 0
+- Required focused suites: PASS independently
+- Homework, Teacher App, Parent App, Smart Pickup, Admissions, IAM/tenancy:
+  PASS
+- Broad Communication security regression: OPEN DEBT, 60/68 passed
+- Findings 1–5 verdict: PASS
+- Current repair branch: READY FOR REVIEW
 
 ## Migration incident disposition
 
-None of these issues is part of the migration rebaseline commit. They remain
-open, separately owned regression debt and do not change the
-`MIGRATION-RECOVERY-0A` verdict that the canonical migration recovery passed.
+No schema or migration change is necessary for Findings 1–5. The canonical
+migration recovery remains valid and unchanged. The Dashboard Todos stash
+remains intact.
