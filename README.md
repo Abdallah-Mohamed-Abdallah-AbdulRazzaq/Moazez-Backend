@@ -70,6 +70,7 @@ Read these files before implementing anything:
 - `USER_TYPES.md`
 - `V1_SCOPE.md`
 - `PRISMA_CONVENTIONS.md`
+- `MIGRATION_GOVERNANCE.md`
 - `ENGINEERING_RULES.md`
 - `API_CONTRACT_RULES.md`
 - `ERROR_CATALOG.md`

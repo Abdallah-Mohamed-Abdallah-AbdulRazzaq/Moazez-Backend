@@ -1,0 +1,214 @@
+name: Migration Integrity
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-integrity-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migration-integrity:
+    name: Fresh PostgreSQL replay
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: moazez_ci
+          POSTGRES_PASSWORD: ci_only_not_a_secret
+          POSTGRES_DB: moazez_migration_integrity
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U moazez_ci -d moazez_migration_integrity"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      NODE_ENV: test
+      APP_PORT: '3000'
+      APP_URL: http://127.0.0.1:3000
+      DATABASE_URL: postgresql://moazez_ci:ci_only_not_a_secret@127.0.0.1:5432/moazez_migration_integrity?schema=public
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production
+      JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 7d
+      STORAGE_PROVIDER: minio
+      STORAGE_ENDPOINT: http://127.0.0.1:9000
+      STORAGE_ACCESS_KEY: ci-only-storage-access
+      STORAGE_SECRET_KEY: ci-only-storage-secret
+      STORAGE_BUCKET: moazez-ci-private
+      STORAGE_PUBLIC_BUCKET: moazez-ci-public
+      FCM_ENABLED: 'false'
+      FCM_DRY_RUN: 'true'
+      SEED_DEMO_DATA: 'true'
+      LOG_LEVEL: error
+
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve migration comparison base
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          git fetch --force --tags origin
+
+          case "$GITHUB_EVENT_NAME" in
+            pull_request)
+              base_ref="$PR_BASE_SHA"
+              ;;
+            push)
+              if [[ -n "$PUSH_BEFORE_SHA" && ! "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+                base_ref="$PUSH_BEFORE_SHA"
+              else
+                base_ref="$(git rev-parse HEAD^)"
+              fi
+              ;;
+            workflow_dispatch)
+              default_branch="${DEFAULT_BRANCH:-main}"
+              git fetch --no-tags --prune origin \
+                "+refs/heads/${default_branch}:refs/remotes/origin/${default_branch}"
+              base_ref="origin/${default_branch}"
+              ;;
+            *)
+              echo "Unsupported workflow event: $GITHUB_EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ -z "$base_ref" ]]; then
+            echo "Unable to resolve a migration comparison base." >&2
+            exit 1
+          fi
+
+          if ! git cat-file -e "${base_ref}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "$base_ref"
+          fi
+
+          git cat-file -e "${base_ref}^{commit}"
+          base_commit="$(git rev-parse "${base_ref}^{commit}")"
+          echo "MIGRATION_BASE_REF=$base_commit" >> "$GITHUB_ENV"
+          echo "Migration governance base: $base_commit"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test migration governance checker
+        run: npm run test:migration-governance
+
+      - name: Evaluate MIGRATION-RECOVERY-0A one-time authorization
+        run: node scripts/authorize-migration-rebaseline-0a.cjs
+
+      - name: Check migration governance
+        run: npm run db:migrations:check
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Deploy migrations to empty database
+        run: npm run db:migrations:deploy
+
+      - name: Verify migration status
+        run: npm run db:migrations:status
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Seed database
+        run: npm run seed
+
+      - name: Build application
+        run: npm run build
+
+      - name: Run database and security smoke tests
+        run: >-
+          npx jest --config ./test/jest-e2e.json --runInBand
+          test/security/tenancy.spec.ts
+          test/security/tenancy.iam.spec.ts
+          test/security/tenancy.dismissal-full-golden-path.spec.ts
+          test/e2e/dashboard-light-mode-dropdown-foundation.e2e-spec.ts
+
+      - name: Prove second migration deploy is a no-op
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          postgres_container="${{ job.services.postgres.id }}"
+          migration_count() {
+            docker exec "$postgres_container" \
+              psql \
+              --username=moazez_ci \
+              --dbname=moazez_migration_integrity \
+              --tuples-only \
+              --no-align \
+              --command='SELECT COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL;' \
+              | tr -d '[:space:]'
+          }
+
+          before_count="$(migration_count)"
+          if [[ ! "$before_count" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Expected at least one successfully applied migration; got '$before_count'." >&2
+            exit 1
+          fi
+
+          set +e
+          second_deploy_output="$(npm run db:migrations:deploy 2>&1)"
+          second_deploy_status=$?
+          set -e
+          printf '%s\n' "$second_deploy_output"
+
+          if (( second_deploy_status != 0 )); then
+            echo "The second migration deployment failed." >&2
+            exit "$second_deploy_status"
+          fi
+
+          if ! grep -Fq 'No pending migrations to apply.' <<< "$second_deploy_output"; then
+            echo "The second deployment did not report a no-op." >&2
+            exit 1
+          fi
+
+          after_count="$(migration_count)"
+          if [[ "$before_count" != "$after_count" ]]; then
+            echo "Applied migration count changed on the second deploy: $before_count -> $after_count." >&2
+            exit 1
+          fi
+
+          echo "Second deployment was a no-op with $after_count applied migration(s)."
+
+      - name: Verify final migration status
+        run: npm run db:migrations:status

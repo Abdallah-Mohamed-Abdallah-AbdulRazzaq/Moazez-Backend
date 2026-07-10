@@ -51,7 +51,10 @@ Additionally, module-local tests live in `src/modules/<module>/<submodule>/tests
 ## 5. Test Database
 
 - Separate database: `moazez_test`.
-- Reset between test suites via `prisma migrate reset --force --skip-seed`.
+- Rebuild a disposable test database through PostgreSQL/database-platform
+  create/drop operations, then apply it with `prisma migrate deploy` and seed.
+- Do not use Prisma reset as a response to drift or against `moazez_dev`, Live,
+  shared, or deployed databases. Follow `MIGRATION_GOVERNANCE.md`.
 - Use transactional fixtures where possible — wrap each test in a transaction that rolls back.
 - For E2E, use a clean DB per test file (slower but safer).
 
