@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../common/decorators/required-permissions.decorator';
@@ -22,9 +23,11 @@ import {
 } from '../application/communication-reaction.use-cases';
 import { LinkCommunicationMessageAttachmentDto } from '../dto/communication-message-attachment.dto';
 import { UpsertCommunicationReactionDto } from '../dto/communication-reaction.dto';
+import { CommunicationCoreAccessGuard } from '../guards/communication-core-access.guard';
 
 @ApiTags('communication')
 @ApiBearerAuth()
+@UseGuards(CommunicationCoreAccessGuard)
 @Controller('communication/messages/:messageId')
 export class CommunicationMessageInteractionsController {
   constructor(

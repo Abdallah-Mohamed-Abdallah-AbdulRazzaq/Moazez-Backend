@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../common/decorators/required-permissions.decorator';
 import {
@@ -7,9 +7,11 @@ import {
   UpdateCommunicationPolicyUseCase,
 } from '../application/communication-policy.use-cases';
 import { UpdateCommunicationPolicyDto } from '../dto/communication-policy.dto';
+import { CommunicationCoreAccessGuard } from '../guards/communication-core-access.guard';
 
 @ApiTags('communication')
 @ApiBearerAuth()
+@UseGuards(CommunicationCoreAccessGuard)
 @Controller('communication')
 export class CommunicationPolicyController {
   constructor(

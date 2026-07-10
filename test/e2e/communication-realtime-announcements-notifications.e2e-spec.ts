@@ -355,6 +355,7 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
     // This E2E stays REST + queue-backed because socket.io-client is not a
     // project dependency, and adding it would expand closeout scope.
     await generateAnnouncementNotifications(announcementId);
+    await waitForTerminalPushDelivery(announcementId);
 
     const notificationRows = await prisma.communicationNotification.findMany({
       where: {
@@ -375,6 +376,7 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
             channel: true,
             status: true,
             provider: true,
+            errorCode: true,
           },
         },
       },
@@ -396,8 +398,9 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
         }),
         expect.objectContaining({
           channel: CommunicationNotificationDeliveryChannel.PUSH,
-          status: CommunicationNotificationDeliveryStatus.PENDING,
+          status: CommunicationNotificationDeliveryStatus.SKIPPED,
           provider: COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
+          errorCode: 'push/no-active-device-tokens',
         }),
       ]),
     );
@@ -468,8 +471,9 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
       status: 'unread',
       deliverySummary: {
         total: 2,
-        pending: 1,
+        pending: 0,
         delivered: 1,
+        skipped: 1,
       },
     });
     expectNoSchoolId(notificationDetail.body);
@@ -527,8 +531,9 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
         expect.objectContaining({
           notificationId,
           channel: 'push',
-          status: 'pending',
+          status: 'skipped',
           provider: COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
+          errorCode: 'push/no-active-device-tokens',
         }),
       ]),
     );
@@ -841,6 +846,32 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
         actorUserId: adminUserId,
         actorUserType: UserType.SCHOOL_USER,
       }),
+    );
+  }
+
+  async function waitForTerminalPushDelivery(
+    announcementId: string,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const count = await prisma.communicationNotificationDelivery.count({
+        where: {
+          channel: CommunicationNotificationDeliveryChannel.PUSH,
+          status: CommunicationNotificationDeliveryStatus.SKIPPED,
+          errorCode: 'push/no-active-device-tokens',
+          notification: {
+            schoolId: demoSchoolId,
+            sourceModule: CommunicationNotificationSourceModule.ANNOUNCEMENTS,
+            sourceType: COMMUNICATION_ANNOUNCEMENT_NOTIFICATION_SOURCE_TYPE,
+            sourceId: announcementId,
+          },
+        },
+      });
+      if (count === 1) return;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    throw new Error(
+      `Timed out waiting for terminal push delivery for ${announcementId}`,
     );
   }
 

@@ -3,15 +3,20 @@
 ## Status and scope
 
 - **Required baseline:** `3504c9c33e3539172c1ab70cfbb079cce81862b0`
-- **Working branch:** `fix/post-rebaseline-regressions`
+- **Findings 1–5 repair:** MERGED / RESOLVED
+- **Communication audit branch:** `fix/communication-security-contract`
+- **Communication security-contract findings:** RESOLVED WITH TEST EVIDENCE
+- **Broad Communication security:** 68/68 PASS
+- **Current branch status:** READY FOR REVIEW
 - **Migration recovery integrity:** PASS
-- **Findings 1–5:** RESOLVED WITH TEST EVIDENCE
-- **Current repair branch:** READY FOR REVIEW
-- **Communication security-contract debt:** OPEN / NEEDS SEPARATE DECISION
 
-This repair did not change `prisma/schema.prisma`, the canonical baseline
-migration, migration governance, or any migration file. It did not access Live
-or apply, pop, delete, or modify the Dashboard Todos stash.
+Scope integrity:
+
+- No Prisma schema change.
+- No migration or migration-governance change.
+- No permission or role seed change.
+- No Live operation.
+- Dashboard Todos stash untouched.
 
 ## 1. Homework stale route expectation
 
@@ -271,13 +276,15 @@ approved Dismissal/Smart Pickup permissions. The exact global count was updated
 to 232 without changing the Teacher role's exact 54-permission assertion. The
 suite then passed 55/55.
 
-## Separate future task: COMMUNICATION-SECURITY-CONTRACT-AUDIT-1A
+## Historical pre-audit Communication findings
 
-The unchanged broad `test/security/tenancy.communication.spec.ts` run exits
-naturally but remains **60/68**, with the following eight failures. They are not
-caused by the focused teardown or Homework authorization repairs. They are open
-security-contract debt and require a separate product/security decision; this
-register does not label the broad tests obsolete as a group.
+Before `COMMUNICATION-SECURITY-CONTRACT-AUDIT-1A`, the unchanged broad
+`test/security/tenancy.communication.spec.ts` run exited naturally at
+**60/68**, with the following eight failures. At that historical checkpoint,
+they were unresolved security-contract findings and were not caused by the
+focused teardown or Homework authorization repairs. The table preserves the
+original pre-audit evidence and risk assessment; the authoritative current
+resolution follows it.
 
 | # | Test name | Actual result | Expected result | Probable classification | Canonical evidence still needed | Security risk if runtime is wrong |
 | - | --- | --- | --- | --- | --- | --- |
@@ -290,11 +297,98 @@ register does not label the broad tests obsolete as a group.
 | 7 | `parent student and teacher default boundaries deny dashboard announcement routes` | The first actor, `PARENT`, received 200 from the core announcement list; later assertions and actors were not reached. | 403 for Parent, Student, and Teacher on core announcement/admin replay routes. | Probable runtime core/app boundary gap. App roles need `communication.announcements.view` for audience-filtered adapters, while the core list is school-scoped management output. | An explicit core-announcement user-type allowlist or a distinct core permission, including a decision for Teacher now that app-facing Teacher announcements exist. | App actors may see draft, unpublished, or non-audience announcements outside their app visibility rules. |
 | 8 | `parent student and teacher default boundaries deny notification center routes` | The first actor, `PARENT`, received 200 from the core notification list; the delivery-list assertion and later actors were not reached. | 403 for Parent, Student, and Teacher on core notification and delivery routes. | Probable runtime core/app boundary gap. App roles need notification view for recipient-owned adapters, while core presenters include management fields. | A decision on allowed core notification user types plus proof of recipient filtering and safe field exposure for every core read. | App actors may enumerate other recipients' notification records or receive core-only recipient/actor/delivery metadata. |
 
-Canonical evidence already points to an important split: Sprint 28F says app
-clients must use actor-scoped Parent, Student, and Teacher route families, while
-core Communication remains a permissioned school-management surface. It does
-not fully lock the core user-type allowlists. The future task must resolve that
-gap without weakening participant, audience, recipient, or tenant ownership.
+At the pre-audit checkpoint, canonical evidence already pointed to an important
+split: Sprint 28F says app clients must use actor-scoped Parent, Student, and
+Teacher route families, while core Communication remains a permissioned
+school-management surface. The subsequent audit resolved the remaining
+user-type allowlist gap without weakening participant, audience, recipient, or
+tenant ownership.
+
+## COMMUNICATION-SECURITY-CONTRACT-AUDIT-1A resolution
+
+The separate audit ran from clean branch
+`fix/communication-security-contract` at `4bb61977`. Its initial independent
+reproduction matched this register exactly: 60 passed, 8 failed, 68 total.
+Its final result was 68 passed, 0 failed, 68 total. All eight findings are
+**RESOLVED**.
+
+The accepted Communication handoffs provide enough combined authority to close
+the previously noted allowlist gap:
+
+- `PROJECT_OVERVIEW.md` makes the School Dashboard the Communication
+  operational source of truth and the apps consumers of core truth.
+- `SECURITY_MODEL.md` requires user type before permission and resource
+  ownership after permission.
+- Sprint 28C explicitly calls the core conversation list a school-scoped
+  management surface and app inboxes participant-scoped.
+- Sprint 28F says core routes are for admin/core UI and app clients use their
+  app families; it also records core notification/announcement response
+  sensitivity.
+- Sprint 28O repeats that every `/communication/**` family is core/management
+  and not app-facing.
+- Sprint 28M gives Teacher its approved allocation/ownership-scoped
+  announcement adapter.
+- The system-role seed intentionally gives Teacher/Parent/Student app
+  view/send/read permissions but not core management, participant management,
+  or Teacher message edit/delete permissions.
+
+Resolution:
+
+- Added a controller-local `CommunicationCoreAccessGuard` with the exact
+  `ORGANIZATION_USER`/`SCHOOL_USER` allowlist to all nine core Communication
+  controllers and nowhere else.
+- Kept the global JWT, scope, and permission guard order unchanged.
+- Kept Parent, Student, and Teacher adapters unchanged and ownership-filtered.
+- Corrected the three stale Teacher expectations to deny core access and prove
+  Teacher message adapter availability.
+- Corrected the obsolete BullMQ assertion to the accepted hyphenated
+  deterministic job ID.
+- Corrected latent queue lifecycle fixtures to wait for the Sprint 30D
+  no-active-token `SKIPPED` state instead of racing on `PENDING`.
+- Added exhaustive guard tests and an exact 74-route registered runtime/
+  controller-metadata inventory.
+
+Final status for the original eight:
+
+| # | Final classification | Status |
+| - | --- | --- |
+| 1 | Runtime authorization vulnerability | Fixed |
+| 2 | Stale test expectation plus exposed core boundary | Fixed |
+| 3 | Stale test expectation plus exposed core boundary | Fixed |
+| 4 | Runtime authorization vulnerability | Fixed |
+| 5 | Stale test expectation | Fixed |
+| 6 | Queue contract regression in test assertion | Fixed |
+| 7 | Runtime authorization vulnerability | Fixed |
+| 8 | Runtime authorization vulnerability | Fixed |
+
+Evidence at closeout:
+
+- Broad Communication security: 68/68, natural exit.
+- Core route inventory/metadata: 3/3.
+- Guard unit tests: 8/8.
+- Communication Core Chat: 1/1.
+- Realtime/Announcements/Notifications: 1/1.
+- Communication units: 61 suites / 334 tests.
+- Parent, Student, and Teacher app security: 30/30, 33/33, and 55/55.
+- Focused Teacher Communication: 48/48.
+- Push, Firebase, and device-token slices: 31/31, 23/23, and 12/12.
+
+Full route inventory, per-finding evidence, guard behavior, and non-impact
+details are in
+`docs/sprint-comm-security-contract-audit-1a-closeout.md`.
+
+## Remaining unrelated regression debt
+
+A broader Teacher App test pattern reported two Teacher Profile assertions
+expecting `roleId`, while the current safe presenter intentionally omits that
+field.
+
+- **Future task:** `TEACHER-PROFILE-ROLE-CONTRACT-AUDIT-1A`
+- **Status:** OPEN — REQUIRES CONTRACT AUDIT DURING FULL PROJECT REGRESSION
+
+This finding is unrelated to Communication and does not block the
+Communication security-contract closeout. Teacher Profile runtime code and
+tests were not changed by this audit or documentation normalization.
 
 ## Verification summary
 
@@ -305,11 +399,13 @@ gap without weakening participant, audience, recipient, or tenant ownership.
 - `npm run test:migration-governance`: PASS; 39/39
 - `npm run db:migrations:check`: PASS; active migration count 1, new count 0
 - Required focused suites: PASS independently
-- Homework, Teacher App, Parent App, Smart Pickup, Admissions, IAM/tenancy:
-  PASS
-- Broad Communication security regression: OPEN DEBT, 60/68 passed
-- Findings 1–5 verdict: PASS
-- Current repair branch: READY FOR REVIEW
+- Affected Communication E2E/security: 191/191 PASS
+- Affected Communication unit: 496/496 PASS
+- Initial broad Communication result: 60/68
+- Final broad Communication result: 68/68
+- All eight Communication findings: RESOLVED
+- Findings 1–5 repair: MERGED / RESOLVED
+- Current branch status: READY FOR REVIEW
 
 ## Migration incident disposition
 

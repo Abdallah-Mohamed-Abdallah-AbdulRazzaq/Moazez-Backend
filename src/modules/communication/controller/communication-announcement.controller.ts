@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../common/decorators/required-permissions.decorator';
@@ -31,9 +32,11 @@ import {
   ListCommunicationAnnouncementsQueryDto,
   UpdateCommunicationAnnouncementDto,
 } from '../dto/communication-announcement.dto';
+import { CommunicationCoreAccessGuard } from '../guards/communication-core-access.guard';
 
 @ApiTags('communication')
 @ApiBearerAuth()
+@UseGuards(CommunicationCoreAccessGuard)
 @Controller('communication/announcements')
 export class CommunicationAnnouncementController {
   constructor(

@@ -132,6 +132,7 @@ import { CommunicationNotificationPushRepository } from './infrastructure/commun
 import { CommunicationNotificationPreferenceRepository } from './infrastructure/communication-notification-preference.repository';
 import { CommunicationNotificationGenerationWorker } from './infrastructure/communication-notification-generation.worker';
 import { CommunicationNotificationPushWorker } from './infrastructure/communication-notification-push.worker';
+import { CommunicationCoreAccessGuard } from './guards/communication-core-access.guard';
 import { CommunicationConversationRepository } from './infrastructure/communication-conversation.repository';
 import { CommunicationModerationRepository } from './infrastructure/communication-moderation.repository';
 import { CommunicationMessageRepository } from './infrastructure/communication-message.repository';
@@ -164,6 +165,7 @@ import { CommunicationNotificationRepository } from './infrastructure/communicat
     CommunicationSafetyController,
   ],
   providers: [
+    CommunicationCoreAccessGuard,
     CommunicationPolicyRepository,
     CommunicationAnnouncementRepository,
     CommunicationConversationRepository,
