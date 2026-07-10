@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../common/decorators/required-permissions.decorator';
@@ -44,9 +45,11 @@ import {
   ListCommunicationUserRestrictionsQueryDto,
   UpdateCommunicationUserRestrictionDto,
 } from '../dto/communication-restriction.dto';
+import { CommunicationCoreAccessGuard } from '../guards/communication-core-access.guard';
 
 @ApiTags('communication')
 @ApiBearerAuth()
+@UseGuards(CommunicationCoreAccessGuard)
 @Controller('communication')
 export class CommunicationSafetyController {
   constructor(

@@ -85,6 +85,7 @@ describe('Communication policy tenancy isolation (security)', () => {
   let fileBId: string;
   let interactionFileId: string;
   let adminAId: string;
+  let organizationUserId: string;
   let interactionUserId: string;
   let reportUserId: string;
   let noAccessUserId: string;
@@ -99,6 +100,7 @@ describe('Communication policy tenancy isolation (security)', () => {
   let messageSendRoleIdForFixtures: string;
   let reportRoleIdForFixtures: string;
   let adminAEmail: string;
+  let organizationUserEmail: string;
   let interactionEmail: string;
   let reportUserEmail: string;
   let noAccessEmail: string;
@@ -123,6 +125,7 @@ describe('Communication policy tenancy isolation (security)', () => {
 
     const [
       schoolAdminRole,
+      organizationAdminRole,
       teacherRole,
       parentRole,
       studentRole,
@@ -143,6 +146,7 @@ describe('Communication policy tenancy isolation (security)', () => {
       adminViewPermission,
     ] = await Promise.all([
       findSystemRole('school_admin'),
+      findSystemRole('organization_admin'),
       findSystemRole('teacher'),
       findSystemRole('parent'),
       findSystemRole('student'),
@@ -240,6 +244,7 @@ describe('Communication policy tenancy isolation (security)', () => {
     ]);
 
     adminAEmail = `${testSuffix}-admin-a@security.moazez.local`;
+    organizationUserEmail = `${testSuffix}-organization-user@security.moazez.local`;
     interactionEmail = `${testSuffix}-interactions@security.moazez.local`;
     reportUserEmail = `${testSuffix}-reporter@security.moazez.local`;
     noAccessEmail = `${testSuffix}-no-access@security.moazez.local`;
@@ -255,6 +260,11 @@ describe('Communication policy tenancy isolation (security)', () => {
       email: adminAEmail,
       userType: UserType.SCHOOL_USER,
       roleId: schoolAdminRole.id,
+    });
+    organizationUserId = await createUserWithMembership({
+      email: organizationUserEmail,
+      userType: UserType.ORGANIZATION_USER,
+      roleId: organizationAdminRole.id,
     });
     interactionUserId = await createUserWithMembership({
       email: interactionEmail,
@@ -825,7 +835,7 @@ describe('Communication policy tenancy isolation (security)', () => {
       .expect(403);
   });
 
-  it('school admin can get/update policy and get admin overview', async () => {
+  it('school and scoped organization admins can access core management', async () => {
     const { accessToken } = await login(adminAEmail);
 
     await request(app.getHttpServer())
@@ -864,6 +874,22 @@ describe('Communication policy tenancy isolation (security)', () => {
     });
     expect(overview.body.conversations.total).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(overview.body)).not.toContain('schoolId');
+
+    const organizationUser = await login(organizationUserEmail);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/conversations`)
+      .set('Authorization', `Bearer ${organizationUser.accessToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/communication/policies`)
+      .set('Authorization', `Bearer ${organizationUser.accessToken}`)
+      .expect(200);
+
+    await prisma.session.deleteMany({ where: { userId: organizationUserId } });
+    await prisma.membership.deleteMany({
+      where: { userId: organizationUserId },
+    });
+    await prisma.user.delete({ where: { id: organizationUserId } });
   });
 
   it('teacher cannot manage policy and parent/student cannot access dashboard communication routes', async () => {
@@ -1092,27 +1118,33 @@ describe('Communication policy tenancy isolation (security)', () => {
     }
   });
 
-  it('teacher access follows seeded conversation permissions', async () => {
+  it('teacher uses actor-scoped conversations and cannot access core routes', async () => {
     await setCommunicationPolicyEnabled(true);
     const { accessToken } = await login(teacherEmail);
-    const title = `${testSuffix} teacher seeded permission conversation`;
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/communication/conversations`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
-
-    const created = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/communication/conversations`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ type: 'group', title })
-      .expect(201);
-    createdConversationIds.push(created.body.id);
+      .expect(403);
 
     await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/communication/conversations/${created.body.id}`)
+      .post(`${GLOBAL_PREFIX}/communication/conversations`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ title: `${title} updated` })
+      .send({
+        type: 'group',
+        title: `${testSuffix} forbidden teacher core conversation`,
+      })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .patch(`${GLOBAL_PREFIX}/communication/conversations/${conversationAId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ title: 'Forbidden teacher core update' })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/teacher/messages/conversations`)
+      .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
   });
 
@@ -1412,7 +1444,7 @@ describe('Communication policy tenancy isolation (security)', () => {
     }
   });
 
-  it('teacher access follows seeded message permissions for participant messages', async () => {
+  it('teacher message behavior remains on the participant-owned adapter', async () => {
     await setCommunicationPolicyEnabled(true);
     const teacher = await login(teacherEmail);
     const teacherConversation = await prisma.communicationConversation.create({
@@ -1437,7 +1469,7 @@ describe('Communication policy tenancy isolation (security)', () => {
 
     const created = await request(app.getHttpServer())
       .post(
-        `${GLOBAL_PREFIX}/communication/conversations/${teacherConversation.id}/messages`,
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${teacherConversation.id}/messages`,
       )
       .set('Authorization', `Bearer ${teacher.accessToken}`)
       .send({ body: 'Teacher seeded message' })
@@ -1446,7 +1478,7 @@ describe('Communication policy tenancy isolation (security)', () => {
 
     await request(app.getHttpServer())
       .get(
-        `${GLOBAL_PREFIX}/communication/conversations/${teacherConversation.id}/messages`,
+        `${GLOBAL_PREFIX}/teacher/messages/conversations/${teacherConversation.id}/messages`,
       )
       .set('Authorization', `Bearer ${teacher.accessToken}`)
       .expect(200);
@@ -1454,11 +1486,18 @@ describe('Communication policy tenancy isolation (security)', () => {
       .patch(`${GLOBAL_PREFIX}/communication/messages/${created.body.id}`)
       .set('Authorization', `Bearer ${teacher.accessToken}`)
       .send({ body: 'Teacher edited message' })
-      .expect(200);
+      .expect(403);
     await request(app.getHttpServer())
       .delete(`${GLOBAL_PREFIX}/communication/messages/${created.body.id}`)
       .set('Authorization', `Bearer ${teacher.accessToken}`)
-      .expect(200);
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/communication/conversations/${teacherConversation.id}/messages`,
+      )
+      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .expect(403);
   });
 
   it('message send rejects disabled policy archived closed non-participant and muted participants', async () => {
@@ -1510,7 +1549,7 @@ describe('Communication policy tenancy isolation (security)', () => {
       userId: adminAId,
     });
     const messageActorEmail = `${testSuffix}-message-send-only@security.moazez.local`;
-    await createUserWithMembership({
+    const messageActorId = await createUserWithMembership({
       email: messageActorEmail,
       userType: UserType.SCHOOL_USER,
       roleId: messageSendRoleIdForFixtures,
@@ -1550,16 +1589,15 @@ describe('Communication policy tenancy isolation (security)', () => {
 
     const mutedConversation = await createConversationWithParticipant({
       status: CommunicationConversationStatus.ACTIVE,
-      userId: teacherUserId,
+      userId: messageActorId,
       participantStatus: CommunicationParticipantStatus.MUTED,
       mutedUntil: new Date('2026-05-03T09:00:00.000Z'),
     });
-    const teacher = await login(teacherEmail);
     const muted = await request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/communication/conversations/${mutedConversation}/messages`,
       )
-      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .set('Authorization', `Bearer ${messageActor.accessToken}`)
       .send({ body: 'Muted should reject' })
       .expect(403);
     expect(muted.body.error.code).toBe('communication.message.send_forbidden');
@@ -2557,9 +2595,15 @@ describe('Communication policy tenancy isolation (security)', () => {
     });
   });
 
-  it('school admin can create and list invites, invited actors can accept or reject', async () => {
+  it('school admin can create and list invites, trusted invited actors can respond', async () => {
     await setCommunicationPolicyEnabled(true);
     const admin = await login(adminAEmail);
+    const inviteActorEmail = `${testSuffix}-invite-actor@security.moazez.local`;
+    const inviteActorId = await createUserWithMembership({
+      email: inviteActorEmail,
+      userType: UserType.SCHOOL_USER,
+      roleId: viewOnlyRoleIdForFixtures,
+    });
 
     const created = await request(app.getHttpServer())
       .post(
@@ -2567,13 +2611,13 @@ describe('Communication policy tenancy isolation (security)', () => {
       )
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .send({
-        invitedUserId: parentUserId,
+        invitedUserId: inviteActorId,
         metadata: { source: 'security-test', message: 'must not leak' },
       })
       .expect(201);
     expect(created.body).toMatchObject({
       conversationId: conversationAId,
-      invitedUserId: parentUserId,
+      invitedUserId: inviteActorId,
       status: 'pending',
       metadata: { source: 'security-test' },
     });
@@ -2592,16 +2636,16 @@ describe('Communication policy tenancy isolation (security)', () => {
     expect(JSON.stringify(list.body)).not.toContain(inviteBId);
     expect(JSON.stringify(list.body)).not.toContain('schoolId');
 
-    const teacher = await login(teacherEmail);
+    const inviteActor = await login(inviteActorEmail);
     const accepted = await request(app.getHttpServer())
       .post(
-        `${GLOBAL_PREFIX}/communication/conversation-invites/${inviteAId}/accept`,
+        `${GLOBAL_PREFIX}/communication/conversation-invites/${created.body.id}/accept`,
       )
-      .set('Authorization', `Bearer ${teacher.accessToken}`)
+      .set('Authorization', `Bearer ${inviteActor.accessToken}`)
       .expect(201);
     expect(accepted.body).toMatchObject({
       conversationId: conversationAId,
-      userId: teacherUserId,
+      userId: inviteActorId,
       status: 'active',
     });
 
@@ -2882,7 +2926,7 @@ describe('Communication policy tenancy isolation (security)', () => {
     }
   });
 
-  it('teacher access follows seeded participant permissions', async () => {
+  it('teacher cannot enumerate core participants or invites', async () => {
     const { accessToken } = await login(teacherEmail);
 
     await request(app.getHttpServer())
@@ -2890,14 +2934,14 @@ describe('Communication policy tenancy isolation (security)', () => {
         `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/participants`,
       )
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
     await request(app.getHttpServer())
       .get(
         `${GLOBAL_PREFIX}/communication/conversations/${conversationAId}/invites`,
       )
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
   });
 
   it('disabled communication policy rejects participant invite and join request mutations', async () => {
@@ -4271,12 +4315,16 @@ describe('Communication announcement tenancy isolation (security)', () => {
         actorUserType: UserType.SCHOOL_USER,
       }),
       expect.objectContaining({
-        jobId: `communication-announcement-notifications:${schoolAId}:${created.body.id}`,
+        jobId: `communication-announcement-notifications-${schoolAId}-${created.body.id}`,
       }),
     );
 
     const expectedRecipientUserIds = await activeUserIdsForSchool(schoolAId);
     await waitForAnnouncementNotificationCount(
+      created.body.id,
+      expectedRecipientUserIds.length,
+    );
+    await waitForAnnouncementPushDeliveryCount(
       created.body.id,
       expectedRecipientUserIds.length,
     );
@@ -4302,6 +4350,7 @@ describe('Communication announcement tenancy isolation (security)', () => {
             status: true,
             provider: true,
             providerMessageId: true,
+            errorCode: true,
           },
         },
       },
@@ -4357,9 +4406,10 @@ describe('Communication announcement tenancy isolation (security)', () => {
           return (
             delivery.channel === CommunicationNotificationDeliveryChannel.PUSH &&
             delivery.status ===
-              CommunicationNotificationDeliveryStatus.PENDING &&
+              CommunicationNotificationDeliveryStatus.SKIPPED &&
             delivery.provider === 'firebase_fcm' &&
-            delivery.providerMessageId === null
+            delivery.providerMessageId === null &&
+            delivery.errorCode === 'push/no-active-device-tokens'
           );
         }),
     ).toBe(true);
@@ -4372,46 +4422,50 @@ describe('Communication announcement tenancy isolation (security)', () => {
         },
       }),
     ).resolves.toBe(0);
-    expect(publishToUserSpy).toHaveBeenCalledTimes(
-      expectedRecipientUserIds.length,
+    // A shared test Redis may assign this single BullMQ job to another live
+    // worker. Local observation is therefore all recipients or none.
+    expect([0, expectedRecipientUserIds.length]).toContain(
+      publishToUserSpy.mock.calls.length,
     );
-    expect(
-      new Set(
-        publishToUserSpy.mock.calls.map(
-          ([schoolId, recipientUserId, eventName]) =>
-            `${schoolId}:${recipientUserId}:${eventName}`,
+    if (publishToUserSpy.mock.calls.length > 0) {
+      expect(
+        new Set(
+          publishToUserSpy.mock.calls.map(
+            ([schoolId, recipientUserId, eventName]) =>
+              `${schoolId}:${recipientUserId}:${eventName}`,
+          ),
         ),
-      ),
-    ).toEqual(
-      new Set(
-        expectedRecipientUserIds.map(
-          (recipientUserId) =>
-            `${schoolAId}:${recipientUserId}:${REALTIME_SERVER_EVENTS.COMMUNICATION_NOTIFICATION_CREATED}`,
+      ).toEqual(
+        new Set(
+          expectedRecipientUserIds.map(
+            (recipientUserId) =>
+              `${schoolAId}:${recipientUserId}:${REALTIME_SERVER_EVENTS.COMMUNICATION_NOTIFICATION_CREATED}`,
+          ),
         ),
-      ),
-    );
-    for (const [, , , payload] of publishToUserSpy.mock.calls) {
-      const payloadJson = JSON.stringify(payload);
-      expect(payload).toMatchObject({
-        notification: {
-          notificationId: expect.any(String),
-          type: 'announcement_published',
-          sourceModule: 'announcements',
-          sourceId: created.body.id,
-          priority: 'high',
-          status: 'unread',
-          deepLink: {
-            type: 'announcement',
-            announcementId: created.body.id,
+      );
+      for (const [, , , payload] of publishToUserSpy.mock.calls) {
+        const payloadJson = JSON.stringify(payload);
+        expect(payload).toMatchObject({
+          notification: {
+            notificationId: expect.any(String),
+            type: 'announcement_published',
+            sourceModule: 'announcements',
+            sourceId: created.body.id,
+            priority: 'high',
+            status: 'unread',
+            deepLink: {
+              type: 'announcement',
+              announcementId: created.body.id,
+            },
           },
-        },
-        eventAt: expect.any(String),
-      });
-      expect(payloadJson).not.toContain('recipientUserId');
-      expect(payloadJson).not.toContain('schoolId');
-      expect(payloadJson).not.toContain('actorUserId');
-      expect(payloadJson).not.toContain('deliveries');
-      expect(payloadJson).not.toContain('metadata');
+          eventAt: expect.any(String),
+        });
+        expect(payloadJson).not.toContain('recipientUserId');
+        expect(payloadJson).not.toContain('schoolId');
+        expect(payloadJson).not.toContain('actorUserId');
+        expect(payloadJson).not.toContain('deliveries');
+        expect(payloadJson).not.toContain('metadata');
+      }
     }
     expect(publishToSchoolSpy).not.toHaveBeenCalled();
 
@@ -4934,6 +4988,33 @@ describe('Communication announcement tenancy isolation (security)', () => {
 
     throw new Error(
       `Timed out waiting for announcement notification generation for ${announcementId}`,
+    );
+  }
+
+  async function waitForAnnouncementPushDeliveryCount(
+    announcementId: string,
+    expectedCount: number,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const count = await prisma.communicationNotificationDelivery.count({
+        where: {
+          channel: CommunicationNotificationDeliveryChannel.PUSH,
+          status: CommunicationNotificationDeliveryStatus.SKIPPED,
+          errorCode: 'push/no-active-device-tokens',
+          notification: {
+            schoolId: schoolAId,
+            sourceModule: CommunicationNotificationSourceModule.ANNOUNCEMENTS,
+            sourceType: 'communication_announcement',
+            sourceId: announcementId,
+          },
+        },
+      });
+      if (count === expectedCount) return;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    throw new Error(
+      `Timed out waiting for ${expectedCount} terminal announcement push deliveries`,
     );
   }
 
