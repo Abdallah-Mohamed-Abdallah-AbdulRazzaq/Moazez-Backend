@@ -2,6 +2,13 @@
 
 Rules for how Prisma schema, migrations, and client usage are structured.
 
+## Mandatory Migration Reading
+
+Before changing `prisma/schema.prisma`, creating a migration, or reviewing
+migration SQL, read `MIGRATION_GOVERNANCE.md`. Its hard-stop, immutability,
+fresh-replay, and deployment rules are mandatory and take precedence over
+historical examples elsewhere in the repository.
+
 ## 1. Schema File Organization
 
 - Single `prisma/schema.prisma` file in V1.
@@ -94,23 +101,44 @@ Because a teacher must have exactly one active membership (per `USER_TYPES.md`),
 ```prisma
 model Membership {
   // ...
-  @@unique([userId, status], name: "unique_active_teacher_membership")
-  // combined with a check constraint:
-  // CHECK (user_type != 'teacher' OR (user_type = 'teacher' AND status = 'active'))
+  // Prisma cannot express the required partial uniqueness predicate.
+  // The migration SQL owns the database constraint shown below.
 }
 ```
 
 The enforcement logic is:
-- Partial unique index in PostgreSQL: `CREATE UNIQUE INDEX ... WHERE user_type = 'teacher' AND status = 'active'`.
+- Partial unique index in PostgreSQL: `CREATE UNIQUE INDEX ... ON memberships (user_id) WHERE user_type = 'TEACHER' AND status = 'ACTIVE'`.
 - Application-level check at membership creation.
 
 ## 11. Migrations
 
-- Migration files are **numbered + descriptive**: `20260420_0001_core_identity.sql`.
+- The canonical migration path is:
+
+  ```text
+  prisma/migrations/YYYYMMDDHHMMSS_snake_case_description/migration.sql
+  ```
+
+- Directory names must match `^\d{14}_[a-z0-9_]+$`.
+- The fourteen-digit timestamp is generated at migration creation time. Do not
+  use a date-only timestamp, sequence number, or invented historical timestamp.
+- Older date-only and sequence-bearing names visible in Git history are legacy
+  formats only and must not be reused.
 - One migration = one logical change set.
 - No destructive changes without explicit ADR.
-- `prisma migrate dev` for local development, `prisma migrate deploy` for CI and production.
-- Manual SQL edits of migration files are allowed (and expected) when Prisma-generated SQL is wrong, incomplete, or when PostgreSQL-specific features are needed (partial indexes, check constraints, RLS later, etc.).
+- `prisma migrate dev --create-only` creates local feature migrations;
+  `prisma migrate deploy` applies migrations in CI and production.
+- Every schema change requires a new migration. A schema sprint is not ready for
+  review until the full active chain replays against an empty PostgreSQL
+  database.
+- Once committed and merged into `main`, a migration is immutable: never edit,
+  rename, delete, or replace it.
+- Manual SQL edits are allowed only before the migration is first applied and
+  only when Prisma-generated SQL is incomplete or a documented
+  PostgreSQL-specific object is required.
+- Direct SQL execution, schema push on shared/deployed databases, and
+  unapproved migration resolution are not migration-development tools.
+- Drift, checksum mismatch, reset request, failed migration, or P3009 is a hard
+  stop. Follow `MIGRATION_GOVERNANCE.md`; never bypass it with manual SQL.
 
 ## 12. Client Usage
 
@@ -138,7 +166,9 @@ The enforcement logic is:
 
 ## 15. Raw SQL
 
-- Allowed for reports, analytics, and complex aggregations (e.g., gradebook rollups, dashboard KPIs).
+- Runtime parameterized SQL is allowed for reports, analytics, and complex
+  aggregations (e.g., gradebook rollups, dashboard KPIs). This does not
+  authorize direct execution of migration DDL.
 - Must be encapsulated in a repository method with clear typing.
 - Must be parameterized — no string concatenation.
 

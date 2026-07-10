@@ -39,10 +39,11 @@ Before making changes, always read:
 7. `USER_TYPES.md`
 8. `V1_SCOPE.md`
 9. `PRISMA_CONVENTIONS.md`
-10. `ENGINEERING_RULES.md`
-11. `API_CONTRACT_RULES.md`
-12. `ERROR_CATALOG.md`
-13. All `adr/ADR-*.md` files in numerical order
+10. `MIGRATION_GOVERNANCE.md`
+11. `ENGINEERING_RULES.md`
+12. `API_CONTRACT_RULES.md`
+13. `ERROR_CATALOG.md`
+14. All `adr/ADR-*.md` files in numerical order
 
 ## Implementation Rules
 
@@ -89,7 +90,11 @@ Only implement the backend behind it.
 
 ## Migration Rules
 
+- Follow `MIGRATION_GOVERNANCE.md` for every schema or migration task.
 - Every schema change must be a migration.
+- Committed migrations are immutable.
+- Drift, checksum mismatch, reset request, failed migration, or P3009 is a hard
+  stop; never bypass it with direct SQL, schema push, or unapproved resolution.
 - Do not edit production schema manually.
 - Prefer incremental migrations.
 - Keep seed data separate from migrations.
