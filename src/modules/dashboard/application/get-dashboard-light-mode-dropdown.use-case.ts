@@ -12,10 +12,12 @@ import {
   DashboardLightModeDropdownRepository,
   DashboardLightModeDropdownSchoolLocationSnapshot,
 } from '../infrastructure/dashboard-light-mode-dropdown.repository';
+import { DashboardTodosRepository } from '../infrastructure/dashboard-todos.repository';
 import {
   DashboardLightModeDropdownPresentationInput,
   presentDashboardLightModeDropdown,
 } from '../presenters/dashboard-light-mode-dropdown.presenter';
+import { toDashboardTodoDate } from './dashboard-todo.helpers';
 
 const DEFAULT_DASHBOARD_DROPDOWN_LOCALE: DashboardLightModeDropdownLocale =
   'en';
@@ -35,6 +37,7 @@ export interface NormalizedDashboardLightModeDropdownQuery {
 export class GetDashboardLightModeDropdownUseCase {
   constructor(
     private readonly dashboardLightModeDropdownRepository: DashboardLightModeDropdownRepository,
+    private readonly dashboardTodosRepository: DashboardTodosRepository,
   ) {}
 
   async execute(
@@ -51,10 +54,15 @@ export class GetDashboardLightModeDropdownUseCase {
       schoolLocation,
       generatedAt,
     );
+    const todos = await this.dashboardTodosRepository.listOwnedTodos(scope, {
+      date: toDashboardTodoDate(normalizedQuery.date),
+      limit: 100,
+    });
     const input: DashboardLightModeDropdownPresentationInput = {
       generatedAt,
       schoolLocation,
       query: normalizedQuery,
+      todos,
     };
 
     return presentDashboardLightModeDropdown(input);

@@ -698,13 +698,29 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
   });
 
   it('verifies the final Teacher role, catalog, Parent role, and Student role state', async () => {
-    expect(await prisma.permission.count()).toBe(232);
+    expect(await prisma.permission.count()).toBe(234);
+    const dashboardTodoCatalogCodes = await prisma.permission.findMany({
+      where: {
+        code: {
+          in: ['dashboard.todos.view', 'dashboard.todos.manage'],
+        },
+      },
+      select: { code: true },
+      orderBy: { code: 'asc' },
+    });
+    expect(dashboardTodoCatalogCodes.map(({ code }) => code)).toEqual([
+      'dashboard.todos.manage',
+      'dashboard.todos.view',
+    ]);
 
     const teacherPermissions = await getSystemRolePermissionCodes('teacher');
     expect(teacherPermissions).toHaveLength(54);
+    expect(new Set(teacherPermissions).size).toBe(teacherPermissions.length);
     expect(teacherPermissions).toEqual(
       Array.from(FINAL_TEACHER_PERMISSIONS).sort(),
     );
+    expect(teacherPermissions).not.toContain('dashboard.todos.view');
+    expect(teacherPermissions).not.toContain('dashboard.todos.manage');
     for (const permission of REQUIRED_FINAL_TEACHER_APP_PERMISSIONS) {
       expect(teacherPermissions).toContain(permission);
     }
@@ -724,8 +740,17 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       false,
     );
 
-    expect(await getSystemRolePermissionCodes('parent')).toHaveLength(46);
-    expect(await getSystemRolePermissionCodes('student')).toHaveLength(57);
+    const parentPermissions = await getSystemRolePermissionCodes('parent');
+    expect(parentPermissions).toHaveLength(46);
+    expect(new Set(parentPermissions).size).toBe(parentPermissions.length);
+    expect(parentPermissions).not.toContain('dashboard.todos.view');
+    expect(parentPermissions).not.toContain('dashboard.todos.manage');
+
+    const studentPermissions = await getSystemRolePermissionCodes('student');
+    expect(studentPermissions).toHaveLength(57);
+    expect(new Set(studentPermissions).size).toBe(studentPermissions.length);
+    expect(studentPermissions).not.toContain('dashboard.todos.view');
+    expect(studentPermissions).not.toContain('dashboard.todos.manage');
   });
 
   it('keeps removed Teacher App routes absent', async () => {

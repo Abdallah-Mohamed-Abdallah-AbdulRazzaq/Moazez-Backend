@@ -21,11 +21,16 @@ import {
   DashboardLightModeDropdownRepository,
   DashboardLightModeDropdownSchoolLocationSnapshot,
 } from '../infrastructure/dashboard-light-mode-dropdown.repository';
+import { DashboardTodosRepository } from '../infrastructure/dashboard-todos.repository';
 
 describe('Dashboard LightModeDropdown use case', () => {
   it('returns a stable response shape from the active school profile', async () => {
     const repository = repositoryMock(locationSnapshot());
-    const useCase = new GetDashboardLightModeDropdownUseCase(repository as any);
+    const todosRepository = todosRepositoryMock();
+    const useCase = new GetDashboardLightModeDropdownUseCase(
+      repository as any,
+      todosRepository as any,
+    );
 
     const response = await withSchoolScope(() => useCase.execute());
 
@@ -36,6 +41,10 @@ describe('Dashboard LightModeDropdown use case', () => {
         schoolId: 'school-1',
         roleId: 'role-1',
       }),
+    );
+    expect(todosRepository.listOwnedTodos).toHaveBeenCalledWith(
+      expect.objectContaining({ schoolId: 'school-1', actorId: 'user-1' }),
+      expect.objectContaining({ limit: 100 }),
     );
     expect(response).toMatchObject({
       generatedAt: expect.any(String),
@@ -75,11 +84,11 @@ describe('Dashboard LightModeDropdown use case', () => {
         units: 'metric',
         weatherStatus: 'provider_not_configured',
         plannerStatus: 'foundation_only',
-        todosStatus: 'not_persisted',
+        todosStatus: 'persisted',
         deferred: {
           weatherProvider: 'deferred',
           weatherCache: 'deferred',
-          todoPersistence: 'deferred',
+          todoPersistence: 'persisted',
           plannerCalendar: 'deferred',
           crossModulePlannerItems: 'deferred',
           realtime: 'deferred',
@@ -93,7 +102,10 @@ describe('Dashboard LightModeDropdown use case', () => {
 
   it('uses valid query timezone, locale, units, and date without exposing overrides', async () => {
     const repository = repositoryMock(locationSnapshot());
-    const useCase = new GetDashboardLightModeDropdownUseCase(repository as any);
+    const useCase = new GetDashboardLightModeDropdownUseCase(
+      repository as any,
+      todosRepositoryMock() as any,
+    );
 
     const response = await withSchoolScope(() =>
       useCase.execute({
@@ -132,7 +144,10 @@ describe('Dashboard LightModeDropdown use case', () => {
         country: null,
       },
     });
-    const useCase = new GetDashboardLightModeDropdownUseCase(repository as any);
+    const useCase = new GetDashboardLightModeDropdownUseCase(
+      repository as any,
+      todosRepositoryMock() as any,
+    );
 
     const response = await withSchoolScope(() => useCase.execute());
 
@@ -151,7 +166,7 @@ describe('Dashboard LightModeDropdown use case', () => {
     expect(response.meta.deferred).toMatchObject({
       weatherProvider: 'deferred',
       plannerCalendar: 'deferred',
-      todoPersistence: 'deferred',
+      todoPersistence: 'persisted',
     });
   });
 
@@ -190,6 +205,7 @@ describe('Dashboard LightModeDropdown use case', () => {
   it('rejects callers without an active school scope', async () => {
     const useCase = new GetDashboardLightModeDropdownUseCase(
       repositoryMock(locationSnapshot()) as any,
+      todosRepositoryMock() as any,
     );
 
     await expect(
@@ -198,6 +214,41 @@ describe('Dashboard LightModeDropdown use case', () => {
         return useCase.execute();
       }),
     ).rejects.toBeInstanceOf(ScopeMissingException);
+  });
+
+  it('includes persisted current-owner todos for the resolved date', async () => {
+    const todosRepository = todosRepositoryMock();
+    todosRepository.listOwnedTodos.mockResolvedValue([
+      {
+        id: 'todo-1',
+        date: new Date('2026-07-09T00:00:00.000Z'),
+        title: 'Review attendance',
+        notes: null,
+        status: 'PENDING',
+        priority: 'NORMAL',
+        sortOrder: 0,
+        completedAt: null,
+        createdAt: new Date('2026-07-09T10:00:00.000Z'),
+        updatedAt: new Date('2026-07-09T10:00:00.000Z'),
+      } as any,
+    ]);
+    const useCase = new GetDashboardLightModeDropdownUseCase(
+      repositoryMock(locationSnapshot()) as any,
+      todosRepository as any,
+    );
+
+    const response = await withSchoolScope(() =>
+      useCase.execute({ date: '2026-07-09' }),
+    );
+
+    expect(response.planner.todos).toEqual([
+      expect.objectContaining({
+        todoId: 'todo-1',
+        title: 'Review attendance',
+        status: 'pending',
+      }),
+    ]);
+    expect(response.meta.todosStatus).toBe('persisted');
   });
 });
 
@@ -223,6 +274,14 @@ function repositoryMock(
 > {
   return {
     loadSchoolLocationSnapshot: jest.fn().mockResolvedValue(snapshot),
+  };
+}
+
+function todosRepositoryMock(): jest.Mocked<
+  Pick<DashboardTodosRepository, 'listOwnedTodos'>
+> {
+  return {
+    listOwnedTodos: jest.fn().mockResolvedValue([]),
   };
 }
 

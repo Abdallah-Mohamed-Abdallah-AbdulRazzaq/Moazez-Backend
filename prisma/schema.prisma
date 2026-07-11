@@ -103,6 +103,21 @@ enum DismissalRequestEventType {
   @@map("dismissal_request_event_type")
 }
 
+enum DashboardTodoStatus {
+  PENDING
+  COMPLETED
+
+  @@map("dashboard_todo_status")
+}
+
+enum DashboardTodoPriority {
+  LOW
+  NORMAL
+  HIGH
+
+  @@map("dashboard_todo_priority")
+}
+
 enum UserStatus {
   ACTIVE
   INVITED
@@ -1343,6 +1358,7 @@ model School {
   communicationNotificationPushAttempts CommunicationNotificationPushAttempt[]
   communicationNotificationPreferences  CommunicationNotificationPreference[]
   appDeviceTokens                       AppDeviceToken[]
+  dashboardTodos                        DashboardTodo[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -1545,6 +1561,7 @@ model User {
   communicationNotificationPreferences           CommunicationNotificationPreference[]  @relation("CommunicationNotificationPreferencesUser")
   schoolEmailDeliveryRecipients                  SchoolEmailDeliveryRecipient[]         @relation("SchoolEmailDeliveryRecipientsUser")
   appDeviceTokens                                AppDeviceToken[]                       @relation("AppDeviceTokensUser")
+  dashboardTodos                                 DashboardTodo[]
 
   @@index([userType])
   @@index([status])
@@ -1554,6 +1571,35 @@ model User {
   @@index([passwordProvisionedAt])
   @@index([deletedAt])
   @@map("users")
+}
+
+// ============================================================
+// DASHBOARD — dashboard-owned operator persistence
+// ============================================================
+
+model DashboardTodo {
+  id          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId    String                @map("school_id") @db.Uuid
+  ownerUserId String                @map("owner_user_id") @db.Uuid
+  date        DateTime              @db.Date
+  title       String                @db.VarChar(160)
+  notes       String?               @db.VarChar(1000)
+  status      DashboardTodoStatus   @default(PENDING)
+  priority    DashboardTodoPriority @default(NORMAL)
+  sortOrder   Int                   @default(0) @map("sort_order")
+  completedAt DateTime?             @map("completed_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school    School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  ownerUser User   @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, ownerUserId, date, deletedAt])
+  @@index([schoolId, ownerUserId, status, deletedAt])
+  @@index([ownerUserId])
+  @@map("dashboard_todos")
 }
 
 model ApplicantProfile {

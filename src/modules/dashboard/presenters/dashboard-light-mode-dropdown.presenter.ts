@@ -5,11 +5,14 @@ import {
 } from '../dto/dashboard-light-mode-dropdown.dto';
 import { NormalizedDashboardLightModeDropdownQuery } from '../application/get-dashboard-light-mode-dropdown.use-case';
 import { DashboardLightModeDropdownSchoolLocationSnapshot } from '../infrastructure/dashboard-light-mode-dropdown.repository';
+import { DashboardTodoSnapshot } from '../infrastructure/dashboard-todos.repository';
+import { presentDashboardTodo } from './dashboard-todos.presenter';
 
 export interface DashboardLightModeDropdownPresentationInput {
   generatedAt: Date;
   schoolLocation: DashboardLightModeDropdownSchoolLocationSnapshot;
   query: NormalizedDashboardLightModeDropdownQuery;
+  todos?: DashboardTodoSnapshot[];
 }
 
 export function presentDashboardLightModeDropdown(
@@ -44,7 +47,7 @@ export function presentDashboardLightModeDropdown(
       date: input.query.date,
       eventDates: [],
       events: [],
-      todos: [],
+      todos: (input.todos ?? []).map(presentDashboardTodo),
     },
     meta: {
       source: 'dashboard_light_mode_dropdown',
@@ -53,11 +56,11 @@ export function presentDashboardLightModeDropdown(
       units: input.query.units,
       weatherStatus,
       plannerStatus: 'foundation_only',
-      todosStatus: 'not_persisted',
+      todosStatus: 'persisted',
       deferred: {
         weatherProvider: 'deferred',
         weatherCache: 'deferred',
-        todoPersistence: 'deferred',
+        todoPersistence: 'persisted',
         plannerCalendar: 'deferred',
         crossModulePlannerItems: 'deferred',
         realtime: 'deferred',

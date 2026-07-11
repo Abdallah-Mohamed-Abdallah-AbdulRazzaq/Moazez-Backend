@@ -8,25 +8,32 @@ import { GetDashboardLightModeDropdownUseCase } from './application/get-dashboar
 import { GetDashboardModulePageUseCase } from './application/get-dashboard-module-page.use-case';
 import { GetDashboardWidgetUseCase } from './application/get-dashboard-widget.use-case';
 import { GetDashboardSummaryUseCase } from './application/get-dashboard-summary.use-case';
+import { CreateDashboardTodoUseCase } from './application/create-dashboard-todo.use-case';
+import { DeleteDashboardTodoUseCase } from './application/delete-dashboard-todo.use-case';
 import { ListDashboardActivityFeedUseCase } from './application/list-dashboard-activity-feed.use-case';
 import { ListDashboardAlertsUseCase } from './application/list-dashboard-alerts.use-case';
 import { ListDashboardAnalyticsChartsUseCase } from './application/list-dashboard-analytics-charts.use-case';
 import { ListDashboardModulesUseCase } from './application/list-dashboard-modules.use-case';
+import { ListDashboardTodosUseCase } from './application/list-dashboard-todos.use-case';
 import { ListDashboardWidgetsUseCase } from './application/list-dashboard-widgets.use-case';
+import { UpdateDashboardTodoUseCase } from './application/update-dashboard-todo.use-case';
+import { DashboardTodosController } from './controller/dashboard-todos.controller';
 import { DashboardController } from './controller/dashboard.controller';
 import { DashboardActivityFeedRepository } from './infrastructure/dashboard-activity-feed.repository';
 import { DashboardAlertsRepository } from './infrastructure/dashboard-alerts.repository';
 import { DashboardLightModeDropdownRepository } from './infrastructure/dashboard-light-mode-dropdown.repository';
 import { DashboardSummaryRepository } from './infrastructure/dashboard-summary.repository';
+import { DashboardTodosRepository } from './infrastructure/dashboard-todos.repository';
 
 @Module({
   imports: [AuthModule],
-  controllers: [DashboardController],
+  controllers: [DashboardController, DashboardTodosController],
   providers: [
     DashboardSummaryRepository,
     DashboardAlertsRepository,
     DashboardActivityFeedRepository,
     DashboardLightModeDropdownRepository,
+    DashboardTodosRepository,
     GetDashboardAnalyticsCatalogUseCase,
     GetDashboardAnalyticsChartDataUseCase,
     GetDashboardAnalyticsChartUseCase,
@@ -35,11 +42,15 @@ import { DashboardSummaryRepository } from './infrastructure/dashboard-summary.r
     GetDashboardModulePageUseCase,
     GetDashboardWidgetUseCase,
     GetDashboardSummaryUseCase,
+    CreateDashboardTodoUseCase,
+    DeleteDashboardTodoUseCase,
     ListDashboardAlertsUseCase,
     ListDashboardActivityFeedUseCase,
     ListDashboardAnalyticsChartsUseCase,
     ListDashboardModulesUseCase,
+    ListDashboardTodosUseCase,
     ListDashboardWidgetsUseCase,
+    UpdateDashboardTodoUseCase,
   ],
 })
 export class DashboardModule {}
