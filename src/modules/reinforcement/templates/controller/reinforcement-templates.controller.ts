@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { CreateReinforcementTaskTemplateUseCase } from '../application/create-reinforcement-task-template.use-case';
 import { ListReinforcementTemplatesUseCase } from '../application/list-reinforcement-templates.use-case';
 import {
@@ -10,6 +11,7 @@ import {
 
 @ApiTags('reinforcement-templates')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('reinforcement/templates')
 export class ReinforcementTemplatesController {
   constructor(

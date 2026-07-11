@@ -655,18 +655,18 @@ describe('Behavior category tenancy isolation (security)', () => {
       });
   });
 
-  it('teacher can view categories but cannot manage them', async () => {
+  it('teacher cannot access core behavior categories', async () => {
     const { accessToken } = await login(teacherEmail);
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/behavior/categories`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/behavior/categories/${demoCategoryId}`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/behavior/categories`)
@@ -959,31 +959,13 @@ describe('Behavior category tenancy isolation (security)', () => {
     expect(after.xpLedger).toBe(before.xpLedger);
   });
 
-  it('teacher can create and submit records but cannot manage or cancel them', async () => {
+  it('teacher cannot access core behavior record mutations', async () => {
     const { accessToken } = await login(teacherEmail);
 
-    const created = await request(app.getHttpServer())
+    await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/behavior/records`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send(recordPayload({ titleEn: `${testSuffix}-teacher-record` }))
-      .expect(201);
-    createdRecordIds.push(created.body.id);
-
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/behavior/records/${created.body.id}/submit`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(201);
-
-    await request(app.getHttpServer())
-      .patch(`${GLOBAL_PREFIX}/behavior/records/${created.body.id}`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ titleEn: 'Teacher forbidden update' })
-      .expect(403);
-
-    await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/behavior/records/${created.body.id}/cancel`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ cancellationReasonEn: 'Teacher forbidden cancel' })
       .expect(403);
   });
 
@@ -1344,8 +1326,8 @@ describe('Behavior category tenancy isolation (security)', () => {
       .expect(403);
   });
 
-  it('admin and teacher roles can read overview, student summary, and classroom summary', async () => {
-    for (const email of [DEMO_ADMIN_EMAIL, teacherEmail]) {
+  it('admin can read core summaries and teacher cannot', async () => {
+    for (const email of [DEMO_ADMIN_EMAIL]) {
       const { accessToken } = await login(email);
 
       await request(app.getHttpServer())
@@ -1362,6 +1344,18 @@ describe('Behavior category tenancy isolation (security)', () => {
         .get(`${GLOBAL_PREFIX}/behavior/classrooms/${demoClassroomId}/summary`)
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
+    }
+
+    const { accessToken } = await login(teacherEmail);
+    for (const path of [
+      `${GLOBAL_PREFIX}/behavior/overview`,
+      `${GLOBAL_PREFIX}/behavior/students/${demoStudentId}/summary`,
+      `${GLOBAL_PREFIX}/behavior/classrooms/${demoClassroomId}/summary`,
+    ]) {
+      await request(app.getHttpServer())
+        .get(path)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
     }
   });
 

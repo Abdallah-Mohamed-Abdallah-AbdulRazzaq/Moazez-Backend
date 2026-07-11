@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import {
   CompleteHeroMissionUseCase,
   CompleteHeroObjectiveUseCase,
@@ -25,6 +26,7 @@ import {
 
 @ApiTags('reinforcement-hero-journey')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('reinforcement/hero')
 export class HeroJourneyProgressController {
   constructor(

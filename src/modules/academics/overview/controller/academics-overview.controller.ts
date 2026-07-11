@@ -6,12 +6,14 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { GetAcademicsOverviewUseCase } from '../application/get-academics-overview.use-case';
 import { AcademicsOverviewQueryDto } from '../dto/academics-overview-query.dto';
 import { AcademicsOverviewResponseDto } from '../dto/academics-overview-response.dto';
 
 @ApiTags('academics-overview')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('academics/overview')
 export class AcademicsOverviewController {
   constructor(

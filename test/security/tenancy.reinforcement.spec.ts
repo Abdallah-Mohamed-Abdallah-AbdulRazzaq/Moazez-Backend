@@ -1021,40 +1021,36 @@ describe('Reinforcement tenancy isolation (security)', () => {
     expect(cancelResponse.body.status).toBe('cancelled');
   });
 
-  it('teacher can create, list, detail, duplicate, and cancel tasks', async () => {
+  it('teacher cannot use core task management routes', async () => {
     const { accessToken } = await login(teacherEmail);
 
-    const createResponse = await request(app.getHttpServer())
+    await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/reinforcement/tasks`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send(taskPayload({ titleEn: `${testSuffix}-teacher-task` }))
-      .expect(201);
-    createdTaskIds.push(createResponse.body.id);
+      .expect(403);
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/reinforcement/tasks`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/reinforcement/tasks/${createResponse.body.id}`)
+      .get(`${GLOBAL_PREFIX}/reinforcement/tasks/${demoTaskId}`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
-    const duplicateResponse = await request(app.getHttpServer())
-      .post(
-        `${GLOBAL_PREFIX}/reinforcement/tasks/${createResponse.body.id}/duplicate`,
-      )
+    await request(app.getHttpServer())
+      .post(`${GLOBAL_PREFIX}/reinforcement/tasks/${demoTaskId}/duplicate`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ titleEn: `${testSuffix}-teacher-task-copy` })
-      .expect(201);
-    createdTaskIds.push(duplicateResponse.body.id);
+      .expect(403);
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/reinforcement/tasks/${createResponse.body.id}/cancel`)
+      .post(`${GLOBAL_PREFIX}/reinforcement/tasks/${demoTaskId}/cancel`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ reason: 'Teacher cancelled' })
-      .expect(201);
+      .expect(403);
   });
 
   it('parent and student task-view actors cannot manage tasks', async () => {
@@ -1285,53 +1281,44 @@ describe('Reinforcement tenancy isolation (security)', () => {
     );
   });
 
-  it('teacher can submit, list, detail, approve, and reject review items', async () => {
+  it('teacher cannot use core submission and review routes', async () => {
     const { accessToken } = await login(teacherEmail);
-    const submitFixture = await createDemoTaskFixture('teacher-submit-review');
 
-    const submitResponse = await request(app.getHttpServer())
+    await request(app.getHttpServer())
       .post(
-        `${GLOBAL_PREFIX}/reinforcement/assignments/${submitFixture.assignmentId}/stages/${submitFixture.stageId}/submit`,
+        `${GLOBAL_PREFIX}/reinforcement/assignments/${demoAssignmentId}/stages/${demoTaskStageId}/submit`,
       )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ proofText: `${testSuffix}-teacher-proof` })
-      .expect(201);
+      .expect(403);
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/reinforcement/review-queue`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
     await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/reinforcement/review-queue/${submitResponse.body.id}`)
+      .get(
+        `${GLOBAL_PREFIX}/reinforcement/review-queue/${demoSubmittedSubmissionId}`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
     await request(app.getHttpServer())
       .post(
-        `${GLOBAL_PREFIX}/reinforcement/review-queue/${submitResponse.body.id}/approve`,
+        `${GLOBAL_PREFIX}/reinforcement/review-queue/${demoSubmittedSubmissionId}/approve`,
       )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ note: 'Approved by teacher' })
-      .expect(201);
-
-    const rejectFixture = await createDemoTaskFixture('teacher-reject-review');
-    const rejectSubmissionId = await createSubmissionFixture({
-      schoolId: demoSchoolId,
-      taskId: rejectFixture.taskId,
-      assignmentId: rejectFixture.assignmentId,
-      stageId: rejectFixture.stageId,
-      studentId: demoStudentId,
-      enrollmentId: demoEnrollmentId,
-    });
+      .expect(403);
 
     await request(app.getHttpServer())
       .post(
-        `${GLOBAL_PREFIX}/reinforcement/review-queue/${rejectSubmissionId}/reject`,
+        `${GLOBAL_PREFIX}/reinforcement/review-queue/${demoSubmittedSubmissionId}/reject`,
       )
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ note: 'Rejected by teacher' })
-      .expect(201);
+      .expect(403);
   });
 
   it('parent and student actors cannot approve or reject reviews', async () => {
@@ -1432,14 +1419,14 @@ describe('Reinforcement tenancy isolation (security)', () => {
       .expect(201);
 
     const [demoAssignment, tenantBAssignment, afterXpCount] = await Promise.all([
-      prisma.reinforcementAssignment.findUnique({
-        where: { id: fixture.assignmentId },
-        select: { status: true, progress: true },
-      }),
-      prisma.reinforcementAssignment.findUnique({
-        where: { id: tenantBAssignmentId },
-        select: { status: true, progress: true },
-      }),
+        prisma.reinforcementAssignment.findUnique({
+          where: { id: fixture.assignmentId },
+          select: { status: true, progress: true },
+        }),
+        prisma.reinforcementAssignment.findUnique({
+          where: { id: tenantBAssignmentId },
+          select: { status: true, progress: true },
+        }),
       prisma.xpLedger.count({ where: { assignmentId: fixture.assignmentId } }),
     ]);
 
@@ -1615,25 +1602,25 @@ describe('Reinforcement tenancy isolation (security)', () => {
       .expect(403);
   });
 
-  it('teacher can view XP but cannot manage XP', async () => {
+  it('teacher cannot use core XP routes', async () => {
     const { accessToken } = await login(teacherEmail);
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/reinforcement/xp/policies`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/reinforcement/xp/ledger`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
     await request(app.getHttpServer())
       .get(
         `${GLOBAL_PREFIX}/reinforcement/xp/summary?yearId=${demoYearId}&termId=${demoTermId}`,
       )
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/reinforcement/xp/policies`)

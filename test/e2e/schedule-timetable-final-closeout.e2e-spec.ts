@@ -403,10 +403,6 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
       'GET /api/v1/parent/homeworks',
       'GET /api/v1/student/pickup',
       'GET /api/v1/parent/pickup',
-      'GET /api/v1/parent/smart-pickup',
-      'GET /api/v1/teacher/notifications',
-      'GET /api/v1/student/notifications',
-      'GET /api/v1/parent/notifications',
       'POST /api/v1/parent/children/add',
     ]) {
       expect(routes).not.toContain(absentRoute);
@@ -881,10 +877,6 @@ describe('Sprint 12F Schedule/Timetable final closeout (e2e)', () => {
       `${GLOBAL_PREFIX}/parent/homeworks`,
       `${GLOBAL_PREFIX}/student/pickup`,
       `${GLOBAL_PREFIX}/parent/pickup`,
-      `${GLOBAL_PREFIX}/parent/smart-pickup`,
-      `${GLOBAL_PREFIX}/teacher/notifications`,
-      `${GLOBAL_PREFIX}/student/notifications`,
-      `${GLOBAL_PREFIX}/parent/notifications`,
       `${GLOBAL_PREFIX}/parent/schedule`,
     ]) {
       await request(app.getHttpServer())

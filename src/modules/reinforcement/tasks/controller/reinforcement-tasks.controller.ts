@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { CancelReinforcementTaskUseCase } from '../application/cancel-reinforcement-task.use-case';
 import { CreateReinforcementTaskUseCase } from '../application/create-reinforcement-task.use-case';
 import { DuplicateReinforcementTaskUseCase } from '../application/duplicate-reinforcement-task.use-case';
@@ -25,6 +26,7 @@ import {
 
 @ApiTags('reinforcement-tasks')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('reinforcement')
 export class ReinforcementTasksController {
   constructor(

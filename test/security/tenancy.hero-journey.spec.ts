@@ -793,12 +793,12 @@ describe('Hero Journey tenancy isolation (security)', () => {
     expect(archived.body.status).toBe('archived');
   });
 
-  it('teacher can view missions but cannot manage them, and parent/student cannot access core Hero endpoints', async () => {
+  it('teacher, parent, and student cannot access core Hero endpoints', async () => {
     const teacher = await login(teacherEmail);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/reinforcement/hero/missions`)
       .set('Authorization', `Bearer ${teacher.accessToken}`)
-      .expect(200);
+      .expect(403);
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/reinforcement/hero/missions`)
       .set('Authorization', `Bearer ${teacher.accessToken}`)
@@ -992,7 +992,7 @@ describe('Hero Journey tenancy isolation (security)', () => {
       .expect(403);
   });
 
-  it('teacher can view seeded progress but cannot manage it, and parent/student cannot access core progress endpoints', async () => {
+  it('teacher, parent, and student cannot access core progress endpoints', async () => {
     const teacher = await login(teacherEmail);
     await request(app.getHttpServer())
       .get(
@@ -1000,7 +1000,7 @@ describe('Hero Journey tenancy isolation (security)', () => {
       )
       .query({ academicYearId: demoYearId, termId: demoTermId })
       .set('Authorization', `Bearer ${teacher.accessToken}`)
-      .expect(200);
+      .expect(403);
     await request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/reinforcement/hero/students/${demoStudentId}/missions/${demoPublishedMissionId}/start`,
@@ -1012,7 +1012,7 @@ describe('Hero Journey tenancy isolation (security)', () => {
       .get(`${GLOBAL_PREFIX}/reinforcement/hero/students/${demoStudentId}/rewards`)
       .query({ academicYearId: demoYearId, termId: demoTermId })
       .set('Authorization', `Bearer ${teacher.accessToken}`)
-      .expect(200);
+      .expect(403);
     await request(app.getHttpServer())
       .post(
         `${GLOBAL_PREFIX}/reinforcement/hero/progress/${demoRewardProgressId}/grant-xp`,
@@ -1481,7 +1481,7 @@ describe('Hero Journey tenancy isolation (security)', () => {
       .expect(403);
   });
 
-  it('school admin can read all Hero dashboard summaries and teacher can read hero-view summaries', async () => {
+  it('school admin can read all Hero dashboard summaries and teacher cannot use core summaries', async () => {
     const admin = await login(DEMO_ADMIN_EMAIL);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/reinforcement/hero/badge-summary`)
@@ -1489,35 +1489,53 @@ describe('Hero Journey tenancy isolation (security)', () => {
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .expect(200);
 
-    for (const email of [DEMO_ADMIN_EMAIL, teacherEmail]) {
-      const { accessToken } = await login(email);
+    const adminAccessToken = admin.accessToken;
 
-      await request(app.getHttpServer())
-        .get(`${GLOBAL_PREFIX}/reinforcement/hero/overview`)
-        .query({ academicYearId: demoYearId, termId: demoTermId })
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
-      await request(app.getHttpServer())
-        .get(`${GLOBAL_PREFIX}/reinforcement/hero/map`)
-        .query({
+    for (const { path, query } of [
+      {
+        path: `${GLOBAL_PREFIX}/reinforcement/hero/overview`,
+        query: {
           academicYearId: demoYearId,
           termId: demoTermId,
           studentId: demoStudentId,
-        })
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
+        },
+      },
+      {
+        path: `${GLOBAL_PREFIX}/reinforcement/hero/map`,
+        query: {
+          academicYearId: demoYearId,
+          termId: demoTermId,
+          studentId: demoStudentId,
+        },
+      },
+      {
+        path: `${GLOBAL_PREFIX}/reinforcement/hero/stages/${demoStageId}/summary`,
+        query: { academicYearId: demoYearId, termId: demoTermId },
+      },
+      {
+        path: `${GLOBAL_PREFIX}/reinforcement/hero/classrooms/${demoClassroomId}/summary`,
+        query: { academicYearId: demoYearId, termId: demoTermId },
+      },
+    ]) {
       await request(app.getHttpServer())
-        .get(`${GLOBAL_PREFIX}/reinforcement/hero/stages/${demoStageId}/summary`)
-        .query({ academicYearId: demoYearId, termId: demoTermId })
-        .set('Authorization', `Bearer ${accessToken}`)
+        .get(path)
+        .query(query)
+        .set('Authorization', `Bearer ${adminAccessToken}`)
         .expect(200);
+    }
+
+    const teacher = await login(teacherEmail);
+    for (const path of [
+      `${GLOBAL_PREFIX}/reinforcement/hero/overview`,
+      `${GLOBAL_PREFIX}/reinforcement/hero/map`,
+      `${GLOBAL_PREFIX}/reinforcement/hero/stages/${demoStageId}/summary`,
+      `${GLOBAL_PREFIX}/reinforcement/hero/classrooms/${demoClassroomId}/summary`,
+    ]) {
       await request(app.getHttpServer())
-        .get(
-          `${GLOBAL_PREFIX}/reinforcement/hero/classrooms/${demoClassroomId}/summary`,
-        )
+        .get(path)
         .query({ academicYearId: demoYearId, termId: demoTermId })
-        .set('Authorization', `Bearer ${accessToken}`)
-        .expect(200);
+        .set('Authorization', `Bearer ${teacher.accessToken}`)
+        .expect(403);
     }
   });
 

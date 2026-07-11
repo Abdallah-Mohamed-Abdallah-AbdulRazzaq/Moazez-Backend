@@ -88,15 +88,14 @@ describe('DISMISSAL-CALLS-1B route metadata and permission boundaries', () => {
   it('adds only the status-changed event enum and no forbidden surfaces', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
     const migrationSource = readFileSync(
-      'prisma/migrations/20260705130000_dismissal_request_status_changed_event/migration.sql',
+      'prisma/migrations/20260710135222_baseline_v1/migration.sql',
       'utf8',
     );
 
     expect(schemaSource).toMatch(/REQUEST_STATUS_CHANGED/);
-    expect(migrationSource.trim()).toBe(
-      'ALTER TYPE "dismissal_request_event_type" ADD VALUE \'REQUEST_STATUS_CHANGED\';',
+    expect(migrationSource).toContain(
+      `CREATE TYPE "dismissal_request_event_type" AS ENUM ('REQUEST_CREATED', 'REQUEST_STATUS_CHANGED', 'REQUEST_ESCALATED')`,
     );
-    expect(migrationSource).not.toMatch(/CREATE TABLE|CREATE INDEX|INSERT INTO/i);
 
     const tokenSurfaceBlock = schemaSource.match(
       /enum AppDeviceTokenSurface \{([\s\S]*?)\n\}/,

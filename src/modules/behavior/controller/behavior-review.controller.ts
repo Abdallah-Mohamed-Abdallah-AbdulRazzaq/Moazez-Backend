@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../common/decorators/school-management-only.decorator';
 import {
   ApproveBehaviorRecordUseCase,
   GetBehaviorReviewQueueItemUseCase,
@@ -23,6 +24,7 @@ import {
 
 @ApiTags('behavior')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('behavior')
 export class BehaviorReviewController {
   constructor(

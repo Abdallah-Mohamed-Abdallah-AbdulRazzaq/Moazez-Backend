@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { CreateSubjectUseCase } from '../application/create-subject.use-case';
 import { DeleteSubjectUseCase } from '../application/delete-subject.use-case';
 import { ListSubjectsUseCase } from '../application/list-subjects.use-case';
@@ -23,6 +24,7 @@ import {
 
 @ApiTags('academics-subjects')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('academics/subjects')
 export class SubjectsController {
   constructor(

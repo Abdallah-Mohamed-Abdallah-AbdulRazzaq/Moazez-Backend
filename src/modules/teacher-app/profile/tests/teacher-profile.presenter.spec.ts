@@ -18,10 +18,8 @@ describe('TeacherProfilePresenter', () => {
         logoUrl: null,
       },
       role: {
-        roleId: 'role-1',
-        role: { id: 'role-1', name: 'Teacher' },
+        role: { name: 'Teacher' },
       },
-      fallbackRoleId: 'role-1',
       classesSummary: {
         classesCount: 2,
         subjectsCount: 1,
@@ -45,7 +43,6 @@ describe('TeacherProfilePresenter', () => {
         logoUrl: null,
       },
       role: {
-        roleId: 'role-1',
         name: 'Teacher',
       },
       classesSummary: {
@@ -59,6 +56,7 @@ describe('TeacherProfilePresenter', () => {
     expect(json).not.toContain('scheduleId');
     expect(json).not.toContain('password');
     expect(json).not.toContain('session');
+    expect(hasObjectKey(result, 'roleId')).toBe(false);
   });
 
   it('returns stable unsupported employment data', () => {
@@ -77,3 +75,15 @@ describe('TeacherProfilePresenter', () => {
     });
   });
 });
+
+function hasObjectKey(value: unknown, forbiddenKey: string): boolean {
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) {
+    return value.some((item) => hasObjectKey(item, forbiddenKey));
+  }
+
+  return Object.entries(value).some(
+    ([key, nested]) =>
+      key === forbiddenKey || hasObjectKey(nested, forbiddenKey),
+  );
+}

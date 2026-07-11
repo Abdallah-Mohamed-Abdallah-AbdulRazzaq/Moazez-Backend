@@ -20,6 +20,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import {
   AutoPlanLessonPlanUseCase,
   GetLessonPlanSummaryUseCase,
@@ -72,6 +73,7 @@ import {
 
 @ApiTags('academics-lesson-plans')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('academics/lesson-plans')
 export class LessonPlansController {
   constructor(
@@ -141,7 +143,9 @@ export class LessonPlansController {
   @Post('auto-plan')
   @HttpCode(HttpStatus.OK)
   @RequiredPermissions('academics.lesson_plans.manage')
-  @ApiOperation({ summary: 'Generate lesson plan items from curriculum and timetable slots' })
+  @ApiOperation({
+    summary: 'Generate lesson plan items from curriculum and timetable slots',
+  })
   @ApiBody({ type: AutoPlanLessonPlanDto })
   @ApiOkResponse({ type: AutoPlanLessonPlanResponseDto })
   autoPlanLessonPlan(
@@ -272,11 +276,7 @@ export class LessonPlansController {
     @Param('itemId', new ParseUUIDPipe()) itemId: string,
     @Body() dto: ReorderLessonPlanItemDto,
   ): Promise<LessonPlanItemResponseDto> {
-    return this.reorderLessonPlanItemUseCase.execute(
-      lessonPlanId,
-      itemId,
-      dto,
-    );
+    return this.reorderLessonPlanItemUseCase.execute(lessonPlanId, itemId, dto);
   }
 
   @Post(':lessonPlanId/items/:itemId/start')

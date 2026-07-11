@@ -685,18 +685,18 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     expect(after.xpLedger).toBe(before.xpLedger);
   });
 
-  it('teacher can view catalog but cannot manage it', async () => {
+  it('teacher cannot access the core reward catalog', async () => {
     const { accessToken } = await login(teacherEmail);
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/reinforcement/rewards/catalog`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/reinforcement/rewards/catalog/${demoRewardId}`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/reinforcement/rewards/catalog`)
@@ -834,8 +834,8 @@ describe('Rewards catalog tenancy isolation (security)', () => {
       .expect(403);
   });
 
-  it('admin and teacher can read overview, student summary, and catalog summary', async () => {
-    for (const email of [DEMO_ADMIN_EMAIL, teacherEmail]) {
+  it('admin can read core reward summaries and teacher cannot', async () => {
+    for (const email of [DEMO_ADMIN_EMAIL]) {
       const { accessToken } = await login(email);
 
       await request(app.getHttpServer())
@@ -857,6 +857,19 @@ describe('Rewards catalog tenancy isolation (security)', () => {
         .query({ academicYearId: demoYearId, termId: demoTermId })
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
+    }
+
+    const { accessToken } = await login(teacherEmail);
+    for (const path of [
+      `${GLOBAL_PREFIX}/reinforcement/rewards/overview`,
+      `${GLOBAL_PREFIX}/reinforcement/rewards/students/${demoStudentId}/summary`,
+      `${GLOBAL_PREFIX}/reinforcement/rewards/catalog-summary`,
+    ]) {
+      await request(app.getHttpServer())
+        .get(path)
+        .query({ academicYearId: demoYearId, termId: demoTermId })
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(403);
     }
   });
 
@@ -1108,28 +1121,26 @@ describe('Rewards catalog tenancy isolation (security)', () => {
     });
   });
 
-  it('teacher can view and request redemptions but still cannot manage catalog', async () => {
+  it('teacher cannot access core reward redemptions or catalog management', async () => {
     const { accessToken } = await login(teacherEmail);
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
     await request(app.getHttpServer())
       .get(
         `${GLOBAL_PREFIX}/reinforcement/rewards/redemptions/${demoRedemptionId}`,
       )
       .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
+      .expect(403);
 
-    const created = await request(app.getHttpServer())
+    await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/reinforcement/rewards/redemptions`)
       .set('Authorization', `Bearer ${accessToken}`)
       .send(redemptionPayload({ catalogItemId: demoTeacherRequestRewardId }))
-      .expect(201);
-    createdRedemptionIds.push(created.body.id);
-    expect(created.body.status).toBe('requested');
+      .expect(403);
 
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/reinforcement/rewards/catalog`)

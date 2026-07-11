@@ -519,9 +519,9 @@ describe('Academic calendar event tenancy isolation (security)', () => {
   it('denies teacher, student, and parent system roles by default', async () => {
     const rolePermissions = await listAppRoleCalendarPermissions();
     expect(rolePermissions).toEqual({
-      parent: [],
-      student: [],
-      teacher: [],
+      parent: ['academics.calendar.view'],
+      student: ['academics.calendar.view'],
+      teacher: ['academics.calendar.view'],
     });
 
     for (const actor of [

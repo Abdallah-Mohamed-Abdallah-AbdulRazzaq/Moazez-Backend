@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { CreateClassroomUseCase } from '../application/create-classroom.use-case';
 import { CreateGradeUseCase } from '../application/create-grade.use-case';
 import { CreateSectionUseCase } from '../application/create-section.use-case';
@@ -34,7 +35,10 @@ import { UpdateSectionUseCase } from '../application/update-section.use-case';
 import { UpdateStageUseCase } from '../application/update-stage.use-case';
 import { UpdateTermUseCase } from '../application/update-term.use-case';
 import { UpdateYearUseCase } from '../application/update-year.use-case';
-import { UpdateAcademicYearDto, CreateAcademicYearDto } from '../dto/academic-year.dto';
+import {
+  UpdateAcademicYearDto,
+  CreateAcademicYearDto,
+} from '../dto/academic-year.dto';
 import { CreateClassroomDto, UpdateClassroomDto } from '../dto/classroom.dto';
 import { CreateGradeDto, UpdateGradeDto } from '../dto/grade.dto';
 import { ReorderNodeDto } from '../dto/reorder-node.dto';
@@ -58,6 +62,7 @@ import { TreeQueryDto } from '../dto/tree-query.dto';
 
 @ApiTags('academics-structure')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('academics/structure')
 export class StructureController {
   constructor(

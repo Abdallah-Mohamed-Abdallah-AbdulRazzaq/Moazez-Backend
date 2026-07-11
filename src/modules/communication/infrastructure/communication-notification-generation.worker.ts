@@ -1,6 +1,5 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { UserType } from '@prisma/client';
-import { Worker } from 'bullmq';
 import {
   createRequestContext,
   runWithRequestContext,
@@ -14,21 +13,15 @@ import {
 
 @Injectable()
 export class CommunicationNotificationGenerationWorker
-  implements OnModuleInit, OnModuleDestroy
+  implements OnModuleInit
 {
-  private worker: Worker<
-    CommunicationAnnouncementNotificationGenerationJobData,
-    void,
-    string
-  > | null = null;
-
   constructor(
     private readonly bullmqService: BullmqService,
     private readonly generationService: CommunicationNotificationGenerationService,
   ) {}
 
   onModuleInit(): void {
-    this.worker = this.bullmqService.createWorker<
+    this.bullmqService.createWorker<
       CommunicationAnnouncementNotificationGenerationJobData,
       void
     >(COMMUNICATION_NOTIFICATION_QUEUE_NAME, async (job) => {
@@ -53,8 +46,4 @@ export class CommunicationNotificationGenerationWorker
     });
   }
 
-  async onModuleDestroy(): Promise<void> {
-    await this.worker?.close();
-    this.worker = null;
-  }
 }

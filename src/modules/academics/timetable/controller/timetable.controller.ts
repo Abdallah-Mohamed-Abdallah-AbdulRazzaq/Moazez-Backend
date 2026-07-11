@@ -21,6 +21,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { BulkSaveTimetableEntriesUseCase } from '../application/bulk-save-timetable-entries.use-case';
 import { CheckTimetableConflictsUseCase } from '../application/check-timetable-conflicts.use-case';
 import { CreateTimetableEntryUseCase } from '../application/create-timetable-entry.use-case';
@@ -76,6 +77,7 @@ import {
 
 @ApiTags('academics-timetable')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('academics/timetable')
 export class TimetableController {
   constructor(
@@ -311,7 +313,9 @@ export class TimetableController {
   @Post('conflicts/check')
   @HttpCode(HttpStatus.OK)
   @RequiredPermissions('academics.structure.view')
-  @ApiOperation({ summary: 'Check proposed timetable conflicts without saving' })
+  @ApiOperation({
+    summary: 'Check proposed timetable conflicts without saving',
+  })
   @ApiBody({ type: CheckTimetableConflictsDto })
   @ApiOkResponse({ type: TimetableConflictCheckResponseDto })
   checkConflicts(
