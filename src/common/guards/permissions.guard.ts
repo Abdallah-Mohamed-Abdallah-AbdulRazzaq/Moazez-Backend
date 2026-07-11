@@ -1,11 +1,9 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  Injectable,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { UserType } from '@prisma/client';
 import { PUBLIC_ROUTE_METADATA } from '../decorators/public-route.decorator';
 import { REQUIRED_PERMISSIONS_METADATA } from '../decorators/required-permissions.decorator';
+import { SCHOOL_MANAGEMENT_ONLY_METADATA } from '../decorators/school-management-only.decorator';
 import { getRequestContext } from '../context/request-context';
 import {
   ScopeMissingException,
@@ -28,14 +26,26 @@ export class PermissionsGuard implements CanActivate {
     );
     if (isPublic) return true;
 
+    const schoolManagementOnly = this.reflector.getAllAndOverride<boolean>(
+      SCHOOL_MANAGEMENT_ONLY_METADATA,
+      [context.getHandler(), context.getClass()],
+    );
+
+    const ctx = getRequestContext();
+    if (!ctx?.actor) throw new TokenInvalidException();
+    if (
+      schoolManagementOnly &&
+      ctx.actor.userType !== UserType.ORGANIZATION_USER &&
+      ctx.actor.userType !== UserType.SCHOOL_USER
+    ) {
+      throw new ScopeMissingException();
+    }
+
     const required = this.reflector.getAllAndOverride<string[] | undefined>(
       REQUIRED_PERMISSIONS_METADATA,
       [context.getHandler(), context.getClass()],
     );
     if (!required || required.length === 0) return true;
-
-    const ctx = getRequestContext();
-    if (!ctx?.actor) throw new TokenInvalidException();
 
     const granted =
       ctx.activeMembership?.permissions ?? ctx.platformPermissions ?? [];

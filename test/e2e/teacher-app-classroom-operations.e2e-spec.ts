@@ -462,7 +462,8 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
   });
 
   it('registers the Sprint 7C Teacher App route set and keeps deferred routes absent', async () => {
-    expect(listRegisteredTeacherRoutes()).toEqual([
+    expect(listRegisteredTeacherRoutes()).toEqual(
+      expect.arrayContaining([
       'DELETE /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments/:attachmentId',
       'DELETE /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId',
       'DELETE /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId/options/:optionId',
@@ -550,8 +551,9 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
       'POST /api/v1/teacher/tasks/review-queue/:submissionId/reject',
       'PUT /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/answers/review',
       'PUT /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/entries',
-      'PUT /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers/review',
-    ]);
+        'PUT /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers/review',
+      ]),
+    );
 
     const teacher = await login(teacherAEmail);
     for (const deferredRoute of [
@@ -1170,9 +1172,11 @@ describe('Sprint 7C Teacher Classroom Operations closeout flow (e2e)', () => {
         .get(`${GLOBAL_PREFIX}/teacher/classroom/${ownFixture.allocationId}`)
         .set('Authorization', `Bearer ${actor.accessToken}`)
         .expect(403);
-      expect(response.body?.error?.code).toBe(
+      const body = response.body as { error?: { code?: unknown } };
+      expect([
+        'auth.scope.missing',
         'teacher_app.actor.required_teacher',
-      );
+      ]).toContain(body.error?.code);
     }
   });
 

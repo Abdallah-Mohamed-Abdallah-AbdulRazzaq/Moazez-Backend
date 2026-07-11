@@ -720,7 +720,7 @@ describe('Sprint 17E Platform Admin feature control foundation (e2e)', () => {
       roleId: await createRoleWithPermissions({
         schoolId,
         key: `${TEST_PREFIX}-teacher-role`,
-        permissionCodes: [],
+        permissionCodes: ['teacher.home.view'],
       }),
       userType: UserType.TEACHER,
     });
@@ -735,7 +735,7 @@ describe('Sprint 17E Platform Admin feature control foundation (e2e)', () => {
       roleId: await createRoleWithPermissions({
         schoolId,
         key: `${TEST_PREFIX}-student-role`,
-        permissionCodes: [],
+        permissionCodes: ['student.home.view'],
       }),
       userType: UserType.STUDENT,
     });
@@ -775,7 +775,7 @@ describe('Sprint 17E Platform Admin feature control foundation (e2e)', () => {
       roleId: await createRoleWithPermissions({
         schoolId,
         key: `${TEST_PREFIX}-parent-role`,
-        permissionCodes: [],
+        permissionCodes: ['parent.home.view'],
       }),
       userType: UserType.PARENT,
     });

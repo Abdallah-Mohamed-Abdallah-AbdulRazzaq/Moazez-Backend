@@ -56,9 +56,9 @@ describe('Teacher Profile use cases', () => {
       logoUrl: null,
     });
     expect(result.role).toEqual({
-      roleId: 'role-1',
       name: 'Teacher',
     });
+    expect(hasObjectKey(result, 'roleId')).toBe(false);
     expect(result.classesSummary).toEqual({
       classesCount: 3,
       subjectsCount: 2,
@@ -78,6 +78,7 @@ describe('Teacher Profile use cases', () => {
 
     for (const forbidden of [
       'schoolId',
+      'roleId',
       'scheduleId',
       'password',
       'passwordHash',
@@ -149,14 +150,10 @@ function createUseCases(): {
     ),
     findTeacherRole: jest.fn(() =>
       Promise.resolve({
-        roleId: 'role-1',
         role: {
-          id: 'role-1',
           name: 'Teacher',
         },
-      } as unknown as Awaited<
-        ReturnType<TeacherProfileReadAdapter['findTeacherRole']>
-      >),
+      }),
     ),
     countDistinctStudentsForAllocations: jest.fn(() => Promise.resolve(12)),
   } as unknown as jest.Mocked<TeacherProfileReadAdapter>;
@@ -172,6 +169,18 @@ function createUseCases(): {
     allocationReadAdapter,
     profileReadAdapter,
   };
+}
+
+function hasObjectKey(value: unknown, forbiddenKey: string): boolean {
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) {
+    return value.some((item) => hasObjectKey(item, forbiddenKey));
+  }
+
+  return Object.entries(value).some(
+    ([key, nested]) =>
+      key === forbiddenKey || hasObjectKey(nested, forbiddenKey),
+  );
 }
 
 function allocationFixture(

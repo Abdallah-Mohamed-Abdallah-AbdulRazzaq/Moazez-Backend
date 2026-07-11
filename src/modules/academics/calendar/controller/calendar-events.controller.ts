@@ -18,6 +18,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { CreateCalendarEventUseCase } from '../application/create-calendar-event.use-case';
 import { DeleteCalendarEventUseCase } from '../application/delete-calendar-event.use-case';
 import { GetCalendarEventUseCase } from '../application/get-calendar-event.use-case';
@@ -36,6 +37,7 @@ import { ListCalendarEventsQueryDto } from '../dto/list-calendar-events-query.dt
 
 @ApiTags('academics-calendar')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('academics/calendar/events')
 export class CalendarEventsController {
   constructor(

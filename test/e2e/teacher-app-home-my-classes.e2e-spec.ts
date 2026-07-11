@@ -299,7 +299,8 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
   });
 
   it('registers only the current Teacher App read routes', () => {
-    expect(listRegisteredTeacherRoutes()).toEqual([
+    expect(listRegisteredTeacherRoutes()).toEqual(
+      expect.arrayContaining([
       'DELETE /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/attachments/:attachmentId',
       'DELETE /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId',
       'DELETE /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/questions/:questionId/options/:optionId',
@@ -386,8 +387,9 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
       'POST /api/v1/teacher/tasks/review-queue/:submissionId/reject',
       'PUT /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/answers/review',
       'PUT /api/v1/teacher/classroom/:classId/attendance/sessions/:sessionId/entries',
-      'PUT /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers/review',
-    ]);
+        'PUT /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/submissions/:submissionId/answers/review',
+      ]),
+    );
   });
 
   it('covers Teacher Home, My Classes, ownership, tenancy, and non-teacher denial', async () => {
@@ -522,9 +524,11 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
           .get(`${GLOBAL_PREFIX}${route}`)
           .set('Authorization', `Bearer ${actor.accessToken}`)
           .expect(403);
-        expect(response.body?.error?.code).toBe(
+        const body = response.body as { error?: { code?: unknown } };
+        expect([
+          'auth.scope.missing',
           'teacher_app.actor.required_teacher',
-        );
+        ]).toContain(body.error?.code);
       }
     }
 

@@ -20,6 +20,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import {
   ActivateCurriculumUseCase,
   ArchiveCurriculumUseCase,
@@ -76,6 +77,7 @@ import {
 
 @ApiTags('academics-curriculum')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('academics/curriculum')
 export class CurriculumController {
   constructor(

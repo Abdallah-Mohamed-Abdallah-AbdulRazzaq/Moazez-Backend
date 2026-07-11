@@ -222,6 +222,14 @@ teacher's core homework assignment, preventing a fix limited only to creation.
 - Admissions frontend/security regression: 2 suites, 49/49 passed.
 - IAM/tenancy regressions: 2 suites, 11/11 passed.
 
+Latest Gate 1D canonical regression:
+- Unit: 438/438 suites
+- Unit tests: 2,548/2,548
+- Security: 83/83 suites, 1,082/1,082 tests
+- E2E: 100/100 suites, 478/478 tests
+- Root: 1/1 suite, 1/1 test
+- Wall time: approximately 1,344.2 seconds / 22.4 minutes
+
 ### Final status
 
 **RESOLVED — PRODUCTION AUTHORIZATION FIX**
@@ -384,7 +392,48 @@ expecting `roleId`, while the current safe presenter intentionally omits that
 field.
 
 - **Future task:** `TEACHER-PROFILE-ROLE-CONTRACT-AUDIT-1A`
-- **Status:** OPEN — REQUIRES CONTRACT AUDIT DURING FULL PROJECT REGRESSION
+- **Status:** RESOLVED
+
+Full Project Regression Gate 1A confirmed the accepted no-leak contract: the
+safe role display name remains present and `roleId` is absent recursively.
+Focused profile coverage (3 suites / 10 tests), Teacher/Parent/Student/general
+security (5 suites / 133 tests), and the final canonical complete regression
+pass: unit 438 suites / 2,548 tests, security 83 suites / 1,082 tests, E2E 100
+suites / 478 tests, and root 1 suite / 1 test. The verified split union covers all 184
+configured files with natural process exits. See
+`docs/full-project-regression-gate-1a-closeout.md`.
+
+
+## REPOSITORY-QUALITY-BASELINE-1A
+
+- **Status:** OPEN — SEPARATE MAINTENANCE TASK
+- Repository-wide ESLint and Prettier findings are pre-existing quality debt.
+- Gate 1B found zero diagnostics in new TypeScript files and zero diagnostics
+  on introduced/modified lines after scoped correction.
+- New TypeScript files pass Prettier; untouched legacy debt remains out of
+  scope and does not block the regression gate.
+
+## TEST-RUNNER-PERFORMANCE-1A
+
+- **Status:** OPEN — SEPARATE NON-BLOCKING OPTIMIZATION TASK
+- The canonical `npm run test:regression` runner is functionally complete and
+  release-correctness PASS, covering all 184 configured files through fresh
+  unit, security, E2E-directory, and root Jest processes with natural exits.
+- Process isolation resolved the historical cross-tree memory accumulation.
+- Future work should evaluate safe CI sharding or parallelization without
+  sharing mutable database state, Redis state, BullMQ jobs, or test identities.
+- No test may be removed, skipped, retried, or weakened to improve duration.
+- This performance debt does not block the current correctness/security gate.
+- Gate 1C reference run: 1,188.6 seconds / 19.8 minutes.
+- Final Gate 1D accepted run: 1,344.2 seconds / 22.4 minutes.
+- Both exceed the ten-minute optimization threshold.
+
+The remaining debts are exactly:
+
+- `REPOSITORY-QUALITY-BASELINE-1A`
+- `TEST-RUNNER-PERFORMANCE-1A`
+
+Authoritative verdict: `FULL-PROJECT-REGRESSION-GATE-1A: READY FOR REVIEW`.
 
 This finding is unrelated to Communication and does not block the
 Communication security-contract closeout. Teacher Profile runtime code and

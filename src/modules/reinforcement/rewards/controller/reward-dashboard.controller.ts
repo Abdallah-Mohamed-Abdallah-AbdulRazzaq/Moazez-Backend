@@ -1,6 +1,7 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import {
   GetRewardCatalogSummaryUseCase,
   GetRewardsOverviewUseCase,
@@ -14,6 +15,7 @@ import {
 
 @ApiTags('reinforcement-rewards')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('reinforcement/rewards')
 export class RewardDashboardController {
   constructor(

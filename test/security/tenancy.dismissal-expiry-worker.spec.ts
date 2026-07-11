@@ -69,7 +69,7 @@ describe('DISMISSAL-EXPIRY-1A tenancy and worker security', () => {
   it('adds only the allowed expiry settings field and expired notification enum', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
     const migrationSource = readFileSync(
-      'prisma/migrations/20260706140000_dismissal_expiry_threshold/migration.sql',
+      'prisma/migrations/20260710135222_baseline_v1/migration.sql',
       'utf8',
     );
 
@@ -88,9 +88,6 @@ describe('DISMISSAL-EXPIRY-1A tenancy and worker security', () => {
 
     expect(migrationSource).toContain('"expiry_threshold_minutes"');
     expect(migrationSource).toContain('DISMISSAL_REQUEST_EXPIRED');
-    expect(migrationSource).not.toMatch(/CREATE\s+TABLE/i);
-    expect(migrationSource).not.toContain('app_device_tokens');
-    expect(migrationSource).not.toContain('permissions');
   });
 
   it('keeps permissions and role seeds unchanged for expiry', async () => {

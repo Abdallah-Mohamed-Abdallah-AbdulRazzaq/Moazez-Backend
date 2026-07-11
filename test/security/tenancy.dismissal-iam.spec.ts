@@ -111,8 +111,8 @@ function readPermissionEntries(seedSource: string): PermissionEntry[] {
 
 function findMigrationSql(): string {
   const migrationsRoot = join(process.cwd(), 'prisma', 'migrations');
-  const migrationFolder = readdirSync(migrationsRoot).find((entry) =>
-    entry.endsWith('_dismissal_staff_identity_permissions'),
+  const migrationFolder = readdirSync(migrationsRoot).find(
+    (entry) => entry === '20260710135222_baseline_v1',
   );
 
   expect(migrationFolder).toBeTruthy();
@@ -145,17 +145,12 @@ describe('DISMISSAL-IAM-1A - user type and permission seed contract', () => {
     expect(tokenSurfaceBlock).toContain('DISMISSAL_STAFF');
   });
 
-  it('original IAM migration only adds DISMISSAL_STAFF to the mapped user_type enum', () => {
+  it('canonical baseline preserves DISMISSAL_STAFF in the mapped user_type enum', () => {
     const migrationSql = findMigrationSql().trim();
 
-    expect(migrationSql).toBe(
-      'ALTER TYPE "user_type" ADD VALUE \'DISMISSAL_STAFF\';',
+    expect(migrationSql).toMatch(
+      /CREATE TYPE "user_type" AS ENUM \([^;]*'DISMISSAL_STAFF'/,
     );
-    expect(migrationSql).not.toMatch(/CREATE\s+TABLE/i);
-    expect(migrationSql).not.toMatch(/ALTER\s+TABLE/i);
-    expect(migrationSql).not.toMatch(/CREATE\s+INDEX/i);
-    expect(migrationSql).not.toMatch(/Dismissal(Settings|Gate|Request|Notification)/);
-    expect(migrationSql).not.toContain('app_device_token_surface');
   });
 
   it('permission seed contains the exact dismissal permission catalog', () => {

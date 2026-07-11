@@ -848,12 +848,12 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
   it('registers the final Parent App route set and keeps unsupported routes absent', async () => {
     const routes = listRegisteredParentRoutes();
 
-    expect(routes).toHaveLength(68);
+    expect(routes).toHaveLength(72);
     expect(routes.filter((route) => route.startsWith('GET '))).toHaveLength(
-      58,
+      60,
     );
     expect(routes.filter((route) => !route.startsWith('GET '))).toHaveLength(
-      10,
+      12,
     );
     expect(routes).toEqual([
       'DELETE /api/v1/parent/notifications/device-tokens/current',
@@ -915,6 +915,8 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'GET /api/v1/parent/notifications/preferences',
       'GET /api/v1/parent/notifications/summary',
       'GET /api/v1/parent/profile',
+      'GET /api/v1/parent/smart-pickup',
+      'GET /api/v1/parent/smart-pickup/recent-calls',
       'PATCH /api/v1/parent/notifications/preferences',
       'POST /api/v1/parent/announcements/:announcementId/read',
       'POST /api/v1/parent/messages/conversations',
@@ -924,6 +926,8 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'POST /api/v1/parent/notifications/:notificationId/read',
       'POST /api/v1/parent/notifications/device-tokens',
       'POST /api/v1/parent/notifications/read-all',
+      'POST /api/v1/parent/smart-pickup/requests',
+      'POST /api/v1/parent/smart-pickup/requests/:id/cancel',
     ]);
 
     for (const absentRoute of [
@@ -932,7 +936,6 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'GET /api/v1/parent/children/:studentId/timetable',
       'GET /api/v1/parent/homeworks',
       'GET /api/v1/parent/pickup',
-      'GET /api/v1/parent/smart-pickup',
       'POST /api/v1/parent/messages/conversations/:conversationId/attachments',
       'POST /api/v1/parent/messages/conversations/:conversationId/audio',
       'POST /api/v1/parent/children/:studentId/tasks',

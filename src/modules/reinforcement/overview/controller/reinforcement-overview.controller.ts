@@ -1,6 +1,7 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { GetClassroomReinforcementSummaryUseCase } from '../application/get-classroom-reinforcement-summary.use-case';
 import { GetReinforcementOverviewUseCase } from '../application/get-reinforcement-overview.use-case';
 import { GetStudentReinforcementProgressUseCase } from '../application/get-student-reinforcement-progress.use-case';
@@ -12,6 +13,7 @@ import {
 
 @ApiTags('reinforcement-overview')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('reinforcement')
 export class ReinforcementOverviewController {
   constructor(

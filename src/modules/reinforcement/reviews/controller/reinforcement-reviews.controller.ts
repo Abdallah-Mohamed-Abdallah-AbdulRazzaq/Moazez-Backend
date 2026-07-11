@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { ApproveReinforcementSubmissionUseCase } from '../application/approve-reinforcement-submission.use-case';
 import { GetReinforcementReviewItemUseCase } from '../application/get-reinforcement-review-item.use-case';
 import { ListReinforcementReviewQueueUseCase } from '../application/list-reinforcement-review-queue.use-case';
@@ -22,6 +23,7 @@ import {
 
 @ApiTags('reinforcement-reviews')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('reinforcement')
 export class ReinforcementReviewsController {
   constructor(

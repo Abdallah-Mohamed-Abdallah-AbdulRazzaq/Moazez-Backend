@@ -231,9 +231,11 @@ describe('Teacher App lesson preparation tenancy and security', () => {
         .set('Authorization', bearer(actor))
         .expect(403)
         .expect((response) => {
-          expect(response.body.error.code).toBe(
+          const body = response.body as { error?: { code?: unknown } };
+          expect([
+            'auth.scope.missing',
             'teacher_app.actor.required_teacher',
-          );
+          ]).toContain(body.error?.code);
         });
 
       await request(app.getHttpServer())

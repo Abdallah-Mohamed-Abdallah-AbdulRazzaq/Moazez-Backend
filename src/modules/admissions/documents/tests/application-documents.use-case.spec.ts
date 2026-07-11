@@ -33,6 +33,7 @@ type ApplicationDocumentStoreItem = {
     sizeBytes: bigint;
     visibility: FileVisibility;
   };
+  applicantAdmissionRequestDocuments: [];
 };
 
 describe('Admissions application documents use cases', () => {
@@ -138,6 +139,7 @@ describe('Admissions application documents use cases', () => {
             sizeBytes: BigInt(4096),
             visibility: FileVisibility.PRIVATE,
           },
+          applicantAdmissionRequestDocuments: [],
         };
         store.push(document);
         return document;
@@ -209,6 +211,7 @@ describe('Admissions application documents use cases', () => {
         sizeBytes: BigInt(4096),
         visibility: FileVisibility.PRIVATE,
       },
+      applicantAdmissionRequestDocuments: [],
     });
 
     const useCase = new ListApplicationDocumentsUseCase(
@@ -225,6 +228,15 @@ describe('Admissions application documents use cases', () => {
         fileId: 'file-1',
         documentType: 'birth_certificate',
         status: 'complete',
+        source: 'staff_upload',
+        canReview: false,
+        reviewEligibility: {
+          canAccept: false,
+          canReject: false,
+          canRequestReplacement: false,
+          reason: 'application_status_not_reviewable',
+        },
+        linkedApplicantDocument: null,
         notes: 'Verified',
         createdAt: '2026-04-21T10:00:00.000Z',
         updatedAt: '2026-04-21T10:00:00.000Z',
@@ -259,6 +271,7 @@ describe('Admissions application documents use cases', () => {
         sizeBytes: BigInt(4096),
         visibility: FileVisibility.PRIVATE,
       },
+      applicantAdmissionRequestDocuments: [],
     });
 
     const useCase = new ListApplicationDocumentsUseCase(
@@ -301,6 +314,15 @@ describe('Admissions application documents use cases', () => {
       fileId: 'file-2',
       documentType: 'parent_id',
       status: 'complete',
+      source: 'staff_upload',
+      canReview: false,
+      reviewEligibility: {
+        canAccept: false,
+        canReject: false,
+        canRequestReplacement: false,
+        reason: 'application_status_not_reviewable',
+      },
+      linkedApplicantDocument: null,
       notes: 'Front desk upload',
       createdAt: '2026-04-21T10:00:00.000Z',
       updatedAt: '2026-04-21T10:00:00.000Z',

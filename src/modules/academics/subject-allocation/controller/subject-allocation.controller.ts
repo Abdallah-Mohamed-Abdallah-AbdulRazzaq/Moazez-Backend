@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { BulkSaveSubjectAllocationsUseCase } from '../application/bulk-save-subject-allocations.use-case';
 import { ListSubjectAllocationsUseCase } from '../application/list-subject-allocations.use-case';
 import {
@@ -14,6 +15,7 @@ import {
 
 @ApiTags('academics-subject-allocations')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('academics/subject-allocations')
 export class SubjectAllocationController {
   constructor(

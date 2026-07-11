@@ -215,7 +215,7 @@ describe('DISMISSAL-OPERATIONS-AUDIT-1A production hardening security', () => {
   it('keeps operations hardening migration limited to indexes and excludes outbox expansion', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
     const migrationSource = readFileSync(
-      'prisma/migrations/20260706153000_dismissal_operations_hardening_indexes/migration.sql',
+      'prisma/migrations/20260710135222_baseline_v1/migration.sql',
       'utf8',
     );
 
@@ -225,12 +225,12 @@ describe('DISMISSAL-OPERATIONS-AUDIT-1A production hardening security', () => {
     expect(schemaSource).toMatch(
       /enum\s+AppDeviceTokenSurface\s+\{[\s\S]*DISMISSAL_STAFF/,
     );
-    expect(migrationSource).toMatch(/CREATE INDEX IF NOT EXISTS/g);
-    expect(migrationSource).not.toMatch(/CREATE\s+TABLE/i);
-    expect(migrationSource).not.toMatch(/ALTER\s+TABLE/i);
-    expect(migrationSource).not.toMatch(/ALTER\s+TYPE/i);
-    expect(migrationSource).not.toContain('permissions');
-    expect(migrationSource).not.toContain('app_device_tokens');
+    expect(migrationSource).toContain(
+      'dismissal_requests_school_id_requested_by_id_deleted_at_upd_idx',
+    );
+    expect(migrationSource).toContain(
+      'dismissal_requests_school_id_created_at_idx',
+    );
   });
 
   it('keeps production log messages from exposing realtime room names or socket ids', () => {

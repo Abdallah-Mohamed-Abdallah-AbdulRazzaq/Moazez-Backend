@@ -79,7 +79,7 @@ describe('DISMISSAL-NOTIFICATIONS-1B push/device-token security metadata', () =>
   it('enables only the Dismissal Staff device-token surface with existing permission seed', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
     const migrationSource = readFileSync(
-      'prisma/migrations/20260706170000_dismissal_staff_device_token_surface/migration.sql',
+      'prisma/migrations/20260710135222_baseline_v1/migration.sql',
       'utf8',
     );
     const rolesSeed = readFileSync(
@@ -95,8 +95,8 @@ describe('DISMISSAL-NOTIFICATIONS-1B push/device-token security metadata', () =>
     expect(schemaSource).toMatch(
       /enum AppDeviceTokenSurface \{[\s\S]*DISMISSAL_STAFF/,
     );
-    expect(migrationSource).toContain(
-      `ALTER TYPE "app_device_token_surface" ADD VALUE IF NOT EXISTS 'DISMISSAL_STAFF'`,
+    expect(migrationSource).toMatch(
+      /CREATE TYPE "app_device_token_surface" AS ENUM \([^;]*'DISMISSAL_STAFF'/,
     );
     expect(permissionsSeed.match(/app\.device_tokens\.manage/g) ?? []).toHaveLength(
       1,

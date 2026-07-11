@@ -121,7 +121,7 @@ describe('DISMISSAL-HISTORY-1A route metadata and boundaries', () => {
   it('adds only REQUEST_ESCALATED event enum and no forbidden status/device/realtime surfaces', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
     const migrationSource = readFileSync(
-      'prisma/migrations/20260706100000_dismissal_history_escalation_event/migration.sql',
+      'prisma/migrations/20260710135222_baseline_v1/migration.sql',
       'utf8',
     );
     const statusBlock = schemaSource.match(
@@ -136,10 +136,9 @@ describe('DISMISSAL-HISTORY-1A route metadata and boundaries', () => {
     );
 
     expect(schemaSource).toContain('REQUEST_ESCALATED');
-    expect(migrationSource.trim()).toBe(
-      'ALTER TYPE "dismissal_request_event_type" ADD VALUE \'REQUEST_ESCALATED\';',
+    expect(migrationSource).toContain(
+      `CREATE TYPE "dismissal_request_event_type" AS ENUM ('REQUEST_CREATED', 'REQUEST_STATUS_CHANGED', 'REQUEST_ESCALATED')`,
     );
-    expect(migrationSource).not.toMatch(/CREATE\s+TABLE|ALTER\s+TABLE/i);
     expect(statusBlock).toBeTruthy();
     for (const forbiddenStatus of ['DELAYED', 'URGENT', 'ESCALATED', 'RESOLVED']) {
       expect(statusBlock).not.toContain(forbiddenStatus);

@@ -574,6 +574,31 @@ async function createRole(
     select: { id: true },
   });
   tracked.roleIds.push(role.id);
+
+  const requiredPermissions = await prisma.permission.findMany({
+    where: {
+      code: {
+        in: [
+          'academics.calendar.view',
+          'academics.curriculum.view',
+          'academics.lesson_plans.view',
+          'academics.timetable.view',
+          'teacher.lesson_preparation.view',
+        ],
+      },
+    },
+    select: { id: true },
+  });
+  if (requiredPermissions.length !== 5) {
+    throw new Error('Required app-facing Academics permissions are missing');
+  }
+  await prisma.rolePermission.createMany({
+    data: requiredPermissions.map((permission) => ({
+      roleId: role.id,
+      permissionId: permission.id,
+    })),
+  });
+
   return role.id;
 }
 

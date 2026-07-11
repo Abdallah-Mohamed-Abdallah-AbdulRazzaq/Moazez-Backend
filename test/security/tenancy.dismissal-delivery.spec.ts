@@ -102,7 +102,7 @@ describe('DISMISSAL-DELIVERY-1A route metadata and schema boundaries', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
     const migrationNames = readdirSync('prisma/migrations');
     const migrationSource = readFileSync(
-      'prisma/migrations/20260705170000_dismissal_delivery_handover/migration.sql',
+      'prisma/migrations/20260710135222_baseline_v1/migration.sql',
       'utf8',
     );
 
@@ -120,10 +120,9 @@ describe('DISMISSAL-DELIVERY-1A route metadata and schema boundaries', () => {
     ]) {
       expect(schemaSource).toContain(field);
     }
-    expect(migrationNames).toContain('20260705170000_dismissal_delivery_handover');
+    expect(migrationNames).toContain('20260710135222_baseline_v1');
     expect(migrationSource).toContain('pickup_code_hash');
     expect(migrationSource).toContain('handed_over_by_id');
-    expect(migrationSource).not.toMatch(/CREATE TABLE|CREATE TYPE|ALTER TYPE/i);
     expect(schemaSource).not.toMatch(/model\s+DismissalDelivery\b/);
     expect(schemaSource).not.toMatch(/model\s+PickupCode\b/);
 

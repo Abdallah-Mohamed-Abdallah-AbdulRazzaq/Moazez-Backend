@@ -109,7 +109,7 @@ describe('DISMISSAL-NOTIFICATIONS-1A route metadata and boundaries', () => {
   it('adds only Dismissal notification enum values and no device-token/push/realtime surface', () => {
     const schemaSource = readFileSync('prisma/schema.prisma', 'utf8');
     const migrationSource = readFileSync(
-      'prisma/migrations/20260705210000_dismissal_notifications_runtime/migration.sql',
+      'prisma/migrations/20260710135222_baseline_v1/migration.sql',
       'utf8',
     );
 
@@ -125,7 +125,6 @@ describe('DISMISSAL-NOTIFICATIONS-1A route metadata and boundaries', () => {
     }
     expect(migrationSource).toContain('communication_notification_type');
     expect(migrationSource).toContain('communication_notification_source_module');
-    expect(migrationSource).not.toMatch(/CREATE\s+TABLE|ALTER\s+TABLE/i);
 
     const tokenSurfaceBlock = schemaSource.match(
       /enum AppDeviceTokenSurface \{([\s\S]*?)\n\}/,

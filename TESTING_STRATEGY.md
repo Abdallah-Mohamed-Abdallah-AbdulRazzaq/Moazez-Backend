@@ -108,6 +108,22 @@ This test is mandatory before a module is considered done.
 - Flaky tests are quarantined (moved to `test/quarantine/`) within 24 hours and fixed within one week.
 - Test suite must finish in under 5 minutes for Sprint 1. Over 10 minutes → optimize or parallelize.
 
+### Canonical full regression
+
+Run `npm run test:regression` for the complete non-deployment regression. It
+uses a fresh Jest process for each test family to prevent cross-tree process
+memory accumulation while preserving complete configured coverage:
+
+1. module-local unit tests under `src/`;
+2. every configured file under `test/security/`;
+3. every configured file under `test/e2e/`;
+4. every configured root-level test file, currently `test/app.e2e-spec.ts`.
+
+`npm run test:e2e` includes both the E2E directory and the root-level configured
+test in separate Jest processes. Process isolation is not a skip or reduced
+test selection. Do not use `--forceExit`, retries, or a permanent Node heap
+increase to make the canonical regression pass.
+
 ## 12. Agent Instructions for Writing Tests
 
 When Claude Code writes a test, it must:

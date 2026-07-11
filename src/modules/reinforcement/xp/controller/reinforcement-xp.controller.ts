@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { CreateXpPolicyUseCase } from '../application/create-xp-policy.use-case';
 import { GetEffectiveXpPolicyUseCase } from '../application/get-effective-xp-policy.use-case';
 import { GetXpSummaryUseCase } from '../application/get-xp-summary.use-case';
@@ -31,6 +32,7 @@ import {
 
 @ApiTags('reinforcement-xp')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('reinforcement/xp')
 export class ReinforcementXpController {
   constructor(

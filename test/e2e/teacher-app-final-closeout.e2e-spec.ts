@@ -698,7 +698,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
   });
 
   it('verifies the final Teacher role, catalog, Parent role, and Student role state', async () => {
-    expect(await prisma.permission.count()).toBe(205);
+    expect(await prisma.permission.count()).toBe(232);
 
     const teacherPermissions = await getSystemRolePermissionCodes('teacher');
     expect(teacherPermissions).toHaveLength(54);
@@ -724,7 +724,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       false,
     );
 
-    expect(await getSystemRolePermissionCodes('parent')).toHaveLength(43);
+    expect(await getSystemRolePermissionCodes('parent')).toHaveLength(46);
     expect(await getSystemRolePermissionCodes('student')).toHaveLength(57);
   });
 

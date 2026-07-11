@@ -289,7 +289,6 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
       'POST /api/v1/homework/assignments/:homeworkId/rewards',
       'GET /api/v1/student/pickup',
       'GET /api/v1/parent/pickup',
-      'GET /api/v1/parent/smart-pickup',
     ]) {
       expect(routes).not.toContain(absentRoute);
     }

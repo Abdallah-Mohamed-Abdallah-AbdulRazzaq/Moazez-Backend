@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { ApplyTeacherAllocationToGradeUseCase } from '../application/apply-teacher-allocation-to-grade.use-case';
 import { BulkSaveTeacherAllocationsUseCase } from '../application/bulk-save-teacher-allocations.use-case';
 import { ClearTeacherAllocationsBySubjectUseCase } from '../application/clear-teacher-allocations-by-subject.use-case';
@@ -41,6 +42,7 @@ import {
 
 @ApiTags('academics-allocations')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('academics/allocations')
 export class TeacherAllocationController {
   constructor(

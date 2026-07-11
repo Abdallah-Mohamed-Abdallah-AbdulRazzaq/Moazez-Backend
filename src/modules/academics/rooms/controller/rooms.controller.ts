@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { CreateRoomUseCase } from '../application/create-room.use-case';
 import { DeleteRoomUseCase } from '../application/delete-room.use-case';
 import { ListRoomsUseCase } from '../application/list-rooms.use-case';
@@ -23,6 +24,7 @@ import {
 
 @ApiTags('academics-rooms')
 @ApiBearerAuth()
+@SchoolManagementOnly()
 @Controller('academics/rooms')
 export class RoomsController {
   constructor(
