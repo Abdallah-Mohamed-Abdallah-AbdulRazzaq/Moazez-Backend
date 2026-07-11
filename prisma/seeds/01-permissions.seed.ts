@@ -274,6 +274,8 @@ const PERMISSIONS: PermissionSeed[] = [
   // dashboard
   { code: 'dashboard.command_center.view', module: 'dashboard', resource: 'command_center', action: 'view', description: 'View Dashboard Command Center V2 overview' },
   { code: 'dashboard.light_mode_dropdown.view', module: 'dashboard', resource: 'light_mode_dropdown', action: 'view', description: 'View read-only Dashboard LightModeDropdown contract' },
+  { code: 'dashboard.todos.view', module: 'dashboard', resource: 'todos', action: 'view', description: 'View personal Dashboard LightModeDropdown todos' },
+  { code: 'dashboard.todos.manage', module: 'dashboard', resource: 'todos', action: 'manage', description: 'Create, update, and delete personal Dashboard LightModeDropdown todos' },
   { code: 'dashboard.analytics.view', module: 'dashboard', resource: 'analytics', action: 'view', description: 'View internal Dashboard Analytics catalog definitions' },
   { code: 'dashboard.modules.view', module: 'dashboard', resource: 'modules', action: 'view', description: 'View read-only dashboard module pages registry' },
   { code: 'dashboard.widgets.view', module: 'dashboard', resource: 'widgets', action: 'view', description: 'View read-only dashboard widgets registry' },

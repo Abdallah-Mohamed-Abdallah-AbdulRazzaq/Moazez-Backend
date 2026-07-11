@@ -14,11 +14,13 @@ import { PrismaService } from '../../src/infrastructure/database/prisma.service'
 import { GetDashboardLightModeDropdownUseCase } from '../../src/modules/dashboard/application/get-dashboard-light-mode-dropdown.use-case';
 import { DashboardController } from '../../src/modules/dashboard/controller/dashboard.controller';
 import { DashboardLightModeDropdownRepository } from '../../src/modules/dashboard/infrastructure/dashboard-light-mode-dropdown.repository';
+import { DashboardTodosRepository } from '../../src/modules/dashboard/infrastructure/dashboard-todos.repository';
 import { presentDashboardLightModeDropdown } from '../../src/modules/dashboard/presenters/dashboard-light-mode-dropdown.presenter';
 
 jest.setTimeout(60000);
 
 describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
+  const OWNER_A_ID = '33333333-3333-4333-8333-333333333333';
   const suffix = randomUUID().split('-')[0];
   const marker = `light-mode-security-${suffix}`;
 
@@ -102,7 +104,7 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
     await prisma.$disconnect();
   });
 
-  it('registers LightModeDropdown with dashboard.light_mode_dropdown.view and no write methods', () => {
+  it('registers the LightModeDropdown read route on the read-only Dashboard controller', () => {
     expect(controllerMethods(DashboardController)).toEqual([
       'getCommandCenter',
       'getLightModeDropdown',
@@ -123,10 +125,6 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
     ]);
     expect(controllerMethods(DashboardController)).not.toEqual(
       expect.arrayContaining([
-        'createLightModeDropdownTodo',
-        'listLightModeDropdownTodos',
-        'updateLightModeDropdownTodo',
-        'deleteLightModeDropdownTodo',
         'refreshWeatherProvider',
         'syncPlannerCalendar',
         'acknowledgeAlert',
@@ -139,7 +137,7 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
     );
   });
 
-  it('adds dashboard.light_mode_dropdown.view to admin-like seed inheritance only', () => {
+  it('adds dashboard LightModeDropdown and todo permissions to admin-like seed inheritance only', () => {
     const permissionsSeed = readFileSync(
       join(process.cwd(), 'prisma/seeds/01-permissions.seed.ts'),
       'utf8',
@@ -151,23 +149,45 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
 
     expect(permissionsSeed).toContain("'dashboard.light_mode_dropdown.view'");
     expect(permissionsSeed).toContain("resource: 'light_mode_dropdown'");
+    expect(permissionsSeed).toContain("'dashboard.todos.view'");
+    expect(permissionsSeed).toContain("'dashboard.todos.manage'");
+    expect(permissionsSeed).toContain("resource: 'todos'");
     expect(rolesSeed).toContain('const ALL = PERMISSION_CODES;');
     expect(rolesSeed).toContain('const NON_PLATFORM = ALL.filter');
     expect(rolesSeed).toContain('const SCHOOL_LEVEL = NON_PLATFORM;');
     expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
       'dashboard.light_mode_dropdown.view',
     );
+    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
+      'dashboard.todos.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'TEACHER_PERMISSIONS')).not.toContain(
+      'dashboard.todos.manage',
+    );
     expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
       'dashboard.light_mode_dropdown.view',
     );
+    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
+      'dashboard.todos.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'PARENT_PERMISSIONS')).not.toContain(
+      'dashboard.todos.manage',
+    );
     expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
       'dashboard.light_mode_dropdown.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
+      'dashboard.todos.view',
+    );
+    expect(extractArrayLiteral(rolesSeed, 'STUDENT_PERMISSIONS')).not.toContain(
+      'dashboard.todos.manage',
     );
   });
 
   it('keeps school A from observing school B location/timezone and ignores schoolId overrides', async () => {
     const useCase = new GetDashboardLightModeDropdownUseCase(
       new DashboardLightModeDropdownRepository(prisma),
+      new DashboardTodosRepository(prisma),
     );
 
     const response = await withSchoolScope(schoolAId, () =>
@@ -207,6 +227,7 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
     expect(serialized).not.toContain(schoolAId);
     expect(serialized).not.toContain(schoolBId);
     expect(serialized).not.toContain(organizationId);
+    expect(serialized).not.toContain(OWNER_A_ID);
     expect(serialized).not.toContain('owner-b');
     expectNoInternalLeaks(response);
   });
@@ -248,7 +269,7 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
     fn: () => Promise<T>,
   ): Promise<T> {
     return runWithRequestContext(createRequestContext(), async () => {
-      setActor({ id: `actor-${schoolId}`, userType: UserType.SCHOOL_USER });
+      setActor({ id: OWNER_A_ID, userType: UserType.SCHOOL_USER });
       setActiveMembership({
         membershipId: `membership-${schoolId}`,
         organizationId,

@@ -132,10 +132,6 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       ]),
     );
     for (const absentRoute of [
-      'GET /api/v1/dashboard/light-mode-dropdown/todos',
-      'POST /api/v1/dashboard/light-mode-dropdown/todos',
-      'PATCH /api/v1/dashboard/light-mode-dropdown/todos/:todoId',
-      'DELETE /api/v1/dashboard/light-mode-dropdown/todos/:todoId',
       'POST /api/v1/dashboard/alerts/:alertKey/acknowledge',
       'POST /api/v1/dashboard/alerts/:alertKey/dismiss',
       'POST /api/v1/dashboard/alerts/:alertKey/snooze',

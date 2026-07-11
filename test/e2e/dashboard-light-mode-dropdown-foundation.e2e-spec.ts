@@ -156,10 +156,6 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
       ]),
     );
     for (const absentRoute of [
-      'GET /api/v1/dashboard/light-mode-dropdown/todos',
-      'POST /api/v1/dashboard/light-mode-dropdown/todos',
-      'PATCH /api/v1/dashboard/light-mode-dropdown/todos/:todoId',
-      'DELETE /api/v1/dashboard/light-mode-dropdown/todos/:todoId',
       'POST /api/v1/dashboard/alerts/:alertKey/acknowledge',
       'POST /api/v1/dashboard/alerts/:alertKey/dismiss',
       'POST /api/v1/dashboard/alerts/:alertKey/snooze',
@@ -235,11 +231,11 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
         units: 'metric',
         weatherStatus: 'provider_not_configured',
         plannerStatus: 'foundation_only',
-        todosStatus: 'not_persisted',
+        todosStatus: 'persisted',
         deferred: {
           weatherProvider: 'deferred',
           weatherCache: 'deferred',
-          todoPersistence: 'deferred',
+          todoPersistence: 'persisted',
           plannerCalendar: 'deferred',
           crossModulePlannerItems: 'deferred',
           realtime: 'deferred',

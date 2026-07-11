@@ -143,6 +143,7 @@ export const SCHOOL_SCOPED_MODELS = new Set<string>([
   'CommunicationNotificationPushAttempt',
   'CommunicationNotificationPreference',
   'AppDeviceToken',
+  'DashboardTodo',
 ]);
 
 // Models that use soft delete (have a deletedAt column). Read operations
@@ -204,6 +205,7 @@ const SOFT_DELETE_MODELS = new Set<string>([
   'DismissalGate',
   'DismissalStaffAssignment',
   'DismissalRequest',
+  'DashboardTodo',
 ]);
 
 const READ_OPERATIONS = new Set<string>([

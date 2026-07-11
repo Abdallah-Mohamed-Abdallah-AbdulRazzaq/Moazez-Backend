@@ -142,13 +142,16 @@ export class DashboardLightModeDropdownPlannerEventDto {
 }
 
 export class DashboardLightModeDropdownPlannerTodoDto {
-  id!: string;
-  title!: string;
-  description!: string | null;
-  priority!: 'low' | 'medium' | 'high';
+  todoId!: string;
   date!: string;
-  timeMinutes!: number | null;
-  completed!: boolean;
+  title!: string;
+  notes!: string | null;
+  status!: 'pending' | 'completed';
+  priority!: 'low' | 'normal' | 'high';
+  sortOrder!: number;
+  completedAt!: string | null;
+  createdAt!: string;
+  updatedAt!: string;
 }
 
 export class DashboardLightModeDropdownPlannerDto {
@@ -162,7 +165,7 @@ export class DashboardLightModeDropdownPlannerDto {
 export class DashboardLightModeDropdownDeferredDto {
   weatherProvider!: 'deferred';
   weatherCache!: 'deferred';
-  todoPersistence!: 'deferred';
+  todoPersistence!: 'persisted';
   plannerCalendar!: 'deferred';
   crossModulePlannerItems!: 'deferred';
   realtime!: 'deferred';
@@ -175,7 +178,7 @@ export class DashboardLightModeDropdownMetaDto {
   units!: DashboardLightModeDropdownUnits;
   weatherStatus!: 'provider_not_configured' | 'location_missing';
   plannerStatus!: 'foundation_only';
-  todosStatus!: 'not_persisted';
+  todosStatus!: 'persisted';
   deferred!: DashboardLightModeDropdownDeferredDto;
 }
 

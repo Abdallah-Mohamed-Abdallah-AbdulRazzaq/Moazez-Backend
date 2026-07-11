@@ -1011,15 +1011,19 @@ describe('Teacher role seed integrity (security)', () => {
       'STUDENT_PERMISSIONS',
     );
 
-    expect(catalogCodes).toHaveLength(232);
+    expect(catalogCodes).toHaveLength(234);
     expect(catalogCodeSet.size).toBe(catalogCodes.length);
     expect(catalogCodes).toEqual(
       expect.arrayContaining(Array.from(TEACHER_PERM_1A_CATALOG_ADDITIONS)),
     );
+    expect(catalogCodeSet.has('dashboard.todos.view')).toBe(true);
+    expect(catalogCodeSet.has('dashboard.todos.manage')).toBe(true);
 
     expect(teacherPermissions).toHaveLength(54);
     expect(new Set(teacherPermissions).size).toBe(teacherPermissions.length);
     expect(teacherPermissions).toEqual(Array.from(FINAL_TEACHER_PERMISSIONS));
+    expect(teacherPermissions).not.toContain('dashboard.todos.view');
+    expect(teacherPermissions).not.toContain('dashboard.todos.manage');
 
     for (const forbiddenPermission of FORBIDDEN_TEACHER_PERMISSIONS) {
       expect(teacherPermissions).not.toContain(forbiddenPermission);
@@ -1039,6 +1043,13 @@ describe('Teacher role seed integrity (security)', () => {
 
     expect(parentPermissions).toHaveLength(46);
     expect(studentPermissions).toHaveLength(57);
+    for (const permission of [
+      'dashboard.todos.view',
+      'dashboard.todos.manage',
+    ]) {
+      expect(parentPermissions).not.toContain(permission);
+      expect(studentPermissions).not.toContain(permission);
+    }
 
     for (const rolePermissions of [
       teacherPermissions,

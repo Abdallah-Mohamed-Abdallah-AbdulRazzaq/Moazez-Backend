@@ -69,11 +69,11 @@ describe('Dashboard LightModeDropdown presenter', () => {
         units: 'metric',
         weatherStatus: 'provider_not_configured',
         plannerStatus: 'foundation_only',
-        todosStatus: 'not_persisted',
+        todosStatus: 'persisted',
         deferred: {
           weatherProvider: 'deferred',
           weatherCache: 'deferred',
-          todoPersistence: 'deferred',
+          todoPersistence: 'persisted',
           plannerCalendar: 'deferred',
           crossModulePlannerItems: 'deferred',
           realtime: 'deferred',
