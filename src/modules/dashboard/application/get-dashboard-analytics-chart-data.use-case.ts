@@ -13,7 +13,9 @@ import {
   computeDashboardAdmissionsStudentsAnalyticsData,
 } from '../domain/dashboard-admissions-students-analytics';
 import { computeDashboardAttendanceAnalyticsData } from '../domain/dashboard-attendance-analytics';
+import { computeDashboardAcademicsAnalyticsData } from '../domain/dashboard-academics-analytics';
 import {
+  isDashboardAnalyticsAcademicsPackChartKey,
   isDashboardAnalyticsAttendancePackChartKey,
   isDashboardAnalyticsAdmissionsStudentsPackChartKey,
   isDashboardAnalyticsComputedSnapshotChartKey,
@@ -22,6 +24,7 @@ import { normalizeDashboardAnalyticsQuery } from '../domain/dashboard-analytics-
 import { DashboardAnalyticsSnapshotRepository } from '../infrastructure/dashboard-analytics-snapshot.repository';
 import { DashboardAdmissionsAnalyticsRepository } from '../infrastructure/dashboard-admissions-analytics.repository';
 import { DashboardStudentsAnalyticsRepository } from '../infrastructure/dashboard-students-analytics.repository';
+import { DashboardAcademicsAnalyticsRepository } from '../infrastructure/dashboard-academics-analytics.repository';
 import { presentDashboardAnalyticsChartData } from '../presenters/dashboard-analytics-data.presenter';
 import { DashboardAnalyticsQueryContextService } from './dashboard-analytics-query-context.service';
 
@@ -36,6 +39,7 @@ export class GetDashboardAnalyticsChartDataUseCase {
     private readonly attendanceDashboardAnalyticsRepository: AttendanceDashboardAnalyticsRepository,
     private readonly dashboardAdmissionsAnalyticsRepository: DashboardAdmissionsAnalyticsRepository,
     private readonly dashboardStudentsAnalyticsRepository: DashboardStudentsAnalyticsRepository,
+    private readonly dashboardAcademicsAnalyticsRepository: DashboardAcademicsAnalyticsRepository,
   ) {}
 
   async execute(
@@ -215,6 +219,72 @@ export class GetDashboardAnalyticsChartDataUseCase {
             queryContext,
             chart,
             admissionsStudentsData,
+          });
+        }
+      }
+    }
+
+    if (isDashboardAnalyticsAcademicsPackChartKey(chart.chartKey)) {
+      const hierarchy = queryContext.hierarchy;
+
+      switch (chart.chartKey) {
+        case 'academics.teacher_allocation_coverage': {
+          const academicsData = computeDashboardAcademicsAnalyticsData({
+            chartKey: chart.chartKey,
+            teacherAllocationCoverage:
+              await this.dashboardAcademicsAnalyticsRepository.countTeacherAllocationCoverage(
+                { scope, hierarchy },
+              ),
+          });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            academicsData,
+          });
+        }
+
+        case 'academics.timetable_publication_status': {
+          const academicsData = computeDashboardAcademicsAnalyticsData({
+            chartKey: chart.chartKey,
+            timetablePublicationStatus:
+              await this.dashboardAcademicsAnalyticsRepository.countCurrentTimetablePublicationStatus(
+                { scope, hierarchy },
+              ),
+          });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            academicsData,
+          });
+        }
+
+        case 'academics.curriculum_activation': {
+          const academicsData = computeDashboardAcademicsAnalyticsData({
+            chartKey: chart.chartKey,
+            curriculumActivation:
+              await this.dashboardAcademicsAnalyticsRepository.countCurrentCurriculumActivationStatus(
+                { scope, hierarchy },
+              ),
+          });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            academicsData,
+          });
+        }
+
+        case 'academics.lesson_plan_activation': {
+          const academicsData = computeDashboardAcademicsAnalyticsData({
+            chartKey: chart.chartKey,
+            lessonPlanActivation:
+              await this.dashboardAcademicsAnalyticsRepository.countCurrentLessonPlanActivationStatus(
+                { scope, hierarchy },
+              ),
+          });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            academicsData,
           });
         }
       }

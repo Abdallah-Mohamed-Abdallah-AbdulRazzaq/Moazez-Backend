@@ -11,9 +11,13 @@ import {
   AttendanceScopeType,
   AttendanceSessionStatus,
   AttendanceStatus,
+  CurriculumStatus,
+  LessonPlanStatus,
   MembershipStatus,
   PrismaClient,
   StudentEnrollmentStatus,
+  TimetableConfigStatus,
+  TimetableScopeType,
   UserStatus,
   UserType,
 } from '@prisma/client';
@@ -71,6 +75,7 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
   let sectionId = '';
   let otherSectionId = '';
   let classroomId = '';
+  let secondClassroomId = '';
   let crossSchoolId = '';
   let crossSchoolAcademicYearId = '';
   const attendanceStudentIds: string[] = [];
@@ -81,6 +86,12 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
   const analyticsEnrollmentIds: string[] = [];
   const analyticsGuardianIds: string[] = [];
   const analyticsStudentGuardianIds: string[] = [];
+  const academicsSubjectIds: string[] = [];
+  const academicsSubjectAllocationIds: string[] = [];
+  const academicsTeacherAllocationIds: string[] = [];
+  const academicsTimetableConfigIds: string[] = [];
+  const academicsCurriculumIds: string[] = [];
+  const academicsLessonPlanIds: string[] = [];
 
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -106,10 +117,12 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     sectionId = hierarchy.sectionId;
     otherSectionId = hierarchy.otherSectionId;
     classroomId = hierarchy.classroomId;
+    secondClassroomId = hierarchy.secondClassroomId;
     crossSchoolId = hierarchy.crossSchoolId;
     crossSchoolAcademicYearId = hierarchy.crossSchoolAcademicYearId;
     await createAttendanceAnalyticsFixtures();
     await createAdmissionsStudentsAnalyticsFixtures();
+    await createAcademicsAnalyticsFixtures();
 
     const permissionIds = await ensureDashboardPermissions();
     await ensureDemoAdminHasDashboardPermissions(Object.values(permissionIds));
@@ -614,6 +627,145 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     expectNoInternalLeaks(response.body);
   });
 
+  it('returns teacher allocation coverage from the expected SubjectAllocation x Classroom matrix', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/academics.teacher_allocation_coverage/data`;
+    const response = await request(app.getHttpServer())
+      .get(path)
+      .query({
+        range: '30d',
+        granularity: 'day',
+        academicYearId,
+        termId,
+        gradeId,
+        sectionId,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      chartKey: 'academics.teacher_allocation_coverage',
+      data: {
+        totals: { allocated: 1, missing: 1 },
+        summary: { value: 2, label: 'Teacher allocation units' },
+        empty: false,
+      },
+      meta: {
+        pack: 'academics_v1',
+        dataAvailability: 'computed_category',
+        computation: 'academics_teacher_allocation_coverage',
+        query: {
+          appliedFilters: ['academicYearId', 'termId', 'gradeId', 'sectionId'],
+          notApplicableFilters: ['range', 'granularity'],
+        },
+      },
+    });
+    expect(
+      response.body.data.series.map((series: { key: string }) => series.key),
+    ).toEqual(['allocated', 'missing']);
+
+    const classroomResponse = await request(app.getHttpServer())
+      .get(path)
+      .query({ classroomId: secondClassroomId })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(classroomResponse.body.data.totals).toEqual({
+      allocated: 0,
+      missing: 1,
+    });
+    expectNoInternalLeaks(response.body);
+    expectNoInternalLeaks(classroomResponse.body);
+  });
+
+  it.each([
+    [
+      'academics.timetable_publication_status',
+      ['academicYearId', 'termId'],
+      { published: 1, draft: 1 },
+      'Current timetable configurations',
+      'academics_current_timetable_publication_status',
+    ],
+    [
+      'academics.curriculum_activation',
+      ['academicYearId', 'termId', 'gradeId'],
+      { active: 1, draft: 1 },
+      'Current curricula',
+      'academics_current_curriculum_activation_status',
+    ],
+    [
+      'academics.lesson_plan_activation',
+      ['academicYearId', 'termId', 'gradeId', 'sectionId', 'classroomId'],
+      { active: 1, draft: 1 },
+      'Current lesson plans',
+      'academics_current_lesson_plan_activation_status',
+    ],
+  ] as const)(
+    'returns current non-archived category data for %s',
+    async (chartKey, hierarchyKeys, totals, summaryLabel, computation) => {
+      const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+      const hierarchyValues = {
+        academicYearId,
+        termId,
+        gradeId,
+        sectionId,
+        classroomId,
+      };
+      const hierarchyQuery = Object.fromEntries(
+        hierarchyKeys.map((key) => [key, hierarchyValues[key]]),
+      );
+      const response = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/${chartKey}/data`)
+        .query({ range: '30d', granularity: 'day', ...hierarchyQuery })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        chartKey,
+        data: {
+          totals,
+          summary: { value: 2, label: summaryLabel },
+          empty: false,
+        },
+        meta: {
+          pack: 'academics_v1',
+          dataAvailability: 'computed_category',
+          computation,
+          query: {
+            appliedFilters: hierarchyKeys,
+            notApplicableFilters: ['range', 'granularity'],
+          },
+        },
+      });
+      expectNoInternalLeaks(response.body);
+    },
+  );
+
+  it('enforces Academics compatibility defaults and exact unsupported hierarchy filters', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const teacherPath = `${GLOBAL_PREFIX}/dashboard/analytics/charts/academics.teacher_allocation_coverage/data`;
+    for (const query of [
+      { range: '7d' },
+      { granularity: 'week' },
+      { dateFrom: '2026-07-01' },
+    ]) {
+      await request(app.getHttpServer())
+        .get(teacherPath)
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    }
+    for (const [chartKey, query] of [
+      ['academics.timetable_publication_status', { gradeId }],
+      ['academics.curriculum_activation', { sectionId }],
+    ] as const) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/${chartKey}/data`)
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    }
+  });
+
   it('returns day, week, and month Attendance observation buckets from submitted sessions only', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
     const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.daily_trend/data`;
@@ -1015,6 +1167,26 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
       .expect(200);
 
     await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/modules/academics`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.analytics.availableData).toEqual([]);
+        expect(response.body.analytics.charts).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              chartKey: 'academics.teacher_allocation_coverage',
+              status: 'available',
+            }),
+            expect.objectContaining({
+              chartKey: 'academics.structure_readiness',
+              status: 'planned',
+            }),
+          ]),
+        );
+      });
+
+    await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
@@ -1107,15 +1279,26 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
         select: { id: true },
       }),
     ]);
-    const classroom = await prisma.classroom.create({
-      data: {
-        schoolId: demoSchoolId,
-        sectionId: section.id,
-        nameAr: `${marker}-classroom-ar`,
-        nameEn: `${marker}-classroom-en`,
-      },
-      select: { id: true },
-    });
+    const [classroom, secondClassroom] = await Promise.all([
+      prisma.classroom.create({
+        data: {
+          schoolId: demoSchoolId,
+          sectionId: section.id,
+          nameAr: `${marker}-classroom-ar`,
+          nameEn: `${marker}-classroom-en`,
+        },
+        select: { id: true },
+      }),
+      prisma.classroom.create({
+        data: {
+          schoolId: demoSchoolId,
+          sectionId: section.id,
+          nameAr: `${marker}-classroom-2-ar`,
+          nameEn: `${marker}-classroom-2-en`,
+        },
+        select: { id: true },
+      }),
+    ]);
 
     const crossSchool = await prisma.school.create({
       data: {
@@ -1144,6 +1327,7 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
       sectionId: section.id,
       otherSectionId: otherSection.id,
       classroomId: classroom.id,
+      secondClassroomId: secondClassroom.id,
       crossSchoolId: crossSchool.id,
       crossSchoolAcademicYearId: crossAcademicYear.id,
     };
@@ -1523,6 +1707,138 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     analyticsStudentGuardianIds.push(...links.map(({ id }) => id));
   }
 
+  async function createAcademicsAnalyticsFixtures(): Promise<void> {
+    const admin = await prisma.user.findUnique({
+      where: { email: DEMO_ADMIN_EMAIL },
+      select: { id: true },
+    });
+    if (!admin) throw new Error('Demo admin not found for Academics fixtures.');
+
+    const subjects = await Promise.all(
+      Array.from({ length: 3 }, (_, index) =>
+        prisma.subject.create({
+          data: {
+            schoolId: demoSchoolId,
+            nameAr: `${marker}-subject-${index}-ar`,
+            nameEn: `${marker}-subject-${index}-en`,
+            code: `${marker}-subject-${index}`,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    academicsSubjectIds.push(...subjects.map(({ id }) => id));
+
+    const subjectAllocation = await prisma.subjectAllocation.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId,
+        termId,
+        gradeId,
+        subjectId: subjects[0].id,
+        weeklyHours: 0,
+      },
+      select: { id: true },
+    });
+    academicsSubjectAllocationIds.push(subjectAllocation.id);
+
+    const teacherAllocations = await Promise.all(
+      subjects.map((subject) =>
+        prisma.teacherSubjectAllocation.create({
+          data: {
+            schoolId: demoSchoolId,
+            teacherUserId: admin.id,
+            subjectId: subject.id,
+            classroomId,
+            termId,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    academicsTeacherAllocationIds.push(
+      ...teacherAllocations.map(({ id }) => id),
+    );
+
+    const timetableConfigs = await Promise.all(
+      [
+        TimetableConfigStatus.ACTIVE,
+        TimetableConfigStatus.DRAFT,
+        TimetableConfigStatus.ARCHIVED,
+      ].map((status, index) =>
+        prisma.timetableConfig.create({
+          data: {
+            schoolId: demoSchoolId,
+            academicYearId,
+            termId,
+            name: `${marker}-timetable-${index}`,
+            activeDays: [1, 2, 3, 4, 5],
+            scopeType: TimetableScopeType.TERM,
+            scopeKey: `${marker}-scope-${index}`,
+            status,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    academicsTimetableConfigIds.push(...timetableConfigs.map(({ id }) => id));
+
+    const curricula = await Promise.all(
+      [
+        CurriculumStatus.ACTIVE,
+        CurriculumStatus.DRAFT,
+        CurriculumStatus.ARCHIVED,
+      ].map((status, index) =>
+        prisma.curriculum.create({
+          data: {
+            schoolId: demoSchoolId,
+            academicYearId,
+            termId,
+            gradeId,
+            subjectId: subjects[index].id,
+            title: `${marker}-curriculum-${index}`,
+            status,
+            createdByUserId: admin.id,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    academicsCurriculumIds.push(...curricula.map(({ id }) => id));
+
+    const lessonPlans = await Promise.all(
+      [
+        LessonPlanStatus.ACTIVE,
+        LessonPlanStatus.DRAFT,
+        LessonPlanStatus.ARCHIVED,
+      ].map((status, index) =>
+        prisma.lessonPlan.create({
+          data: {
+            schoolId: demoSchoolId,
+            academicYearId,
+            termId,
+            teacherSubjectAllocationId: teacherAllocations[index].id,
+            teacherUserId: admin.id,
+            classroomId,
+            subjectId: subjects[index].id,
+            curriculumId: curricula[index].id,
+            title: `${marker}-lesson-plan-${index}`,
+            status,
+            weekStartDate: new Date(
+              `2026-07-${String(6 + index * 7).padStart(2, '0')}T00:00:00.000Z`,
+            ),
+            weekEndDate: new Date(
+              `2026-07-${String(12 + index * 7).padStart(2, '0')}T00:00:00.000Z`,
+            ),
+            createdByUserId: admin.id,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    academicsLessonPlanIds.push(...lessonPlans.map(({ id }) => id));
+  }
+
   function enrollmentInput(
     studentId: string,
     status: StudentEnrollmentStatus,
@@ -1542,6 +1858,36 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
   }
 
   async function cleanupAnalyticsHierarchyFixtures(): Promise<void> {
+    if (academicsLessonPlanIds.length > 0) {
+      await prisma.lessonPlan.deleteMany({
+        where: { id: { in: academicsLessonPlanIds } },
+      });
+    }
+    if (academicsCurriculumIds.length > 0) {
+      await prisma.curriculum.deleteMany({
+        where: { id: { in: academicsCurriculumIds } },
+      });
+    }
+    if (academicsTimetableConfigIds.length > 0) {
+      await prisma.timetableConfig.deleteMany({
+        where: { id: { in: academicsTimetableConfigIds } },
+      });
+    }
+    if (academicsTeacherAllocationIds.length > 0) {
+      await prisma.teacherSubjectAllocation.deleteMany({
+        where: { id: { in: academicsTeacherAllocationIds } },
+      });
+    }
+    if (academicsSubjectAllocationIds.length > 0) {
+      await prisma.subjectAllocation.deleteMany({
+        where: { id: { in: academicsSubjectAllocationIds } },
+      });
+    }
+    if (academicsSubjectIds.length > 0) {
+      await prisma.subject.deleteMany({
+        where: { id: { in: academicsSubjectIds } },
+      });
+    }
     if (analyticsStudentGuardianIds.length > 0) {
       await prisma.studentGuardian.deleteMany({
         where: { id: { in: analyticsStudentGuardianIds } },

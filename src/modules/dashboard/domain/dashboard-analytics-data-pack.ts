@@ -1,7 +1,9 @@
 import {
   DASHBOARD_ANALYTICS_ATTENDANCE_PACK_CHART_KEYS,
+  DASHBOARD_ANALYTICS_ACADEMICS_PACK_CHART_KEYS,
   DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK_CHART_KEYS,
   DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS,
+  DashboardAnalyticsAcademicsPackChartKey,
   DashboardAnalyticsAdmissionsStudentsPackChartKey,
   DashboardAnalyticsAttendancePackChartKey,
   DashboardAnalyticsComputedSnapshotChartKey,
@@ -24,6 +26,11 @@ export const DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK =
 export type DashboardAnalyticsAdmissionsStudentsPack =
   typeof DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK;
 
+export const DASHBOARD_ANALYTICS_ACADEMICS_PACK = 'academics_v1' as const;
+
+export type DashboardAnalyticsAcademicsPack =
+  typeof DASHBOARD_ANALYTICS_ACADEMICS_PACK;
+
 export type DashboardAnalyticsDataComputation =
   | 'dashboard_summary_snapshot'
   | 'dashboard_alert_readiness_snapshot'
@@ -36,7 +43,11 @@ export type DashboardAnalyticsDataComputation =
   | 'admissions_application_submission_acceptance_events'
   | 'students_point_in_time_active_enrollment_stock'
   | 'students_withdrawal_events'
-  | 'students_current_guardian_coverage';
+  | 'students_current_guardian_coverage'
+  | 'academics_teacher_allocation_coverage'
+  | 'academics_current_timetable_publication_status'
+  | 'academics_current_curriculum_activation_status'
+  | 'academics_current_lesson_plan_activation_status';
 
 export function isDashboardAnalyticsComputedSnapshotChartKey(
   chartKey: string,
@@ -59,6 +70,14 @@ export function isDashboardAnalyticsAdmissionsStudentsPackChartKey(
 ): chartKey is DashboardAnalyticsAdmissionsStudentsPackChartKey {
   return (
     DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK_CHART_KEYS as readonly string[]
+  ).includes(chartKey);
+}
+
+export function isDashboardAnalyticsAcademicsPackChartKey(
+  chartKey: string,
+): chartKey is DashboardAnalyticsAcademicsPackChartKey {
+  return (
+    DASHBOARD_ANALYTICS_ACADEMICS_PACK_CHART_KEYS as readonly string[]
   ).includes(chartKey);
 }
 
@@ -106,5 +125,20 @@ export function getDashboardAnalyticsAdmissionsStudentsComputation(
       return 'students_withdrawal_events';
     case 'students.guardian_coverage':
       return 'students_current_guardian_coverage';
+  }
+}
+
+export function getDashboardAnalyticsAcademicsComputation(
+  chartKey: DashboardAnalyticsAcademicsPackChartKey,
+): DashboardAnalyticsDataComputation {
+  switch (chartKey) {
+    case 'academics.teacher_allocation_coverage':
+      return 'academics_teacher_allocation_coverage';
+    case 'academics.timetable_publication_status':
+      return 'academics_current_timetable_publication_status';
+    case 'academics.curriculum_activation':
+      return 'academics_current_curriculum_activation_status';
+    case 'academics.lesson_plan_activation':
+      return 'academics_current_lesson_plan_activation_status';
   }
 }

@@ -253,7 +253,7 @@ describe('Dashboard analytics presenter', () => {
     expectNoInternalLeaks(response);
   });
 
-  it('marks exactly sixteen charts as computed and leaves twenty-one definition-only', () => {
+  it('marks exactly twenty charts as computed and leaves seventeen definition-only', () => {
     const response = presentDashboardAnalyticsCatalog({
       generatedAt: new Date('2026-07-09T12:00:00.000Z'),
       catalog: DASHBOARD_ANALYTICS_CATALOG,
@@ -279,6 +279,12 @@ describe('Dashboard analytics presenter', () => {
       'students.enrollment_growth',
       'students.withdrawal_trend',
       'students.guardian_coverage',
+    ];
+    const academicsPackChartKeys = [
+      'academics.teacher_allocation_coverage',
+      'academics.timetable_publication_status',
+      'academics.curriculum_activation',
+      'academics.lesson_plan_activation',
     ];
 
     expect(
@@ -322,7 +328,8 @@ describe('Dashboard analytics presenter', () => {
           (chart) =>
             !computedSnapshotChartKeys.includes(chart.chartKey) &&
             !attendancePackChartKeys.includes(chart.chartKey) &&
-            !admissionsStudentsPackChartKeys.includes(chart.chartKey),
+            !admissionsStudentsPackChartKeys.includes(chart.chartKey) &&
+            !academicsPackChartKeys.includes(chart.chartKey),
         )
         .every(
           (chart) =>
@@ -334,12 +341,12 @@ describe('Dashboard analytics presenter', () => {
       response.catalog.charts.filter(
         (chart) => chart.meta.dataAvailability !== 'definition_only',
       ),
-    ).toHaveLength(16);
+    ).toHaveLength(20);
     expect(
       response.catalog.charts.filter(
         (chart) => chart.meta.dataAvailability === 'definition_only',
       ),
-    ).toHaveLength(21);
+    ).toHaveLength(17);
   });
 
   it('publishes one truthful typed query capability matrix', () => {
@@ -473,6 +480,116 @@ describe('Dashboard analytics presenter', () => {
         granularityApplicable: true,
       },
     });
+
+    const academicsCapabilities = new Map(
+      response.catalog.charts
+        .filter((chart) => chart.source === 'academics')
+        .map((chart) => [chart.chartKey, chart]),
+    );
+    for (const chartKey of [
+      'academics.teacher_allocation_coverage',
+      'academics.timetable_publication_status',
+      'academics.curriculum_activation',
+      'academics.lesson_plan_activation',
+    ]) {
+      expect(academicsCapabilities.get(chartKey)).toMatchObject({
+        status: 'available',
+        meta: { dataAvailability: 'computed_category' },
+        queryCapabilities: {
+          timeFilterMode: 'compatibility_defaults',
+          timeFiltersApplicable: false,
+          granularityApplicable: false,
+          supportedRanges: ['30d'],
+          supportedGranularities: ['day'],
+        },
+      });
+    }
+    expect(
+      academicsCapabilities.get('academics.teacher_allocation_coverage')
+        ?.queryCapabilities.supportedHierarchyFilters,
+    ).toEqual([
+      'academicYearId',
+      'termId',
+      'gradeId',
+      'sectionId',
+      'classroomId',
+    ]);
+    expect(
+      academicsCapabilities.get('academics.timetable_publication_status')
+        ?.queryCapabilities.supportedHierarchyFilters,
+    ).toEqual(['academicYearId', 'termId']);
+    expect(
+      academicsCapabilities.get('academics.curriculum_activation')
+        ?.queryCapabilities.supportedHierarchyFilters,
+    ).toEqual(['academicYearId', 'termId', 'gradeId']);
+    expect(
+      academicsCapabilities.get('academics.lesson_plan_activation')
+        ?.queryCapabilities.supportedHierarchyFilters,
+    ).toEqual([
+      'academicYearId',
+      'termId',
+      'gradeId',
+      'sectionId',
+      'classroomId',
+    ]);
+    expect(
+      academicsCapabilities.get('academics.teacher_allocation_coverage'),
+    ).toMatchObject({
+      description:
+        'Current required classroom-subject allocation units with and without at least one teacher allocation.',
+      filters: [
+        'range',
+        'granularity',
+        'academicYearId',
+        'termId',
+        'gradeId',
+        'sectionId',
+        'classroomId',
+      ],
+      series: [{ key: 'allocated' }, { key: 'missing' }],
+    });
+    expect(
+      academicsCapabilities.get('academics.timetable_publication_status'),
+    ).toMatchObject({
+      description:
+        'Current non-archived timetable configurations grouped by published operational state.',
+      filters: ['range', 'granularity', 'academicYearId', 'termId'],
+      series: [{ key: 'published' }, { key: 'draft' }],
+    });
+    expect(
+      academicsCapabilities.get('academics.curriculum_activation'),
+    ).toMatchObject({
+      description:
+        'Current non-archived curricula grouped by active or draft status.',
+      filters: ['range', 'granularity', 'academicYearId', 'termId', 'gradeId'],
+      series: [{ key: 'active' }, { key: 'draft' }],
+    });
+    expect(
+      academicsCapabilities.get('academics.lesson_plan_activation'),
+    ).toMatchObject({
+      description:
+        'Current non-archived lesson plans grouped by active or draft status.',
+      filters: [
+        'range',
+        'granularity',
+        'academicYearId',
+        'termId',
+        'gradeId',
+        'sectionId',
+        'classroomId',
+      ],
+      series: [{ key: 'active' }, { key: 'draft' }],
+    });
+    for (const chartKey of [
+      'academics.structure_readiness',
+      'academics.subject_allocation_coverage',
+    ]) {
+      expect(academicsCapabilities.get(chartKey)).toMatchObject({
+        status: 'planned',
+        meta: { dataAvailability: 'definition_only' },
+        queryCapabilities: { timeFilterMode: 'historical' },
+      });
+    }
   });
 });
 

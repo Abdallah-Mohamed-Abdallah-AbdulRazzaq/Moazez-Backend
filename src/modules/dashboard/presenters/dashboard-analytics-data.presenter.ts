@@ -10,6 +10,7 @@ import { DashboardAnalyticsChartDefinition } from '../domain/dashboard-analytics
 import { dashboardAnalyticsSnapshotPoint } from '../domain/dashboard-analytics-coordinate';
 import { DashboardAttendanceAnalyticsData } from '../domain/dashboard-attendance-analytics';
 import { DashboardAdmissionsStudentsAnalyticsData } from '../domain/dashboard-admissions-students-analytics';
+import { DashboardAcademicsAnalyticsData } from '../domain/dashboard-academics-analytics';
 import {
   DashboardAnalyticsQueryContext,
   DashboardAnalyticsResolvedHierarchy,
@@ -18,11 +19,14 @@ import {
   DASHBOARD_ANALYTICS_OPERATIONAL_SNAPSHOT_PACK,
   DASHBOARD_ANALYTICS_ATTENDANCE_PACK,
   DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK,
+  DASHBOARD_ANALYTICS_ACADEMICS_PACK,
+  getDashboardAnalyticsAcademicsComputation,
   getDashboardAnalyticsAdmissionsStudentsComputation,
   getDashboardAnalyticsAttendanceComputation,
   getDashboardAnalyticsChartComputation,
   isDashboardAnalyticsAttendancePackChartKey,
   isDashboardAnalyticsAdmissionsStudentsPackChartKey,
+  isDashboardAnalyticsAcademicsPackChartKey,
   isDashboardAnalyticsComputedSnapshotChartKey,
 } from '../domain/dashboard-analytics-data-pack';
 import { DashboardAlertSignals } from '../infrastructure/dashboard-alerts.repository';
@@ -37,11 +41,19 @@ export interface DashboardAnalyticsChartDataPresentationInput {
   alertSignals?: DashboardAlertSignals;
   attendanceData?: DashboardAttendanceAnalyticsData;
   admissionsStudentsData?: DashboardAdmissionsStudentsAnalyticsData;
+  academicsData?: DashboardAcademicsAnalyticsData;
 }
 
 export function presentDashboardAnalyticsChartData(
   input: DashboardAnalyticsChartDataPresentationInput,
 ): DashboardAnalyticsChartDataResponseDto {
+  if (
+    isDashboardAnalyticsAcademicsPackChartKey(input.chart.chartKey) &&
+    input.academicsData
+  ) {
+    return presentComputedAcademicsChartData(input, input.academicsData);
+  }
+
   if (
     isDashboardAnalyticsAdmissionsStudentsPackChartKey(input.chart.chartKey) &&
     input.admissionsStudentsData
@@ -67,6 +79,37 @@ export function presentDashboardAnalyticsChartData(
   }
 
   return presentUnsupportedChartData(input);
+}
+
+function presentComputedAcademicsChartData(
+  input: DashboardAnalyticsChartDataPresentationInput,
+  data: DashboardAcademicsAnalyticsData,
+): DashboardAnalyticsChartDataResponseDto {
+  if (!isDashboardAnalyticsAcademicsPackChartKey(input.chart.chartKey)) {
+    return presentUnsupportedChartData(input);
+  }
+
+  return {
+    ...responseIdentity(input),
+    data,
+    emptyState: data.empty ? noDataEmptyState(input.chart) : null,
+    meta: {
+      source: 'dashboard_analytics_data_pack',
+      pack: DASHBOARD_ANALYTICS_ACADEMICS_PACK,
+      dataAvailability: input.chart.meta.dataAvailability,
+      computation: getDashboardAnalyticsAcademicsComputation(
+        input.chart.chartKey,
+      ),
+      freshness: dashboardFreshness('request_time_snapshot'),
+      query: presentQueryMetadata(input.queryContext),
+      deferred: {
+        historicalSeries: 'deferred',
+        drilldown: 'deferred',
+        exports: 'deferred',
+        realtime: 'deferred',
+      },
+    },
+  };
 }
 
 function presentComputedAdmissionsStudentsChartData(

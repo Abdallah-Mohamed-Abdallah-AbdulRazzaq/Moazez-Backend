@@ -318,6 +318,98 @@ describe('DashboardAnalyticsQueryContextService', () => {
   );
 
   it.each([
+    [
+      'academics.teacher_allocation_coverage',
+      { academicYearId: ACADEMIC_YEAR_ID, termId: TERM_ID, gradeId: GRADE_ID },
+      ['academicYearId', 'termId', 'gradeId'],
+    ],
+    [
+      'academics.timetable_publication_status',
+      { academicYearId: ACADEMIC_YEAR_ID, termId: TERM_ID },
+      ['academicYearId', 'termId'],
+    ],
+    [
+      'academics.curriculum_activation',
+      { academicYearId: ACADEMIC_YEAR_ID, termId: TERM_ID, gradeId: GRADE_ID },
+      ['academicYearId', 'termId', 'gradeId'],
+    ],
+    [
+      'academics.lesson_plan_activation',
+      { academicYearId: ACADEMIC_YEAR_ID, termId: TERM_ID, gradeId: GRADE_ID },
+      ['academicYearId', 'termId', 'gradeId'],
+    ],
+  ] as const)(
+    'keeps compatibility time defaults not applicable while applying %s hierarchy',
+    async (chartKey, hierarchyQuery, hierarchyKeys) => {
+      const context = await queryService(hierarchyRepositoryMock()).resolve(
+        scope(),
+        chart(chartKey),
+        { range: '30d', granularity: 'day', ...hierarchyQuery },
+      );
+
+      expect(context.filtersApplied).toEqual(hierarchyKeys);
+      expect(context.filtersNotApplicable).toEqual(['range', 'granularity']);
+      expect(context.explicitlySuppliedKeys).toEqual([
+        'range',
+        'granularity',
+        ...hierarchyKeys,
+      ]);
+    },
+  );
+
+  it.each([
+    'academics.teacher_allocation_coverage',
+    'academics.timetable_publication_status',
+    'academics.curriculum_activation',
+    'academics.lesson_plan_activation',
+  ])(
+    'rejects every nondefault current-category time input for %s',
+    async (chartKey) => {
+      for (const rawQuery of [
+        { range: '7d' as const },
+        {
+          range: 'custom' as const,
+          dateFrom: '2026-07-01',
+          dateTo: '2026-07-02',
+        },
+        { granularity: 'week' as const },
+        { granularity: 'month' as const },
+        { dateFrom: '2026-07-01' },
+        { dateTo: '2026-07-02' },
+      ]) {
+        await expect(
+          queryService(hierarchyRepositoryMock()).resolve(
+            scope(),
+            chart(chartKey),
+            rawQuery,
+          ),
+        ).rejects.toBeInstanceOf(ValidationDomainException);
+      }
+    },
+  );
+
+  it.each([
+    ['academics.timetable_publication_status', 'gradeId'],
+    ['academics.timetable_publication_status', 'sectionId'],
+    ['academics.timetable_publication_status', 'classroomId'],
+    ['academics.curriculum_activation', 'sectionId'],
+    ['academics.curriculum_activation', 'classroomId'],
+  ] as const)(
+    'rejects unsupported %s hierarchy input %s before repository resolution',
+    async (chartKey, filter) => {
+      const repository = hierarchyRepositoryMock();
+      await expect(
+        queryService(repository).resolve(scope(), chart(chartKey), {
+          [filter]: GRADE_ID,
+        }),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+      expect(repository.findGradeById).not.toHaveBeenCalled();
+      expect(repository.findSectionById).not.toHaveBeenCalled();
+      expect(repository.findClassroomById).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
     { range: '7d' },
     { granularity: 'week' },
     { granularity: 'month' },
