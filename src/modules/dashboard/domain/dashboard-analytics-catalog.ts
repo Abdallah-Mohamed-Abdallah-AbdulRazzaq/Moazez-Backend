@@ -127,7 +127,9 @@ export type DashboardAnalyticsTone =
   | 'critical';
 export type DashboardAnalyticsDataAvailability =
   | 'definition_only'
-  | 'computed_snapshot';
+  | 'computed_snapshot'
+  | 'computed_series'
+  | 'computed_category';
 export type DashboardAnalyticsChartEmptyStateReason =
   | 'not_implemented'
   | 'no_data';
@@ -192,6 +194,7 @@ export interface DashboardAnalyticsChartQueryCapabilities {
   categoryTableFunnelCapable: boolean;
   definitionOnly: boolean;
   timeFiltersApplicable: boolean;
+  granularityApplicable: boolean;
   supportedRanges: readonly DashboardAnalyticsRange[];
   supportedGranularities: readonly DashboardAnalyticsGranularity[];
   supportedHierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
@@ -254,6 +257,15 @@ const REVIEW_FILTERS: readonly DashboardAnalyticsFilterKey[] = [
   'classroomId',
 ];
 
+const ATTENDANCE_EXCUSE_FILTERS: readonly DashboardAnalyticsFilterKey[] = [
+  'range',
+  'granularity',
+  'dateFrom',
+  'dateTo',
+  'academicYearId',
+  'termId',
+];
+
 export const DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS = [
   'attendance.pending_sessions',
   'grades.pending_submission_reviews',
@@ -265,6 +277,17 @@ export const DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS = [
 
 export type DashboardAnalyticsComputedSnapshotChartKey =
   (typeof DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS)[number];
+
+export const DASHBOARD_ANALYTICS_ATTENDANCE_PACK_CHART_KEYS = [
+  'attendance.daily_trend',
+  'attendance.status_distribution',
+  'attendance.absence_rate',
+  'attendance.late_rate',
+  'attendance.excuse_status',
+] as const;
+
+export type DashboardAnalyticsAttendancePackChartKey =
+  (typeof DASHBOARD_ANALYTICS_ATTENDANCE_PACK_CHART_KEYS)[number];
 
 export const DASHBOARD_ANALYTICS_SOURCES_CATALOG: readonly DashboardAnalyticsSourceDefinition[] =
   [
@@ -758,6 +781,10 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
         series('absent', 'Absent'),
         series('late', 'Late'),
       ],
+      STANDARD_OPERATIONAL_FILTERS,
+      computedAttendanceSeriesOptions(
+        'No attendance observations found for the selected range.',
+      ),
     ),
     chart(
       'attendance.status_distribution',
@@ -771,6 +798,10 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
         series('late', 'Late'),
         series('excused', 'Excused'),
       ],
+      STANDARD_OPERATIONAL_FILTERS,
+      computedAttendanceSeriesOptions(
+        'No attendance observations found for the selected range.',
+      ),
     ),
     chart(
       'attendance.absence_rate',
@@ -779,6 +810,10 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'Absence rate over the selected range.',
       'line',
       [series('absence_rate', 'Absence rate')],
+      STANDARD_OPERATIONAL_FILTERS,
+      computedAttendanceSeriesOptions(
+        'No final attendance observations found for the selected range.',
+      ),
     ),
     chart(
       'attendance.late_rate',
@@ -787,6 +822,10 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'Late arrival rate over the selected range.',
       'line',
       [series('late_rate', 'Late rate')],
+      STANDARD_OPERATIONAL_FILTERS,
+      computedAttendanceSeriesOptions(
+        'No final attendance observations found for the selected range.',
+      ),
     ),
     chart(
       'attendance.pending_sessions',
@@ -812,6 +851,10 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
         series('approved', 'Approved'),
         series('rejected', 'Rejected'),
       ],
+      ATTENDANCE_EXCUSE_FILTERS,
+      computedAttendanceCategoryOptions(
+        'No attendance excuse requests found for the selected range.',
+      ),
     ),
     chart(
       'academics.structure_readiness',
@@ -1146,6 +1189,8 @@ function chart(
     dataAvailability?: DashboardAnalyticsDataAvailability;
     emptyState?: DashboardAnalyticsChartEmptyState;
     snapshotHierarchyFilters?: readonly DashboardAnalyticsHierarchyFilterKey[];
+    hierarchyFilters?: readonly DashboardAnalyticsHierarchyFilterKey[];
+    granularityApplicable?: boolean;
   } = {},
 ): DashboardAnalyticsChartDefinition {
   const definitionEndpoint = `/dashboard/analytics/charts/${chartKey}`;
@@ -1179,8 +1224,39 @@ function chart(
       type,
       filters,
       dataAvailability,
-      options.snapshotHierarchyFilters,
+      options.hierarchyFilters ?? options.snapshotHierarchyFilters,
+      options.granularityApplicable,
     ),
+  };
+}
+
+function computedAttendanceSeriesOptions(emptyStateMessage: string): {
+  status: 'available';
+  dataAvailability: 'computed_series';
+  emptyState: DashboardAnalyticsChartEmptyState;
+  hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
+} {
+  return {
+    status: 'available',
+    dataAvailability: 'computed_series',
+    emptyState: { reason: 'no_data', message: emptyStateMessage },
+    hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+  };
+}
+
+function computedAttendanceCategoryOptions(emptyStateMessage: string): {
+  status: 'available';
+  dataAvailability: 'computed_category';
+  emptyState: DashboardAnalyticsChartEmptyState;
+  hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
+  granularityApplicable: false;
+} {
+  return {
+    status: 'available',
+    dataAvailability: 'computed_category',
+    emptyState: { reason: 'no_data', message: emptyStateMessage },
+    hierarchyFilters: ['academicYearId', 'termId'],
+    granularityApplicable: false,
   };
 }
 
@@ -1208,28 +1284,39 @@ function buildChartQueryCapabilities(
   type: DashboardAnalyticsChartType,
   filters: readonly DashboardAnalyticsFilterKey[],
   dataAvailability: DashboardAnalyticsDataAvailability,
-  snapshotHierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[] = [],
+  hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[] = [],
+  granularityApplicableOverride?: boolean,
 ): DashboardAnalyticsChartQueryCapabilities {
   const snapshotOnly = dataAvailability === 'computed_snapshot';
   const timeFiltersApplicable =
     !snapshotOnly &&
     filters.includes('range') &&
     filters.includes('granularity');
+  const granularityApplicable =
+    !snapshotOnly &&
+    (granularityApplicableOverride ?? filters.includes('granularity'));
   const supportedHierarchyFilters = snapshotOnly
-    ? snapshotHierarchyFilters
-    : DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS.filter((key) =>
-        filters.includes(key),
-      );
+    ? hierarchyFilters
+    : hierarchyFilters.length > 0
+      ? hierarchyFilters
+      : DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS.filter((key) =>
+          filters.includes(key),
+        );
+
+  const historicalSeriesCapable =
+    dataAvailability === 'computed_series' ||
+    (!snapshotOnly &&
+      ['line', 'area', 'timeline', 'heatmap'].includes(type));
 
   return {
     snapshotOnly,
-    historicalSeriesCapable:
-      !snapshotOnly && ['line', 'area', 'timeline', 'heatmap'].includes(type),
+    historicalSeriesCapable,
     categoryTableFunnelCapable:
       !snapshotOnly &&
       ['bar', 'stacked-bar', 'donut', 'pie', 'table', 'funnel'].includes(type),
     definitionOnly: dataAvailability === 'definition_only',
     timeFiltersApplicable,
+    granularityApplicable,
     supportedRanges: snapshotOnly
       ? ['30d']
       : timeFiltersApplicable
@@ -1237,9 +1324,11 @@ function buildChartQueryCapabilities(
         : [],
     supportedGranularities: snapshotOnly
       ? ['day']
-      : timeFiltersApplicable
+      : granularityApplicable
         ? DASHBOARD_ANALYTICS_GRANULARITIES
-        : [],
+        : timeFiltersApplicable
+          ? ['day']
+          : [],
     supportedHierarchyFilters,
   };
 }

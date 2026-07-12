@@ -2,6 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AttendanceExcuseStatus,
+  AttendanceExcuseType,
+  AttendanceMode,
+  AttendanceScopeType,
+  AttendanceSessionStatus,
+  AttendanceStatus,
   MembershipStatus,
   PrismaClient,
   UserStatus,
@@ -63,6 +69,9 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
   let classroomId = '';
   let crossSchoolId = '';
   let crossSchoolAcademicYearId = '';
+  const attendanceStudentIds: string[] = [];
+  const attendanceSessionIds: string[] = [];
+  const attendanceExcuseIds: string[] = [];
 
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -90,6 +99,7 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     classroomId = hierarchy.classroomId;
     crossSchoolId = hierarchy.crossSchoolId;
     crossSchoolAcademicYearId = hierarchy.crossSchoolAcademicYearId;
+    await createAttendanceAnalyticsFixtures();
 
     const permissionIds = await ensureDashboardPermissions();
     await ensureDemoAdminHasDashboardPermissions(Object.values(permissionIds));
@@ -319,22 +329,20 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     expectNoInternalLeaks(response.body);
   });
 
-  it('returns a safe not_implemented envelope for known unsupported charts', async () => {
+  it('returns a safe not_implemented envelope for known unrelated charts', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     const response = await request(app.getHttpServer())
       .get(
-        `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.daily_trend/data`,
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/students.enrollment_growth/data`,
       )
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
     expect(response.body).toMatchObject({
       generatedAt: expect.any(String),
-      chartKey: 'attendance.daily_trend',
-      source: 'attendance',
-      title: 'Daily attendance trend',
-      type: 'line',
+      chartKey: 'students.enrollment_growth',
+      source: 'students',
       status: 'planned',
       range: '30d',
       granularity: 'day',
@@ -354,6 +362,237 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
       },
     });
     expectNoInternalLeaks(response.body);
+  });
+
+  it('returns day, week, and month Attendance observation buckets from submitted sessions only', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.daily_trend/data`;
+
+    const day = await request(app.getHttpServer())
+      .get(path)
+      .query({
+        range: 'custom',
+        granularity: 'day',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-10',
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const week = await request(app.getHttpServer())
+      .get(path)
+      .query({
+        range: 'custom',
+        granularity: 'week',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-10',
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const month = await request(app.getHttpServer())
+      .get(path)
+      .query({
+        range: 'custom',
+        granularity: 'month',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-31',
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const fixed = await request(app.getHttpServer())
+      .get(path)
+      .query({ range: '90d', granularity: 'month' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(day.body).toMatchObject({
+      chartKey: 'attendance.daily_trend',
+      status: 'available',
+      data: {
+        totals: { present: 3, absent: 2, late: 2 },
+        summary: { value: 7, label: 'Attendance observations' },
+        empty: false,
+      },
+      meta: {
+        pack: 'attendance_v1',
+        dataAvailability: 'computed_series',
+        computation: 'attendance_observation_daily_trend',
+      },
+    });
+    expect(day.body.data.series[0].points).toHaveLength(10);
+    expect(
+      week.body.data.series[0].points.map((point: { x: string }) => point.x),
+    ).toEqual(['2026-07-01/2026-07-05', '2026-07-06/2026-07-10']);
+    expect(month.body.data.series[0].points).toEqual([
+      expect.objectContaining({
+        x: '2026-07',
+        coordinate: { kind: 'calendar_month', month: '2026-07' },
+      }),
+    ]);
+    expect(fixed.body).toMatchObject({
+      range: '90d',
+      granularity: 'month',
+      meta: {
+        pack: 'attendance_v1',
+        query: {
+          appliedFilters: expect.arrayContaining(['range', 'granularity']),
+        },
+      },
+    });
+    for (const response of [day, week, month, fixed]) {
+      expectNoInternalLeaks(response.body);
+    }
+  });
+
+  it('returns status distribution and exact absence/late rate semantics', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const query = {
+      range: 'custom',
+      granularity: 'day',
+      dateFrom: '2026-07-01',
+      dateTo: '2026-07-10',
+    };
+    const responses = await Promise.all(
+      [
+        'attendance.status_distribution',
+        'attendance.absence_rate',
+        'attendance.late_rate',
+      ].map((chartKey) =>
+        request(app.getHttpServer())
+          .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/${chartKey}/data`)
+          .query(query)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .expect(200),
+      ),
+    );
+    const [distribution, absence, late] = responses.map(
+      (response) => response.body,
+    );
+
+    expect(distribution.data.totals).toEqual({
+      present: 3,
+      absent: 2,
+      late: 2,
+      excused: 1,
+    });
+    expect(absence.data.totals).toEqual({
+      absent: 2,
+      considered: 9,
+      rate: 22.22,
+    });
+    expect(late.data.totals).toEqual({
+      late: 2,
+      considered: 9,
+      rate: 22.22,
+    });
+    expect(absence.data.series[0].points[0].y).toBe(20);
+    expect(late.data.series[0].points[0].y).toBe(20);
+    for (const body of [distribution, absence, late]) {
+      expectNoInternalLeaks(body);
+    }
+  });
+
+  it('returns overlap-counted excuse categories and rejects unsupported hierarchy/granularity', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.excuse_status/data`;
+    const response = await request(app.getHttpServer())
+      .get(path)
+      .query({
+        range: 'custom',
+        granularity: 'day',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-10',
+        academicYearId,
+        termId,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      data: {
+        totals: { pending: 1, approved: 1, rejected: 0 },
+        summary: { value: 2 },
+      },
+      meta: {
+        pack: 'attendance_v1',
+        dataAvailability: 'computed_category',
+        query: {
+          appliedFilters: expect.arrayContaining([
+            'range',
+            'dateFrom',
+            'dateTo',
+            'academicYearId',
+            'termId',
+          ]),
+          notApplicableFilters: ['granularity'],
+        },
+      },
+    });
+    expect(response.body.data.series[0].points[0]).toMatchObject({
+      coordinate: { kind: 'category' },
+    });
+    expectNoInternalLeaks(response.body);
+
+    for (const invalidQuery of [
+      { gradeId },
+      { sectionId },
+      { classroomId },
+      { granularity: 'week' },
+      { granularity: 'month' },
+    ]) {
+      await request(app.getHttpServer())
+        .get(path)
+        .query(invalidQuery)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    }
+  });
+
+  it('applies the full same-school hierarchy chain and returns a no-data envelope safely', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.daily_trend/data`;
+    const filtered = await request(app.getHttpServer())
+      .get(path)
+      .query({
+        range: 'custom',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-10',
+        academicYearId,
+        termId,
+        gradeId,
+        sectionId,
+        classroomId,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const empty = await request(app.getHttpServer())
+      .get(path)
+      .query({
+        range: 'custom',
+        dateFrom: '2026-05-01',
+        dateTo: '2026-05-07',
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(filtered.body.data.totals).toEqual({
+      present: 3,
+      absent: 2,
+      late: 2,
+    });
+    expect(filtered.body.meta.query.appliedFilters).toEqual(
+      expect.arrayContaining([
+        'academicYearId',
+        'termId',
+        'gradeId',
+        'sectionId',
+        'classroomId',
+      ]),
+    );
+    expect(empty.body).toMatchObject({
+      data: { empty: true },
+      emptyState: { reason: 'no_data' },
+      meta: { pack: 'attendance_v1' },
+    });
   });
 
   it('returns 404 for unknown chart keys and rejects invalid/unsupported query input', async () => {
@@ -660,7 +899,220 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     };
   }
 
+  async function createAttendanceAnalyticsFixtures(): Promise<void> {
+    const students = await Promise.all(
+      Array.from({ length: 6 }, (_, index) =>
+        prisma.student.create({
+          data: {
+            schoolId: demoSchoolId,
+            organizationId: demoOrganizationId,
+            firstName: `Analytics ${index + 1}`,
+            lastName: marker,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    attendanceStudentIds.push(...students.map((student) => student.id));
+
+    const sessionInput = (
+      date: string,
+      status: AttendanceSessionStatus,
+      periodKey: string,
+      deletedAt: Date | null = null,
+    ) => ({
+      schoolId: demoSchoolId,
+      academicYearId,
+      termId,
+      date: new Date(`${date}T00:00:00.000Z`),
+      scopeType: AttendanceScopeType.CLASSROOM,
+      scopeKey: classroomId,
+      gradeId,
+      sectionId,
+      classroomId,
+      mode:
+        periodKey === 'daily' ? AttendanceMode.DAILY : AttendanceMode.PERIOD,
+      periodKey,
+      status,
+      deletedAt,
+    });
+    const sessions = await Promise.all([
+      prisma.attendanceSession.create({
+        data: sessionInput(
+          '2026-07-01',
+          AttendanceSessionStatus.SUBMITTED,
+          'daily',
+        ),
+        select: { id: true },
+      }),
+      prisma.attendanceSession.create({
+        data: sessionInput(
+          '2026-07-02',
+          AttendanceSessionStatus.SUBMITTED,
+          'period-1',
+        ),
+        select: { id: true },
+      }),
+      prisma.attendanceSession.create({
+        data: sessionInput(
+          '2026-07-08',
+          AttendanceSessionStatus.SUBMITTED,
+          'daily',
+        ),
+        select: { id: true },
+      }),
+      prisma.attendanceSession.create({
+        data: sessionInput(
+          '2026-07-03',
+          AttendanceSessionStatus.DRAFT,
+          'daily',
+        ),
+        select: { id: true },
+      }),
+      prisma.attendanceSession.create({
+        data: sessionInput(
+          '2026-07-04',
+          AttendanceSessionStatus.SUBMITTED,
+          'daily',
+          new Date('2026-07-05T00:00:00.000Z'),
+        ),
+        select: { id: true },
+      }),
+    ]);
+    attendanceSessionIds.push(...sessions.map((session) => session.id));
+
+    const statuses = [
+      AttendanceStatus.PRESENT,
+      AttendanceStatus.ABSENT,
+      AttendanceStatus.LATE,
+      AttendanceStatus.EXCUSED,
+      AttendanceStatus.EARLY_LEAVE,
+      AttendanceStatus.UNMARKED,
+    ];
+    await prisma.attendanceEntry.createMany({
+      data: [
+        ...statuses.map((status, index) => ({
+          schoolId: demoSchoolId,
+          sessionId: sessions[0].id,
+          studentId: students[index].id,
+          status,
+        })),
+        {
+          schoolId: demoSchoolId,
+          sessionId: sessions[1].id,
+          studentId: students[0].id,
+          status: AttendanceStatus.PRESENT,
+        },
+        {
+          schoolId: demoSchoolId,
+          sessionId: sessions[1].id,
+          studentId: students[1].id,
+          status: AttendanceStatus.PRESENT,
+        },
+        {
+          schoolId: demoSchoolId,
+          sessionId: sessions[1].id,
+          studentId: students[2].id,
+          status: AttendanceStatus.LATE,
+        },
+        {
+          schoolId: demoSchoolId,
+          sessionId: sessions[2].id,
+          studentId: students[0].id,
+          status: AttendanceStatus.ABSENT,
+        },
+        {
+          schoolId: demoSchoolId,
+          sessionId: sessions[3].id,
+          studentId: students[0].id,
+          status: AttendanceStatus.ABSENT,
+        },
+        {
+          schoolId: demoSchoolId,
+          sessionId: sessions[4].id,
+          studentId: students[0].id,
+          status: AttendanceStatus.ABSENT,
+        },
+      ],
+    });
+
+    const excuses = await Promise.all([
+      prisma.attendanceExcuseRequest.create({
+        data: {
+          schoolId: demoSchoolId,
+          academicYearId,
+          termId,
+          studentId: students[0].id,
+          type: AttendanceExcuseType.ABSENCE,
+          status: AttendanceExcuseStatus.PENDING,
+          dateFrom: new Date('2026-06-30T00:00:00.000Z'),
+          dateTo: new Date('2026-07-02T00:00:00.000Z'),
+        },
+        select: { id: true },
+      }),
+      prisma.attendanceExcuseRequest.create({
+        data: {
+          schoolId: demoSchoolId,
+          academicYearId,
+          termId,
+          studentId: students[1].id,
+          type: AttendanceExcuseType.LATE,
+          status: AttendanceExcuseStatus.APPROVED,
+          dateFrom: new Date('2026-07-08T00:00:00.000Z'),
+          dateTo: new Date('2026-07-12T00:00:00.000Z'),
+        },
+        select: { id: true },
+      }),
+      prisma.attendanceExcuseRequest.create({
+        data: {
+          schoolId: demoSchoolId,
+          academicYearId,
+          termId,
+          studentId: students[2].id,
+          type: AttendanceExcuseType.ABSENCE,
+          status: AttendanceExcuseStatus.REJECTED,
+          dateFrom: new Date('2026-06-20T00:00:00.000Z'),
+          dateTo: new Date('2026-06-30T00:00:00.000Z'),
+        },
+        select: { id: true },
+      }),
+      prisma.attendanceExcuseRequest.create({
+        data: {
+          schoolId: demoSchoolId,
+          academicYearId,
+          termId,
+          studentId: students[3].id,
+          type: AttendanceExcuseType.ABSENCE,
+          status: AttendanceExcuseStatus.PENDING,
+          dateFrom: new Date('2026-07-01T00:00:00.000Z'),
+          dateTo: new Date('2026-07-01T00:00:00.000Z'),
+          deletedAt: new Date('2026-07-02T00:00:00.000Z'),
+        },
+        select: { id: true },
+      }),
+    ]);
+    attendanceExcuseIds.push(...excuses.map((excuse) => excuse.id));
+  }
+
   async function cleanupAnalyticsHierarchyFixtures(): Promise<void> {
+    if (attendanceExcuseIds.length > 0) {
+      await prisma.attendanceExcuseRequest.deleteMany({
+        where: { id: { in: attendanceExcuseIds } },
+      });
+    }
+    if (attendanceSessionIds.length > 0) {
+      await prisma.attendanceEntry.deleteMany({
+        where: { sessionId: { in: attendanceSessionIds } },
+      });
+      await prisma.attendanceSession.deleteMany({
+        where: { id: { in: attendanceSessionIds } },
+      });
+    }
+    if (attendanceStudentIds.length > 0) {
+      await prisma.student.deleteMany({
+        where: { id: { in: attendanceStudentIds } },
+      });
+    }
     await prisma.classroom.deleteMany({
       where: {
         schoolId: { in: [demoSchoolId, crossSchoolId] },

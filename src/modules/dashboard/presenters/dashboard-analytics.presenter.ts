@@ -194,8 +194,8 @@ function summarizeCharts(charts: readonly DashboardAnalyticsChartDto[]) {
 
 function dashboardAnalyticsCatalogDeferred() {
   return {
-    computedSeries: 'snapshot_only',
-    historicalSeries: 'deferred',
+    computedSeries: 'available',
+    historicalSeries: 'available',
     drilldownData: 'deferred',
     savedReports: 'deferred',
     customDashboards: 'deferred',
@@ -210,10 +210,22 @@ function dashboardAnalyticsChartsDeferred(
   const hasComputedSnapshot = charts.some(
     (chart) => chart.meta.dataAvailability === 'computed_snapshot',
   );
+  const hasComputedData = charts.some(
+    (chart) =>
+      chart.meta.dataAvailability === 'computed_series' ||
+      chart.meta.dataAvailability === 'computed_category',
+  );
+  const hasHistoricalSeries = charts.some(
+    (chart) => chart.meta.dataAvailability === 'computed_series',
+  );
 
   return {
-    computedSeries: hasComputedSnapshot ? 'snapshot_only' : 'deferred',
-    historicalSeries: 'deferred',
+    computedSeries: hasComputedData
+      ? 'available'
+      : hasComputedSnapshot
+        ? 'snapshot_only'
+        : 'deferred',
+    historicalSeries: hasHistoricalSeries ? 'available' : 'deferred',
     drilldownData: 'deferred',
   } as const;
 }

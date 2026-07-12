@@ -128,6 +128,52 @@ export function dashboardAnalyticsSnapshotPoint(
   });
 }
 
+export function dashboardAnalyticsCivilDatePoint(
+  date: string,
+  y: number,
+): DashboardAnalyticsChartDataPoint {
+  return validateDashboardAnalyticsChartDataPoint({
+    x: date,
+    y,
+    coordinate: { kind: 'civil_date', date },
+  });
+}
+
+export function dashboardAnalyticsWeekIntervalPoint(
+  startDate: string,
+  endDate: string,
+  y: number,
+): DashboardAnalyticsChartDataPoint {
+  return validateDashboardAnalyticsChartDataPoint({
+    x: `${startDate}/${endDate}`,
+    y,
+    coordinate: { kind: 'week_interval', startDate, endDate },
+  });
+}
+
+export function dashboardAnalyticsCalendarMonthPoint(
+  month: string,
+  y: number,
+): DashboardAnalyticsChartDataPoint {
+  return validateDashboardAnalyticsChartDataPoint({
+    x: month,
+    y,
+    coordinate: { kind: 'calendar_month', month },
+  });
+}
+
+export function dashboardAnalyticsCategoryPoint(
+  key: string,
+  label: string,
+  y: number,
+): DashboardAnalyticsChartDataPoint {
+  return validateDashboardAnalyticsChartDataPoint({
+    x: key,
+    y,
+    coordinate: { kind: 'category', key, label },
+  });
+}
+
 function nonEmpty(value: string): boolean {
   return value.trim().length > 0;
 }

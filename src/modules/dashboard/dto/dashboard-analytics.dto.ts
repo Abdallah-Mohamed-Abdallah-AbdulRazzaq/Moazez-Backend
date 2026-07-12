@@ -110,6 +110,7 @@ export class DashboardAnalyticsChartQueryCapabilitiesDto {
   categoryTableFunnelCapable!: boolean;
   definitionOnly!: boolean;
   timeFiltersApplicable!: boolean;
+  granularityApplicable!: boolean;
   supportedRanges!: readonly DashboardAnalyticsRange[];
   supportedGranularities!: readonly DashboardAnalyticsGranularity[];
   supportedHierarchyFilters!: readonly DashboardAnalyticsHierarchyFilterKey[];
@@ -177,9 +178,12 @@ export class DashboardAnalyticsCatalogDto {
 export class DashboardAnalyticsCatalogDeferredDto {
   computedSeries!: Extract<
     DashboardCapabilityState,
-    'snapshot_only' | 'deferred'
+    'available' | 'snapshot_only' | 'deferred'
   >;
-  historicalSeries!: 'deferred';
+  historicalSeries!: Extract<
+    DashboardCapabilityState,
+    'available' | 'deferred'
+  >;
   drilldownData!: 'deferred';
   savedReports!: 'deferred';
   customDashboards!: 'deferred';
@@ -217,9 +221,12 @@ export class DashboardAnalyticsChartsFiltersDto {
 export class DashboardAnalyticsChartsDeferredDto {
   computedSeries!: Extract<
     DashboardCapabilityState,
-    'snapshot_only' | 'deferred'
+    'available' | 'snapshot_only' | 'deferred'
   >;
-  historicalSeries!: 'deferred';
+  historicalSeries!: Extract<
+    DashboardCapabilityState,
+    'available' | 'deferred'
+  >;
   drilldownData!: 'deferred';
 }
 

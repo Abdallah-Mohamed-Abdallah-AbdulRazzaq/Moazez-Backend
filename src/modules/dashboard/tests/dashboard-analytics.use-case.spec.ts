@@ -40,8 +40,8 @@ describe('Dashboard analytics use cases', () => {
         charts: expect.any(Array),
       },
       deferred: {
-        computedSeries: 'snapshot_only',
-        historicalSeries: 'deferred',
+        computedSeries: 'available',
+        historicalSeries: 'available',
         drilldownData: 'deferred',
         savedReports: 'deferred',
         customDashboards: 'deferred',
@@ -103,7 +103,7 @@ describe('Dashboard analytics use cases', () => {
       useCase.execute({
         source: 'attendance',
         type: 'line',
-        status: 'planned',
+        status: 'available',
         limit: 2,
       }),
     );
@@ -111,7 +111,7 @@ describe('Dashboard analytics use cases', () => {
     expect(response.filters).toEqual({
       source: 'attendance',
       type: 'line',
-      status: 'planned',
+      status: 'available',
       limit: 2,
     });
     expect(response.charts).toHaveLength(2);
@@ -120,16 +120,17 @@ describe('Dashboard analytics use cases', () => {
         (chart) =>
           chart.source === 'attendance' &&
           chart.type === 'line' &&
-          chart.status === 'planned',
+          chart.status === 'available',
       ),
     ).toBe(true);
     expect(response.summary).toEqual({
       total: 2,
       bySource: { attendance: 2 },
       byType: { line: 2 },
-      byStatus: { planned: 2 },
+      byStatus: { available: 2 },
     });
-    expect(response.deferred.computedSeries).toBe('deferred');
+    expect(response.deferred.computedSeries).toBe('available');
+    expect(response.deferred.historicalSeries).toBe('available');
 
     expect(
       normalizeDashboardAnalyticsChartsQuery({
@@ -161,14 +162,14 @@ describe('Dashboard analytics use cases', () => {
       chartKey: 'attendance.daily_trend',
       source: 'attendance',
       type: 'line',
-      status: 'planned',
+      status: 'available',
       requiredPermission: 'dashboard.analytics.view',
       endpoint: '/dashboard/analytics/charts/attendance.daily_trend',
       definitionEndpoint: '/dashboard/analytics/charts/attendance.daily_trend',
       dataEndpoint: '/dashboard/analytics/charts/attendance.daily_trend/data',
       endpointPurpose: 'definition',
       meta: {
-        dataAvailability: 'definition_only',
+        dataAvailability: 'computed_series',
       },
       futureDataContract: {
         series: [
@@ -202,14 +203,14 @@ describe('Dashboard analytics use cases', () => {
       },
     });
     expect(response.deferred).toEqual({
-      computedSeries: 'deferred',
-      historicalSeries: 'deferred',
+      computedSeries: 'available',
+      historicalSeries: 'available',
       drilldownData: 'deferred',
     });
     expectNoInternalLeaks(response);
   });
 
-  it('reports snapshot-only metadata when list and detail include a computed chart', async () => {
+  it('reports available historical series for Attendance lists and snapshot-only detail metadata', async () => {
     const listUseCase = new ListDashboardAnalyticsChartsUseCase();
     const detailUseCase = new GetDashboardAnalyticsChartUseCase();
 
@@ -229,7 +230,8 @@ describe('Dashboard analytics use cases', () => {
         (chart) => chart.meta.dataAvailability === 'computed_snapshot',
       ),
     ).toBe(true);
-    expect(listResponse.deferred.computedSeries).toBe('snapshot_only');
+    expect(listResponse.deferred.computedSeries).toBe('available');
+    expect(listResponse.deferred.historicalSeries).toBe('available');
     expect(detailResponse.chart.meta.dataAvailability).toBe(
       'computed_snapshot',
     );

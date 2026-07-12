@@ -1,4 +1,8 @@
-import { UserType } from '@prisma/client';
+import {
+  AttendanceExcuseStatus,
+  AttendanceStatus,
+  UserType,
+} from '@prisma/client';
 import {
   NotFoundDomainException,
   ValidationDomainException,
@@ -111,7 +115,7 @@ describe('Dashboard analytics data use case', () => {
     queryContextService.resolve.mockResolvedValue(context);
 
     const response = await withSchoolScope(() =>
-      useCase.execute('attendance.daily_trend', {
+      useCase.execute('students.enrollment_growth', {
         range: 'custom',
         granularity: 'week',
         dateFrom: '2026-07-01',
@@ -120,7 +124,7 @@ describe('Dashboard analytics data use case', () => {
     );
 
     expect(response).toMatchObject({
-      chartKey: 'attendance.daily_trend',
+      chartKey: 'students.enrollment_growth',
       status: 'planned',
       range: 'custom',
       granularity: 'week',
@@ -136,6 +140,79 @@ describe('Dashboard analytics data use case', () => {
         },
       },
     });
+    expect(snapshotRepository.loadChartValue).not.toHaveBeenCalled();
+    expectNoInternalLeaks(response);
+  });
+
+  it('dispatches Attendance entry charts only to the bounded daily aggregate source', async () => {
+    const { useCase, snapshotRepository, attendanceRepository } =
+      useCaseWith(0);
+    attendanceRepository.aggregateDailyEntryStatuses.mockResolvedValue([
+      {
+        date: '2026-07-12',
+        status: AttendanceStatus.PRESENT,
+        count: 2,
+      },
+    ]);
+
+    const response = await withSchoolScope(() =>
+      useCase.execute('attendance.daily_trend', {}),
+    );
+
+    expect(response).toMatchObject({
+      chartKey: 'attendance.daily_trend',
+      meta: {
+        pack: 'attendance_v1',
+        dataAvailability: 'computed_series',
+        computation: 'attendance_observation_daily_trend',
+      },
+      data: {
+        totals: { present: 2, absent: 0, late: 0 },
+        summary: { value: 2 },
+        empty: false,
+      },
+    });
+    expect(
+      attendanceRepository.aggregateDailyEntryStatuses,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: expect.objectContaining({ schoolId: 'school-1' }),
+        hierarchy: expect.objectContaining({
+          academicYearId: expect.any(String),
+        }),
+      }),
+    );
+    expect(attendanceRepository.aggregateExcuseStatuses).not.toHaveBeenCalled();
+    expect(snapshotRepository.loadChartValue).not.toHaveBeenCalled();
+    expectNoInternalLeaks(response);
+  });
+
+  it('dispatches excuse status only to the scoped category aggregate source', async () => {
+    const { useCase, snapshotRepository, attendanceRepository } =
+      useCaseWith(0);
+    attendanceRepository.aggregateExcuseStatuses.mockResolvedValue([
+      { status: AttendanceExcuseStatus.PENDING, count: 3 },
+    ]);
+
+    const response = await withSchoolScope(() =>
+      useCase.execute('attendance.excuse_status', {}),
+    );
+
+    expect(response).toMatchObject({
+      chartKey: 'attendance.excuse_status',
+      meta: {
+        pack: 'attendance_v1',
+        dataAvailability: 'computed_category',
+        computation: 'attendance_excuse_status_distribution',
+      },
+      data: {
+        totals: { pending: 3, approved: 0, rejected: 0 },
+      },
+    });
+    expect(attendanceRepository.aggregateExcuseStatuses).toHaveBeenCalled();
+    expect(
+      attendanceRepository.aggregateDailyEntryStatuses,
+    ).not.toHaveBeenCalled();
     expect(snapshotRepository.loadChartValue).not.toHaveBeenCalled();
     expectNoInternalLeaks(response);
   });
@@ -187,13 +264,19 @@ function useCaseWith(snapshotValue: number) {
   const snapshotRepository = {
     loadChartValue: jest.fn().mockResolvedValue(snapshotValue),
   };
+  const attendanceRepository = {
+    aggregateDailyEntryStatuses: jest.fn().mockResolvedValue([]),
+    aggregateExcuseStatuses: jest.fn().mockResolvedValue([]),
+  };
 
   return {
     queryContextService,
     snapshotRepository,
+    attendanceRepository,
     useCase: new GetDashboardAnalyticsChartDataUseCase(
       queryContextService as any,
       snapshotRepository as any,
+      attendanceRepository as any,
     ),
   };
 }
