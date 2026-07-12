@@ -70,6 +70,17 @@ describe('Dashboard LightModeDropdown presenter', () => {
         weatherStatus: 'provider_not_configured',
         plannerStatus: 'foundation_only',
         todosStatus: 'persisted',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
+        componentFreshness: {
+          location: 'request_time_snapshot',
+          todos: 'persisted_user_data',
+          weather: 'not_available',
+          plannerEvents: 'not_available',
+        },
         deferred: {
           weatherProvider: 'deferred',
           weatherCache: 'deferred',

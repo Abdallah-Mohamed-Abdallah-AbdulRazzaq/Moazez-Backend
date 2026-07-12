@@ -10,6 +10,7 @@ import {
   DashboardTodoCounts,
   DashboardTodoSnapshot,
 } from '../infrastructure/dashboard-todos.repository';
+import { dashboardFreshness } from './dashboard-metadata.presenter';
 
 export interface DashboardTodosPresentationInput {
   generatedAt: Date;
@@ -39,6 +40,7 @@ export function presentDashboardTodos(
       source: 'dashboard_todos',
       version: 'v1',
       scope: 'owner',
+      freshness: dashboardFreshness('persisted_user_data'),
     },
   };
 }

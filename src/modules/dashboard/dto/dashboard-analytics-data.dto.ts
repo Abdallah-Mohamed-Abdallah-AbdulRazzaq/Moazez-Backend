@@ -11,6 +11,7 @@ import type {
   DashboardAnalyticsSource,
   DashboardAnalyticsStatus,
 } from '../domain/dashboard-analytics-catalog';
+import { DashboardFreshnessMetadataDto } from './dashboard-metadata.dto';
 
 export class GetDashboardAnalyticsChartDataQueryDto {
   @IsOptional()
@@ -102,7 +103,11 @@ export class DashboardAnalyticsChartDataMetaDto {
   source!: 'dashboard_analytics_data_pack';
   pack!: 'operational_snapshot_v1' | null;
   dataAvailability!: DashboardAnalyticsDataAvailability;
-  computation!: 'dashboard_summary_snapshot' | 'dashboard_alert_readiness_snapshot' | null;
+  computation!:
+    | 'dashboard_summary_snapshot'
+    | 'dashboard_alert_readiness_snapshot'
+    | null;
+  freshness!: DashboardFreshnessMetadataDto;
   deferred!: DashboardAnalyticsChartDataDeferredDto;
 }
 

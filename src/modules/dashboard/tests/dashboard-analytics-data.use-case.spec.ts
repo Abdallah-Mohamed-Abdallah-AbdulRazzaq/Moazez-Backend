@@ -13,6 +13,7 @@ import {
 } from '../application/get-dashboard-analytics-chart-data.use-case';
 import { DashboardAlertSignals } from '../infrastructure/dashboard-alerts.repository';
 import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
+import { dashboardTimeContextServiceMock } from './dashboard-test-time-context';
 
 describe('Dashboard analytics data use case', () => {
   it('returns computed snapshot data for attendance.pending_sessions', async () => {
@@ -244,6 +245,7 @@ function useCaseWith(input: {
     useCase: new GetDashboardAnalyticsChartDataUseCase(
       summaryRepository as any,
       alertsRepository as any,
+      dashboardTimeContextServiceMock() as any,
     ),
   };
 }
@@ -409,8 +411,7 @@ function alertSignals(
     },
     settings: {
       missingLoginIdentity: overrides.missingLoginIdentity ?? 1,
-      missingActiveEmailConnection:
-        overrides.missingActiveEmailConnection ?? 1,
+      missingActiveEmailConnection: overrides.missingActiveEmailConnection ?? 1,
     },
   };
 }

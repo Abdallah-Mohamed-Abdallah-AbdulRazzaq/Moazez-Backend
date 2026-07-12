@@ -186,6 +186,11 @@ describe('DASHBOARD-MODULE-PAGES-1A foundation (e2e)', () => {
       meta: {
         source: 'dashboard_module_pages',
         version: 'v1',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
     expect(

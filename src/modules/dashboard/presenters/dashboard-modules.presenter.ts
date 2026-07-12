@@ -34,6 +34,7 @@ import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.re
 import { presentDashboardAnalyticsChartData } from './dashboard-analytics-data.presenter';
 import { presentDashboardAnalyticsCharts } from './dashboard-analytics.presenter';
 import { buildDashboardWidgetRegistry } from './dashboard-widgets.presenter';
+import { dashboardFreshness } from './dashboard-metadata.presenter';
 
 export interface DashboardModulesPresentationInput {
   generatedAt: Date;
@@ -88,6 +89,7 @@ export function presentDashboardModules(
     meta: {
       source: 'dashboard_module_pages',
       version: 'v1',
+      freshness: dashboardFreshness('request_time_snapshot'),
     },
   };
 }
@@ -149,6 +151,7 @@ export function presentDashboardModulePage(
       source: 'dashboard_module_page',
       version: 'v1',
       dataFreshness: 'live',
+      freshness: dashboardFreshness('request_time_snapshot'),
       deferred: {
         customLayouts: 'deferred',
         userPreferences: 'deferred',
@@ -239,7 +242,8 @@ function moduleChartDefinitions(
   return definition.chartKeys
     .map((chartKey) => chartDefinitionsByKey.get(chartKey))
     .filter(
-      (chart): chart is DashboardAnalyticsChartDefinition => chart !== undefined,
+      (chart): chart is DashboardAnalyticsChartDefinition =>
+        chart !== undefined,
     );
 }
 
@@ -249,13 +253,15 @@ function presentChartDtos(
 ): DashboardAnalyticsChartDto[] {
   if (charts.length === 0) return [];
 
-  return Array.from(presentDashboardAnalyticsCharts({
-    generatedAt,
-    charts,
-    filters: {
-      limit: charts.length,
-    },
-  }).charts);
+  return Array.from(
+    presentDashboardAnalyticsCharts({
+      generatedAt,
+      charts,
+      filters: {
+        limit: charts.length,
+      },
+    }).charts,
+  );
 }
 
 function moduleAvailableChartData(
@@ -371,7 +377,9 @@ function resolveCapabilities(
           ? 'planned'
           : definition.capabilities.widgets,
     analyticsDefinitions:
-      chartCount > 0 ? 'available' : definition.capabilities.analyticsDefinitions,
+      chartCount > 0
+        ? 'available'
+        : definition.capabilities.analyticsDefinitions,
     analyticsData: analyticsDataCapability(chartCount, availableDataCount),
     drilldowns: 'deferred',
     exports: 'deferred',
@@ -388,7 +396,9 @@ function analyticsDataCapability(
   return 'partial';
 }
 
-function extractWidgetValue(widget: DashboardWidgetDto): number | string | null {
+function extractWidgetValue(
+  widget: DashboardWidgetDto,
+): number | string | null {
   if (
     typeof widget.data.value === 'number' ||
     typeof widget.data.value === 'string'

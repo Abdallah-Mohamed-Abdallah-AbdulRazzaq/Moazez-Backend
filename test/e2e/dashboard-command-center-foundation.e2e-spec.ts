@@ -187,11 +187,16 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
         source: 'dashboard_command_center',
         version: 'v2',
         dataFreshness: 'live',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
         deferred: {
-          widgets: 'deferred',
-          analytics: 'deferred',
-          lightModeDropdown: 'deferred',
-          todos: 'deferred',
+          widgets: 'available',
+          analytics: 'snapshot_only',
+          lightModeDropdown: 'foundation',
+          todos: 'persisted',
           weather: 'deferred',
           planner: 'deferred',
           alertLifecycle: 'deferred',
@@ -201,6 +206,7 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
     });
     expect(response.body.academicContext).toHaveProperty('academicYear');
     expect(response.body.academicContext).toHaveProperty('term');
+    expect(response.body.school.timezone).toBe(response.body.today.timezone);
     expect(response.body.quickStats).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

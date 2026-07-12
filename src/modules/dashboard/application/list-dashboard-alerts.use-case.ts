@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { requireDashboardScope } from '../dashboard-context';
+import { DashboardTimeContext } from '../domain/dashboard-time-context';
 import {
   DashboardAlertDto,
   DashboardAlertSeverity,
@@ -13,6 +14,7 @@ import {
   DashboardAlertsRepository,
 } from '../infrastructure/dashboard-alerts.repository';
 import { presentDashboardAlerts } from '../presenters/dashboard-alerts.presenter';
+import { DashboardTimeContextService } from './dashboard-time-context.service';
 
 const DEFAULT_ALERT_LIMIT = 20;
 const MAX_ALERT_LIMIT = 100;
@@ -21,13 +23,16 @@ const MAX_ALERT_LIMIT = 100;
 export class ListDashboardAlertsUseCase {
   constructor(
     private readonly dashboardAlertsRepository: DashboardAlertsRepository,
+    private readonly dashboardTimeContextService: DashboardTimeContextService,
   ) {}
 
   async execute(
     query: ListDashboardAlertsQueryDto = new ListDashboardAlertsQueryDto(),
   ): Promise<DashboardAlertsResponseDto> {
     const scope = requireDashboardScope();
-    const window = buildDashboardAlertsDateWindow(new Date());
+    const timeContext =
+      await this.dashboardTimeContextService.resolveForSchool(scope);
+    const window = buildDashboardAlertsDateWindow(timeContext);
     const signals = await this.dashboardAlertsRepository.loadAlertSignals(
       scope,
       window,
@@ -48,22 +53,15 @@ export class ListDashboardAlertsUseCase {
 }
 
 export function buildDashboardAlertsDateWindow(
-  now: Date,
+  timeContext: DashboardTimeContext,
 ): DashboardAlertsDateWindow {
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
-
-  const last30DaysStart = new Date(now);
-  last30DaysStart.setDate(last30DaysStart.getDate() - 30);
-
-  const next7DaysEnd = new Date(now);
-  next7DaysEnd.setDate(next7DaysEnd.getDate() + 7);
-
   return {
-    now,
-    todayStart,
-    last30DaysStart,
-    next7DaysEnd,
+    now: timeContext.generatedAt,
+    todayDate: timeContext.todayDate,
+    todayStart: timeContext.todayStart,
+    todayEndExclusive: timeContext.todayEndExclusive,
+    last30DaysStart: timeContext.last30DaysStart,
+    next7DaysEndExclusive: timeContext.next7DaysEndExclusive,
   };
 }
 

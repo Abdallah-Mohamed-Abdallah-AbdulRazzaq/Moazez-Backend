@@ -9,6 +9,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import { DashboardFreshnessMetadataDto } from './dashboard-metadata.dto';
 
 export const DASHBOARD_ACTIVITY_FEED_SOURCES = [
   'admissions',
@@ -129,4 +130,11 @@ export class DashboardActivityFeedResponseDto {
   pageInfo!: DashboardActivityFeedPageInfoDto;
   filters!: DashboardActivityFeedFiltersDto;
   deferred!: DashboardActivityFeedDeferredDto;
+  meta!: DashboardActivityFeedMetaDto;
+}
+
+export class DashboardActivityFeedMetaDto {
+  source!: 'dashboard_activity_feed';
+  capability!: 'available';
+  freshness!: DashboardFreshnessMetadataDto;
 }

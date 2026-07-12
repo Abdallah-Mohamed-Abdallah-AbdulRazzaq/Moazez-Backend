@@ -7,6 +7,7 @@ import { NormalizedDashboardLightModeDropdownQuery } from '../application/get-da
 import { DashboardLightModeDropdownSchoolLocationSnapshot } from '../infrastructure/dashboard-light-mode-dropdown.repository';
 import { DashboardTodoSnapshot } from '../infrastructure/dashboard-todos.repository';
 import { presentDashboardTodo } from './dashboard-todos.presenter';
+import { dashboardFreshness } from './dashboard-metadata.presenter';
 
 export interface DashboardLightModeDropdownPresentationInput {
   generatedAt: Date;
@@ -57,6 +58,13 @@ export function presentDashboardLightModeDropdown(
       weatherStatus,
       plannerStatus: 'foundation_only',
       todosStatus: 'persisted',
+      freshness: dashboardFreshness('request_time_snapshot'),
+      componentFreshness: {
+        location: 'request_time_snapshot',
+        todos: 'persisted_user_data',
+        weather: 'not_available',
+        plannerEvents: 'not_available',
+      },
       deferred: {
         weatherProvider: 'deferred',
         weatherCache: 'deferred',

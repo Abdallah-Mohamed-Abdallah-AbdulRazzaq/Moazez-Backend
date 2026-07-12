@@ -8,6 +8,10 @@ import {
   DashboardAcademicContextDto,
   DashboardSchoolSummaryDto,
 } from './dashboard-summary.dto';
+import {
+  DashboardCapabilityState,
+  DashboardFreshnessMetadataDto,
+} from './dashboard-metadata.dto';
 
 export type DashboardCommandCenterActionKind = 'frontend-route';
 export type DashboardCommandCenterTone =
@@ -146,10 +150,13 @@ export class DashboardCommandCenterActivityPreviewDto {
 }
 
 export class DashboardCommandCenterDeferredDto {
-  widgets!: 'deferred';
-  analytics!: 'deferred';
-  lightModeDropdown!: 'deferred';
-  todos!: 'deferred';
+  widgets!: Extract<DashboardCapabilityState, 'available' | 'deferred'>;
+  analytics!: Extract<DashboardCapabilityState, 'snapshot_only' | 'deferred'>;
+  lightModeDropdown!: Extract<
+    DashboardCapabilityState,
+    'foundation' | 'deferred'
+  >;
+  todos!: Extract<DashboardCapabilityState, 'persisted' | 'deferred'>;
   weather!: 'deferred';
   planner!: 'deferred';
   alertLifecycle!: 'deferred';
@@ -160,5 +167,6 @@ export class DashboardCommandCenterMetaDto {
   source!: 'dashboard_command_center';
   version!: 'v2';
   dataFreshness!: 'live';
+  freshness!: DashboardFreshnessMetadataDto;
   deferred!: DashboardCommandCenterDeferredDto;
 }

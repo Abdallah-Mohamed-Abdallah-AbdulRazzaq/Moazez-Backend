@@ -8,11 +8,19 @@ import {
 import { ScopeMissingException } from '../../iam/auth/domain/auth.exceptions';
 import { GetDashboardSummaryUseCase } from '../application/get-dashboard-summary.use-case';
 import { DashboardSummaryRepository } from '../infrastructure/dashboard-summary.repository';
+import {
+  DASHBOARD_TEST_GENERATED_AT,
+  dashboardTimeContextServiceMock,
+} from './dashboard-test-time-context';
 
 describe('GetDashboardSummaryUseCase', () => {
   it('requires school scope and delegates read aggregation to the repository', async () => {
     const repository = repositoryMock();
-    const useCase = new GetDashboardSummaryUseCase(repository as any);
+    const timeContextService = dashboardTimeContextServiceMock();
+    const useCase = new GetDashboardSummaryUseCase(
+      repository as any,
+      timeContextService as any,
+    );
 
     const response = await withSchoolScope(() => useCase.execute());
 
@@ -23,20 +31,47 @@ describe('GetDashboardSummaryUseCase', () => {
         schoolId: 'school-1',
       }),
       expect.objectContaining({
-        now: expect.any(Date),
-        todayStart: expect.any(Date),
-        last7DaysStart: expect.any(Date),
-        last30DaysStart: expect.any(Date),
+        now: DASHBOARD_TEST_GENERATED_AT,
+        todayDate: new Date('2026-07-12T00:00:00.000Z'),
+        todayStart: new Date('2026-07-11T21:00:00.000Z'),
+        todayEndExclusive: new Date('2026-07-12T21:00:00.000Z'),
+        last7DaysStart: new Date('2026-07-04T21:00:00.000Z'),
+        last30DaysStart: new Date('2026-06-11T21:00:00.000Z'),
       }),
     );
     expect(response.cards.students.activeStudents).toBe(10);
+    expect(response.school.timezone).toBe('Africa/Cairo');
     expect(repository.createAuditLog).not.toHaveBeenCalled();
     expect(repository.updateDashboardAlert).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['invalid', 'Invalid/Timezone'],
+    ['blank', '   '],
+    ['absent', null],
+  ])(
+    'exposes UTC when the configured school timezone is %s',
+    async (_label, configuredTimezone) => {
+      const repository = repositoryMock(configuredTimezone);
+      const useCase = new GetDashboardSummaryUseCase(
+        repository as any,
+        dashboardTimeContextServiceMock({
+          schoolTimezone: configuredTimezone,
+        }) as any,
+      );
+
+      const response = await withSchoolScope(() => useCase.execute());
+
+      expect(response.school.timezone).toBe('UTC');
+    },
+  );
+
   it('rejects callers without an active school scope', async () => {
     const repository = repositoryMock();
-    const useCase = new GetDashboardSummaryUseCase(repository as any);
+    const useCase = new GetDashboardSummaryUseCase(
+      repository as any,
+      dashboardTimeContextServiceMock() as any,
+    );
 
     await expect(
       runWithRequestContext(createRequestContext(), async () => {
@@ -63,18 +98,18 @@ async function withSchoolScope<T>(fn: () => Promise<T>): Promise<T> {
   });
 }
 
-function repositoryMock(): jest.Mocked<
-  Pick<DashboardSummaryRepository, 'loadSummarySnapshot'>
-> & {
+function repositoryMock(
+  schoolTimezone: string | null = 'Africa/Cairo',
+): jest.Mocked<Pick<DashboardSummaryRepository, 'loadSummarySnapshot'>> & {
   createAuditLog: jest.Mock;
   updateDashboardAlert: jest.Mock;
 } {
   return {
     loadSummarySnapshot: jest.fn().mockResolvedValue({
-      generatedAt: new Date('2026-06-01T09:00:00.000Z'),
+      generatedAt: DASHBOARD_TEST_GENERATED_AT,
       school: {
         name: 'Moazez Academy',
-        timezone: 'Africa/Cairo',
+        timezone: schoolTimezone,
         locale: null,
       },
       academicContext: {

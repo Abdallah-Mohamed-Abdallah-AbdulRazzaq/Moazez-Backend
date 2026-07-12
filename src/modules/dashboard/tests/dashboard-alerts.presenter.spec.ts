@@ -55,7 +55,15 @@ describe('Dashboard alerts presenter', () => {
         persistence: 'deferred',
         acknowledge: 'deferred',
         dismiss: 'deferred',
-        activityFeed: 'deferred',
+        activityFeed: 'available',
+      },
+      meta: {
+        source: 'dashboard_alerts',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
   });
@@ -80,7 +88,15 @@ describe('Dashboard alerts presenter', () => {
         persistence: 'deferred',
         acknowledge: 'deferred',
         dismiss: 'deferred',
-        activityFeed: 'deferred',
+        activityFeed: 'available',
+      },
+      meta: {
+        source: 'dashboard_alerts',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
   });

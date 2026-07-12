@@ -3,11 +3,14 @@ import { DashboardActivityFeedItemDto } from '../dto/dashboard-activity-feed.dto
 import { DashboardAlertDto } from '../dto/dashboard-alerts.dto';
 import { presentDashboardCommandCenter } from '../presenters/dashboard-command-center.presenter';
 import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
+import { buildDashboardTimeContext } from '../domain/dashboard-time-context';
+
+const GENERATED_AT = new Date('2026-07-09T12:00:00.000Z');
 
 describe('Dashboard command center presenter', () => {
   it('returns the stable command center response shape', () => {
     const response = presentDashboardCommandCenter({
-      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      timeContext: commandCenterTimeContext(),
       summary: snapshot(),
       alerts: alerts(),
       activityItems: [activityItem()],
@@ -60,7 +63,7 @@ describe('Dashboard command center presenter', () => {
 
   it('builds quick stats, readiness, risks, and actions from summary and alert signals', () => {
     const response = presentDashboardCommandCenter({
-      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      timeContext: commandCenterTimeContext(),
       summary: snapshot(),
       alerts: alerts(),
       activityItems: [],
@@ -121,7 +124,7 @@ describe('Dashboard command center presenter', () => {
 
   it('preserves deferred flags and hides tenant/internal identifiers', () => {
     const response = presentDashboardCommandCenter({
-      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      timeContext: commandCenterTimeContext(),
       summary: {
         ...snapshot(),
         schoolId: 'school-1',
@@ -164,14 +167,19 @@ describe('Dashboard command center presenter', () => {
     });
 
     expect(response.meta.deferred).toEqual({
-      widgets: 'deferred',
-      analytics: 'deferred',
-      lightModeDropdown: 'deferred',
-      todos: 'deferred',
+      widgets: 'available',
+      analytics: 'snapshot_only',
+      lightModeDropdown: 'foundation',
+      todos: 'persisted',
       weather: 'deferred',
       planner: 'deferred',
       alertLifecycle: 'deferred',
       realtime: 'deferred',
+    });
+    expect(response.meta.freshness).toEqual({
+      dataMode: 'request_time_snapshot',
+      cacheStatus: 'not_used',
+      realtimeStatus: 'not_used',
     });
 
     const serialized = JSON.stringify(response);
@@ -193,7 +201,7 @@ describe('Dashboard command center presenter', () => {
 
   it('handles minimal data with stable arrays and UTC fallback for today', () => {
     const response = presentDashboardCommandCenter({
-      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      timeContext: commandCenterTimeContext('UTC'),
       summary: {
         ...snapshot(),
         school: { name: 'Minimal School', timezone: null, locale: null },
@@ -212,11 +220,42 @@ describe('Dashboard command center presenter', () => {
       dayOfWeek: 'Thursday',
       timezone: 'UTC',
     });
+    expect(response.school.timezone).toBe('UTC');
     expect(response.quickStats).toHaveLength(6);
     expect(response.topRisks).toEqual([]);
     expect(response.alertsPreview).toEqual([]);
     expect(response.activityPreview).toEqual([]);
   });
+
+  it.each([
+    ['invalid', 'Invalid/Timezone'],
+    ['blank', '   '],
+    ['absent', null],
+  ])(
+    'exposes one UTC effective timezone when the configured timezone is %s',
+    (_label, configuredTimezone) => {
+      const response = presentDashboardCommandCenter({
+        timeContext: commandCenterTimeContext(configuredTimezone),
+        summary: {
+          ...snapshot(),
+          school: {
+            ...snapshot().school,
+            timezone: configuredTimezone,
+          },
+        },
+        alerts: [],
+        activityItems: [],
+        operator: { userType: UserType.SCHOOL_USER },
+      });
+
+      expect(response.generatedAt).toBe(GENERATED_AT.toISOString());
+      expect(response.school.timezone).toBe('UTC');
+      expect(response.today).toMatchObject({
+        date: '2026-07-09',
+        timezone: 'UTC',
+      });
+    },
+  );
 });
 
 function alerts(): DashboardAlertDto[] {
@@ -448,4 +487,11 @@ function zeroCards(): DashboardSummarySnapshot['cards'] {
       pendingModerationReports: 0,
     },
   };
+}
+
+function commandCenterTimeContext(timezone: string | null = 'Africa/Cairo') {
+  return buildDashboardTimeContext({
+    generatedAt: GENERATED_AT,
+    schoolTimezone: timezone,
+  });
 }

@@ -174,7 +174,15 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
         persistence: 'deferred',
         acknowledge: 'deferred',
         dismiss: 'deferred',
-        activityFeed: 'deferred',
+        activityFeed: 'available',
+      },
+      meta: {
+        source: 'dashboard_alerts',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
     expectNoTenantIds(response.body);
@@ -282,7 +290,15 @@ describe('Sprint 16B Dashboard Alerts Foundation (e2e)', () => {
         persistence: 'deferred',
         acknowledge: 'deferred',
         dismiss: 'deferred',
-        activityFeed: 'deferred',
+        activityFeed: 'available',
+      },
+      meta: {
+        source: 'dashboard_alerts',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
     expectNoTenantIds(response.body);

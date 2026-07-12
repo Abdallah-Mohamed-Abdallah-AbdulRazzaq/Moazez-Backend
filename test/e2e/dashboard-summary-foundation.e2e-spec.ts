@@ -130,6 +130,7 @@ describe('Sprint 16A Dashboard Summary Foundation (e2e)', () => {
       generatedAt: expect.any(String),
       school: {
         name: expect.any(String),
+        timezone: expect.any(String),
         locale: null,
       },
       academicContext: expect.any(Object),
@@ -173,9 +174,17 @@ describe('Sprint 16A Dashboard Summary Foundation (e2e)', () => {
       },
       alertsPreview: expect.any(Array),
       deferred: {
-        activityFeed: 'deferred',
-        alertsEngine: 'deferred',
+        activityFeed: 'available',
+        alertsEngine: 'available',
         analyticsBuilder: 'out_of_scope_v1',
+      },
+      meta: {
+        source: 'dashboard_summary',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
     expect(response.body.academicContext).toHaveProperty('academicYear');

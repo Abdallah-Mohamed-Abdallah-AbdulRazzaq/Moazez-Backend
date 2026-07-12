@@ -35,6 +35,15 @@ describe('Dashboard activity feed presenter', () => {
         realtime: 'deferred',
         analyticsBuilder: 'deferred',
       },
+      meta: {
+        source: 'dashboard_activity_feed',
+        capability: 'available',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
+      },
     });
   });
 

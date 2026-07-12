@@ -38,7 +38,16 @@ describe('Dashboard todo presenter', () => {
       todos: [expect.objectContaining({ todoId: 'todo-1' })],
       summary: { total: 1, pending: 0, completed: 1 },
       filters: { date: '2026-07-09', status: 'all', limit: 50 },
-      meta: { source: 'dashboard_todos', version: 'v1', scope: 'owner' },
+      meta: {
+        source: 'dashboard_todos',
+        version: 'v1',
+        scope: 'owner',
+        freshness: {
+          dataMode: 'persisted_user_data',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
+      },
     });
     expectNoInternalLeaks(response);
   });

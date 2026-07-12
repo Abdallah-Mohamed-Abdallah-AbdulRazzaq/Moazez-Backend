@@ -15,6 +15,10 @@ import {
   DashboardAlertSignals,
   DashboardAlertsRepository,
 } from '../infrastructure/dashboard-alerts.repository';
+import {
+  DASHBOARD_TEST_GENERATED_AT,
+  dashboardTimeContextServiceMock,
+} from './dashboard-test-time-context';
 
 describe('ListDashboardAlertsUseCase', () => {
   it('buildDashboardAlerts returns settings.email_connection_missing action.target as /settings/email/connection', () => {
@@ -37,7 +41,7 @@ describe('ListDashboardAlertsUseCase', () => {
 
   it('requires school scope and delegates signal loading to the repository', async () => {
     const repository = repositoryMock(signals());
-    const useCase = new ListDashboardAlertsUseCase(repository as any);
+    const useCase = alertsUseCase(repository);
 
     const response = await withSchoolScope(() => useCase.execute());
 
@@ -48,10 +52,12 @@ describe('ListDashboardAlertsUseCase', () => {
         schoolId: 'school-1',
       }),
       expect.objectContaining({
-        now: expect.any(Date),
-        todayStart: expect.any(Date),
-        last30DaysStart: expect.any(Date),
-        next7DaysEnd: expect.any(Date),
+        now: DASHBOARD_TEST_GENERATED_AT,
+        todayDate: new Date('2026-07-12T00:00:00.000Z'),
+        todayStart: new Date('2026-07-11T21:00:00.000Z'),
+        todayEndExclusive: new Date('2026-07-12T21:00:00.000Z'),
+        last30DaysStart: new Date('2026-06-11T21:00:00.000Z'),
+        next7DaysEndExclusive: new Date('2026-07-18T22:30:00.000Z'),
       }),
     );
     expect(response.alerts).toEqual([]);
@@ -61,7 +67,7 @@ describe('ListDashboardAlertsUseCase', () => {
 
   it('rejects callers without an active school scope', async () => {
     const repository = repositoryMock(signals());
-    const useCase = new ListDashboardAlertsUseCase(repository as any);
+    const useCase = alertsUseCase(repository);
 
     await expect(
       runWithRequestContext(createRequestContext(), async () => {
@@ -74,7 +80,7 @@ describe('ListDashboardAlertsUseCase', () => {
 
   it('omits zero-count alerts by default', async () => {
     const repository = repositoryMock(signals());
-    const useCase = new ListDashboardAlertsUseCase(repository as any);
+    const useCase = alertsUseCase(repository);
 
     const response = await withSchoolScope(() => useCase.execute());
 
@@ -89,7 +95,7 @@ describe('ListDashboardAlertsUseCase', () => {
         attendance: { todayAbsentEntries: 1 },
       }),
     );
-    const useCase = new ListDashboardAlertsUseCase(repository as any);
+    const useCase = alertsUseCase(repository);
 
     const response = await withSchoolScope(() =>
       useCase.execute(query({ source: 'attendance' })),
@@ -117,7 +123,7 @@ describe('ListDashboardAlertsUseCase', () => {
         communication: { pendingModerationReports: 1 },
       }),
     );
-    const useCase = new ListDashboardAlertsUseCase(repository as any);
+    const useCase = alertsUseCase(repository);
 
     const response = await withSchoolScope(() =>
       useCase.execute(query({ severity: 'info' })),
@@ -141,7 +147,7 @@ describe('ListDashboardAlertsUseCase', () => {
   it('applies limits and clamps oversized limits to available alerts', async () => {
     const allSignals = signals();
     const repository = repositoryMock(allSignals);
-    const useCase = new ListDashboardAlertsUseCase(repository as any);
+    const useCase = alertsUseCase(repository);
 
     const limited = await withSchoolScope(() =>
       useCase.execute(query({ includeZeroCount: true, limit: 2 })),
@@ -165,7 +171,7 @@ describe('ListDashboardAlertsUseCase', () => {
         communication: { pendingModerationReports: 1 },
       }),
     );
-    const useCase = new ListDashboardAlertsUseCase(repository as any);
+    const useCase = alertsUseCase(repository);
 
     const response = await withSchoolScope(() => useCase.execute());
 
@@ -199,6 +205,15 @@ function query(
   return Object.assign(new ListDashboardAlertsQueryDto(), overrides);
 }
 
+function alertsUseCase(
+  repository: ReturnType<typeof repositoryMock>,
+): ListDashboardAlertsUseCase {
+  return new ListDashboardAlertsUseCase(
+    repository as any,
+    dashboardTimeContextServiceMock() as any,
+  );
+}
+
 function repositoryMock(alertSignals: DashboardAlertSignals): jest.Mocked<
   Pick<DashboardAlertsRepository, 'loadAlertSignals'>
 > & {
@@ -226,7 +241,7 @@ function signals(
   } = {},
 ): DashboardAlertSignals {
   return {
-    generatedAt: new Date('2026-06-01T09:00:00.000Z'),
+    generatedAt: DASHBOARD_TEST_GENERATED_AT,
     academicContext: {
       academicYear: { id: 'year-1', name: '2026/2027' },
       term: { id: 'term-1', name: 'Term 1', academicYearId: 'year-1' },

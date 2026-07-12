@@ -14,6 +14,7 @@ import {
 } from '../domain/dashboard-widget-registry';
 import { DashboardAlertSignals } from '../infrastructure/dashboard-alerts.repository';
 import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
+import { dashboardFreshness } from './dashboard-metadata.presenter';
 
 export interface DashboardWidgetsPresentationInput {
   generatedAt: Date;
@@ -303,6 +304,7 @@ function widget(
     emptyState: null,
     meta: {
       freshness: 'live',
+      freshnessDetails: dashboardFreshness('request_time_snapshot'),
     },
   };
 }
@@ -334,8 +336,10 @@ function dashboardWidgetsDeferred(): DashboardWidgetsDeferredDto {
   return {
     customLayouts: 'deferred',
     widgetPreferences: 'deferred',
-    analyticsCharts: 'deferred',
+    analyticsCharts: 'integration_deferred',
     weatherWidgets: 'deferred',
-    todoWidgets: 'deferred',
+    todoWidgets: 'integration_deferred',
+    analyticsStandalone: 'snapshot_only',
+    todosStandalone: 'persisted',
   };
 }

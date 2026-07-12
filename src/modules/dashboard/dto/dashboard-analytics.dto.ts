@@ -23,6 +23,10 @@ import type {
   DashboardAnalyticsStatus,
   DashboardAnalyticsTone,
 } from '../domain/dashboard-analytics-catalog';
+import {
+  DashboardCapabilityState,
+  DashboardFreshnessMetadataDto,
+} from './dashboard-metadata.dto';
 
 export class ListDashboardAnalyticsChartsQueryDto {
   @IsOptional()
@@ -111,6 +115,9 @@ export class DashboardAnalyticsChartDto {
   supportedGranularities!: readonly DashboardAnalyticsGranularity[];
   requiredPermission!: 'dashboard.analytics.view';
   endpoint!: string;
+  definitionEndpoint!: string;
+  dataEndpoint!: string;
+  endpointPurpose!: 'definition';
   series!: readonly DashboardAnalyticsSeriesDto[];
   filters!: readonly DashboardAnalyticsFilterKey[];
   emptyState!: DashboardAnalyticsChartEmptyStateDto;
@@ -155,7 +162,11 @@ export class DashboardAnalyticsCatalogDto {
 }
 
 export class DashboardAnalyticsCatalogDeferredDto {
-  computedSeries!: 'deferred';
+  computedSeries!: Extract<
+    DashboardCapabilityState,
+    'snapshot_only' | 'deferred'
+  >;
+  historicalSeries!: 'deferred';
   drilldownData!: 'deferred';
   savedReports!: 'deferred';
   customDashboards!: 'deferred';
@@ -166,6 +177,7 @@ export class DashboardAnalyticsCatalogDeferredDto {
 export class DashboardAnalyticsCatalogMetaDto {
   source!: 'dashboard_analytics_catalog';
   dataFreshness!: 'catalog';
+  freshness!: DashboardFreshnessMetadataDto;
 }
 
 export class DashboardAnalyticsCatalogResponseDto {
@@ -190,7 +202,11 @@ export class DashboardAnalyticsChartsFiltersDto {
 }
 
 export class DashboardAnalyticsChartsDeferredDto {
-  computedSeries!: 'deferred';
+  computedSeries!: Extract<
+    DashboardCapabilityState,
+    'snapshot_only' | 'deferred'
+  >;
+  historicalSeries!: 'deferred';
   drilldownData!: 'deferred';
 }
 

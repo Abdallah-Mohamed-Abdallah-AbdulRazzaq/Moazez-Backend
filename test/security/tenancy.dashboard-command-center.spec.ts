@@ -16,6 +16,8 @@ import { DashboardActivityFeedRepository } from '../../src/modules/dashboard/inf
 import { DashboardAlertsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-alerts.repository';
 import { DashboardSummaryRepository } from '../../src/modules/dashboard/infrastructure/dashboard-summary.repository';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
+import { DashboardTimeContextService } from '../../src/modules/dashboard/application/dashboard-time-context.service';
+import { DashboardTimeContextRepository } from '../../src/modules/dashboard/infrastructure/dashboard-time-context.repository';
 
 jest.setTimeout(60000);
 
@@ -214,6 +216,9 @@ describe('Dashboard command center tenancy/security contracts', () => {
       new DashboardSummaryRepository(prisma),
       new DashboardAlertsRepository(prisma),
       new DashboardActivityFeedRepository(prisma),
+      new DashboardTimeContextService(
+        new DashboardTimeContextRepository(prisma),
+      ),
     );
 
     const response = await withSchoolScope(schoolAId, () =>

@@ -1,5 +1,9 @@
 import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  DashboardCapabilityState,
+  DashboardFreshnessMetadataDto,
+} from './dashboard-metadata.dto';
 
 export const DASHBOARD_ALERT_SOURCES = [
   'admissions',
@@ -72,7 +76,12 @@ export class DashboardAlertsDeferredDto {
   persistence!: 'deferred';
   acknowledge!: 'deferred';
   dismiss!: 'deferred';
-  activityFeed!: 'deferred';
+  activityFeed!: Extract<DashboardCapabilityState, 'available' | 'deferred'>;
+}
+
+export class DashboardAlertsMetaDto {
+  source!: 'dashboard_alerts';
+  freshness!: DashboardFreshnessMetadataDto;
 }
 
 export class DashboardAlertsResponseDto {
@@ -80,6 +89,7 @@ export class DashboardAlertsResponseDto {
   alerts!: DashboardAlertDto[];
   summary!: DashboardAlertsSummaryDto;
   deferred!: DashboardAlertsDeferredDto;
+  meta!: DashboardAlertsMetaDto;
 }
 
 function toBooleanValue(value: unknown): unknown {

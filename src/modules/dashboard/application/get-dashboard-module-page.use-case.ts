@@ -11,12 +11,14 @@ import {
   buildDashboardAlertsDateWindow,
 } from './list-dashboard-alerts.use-case';
 import { buildDashboardSummaryDateWindow } from './get-dashboard-summary.use-case';
+import { DashboardTimeContextService } from './dashboard-time-context.service';
 
 @Injectable()
 export class GetDashboardModulePageUseCase {
   constructor(
     private readonly dashboardSummaryRepository: DashboardSummaryRepository,
     private readonly dashboardAlertsRepository: DashboardAlertsRepository,
+    private readonly dashboardTimeContextService: DashboardTimeContextService,
   ) {}
 
   async execute(moduleKey: string): Promise<DashboardModulePageResponseDto> {
@@ -24,9 +26,7 @@ export class GetDashboardModulePageUseCase {
     const definition = findDashboardModulePageDefinition(moduleKey);
 
     if (!definition) {
-      throw new NotFoundDomainException(
-        'Dashboard module page was not found',
-      );
+      throw new NotFoundDomainException('Dashboard module page was not found');
     }
 
     return this.loadModulePage(scope, definition.moduleKey);
@@ -36,23 +36,23 @@ export class GetDashboardModulePageUseCase {
     scope: DashboardScope,
     moduleKey: string,
   ): Promise<DashboardModulePageResponseDto> {
-    const generatedAt = new Date();
+    const timeContext =
+      await this.dashboardTimeContextService.resolveForSchool(scope);
+    const generatedAt = timeContext.generatedAt;
     const definition = findDashboardModulePageDefinition(moduleKey);
 
     if (!definition) {
-      throw new NotFoundDomainException(
-        'Dashboard module page was not found',
-      );
+      throw new NotFoundDomainException('Dashboard module page was not found');
     }
 
     const [summary, alertSignals] = await Promise.all([
       this.dashboardSummaryRepository.loadSummarySnapshot(
         scope,
-        buildDashboardSummaryDateWindow(generatedAt),
+        buildDashboardSummaryDateWindow(timeContext),
       ),
       this.dashboardAlertsRepository.loadAlertSignals(
         scope,
-        buildDashboardAlertsDateWindow(generatedAt),
+        buildDashboardAlertsDateWindow(timeContext),
       ),
     ]);
 

@@ -170,25 +170,28 @@ describe('Dashboard summary tenancy/security contracts', () => {
   });
 
   it('does not expose tenant fields in the dashboard response presenter', () => {
-    const response = presentDashboardSummary({
-      generatedAt: new Date('2026-06-01T09:00:00.000Z'),
-      school: { name: 'School A', timezone: 'Africa/Cairo', locale: null },
-      academicContext: {
-        academicYear: { id: 'year-a', name: 'Year A' },
-        term: { id: 'term-a', name: 'Term A', academicYearId: 'year-a' },
+    const response = presentDashboardSummary(
+      {
+        generatedAt: new Date('2026-06-01T09:00:00.000Z'),
+        school: { name: 'School A', timezone: 'Africa/Cairo', locale: null },
+        academicContext: {
+          academicYear: { id: 'year-a', name: 'Year A' },
+          term: { id: 'term-a', name: 'Term A', academicYearId: 'year-a' },
+        },
+        cards: {
+          admissions: zeroAdmissions(),
+          students: zeroStudents(),
+          academics: zeroAcademics(),
+          attendance: zeroAttendance(),
+          grades: zeroGrades(),
+          homework: zeroHomework(),
+          behavior: zeroBehavior(),
+          reinforcement: zeroReinforcement(),
+          communication: zeroCommunication(),
+        },
       },
-      cards: {
-        admissions: zeroAdmissions(),
-        students: zeroStudents(),
-        academics: zeroAcademics(),
-        attendance: zeroAttendance(),
-        grades: zeroGrades(),
-        homework: zeroHomework(),
-        behavior: zeroBehavior(),
-        reinforcement: zeroReinforcement(),
-        communication: zeroCommunication(),
-      },
-    });
+      'Africa/Cairo',
+    );
 
     const serialized = JSON.stringify(response);
     expect(serialized).not.toContain('schoolId');

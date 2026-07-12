@@ -13,6 +13,7 @@ import {
 import { DashboardAnalyticsChartDefinition } from '../domain/dashboard-analytics-catalog';
 import { DashboardAlertSignals } from '../infrastructure/dashboard-alerts.repository';
 import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
+import { dashboardFreshness } from './dashboard-metadata.presenter';
 
 export interface DashboardAnalyticsChartDataPresentationInput {
   generatedAt: Date;
@@ -66,6 +67,7 @@ function presentComputedSnapshotChartData(
       )
         ? getDashboardAnalyticsChartComputation(input.chart.chartKey)
         : null,
+      freshness: dashboardFreshness('request_time_snapshot'),
       deferred: {
         historicalSeries: 'deferred',
         drilldown: 'deferred',
@@ -105,6 +107,7 @@ function presentUnsupportedChartData(
       pack: null,
       dataAvailability: 'definition_only',
       computation: null,
+      freshness: dashboardFreshness('static_catalog'),
       deferred: {
         computedSeries: 'deferred',
         drilldown: 'deferred',

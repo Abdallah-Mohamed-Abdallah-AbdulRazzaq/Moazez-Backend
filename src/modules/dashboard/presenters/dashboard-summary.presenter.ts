@@ -3,15 +3,17 @@ import {
   DashboardSummaryResponseDto,
 } from '../dto/dashboard-summary.dto';
 import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
+import { dashboardFreshness } from './dashboard-metadata.presenter';
 
 export function presentDashboardSummary(
   snapshot: DashboardSummarySnapshot,
+  effectiveTimezone: string,
 ): DashboardSummaryResponseDto {
   return {
     generatedAt: snapshot.generatedAt.toISOString(),
     school: {
       name: snapshot.school.name,
-      timezone: snapshot.school.timezone,
+      timezone: effectiveTimezone,
       locale: snapshot.school.locale,
     },
     academicContext: {
@@ -31,9 +33,13 @@ export function presentDashboardSummary(
     cards: snapshot.cards,
     alertsPreview: buildAlertsPreview(snapshot),
     deferred: {
-      activityFeed: 'deferred',
-      alertsEngine: 'deferred',
+      activityFeed: 'available',
+      alertsEngine: 'available',
       analyticsBuilder: 'out_of_scope_v1',
+    },
+    meta: {
+      source: 'dashboard_summary',
+      freshness: dashboardFreshness('request_time_snapshot'),
     },
   };
 }

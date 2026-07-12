@@ -3,7 +3,7 @@ import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.re
 
 describe('Dashboard summary presenter', () => {
   it('presents compact school summary cards, deferred surfaces, and alert previews', () => {
-    const response = presentDashboardSummary(snapshot());
+    const response = presentDashboardSummary(snapshot(), 'Africa/Cairo');
 
     expect(response).toMatchObject({
       generatedAt: '2026-06-01T09:00:00.000Z',
@@ -23,9 +23,17 @@ describe('Dashboard summary presenter', () => {
         communication: { pendingModerationReports: 1 },
       },
       deferred: {
-        activityFeed: 'deferred',
-        alertsEngine: 'deferred',
+        activityFeed: 'available',
+        alertsEngine: 'available',
         analyticsBuilder: 'out_of_scope_v1',
+      },
+      meta: {
+        source: 'dashboard_summary',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
     expect(response.alertsPreview).toEqual(
@@ -53,7 +61,7 @@ describe('Dashboard summary presenter', () => {
   });
 
   it('does not expose tenant identifiers or deferred implementation details', () => {
-    const response = presentDashboardSummary(snapshot());
+    const response = presentDashboardSummary(snapshot(), 'Africa/Cairo');
     const serialized = JSON.stringify(response);
 
     expect(serialized).not.toContain('schoolId');

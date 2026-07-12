@@ -5,6 +5,7 @@ import {
   IsTimeZone,
   Matches,
 } from 'class-validator';
+import { DashboardFreshnessMetadataDto } from './dashboard-metadata.dto';
 
 export const DASHBOARD_LIGHT_MODE_DROPDOWN_LOCALES = ['en', 'ar'] as const;
 export const DASHBOARD_LIGHT_MODE_DROPDOWN_UNITS = [
@@ -179,6 +180,13 @@ export class DashboardLightModeDropdownMetaDto {
   weatherStatus!: 'provider_not_configured' | 'location_missing';
   plannerStatus!: 'foundation_only';
   todosStatus!: 'persisted';
+  freshness!: DashboardFreshnessMetadataDto;
+  componentFreshness!: {
+    location: 'request_time_snapshot';
+    todos: 'persisted_user_data';
+    weather: 'not_available';
+    plannerEvents: 'not_available';
+  };
   deferred!: DashboardLightModeDropdownDeferredDto;
 }
 

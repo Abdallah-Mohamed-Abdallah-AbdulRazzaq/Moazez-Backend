@@ -178,9 +178,11 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       deferred: {
         customLayouts: 'deferred',
         widgetPreferences: 'deferred',
-        analyticsCharts: 'deferred',
+        analyticsCharts: 'integration_deferred',
         weatherWidgets: 'deferred',
-        todoWidgets: 'deferred',
+        todoWidgets: 'integration_deferred',
+        analyticsStandalone: 'snapshot_only',
+        todosStandalone: 'persisted',
       },
     });
     expect(
@@ -264,9 +266,11 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       deferred: {
         customLayouts: 'deferred',
         widgetPreferences: 'deferred',
-        analyticsCharts: 'deferred',
+        analyticsCharts: 'integration_deferred',
         weatherWidgets: 'deferred',
-        todoWidgets: 'deferred',
+        todoWidgets: 'integration_deferred',
+        analyticsStandalone: 'snapshot_only',
+        todosStandalone: 'persisted',
       },
     });
     expectNoInternalLeaks(knownResponse.body);

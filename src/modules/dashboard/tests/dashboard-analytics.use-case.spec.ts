@@ -40,7 +40,8 @@ describe('Dashboard analytics use cases', () => {
         charts: expect.any(Array),
       },
       deferred: {
-        computedSeries: 'deferred',
+        computedSeries: 'snapshot_only',
+        historicalSeries: 'deferred',
         drilldownData: 'deferred',
         savedReports: 'deferred',
         customDashboards: 'deferred',
@@ -50,6 +51,11 @@ describe('Dashboard analytics use cases', () => {
       meta: {
         source: 'dashboard_analytics_catalog',
         dataFreshness: 'catalog',
+        freshness: {
+          dataMode: 'static_catalog',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
     expect(response.catalog.sources.map((source) => source.source)).toEqual(
@@ -123,6 +129,7 @@ describe('Dashboard analytics use cases', () => {
       byType: { line: 2 },
       byStatus: { planned: 2 },
     });
+    expect(response.deferred.computedSeries).toBe('deferred');
 
     expect(
       normalizeDashboardAnalyticsChartsQuery({
@@ -157,6 +164,9 @@ describe('Dashboard analytics use cases', () => {
       status: 'planned',
       requiredPermission: 'dashboard.analytics.view',
       endpoint: '/dashboard/analytics/charts/attendance.daily_trend',
+      definitionEndpoint: '/dashboard/analytics/charts/attendance.daily_trend',
+      dataEndpoint: '/dashboard/analytics/charts/attendance.daily_trend/data',
+      endpointPurpose: 'definition',
       meta: {
         dataAvailability: 'definition_only',
       },
@@ -193,9 +203,37 @@ describe('Dashboard analytics use cases', () => {
     });
     expect(response.deferred).toEqual({
       computedSeries: 'deferred',
+      historicalSeries: 'deferred',
       drilldownData: 'deferred',
     });
     expectNoInternalLeaks(response);
+  });
+
+  it('reports snapshot-only metadata when list and detail include a computed chart', async () => {
+    const listUseCase = new ListDashboardAnalyticsChartsUseCase();
+    const detailUseCase = new GetDashboardAnalyticsChartUseCase();
+
+    const listResponse = await withSchoolScope(() =>
+      listUseCase.execute({
+        source: 'attendance',
+        status: 'available',
+        limit: 10,
+      }),
+    );
+    const detailResponse = await withSchoolScope(() =>
+      detailUseCase.execute('attendance.pending_sessions'),
+    );
+
+    expect(
+      listResponse.charts.some(
+        (chart) => chart.meta.dataAvailability === 'computed_snapshot',
+      ),
+    ).toBe(true);
+    expect(listResponse.deferred.computedSeries).toBe('snapshot_only');
+    expect(detailResponse.chart.meta.dataAvailability).toBe(
+      'computed_snapshot',
+    );
+    expect(detailResponse.deferred.computedSeries).toBe('snapshot_only');
   });
 
   it('throws not found for unknown chart keys', async () => {
