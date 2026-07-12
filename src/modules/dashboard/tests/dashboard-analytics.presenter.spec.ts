@@ -28,8 +28,8 @@ describe('Dashboard analytics presenter', () => {
         supportedGranularities: DASHBOARD_ANALYTICS_GRANULARITIES,
       },
       deferred: {
-        computedSeries: 'snapshot_only',
-        historicalSeries: 'deferred',
+        computedSeries: 'available',
+        historicalSeries: 'available',
         drilldownData: 'deferred',
         savedReports: 'deferred',
         customDashboards: 'deferred',
@@ -115,7 +115,7 @@ describe('Dashboard analytics presenter', () => {
       filters: {
         source: 'attendance',
         type: 'line',
-        status: 'planned',
+        status: 'available',
         limit: 50,
       },
     });
@@ -125,12 +125,12 @@ describe('Dashboard analytics presenter', () => {
       filters: {
         source: 'attendance',
         type: 'line',
-        status: 'planned',
+        status: 'available',
         limit: 50,
       },
       deferred: {
-        computedSeries: 'deferred',
-        historicalSeries: 'deferred',
+        computedSeries: 'available',
+        historicalSeries: 'available',
         drilldownData: 'deferred',
       },
     });
@@ -138,7 +138,7 @@ describe('Dashboard analytics presenter', () => {
       total: charts.length,
       bySource: { attendance: charts.length },
       byType: { line: charts.length },
-      byStatus: { planned: charts.length },
+      byStatus: { available: charts.length },
     });
     expect(
       response.charts.every(
@@ -146,7 +146,7 @@ describe('Dashboard analytics presenter', () => {
           chart.source === 'attendance' &&
           chart.type === 'line' &&
           chart.requiredPermission === 'dashboard.analytics.view' &&
-          chart.meta.dataAvailability === 'definition_only',
+          chart.meta.dataAvailability === 'computed_series',
       ),
     ).toBe(true);
     expect(JSON.stringify(response.charts)).not.toContain('points');
@@ -191,7 +191,7 @@ describe('Dashboard analytics presenter', () => {
         chartKey: 'attendance.daily_trend',
         source: 'attendance',
         type: 'line',
-        status: 'planned',
+        status: 'available',
         defaultRange: '30d',
         supportedRanges: DASHBOARD_ANALYTICS_RANGES,
         supportedGranularities: DASHBOARD_ANALYTICS_GRANULARITIES,
@@ -237,23 +237,23 @@ describe('Dashboard analytics presenter', () => {
           ],
         },
         emptyState: {
-          reason: 'not_implemented',
-          message: 'Chart data will be implemented in a future analytics pack.',
+          reason: 'no_data',
+          message: 'No attendance observations found for the selected range.',
         },
         meta: {
-          dataAvailability: 'definition_only',
+          dataAvailability: 'computed_series',
         },
       },
       deferred: {
-        computedSeries: 'deferred',
-        historicalSeries: 'deferred',
+        computedSeries: 'available',
+        historicalSeries: 'available',
         drilldownData: 'deferred',
       },
     });
     expectNoInternalLeaks(response);
   });
 
-  it('marks only the first snapshot data pack charts as computed and available', () => {
+  it('marks exactly eleven charts as computed and leaves twenty-six definition-only', () => {
     const response = presentDashboardAnalyticsCatalog({
       generatedAt: new Date('2026-07-09T12:00:00.000Z'),
       catalog: DASHBOARD_ANALYTICS_CATALOG,
@@ -265,6 +265,13 @@ describe('Dashboard analytics presenter', () => {
       'communication.moderation_queue',
       'settings.email_connection_readiness',
       'settings.login_identity_readiness',
+    ];
+    const attendancePackChartKeys = [
+      'attendance.daily_trend',
+      'attendance.status_distribution',
+      'attendance.absence_rate',
+      'attendance.late_rate',
+      'attendance.excuse_status',
     ];
 
     expect(
@@ -293,13 +300,38 @@ describe('Dashboard analytics presenter', () => {
     ).toBe(true);
     expect(
       response.catalog.charts
-        .filter((chart) => !computedSnapshotChartKeys.includes(chart.chartKey))
+        .filter((chart) => attendancePackChartKeys.includes(chart.chartKey))
+        .every(
+          (chart) =>
+            chart.status === 'available' &&
+            ['computed_series', 'computed_category'].includes(
+              chart.meta.dataAvailability,
+            ),
+        ),
+    ).toBe(true);
+    expect(
+      response.catalog.charts
+        .filter(
+          (chart) =>
+            !computedSnapshotChartKeys.includes(chart.chartKey) &&
+            !attendancePackChartKeys.includes(chart.chartKey),
+        )
         .every(
           (chart) =>
             chart.status === 'planned' &&
             chart.meta.dataAvailability === 'definition_only',
         ),
     ).toBe(true);
+    expect(
+      response.catalog.charts.filter(
+        (chart) => chart.meta.dataAvailability !== 'definition_only',
+      ),
+    ).toHaveLength(11);
+    expect(
+      response.catalog.charts.filter(
+        (chart) => chart.meta.dataAvailability === 'definition_only',
+      ),
+    ).toHaveLength(26);
   });
 
   it('publishes one truthful typed query capability matrix', () => {
@@ -316,6 +348,15 @@ describe('Dashboard analytics presenter', () => {
     const historicalDefinition = response.catalog.charts.find(
       (chart) => chart.chartKey === 'attendance.daily_trend',
     );
+    const statusDistribution = response.catalog.charts.find(
+      (chart) => chart.chartKey === 'attendance.status_distribution',
+    );
+    const homeworkReviewDefinition = response.catalog.charts.find(
+      (chart) => chart.chartKey === 'homework.submission_review_trend',
+    );
+    const behaviorReviewDefinition = response.catalog.charts.find(
+      (chart) => chart.chartKey === 'behavior.pending_review',
+    );
 
     expect(attendanceSnapshot?.queryCapabilities).toEqual({
       snapshotOnly: true,
@@ -323,6 +364,7 @@ describe('Dashboard analytics presenter', () => {
       categoryTableFunnelCapable: false,
       definitionOnly: false,
       timeFiltersApplicable: false,
+      granularityApplicable: false,
       supportedRanges: ['30d'],
       supportedGranularities: ['day'],
       supportedHierarchyFilters: [
@@ -339,8 +381,47 @@ describe('Dashboard analytics presenter', () => {
     expect(historicalDefinition?.queryCapabilities).toMatchObject({
       snapshotOnly: false,
       historicalSeriesCapable: true,
-      definitionOnly: true,
+      definitionOnly: false,
       timeFiltersApplicable: true,
+      granularityApplicable: true,
+    });
+    expect(statusDistribution).toMatchObject({
+      meta: { dataAvailability: 'computed_series' },
+      queryCapabilities: {
+        snapshotOnly: false,
+        historicalSeriesCapable: true,
+        categoryTableFunnelCapable: true,
+        definitionOnly: false,
+        timeFiltersApplicable: true,
+        granularityApplicable: true,
+      },
+    });
+    for (const definition of [
+      homeworkReviewDefinition,
+      behaviorReviewDefinition,
+    ]) {
+      expect(definition).toMatchObject({
+        status: 'planned',
+        meta: { dataAvailability: 'definition_only' },
+        queryCapabilities: {
+          definitionOnly: true,
+          timeFiltersApplicable: false,
+          granularityApplicable: false,
+          supportedRanges: [],
+          supportedGranularities: [],
+        },
+      });
+    }
+
+    const excuseDefinition = response.catalog.charts.find(
+      (chart) => chart.chartKey === 'attendance.excuse_status',
+    );
+    expect(excuseDefinition?.queryCapabilities).toMatchObject({
+      definitionOnly: false,
+      timeFiltersApplicable: true,
+      granularityApplicable: false,
+      supportedGranularities: ['day'],
+      supportedHierarchyFilters: ['academicYearId', 'termId'],
     });
   });
 });

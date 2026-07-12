@@ -8,13 +8,17 @@ import {
 } from '../dto/dashboard-analytics-data.dto';
 import { DashboardAnalyticsChartDefinition } from '../domain/dashboard-analytics-catalog';
 import { dashboardAnalyticsSnapshotPoint } from '../domain/dashboard-analytics-coordinate';
+import { DashboardAttendanceAnalyticsData } from '../domain/dashboard-attendance-analytics';
 import {
   DashboardAnalyticsQueryContext,
   DashboardAnalyticsResolvedHierarchy,
 } from '../domain/dashboard-analytics-query';
 import {
   DASHBOARD_ANALYTICS_OPERATIONAL_SNAPSHOT_PACK,
+  DASHBOARD_ANALYTICS_ATTENDANCE_PACK,
+  getDashboardAnalyticsAttendanceComputation,
   getDashboardAnalyticsChartComputation,
+  isDashboardAnalyticsAttendancePackChartKey,
   isDashboardAnalyticsComputedSnapshotChartKey,
 } from '../domain/dashboard-analytics-data-pack';
 import { DashboardAlertSignals } from '../infrastructure/dashboard-alerts.repository';
@@ -27,11 +31,19 @@ export interface DashboardAnalyticsChartDataPresentationInput {
   snapshotValue?: number;
   summary?: DashboardSummarySnapshot;
   alertSignals?: DashboardAlertSignals;
+  attendanceData?: DashboardAttendanceAnalyticsData;
 }
 
 export function presentDashboardAnalyticsChartData(
   input: DashboardAnalyticsChartDataPresentationInput,
 ): DashboardAnalyticsChartDataResponseDto {
+  if (
+    isDashboardAnalyticsAttendancePackChartKey(input.chart.chartKey) &&
+    input.attendanceData
+  ) {
+    return presentComputedAttendanceChartData(input, input.attendanceData);
+  }
+
   if (
     isDashboardAnalyticsComputedSnapshotChartKey(input.chart.chartKey) &&
     (input.snapshotValue !== undefined || input.summary)
@@ -40,6 +52,39 @@ export function presentDashboardAnalyticsChartData(
   }
 
   return presentUnsupportedChartData(input);
+}
+
+function presentComputedAttendanceChartData(
+  input: DashboardAnalyticsChartDataPresentationInput,
+  data: DashboardAttendanceAnalyticsData,
+): DashboardAnalyticsChartDataResponseDto {
+  if (!isDashboardAnalyticsAttendancePackChartKey(input.chart.chartKey)) {
+    return presentUnsupportedChartData(input);
+  }
+
+  return {
+    ...responseIdentity(input),
+    data,
+    emptyState: data.empty ? noDataEmptyState(input.chart) : null,
+    meta: {
+      source: 'dashboard_analytics_data_pack',
+      pack: DASHBOARD_ANALYTICS_ATTENDANCE_PACK,
+      dataAvailability: input.chart.meta.dataAvailability,
+      computation: getDashboardAnalyticsAttendanceComputation(
+        input.chart.chartKey,
+      ),
+      freshness: dashboardFreshness('request_time_snapshot'),
+      query: presentQueryMetadata(input.queryContext),
+      deferred: {
+        ...(input.chart.meta.dataAvailability === 'computed_category'
+          ? { historicalSeries: 'deferred' as const }
+          : {}),
+        drilldown: 'deferred',
+        exports: 'deferred',
+        realtime: 'deferred',
+      },
+    },
+  };
 }
 
 function presentComputedSnapshotChartData(

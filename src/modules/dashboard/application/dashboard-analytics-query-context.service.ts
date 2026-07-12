@@ -74,7 +74,7 @@ export class DashboardAnalyticsQueryContextService {
       hierarchyState,
     );
 
-    if (chart.queryCapabilities.timeFiltersApplicable) {
+    if (chart.queryCapabilities.granularityApplicable) {
       validateDashboardAnalyticsGranularity(query.granularity, window);
     }
 

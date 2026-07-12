@@ -214,6 +214,86 @@ describe('DashboardAnalyticsQueryContextService', () => {
       }),
     ).rejects.toBeInstanceOf(ValidationDomainException);
   });
+
+  it('applies excuse ranges while reporting the compatible day granularity as not applicable', async () => {
+    const context = await queryService(hierarchyRepositoryMock()).resolve(
+      scope(),
+      chart('attendance.excuse_status'),
+      {
+        range: 'custom',
+        granularity: 'day',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-03',
+        academicYearId: ACADEMIC_YEAR_ID,
+        termId: TERM_ID,
+      },
+    );
+
+    expect(context.filtersApplied).toEqual([
+      'range',
+      'dateFrom',
+      'dateTo',
+      'academicYearId',
+      'termId',
+    ]);
+    expect(context.filtersNotApplicable).toEqual(['granularity']);
+    expect(context.startCivilDate).toBe('2026-07-01');
+    expect(context.endCivilDate).toBe('2026-07-03');
+  });
+
+  it.each(['week', 'month'] as const)(
+    'rejects %s granularity for the excuse category chart',
+    async (granularity) => {
+      const repository = hierarchyRepositoryMock();
+      await expect(
+        queryService(repository).resolve(
+          scope(),
+          chart('attendance.excuse_status'),
+          { granularity },
+        ),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+      expect(repository.findActiveAcademicYear).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['gradeId', 'sectionId', 'classroomId'] as const)(
+    'rejects %s before hierarchy resolution for the excuse chart',
+    async (filter) => {
+      const repository = hierarchyRepositoryMock();
+      await expect(
+        queryService(repository).resolve(
+          scope(),
+          chart('attendance.excuse_status'),
+          { [filter]: GRADE_ID },
+        ),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+      expect(repository.findGradeById).not.toHaveBeenCalled();
+      expect(repository.findSectionById).not.toHaveBeenCalled();
+      expect(repository.findClassroomById).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    'homework.submission_review_trend',
+    'behavior.pending_review',
+  ])(
+    'preserves Phase 2A time-filter rejection for %s',
+    async (chartKey) => {
+      for (const query of [
+        { range: '7d' as const },
+        { granularity: 'week' as const },
+      ]) {
+        const repository = hierarchyRepositoryMock();
+        await expect(
+          queryService(repository).resolve(scope(), chart(chartKey), query),
+        ).rejects.toMatchObject({
+          constructor: ValidationDomainException,
+          message: 'Analytics time filter is not supported by this chart',
+        });
+        expect(repository.findActiveAcademicYear).not.toHaveBeenCalled();
+      }
+    },
+  );
 });
 
 function queryService(

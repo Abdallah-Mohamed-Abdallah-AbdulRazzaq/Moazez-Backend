@@ -122,11 +122,16 @@ export class DashboardAnalyticsQueryMetadataDto {
 
 export class DashboardAnalyticsChartDataMetaDto {
   source!: 'dashboard_analytics_data_pack';
-  pack!: 'operational_snapshot_v1' | null;
+  pack!: 'operational_snapshot_v1' | 'attendance_v1' | null;
   dataAvailability!: DashboardAnalyticsDataAvailability;
   computation!:
     | 'dashboard_summary_snapshot'
     | 'dashboard_alert_readiness_snapshot'
+    | 'attendance_observation_daily_trend'
+    | 'attendance_observation_status_distribution'
+    | 'attendance_observation_absence_rate'
+    | 'attendance_observation_late_rate'
+    | 'attendance_excuse_status_distribution'
     | null;
   freshness!: DashboardFreshnessMetadataDto;
   query!: DashboardAnalyticsQueryMetadataDto;

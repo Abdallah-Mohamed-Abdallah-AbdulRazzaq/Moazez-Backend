@@ -195,8 +195,8 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         charts: expect.any(Array),
       },
       deferred: {
-        computedSeries: 'snapshot_only',
-        historicalSeries: 'deferred',
+        computedSeries: 'available',
+        historicalSeries: 'available',
         drilldownData: 'deferred',
         savedReports: 'deferred',
         customDashboards: 'deferred',
@@ -244,6 +244,18 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         'settings.notification_readiness',
       ]),
     );
+    expect(
+      response.body.catalog.charts.filter(
+        (chart: { meta: { dataAvailability: string } }) =>
+          chart.meta.dataAvailability !== 'definition_only',
+      ),
+    ).toHaveLength(11);
+    expect(
+      response.body.catalog.charts.filter(
+        (chart: { meta: { dataAvailability: string } }) =>
+          chart.meta.dataAvailability === 'definition_only',
+      ),
+    ).toHaveLength(26);
     expectNoInternalLeaks(response.body);
     expect(JSON.stringify(response.body.catalog.charts)).not.toContain(
       'points',
@@ -258,7 +270,7 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       .query({
         source: 'attendance',
         type: 'line',
-        status: 'planned',
+        status: 'available',
         limit: '2',
       })
       .set('Authorization', `Bearer ${adminToken}`)
@@ -271,17 +283,17 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         total: 2,
         bySource: { attendance: 2 },
         byType: { line: 2 },
-        byStatus: { planned: 2 },
+        byStatus: { available: 2 },
       },
       filters: {
         source: 'attendance',
         type: 'line',
-        status: 'planned',
+        status: 'available',
         limit: 2,
       },
       deferred: {
-        computedSeries: 'deferred',
-        historicalSeries: 'deferred',
+        computedSeries: 'available',
+        historicalSeries: 'available',
         drilldownData: 'deferred',
       },
     });
@@ -291,7 +303,7 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         (chart: { source: string; type: string; status: string }) =>
           chart.source === 'attendance' &&
           chart.type === 'line' &&
-          chart.status === 'planned',
+          chart.status === 'available',
       ),
     ).toBe(true);
     expectNoInternalLeaks(response.body);
@@ -311,7 +323,7 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         chartKey: 'attendance.daily_trend',
         source: 'attendance',
         type: 'line',
-        status: 'planned',
+        status: 'available',
         requiredPermission: 'dashboard.analytics.view',
         endpoint: '/dashboard/analytics/charts/attendance.daily_trend',
         definitionEndpoint:
@@ -349,16 +361,41 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
           ],
         },
         meta: {
-          dataAvailability: 'definition_only',
+          dataAvailability: 'computed_series',
         },
       },
       deferred: {
-        computedSeries: 'deferred',
-        historicalSeries: 'deferred',
+        computedSeries: 'available',
+        historicalSeries: 'available',
         drilldownData: 'deferred',
       },
     });
     expectNoInternalLeaks(knownResponse.body);
+
+    const statusDistributionResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.status_distribution`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(statusDistributionResponse.body.chart).toMatchObject({
+      chartKey: 'attendance.status_distribution',
+      type: 'stacked-bar',
+      status: 'available',
+      queryCapabilities: {
+        snapshotOnly: false,
+        historicalSeriesCapable: true,
+        categoryTableFunnelCapable: true,
+        definitionOnly: false,
+        timeFiltersApplicable: true,
+        granularityApplicable: true,
+      },
+      meta: {
+        dataAvailability: 'computed_series',
+      },
+    });
+    expectNoInternalLeaks(statusDistributionResponse.body);
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/unknown.chart`)

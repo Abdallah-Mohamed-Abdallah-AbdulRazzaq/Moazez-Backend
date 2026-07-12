@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../iam/auth/auth.module';
+import { ReportsModule } from '../attendance/reports/reports.module';
 import { GetDashboardAnalyticsCatalogUseCase } from './application/get-dashboard-analytics-catalog.use-case';
 import { DashboardTimeContextService } from './application/dashboard-time-context.service';
 import { DashboardAnalyticsQueryContextService } from './application/dashboard-analytics-query-context.service';
@@ -31,7 +32,7 @@ import { DashboardAnalyticsHierarchyRepository } from './infrastructure/dashboar
 import { DashboardAnalyticsSnapshotRepository } from './infrastructure/dashboard-analytics-snapshot.repository';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, ReportsModule],
   controllers: [DashboardController, DashboardTodosController],
   providers: [
     DashboardSummaryRepository,

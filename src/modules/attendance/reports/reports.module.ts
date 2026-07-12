@@ -6,16 +6,19 @@ import { GetAttendanceScopeBreakdownUseCase } from './application/get-attendance
 import { GetAttendanceSummaryReportUseCase } from './application/get-attendance-summary-report.use-case';
 import { AttendanceReportsController } from './controller/attendance-reports.controller';
 import { AttendanceReportsRepository } from './infrastructure/attendance-reports.repository';
+import { AttendanceDashboardAnalyticsRepository } from './infrastructure/attendance-dashboard-analytics.repository';
 
 @Module({
   imports: [AuthModule],
   controllers: [AttendanceReportsController],
   providers: [
     AttendanceReportsRepository,
+    AttendanceDashboardAnalyticsRepository,
     GetAttendanceSummaryReportUseCase,
     GetAttendanceDailyTrendUseCase,
     GetAttendanceScopeBreakdownUseCase,
     GetDerivedDailyAbsencesReportUseCase,
   ],
+  exports: [AttendanceDashboardAnalyticsRepository],
 })
 export class ReportsModule {}

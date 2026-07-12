@@ -2,7 +2,16 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { SchoolLoginSettingsStatus, UserType } from '@prisma/client';
+import {
+  AttendanceExcuseStatus,
+  AttendanceExcuseType,
+  AttendanceMode,
+  AttendanceScopeType,
+  AttendanceSessionStatus,
+  AttendanceStatus,
+  SchoolLoginSettingsStatus,
+  UserType,
+} from '@prisma/client';
 import {
   createRequestContext,
   runWithRequestContext,
@@ -18,6 +27,7 @@ import { DashboardTimeContextRepository } from '../../src/modules/dashboard/infr
 import { DashboardAnalyticsQueryContextService } from '../../src/modules/dashboard/application/dashboard-analytics-query-context.service';
 import { DashboardAnalyticsHierarchyRepository } from '../../src/modules/dashboard/infrastructure/dashboard-analytics-hierarchy.repository';
 import { DashboardAnalyticsSnapshotRepository } from '../../src/modules/dashboard/infrastructure/dashboard-analytics-snapshot.repository';
+import { AttendanceDashboardAnalyticsRepository } from '../../src/modules/attendance/reports/infrastructure/attendance-dashboard-analytics.repository';
 
 jest.setTimeout(60000);
 
@@ -138,11 +148,66 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
       select: { id: true },
     });
     schoolBClassroomId = classroom.id;
+
+    const student = await prisma.student.create({
+      data: {
+        schoolId: schoolBId,
+        organizationId,
+        firstName: 'Analytics',
+        lastName: `Student ${suffix}`,
+      },
+      select: { id: true },
+    });
+    const attendanceSession = await prisma.attendanceSession.create({
+      data: {
+        schoolId: schoolBId,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        date: new Date('2026-07-10T00:00:00.000Z'),
+        scopeType: AttendanceScopeType.CLASSROOM,
+        scopeKey: classroom.id,
+        gradeId: grade.id,
+        sectionId: section.id,
+        classroomId: classroom.id,
+        mode: AttendanceMode.DAILY,
+        periodKey: 'daily',
+        status: AttendanceSessionStatus.SUBMITTED,
+      },
+      select: { id: true },
+    });
+    await prisma.attendanceEntry.create({
+      data: {
+        schoolId: schoolBId,
+        sessionId: attendanceSession.id,
+        studentId: student.id,
+        status: AttendanceStatus.ABSENT,
+      },
+    });
+    await prisma.attendanceExcuseRequest.create({
+      data: {
+        schoolId: schoolBId,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        studentId: student.id,
+        type: AttendanceExcuseType.ABSENCE,
+        status: AttendanceExcuseStatus.PENDING,
+        dateFrom: new Date('2026-07-10T00:00:00.000Z'),
+        dateTo: new Date('2026-07-10T00:00:00.000Z'),
+      },
+    });
   });
 
   afterAll(async () => {
     if (!prisma) return;
 
+    await prisma.attendanceEntry.deleteMany({ where: { schoolId: schoolBId } });
+    await prisma.attendanceExcuseRequest.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.attendanceSession.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.student.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.classroom.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.section.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.grade.deleteMany({ where: { schoolId: schoolBId } });
@@ -270,7 +335,7 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
     expectNoInternalLeaks(schoolAResponse);
   });
 
-  it('returns only safe public metadata for known unsupported charts', async () => {
+  it('returns only safe public metadata for computed Attendance charts', async () => {
     const useCase = analyticsDataUseCase();
 
     const response = await withSchoolScope(schoolAId, () =>
@@ -281,20 +346,79 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
       chartKey: 'attendance.daily_trend',
       source: 'attendance',
       title: 'Daily attendance trend',
-      status: 'planned',
+      status: 'available',
       data: {
-        series: [],
-        totals: {},
-        summary: null,
+        series: expect.any(Array),
+        totals: { present: 0, absent: 0, late: 0 },
         empty: true,
       },
       meta: {
-        pack: null,
-        dataAvailability: 'definition_only',
+        pack: 'attendance_v1',
+        dataAvailability: 'computed_series',
       },
     });
     expect(JSON.stringify(response)).not.toContain('sourceModels');
     expectNoInternalLeaks(response);
+  });
+
+  it('isolates Attendance entry and excuse aggregates between schools', async () => {
+    const useCase = analyticsDataUseCase();
+    const query = {
+      range: 'custom' as const,
+      dateFrom: '2026-07-10',
+      dateTo: '2026-07-10',
+    };
+
+    const [schoolATrend, schoolBTrend, schoolAExcuses, schoolBExcuses] =
+      await Promise.all([
+        withSchoolScope(schoolAId, () =>
+          useCase.execute('attendance.daily_trend', {
+            ...query,
+            schoolId: schoolBId,
+            organizationId,
+          } as any),
+        ),
+        withSchoolScope(schoolBId, () =>
+          useCase.execute('attendance.daily_trend', query),
+        ),
+        withSchoolScope(schoolAId, () =>
+          useCase.execute('attendance.excuse_status', query),
+        ),
+        withSchoolScope(schoolBId, () =>
+          useCase.execute('attendance.excuse_status', query),
+        ),
+      ]);
+
+    expect(schoolATrend.data.totals).toEqual({
+      present: 0,
+      absent: 0,
+      late: 0,
+    });
+    expect(schoolBTrend.data.totals).toEqual({
+      present: 0,
+      absent: 1,
+      late: 0,
+    });
+    expect(schoolAExcuses.data.totals).toEqual({
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+    });
+    expect(schoolBExcuses.data.totals).toEqual({
+      pending: 1,
+      approved: 0,
+      rejected: 0,
+    });
+    for (const response of [
+      schoolATrend,
+      schoolBTrend,
+      schoolAExcuses,
+      schoolBExcuses,
+    ]) {
+      expectNoInternalLeaks(response);
+      expect(JSON.stringify(response)).not.toContain(schoolAId);
+      expect(JSON.stringify(response)).not.toContain(schoolBId);
+    }
   });
 
   it('does not resolve any School B hierarchy identifier from School A', async () => {
@@ -337,6 +461,7 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
         new DashboardAnalyticsHierarchyRepository(prisma),
       ),
       new DashboardAnalyticsSnapshotRepository(prisma),
+      new AttendanceDashboardAnalyticsRepository(prisma),
     );
   }
 

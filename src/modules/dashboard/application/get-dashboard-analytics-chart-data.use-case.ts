@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { NotFoundDomainException } from '../../../common/exceptions/domain-exception';
+import { AttendanceDashboardAnalyticsRepository } from '../../attendance/reports/infrastructure/attendance-dashboard-analytics.repository';
 import { requireDashboardScope } from '../dashboard-context';
 import {
   DashboardAnalyticsChartDataFiltersDto,
@@ -7,7 +8,11 @@ import {
   GetDashboardAnalyticsChartDataQueryDto,
 } from '../dto/dashboard-analytics-data.dto';
 import { findDashboardAnalyticsChartDefinition } from '../domain/dashboard-analytics-catalog';
-import { isDashboardAnalyticsComputedSnapshotChartKey } from '../domain/dashboard-analytics-data-pack';
+import { computeDashboardAttendanceAnalyticsData } from '../domain/dashboard-attendance-analytics';
+import {
+  isDashboardAnalyticsAttendancePackChartKey,
+  isDashboardAnalyticsComputedSnapshotChartKey,
+} from '../domain/dashboard-analytics-data-pack';
 import { normalizeDashboardAnalyticsQuery } from '../domain/dashboard-analytics-query';
 import { DashboardAnalyticsSnapshotRepository } from '../infrastructure/dashboard-analytics-snapshot.repository';
 import { presentDashboardAnalyticsChartData } from '../presenters/dashboard-analytics-data.presenter';
@@ -21,6 +26,7 @@ export class GetDashboardAnalyticsChartDataUseCase {
   constructor(
     private readonly dashboardAnalyticsQueryContextService: DashboardAnalyticsQueryContextService,
     private readonly dashboardAnalyticsSnapshotRepository: DashboardAnalyticsSnapshotRepository,
+    private readonly attendanceDashboardAnalyticsRepository: AttendanceDashboardAnalyticsRepository,
   ) {}
 
   async execute(
@@ -42,6 +48,41 @@ export class GetDashboardAnalyticsChartDataUseCase {
         chart,
         query,
       );
+
+    if (isDashboardAnalyticsAttendancePackChartKey(chart.chartKey)) {
+      const sourceInput = {
+        scope,
+        window: {
+          startCivilDate: queryContext.startCivilDate,
+          endCivilDate: queryContext.endCivilDate,
+        },
+        hierarchy: queryContext.hierarchy,
+      };
+      const attendanceData =
+        chart.chartKey === 'attendance.excuse_status'
+          ? computeDashboardAttendanceAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              excuseAggregates:
+                await this.attendanceDashboardAnalyticsRepository.aggregateExcuseStatuses(
+                  sourceInput,
+                ),
+            })
+          : computeDashboardAttendanceAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              dailyAggregates:
+                await this.attendanceDashboardAnalyticsRepository.aggregateDailyEntryStatuses(
+                  sourceInput,
+                ),
+            });
+
+      return presentDashboardAnalyticsChartData({
+        queryContext,
+        chart,
+        attendanceData,
+      });
+    }
 
     if (!isDashboardAnalyticsComputedSnapshotChartKey(chart.chartKey)) {
       return presentDashboardAnalyticsChartData({ queryContext, chart });

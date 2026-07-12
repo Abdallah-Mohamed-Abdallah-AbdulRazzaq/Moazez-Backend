@@ -156,7 +156,7 @@ describe('Dashboard analytics data presenter', () => {
 
   it('returns a safe not_implemented envelope for known unsupported charts', () => {
     const chart = findDashboardAnalyticsChartDefinition(
-      'attendance.daily_trend',
+      'students.enrollment_growth',
     );
     expect(chart).toBeDefined();
 
@@ -166,7 +166,7 @@ describe('Dashboard analytics data presenter', () => {
     });
 
     expect(response).toMatchObject({
-      chartKey: 'attendance.daily_trend',
+      chartKey: 'students.enrollment_growth',
       status: 'planned',
       data: {
         series: [],
@@ -195,13 +195,74 @@ describe('Dashboard analytics data presenter', () => {
     expectNoInternalLeaks(response);
   });
 
+  it('presents computed Attendance series with the attendance pack and no historical deferral', () => {
+    const chart = findDashboardAnalyticsChartDefinition(
+      'attendance.daily_trend',
+    )!;
+    const response = presentDashboardAnalyticsChartData({
+      queryContext: {
+        ...defaultQueryContext(),
+        filtersApplied: ['range', 'granularity'],
+        filtersNotApplicable: [],
+      },
+      chart,
+      attendanceData: {
+        series: [
+          {
+            key: 'present',
+            label: 'Present',
+            points: [
+              {
+                x: '2026-07-09' as any,
+                y: 2,
+                coordinate: { kind: 'civil_date', date: '2026-07-09' },
+              },
+            ],
+          },
+        ],
+        totals: { present: 2, absent: 0, late: 0 },
+        summary: { value: 2, label: 'Attendance observations' },
+        empty: false,
+      },
+    });
+
+    expect(response).toMatchObject({
+      chartKey: 'attendance.daily_trend',
+      status: 'available',
+      data: { empty: false },
+      emptyState: null,
+      meta: {
+        pack: 'attendance_v1',
+        dataAvailability: 'computed_series',
+        computation: 'attendance_observation_daily_trend',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
+        deferred: {
+          drilldown: 'deferred',
+          exports: 'deferred',
+          realtime: 'deferred',
+        },
+      },
+    });
+    expect(response.meta.deferred).not.toHaveProperty('historicalSeries');
+    expectNoInternalLeaks(response);
+  });
+
   it('keeps only first-pack chart definitions available', () => {
     const availableChartKeys = DASHBOARD_ANALYTICS_CATALOG.charts
       .filter((chart) => chart.status === 'available')
       .map((chart) => chart.chartKey);
 
     expect(availableChartKeys).toEqual([
+      'attendance.daily_trend',
+      'attendance.status_distribution',
+      'attendance.absence_rate',
+      'attendance.late_rate',
       'attendance.pending_sessions',
+      'attendance.excuse_status',
       'grades.pending_submission_reviews',
       'grades.pending_answer_reviews',
       'communication.moderation_queue',

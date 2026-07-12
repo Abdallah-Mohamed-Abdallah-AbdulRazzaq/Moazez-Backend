@@ -167,11 +167,26 @@ export function validateDashboardAnalyticsChartQueryCapabilities(
 
   if (
     capabilities.timeFiltersApplicable &&
-    (!capabilities.supportedRanges.includes(query.range) ||
-      !capabilities.supportedGranularities.includes(query.granularity))
+    !capabilities.supportedRanges.includes(query.range)
   ) {
-    throw validationError('Analytics range or granularity is not supported', [
-      'range',
+    throw validationError('Analytics range is not supported', ['range']);
+  }
+
+  if (
+    capabilities.granularityApplicable &&
+    !capabilities.supportedGranularities.includes(query.granularity)
+  ) {
+    throw validationError('Analytics granularity is not supported', [
+      'granularity',
+    ]);
+  }
+
+  if (
+    capabilities.timeFiltersApplicable &&
+    !capabilities.granularityApplicable &&
+    query.granularity !== 'day'
+  ) {
+    throw validationError('Analytics granularity is not applicable', [
       'granularity',
     ]);
   }
@@ -347,10 +362,10 @@ export function dashboardAnalyticsFilterMetadata(
     return { applied: [], notApplicable: ['range', 'granularity'] };
   }
 
-  const applied = new Set<DashboardAnalyticsDataQueryKey>([
-    'range',
-    'granularity',
-  ]);
+  const applied = new Set<DashboardAnalyticsDataQueryKey>(['range']);
+  if (chart.queryCapabilities.granularityApplicable) {
+    applied.add('granularity');
+  }
   for (const key of explicitlySuppliedKeys) {
     if (key === 'dateFrom' || key === 'dateTo') applied.add(key);
   }
@@ -358,7 +373,12 @@ export function dashboardAnalyticsFilterMetadata(
     if (hierarchy[key] !== null) applied.add(key);
   }
 
-  return { applied: [...applied], notApplicable: [] };
+  return {
+    applied: [...applied],
+    notApplicable: chart.queryCapabilities.granularityApplicable
+      ? []
+      : ['granularity'],
+  };
 }
 
 export function parseDashboardAnalyticsCivilDate(

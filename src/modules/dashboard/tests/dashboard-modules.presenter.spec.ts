@@ -194,13 +194,18 @@ describe('Dashboard modules presenter', () => {
     });
     expect(
       response.analytics.plannedCharts.map((chart) => chart.chartKey),
-    ).toEqual([
-      'attendance.daily_trend',
-      'attendance.status_distribution',
-      'attendance.absence_rate',
-      'attendance.late_rate',
-      'attendance.excuse_status',
-    ]);
+    ).toEqual([]);
+    expect(
+      response.analytics.charts
+        .filter((chart) => chart.chartKey !== 'attendance.pending_sessions')
+        .every(
+          (chart) =>
+            chart.status === 'available' &&
+            ['computed_series', 'computed_category'].includes(
+              chart.meta.dataAvailability,
+            ),
+        ),
+    ).toBe(true);
     expect(JSON.stringify(response.analytics.plannedCharts)).not.toContain(
       'points',
     );
