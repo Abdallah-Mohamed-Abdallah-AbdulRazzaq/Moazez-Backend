@@ -5,6 +5,7 @@ import {
 import { DashboardAlertSignals } from '../infrastructure/dashboard-alerts.repository';
 import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
 import { presentDashboardAnalyticsChartData } from '../presenters/dashboard-analytics-data.presenter';
+import { DashboardAnalyticsQueryContext } from '../domain/dashboard-analytics-query';
 
 describe('Dashboard analytics data presenter', () => {
   it('returns a stable computed snapshot response for an available chart', () => {
@@ -14,9 +15,8 @@ describe('Dashboard analytics data presenter', () => {
     expect(chart).toBeDefined();
 
     const response = presentDashboardAnalyticsChartData({
-      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      queryContext: defaultQueryContext(),
       chart: chart!,
-      filters: defaultFilters(),
       summary: summarySnapshot({ pendingSessionsToday: 3 }),
       alertSignals: alertSignals(),
     });
@@ -36,7 +36,13 @@ describe('Dashboard analytics data presenter', () => {
           {
             key: 'pending',
             label: 'Pending',
-            points: [{ x: 'snapshot', y: 3 }],
+            points: [
+              {
+                x: 'snapshot',
+                y: 3,
+                coordinate: { kind: 'snapshot' },
+              },
+            ],
           },
         ],
         totals: { pending: 3 },
@@ -52,6 +58,12 @@ describe('Dashboard analytics data presenter', () => {
         pack: 'operational_snapshot_v1',
         dataAvailability: 'computed_snapshot',
         computation: 'dashboard_summary_snapshot',
+        query: {
+          effectiveTimezone: 'UTC',
+          requestedFilters: [],
+          appliedFilters: [],
+          notApplicableFilters: ['range', 'granularity'],
+        },
         deferred: {
           historicalSeries: 'deferred',
           drilldown: 'deferred',
@@ -149,9 +161,8 @@ describe('Dashboard analytics data presenter', () => {
     expect(chart).toBeDefined();
 
     const response = presentDashboardAnalyticsChartData({
-      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      queryContext: defaultQueryContext(),
       chart: chart!,
-      filters: defaultFilters(),
     });
 
     expect(response).toMatchObject({
@@ -218,9 +229,8 @@ function presentFor(
   expect(chart).toBeDefined();
 
   return presentDashboardAnalyticsChartData({
-    generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+    queryContext: defaultQueryContext(),
     chart: chart!,
-    filters: defaultFilters(),
     summary,
     alertSignals: signals,
   });
@@ -237,6 +247,29 @@ function defaultFilters() {
     gradeId: null,
     sectionId: null,
     classroomId: null,
+  };
+}
+
+function defaultQueryContext(): DashboardAnalyticsQueryContext {
+  return {
+    generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+    timezone: 'UTC',
+    range: '30d',
+    granularity: 'day',
+    startInclusive: new Date('2026-06-10T00:00:00.000Z'),
+    endExclusive: new Date('2026-07-10T00:00:00.000Z'),
+    startCivilDate: '2026-06-10',
+    endCivilDate: '2026-07-09',
+    hierarchy: {
+      academicYearId: null,
+      termId: null,
+      gradeId: null,
+      sectionId: null,
+      classroomId: null,
+    },
+    explicitlySuppliedKeys: [],
+    filtersApplied: [],
+    filtersNotApplicable: ['range', 'granularity'],
   };
 }
 
@@ -386,8 +419,7 @@ function alertSignals(
     },
     settings: {
       missingLoginIdentity: overrides.missingLoginIdentity ?? 1,
-      missingActiveEmailConnection:
-        overrides.missingActiveEmailConnection ?? 1,
+      missingActiveEmailConnection: overrides.missingActiveEmailConnection ?? 1,
     },
   };
 }

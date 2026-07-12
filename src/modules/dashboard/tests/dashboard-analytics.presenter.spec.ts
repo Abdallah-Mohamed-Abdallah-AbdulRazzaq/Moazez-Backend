@@ -301,6 +301,48 @@ describe('Dashboard analytics presenter', () => {
         ),
     ).toBe(true);
   });
+
+  it('publishes one truthful typed query capability matrix', () => {
+    const response = presentDashboardAnalyticsCatalog({
+      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      catalog: DASHBOARD_ANALYTICS_CATALOG,
+    });
+    const attendanceSnapshot = response.catalog.charts.find(
+      (chart) => chart.chartKey === 'attendance.pending_sessions',
+    );
+    const communicationSnapshot = response.catalog.charts.find(
+      (chart) => chart.chartKey === 'communication.moderation_queue',
+    );
+    const historicalDefinition = response.catalog.charts.find(
+      (chart) => chart.chartKey === 'attendance.daily_trend',
+    );
+
+    expect(attendanceSnapshot?.queryCapabilities).toEqual({
+      snapshotOnly: true,
+      historicalSeriesCapable: false,
+      categoryTableFunnelCapable: false,
+      definitionOnly: false,
+      timeFiltersApplicable: false,
+      supportedRanges: ['30d'],
+      supportedGranularities: ['day'],
+      supportedHierarchyFilters: [
+        'academicYearId',
+        'termId',
+        'gradeId',
+        'sectionId',
+        'classroomId',
+      ],
+    });
+    expect(
+      communicationSnapshot?.queryCapabilities.supportedHierarchyFilters,
+    ).toEqual([]);
+    expect(historicalDefinition?.queryCapabilities).toMatchObject({
+      snapshotOnly: false,
+      historicalSeriesCapable: true,
+      definitionOnly: true,
+      timeFiltersApplicable: true,
+    });
+  });
 });
 
 function requiredChartKeys(): string[] {

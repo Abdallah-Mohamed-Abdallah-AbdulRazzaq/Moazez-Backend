@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../iam/auth/auth.module';
 import { GetDashboardAnalyticsCatalogUseCase } from './application/get-dashboard-analytics-catalog.use-case';
 import { DashboardTimeContextService } from './application/dashboard-time-context.service';
+import { DashboardAnalyticsQueryContextService } from './application/dashboard-analytics-query-context.service';
 import { GetDashboardAnalyticsChartDataUseCase } from './application/get-dashboard-analytics-chart-data.use-case';
 import { GetDashboardAnalyticsChartUseCase } from './application/get-dashboard-analytics-chart.use-case';
 import { GetDashboardCommandCenterUseCase } from './application/get-dashboard-command-center.use-case';
@@ -26,6 +27,8 @@ import { DashboardLightModeDropdownRepository } from './infrastructure/dashboard
 import { DashboardSummaryRepository } from './infrastructure/dashboard-summary.repository';
 import { DashboardTodosRepository } from './infrastructure/dashboard-todos.repository';
 import { DashboardTimeContextRepository } from './infrastructure/dashboard-time-context.repository';
+import { DashboardAnalyticsHierarchyRepository } from './infrastructure/dashboard-analytics-hierarchy.repository';
+import { DashboardAnalyticsSnapshotRepository } from './infrastructure/dashboard-analytics-snapshot.repository';
 
 @Module({
   imports: [AuthModule],
@@ -37,7 +40,10 @@ import { DashboardTimeContextRepository } from './infrastructure/dashboard-time-
     DashboardLightModeDropdownRepository,
     DashboardTodosRepository,
     DashboardTimeContextRepository,
+    DashboardAnalyticsHierarchyRepository,
+    DashboardAnalyticsSnapshotRepository,
     DashboardTimeContextService,
+    DashboardAnalyticsQueryContextService,
     GetDashboardAnalyticsCatalogUseCase,
     GetDashboardAnalyticsChartDataUseCase,
     GetDashboardAnalyticsChartUseCase,

@@ -1,7 +1,4 @@
-import {
-  DashboardAnalyticsChartDataFiltersDto,
-  DashboardAnalyticsChartDataResponseDto,
-} from '../dto/dashboard-analytics-data.dto';
+import { DashboardAnalyticsChartDataResponseDto } from '../dto/dashboard-analytics-data.dto';
 import { DashboardAnalyticsChartDto } from '../dto/dashboard-analytics.dto';
 import { DashboardAlertDto } from '../dto/dashboard-alerts.dto';
 import {
@@ -16,6 +13,14 @@ import {
   DashboardModulesResponseDto,
 } from '../dto/dashboard-modules.dto';
 import { DashboardWidgetDto } from '../dto/dashboard-widgets.dto';
+import {
+  DashboardAnalyticsQueryContext,
+  resolveDashboardAnalyticsFixedWindow,
+} from '../domain/dashboard-analytics-query';
+import {
+  DashboardTimeContext,
+  buildDashboardTimeContext,
+} from '../domain/dashboard-time-context';
 import {
   DASHBOARD_ANALYTICS_CHARTS,
   DashboardAnalyticsChartDefinition,
@@ -49,6 +54,7 @@ export interface DashboardModulesPresentationInput {
 
 export interface DashboardModulePagePresentationInput {
   generatedAt: Date;
+  timeContext?: DashboardTimeContext;
   definition: DashboardModulePageDefinition;
   summary: DashboardSummarySnapshot;
   alertSignals: DashboardAlertSignals;
@@ -268,17 +274,14 @@ function moduleAvailableChartData(
   input: DashboardModulePagePresentationInput,
   charts: readonly DashboardAnalyticsChartDefinition[],
 ): DashboardAnalyticsChartDataResponseDto[] {
-  const filters = defaultAnalyticsDataFilters();
-
   return charts
     .filter((chart) =>
       isDashboardAnalyticsComputedSnapshotChartKey(chart.chartKey),
     )
     .map((chart) =>
       presentDashboardAnalyticsChartData({
-        generatedAt: input.generatedAt,
+        queryContext: moduleAnalyticsQueryContext(input, chart),
         chart,
-        filters,
         summary: input.summary,
         alertSignals: input.alertSignals,
       }),
@@ -440,17 +443,39 @@ function summarizeModules(
   );
 }
 
-function defaultAnalyticsDataFilters(): DashboardAnalyticsChartDataFiltersDto {
-  return {
-    range: '30d',
-    granularity: 'day',
-    dateFrom: null,
-    dateTo: null,
-    academicYearId: null,
-    termId: null,
+function moduleAnalyticsQueryContext(
+  input: DashboardModulePagePresentationInput,
+  chart: DashboardAnalyticsChartDefinition,
+): DashboardAnalyticsQueryContext {
+  const timeContext =
+    input.timeContext ??
+    buildDashboardTimeContext({
+      generatedAt: input.generatedAt,
+      schoolTimezone: input.summary.school.timezone,
+    });
+  const window = resolveDashboardAnalyticsFixedWindow('30d', timeContext);
+  const hierarchy = {
+    academicYearId: input.summary.academicContext.academicYear?.id ?? null,
+    termId: input.summary.academicContext.term?.id ?? null,
     gradeId: null,
     sectionId: null,
     classroomId: null,
+  };
+  const filtersApplied =
+    chart.queryCapabilities.supportedHierarchyFilters.filter(
+      (key) => hierarchy[key] !== null,
+    );
+
+  return {
+    generatedAt: timeContext.generatedAt,
+    timezone: timeContext.timezone,
+    range: '30d',
+    granularity: 'day',
+    ...window,
+    hierarchy,
+    explicitlySuppliedKeys: [],
+    filtersApplied,
+    filtersNotApplicable: ['range', 'granularity'],
   };
 }
 

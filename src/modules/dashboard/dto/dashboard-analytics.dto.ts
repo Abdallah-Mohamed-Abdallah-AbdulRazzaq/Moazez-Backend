@@ -16,6 +16,7 @@ import type {
   DashboardAnalyticsChartEmptyStateReason,
   DashboardAnalyticsFilterKey,
   DashboardAnalyticsGranularity,
+  DashboardAnalyticsHierarchyFilterKey,
   DashboardAnalyticsMetricAggregation,
   DashboardAnalyticsMetricValueType,
   DashboardAnalyticsRange,
@@ -103,6 +104,17 @@ export class DashboardAnalyticsChartMetaDto {
   dataAvailability!: DashboardAnalyticsDataAvailability;
 }
 
+export class DashboardAnalyticsChartQueryCapabilitiesDto {
+  snapshotOnly!: boolean;
+  historicalSeriesCapable!: boolean;
+  categoryTableFunnelCapable!: boolean;
+  definitionOnly!: boolean;
+  timeFiltersApplicable!: boolean;
+  supportedRanges!: readonly DashboardAnalyticsRange[];
+  supportedGranularities!: readonly DashboardAnalyticsGranularity[];
+  supportedHierarchyFilters!: readonly DashboardAnalyticsHierarchyFilterKey[];
+}
+
 export class DashboardAnalyticsChartDto {
   chartKey!: string;
   source!: DashboardAnalyticsSource;
@@ -122,6 +134,7 @@ export class DashboardAnalyticsChartDto {
   filters!: readonly DashboardAnalyticsFilterKey[];
   emptyState!: DashboardAnalyticsChartEmptyStateDto;
   meta!: DashboardAnalyticsChartMetaDto;
+  queryCapabilities!: DashboardAnalyticsChartQueryCapabilitiesDto;
 }
 
 export class DashboardAnalyticsFuturePointDto {

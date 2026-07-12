@@ -4,21 +4,27 @@ import {
   DashboardAnalyticsChartDataFiltersDto,
   DashboardAnalyticsChartDataResponseDto,
   DashboardAnalyticsChartDataSeriesDto,
+  DashboardAnalyticsQueryMetadataDto,
 } from '../dto/dashboard-analytics-data.dto';
+import { DashboardAnalyticsChartDefinition } from '../domain/dashboard-analytics-catalog';
+import { dashboardAnalyticsSnapshotPoint } from '../domain/dashboard-analytics-coordinate';
+import {
+  DashboardAnalyticsQueryContext,
+  DashboardAnalyticsResolvedHierarchy,
+} from '../domain/dashboard-analytics-query';
 import {
   DASHBOARD_ANALYTICS_OPERATIONAL_SNAPSHOT_PACK,
   getDashboardAnalyticsChartComputation,
   isDashboardAnalyticsComputedSnapshotChartKey,
 } from '../domain/dashboard-analytics-data-pack';
-import { DashboardAnalyticsChartDefinition } from '../domain/dashboard-analytics-catalog';
 import { DashboardAlertSignals } from '../infrastructure/dashboard-alerts.repository';
 import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
 import { dashboardFreshness } from './dashboard-metadata.presenter';
 
 export interface DashboardAnalyticsChartDataPresentationInput {
-  generatedAt: Date;
+  queryContext: DashboardAnalyticsQueryContext;
   chart: DashboardAnalyticsChartDefinition;
-  filters: DashboardAnalyticsChartDataFiltersDto;
+  snapshotValue?: number;
   summary?: DashboardSummarySnapshot;
   alertSignals?: DashboardAlertSignals;
 }
@@ -28,34 +34,21 @@ export function presentDashboardAnalyticsChartData(
 ): DashboardAnalyticsChartDataResponseDto {
   if (
     isDashboardAnalyticsComputedSnapshotChartKey(input.chart.chartKey) &&
-    input.summary
+    (input.snapshotValue !== undefined || input.summary)
   ) {
-    return presentComputedSnapshotChartData({
-      ...input,
-      summary: input.summary,
-    });
+    return presentComputedSnapshotChartData(input);
   }
 
   return presentUnsupportedChartData(input);
 }
 
 function presentComputedSnapshotChartData(
-  input: DashboardAnalyticsChartDataPresentationInput & {
-    summary: DashboardSummarySnapshot;
-  },
+  input: DashboardAnalyticsChartDataPresentationInput,
 ): DashboardAnalyticsChartDataResponseDto {
   const data = buildComputedSnapshotData(input);
 
   return {
-    generatedAt: input.generatedAt.toISOString(),
-    chartKey: input.chart.chartKey,
-    source: input.chart.source,
-    title: input.chart.title,
-    type: input.chart.type,
-    status: input.chart.status,
-    range: input.filters.range,
-    granularity: input.filters.granularity,
-    filters: input.filters,
+    ...responseIdentity(input),
     data,
     emptyState: data.empty ? noDataEmptyState(input.chart) : null,
     meta: {
@@ -68,6 +61,7 @@ function presentComputedSnapshotChartData(
         ? getDashboardAnalyticsChartComputation(input.chart.chartKey)
         : null,
       freshness: dashboardFreshness('request_time_snapshot'),
+      query: presentQueryMetadata(input.queryContext),
       deferred: {
         historicalSeries: 'deferred',
         drilldown: 'deferred',
@@ -82,15 +76,7 @@ function presentUnsupportedChartData(
   input: DashboardAnalyticsChartDataPresentationInput,
 ): DashboardAnalyticsChartDataResponseDto {
   return {
-    generatedAt: input.generatedAt.toISOString(),
-    chartKey: input.chart.chartKey,
-    source: input.chart.source,
-    title: input.chart.title,
-    type: input.chart.type,
-    status: input.chart.status,
-    range: input.filters.range,
-    granularity: input.filters.granularity,
-    filters: input.filters,
+    ...responseIdentity(input),
     data: {
       series: [],
       totals: {},
@@ -108,6 +94,7 @@ function presentUnsupportedChartData(
       dataAvailability: 'definition_only',
       computation: null,
       freshness: dashboardFreshness('static_catalog'),
+      query: presentQueryMetadata(input.queryContext),
       deferred: {
         computedSeries: 'deferred',
         drilldown: 'deferred',
@@ -118,17 +105,30 @@ function presentUnsupportedChartData(
   };
 }
 
+function responseIdentity(input: DashboardAnalyticsChartDataPresentationInput) {
+  return {
+    generatedAt: input.queryContext.generatedAt.toISOString(),
+    chartKey: input.chart.chartKey,
+    source: input.chart.source,
+    title: input.chart.title,
+    type: input.chart.type,
+    status: input.chart.status,
+    range: input.queryContext.range,
+    granularity: input.queryContext.granularity,
+    filters: presentFilters(input.queryContext),
+  };
+}
+
 function buildComputedSnapshotData(
-  input: DashboardAnalyticsChartDataPresentationInput & {
-    summary: DashboardSummarySnapshot;
-  },
+  input: DashboardAnalyticsChartDataPresentationInput,
 ): DashboardAnalyticsChartDataDto {
-  const cards = input.summary.cards;
+  const cards = input.summary?.cards;
 
   switch (input.chart.chartKey) {
     case 'attendance.pending_sessions':
       return countSnapshotData({
-        value: cards.attendance.pendingSessionsToday,
+        value:
+          input.snapshotValue ?? cards?.attendance.pendingSessionsToday ?? 0,
         seriesKey: 'pending',
         seriesLabel: 'Pending',
         totalKey: 'pending',
@@ -137,7 +137,7 @@ function buildComputedSnapshotData(
 
     case 'grades.pending_submission_reviews':
       return countSnapshotData({
-        value: cards.grades.pendingSubmissions,
+        value: input.snapshotValue ?? cards?.grades.pendingSubmissions ?? 0,
         seriesKey: 'pending_submissions',
         seriesLabel: 'Pending submissions',
         totalKey: 'pendingSubmissions',
@@ -146,7 +146,7 @@ function buildComputedSnapshotData(
 
     case 'grades.pending_answer_reviews':
       return countSnapshotData({
-        value: cards.grades.pendingAnswerReviews,
+        value: input.snapshotValue ?? cards?.grades.pendingAnswerReviews ?? 0,
         seriesKey: 'pending_answer_reviews',
         seriesLabel: 'Pending answer reviews',
         totalKey: 'pendingAnswerReviews',
@@ -155,7 +155,10 @@ function buildComputedSnapshotData(
 
     case 'communication.moderation_queue':
       return countSnapshotData({
-        value: cards.communication.pendingModerationReports,
+        value:
+          input.snapshotValue ??
+          cards?.communication.pendingModerationReports ??
+          0,
         seriesKey: 'pending_moderation_reports',
         seriesLabel: 'Pending moderation reports',
         totalKey: 'pendingModerationReports',
@@ -164,7 +167,12 @@ function buildComputedSnapshotData(
 
     case 'settings.email_connection_readiness':
       return readinessSnapshotData({
-        missing: input.alertSignals?.settings.missingActiveEmailConnection ?? 1,
+        value:
+          input.snapshotValue ??
+          ((input.alertSignals?.settings.missingActiveEmailConnection ?? 1) ===
+          0
+            ? 100
+            : 0),
         seriesKey: 'ready',
         seriesLabel: 'Ready',
         summaryLabel: input.chart.title,
@@ -172,19 +180,18 @@ function buildComputedSnapshotData(
 
     case 'settings.login_identity_readiness':
       return readinessSnapshotData({
-        missing: input.alertSignals?.settings.missingLoginIdentity ?? 1,
+        value:
+          input.snapshotValue ??
+          ((input.alertSignals?.settings.missingLoginIdentity ?? 1) === 0
+            ? 100
+            : 0),
         seriesKey: 'configured',
         seriesLabel: 'Configured',
         summaryLabel: input.chart.title,
       });
 
     default:
-      return {
-        series: [],
-        totals: {},
-        summary: null,
-        empty: true,
-      };
+      return { series: [], totals: {}, summary: null, empty: true };
   }
 }
 
@@ -197,36 +204,23 @@ function countSnapshotData(input: {
 }): DashboardAnalyticsChartDataDto {
   return {
     series: [snapshotSeries(input.seriesKey, input.seriesLabel, input.value)],
-    totals: {
-      [input.totalKey]: input.value,
-    },
-    summary: {
-      value: input.value,
-      label: input.summaryLabel,
-    },
+    totals: { [input.totalKey]: input.value },
+    summary: { value: input.value, label: input.summaryLabel },
     empty: input.value === 0,
   };
 }
 
 function readinessSnapshotData(input: {
-  missing: number;
+  value: number;
   seriesKey: string;
   seriesLabel: string;
   summaryLabel: string;
 }): DashboardAnalyticsChartDataDto {
-  const ready = input.missing === 0;
-  const value = ready ? 100 : 0;
-
+  const ready = input.value === 100;
   return {
-    series: [snapshotSeries(input.seriesKey, input.seriesLabel, value)],
-    totals: {
-      ready: ready ? 1 : 0,
-      missing: ready ? 0 : 1,
-    },
-    summary: {
-      value,
-      label: input.summaryLabel,
-    },
+    series: [snapshotSeries(input.seriesKey, input.seriesLabel, input.value)],
+    totals: { ready: ready ? 1 : 0, missing: ready ? 0 : 1 },
+    summary: { value: input.value, label: input.summaryLabel },
     empty: false,
   };
 }
@@ -236,23 +230,65 @@ function snapshotSeries(
   label: string,
   value: number,
 ): DashboardAnalyticsChartDataSeriesDto {
+  return { key, label, points: [dashboardAnalyticsSnapshotPoint(value)] };
+}
+
+function presentFilters(
+  context: DashboardAnalyticsQueryContext,
+): DashboardAnalyticsChartDataFiltersDto {
+  const explicitlySupplied = new Set(context.explicitlySuppliedKeys);
   return {
-    key,
-    label,
-    points: [
-      {
-        x: 'snapshot',
-        y: value,
-      },
-    ],
+    range: context.range,
+    granularity: context.granularity,
+    dateFrom: context.range === 'custom' ? context.startCivilDate : null,
+    dateTo: context.range === 'custom' ? context.endCivilDate : null,
+    academicYearId: explicitlySupplied.has('academicYearId')
+      ? context.hierarchy.academicYearId
+      : null,
+    termId: explicitlySupplied.has('termId') ? context.hierarchy.termId : null,
+    gradeId: explicitlySupplied.has('gradeId')
+      ? context.hierarchy.gradeId
+      : null,
+    sectionId: explicitlySupplied.has('sectionId')
+      ? context.hierarchy.sectionId
+      : null,
+    classroomId: explicitlySupplied.has('classroomId')
+      ? context.hierarchy.classroomId
+      : null,
+  };
+}
+
+function presentQueryMetadata(
+  context: DashboardAnalyticsQueryContext,
+): DashboardAnalyticsQueryMetadataDto {
+  return {
+    effectiveTimezone: context.timezone,
+    requestedFilters: [...context.explicitlySuppliedKeys],
+    appliedFilters: [...context.filtersApplied],
+    notApplicableFilters: [...context.filtersNotApplicable],
+    resolvedWindow: {
+      startInclusive: context.startInclusive.toISOString(),
+      endExclusive: context.endExclusive.toISOString(),
+      startCivilDate: context.startCivilDate,
+      endCivilDate: context.endCivilDate,
+    },
   };
 }
 
 function noDataEmptyState(
   chart: DashboardAnalyticsChartDefinition,
 ): DashboardAnalyticsChartDataEmptyStateDto {
+  return { reason: 'no_data', message: chart.emptyState.message };
+}
+
+export function dashboardAnalyticsPresentationHierarchy(
+  hierarchy: Partial<DashboardAnalyticsResolvedHierarchy>,
+): DashboardAnalyticsResolvedHierarchy {
   return {
-    reason: 'no_data',
-    message: chart.emptyState.message,
+    academicYearId: hierarchy.academicYearId ?? null,
+    termId: hierarchy.termId ?? null,
+    gradeId: hierarchy.gradeId ?? null,
+    sectionId: hierarchy.sectionId ?? null,
+    classroomId: hierarchy.classroomId ?? null,
   };
 }

@@ -133,6 +133,16 @@ function presentChartDefinition(
     filters: chart.filters,
     emptyState: { ...chart.emptyState },
     meta: { ...chart.meta },
+    queryCapabilities: {
+      ...chart.queryCapabilities,
+      supportedRanges: [...chart.queryCapabilities.supportedRanges],
+      supportedGranularities: [
+        ...chart.queryCapabilities.supportedGranularities,
+      ],
+      supportedHierarchyFilters: [
+        ...chart.queryCapabilities.supportedHierarchyFilters,
+      ],
+    },
   };
 }
 

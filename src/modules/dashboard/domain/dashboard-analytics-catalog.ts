@@ -63,6 +63,26 @@ export const DASHBOARD_ANALYTICS_FILTER_KEYS = [
   'status',
 ] as const;
 
+export const DASHBOARD_ANALYTICS_DATA_QUERY_KEYS = [
+  'range',
+  'granularity',
+  'dateFrom',
+  'dateTo',
+  'academicYearId',
+  'termId',
+  'gradeId',
+  'sectionId',
+  'classroomId',
+] as const;
+
+export const DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS = [
+  'academicYearId',
+  'termId',
+  'gradeId',
+  'sectionId',
+  'classroomId',
+] as const;
+
 export const DASHBOARD_ANALYTICS_DEFAULT_CHART_LIMIT = 50;
 export const DASHBOARD_ANALYTICS_MAX_CHART_LIMIT = 100;
 
@@ -78,6 +98,10 @@ export type DashboardAnalyticsStatus =
   (typeof DASHBOARD_ANALYTICS_STATUSES)[number];
 export type DashboardAnalyticsFilterKey =
   (typeof DASHBOARD_ANALYTICS_FILTER_KEYS)[number];
+export type DashboardAnalyticsDataQueryKey =
+  (typeof DASHBOARD_ANALYTICS_DATA_QUERY_KEYS)[number];
+export type DashboardAnalyticsHierarchyFilterKey =
+  (typeof DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS)[number];
 export type DashboardAnalyticsMetricValueType =
   | 'count'
   | 'percentage'
@@ -162,6 +186,17 @@ export interface DashboardAnalyticsChartMeta {
   dataAvailability: DashboardAnalyticsDataAvailability;
 }
 
+export interface DashboardAnalyticsChartQueryCapabilities {
+  snapshotOnly: boolean;
+  historicalSeriesCapable: boolean;
+  categoryTableFunnelCapable: boolean;
+  definitionOnly: boolean;
+  timeFiltersApplicable: boolean;
+  supportedRanges: readonly DashboardAnalyticsRange[];
+  supportedGranularities: readonly DashboardAnalyticsGranularity[];
+  supportedHierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
+}
+
 export interface DashboardAnalyticsChartDefinition {
   chartKey: string;
   source: DashboardAnalyticsSource;
@@ -181,6 +216,7 @@ export interface DashboardAnalyticsChartDefinition {
   filters: readonly DashboardAnalyticsFilterKey[];
   emptyState: DashboardAnalyticsChartEmptyState;
   meta: DashboardAnalyticsChartMeta;
+  queryCapabilities: DashboardAnalyticsChartQueryCapabilities;
 }
 
 export interface DashboardAnalyticsCatalogDefinition {
@@ -303,57 +339,57 @@ export const DASHBOARD_ANALYTICS_FILTERS: readonly DashboardAnalyticsFilterDefin
       key: 'range',
       type: 'enum',
       values: DASHBOARD_ANALYTICS_RANGES,
-      description: 'Future chart data range selector.',
+      description: 'School-timezone analytics range selector.',
     },
     {
       key: 'granularity',
       type: 'enum',
       values: DASHBOARD_ANALYTICS_GRANULARITIES,
-      description: 'Future chart data time grouping selector.',
+      description: 'Validated analytics time grouping selector.',
     },
     {
       key: 'dateFrom',
       type: 'date',
-      description: 'Future custom range start date.',
+      description: 'Custom range inclusive start civil date.',
       requiredWhen: 'range=custom',
-      validation: 'ISO date string',
+      validation: 'strict YYYY-MM-DD civil date',
     },
     {
       key: 'dateTo',
       type: 'date',
-      description: 'Future custom range end date.',
+      description: 'Custom range inclusive end civil date.',
       requiredWhen: 'range=custom',
-      validation: 'ISO date string',
+      validation: 'strict YYYY-MM-DD civil date',
     },
     {
       key: 'academicYearId',
       type: 'id',
-      description: 'Future same-school academic year filter.',
-      validation: 'same-school validated in future data endpoints',
+      description: 'Same-school academic year filter.',
+      validation: 'UUID and same-school validated in data endpoint',
     },
     {
       key: 'termId',
       type: 'id',
-      description: 'Future same-school term filter.',
-      validation: 'same-school validated in future data endpoints',
+      description: 'Same-school term filter.',
+      validation: 'UUID and same-school validated in data endpoint',
     },
     {
       key: 'gradeId',
       type: 'id',
-      description: 'Future same-school grade filter.',
-      validation: 'same-school validated in future data endpoints',
+      description: 'Same-school grade filter.',
+      validation: 'UUID and same-school validated in data endpoint',
     },
     {
       key: 'sectionId',
       type: 'id',
-      description: 'Future same-school section filter.',
-      validation: 'same-school validated in future data endpoints',
+      description: 'Same-school section filter.',
+      validation: 'UUID and same-school validated in data endpoint',
     },
     {
       key: 'classroomId',
       type: 'id',
-      description: 'Future same-school classroom filter.',
-      validation: 'same-school validated in future data endpoints',
+      description: 'Same-school classroom filter.',
+      validation: 'UUID and same-school validated in data endpoint',
     },
     {
       key: 'source',
@@ -762,6 +798,7 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       STANDARD_OPERATIONAL_FILTERS,
       computedSnapshotOptions(
         'No pending attendance sessions found for this school.',
+        DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
       ),
     ),
     chart(
@@ -847,6 +884,7 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       REVIEW_FILTERS,
       computedSnapshotOptions(
         'No pending grade submissions found for this school.',
+        DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
       ),
     ),
     chart(
@@ -859,6 +897,7 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       REVIEW_FILTERS,
       computedSnapshotOptions(
         'No pending grade answers found for this school.',
+        DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
       ),
     ),
     chart(
@@ -1106,9 +1145,11 @@ function chart(
     status?: DashboardAnalyticsStatus;
     dataAvailability?: DashboardAnalyticsDataAvailability;
     emptyState?: DashboardAnalyticsChartEmptyState;
+    snapshotHierarchyFilters?: readonly DashboardAnalyticsHierarchyFilterKey[];
   } = {},
 ): DashboardAnalyticsChartDefinition {
   const definitionEndpoint = `/dashboard/analytics/charts/${chartKey}`;
+  const dataAvailability = options.dataAvailability ?? 'definition_only';
 
   return {
     chartKey,
@@ -1132,15 +1173,25 @@ function chart(
       message: 'Chart data will be implemented in a future analytics pack.',
     },
     meta: {
-      dataAvailability: options.dataAvailability ?? 'definition_only',
+      dataAvailability,
     },
+    queryCapabilities: buildChartQueryCapabilities(
+      type,
+      filters,
+      dataAvailability,
+      options.snapshotHierarchyFilters,
+    ),
   };
 }
 
-function computedSnapshotOptions(emptyStateMessage: string): {
+function computedSnapshotOptions(
+  emptyStateMessage: string,
+  snapshotHierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[] = [],
+): {
   status: 'available';
   dataAvailability: 'computed_snapshot';
   emptyState: DashboardAnalyticsChartEmptyState;
+  snapshotHierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
 } {
   return {
     status: 'available',
@@ -1149,6 +1200,47 @@ function computedSnapshotOptions(emptyStateMessage: string): {
       reason: 'no_data',
       message: emptyStateMessage,
     },
+    snapshotHierarchyFilters,
+  };
+}
+
+function buildChartQueryCapabilities(
+  type: DashboardAnalyticsChartType,
+  filters: readonly DashboardAnalyticsFilterKey[],
+  dataAvailability: DashboardAnalyticsDataAvailability,
+  snapshotHierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[] = [],
+): DashboardAnalyticsChartQueryCapabilities {
+  const snapshotOnly = dataAvailability === 'computed_snapshot';
+  const timeFiltersApplicable =
+    !snapshotOnly &&
+    filters.includes('range') &&
+    filters.includes('granularity');
+  const supportedHierarchyFilters = snapshotOnly
+    ? snapshotHierarchyFilters
+    : DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS.filter((key) =>
+        filters.includes(key),
+      );
+
+  return {
+    snapshotOnly,
+    historicalSeriesCapable:
+      !snapshotOnly && ['line', 'area', 'timeline', 'heatmap'].includes(type),
+    categoryTableFunnelCapable:
+      !snapshotOnly &&
+      ['bar', 'stacked-bar', 'donut', 'pie', 'table', 'funnel'].includes(type),
+    definitionOnly: dataAvailability === 'definition_only',
+    timeFiltersApplicable,
+    supportedRanges: snapshotOnly
+      ? ['30d']
+      : timeFiltersApplicable
+        ? DASHBOARD_ANALYTICS_RANGES
+        : [],
+    supportedGranularities: snapshotOnly
+      ? ['day']
+      : timeFiltersApplicable
+        ? DASHBOARD_ANALYTICS_GRANULARITIES
+        : [],
+    supportedHierarchyFilters,
   };
 }
 
