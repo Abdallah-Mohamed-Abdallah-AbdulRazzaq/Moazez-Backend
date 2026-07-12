@@ -317,6 +317,68 @@ describe('Dashboard analytics data presenter', () => {
     expectNoInternalLeaks(response);
   });
 
+  it('presents computed Academics category data with exact pack and computation identity', () => {
+    const chart = findDashboardAnalyticsChartDefinition(
+      'academics.teacher_allocation_coverage',
+    )!;
+    const response = presentDashboardAnalyticsChartData({
+      queryContext: {
+        ...defaultQueryContext(),
+        explicitlySuppliedKeys: ['gradeId'],
+        hierarchy: {
+          ...defaultQueryContext().hierarchy,
+          gradeId: '33333333-3333-4333-8333-333333333333',
+        },
+        filtersApplied: ['gradeId'],
+        filtersNotApplicable: ['range', 'granularity'],
+      },
+      chart,
+      academicsData: {
+        series: [
+          {
+            key: 'allocated',
+            label: 'Allocated',
+            points: [
+              {
+                x: 'allocated' as any,
+                y: 2,
+                coordinate: {
+                  kind: 'category',
+                  key: 'allocated',
+                  label: 'Allocated',
+                },
+              },
+            ],
+          },
+        ],
+        totals: { allocated: 2, missing: 0 },
+        summary: { value: 2, label: 'Teacher allocation units' },
+        empty: false,
+      },
+    });
+
+    expect(response).toMatchObject({
+      chartKey: 'academics.teacher_allocation_coverage',
+      status: 'available',
+      meta: {
+        pack: 'academics_v1',
+        dataAvailability: 'computed_category',
+        computation: 'academics_teacher_allocation_coverage',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
+        query: {
+          requestedFilters: ['gradeId'],
+          appliedFilters: ['gradeId'],
+          notApplicableFilters: ['range', 'granularity'],
+        },
+      },
+    });
+    expectNoInternalLeaks(response);
+  });
+
   it('keeps exactly the implemented pack chart definitions available', () => {
     const availableChartKeys = DASHBOARD_ANALYTICS_CATALOG.charts
       .filter((chart) => chart.status === 'available')
@@ -334,6 +396,10 @@ describe('Dashboard analytics data presenter', () => {
       'attendance.late_rate',
       'attendance.pending_sessions',
       'attendance.excuse_status',
+      'academics.teacher_allocation_coverage',
+      'academics.timetable_publication_status',
+      'academics.curriculum_activation',
+      'academics.lesson_plan_activation',
       'grades.pending_submission_reviews',
       'grades.pending_answer_reviews',
       'communication.moderation_queue',

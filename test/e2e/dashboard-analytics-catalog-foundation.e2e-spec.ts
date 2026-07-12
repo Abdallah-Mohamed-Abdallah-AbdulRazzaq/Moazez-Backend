@@ -249,13 +249,13 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         (chart: { meta: { dataAvailability: string } }) =>
           chart.meta.dataAvailability !== 'definition_only',
       ),
-    ).toHaveLength(16);
+    ).toHaveLength(20);
     expect(
       response.body.catalog.charts.filter(
         (chart: { meta: { dataAvailability: string } }) =>
           chart.meta.dataAvailability === 'definition_only',
       ),
-    ).toHaveLength(21);
+    ).toHaveLength(17);
     expectNoInternalLeaks(response.body);
     expect(JSON.stringify(response.body.catalog.charts)).not.toContain(
       'points',
@@ -371,6 +371,41 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       },
     });
     expectNoInternalLeaks(knownResponse.body);
+
+    const academicsResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/academics.teacher_allocation_coverage`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(academicsResponse.body.chart).toMatchObject({
+      chartKey: 'academics.teacher_allocation_coverage',
+      status: 'available',
+      series: [{ key: 'allocated' }, { key: 'missing' }],
+      filters: [
+        'range',
+        'granularity',
+        'academicYearId',
+        'termId',
+        'gradeId',
+        'sectionId',
+        'classroomId',
+      ],
+      meta: { dataAvailability: 'computed_category' },
+      queryCapabilities: {
+        timeFilterMode: 'compatibility_defaults',
+        supportedRanges: ['30d'],
+        supportedGranularities: ['day'],
+        supportedHierarchyFilters: [
+          'academicYearId',
+          'termId',
+          'gradeId',
+          'sectionId',
+          'classroomId',
+        ],
+      },
+    });
+    expectNoInternalLeaks(academicsResponse.body);
 
     const statusDistributionResponse = await request(app.getHttpServer())
       .get(

@@ -12,8 +12,12 @@ import {
   AttendanceScopeType,
   AttendanceSessionStatus,
   AttendanceStatus,
+  CurriculumStatus,
+  LessonPlanStatus,
   SchoolLoginSettingsStatus,
   StudentEnrollmentStatus,
+  TimetableConfigStatus,
+  TimetableScopeType,
   UserStatus,
   UserType,
 } from '@prisma/client';
@@ -35,6 +39,7 @@ import { DashboardAnalyticsSnapshotRepository } from '../../src/modules/dashboar
 import { AttendanceDashboardAnalyticsRepository } from '../../src/modules/attendance/reports/infrastructure/attendance-dashboard-analytics.repository';
 import { DashboardAdmissionsAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-admissions-analytics.repository';
 import { DashboardStudentsAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-students-analytics.repository';
+import { DashboardAcademicsAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-academics-analytics.repository';
 
 jest.setTimeout(60000);
 
@@ -286,6 +291,77 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
         dateTo: new Date('2026-07-10T00:00:00.000Z'),
       },
     });
+
+    const subject = await prisma.subject.create({
+      data: {
+        schoolId: schoolBId,
+        nameAr: `${marker}-subject-ar`,
+        nameEn: `${marker}-subject-en`,
+        code: `${marker}-subject`,
+      },
+      select: { id: true },
+    });
+    await prisma.subjectAllocation.create({
+      data: {
+        schoolId: schoolBId,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        gradeId: grade.id,
+        subjectId: subject.id,
+        weeklyHours: 0,
+      },
+    });
+    const teacherAllocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId: schoolBId,
+        teacherUserId: analyticsUser.id,
+        subjectId: subject.id,
+        classroomId: classroom.id,
+        termId: term.id,
+      },
+      select: { id: true },
+    });
+    await prisma.timetableConfig.create({
+      data: {
+        schoolId: schoolBId,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        name: `${marker}-timetable`,
+        scopeType: TimetableScopeType.TERM,
+        scopeKey: `${marker}-scope`,
+        status: TimetableConfigStatus.ACTIVE,
+      },
+    });
+    const curriculum = await prisma.curriculum.create({
+      data: {
+        schoolId: schoolBId,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        gradeId: grade.id,
+        subjectId: subject.id,
+        title: `${marker}-curriculum`,
+        status: CurriculumStatus.ACTIVE,
+        createdByUserId: analyticsUser.id,
+      },
+      select: { id: true },
+    });
+    await prisma.lessonPlan.create({
+      data: {
+        schoolId: schoolBId,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        teacherSubjectAllocationId: teacherAllocation.id,
+        teacherUserId: analyticsUser.id,
+        classroomId: classroom.id,
+        subjectId: subject.id,
+        curriculumId: curriculum.id,
+        title: `${marker}-lesson-plan`,
+        status: LessonPlanStatus.ACTIVE,
+        weekStartDate: new Date('2026-07-06T00:00:00.000Z'),
+        weekEndDate: new Date('2026-07-12T00:00:00.000Z'),
+        createdByUserId: analyticsUser.id,
+      },
+    });
   });
 
   afterAll(async () => {
@@ -306,6 +382,16 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
     });
     await prisma.application.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.student.deleteMany({ where: { schoolId: schoolBId } });
+    await prisma.lessonPlan.deleteMany({ where: { schoolId: schoolBId } });
+    await prisma.curriculum.deleteMany({ where: { schoolId: schoolBId } });
+    await prisma.timetableConfig.deleteMany({ where: { schoolId: schoolBId } });
+    await prisma.teacherSubjectAllocation.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.subjectAllocation.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.subject.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.classroom.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.section.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.grade.deleteMany({ where: { schoolId: schoolBId } });
@@ -559,6 +645,31 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
     }
   });
 
+  it('isolates every Academics pack aggregate and ignores tenant override-shaped input', async () => {
+    const useCase = analyticsDataUseCase();
+    for (const chartKey of [
+      'academics.teacher_allocation_coverage',
+      'academics.timetable_publication_status',
+      'academics.curriculum_activation',
+      'academics.lesson_plan_activation',
+    ]) {
+      const schoolAResponse = await withSchoolScope(schoolAId, () =>
+        useCase.execute(chartKey, {
+          schoolId: schoolBId,
+          organizationId,
+        } as any),
+      );
+      const schoolBResponse = await withSchoolScope(schoolBId, () =>
+        useCase.execute(chartKey, {}),
+      );
+
+      expect(schoolAResponse.data.empty).toBe(true);
+      expect(schoolBResponse.data.empty).toBe(false);
+      expectNoInternalLeaks(schoolAResponse);
+      expectNoInternalLeaks(schoolBResponse);
+    }
+  });
+
   it('does not resolve any School B hierarchy identifier from School A', async () => {
     const useCase = analyticsDataUseCase();
     const crossSchoolFilters = [
@@ -602,6 +713,7 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
       new AttendanceDashboardAnalyticsRepository(prisma),
       new DashboardAdmissionsAnalyticsRepository(prisma),
       new DashboardStudentsAnalyticsRepository(prisma),
+      new DashboardAcademicsAnalyticsRepository(prisma),
     );
   }
 

@@ -32,6 +32,7 @@ import { DashboardAnalyticsHierarchyRepository } from './infrastructure/dashboar
 import { DashboardAnalyticsSnapshotRepository } from './infrastructure/dashboard-analytics-snapshot.repository';
 import { DashboardAdmissionsAnalyticsRepository } from './infrastructure/dashboard-admissions-analytics.repository';
 import { DashboardStudentsAnalyticsRepository } from './infrastructure/dashboard-students-analytics.repository';
+import { DashboardAcademicsAnalyticsRepository } from './infrastructure/dashboard-academics-analytics.repository';
 
 @Module({
   imports: [AuthModule, ReportsModule],
@@ -47,6 +48,7 @@ import { DashboardStudentsAnalyticsRepository } from './infrastructure/dashboard
     DashboardAnalyticsSnapshotRepository,
     DashboardAdmissionsAnalyticsRepository,
     DashboardStudentsAnalyticsRepository,
+    DashboardAcademicsAnalyticsRepository,
     DashboardTimeContextService,
     DashboardAnalyticsQueryContextService,
     GetDashboardAnalyticsCatalogUseCase,

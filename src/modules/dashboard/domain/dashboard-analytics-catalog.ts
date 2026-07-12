@@ -299,6 +299,42 @@ const GUARDIAN_COVERAGE_FILTERS: readonly DashboardAnalyticsFilterKey[] = [
   'classroomId',
 ];
 
+const ACADEMICS_TEACHER_ALLOCATION_FILTERS: readonly DashboardAnalyticsFilterKey[] =
+  [
+    'range',
+    'granularity',
+    'academicYearId',
+    'termId',
+    'gradeId',
+    'sectionId',
+    'classroomId',
+  ];
+
+const ACADEMICS_TIMETABLE_FILTERS: readonly DashboardAnalyticsFilterKey[] = [
+  'range',
+  'granularity',
+  'academicYearId',
+  'termId',
+];
+
+const ACADEMICS_CURRICULUM_FILTERS: readonly DashboardAnalyticsFilterKey[] = [
+  'range',
+  'granularity',
+  'academicYearId',
+  'termId',
+  'gradeId',
+];
+
+const ACADEMICS_LESSON_PLAN_FILTERS: readonly DashboardAnalyticsFilterKey[] = [
+  'range',
+  'granularity',
+  'academicYearId',
+  'termId',
+  'gradeId',
+  'sectionId',
+  'classroomId',
+];
+
 export const DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS = [
   'attendance.pending_sessions',
   'grades.pending_submission_reviews',
@@ -332,6 +368,16 @@ export const DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK_CHART_KEYS = [
 
 export type DashboardAnalyticsAdmissionsStudentsPackChartKey =
   (typeof DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK_CHART_KEYS)[number];
+
+export const DASHBOARD_ANALYTICS_ACADEMICS_PACK_CHART_KEYS = [
+  'academics.teacher_allocation_coverage',
+  'academics.timetable_publication_status',
+  'academics.curriculum_activation',
+  'academics.lesson_plan_activation',
+] as const;
+
+export type DashboardAnalyticsAcademicsPackChartKey =
+  (typeof DASHBOARD_ANALYTICS_ACADEMICS_PACK_CHART_KEYS)[number];
 
 export const DASHBOARD_ANALYTICS_SOURCES_CATALOG: readonly DashboardAnalyticsSourceDefinition[] =
   [
@@ -951,33 +997,58 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'academics.teacher_allocation_coverage',
       'academics',
       'Teacher allocation coverage',
-      'Teacher allocation coverage by academic scope.',
+      'Current required classroom-subject allocation units with and without at least one teacher allocation.',
       'bar',
       [series('allocated', 'Allocated'), series('missing', 'Missing')],
+      ACADEMICS_TEACHER_ALLOCATION_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage:
+          'No teacher allocation units found for the selected academic scope.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+        timeFilterMode: 'compatibility_defaults',
+      }),
     ),
     chart(
       'academics.timetable_publication_status',
       'academics',
       'Timetable publication status',
-      'Timetable publication readiness by term.',
+      'Current non-archived timetable configurations grouped by published operational state.',
       'table',
       [series('published', 'Published'), series('draft', 'Draft')],
+      ACADEMICS_TIMETABLE_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage: 'No current timetable configurations found.',
+        hierarchyFilters: ['academicYearId', 'termId'],
+        timeFilterMode: 'compatibility_defaults',
+      }),
     ),
     chart(
       'academics.curriculum_activation',
       'academics',
       'Curriculum activation',
-      'Curriculum activation coverage.',
+      'Current non-archived curricula grouped by active or draft status.',
       'radial-progress',
       [series('active', 'Active'), series('draft', 'Draft')],
+      ACADEMICS_CURRICULUM_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage: 'No current curricula found.',
+        hierarchyFilters: ['academicYearId', 'termId', 'gradeId'],
+        timeFilterMode: 'compatibility_defaults',
+      }),
     ),
     chart(
       'academics.lesson_plan_activation',
       'academics',
       'Lesson plan activation',
-      'Lesson plan activation coverage.',
+      'Current non-archived lesson plans grouped by active or draft status.',
       'radial-progress',
       [series('active', 'Active'), series('draft', 'Draft')],
+      ACADEMICS_LESSON_PLAN_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage: 'No current lesson plans found.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+        timeFilterMode: 'compatibility_defaults',
+      }),
     ),
     chart(
       'grades.assessment_status_distribution',

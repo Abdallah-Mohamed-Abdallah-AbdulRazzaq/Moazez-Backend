@@ -126,6 +126,7 @@ export class DashboardAnalyticsChartDataMetaDto {
     | 'operational_snapshot_v1'
     | 'attendance_v1'
     | 'admissions_students_v1'
+    | 'academics_v1'
     | null;
   dataAvailability!: DashboardAnalyticsDataAvailability;
   computation!:
@@ -141,6 +142,10 @@ export class DashboardAnalyticsChartDataMetaDto {
     | 'students_point_in_time_active_enrollment_stock'
     | 'students_withdrawal_events'
     | 'students_current_guardian_coverage'
+    | 'academics_teacher_allocation_coverage'
+    | 'academics_current_timetable_publication_status'
+    | 'academics_current_curriculum_activation_status'
+    | 'academics_current_lesson_plan_activation_status'
     | null;
   freshness!: DashboardFreshnessMetadataDto;
   query!: DashboardAnalyticsQueryMetadataDto;

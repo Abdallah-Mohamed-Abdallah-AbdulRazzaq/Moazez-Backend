@@ -363,6 +363,52 @@ describe('Dashboard modules presenter', () => {
     expectNoInternalLeaks(response);
   });
 
+  it('publishes Academics pack definitions without adding category analytics fanout', () => {
+    const academics = findDashboardModulePageDefinition('academics');
+    expect(academics).toBeDefined();
+
+    const response = presentDashboardModulePage({
+      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      definition: academics!,
+      summary: summarySnapshot(),
+      alertSignals: alertSignals(),
+      alerts: buildDashboardAlerts(alertSignals()),
+    });
+
+    expect(response.analytics.charts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          chartKey: 'academics.teacher_allocation_coverage',
+          status: 'available',
+          meta: { dataAvailability: 'computed_category' },
+        }),
+        expect.objectContaining({
+          chartKey: 'academics.timetable_publication_status',
+          status: 'available',
+          meta: { dataAvailability: 'computed_category' },
+        }),
+        expect.objectContaining({
+          chartKey: 'academics.curriculum_activation',
+          status: 'available',
+          meta: { dataAvailability: 'computed_category' },
+        }),
+        expect.objectContaining({
+          chartKey: 'academics.lesson_plan_activation',
+          status: 'available',
+          meta: { dataAvailability: 'computed_category' },
+        }),
+      ]),
+    );
+    expect(response.analytics.availableData).toEqual([]);
+    expect(
+      response.analytics.plannedCharts.map((chart) => chart.chartKey),
+    ).toEqual([
+      'academics.structure_readiness',
+      'academics.subject_allocation_coverage',
+    ]);
+    expectNoInternalLeaks(response);
+  });
+
   it('does not expose tenant, raw, platform, or person-level identifiers', () => {
     const communication = findDashboardModulePageDefinition('communication');
     expect(communication).toBeDefined();

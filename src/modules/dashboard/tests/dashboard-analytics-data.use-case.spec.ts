@@ -101,6 +101,77 @@ describe('Dashboard analytics data use case', () => {
     },
   );
 
+  it.each([
+    [
+      'academics.teacher_allocation_coverage',
+      'countTeacherAllocationCoverage',
+      'academics_teacher_allocation_coverage',
+    ],
+    [
+      'academics.timetable_publication_status',
+      'countCurrentTimetablePublicationStatus',
+      'academics_current_timetable_publication_status',
+    ],
+    [
+      'academics.curriculum_activation',
+      'countCurrentCurriculumActivationStatus',
+      'academics_current_curriculum_activation_status',
+    ],
+    [
+      'academics.lesson_plan_activation',
+      'countCurrentLessonPlanActivationStatus',
+      'academics_current_lesson_plan_activation_status',
+    ],
+  ] as const)(
+    'dispatches %s only to %s',
+    async (chartKey, expectedMethod, computation) => {
+      const setup = useCaseWith(0);
+      const response = await withSchoolScope(() =>
+        setup.useCase.execute(chartKey, {}),
+      );
+
+      expect(response.meta).toMatchObject({
+        pack: 'academics_v1',
+        computation,
+        dataAvailability: 'computed_category',
+      });
+      for (const [method, mock] of Object.entries(setup.academicsRepository)) {
+        if (method === expectedMethod) {
+          expect(mock).toHaveBeenCalledTimes(1);
+        } else {
+          expect(mock).not.toHaveBeenCalled();
+        }
+      }
+      expect(setup.snapshotRepository.loadChartValue).not.toHaveBeenCalled();
+      expect(
+        setup.attendanceRepository.aggregateDailyEntryStatuses,
+      ).not.toHaveBeenCalled();
+      expectNoInternalLeaks(response);
+    },
+  );
+
+  it.each([
+    'academics.structure_readiness',
+    'academics.subject_allocation_coverage',
+  ])(
+    'keeps %s definition-only without Academics repository fanout',
+    async (chartKey) => {
+      const setup = useCaseWith(0);
+      const response = await withSchoolScope(() =>
+        setup.useCase.execute(chartKey, {}),
+      );
+
+      expect(response).toMatchObject({
+        status: 'planned',
+        emptyState: { reason: 'not_implemented' },
+        meta: { pack: null, dataAvailability: 'definition_only' },
+      });
+      for (const mock of Object.values(setup.academicsRepository)) {
+        expect(mock).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it('keeps a definition-only chart safe while returning resolved query metadata', async () => {
     const context = queryContext({
       range: 'custom',
@@ -339,6 +410,20 @@ function useCaseWith(snapshotValue: number) {
       .fn()
       .mockResolvedValue({ covered: 0, missing: 0 }),
   };
+  const academicsRepository = {
+    countTeacherAllocationCoverage: jest
+      .fn()
+      .mockResolvedValue({ allocated: 0, missing: 0 }),
+    countCurrentTimetablePublicationStatus: jest
+      .fn()
+      .mockResolvedValue({ published: 0, draft: 0 }),
+    countCurrentCurriculumActivationStatus: jest
+      .fn()
+      .mockResolvedValue({ active: 0, draft: 0 }),
+    countCurrentLessonPlanActivationStatus: jest
+      .fn()
+      .mockResolvedValue({ active: 0, draft: 0 }),
+  };
 
   return {
     queryContextService,
@@ -346,12 +431,14 @@ function useCaseWith(snapshotValue: number) {
     attendanceRepository,
     admissionsRepository,
     studentsRepository,
+    academicsRepository,
     useCase: new GetDashboardAnalyticsChartDataUseCase(
       queryContextService as any,
       snapshotRepository as any,
       attendanceRepository as any,
       admissionsRepository as any,
       studentsRepository as any,
+      academicsRepository as any,
     ),
   };
 }
