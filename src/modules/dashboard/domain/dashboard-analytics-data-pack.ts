@@ -1,6 +1,8 @@
 import {
   DASHBOARD_ANALYTICS_ATTENDANCE_PACK_CHART_KEYS,
+  DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK_CHART_KEYS,
   DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS,
+  DashboardAnalyticsAdmissionsStudentsPackChartKey,
   DashboardAnalyticsAttendancePackChartKey,
   DashboardAnalyticsComputedSnapshotChartKey,
 } from './dashboard-analytics-catalog';
@@ -16,6 +18,12 @@ export const DASHBOARD_ANALYTICS_ATTENDANCE_PACK = 'attendance_v1' as const;
 export type DashboardAnalyticsAttendancePack =
   typeof DASHBOARD_ANALYTICS_ATTENDANCE_PACK;
 
+export const DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK =
+  'admissions_students_v1' as const;
+
+export type DashboardAnalyticsAdmissionsStudentsPack =
+  typeof DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK;
+
 export type DashboardAnalyticsDataComputation =
   | 'dashboard_summary_snapshot'
   | 'dashboard_alert_readiness_snapshot'
@@ -23,7 +31,12 @@ export type DashboardAnalyticsDataComputation =
   | 'attendance_observation_status_distribution'
   | 'attendance_observation_absence_rate'
   | 'attendance_observation_late_rate'
-  | 'attendance_excuse_status_distribution';
+  | 'attendance_excuse_status_distribution'
+  | 'admissions_current_application_status_distribution'
+  | 'admissions_application_submission_acceptance_events'
+  | 'students_point_in_time_active_enrollment_stock'
+  | 'students_withdrawal_events'
+  | 'students_current_guardian_coverage';
 
 export function isDashboardAnalyticsComputedSnapshotChartKey(
   chartKey: string,
@@ -38,6 +51,14 @@ export function isDashboardAnalyticsAttendancePackChartKey(
 ): chartKey is DashboardAnalyticsAttendancePackChartKey {
   return (
     DASHBOARD_ANALYTICS_ATTENDANCE_PACK_CHART_KEYS as readonly string[]
+  ).includes(chartKey);
+}
+
+export function isDashboardAnalyticsAdmissionsStudentsPackChartKey(
+  chartKey: string,
+): chartKey is DashboardAnalyticsAdmissionsStudentsPackChartKey {
+  return (
+    DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK_CHART_KEYS as readonly string[]
   ).includes(chartKey);
 }
 
@@ -68,5 +89,22 @@ export function getDashboardAnalyticsAttendanceComputation(
       return 'attendance_observation_late_rate';
     case 'attendance.excuse_status':
       return 'attendance_excuse_status_distribution';
+  }
+}
+
+export function getDashboardAnalyticsAdmissionsStudentsComputation(
+  chartKey: DashboardAnalyticsAdmissionsStudentsPackChartKey,
+): DashboardAnalyticsDataComputation {
+  switch (chartKey) {
+    case 'admissions.applications_by_status':
+      return 'admissions_current_application_status_distribution';
+    case 'admissions.applications_over_time':
+      return 'admissions_application_submission_acceptance_events';
+    case 'students.enrollment_growth':
+      return 'students_point_in_time_active_enrollment_stock';
+    case 'students.withdrawal_trend':
+      return 'students_withdrawal_events';
+    case 'students.guardian_coverage':
+      return 'students_current_guardian_coverage';
   }
 }

@@ -249,13 +249,13 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         (chart: { meta: { dataAvailability: string } }) =>
           chart.meta.dataAvailability !== 'definition_only',
       ),
-    ).toHaveLength(11);
+    ).toHaveLength(16);
     expect(
       response.body.catalog.charts.filter(
         (chart: { meta: { dataAvailability: string } }) =>
           chart.meta.dataAvailability === 'definition_only',
       ),
-    ).toHaveLength(26);
+    ).toHaveLength(21);
     expectNoInternalLeaks(response.body);
     expect(JSON.stringify(response.body.catalog.charts)).not.toContain(
       'points',
@@ -384,6 +384,7 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       type: 'stacked-bar',
       status: 'available',
       queryCapabilities: {
+        timeFilterMode: 'historical',
         snapshotOnly: false,
         historicalSeriesCapable: true,
         categoryTableFunnelCapable: true,
@@ -396,6 +397,48 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       },
     });
     expectNoInternalLeaks(statusDistributionResponse.body);
+
+    const applicationStatusResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/admissions.applications_by_status`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(applicationStatusResponse.body.chart).toMatchObject({
+      status: 'available',
+      filters: ['range', 'granularity', 'academicYearId', 'gradeId'],
+      series: [
+        { key: 'documents_pending' },
+        { key: 'submitted' },
+        { key: 'under_review' },
+        { key: 'accepted' },
+        { key: 'rejected' },
+        { key: 'waitlisted' },
+      ],
+      meta: { dataAvailability: 'computed_category' },
+      queryCapabilities: {
+        timeFilterMode: 'compatibility_defaults',
+        timeFiltersApplicable: false,
+        granularityApplicable: false,
+        supportedRanges: ['30d'],
+        supportedGranularities: ['day'],
+        supportedHierarchyFilters: ['academicYearId', 'gradeId'],
+      },
+    });
+
+    const funnelResponse = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/admissions.funnel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(funnelResponse.body.chart).toMatchObject({
+      status: 'planned',
+      meta: { dataAvailability: 'definition_only' },
+      queryCapabilities: {
+        timeFilterMode: 'historical',
+        timeFiltersApplicable: true,
+        granularityApplicable: true,
+      },
+    });
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/unknown.chart`)

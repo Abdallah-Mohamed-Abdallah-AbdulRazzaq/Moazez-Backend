@@ -22,6 +22,7 @@ import type {
   DashboardAnalyticsRange,
   DashboardAnalyticsSource,
   DashboardAnalyticsStatus,
+  DashboardAnalyticsTimeFilterMode,
   DashboardAnalyticsTone,
 } from '../domain/dashboard-analytics-catalog';
 import {
@@ -105,6 +106,7 @@ export class DashboardAnalyticsChartMetaDto {
 }
 
 export class DashboardAnalyticsChartQueryCapabilitiesDto {
+  timeFilterMode!: DashboardAnalyticsTimeFilterMode;
   snapshotOnly!: boolean;
   historicalSeriesCapable!: boolean;
   categoryTableFunnelCapable!: boolean;

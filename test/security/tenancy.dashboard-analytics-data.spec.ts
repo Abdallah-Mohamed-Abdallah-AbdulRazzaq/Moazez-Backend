@@ -3,6 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  AdmissionApplicationSource,
+  AdmissionApplicationStatus,
+  AdmissionDecisionType,
   AttendanceExcuseStatus,
   AttendanceExcuseType,
   AttendanceMode,
@@ -10,6 +13,8 @@ import {
   AttendanceSessionStatus,
   AttendanceStatus,
   SchoolLoginSettingsStatus,
+  StudentEnrollmentStatus,
+  UserStatus,
   UserType,
 } from '@prisma/client';
 import {
@@ -28,6 +33,8 @@ import { DashboardAnalyticsQueryContextService } from '../../src/modules/dashboa
 import { DashboardAnalyticsHierarchyRepository } from '../../src/modules/dashboard/infrastructure/dashboard-analytics-hierarchy.repository';
 import { DashboardAnalyticsSnapshotRepository } from '../../src/modules/dashboard/infrastructure/dashboard-analytics-snapshot.repository';
 import { AttendanceDashboardAnalyticsRepository } from '../../src/modules/attendance/reports/infrastructure/attendance-dashboard-analytics.repository';
+import { DashboardAdmissionsAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-admissions-analytics.repository';
+import { DashboardStudentsAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-students-analytics.repository';
 
 jest.setTimeout(60000);
 
@@ -44,6 +51,7 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
   let schoolBGradeId = '';
   let schoolBSectionId = '';
   let schoolBClassroomId = '';
+  let schoolBAnalyticsUserId = '';
 
   beforeAll(async () => {
     prisma = new PrismaService();
@@ -158,6 +166,89 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
       },
       select: { id: true },
     });
+    const withdrawnStudent = await prisma.student.create({
+      data: {
+        schoolId: schoolBId,
+        organizationId,
+        firstName: 'Withdrawn Analytics',
+        lastName: `Student ${suffix}`,
+      },
+      select: { id: true },
+    });
+    const analyticsUser = await prisma.user.create({
+      data: {
+        email: `${marker}-decision@example.test`,
+        firstName: 'Analytics',
+        lastName: 'Decision',
+        userType: UserType.SCHOOL_USER,
+        status: UserStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    schoolBAnalyticsUserId = analyticsUser.id;
+    const application = await prisma.application.create({
+      data: {
+        schoolId: schoolBId,
+        organizationId,
+        studentName: `${marker} Applicant`,
+        requestedAcademicYearId: academicYear.id,
+        requestedGradeId: grade.id,
+        status: AdmissionApplicationStatus.ACCEPTED,
+        source: AdmissionApplicationSource.IN_APP,
+        submittedAt: new Date('2026-07-10T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    await prisma.admissionDecision.create({
+      data: {
+        schoolId: schoolBId,
+        applicationId: application.id,
+        decision: AdmissionDecisionType.ACCEPT,
+        decidedByUserId: analyticsUser.id,
+        decidedAt: new Date('2026-07-10T09:00:00.000Z'),
+      },
+    });
+    await prisma.enrollment.createMany({
+      data: [
+        {
+          schoolId: schoolBId,
+          studentId: student.id,
+          academicYearId: academicYear.id,
+          termId: term.id,
+          classroomId: classroom.id,
+          status: StudentEnrollmentStatus.ACTIVE,
+          enrolledAt: new Date('2026-07-01T00:00:00.000Z'),
+        },
+        {
+          schoolId: schoolBId,
+          studentId: withdrawnStudent.id,
+          academicYearId: academicYear.id,
+          termId: term.id,
+          classroomId: classroom.id,
+          status: StudentEnrollmentStatus.WITHDRAWN,
+          enrolledAt: new Date('2026-06-01T00:00:00.000Z'),
+          endedAt: new Date('2026-07-10T10:00:00.000Z'),
+        },
+      ],
+    });
+    const guardian = await prisma.guardian.create({
+      data: {
+        schoolId: schoolBId,
+        organizationId,
+        firstName: 'Analytics',
+        lastName: 'Guardian',
+        phone: `+202${suffix.padEnd(8, '0').slice(0, 8)}`,
+        relation: 'guardian',
+      },
+      select: { id: true },
+    });
+    await prisma.studentGuardian.create({
+      data: {
+        schoolId: schoolBId,
+        studentId: student.id,
+        guardianId: guardian.id,
+      },
+    });
     const attendanceSession = await prisma.attendanceSession.create({
       data: {
         schoolId: schoolBId,
@@ -207,6 +298,13 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
     await prisma.attendanceSession.deleteMany({
       where: { schoolId: schoolBId },
     });
+    await prisma.studentGuardian.deleteMany({ where: { schoolId: schoolBId } });
+    await prisma.guardian.deleteMany({ where: { schoolId: schoolBId } });
+    await prisma.enrollment.deleteMany({ where: { schoolId: schoolBId } });
+    await prisma.admissionDecision.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.application.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.student.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.classroom.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.section.deleteMany({ where: { schoolId: schoolBId } });
@@ -223,6 +321,9 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
     await prisma.organization.deleteMany({
       where: { id: organizationId },
     });
+    if (schoolBAnalyticsUserId) {
+      await prisma.user.deleteMany({ where: { id: schoolBAnalyticsUserId } });
+    }
     await prisma.$disconnect();
   });
 
@@ -421,6 +522,43 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
     }
   });
 
+  it('isolates Admissions, Decisions, Enrollments, Guardians, and relationship-derived coverage between schools', async () => {
+    const useCase = analyticsDataUseCase();
+    const historicalQuery = {
+      range: 'custom' as const,
+      granularity: 'day' as const,
+      dateFrom: '2026-07-01',
+      dateTo: '2026-07-12',
+    };
+    const chartQueries = [
+      ['admissions.applications_by_status', {}],
+      ['admissions.applications_over_time', historicalQuery],
+      ['students.enrollment_growth', historicalQuery],
+      ['students.withdrawal_trend', historicalQuery],
+      ['students.guardian_coverage', {}],
+    ] as const;
+
+    for (const [chartKey, query] of chartQueries) {
+      const schoolAResponse = await withSchoolScope(schoolAId, () =>
+        useCase.execute(chartKey, {
+          ...query,
+          schoolId: schoolBId,
+          organizationId,
+        } as any),
+      );
+      const schoolBResponse = await withSchoolScope(schoolBId, () =>
+        useCase.execute(chartKey, query),
+      );
+
+      expect(schoolAResponse.data.empty).toBe(true);
+      expect(schoolBResponse.data.empty).toBe(false);
+      expect(JSON.stringify(schoolAResponse)).not.toContain(schoolAId);
+      expect(JSON.stringify(schoolAResponse)).not.toContain(schoolBId);
+      expectNoInternalLeaks(schoolAResponse);
+      expectNoInternalLeaks(schoolBResponse);
+    }
+  });
+
   it('does not resolve any School B hierarchy identifier from School A', async () => {
     const useCase = analyticsDataUseCase();
     const crossSchoolFilters = [
@@ -462,6 +600,8 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
       ),
       new DashboardAnalyticsSnapshotRepository(prisma),
       new AttendanceDashboardAnalyticsRepository(prisma),
+      new DashboardAdmissionsAnalyticsRepository(prisma),
+      new DashboardStudentsAnalyticsRepository(prisma),
     );
   }
 

@@ -253,7 +253,7 @@ describe('Dashboard analytics presenter', () => {
     expectNoInternalLeaks(response);
   });
 
-  it('marks exactly eleven charts as computed and leaves twenty-six definition-only', () => {
+  it('marks exactly sixteen charts as computed and leaves twenty-one definition-only', () => {
     const response = presentDashboardAnalyticsCatalog({
       generatedAt: new Date('2026-07-09T12:00:00.000Z'),
       catalog: DASHBOARD_ANALYTICS_CATALOG,
@@ -272,6 +272,13 @@ describe('Dashboard analytics presenter', () => {
       'attendance.absence_rate',
       'attendance.late_rate',
       'attendance.excuse_status',
+    ];
+    const admissionsStudentsPackChartKeys = [
+      'admissions.applications_by_status',
+      'admissions.applications_over_time',
+      'students.enrollment_growth',
+      'students.withdrawal_trend',
+      'students.guardian_coverage',
     ];
 
     expect(
@@ -314,7 +321,8 @@ describe('Dashboard analytics presenter', () => {
         .filter(
           (chart) =>
             !computedSnapshotChartKeys.includes(chart.chartKey) &&
-            !attendancePackChartKeys.includes(chart.chartKey),
+            !attendancePackChartKeys.includes(chart.chartKey) &&
+            !admissionsStudentsPackChartKeys.includes(chart.chartKey),
         )
         .every(
           (chart) =>
@@ -326,12 +334,12 @@ describe('Dashboard analytics presenter', () => {
       response.catalog.charts.filter(
         (chart) => chart.meta.dataAvailability !== 'definition_only',
       ),
-    ).toHaveLength(11);
+    ).toHaveLength(16);
     expect(
       response.catalog.charts.filter(
         (chart) => chart.meta.dataAvailability === 'definition_only',
       ),
-    ).toHaveLength(26);
+    ).toHaveLength(21);
   });
 
   it('publishes one truthful typed query capability matrix', () => {
@@ -359,6 +367,7 @@ describe('Dashboard analytics presenter', () => {
     );
 
     expect(attendanceSnapshot?.queryCapabilities).toEqual({
+      timeFilterMode: 'snapshot_compatibility',
       snapshotOnly: true,
       historicalSeriesCapable: false,
       categoryTableFunnelCapable: false,
@@ -379,6 +388,7 @@ describe('Dashboard analytics presenter', () => {
       communicationSnapshot?.queryCapabilities.supportedHierarchyFilters,
     ).toEqual([]);
     expect(historicalDefinition?.queryCapabilities).toMatchObject({
+      timeFilterMode: 'historical',
       snapshotOnly: false,
       historicalSeriesCapable: true,
       definitionOnly: false,
@@ -388,6 +398,7 @@ describe('Dashboard analytics presenter', () => {
     expect(statusDistribution).toMatchObject({
       meta: { dataAvailability: 'computed_series' },
       queryCapabilities: {
+        timeFilterMode: 'historical',
         snapshotOnly: false,
         historicalSeriesCapable: true,
         categoryTableFunnelCapable: true,
@@ -404,6 +415,7 @@ describe('Dashboard analytics presenter', () => {
         status: 'planned',
         meta: { dataAvailability: 'definition_only' },
         queryCapabilities: {
+          timeFilterMode: 'unsupported',
           definitionOnly: true,
           timeFiltersApplicable: false,
           granularityApplicable: false,
@@ -417,11 +429,49 @@ describe('Dashboard analytics presenter', () => {
       (chart) => chart.chartKey === 'attendance.excuse_status',
     );
     expect(excuseDefinition?.queryCapabilities).toMatchObject({
+      timeFilterMode: 'range_only',
       definitionOnly: false,
       timeFiltersApplicable: true,
       granularityApplicable: false,
       supportedGranularities: ['day'],
       supportedHierarchyFilters: ['academicYearId', 'termId'],
+    });
+
+    const currentApplicationStatus = response.catalog.charts.find(
+      (chart) => chart.chartKey === 'admissions.applications_by_status',
+    );
+    expect(currentApplicationStatus).toMatchObject({
+      status: 'available',
+      series: [
+        { key: 'documents_pending' },
+        { key: 'submitted' },
+        { key: 'under_review' },
+        { key: 'accepted' },
+        { key: 'rejected' },
+        { key: 'waitlisted' },
+      ],
+      meta: { dataAvailability: 'computed_category' },
+      queryCapabilities: {
+        timeFilterMode: 'compatibility_defaults',
+        timeFiltersApplicable: false,
+        granularityApplicable: false,
+        supportedRanges: ['30d'],
+        supportedGranularities: ['day'],
+        supportedHierarchyFilters: ['academicYearId', 'gradeId'],
+      },
+    });
+
+    const funnel = response.catalog.charts.find(
+      (chart) => chart.chartKey === 'admissions.funnel',
+    );
+    expect(funnel).toMatchObject({
+      status: 'planned',
+      meta: { dataAvailability: 'definition_only' },
+      queryCapabilities: {
+        timeFilterMode: 'historical',
+        timeFiltersApplicable: true,
+        granularityApplicable: true,
+      },
     });
   });
 });

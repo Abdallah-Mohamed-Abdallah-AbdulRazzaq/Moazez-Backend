@@ -141,8 +141,9 @@ export function validateDashboardAnalyticsChartQueryCapabilities(
   const explicitTimeKeys = explicitlySuppliedKeys.filter((key) =>
     ['range', 'granularity', 'dateFrom', 'dateTo'].includes(key),
   );
+  const mode = capabilities.timeFilterMode;
 
-  if (capabilities.snapshotOnly) {
+  if (mode === 'snapshot_compatibility') {
     const invalidSnapshotTimeKeys = explicitTimeKeys.filter((key) => {
       if (key === 'range') return query.range !== '30d';
       if (key === 'granularity') return query.granularity !== 'day';
@@ -158,22 +159,37 @@ export function validateDashboardAnalyticsChartQueryCapabilities(
     return;
   }
 
-  if (!capabilities.timeFiltersApplicable && explicitTimeKeys.length > 0) {
+  if (mode === 'unsupported' && explicitTimeKeys.length > 0) {
     throw validationError(
       'Analytics time filter is not supported by this chart',
       explicitTimeKeys,
     );
   }
 
+  if (mode === 'compatibility_defaults') {
+    const invalidCompatibilityKeys = explicitTimeKeys.filter((key) => {
+      if (key === 'range') return query.range !== '30d';
+      if (key === 'granularity') return query.granularity !== 'day';
+      return true;
+    });
+    if (invalidCompatibilityKeys.length > 0) {
+      throw validationError(
+        'Current category chart supports only compatibility time defaults',
+        invalidCompatibilityKeys,
+      );
+    }
+    return;
+  }
+
   if (
-    capabilities.timeFiltersApplicable &&
+    (mode === 'historical' || mode === 'range_only') &&
     !capabilities.supportedRanges.includes(query.range)
   ) {
     throw validationError('Analytics range is not supported', ['range']);
   }
 
   if (
-    capabilities.granularityApplicable &&
+    mode === 'historical' &&
     !capabilities.supportedGranularities.includes(query.granularity)
   ) {
     throw validationError('Analytics granularity is not supported', [
@@ -181,11 +197,7 @@ export function validateDashboardAnalyticsChartQueryCapabilities(
     ]);
   }
 
-  if (
-    capabilities.timeFiltersApplicable &&
-    !capabilities.granularityApplicable &&
-    query.granularity !== 'day'
-  ) {
+  if (mode === 'range_only' && query.granularity !== 'day') {
     throw validationError('Analytics granularity is not applicable', [
       'granularity',
     ]);
@@ -345,39 +357,38 @@ export function dashboardAnalyticsFilterMetadata(
   applied: DashboardAnalyticsDataQueryKey[];
   notApplicable: DashboardAnalyticsDataQueryKey[];
 } {
-  if (chart.queryCapabilities.snapshotOnly) {
-    const applied = chart.queryCapabilities.supportedHierarchyFilters.filter(
+  const mode = chart.queryCapabilities.timeFilterMode;
+  const hierarchyApplied =
+    chart.queryCapabilities.supportedHierarchyFilters.filter(
       (key) => hierarchy[key] !== null,
     );
+
+  if (mode === 'snapshot_compatibility') {
     return {
-      applied,
-      notApplicable: ['range', 'granularity'].filter(
-        (key): key is DashboardAnalyticsDataQueryKey =>
-          !applied.includes(key as DashboardAnalyticsHierarchyFilterKey),
-      ),
+      applied: hierarchyApplied,
+      notApplicable: ['range', 'granularity'],
     };
   }
 
-  if (!chart.queryCapabilities.timeFiltersApplicable) {
-    return { applied: [], notApplicable: ['range', 'granularity'] };
+  if (mode === 'compatibility_defaults' || mode === 'unsupported') {
+    return {
+      applied: hierarchyApplied,
+      notApplicable: ['range', 'granularity'],
+    };
   }
 
   const applied = new Set<DashboardAnalyticsDataQueryKey>(['range']);
-  if (chart.queryCapabilities.granularityApplicable) {
+  if (mode === 'historical') {
     applied.add('granularity');
   }
   for (const key of explicitlySuppliedKeys) {
     if (key === 'dateFrom' || key === 'dateTo') applied.add(key);
   }
-  for (const key of chart.queryCapabilities.supportedHierarchyFilters) {
-    if (hierarchy[key] !== null) applied.add(key);
-  }
+  for (const key of hierarchyApplied) applied.add(key);
 
   return {
     applied: [...applied],
-    notApplicable: chart.queryCapabilities.granularityApplicable
-      ? []
-      : ['granularity'],
+    notApplicable: mode === 'historical' ? [] : ['granularity'],
   };
 }
 

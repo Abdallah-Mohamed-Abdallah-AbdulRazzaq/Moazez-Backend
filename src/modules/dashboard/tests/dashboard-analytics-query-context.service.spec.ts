@@ -273,10 +273,7 @@ describe('DashboardAnalyticsQueryContextService', () => {
     },
   );
 
-  it.each([
-    'homework.submission_review_trend',
-    'behavior.pending_review',
-  ])(
+  it.each(['homework.submission_review_trend', 'behavior.pending_review'])(
     'preserves Phase 2A time-filter rejection for %s',
     async (chartKey) => {
       for (const query of [
@@ -294,6 +291,81 @@ describe('DashboardAnalyticsQueryContextService', () => {
       }
     },
   );
+
+  it.each(['admissions.applications_by_status', 'students.guardian_coverage'])(
+    'accepts only compatibility defaults and preserves hierarchy metadata for %s',
+    async (chartKey) => {
+      const context = await queryService(hierarchyRepositoryMock()).resolve(
+        scope(),
+        chart(chartKey),
+        {
+          range: '30d',
+          granularity: 'day',
+          academicYearId: ACADEMIC_YEAR_ID,
+          gradeId: GRADE_ID,
+        },
+      );
+
+      expect(context.explicitlySuppliedKeys).toEqual([
+        'range',
+        'granularity',
+        'academicYearId',
+        'gradeId',
+      ]);
+      expect(context.filtersApplied).toEqual(['academicYearId', 'gradeId']);
+      expect(context.filtersNotApplicable).toEqual(['range', 'granularity']);
+    },
+  );
+
+  it.each([
+    { range: '7d' },
+    { granularity: 'week' },
+    { granularity: 'month' },
+    { dateFrom: '2026-07-01' },
+    { dateTo: '2026-07-02' },
+  ] as const)(
+    'rejects non-compatible current-category time input %#',
+    async (rawQuery) => {
+      await expect(
+        queryService(hierarchyRepositoryMock()).resolve(
+          scope(),
+          chart('admissions.applications_by_status'),
+          rawQuery,
+        ),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+    },
+  );
+
+  it('preserves legacy historical query validation for the deferred Admissions funnel', async () => {
+    const context = await queryService(hierarchyRepositoryMock()).resolve(
+      scope(),
+      chart('admissions.funnel'),
+      {
+        range: 'custom',
+        granularity: 'week',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-09',
+      },
+    );
+
+    expect(context.filtersApplied).toEqual([
+      'range',
+      'granularity',
+      'dateFrom',
+      'dateTo',
+    ]);
+  });
+
+  it('preserves legacy time behavior for unrelated standard-filter definition-only charts', async () => {
+    const context = await queryService(hierarchyRepositoryMock()).resolve(
+      scope(),
+      chart('behavior.positive_negative_trend'),
+      { range: '7d', granularity: 'day' },
+    );
+
+    expect(context.filtersApplied).toEqual(['range', 'granularity']);
+    expect(context.filtersNotApplicable).toEqual([]);
+  });
 });
 
 function queryService(

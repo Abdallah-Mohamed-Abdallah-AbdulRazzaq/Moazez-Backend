@@ -8,13 +8,20 @@ import {
   GetDashboardAnalyticsChartDataQueryDto,
 } from '../dto/dashboard-analytics-data.dto';
 import { findDashboardAnalyticsChartDefinition } from '../domain/dashboard-analytics-catalog';
+import {
+  buildDashboardEnrollmentStockPlan,
+  computeDashboardAdmissionsStudentsAnalyticsData,
+} from '../domain/dashboard-admissions-students-analytics';
 import { computeDashboardAttendanceAnalyticsData } from '../domain/dashboard-attendance-analytics';
 import {
   isDashboardAnalyticsAttendancePackChartKey,
+  isDashboardAnalyticsAdmissionsStudentsPackChartKey,
   isDashboardAnalyticsComputedSnapshotChartKey,
 } from '../domain/dashboard-analytics-data-pack';
 import { normalizeDashboardAnalyticsQuery } from '../domain/dashboard-analytics-query';
 import { DashboardAnalyticsSnapshotRepository } from '../infrastructure/dashboard-analytics-snapshot.repository';
+import { DashboardAdmissionsAnalyticsRepository } from '../infrastructure/dashboard-admissions-analytics.repository';
+import { DashboardStudentsAnalyticsRepository } from '../infrastructure/dashboard-students-analytics.repository';
 import { presentDashboardAnalyticsChartData } from '../presenters/dashboard-analytics-data.presenter';
 import { DashboardAnalyticsQueryContextService } from './dashboard-analytics-query-context.service';
 
@@ -27,6 +34,8 @@ export class GetDashboardAnalyticsChartDataUseCase {
     private readonly dashboardAnalyticsQueryContextService: DashboardAnalyticsQueryContextService,
     private readonly dashboardAnalyticsSnapshotRepository: DashboardAnalyticsSnapshotRepository,
     private readonly attendanceDashboardAnalyticsRepository: AttendanceDashboardAnalyticsRepository,
+    private readonly dashboardAdmissionsAnalyticsRepository: DashboardAdmissionsAnalyticsRepository,
+    private readonly dashboardStudentsAnalyticsRepository: DashboardStudentsAnalyticsRepository,
   ) {}
 
   async execute(
@@ -48,6 +57,21 @@ export class GetDashboardAnalyticsChartDataUseCase {
         chart,
         query,
       );
+
+    if (isDashboardAnalyticsComputedSnapshotChartKey(chart.chartKey)) {
+      const snapshotValue =
+        await this.dashboardAnalyticsSnapshotRepository.loadChartValue(
+          scope,
+          chart.chartKey,
+          queryContext,
+        );
+
+      return presentDashboardAnalyticsChartData({
+        queryContext,
+        chart,
+        snapshotValue,
+      });
+    }
 
     if (isDashboardAnalyticsAttendancePackChartKey(chart.chartKey)) {
       const sourceInput = {
@@ -84,22 +108,119 @@ export class GetDashboardAnalyticsChartDataUseCase {
       });
     }
 
-    if (!isDashboardAnalyticsComputedSnapshotChartKey(chart.chartKey)) {
-      return presentDashboardAnalyticsChartData({ queryContext, chart });
+    if (isDashboardAnalyticsAdmissionsStudentsPackChartKey(chart.chartKey)) {
+      const hierarchy = queryContext.hierarchy;
+      const admissionsHierarchy = {
+        academicYearId: hierarchy.academicYearId,
+        gradeId: hierarchy.gradeId,
+      };
+
+      switch (chart.chartKey) {
+        case 'admissions.applications_by_status': {
+          const admissionsStudentsData =
+            computeDashboardAdmissionsStudentsAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              applicationStatusAggregates:
+                await this.dashboardAdmissionsAnalyticsRepository.countCurrentApplicationsByStatus(
+                  { scope, hierarchy: admissionsHierarchy },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            admissionsStudentsData,
+          });
+        }
+
+        case 'admissions.applications_over_time': {
+          const admissionsStudentsData =
+            computeDashboardAdmissionsStudentsAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              applicationEventAggregates:
+                await this.dashboardAdmissionsAnalyticsRepository.aggregateApplicationEventsByCivilDate(
+                  {
+                    scope,
+                    timezone: queryContext.timezone,
+                    window: queryContext,
+                    hierarchy: admissionsHierarchy,
+                  },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            admissionsStudentsData,
+          });
+        }
+
+        case 'students.enrollment_growth': {
+          const enrollmentStockPlan =
+            buildDashboardEnrollmentStockPlan(queryContext);
+          const admissionsStudentsData =
+            computeDashboardAdmissionsStudentsAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              enrollmentStockPlan,
+              enrollmentStockAggregates:
+                await this.dashboardStudentsAnalyticsRepository.countActiveEnrollmentsAtBucketCloses(
+                  {
+                    scope,
+                    evaluations: enrollmentStockPlan.evaluations,
+                    hierarchy,
+                  },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            admissionsStudentsData,
+          });
+        }
+
+        case 'students.withdrawal_trend': {
+          const admissionsStudentsData =
+            computeDashboardAdmissionsStudentsAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              withdrawalAggregates:
+                await this.dashboardStudentsAnalyticsRepository.aggregateWithdrawalsByCivilDate(
+                  {
+                    scope,
+                    timezone: queryContext.timezone,
+                    window: queryContext,
+                    hierarchy,
+                  },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            admissionsStudentsData,
+          });
+        }
+
+        case 'students.guardian_coverage': {
+          const admissionsStudentsData =
+            computeDashboardAdmissionsStudentsAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              guardianCoverage:
+                await this.dashboardStudentsAnalyticsRepository.countCurrentGuardianCoverage(
+                  { scope, hierarchy },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            admissionsStudentsData,
+          });
+        }
+      }
     }
 
-    const snapshotValue =
-      await this.dashboardAnalyticsSnapshotRepository.loadChartValue(
-        scope,
-        chart.chartKey,
-        queryContext,
-      );
-
-    return presentDashboardAnalyticsChartData({
-      queryContext,
-      chart,
-      snapshotValue,
-    });
+    return presentDashboardAnalyticsChartData({ queryContext, chart });
   }
 }
 

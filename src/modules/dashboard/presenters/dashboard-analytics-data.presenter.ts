@@ -9,6 +9,7 @@ import {
 import { DashboardAnalyticsChartDefinition } from '../domain/dashboard-analytics-catalog';
 import { dashboardAnalyticsSnapshotPoint } from '../domain/dashboard-analytics-coordinate';
 import { DashboardAttendanceAnalyticsData } from '../domain/dashboard-attendance-analytics';
+import { DashboardAdmissionsStudentsAnalyticsData } from '../domain/dashboard-admissions-students-analytics';
 import {
   DashboardAnalyticsQueryContext,
   DashboardAnalyticsResolvedHierarchy,
@@ -16,9 +17,12 @@ import {
 import {
   DASHBOARD_ANALYTICS_OPERATIONAL_SNAPSHOT_PACK,
   DASHBOARD_ANALYTICS_ATTENDANCE_PACK,
+  DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK,
+  getDashboardAnalyticsAdmissionsStudentsComputation,
   getDashboardAnalyticsAttendanceComputation,
   getDashboardAnalyticsChartComputation,
   isDashboardAnalyticsAttendancePackChartKey,
+  isDashboardAnalyticsAdmissionsStudentsPackChartKey,
   isDashboardAnalyticsComputedSnapshotChartKey,
 } from '../domain/dashboard-analytics-data-pack';
 import { DashboardAlertSignals } from '../infrastructure/dashboard-alerts.repository';
@@ -32,11 +36,22 @@ export interface DashboardAnalyticsChartDataPresentationInput {
   summary?: DashboardSummarySnapshot;
   alertSignals?: DashboardAlertSignals;
   attendanceData?: DashboardAttendanceAnalyticsData;
+  admissionsStudentsData?: DashboardAdmissionsStudentsAnalyticsData;
 }
 
 export function presentDashboardAnalyticsChartData(
   input: DashboardAnalyticsChartDataPresentationInput,
 ): DashboardAnalyticsChartDataResponseDto {
+  if (
+    isDashboardAnalyticsAdmissionsStudentsPackChartKey(input.chart.chartKey) &&
+    input.admissionsStudentsData
+  ) {
+    return presentComputedAdmissionsStudentsChartData(
+      input,
+      input.admissionsStudentsData,
+    );
+  }
+
   if (
     isDashboardAnalyticsAttendancePackChartKey(input.chart.chartKey) &&
     input.attendanceData
@@ -52,6 +67,41 @@ export function presentDashboardAnalyticsChartData(
   }
 
   return presentUnsupportedChartData(input);
+}
+
+function presentComputedAdmissionsStudentsChartData(
+  input: DashboardAnalyticsChartDataPresentationInput,
+  data: DashboardAdmissionsStudentsAnalyticsData,
+): DashboardAnalyticsChartDataResponseDto {
+  if (
+    !isDashboardAnalyticsAdmissionsStudentsPackChartKey(input.chart.chartKey)
+  ) {
+    return presentUnsupportedChartData(input);
+  }
+
+  return {
+    ...responseIdentity(input),
+    data,
+    emptyState: data.empty ? noDataEmptyState(input.chart) : null,
+    meta: {
+      source: 'dashboard_analytics_data_pack',
+      pack: DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK,
+      dataAvailability: input.chart.meta.dataAvailability,
+      computation: getDashboardAnalyticsAdmissionsStudentsComputation(
+        input.chart.chartKey,
+      ),
+      freshness: dashboardFreshness('request_time_snapshot'),
+      query: presentQueryMetadata(input.queryContext),
+      deferred: {
+        ...(input.chart.meta.dataAvailability === 'computed_category'
+          ? { historicalSeries: 'deferred' as const }
+          : {}),
+        drilldown: 'deferred',
+        exports: 'deferred',
+        realtime: 'deferred',
+      },
+    },
+  };
 }
 
 function presentComputedAttendanceChartData(

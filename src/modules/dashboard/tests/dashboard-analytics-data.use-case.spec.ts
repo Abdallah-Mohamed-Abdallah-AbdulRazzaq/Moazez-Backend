@@ -115,7 +115,7 @@ describe('Dashboard analytics data use case', () => {
     queryContextService.resolve.mockResolvedValue(context);
 
     const response = await withSchoolScope(() =>
-      useCase.execute('students.enrollment_growth', {
+      useCase.execute('admissions.funnel', {
         range: 'custom',
         granularity: 'week',
         dateFrom: '2026-07-01',
@@ -124,7 +124,7 @@ describe('Dashboard analytics data use case', () => {
     );
 
     expect(response).toMatchObject({
-      chartKey: 'students.enrollment_growth',
+      chartKey: 'admissions.funnel',
       status: 'planned',
       range: 'custom',
       granularity: 'week',
@@ -217,6 +217,66 @@ describe('Dashboard analytics data use case', () => {
     expectNoInternalLeaks(response);
   });
 
+  it.each([
+    [
+      'admissions.applications_by_status',
+      'countCurrentApplicationsByStatus',
+      'admissions_current_application_status_distribution',
+    ],
+    [
+      'admissions.applications_over_time',
+      'aggregateApplicationEventsByCivilDate',
+      'admissions_application_submission_acceptance_events',
+    ],
+    [
+      'students.enrollment_growth',
+      'countActiveEnrollmentsAtBucketCloses',
+      'students_point_in_time_active_enrollment_stock',
+    ],
+    [
+      'students.withdrawal_trend',
+      'aggregateWithdrawalsByCivilDate',
+      'students_withdrawal_events',
+    ],
+    [
+      'students.guardian_coverage',
+      'countCurrentGuardianCoverage',
+      'students_current_guardian_coverage',
+    ],
+  ] as const)(
+    'dispatches %s only to %s',
+    async (chartKey, expectedMethod, computation) => {
+      const setup = useCaseWith(0);
+      const response = await withSchoolScope(() =>
+        setup.useCase.execute(chartKey, {}),
+      );
+
+      expect(response.meta).toMatchObject({
+        pack: 'admissions_students_v1',
+        computation,
+      });
+      const allMethods = {
+        ...setup.admissionsRepository,
+        ...setup.studentsRepository,
+      };
+      for (const [method, mock] of Object.entries(allMethods)) {
+        if (method === expectedMethod) {
+          expect(mock).toHaveBeenCalledTimes(1);
+        } else {
+          expect(mock).not.toHaveBeenCalled();
+        }
+      }
+      expect(setup.snapshotRepository.loadChartValue).not.toHaveBeenCalled();
+      expect(
+        setup.attendanceRepository.aggregateDailyEntryStatuses,
+      ).not.toHaveBeenCalled();
+      expect(
+        setup.attendanceRepository.aggregateExcuseStatuses,
+      ).not.toHaveBeenCalled();
+      expectNoInternalLeaks(response);
+    },
+  );
+
   it('throws safe not-found for unknown chart keys before query resolution', async () => {
     const { useCase, queryContextService } = useCaseWith(0);
 
@@ -268,15 +328,30 @@ function useCaseWith(snapshotValue: number) {
     aggregateDailyEntryStatuses: jest.fn().mockResolvedValue([]),
     aggregateExcuseStatuses: jest.fn().mockResolvedValue([]),
   };
+  const admissionsRepository = {
+    countCurrentApplicationsByStatus: jest.fn().mockResolvedValue([]),
+    aggregateApplicationEventsByCivilDate: jest.fn().mockResolvedValue([]),
+  };
+  const studentsRepository = {
+    countActiveEnrollmentsAtBucketCloses: jest.fn().mockResolvedValue([]),
+    aggregateWithdrawalsByCivilDate: jest.fn().mockResolvedValue([]),
+    countCurrentGuardianCoverage: jest
+      .fn()
+      .mockResolvedValue({ covered: 0, missing: 0 }),
+  };
 
   return {
     queryContextService,
     snapshotRepository,
     attendanceRepository,
+    admissionsRepository,
+    studentsRepository,
     useCase: new GetDashboardAnalyticsChartDataUseCase(
       queryContextService as any,
       snapshotRepository as any,
       attendanceRepository as any,
+      admissionsRepository as any,
+      studentsRepository as any,
     ),
   };
 }

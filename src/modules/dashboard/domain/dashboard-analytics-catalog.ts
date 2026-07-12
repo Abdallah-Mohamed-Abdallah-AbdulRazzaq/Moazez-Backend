@@ -130,6 +130,12 @@ export type DashboardAnalyticsDataAvailability =
   | 'computed_snapshot'
   | 'computed_series'
   | 'computed_category';
+export type DashboardAnalyticsTimeFilterMode =
+  | 'historical'
+  | 'range_only'
+  | 'compatibility_defaults'
+  | 'snapshot_compatibility'
+  | 'unsupported';
 export type DashboardAnalyticsChartEmptyStateReason =
   | 'not_implemented'
   | 'no_data';
@@ -189,6 +195,7 @@ export interface DashboardAnalyticsChartMeta {
 }
 
 export interface DashboardAnalyticsChartQueryCapabilities {
+  timeFilterMode: DashboardAnalyticsTimeFilterMode;
   snapshotOnly: boolean;
   historicalSeriesCapable: boolean;
   categoryTableFunnelCapable: boolean;
@@ -266,6 +273,32 @@ const ATTENDANCE_EXCUSE_FILTERS: readonly DashboardAnalyticsFilterKey[] = [
   'termId',
 ];
 
+const APPLICATION_STATUS_FILTERS: readonly DashboardAnalyticsFilterKey[] = [
+  'range',
+  'granularity',
+  'academicYearId',
+  'gradeId',
+];
+
+const APPLICATION_EVENT_FILTERS: readonly DashboardAnalyticsFilterKey[] = [
+  'range',
+  'granularity',
+  'dateFrom',
+  'dateTo',
+  'academicYearId',
+  'gradeId',
+];
+
+const GUARDIAN_COVERAGE_FILTERS: readonly DashboardAnalyticsFilterKey[] = [
+  'range',
+  'granularity',
+  'academicYearId',
+  'termId',
+  'gradeId',
+  'sectionId',
+  'classroomId',
+];
+
 export const DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS = [
   'attendance.pending_sessions',
   'grades.pending_submission_reviews',
@@ -288,6 +321,17 @@ export const DASHBOARD_ANALYTICS_ATTENDANCE_PACK_CHART_KEYS = [
 
 export type DashboardAnalyticsAttendancePackChartKey =
   (typeof DASHBOARD_ANALYTICS_ATTENDANCE_PACK_CHART_KEYS)[number];
+
+export const DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK_CHART_KEYS = [
+  'admissions.applications_by_status',
+  'admissions.applications_over_time',
+  'students.enrollment_growth',
+  'students.withdrawal_trend',
+  'students.guardian_coverage',
+] as const;
+
+export type DashboardAnalyticsAdmissionsStudentsPackChartKey =
+  (typeof DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK_CHART_KEYS)[number];
 
 export const DASHBOARD_ANALYTICS_SOURCES_CATALOG: readonly DashboardAnalyticsSourceDefinition[] =
   [
@@ -731,28 +775,47 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'Application counts grouped by admissions status.',
       'donut',
       [
+        series('documents_pending', 'Documents pending'),
         series('submitted', 'Submitted'),
         series('under_review', 'Under review'),
         series('accepted', 'Accepted'),
         series('rejected', 'Rejected'),
         series('waitlisted', 'Waitlisted'),
       ],
+      APPLICATION_STATUS_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage: 'No current admission applications found.',
+        hierarchyFilters: ['academicYearId', 'gradeId'],
+        timeFilterMode: 'compatibility_defaults',
+      }),
     ),
     chart(
       'admissions.applications_over_time',
       'admissions',
       'Applications over time',
-      'Submitted admissions applications over time.',
+      'Admission submission and acceptance events over time.',
       'line',
       [series('submitted', 'Submitted'), series('accepted', 'Accepted')],
+      APPLICATION_EVENT_FILTERS,
+      computedSeriesOptions({
+        emptyStateMessage:
+          'No Application submission or acceptance events found for the selected range.',
+        hierarchyFilters: ['academicYearId', 'gradeId'],
+      }),
     ),
     chart(
       'students.enrollment_growth',
       'students',
       'Enrollment growth',
-      'Active enrollment growth over time.',
+      'Point-in-time active Enrollment stock at each reporting interval close.',
       'area',
       [series('active_enrollments', 'Active enrollments')],
+      STANDARD_OPERATIONAL_FILTERS,
+      computedSeriesOptions({
+        emptyStateMessage:
+          'No active Enrollment stock found for the selected range.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+      }),
     ),
     chart(
       'students.withdrawal_trend',
@@ -761,6 +824,12 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'Student withdrawal count trend.',
       'line',
       [series('withdrawals', 'Withdrawals')],
+      STANDARD_OPERATIONAL_FILTERS,
+      computedSeriesOptions({
+        emptyStateMessage:
+          'No Enrollment withdrawal events found for the selected range.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+      }),
     ),
     chart(
       'students.guardian_coverage',
@@ -769,6 +838,12 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'Students with guardian coverage versus missing coverage.',
       'donut',
       [series('covered', 'Covered'), series('missing', 'Missing')],
+      GUARDIAN_COVERAGE_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage: 'No current active Students found.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+        timeFilterMode: 'compatibility_defaults',
+      }),
     ),
     chart(
       'attendance.daily_trend',
@@ -1191,6 +1266,7 @@ function chart(
     snapshotHierarchyFilters?: readonly DashboardAnalyticsHierarchyFilterKey[];
     hierarchyFilters?: readonly DashboardAnalyticsHierarchyFilterKey[];
     granularityApplicable?: boolean;
+    timeFilterMode?: DashboardAnalyticsTimeFilterMode;
   } = {},
 ): DashboardAnalyticsChartDefinition {
   const definitionEndpoint = `/dashboard/analytics/charts/${chartKey}`;
@@ -1226,6 +1302,7 @@ function chart(
       dataAvailability,
       options.hierarchyFilters ?? options.snapshotHierarchyFilters,
       options.granularityApplicable,
+      options.timeFilterMode,
     ),
   };
 }
@@ -1235,12 +1312,14 @@ function computedAttendanceSeriesOptions(emptyStateMessage: string): {
   dataAvailability: 'computed_series';
   emptyState: DashboardAnalyticsChartEmptyState;
   hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
+  timeFilterMode: 'historical';
 } {
   return {
     status: 'available',
     dataAvailability: 'computed_series',
     emptyState: { reason: 'no_data', message: emptyStateMessage },
     hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+    timeFilterMode: 'historical',
   };
 }
 
@@ -1250,6 +1329,7 @@ function computedAttendanceCategoryOptions(emptyStateMessage: string): {
   emptyState: DashboardAnalyticsChartEmptyState;
   hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
   granularityApplicable: false;
+  timeFilterMode: 'range_only';
 } {
   return {
     status: 'available',
@@ -1257,6 +1337,46 @@ function computedAttendanceCategoryOptions(emptyStateMessage: string): {
     emptyState: { reason: 'no_data', message: emptyStateMessage },
     hierarchyFilters: ['academicYearId', 'termId'],
     granularityApplicable: false,
+    timeFilterMode: 'range_only',
+  };
+}
+
+function computedSeriesOptions(input: {
+  emptyStateMessage: string;
+  hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
+}): {
+  status: 'available';
+  dataAvailability: 'computed_series';
+  emptyState: DashboardAnalyticsChartEmptyState;
+  hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
+  timeFilterMode: 'historical';
+} {
+  return {
+    status: 'available',
+    dataAvailability: 'computed_series',
+    emptyState: { reason: 'no_data', message: input.emptyStateMessage },
+    hierarchyFilters: input.hierarchyFilters,
+    timeFilterMode: 'historical',
+  };
+}
+
+function computedCategoryOptions(input: {
+  emptyStateMessage: string;
+  hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
+  timeFilterMode: 'compatibility_defaults';
+}): {
+  status: 'available';
+  dataAvailability: 'computed_category';
+  emptyState: DashboardAnalyticsChartEmptyState;
+  hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
+  timeFilterMode: 'compatibility_defaults';
+} {
+  return {
+    status: 'available',
+    dataAvailability: 'computed_category',
+    emptyState: { reason: 'no_data', message: input.emptyStateMessage },
+    hierarchyFilters: input.hierarchyFilters,
+    timeFilterMode: input.timeFilterMode,
   };
 }
 
@@ -1286,15 +1406,65 @@ function buildChartQueryCapabilities(
   dataAvailability: DashboardAnalyticsDataAvailability,
   hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[] = [],
   granularityApplicableOverride?: boolean,
+  timeFilterModeOverride?: DashboardAnalyticsTimeFilterMode,
 ): DashboardAnalyticsChartQueryCapabilities {
-  const snapshotOnly = dataAvailability === 'computed_snapshot';
-  const timeFiltersApplicable =
-    !snapshotOnly &&
+  const legacySnapshotOnly = dataAvailability === 'computed_snapshot';
+  const legacyTimeFiltersApplicable =
+    !legacySnapshotOnly &&
     filters.includes('range') &&
     filters.includes('granularity');
-  const granularityApplicable =
-    !snapshotOnly &&
+  const legacyGranularityApplicable =
+    !legacySnapshotOnly &&
     (granularityApplicableOverride ?? filters.includes('granularity'));
+  const legacySupportedRanges: readonly DashboardAnalyticsRange[] =
+    legacySnapshotOnly
+      ? ['30d']
+      : legacyTimeFiltersApplicable
+        ? DASHBOARD_ANALYTICS_RANGES
+        : [];
+  const legacySupportedGranularities: readonly DashboardAnalyticsGranularity[] =
+    legacySnapshotOnly
+      ? ['day']
+      : legacyGranularityApplicable
+        ? DASHBOARD_ANALYTICS_GRANULARITIES
+        : legacyTimeFiltersApplicable
+          ? ['day']
+          : [];
+  const timeFilterMode =
+    timeFilterModeOverride ??
+    (legacySnapshotOnly
+      ? 'snapshot_compatibility'
+      : legacyTimeFiltersApplicable && legacyGranularityApplicable
+        ? 'historical'
+        : legacyTimeFiltersApplicable
+          ? 'range_only'
+          : 'unsupported');
+  const explicitMode = timeFilterModeOverride !== undefined;
+  const timeFiltersApplicable = explicitMode
+    ? timeFilterMode === 'historical' || timeFilterMode === 'range_only'
+    : legacyTimeFiltersApplicable;
+  const granularityApplicable = explicitMode
+    ? timeFilterMode === 'historical'
+    : legacyGranularityApplicable;
+  const supportedRanges: readonly DashboardAnalyticsRange[] = explicitMode
+    ? timeFilterMode === 'historical' || timeFilterMode === 'range_only'
+      ? DASHBOARD_ANALYTICS_RANGES
+      : timeFilterMode === 'compatibility_defaults' ||
+          timeFilterMode === 'snapshot_compatibility'
+        ? ['30d']
+        : []
+    : legacySupportedRanges;
+  const supportedGranularities: readonly DashboardAnalyticsGranularity[] =
+    explicitMode
+      ? timeFilterMode === 'historical'
+        ? DASHBOARD_ANALYTICS_GRANULARITIES
+        : timeFilterMode === 'range_only' ||
+            timeFilterMode === 'compatibility_defaults' ||
+            timeFilterMode === 'snapshot_compatibility'
+          ? ['day']
+          : []
+      : legacySupportedGranularities;
+  const snapshotOnly = legacySnapshotOnly;
   const supportedHierarchyFilters = snapshotOnly
     ? hierarchyFilters
     : hierarchyFilters.length > 0
@@ -1305,10 +1475,10 @@ function buildChartQueryCapabilities(
 
   const historicalSeriesCapable =
     dataAvailability === 'computed_series' ||
-    (!snapshotOnly &&
-      ['line', 'area', 'timeline', 'heatmap'].includes(type));
+    (!snapshotOnly && ['line', 'area', 'timeline', 'heatmap'].includes(type));
 
   return {
+    timeFilterMode,
     snapshotOnly,
     historicalSeriesCapable,
     categoryTableFunnelCapable:
@@ -1317,18 +1487,8 @@ function buildChartQueryCapabilities(
     definitionOnly: dataAvailability === 'definition_only',
     timeFiltersApplicable,
     granularityApplicable,
-    supportedRanges: snapshotOnly
-      ? ['30d']
-      : timeFiltersApplicable
-        ? DASHBOARD_ANALYTICS_RANGES
-        : [],
-    supportedGranularities: snapshotOnly
-      ? ['day']
-      : granularityApplicable
-        ? DASHBOARD_ANALYTICS_GRANULARITIES
-        : timeFiltersApplicable
-          ? ['day']
-          : [],
+    supportedRanges,
+    supportedGranularities,
     supportedHierarchyFilters,
   };
 }

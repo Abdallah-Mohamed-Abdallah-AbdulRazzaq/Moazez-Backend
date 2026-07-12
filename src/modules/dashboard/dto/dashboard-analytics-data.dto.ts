@@ -122,7 +122,11 @@ export class DashboardAnalyticsQueryMetadataDto {
 
 export class DashboardAnalyticsChartDataMetaDto {
   source!: 'dashboard_analytics_data_pack';
-  pack!: 'operational_snapshot_v1' | 'attendance_v1' | null;
+  pack!:
+    | 'operational_snapshot_v1'
+    | 'attendance_v1'
+    | 'admissions_students_v1'
+    | null;
   dataAvailability!: DashboardAnalyticsDataAvailability;
   computation!:
     | 'dashboard_summary_snapshot'
@@ -132,6 +136,11 @@ export class DashboardAnalyticsChartDataMetaDto {
     | 'attendance_observation_absence_rate'
     | 'attendance_observation_late_rate'
     | 'attendance_excuse_status_distribution'
+    | 'admissions_current_application_status_distribution'
+    | 'admissions_application_submission_acceptance_events'
+    | 'students_point_in_time_active_enrollment_stock'
+    | 'students_withdrawal_events'
+    | 'students_current_guardian_coverage'
     | null;
   freshness!: DashboardFreshnessMetadataDto;
   query!: DashboardAnalyticsQueryMetadataDto;
