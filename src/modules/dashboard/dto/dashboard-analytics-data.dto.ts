@@ -1,16 +1,21 @@
-import { IsDateString, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsOptional, IsUUID, Matches } from 'class-validator';
 import {
   DASHBOARD_ANALYTICS_GRANULARITIES,
   DASHBOARD_ANALYTICS_RANGES,
 } from '../domain/dashboard-analytics-catalog';
 import type {
   DashboardAnalyticsChartType,
+  DashboardAnalyticsDataQueryKey,
   DashboardAnalyticsDataAvailability,
   DashboardAnalyticsGranularity,
   DashboardAnalyticsRange,
   DashboardAnalyticsSource,
   DashboardAnalyticsStatus,
 } from '../domain/dashboard-analytics-catalog';
+import {
+  DashboardAnalyticsChartDataPoint,
+  DashboardAnalyticsPointCoordinate,
+} from '../domain/dashboard-analytics-coordinate';
 import { DashboardFreshnessMetadataDto } from './dashboard-metadata.dto';
 
 export class GetDashboardAnalyticsChartDataQueryDto {
@@ -23,31 +28,31 @@ export class GetDashboardAnalyticsChartDataQueryDto {
   granularity?: DashboardAnalyticsGranularity;
 
   @IsOptional()
-  @IsDateString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
   dateFrom?: string;
 
   @IsOptional()
-  @IsDateString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
   dateTo?: string;
 
   @IsOptional()
-  @IsString()
+  @IsUUID()
   academicYearId?: string;
 
   @IsOptional()
-  @IsString()
+  @IsUUID()
   termId?: string;
 
   @IsOptional()
-  @IsString()
+  @IsUUID()
   gradeId?: string;
 
   @IsOptional()
-  @IsString()
+  @IsUUID()
   sectionId?: string;
 
   @IsOptional()
-  @IsString()
+  @IsUUID()
   classroomId?: string;
 }
 
@@ -63,10 +68,11 @@ export class DashboardAnalyticsChartDataFiltersDto {
   classroomId!: string | null;
 }
 
-export class DashboardAnalyticsChartDataPointDto {
-  x!: 'snapshot' | 'today';
-  y!: number;
-}
+export type DashboardAnalyticsChartDataPointDto =
+  DashboardAnalyticsChartDataPoint;
+
+export type DashboardAnalyticsPointCoordinateDto =
+  DashboardAnalyticsPointCoordinate;
 
 export class DashboardAnalyticsChartDataSeriesDto {
   key!: string;
@@ -99,6 +105,21 @@ export class DashboardAnalyticsChartDataDeferredDto {
   realtime!: 'deferred';
 }
 
+export class DashboardAnalyticsResolvedWindowDto {
+  startInclusive!: string;
+  endExclusive!: string;
+  startCivilDate!: string;
+  endCivilDate!: string;
+}
+
+export class DashboardAnalyticsQueryMetadataDto {
+  effectiveTimezone!: string;
+  requestedFilters!: readonly DashboardAnalyticsDataQueryKey[];
+  appliedFilters!: readonly DashboardAnalyticsDataQueryKey[];
+  notApplicableFilters!: readonly DashboardAnalyticsDataQueryKey[];
+  resolvedWindow!: DashboardAnalyticsResolvedWindowDto;
+}
+
 export class DashboardAnalyticsChartDataMetaDto {
   source!: 'dashboard_analytics_data_pack';
   pack!: 'operational_snapshot_v1' | null;
@@ -108,6 +129,7 @@ export class DashboardAnalyticsChartDataMetaDto {
     | 'dashboard_alert_readiness_snapshot'
     | null;
   freshness!: DashboardFreshnessMetadataDto;
+  query!: DashboardAnalyticsQueryMetadataDto;
   deferred!: DashboardAnalyticsChartDataDeferredDto;
 }
 

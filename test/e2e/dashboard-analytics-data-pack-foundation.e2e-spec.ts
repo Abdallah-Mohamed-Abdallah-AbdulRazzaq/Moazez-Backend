@@ -55,6 +55,14 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
   let demoSchoolId = '';
   let demoOrganizationId = '';
   let deniedPrincipal: CreatedPrincipal;
+  let academicYearId = '';
+  let termId = '';
+  let gradeId = '';
+  let sectionId = '';
+  let otherSectionId = '';
+  let classroomId = '';
+  let crossSchoolId = '';
+  let crossSchoolAcademicYearId = '';
 
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -72,6 +80,16 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     }
     demoSchoolId = demoSchool.id;
     demoOrganizationId = demoSchool.organizationId;
+
+    const hierarchy = await createAnalyticsHierarchyFixtures();
+    academicYearId = hierarchy.academicYearId;
+    termId = hierarchy.termId;
+    gradeId = hierarchy.gradeId;
+    sectionId = hierarchy.sectionId;
+    otherSectionId = hierarchy.otherSectionId;
+    classroomId = hierarchy.classroomId;
+    crossSchoolId = hierarchy.crossSchoolId;
+    crossSchoolAcademicYearId = hierarchy.crossSchoolAcademicYearId;
 
     const permissionIds = await ensureDashboardPermissions();
     await ensureDemoAdminHasDashboardPermissions(Object.values(permissionIds));
@@ -106,6 +124,7 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
       await app.close();
     }
     if (prisma) {
+      await cleanupAnalyticsHierarchyFixtures();
       await cleanupE2eData();
       await prisma.$disconnect();
     }
@@ -171,11 +190,6 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
       .get(
         `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.pending_sessions/data`,
       )
-      .query({
-        range: '90d',
-        granularity: 'month',
-        academicYearId: 'future-academic-year-filter',
-      })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
@@ -188,14 +202,14 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
       title: 'Pending attendance sessions',
       type: 'bar',
       status: 'available',
-      range: '90d',
-      granularity: 'month',
+      range: '30d',
+      granularity: 'day',
       filters: {
-        range: '90d',
-        granularity: 'month',
+        range: '30d',
+        granularity: 'day',
         dateFrom: null,
         dateTo: null,
-        academicYearId: 'future-academic-year-filter',
+        academicYearId: null,
         termId: null,
         gradeId: null,
         sectionId: null,
@@ -206,7 +220,13 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
           {
             key: 'pending',
             label: 'Pending',
-            points: [{ x: 'snapshot', y: expectedPending }],
+            points: [
+              {
+                x: 'snapshot',
+                y: expectedPending,
+                coordinate: { kind: 'snapshot' },
+              },
+            ],
           },
         ],
         totals: { pending: expectedPending },
@@ -221,6 +241,18 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
         pack: 'operational_snapshot_v1',
         dataAvailability: 'computed_snapshot',
         computation: 'dashboard_summary_snapshot',
+        query: {
+          effectiveTimezone: expect.any(String),
+          requestedFilters: [],
+          appliedFilters: expect.arrayContaining(['academicYearId', 'termId']),
+          notApplicableFilters: ['range', 'granularity'],
+          resolvedWindow: {
+            startInclusive: expect.any(String),
+            endExclusive: expect.any(String),
+            startCivilDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+            endCivilDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          },
+        },
         deferred: {
           historicalSeries: 'deferred',
           drilldown: 'deferred',
@@ -236,11 +268,64 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     );
   });
 
+  it('applies valid same-school hierarchy filters to an existing snapshot chart', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.pending_sessions/data`,
+      )
+      .query({
+        academicYearId,
+        termId,
+        gradeId,
+        sectionId,
+        classroomId,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      filters: {
+        academicYearId,
+        termId,
+        gradeId,
+        sectionId,
+        classroomId,
+      },
+      data: {
+        totals: { pending: 0 },
+      },
+      meta: {
+        query: {
+          requestedFilters: [
+            'academicYearId',
+            'termId',
+            'gradeId',
+            'sectionId',
+            'classroomId',
+          ],
+          appliedFilters: expect.arrayContaining([
+            'academicYearId',
+            'termId',
+            'gradeId',
+            'sectionId',
+            'classroomId',
+          ]),
+          notApplicableFilters: ['range', 'granularity'],
+        },
+      },
+    });
+    expectNoInternalLeaks(response.body);
+  });
+
   it('returns a safe not_implemented envelope for known unsupported charts', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     const response = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.daily_trend/data`)
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.daily_trend/data`,
+      )
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
@@ -310,6 +395,109 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
       .query({ schoolId: demoSchoolId })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(400);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.pending_sessions/data`,
+      )
+      .query({ range: '90d' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+  });
+
+  it('rejects missing, reversed, invalid, and excessive custom ranges', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.daily_trend/data`;
+
+    for (const query of [
+      { range: 'custom', dateFrom: '2026-07-01' },
+      {
+        range: 'custom',
+        dateFrom: '2026-07-03',
+        dateTo: '2026-07-01',
+      },
+      {
+        range: 'custom',
+        dateFrom: '2026-02-30',
+        dateTo: '2026-03-01',
+      },
+      {
+        range: 'custom',
+        dateFrom: '2025-01-01',
+        dateTo: '2026-01-02',
+      },
+      {
+        range: 'custom',
+        granularity: 'month',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-03',
+      },
+      {
+        range: '30d',
+        dateFrom: '2026-07-01',
+      },
+    ]) {
+      await request(app.getHttpServer())
+        .get(path)
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    }
+  });
+
+  it('rejects malformed, cross-school, and inconsistent hierarchy filters safely', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.pending_sessions/data`;
+
+    await request(app.getHttpServer())
+      .get(path)
+      .query({ gradeId: 'not-a-uuid' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+
+    const crossSchoolResponse = await request(app.getHttpServer())
+      .get(path)
+      .query({ academicYearId: crossSchoolAcademicYearId })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+
+    const inconsistentResponse = await request(app.getHttpServer())
+      .get(path)
+      .query({ gradeId, sectionId: otherSectionId })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+
+    for (const response of [crossSchoolResponse, inconsistentResponse]) {
+      expect(response.body).toMatchObject({
+        error: {
+          code: 'not_found',
+          message: 'Dashboard analytics hierarchy was not found',
+          traceId: expect.any(String),
+        },
+      });
+    }
+    expect(JSON.stringify(crossSchoolResponse.body)).not.toContain(
+      crossSchoolAcademicYearId,
+    );
+    expect(JSON.stringify(inconsistentResponse.body)).not.toContain(gradeId);
+    expect(JSON.stringify(inconsistentResponse.body)).not.toContain(
+      otherSectionId,
+    );
+  });
+
+  it('rejects hierarchy filters for Communication and Settings snapshot charts', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    for (const chartKey of [
+      'communication.moderation_queue',
+      'settings.email_connection_readiness',
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/${chartKey}/data`)
+        .query({ gradeId })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    }
   });
 
   it('keeps analytics catalog and existing dashboard routes working', async () => {
@@ -357,6 +545,162 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
   });
+
+  async function createAnalyticsHierarchyFixtures() {
+    const academicYear = await prisma.academicYear.create({
+      data: {
+        schoolId: demoSchoolId,
+        nameAr: `${marker}-year-ar`,
+        nameEn: `${marker}-year-en`,
+        startDate: new Date('2026-01-01T00:00:00.000Z'),
+        endDate: new Date('2026-12-31T00:00:00.000Z'),
+        isActive: false,
+      },
+      select: { id: true },
+    });
+    const term = await prisma.term.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: academicYear.id,
+        nameAr: `${marker}-term-ar`,
+        nameEn: `${marker}-term-en`,
+        startDate: new Date('2026-01-01T00:00:00.000Z'),
+        endDate: new Date('2026-12-31T00:00:00.000Z'),
+        isActive: false,
+      },
+      select: { id: true },
+    });
+    const stage = await prisma.stage.create({
+      data: {
+        schoolId: demoSchoolId,
+        nameAr: `${marker}-stage-ar`,
+        nameEn: `${marker}-stage-en`,
+      },
+      select: { id: true },
+    });
+    const [grade, otherGrade] = await Promise.all([
+      prisma.grade.create({
+        data: {
+          schoolId: demoSchoolId,
+          stageId: stage.id,
+          nameAr: `${marker}-grade-a-ar`,
+          nameEn: `${marker}-grade-a-en`,
+        },
+        select: { id: true },
+      }),
+      prisma.grade.create({
+        data: {
+          schoolId: demoSchoolId,
+          stageId: stage.id,
+          nameAr: `${marker}-grade-b-ar`,
+          nameEn: `${marker}-grade-b-en`,
+        },
+        select: { id: true },
+      }),
+    ]);
+    const [section, otherSection] = await Promise.all([
+      prisma.section.create({
+        data: {
+          schoolId: demoSchoolId,
+          gradeId: grade.id,
+          nameAr: `${marker}-section-a-ar`,
+          nameEn: `${marker}-section-a-en`,
+        },
+        select: { id: true },
+      }),
+      prisma.section.create({
+        data: {
+          schoolId: demoSchoolId,
+          gradeId: otherGrade.id,
+          nameAr: `${marker}-section-b-ar`,
+          nameEn: `${marker}-section-b-en`,
+        },
+        select: { id: true },
+      }),
+    ]);
+    const classroom = await prisma.classroom.create({
+      data: {
+        schoolId: demoSchoolId,
+        sectionId: section.id,
+        nameAr: `${marker}-classroom-ar`,
+        nameEn: `${marker}-classroom-en`,
+      },
+      select: { id: true },
+    });
+
+    const crossSchool = await prisma.school.create({
+      data: {
+        organizationId: demoOrganizationId,
+        slug: `${marker}-cross-school`,
+        name: `${marker} cross school`,
+      },
+      select: { id: true },
+    });
+    const crossAcademicYear = await prisma.academicYear.create({
+      data: {
+        schoolId: crossSchool.id,
+        nameAr: `${marker}-cross-year-ar`,
+        nameEn: `${marker}-cross-year-en`,
+        startDate: new Date('2026-01-01T00:00:00.000Z'),
+        endDate: new Date('2026-12-31T00:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+
+    return {
+      academicYearId: academicYear.id,
+      termId: term.id,
+      gradeId: grade.id,
+      otherGradeId: otherGrade.id,
+      sectionId: section.id,
+      otherSectionId: otherSection.id,
+      classroomId: classroom.id,
+      crossSchoolId: crossSchool.id,
+      crossSchoolAcademicYearId: crossAcademicYear.id,
+    };
+  }
+
+  async function cleanupAnalyticsHierarchyFixtures(): Promise<void> {
+    await prisma.classroom.deleteMany({
+      where: {
+        schoolId: { in: [demoSchoolId, crossSchoolId] },
+        nameEn: { startsWith: marker },
+      },
+    });
+    await prisma.section.deleteMany({
+      where: {
+        schoolId: { in: [demoSchoolId, crossSchoolId] },
+        nameEn: { startsWith: marker },
+      },
+    });
+    await prisma.grade.deleteMany({
+      where: {
+        schoolId: { in: [demoSchoolId, crossSchoolId] },
+        nameEn: { startsWith: marker },
+      },
+    });
+    await prisma.stage.deleteMany({
+      where: {
+        schoolId: { in: [demoSchoolId, crossSchoolId] },
+        nameEn: { startsWith: marker },
+      },
+    });
+    await prisma.term.deleteMany({
+      where: {
+        schoolId: { in: [demoSchoolId, crossSchoolId] },
+        nameEn: { startsWith: marker },
+      },
+    });
+    await prisma.academicYear.deleteMany({
+      where: {
+        schoolId: { in: [demoSchoolId, crossSchoolId] },
+        nameEn: { startsWith: marker },
+      },
+    });
+    if (crossSchoolId) {
+      await prisma.school.deleteMany({ where: { id: crossSchoolId } });
+    }
+  }
 
   async function ensureDashboardPermissions(): Promise<Record<string, string>> {
     const definitions = [

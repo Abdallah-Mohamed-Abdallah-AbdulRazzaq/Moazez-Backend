@@ -58,6 +58,7 @@ export class GetDashboardModulePageUseCase {
 
     return presentDashboardModulePage({
       generatedAt,
+      timeContext,
       definition,
       summary,
       alertSignals,

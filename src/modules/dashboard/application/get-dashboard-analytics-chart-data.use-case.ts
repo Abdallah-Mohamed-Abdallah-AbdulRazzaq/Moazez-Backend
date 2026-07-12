@@ -6,20 +6,12 @@ import {
   DashboardAnalyticsChartDataResponseDto,
   GetDashboardAnalyticsChartDataQueryDto,
 } from '../dto/dashboard-analytics-data.dto';
-import {
-  DASHBOARD_ANALYTICS_GRANULARITIES,
-  DASHBOARD_ANALYTICS_RANGES,
-  DashboardAnalyticsGranularity,
-  DashboardAnalyticsRange,
-  findDashboardAnalyticsChartDefinition,
-} from '../domain/dashboard-analytics-catalog';
+import { findDashboardAnalyticsChartDefinition } from '../domain/dashboard-analytics-catalog';
 import { isDashboardAnalyticsComputedSnapshotChartKey } from '../domain/dashboard-analytics-data-pack';
-import { buildDashboardSummaryDateWindow } from './get-dashboard-summary.use-case';
-import { buildDashboardAlertsDateWindow } from './list-dashboard-alerts.use-case';
-import { DashboardAlertsRepository } from '../infrastructure/dashboard-alerts.repository';
-import { DashboardSummaryRepository } from '../infrastructure/dashboard-summary.repository';
+import { normalizeDashboardAnalyticsQuery } from '../domain/dashboard-analytics-query';
+import { DashboardAnalyticsSnapshotRepository } from '../infrastructure/dashboard-analytics-snapshot.repository';
 import { presentDashboardAnalyticsChartData } from '../presenters/dashboard-analytics-data.presenter';
-import { DashboardTimeContextService } from './dashboard-time-context.service';
+import { DashboardAnalyticsQueryContextService } from './dashboard-analytics-query-context.service';
 
 export const DASHBOARD_ANALYTICS_DATA_DEFAULT_RANGE = '30d' as const;
 export const DASHBOARD_ANALYTICS_DATA_DEFAULT_GRANULARITY = 'day' as const;
@@ -27,9 +19,8 @@ export const DASHBOARD_ANALYTICS_DATA_DEFAULT_GRANULARITY = 'day' as const;
 @Injectable()
 export class GetDashboardAnalyticsChartDataUseCase {
   constructor(
-    private readonly dashboardSummaryRepository: DashboardSummaryRepository,
-    private readonly dashboardAlertsRepository: DashboardAlertsRepository,
-    private readonly dashboardTimeContextService: DashboardTimeContextService,
+    private readonly dashboardAnalyticsQueryContextService: DashboardAnalyticsQueryContextService,
+    private readonly dashboardAnalyticsSnapshotRepository: DashboardAnalyticsSnapshotRepository,
   ) {}
 
   async execute(
@@ -45,36 +36,28 @@ export class GetDashboardAnalyticsChartDataUseCase {
       );
     }
 
-    const filters = normalizeDashboardAnalyticsChartDataQuery(query);
-    const timeContext =
-      await this.dashboardTimeContextService.resolveForSchool(scope);
-    const generatedAt = timeContext.generatedAt;
+    const queryContext =
+      await this.dashboardAnalyticsQueryContextService.resolve(
+        scope,
+        chart,
+        query,
+      );
 
     if (!isDashboardAnalyticsComputedSnapshotChartKey(chart.chartKey)) {
-      return presentDashboardAnalyticsChartData({
-        generatedAt,
-        chart,
-        filters,
-      });
+      return presentDashboardAnalyticsChartData({ queryContext, chart });
     }
 
-    const [summary, alertSignals] = await Promise.all([
-      this.dashboardSummaryRepository.loadSummarySnapshot(
+    const snapshotValue =
+      await this.dashboardAnalyticsSnapshotRepository.loadChartValue(
         scope,
-        buildDashboardSummaryDateWindow(timeContext),
-      ),
-      this.dashboardAlertsRepository.loadAlertSignals(
-        scope,
-        buildDashboardAlertsDateWindow(timeContext),
-      ),
-    ]);
+        chart.chartKey,
+        queryContext,
+      );
 
     return presentDashboardAnalyticsChartData({
-      generatedAt,
+      queryContext,
       chart,
-      filters,
-      summary,
-      alertSignals,
+      snapshotValue,
     });
   }
 }
@@ -82,37 +65,5 @@ export class GetDashboardAnalyticsChartDataUseCase {
 export function normalizeDashboardAnalyticsChartDataQuery(
   query: GetDashboardAnalyticsChartDataQueryDto,
 ): DashboardAnalyticsChartDataFiltersDto {
-  return {
-    range: isDashboardAnalyticsRange(query.range)
-      ? query.range
-      : DASHBOARD_ANALYTICS_DATA_DEFAULT_RANGE,
-    granularity: isDashboardAnalyticsGranularity(query.granularity)
-      ? query.granularity
-      : DASHBOARD_ANALYTICS_DATA_DEFAULT_GRANULARITY,
-    dateFrom: query.dateFrom ?? null,
-    dateTo: query.dateTo ?? null,
-    academicYearId: query.academicYearId ?? null,
-    termId: query.termId ?? null,
-    gradeId: query.gradeId ?? null,
-    sectionId: query.sectionId ?? null,
-    classroomId: query.classroomId ?? null,
-  };
-}
-
-function isDashboardAnalyticsRange(
-  value: unknown,
-): value is DashboardAnalyticsRange {
-  return (
-    typeof value === 'string' &&
-    (DASHBOARD_ANALYTICS_RANGES as readonly string[]).includes(value)
-  );
-}
-
-function isDashboardAnalyticsGranularity(
-  value: unknown,
-): value is DashboardAnalyticsGranularity {
-  return (
-    typeof value === 'string' &&
-    (DASHBOARD_ANALYTICS_GRANULARITIES as readonly string[]).includes(value)
-  );
+  return normalizeDashboardAnalyticsQuery(query);
 }
