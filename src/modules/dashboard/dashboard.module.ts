@@ -30,6 +30,8 @@ import { DashboardTodosRepository } from './infrastructure/dashboard-todos.repos
 import { DashboardTimeContextRepository } from './infrastructure/dashboard-time-context.repository';
 import { DashboardAnalyticsHierarchyRepository } from './infrastructure/dashboard-analytics-hierarchy.repository';
 import { DashboardAnalyticsSnapshotRepository } from './infrastructure/dashboard-analytics-snapshot.repository';
+import { DashboardAdmissionsAnalyticsRepository } from './infrastructure/dashboard-admissions-analytics.repository';
+import { DashboardStudentsAnalyticsRepository } from './infrastructure/dashboard-students-analytics.repository';
 
 @Module({
   imports: [AuthModule, ReportsModule],
@@ -43,6 +45,8 @@ import { DashboardAnalyticsSnapshotRepository } from './infrastructure/dashboard
     DashboardTimeContextRepository,
     DashboardAnalyticsHierarchyRepository,
     DashboardAnalyticsSnapshotRepository,
+    DashboardAdmissionsAnalyticsRepository,
+    DashboardStudentsAnalyticsRepository,
     DashboardTimeContextService,
     DashboardAnalyticsQueryContextService,
     GetDashboardAnalyticsCatalogUseCase,

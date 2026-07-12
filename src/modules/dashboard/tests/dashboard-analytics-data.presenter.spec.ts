@@ -155,9 +155,7 @@ describe('Dashboard analytics data presenter', () => {
   });
 
   it('returns a safe not_implemented envelope for known unsupported charts', () => {
-    const chart = findDashboardAnalyticsChartDefinition(
-      'students.enrollment_growth',
-    );
+    const chart = findDashboardAnalyticsChartDefinition('admissions.funnel');
     expect(chart).toBeDefined();
 
     const response = presentDashboardAnalyticsChartData({
@@ -166,7 +164,7 @@ describe('Dashboard analytics data presenter', () => {
     });
 
     expect(response).toMatchObject({
-      chartKey: 'students.enrollment_growth',
+      chartKey: 'admissions.funnel',
       status: 'planned',
       data: {
         series: [],
@@ -251,12 +249,85 @@ describe('Dashboard analytics data presenter', () => {
     expectNoInternalLeaks(response);
   });
 
-  it('keeps only first-pack chart definitions available', () => {
+  it('presents computed Admissions and Students data with exact pack, computation, freshness, and query metadata', () => {
+    const chart = findDashboardAnalyticsChartDefinition(
+      'students.guardian_coverage',
+    )!;
+    const response = presentDashboardAnalyticsChartData({
+      queryContext: {
+        ...defaultQueryContext(),
+        explicitlySuppliedKeys: ['academicYearId'],
+        hierarchy: {
+          ...defaultQueryContext().hierarchy,
+          academicYearId: '11111111-1111-4111-8111-111111111111',
+        },
+        filtersApplied: ['academicYearId'],
+        filtersNotApplicable: ['range', 'granularity'],
+      },
+      chart,
+      admissionsStudentsData: {
+        series: [
+          {
+            key: 'covered',
+            label: 'Covered',
+            points: [
+              {
+                x: 'covered' as any,
+                y: 4,
+                coordinate: {
+                  kind: 'category',
+                  key: 'covered',
+                  label: 'Covered',
+                },
+              },
+            ],
+          },
+        ],
+        totals: { covered: 4, missing: 0 },
+        summary: { value: 4, label: 'Active students' },
+        empty: false,
+      },
+    });
+
+    expect(response).toMatchObject({
+      chartKey: 'students.guardian_coverage',
+      status: 'available',
+      meta: {
+        pack: 'admissions_students_v1',
+        dataAvailability: 'computed_category',
+        computation: 'students_current_guardian_coverage',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
+        query: {
+          requestedFilters: ['academicYearId'],
+          appliedFilters: ['academicYearId'],
+          notApplicableFilters: ['range', 'granularity'],
+        },
+        deferred: {
+          historicalSeries: 'deferred',
+          drilldown: 'deferred',
+          exports: 'deferred',
+          realtime: 'deferred',
+        },
+      },
+    });
+    expectNoInternalLeaks(response);
+  });
+
+  it('keeps exactly the implemented pack chart definitions available', () => {
     const availableChartKeys = DASHBOARD_ANALYTICS_CATALOG.charts
       .filter((chart) => chart.status === 'available')
       .map((chart) => chart.chartKey);
 
     expect(availableChartKeys).toEqual([
+      'admissions.applications_by_status',
+      'admissions.applications_over_time',
+      'students.enrollment_growth',
+      'students.withdrawal_trend',
+      'students.guardian_coverage',
       'attendance.daily_trend',
       'attendance.status_distribution',
       'attendance.absence_rate',

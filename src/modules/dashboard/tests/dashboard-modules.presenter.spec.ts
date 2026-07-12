@@ -312,11 +312,54 @@ describe('Dashboard modules presenter', () => {
       'students.enrollment_growth',
     ]);
     expect(response.analytics.availableData).toEqual([]);
+    expect(response.analytics.charts[0]).toMatchObject({
+      status: 'available',
+      meta: { dataAvailability: 'computed_series' },
+      queryCapabilities: { timeFilterMode: 'historical' },
+    });
     expect(response.capabilities).toMatchObject({
       widgets: 'available',
       analyticsDefinitions: 'available',
       analyticsData: 'planned',
     });
+    expectNoInternalLeaks(response);
+  });
+
+  it('publishes available Admissions definitions without adding standalone data fanout', () => {
+    const admissions = findDashboardModulePageDefinition('admissions');
+    expect(admissions).toBeDefined();
+
+    const response = presentDashboardModulePage({
+      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      definition: admissions!,
+      summary: summarySnapshot(),
+      alertSignals: alertSignals(),
+      alerts: buildDashboardAlerts(alertSignals()),
+    });
+
+    expect(response.analytics.charts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          chartKey: 'admissions.applications_by_status',
+          status: 'available',
+          meta: { dataAvailability: 'computed_category' },
+        }),
+        expect.objectContaining({
+          chartKey: 'admissions.applications_over_time',
+          status: 'available',
+          meta: { dataAvailability: 'computed_series' },
+        }),
+        expect.objectContaining({
+          chartKey: 'admissions.funnel',
+          status: 'planned',
+          meta: { dataAvailability: 'definition_only' },
+        }),
+      ]),
+    );
+    expect(response.analytics.availableData).toEqual([]);
+    expect(
+      response.analytics.plannedCharts.map((chart) => chart.chartKey),
+    ).toEqual(['admissions.funnel']);
     expectNoInternalLeaks(response);
   });
 

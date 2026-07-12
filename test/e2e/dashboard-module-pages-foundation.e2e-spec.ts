@@ -400,6 +400,53 @@ describe('DASHBOARD-MODULE-PAGES-1A foundation (e2e)', () => {
     expectNoInternalLeaks(response.body);
   });
 
+  it('shows newly available Admissions and Students definitions without standalone data fanout', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+
+    const admissions = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/modules/admissions`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(admissions.body.analytics.availableData).toEqual([]);
+    expect(
+      admissions.body.analytics.charts.map(
+        (chart: { chartKey: string; status: string }) => ({
+          chartKey: chart.chartKey,
+          status: chart.status,
+        }),
+      ),
+    ).toEqual([
+      { chartKey: 'admissions.funnel', status: 'planned' },
+      {
+        chartKey: 'admissions.applications_by_status',
+        status: 'available',
+      },
+      {
+        chartKey: 'admissions.applications_over_time',
+        status: 'available',
+      },
+    ]);
+    expect(
+      admissions.body.analytics.plannedCharts.map(
+        (chart: { chartKey: string }) => chart.chartKey,
+      ),
+    ).toEqual(['admissions.funnel']);
+
+    const students = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/modules/students`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(students.body.analytics.availableData).toEqual([]);
+    expect(
+      students.body.analytics.charts.every(
+        (chart: { status: string }) => chart.status === 'available',
+      ),
+    ).toBe(true);
+    expect(students.body.analytics.plannedCharts).toEqual([]);
+    expectNoInternalLeaks(admissions.body);
+    expectNoInternalLeaks(students.body);
+  });
+
   it('keeps existing dashboard routes working', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 

@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AdmissionApplicationSource,
+  AdmissionApplicationStatus,
+  AdmissionDecisionType,
   AttendanceExcuseStatus,
   AttendanceExcuseType,
   AttendanceMode,
@@ -10,6 +13,7 @@ import {
   AttendanceStatus,
   MembershipStatus,
   PrismaClient,
+  StudentEnrollmentStatus,
   UserStatus,
   UserType,
 } from '@prisma/client';
@@ -72,6 +76,11 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
   const attendanceStudentIds: string[] = [];
   const attendanceSessionIds: string[] = [];
   const attendanceExcuseIds: string[] = [];
+  const admissionsApplicationIds: string[] = [];
+  const admissionsDecisionIds: string[] = [];
+  const analyticsEnrollmentIds: string[] = [];
+  const analyticsGuardianIds: string[] = [];
+  const analyticsStudentGuardianIds: string[] = [];
 
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -100,6 +109,7 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     crossSchoolId = hierarchy.crossSchoolId;
     crossSchoolAcademicYearId = hierarchy.crossSchoolAcademicYearId;
     await createAttendanceAnalyticsFixtures();
+    await createAdmissionsStudentsAnalyticsFixtures();
 
     const permissionIds = await ensureDashboardPermissions();
     await ensureDemoAdminHasDashboardPermissions(Object.values(permissionIds));
@@ -333,16 +343,14 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
     const response = await request(app.getHttpServer())
-      .get(
-        `${GLOBAL_PREFIX}/dashboard/analytics/charts/students.enrollment_growth/data`,
-      )
+      .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/admissions.funnel/data`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
     expect(response.body).toMatchObject({
       generatedAt: expect.any(String),
-      chartKey: 'students.enrollment_growth',
-      source: 'students',
+      chartKey: 'admissions.funnel',
+      source: 'admissions',
       status: 'planned',
       range: '30d',
       granularity: 'day',
@@ -361,6 +369,248 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
         dataAvailability: 'definition_only',
       },
     });
+    expectNoInternalLeaks(response.body);
+  });
+
+  it('returns all six current Application status categories with compatibility-only time metadata', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/admissions.applications_by_status/data`;
+    const response = await request(app.getHttpServer())
+      .get(path)
+      .query({
+        range: '30d',
+        granularity: 'day',
+        academicYearId,
+        gradeId,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      chartKey: 'admissions.applications_by_status',
+      status: 'available',
+      data: {
+        totals: {
+          documents_pending: 1,
+          submitted: 1,
+          under_review: 1,
+          accepted: 1,
+          rejected: 1,
+          waitlisted: 1,
+        },
+        summary: { value: 6, label: 'Applications' },
+        empty: false,
+      },
+      meta: {
+        pack: 'admissions_students_v1',
+        dataAvailability: 'computed_category',
+        computation: 'admissions_current_application_status_distribution',
+        query: {
+          requestedFilters: [
+            'range',
+            'granularity',
+            'academicYearId',
+            'gradeId',
+          ],
+          appliedFilters: ['academicYearId', 'gradeId'],
+          notApplicableFilters: ['range', 'granularity'],
+        },
+      },
+    });
+    expect(
+      response.body.data.series.map((series: { key: string }) => series.key),
+    ).toEqual([
+      'documents_pending',
+      'submitted',
+      'under_review',
+      'accepted',
+      'rejected',
+      'waitlisted',
+    ]);
+    for (const query of [
+      { range: '7d' },
+      { granularity: 'week' },
+      { dateFrom: '2026-07-01' },
+      { termId },
+    ]) {
+      await request(app.getHttpServer())
+        .get(path)
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    }
+    expectNoInternalLeaks(response.body);
+  });
+
+  it('returns timezone-aware Application submission and acceptance event series', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/admissions.applications_over_time/data`;
+    const response = await request(app.getHttpServer())
+      .get(path)
+      .query({
+        range: 'custom',
+        granularity: 'day',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-10',
+        academicYearId,
+        gradeId,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      chartKey: 'admissions.applications_over_time',
+      data: {
+        totals: { submitted: 5, accepted: 1 },
+        summary: { value: 6, label: 'Application lifecycle events' },
+        empty: false,
+      },
+      meta: {
+        pack: 'admissions_students_v1',
+        dataAvailability: 'computed_series',
+        computation: 'admissions_application_submission_acceptance_events',
+      },
+    });
+    const accepted = response.body.data.series.find(
+      (series: { key: string }) => series.key === 'accepted',
+    );
+    expect(
+      accepted.points.find((point: { y: number }) => point.y === 1),
+    ).toMatchObject({
+      x: '2026-07-09',
+      coordinate: { kind: 'civil_date', date: '2026-07-09' },
+    });
+    for (const granularity of ['week', 'month']) {
+      await request(app.getHttpServer())
+        .get(path)
+        .query({
+          range: 'custom',
+          granularity,
+          dateFrom: '2026-06-01',
+          dateTo: '2026-07-10',
+          academicYearId,
+          gradeId,
+        })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+    }
+    expectNoInternalLeaks(response.body);
+  });
+
+  it('returns point-in-time Enrollment stock and withdrawal events through historical placement filters', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const hierarchyQuery = {
+      academicYearId,
+      termId,
+      gradeId,
+      sectionId,
+      classroomId,
+    };
+    const stockResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/students.enrollment_growth/data`,
+      )
+      .query({
+        range: 'custom',
+        granularity: 'day',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-12',
+        ...hierarchyQuery,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(stockResponse.body).toMatchObject({
+      data: {
+        totals: { active_enrollments: 2 },
+        summary: { value: 2, label: 'Active enrollments' },
+        empty: false,
+      },
+      meta: {
+        pack: 'admissions_students_v1',
+        computation: 'students_point_in_time_active_enrollment_stock',
+      },
+    });
+    expect(stockResponse.body.data.series[0].points.at(-1)).toMatchObject({
+      x: '2026-07-12',
+      y: 2,
+    });
+
+    const withdrawalResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/students.withdrawal_trend/data`,
+      )
+      .query({
+        range: 'custom',
+        granularity: 'day',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-12',
+        ...hierarchyQuery,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(withdrawalResponse.body).toMatchObject({
+      data: {
+        totals: { withdrawals: 1 },
+        summary: { value: 1, label: 'Withdrawals' },
+      },
+      meta: {
+        pack: 'admissions_students_v1',
+        computation: 'students_withdrawal_events',
+      },
+    });
+    expectNoInternalLeaks(stockResponse.body);
+    expectNoInternalLeaks(withdrawalResponse.body);
+  });
+
+  it('counts distinct active Students for current guardian coverage and preserves hierarchy metadata', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/students.guardian_coverage/data`;
+    const response = await request(app.getHttpServer())
+      .get(path)
+      .query({
+        range: '30d',
+        granularity: 'day',
+        academicYearId,
+        termId,
+        gradeId,
+        sectionId,
+        classroomId,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      data: {
+        totals: { covered: 1, missing: 1 },
+        summary: { value: 2, label: 'Active students' },
+      },
+      meta: {
+        pack: 'admissions_students_v1',
+        computation: 'students_current_guardian_coverage',
+        query: {
+          appliedFilters: [
+            'academicYearId',
+            'termId',
+            'gradeId',
+            'sectionId',
+            'classroomId',
+          ],
+          notApplicableFilters: ['range', 'granularity'],
+        },
+      },
+    });
+    for (const query of [
+      { range: '90d' },
+      { granularity: 'month' },
+      { dateTo: '2026-07-12' },
+    ]) {
+      await request(app.getHttpServer())
+        .get(path)
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    }
     expectNoInternalLeaks(response.body);
   });
 
@@ -1094,7 +1344,229 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     attendanceExcuseIds.push(...excuses.map((excuse) => excuse.id));
   }
 
+  async function createAdmissionsStudentsAnalyticsFixtures(): Promise<void> {
+    const admin = await prisma.user.findUnique({
+      where: { email: DEMO_ADMIN_EMAIL },
+      select: { id: true },
+    });
+    if (!admin) throw new Error('Demo admin not found for analytics fixtures.');
+
+    const applicationInputs = [
+      {
+        status: AdmissionApplicationStatus.DOCUMENTS_PENDING,
+        submittedAt: null,
+      },
+      {
+        status: AdmissionApplicationStatus.SUBMITTED,
+        submittedAt: new Date('2026-07-01T20:30:00.000Z'),
+      },
+      {
+        status: AdmissionApplicationStatus.UNDER_REVIEW,
+        submittedAt: new Date('2026-07-02T20:30:00.000Z'),
+      },
+      {
+        status: AdmissionApplicationStatus.ACCEPTED,
+        submittedAt: new Date('2026-07-03T20:30:00.000Z'),
+      },
+      {
+        status: AdmissionApplicationStatus.REJECTED,
+        submittedAt: new Date('2026-07-04T20:30:00.000Z'),
+      },
+      {
+        status: AdmissionApplicationStatus.WAITLISTED,
+        submittedAt: new Date('2026-07-05T20:30:00.000Z'),
+      },
+    ];
+    const applications = await Promise.all(
+      applicationInputs.map((application, index) =>
+        prisma.application.create({
+          data: {
+            schoolId: demoSchoolId,
+            organizationId: demoOrganizationId,
+            studentName: `${marker} Application ${index + 1}`,
+            requestedAcademicYearId: academicYearId,
+            requestedGradeId: gradeId,
+            source: AdmissionApplicationSource.IN_APP,
+            ...application,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    admissionsApplicationIds.push(...applications.map(({ id }) => id));
+
+    const decision = await prisma.admissionDecision.create({
+      data: {
+        schoolId: demoSchoolId,
+        applicationId: applications[3].id,
+        decision: AdmissionDecisionType.ACCEPT,
+        decidedByUserId: admin.id,
+        decidedAt: new Date('2026-07-08T22:30:00.000Z'),
+      },
+      select: { id: true },
+    });
+    admissionsDecisionIds.push(decision.id);
+
+    const deletedApplication = await prisma.application.create({
+      data: {
+        schoolId: demoSchoolId,
+        organizationId: demoOrganizationId,
+        studentName: `${marker} Deleted Application`,
+        requestedAcademicYearId: academicYearId,
+        requestedGradeId: gradeId,
+        source: AdmissionApplicationSource.IN_APP,
+        status: AdmissionApplicationStatus.SUBMITTED,
+        submittedAt: new Date('2026-07-06T12:00:00.000Z'),
+        deletedAt: new Date('2026-07-07T00:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    admissionsApplicationIds.push(deletedApplication.id);
+
+    const enrollments = await Promise.all([
+      prisma.enrollment.create({
+        data: enrollmentInput(
+          attendanceStudentIds[0],
+          StudentEnrollmentStatus.ACTIVE,
+          '2026-07-01T00:00:00.000Z',
+          null,
+        ),
+        select: { id: true },
+      }),
+      prisma.enrollment.create({
+        data: enrollmentInput(
+          attendanceStudentIds[1],
+          StudentEnrollmentStatus.WITHDRAWN,
+          '2026-06-01T00:00:00.000Z',
+          '2026-07-05T00:00:00.000Z',
+        ),
+        select: { id: true },
+      }),
+      prisma.enrollment.create({
+        data: enrollmentInput(
+          attendanceStudentIds[2],
+          StudentEnrollmentStatus.COMPLETED,
+          '2026-06-01T00:00:00.000Z',
+          '2026-07-07T00:00:00.000Z',
+        ),
+        select: { id: true },
+      }),
+      prisma.enrollment.create({
+        data: enrollmentInput(
+          attendanceStudentIds[3],
+          StudentEnrollmentStatus.ACTIVE,
+          '2026-07-10T00:00:00.000Z',
+          null,
+        ),
+        select: { id: true },
+      }),
+      prisma.enrollment.create({
+        data: {
+          ...enrollmentInput(
+            attendanceStudentIds[4],
+            StudentEnrollmentStatus.ACTIVE,
+            '2026-07-01T00:00:00.000Z',
+            null,
+          ),
+          deletedAt: new Date('2026-07-02T00:00:00.000Z'),
+        },
+        select: { id: true },
+      }),
+    ]);
+    analyticsEnrollmentIds.push(...enrollments.map(({ id }) => id));
+
+    const guardians = await Promise.all([
+      prisma.guardian.create({
+        data: {
+          schoolId: demoSchoolId,
+          organizationId: demoOrganizationId,
+          firstName: marker,
+          lastName: 'Covered Guardian',
+          phone: `+2010${suffix.padEnd(8, '0').slice(0, 8)}`,
+          relation: 'guardian',
+        },
+        select: { id: true },
+      }),
+      prisma.guardian.create({
+        data: {
+          schoolId: demoSchoolId,
+          organizationId: demoOrganizationId,
+          firstName: marker,
+          lastName: 'Deleted Guardian',
+          phone: `+2011${suffix.padEnd(8, '1').slice(0, 8)}`,
+          relation: 'guardian',
+          deletedAt: new Date('2026-07-01T00:00:00.000Z'),
+        },
+        select: { id: true },
+      }),
+    ]);
+    analyticsGuardianIds.push(...guardians.map(({ id }) => id));
+
+    const links = await Promise.all([
+      prisma.studentGuardian.create({
+        data: {
+          schoolId: demoSchoolId,
+          studentId: attendanceStudentIds[0],
+          guardianId: guardians[0].id,
+        },
+        select: { id: true },
+      }),
+      prisma.studentGuardian.create({
+        data: {
+          schoolId: demoSchoolId,
+          studentId: attendanceStudentIds[3],
+          guardianId: guardians[1].id,
+        },
+        select: { id: true },
+      }),
+    ]);
+    analyticsStudentGuardianIds.push(...links.map(({ id }) => id));
+  }
+
+  function enrollmentInput(
+    studentId: string,
+    status: StudentEnrollmentStatus,
+    enrolledAt: string,
+    endedAt: string | null,
+  ) {
+    return {
+      schoolId: demoSchoolId,
+      studentId,
+      academicYearId,
+      termId,
+      classroomId,
+      status,
+      enrolledAt: new Date(enrolledAt),
+      endedAt: endedAt ? new Date(endedAt) : null,
+    };
+  }
+
   async function cleanupAnalyticsHierarchyFixtures(): Promise<void> {
+    if (analyticsStudentGuardianIds.length > 0) {
+      await prisma.studentGuardian.deleteMany({
+        where: { id: { in: analyticsStudentGuardianIds } },
+      });
+    }
+    if (analyticsGuardianIds.length > 0) {
+      await prisma.guardian.deleteMany({
+        where: { id: { in: analyticsGuardianIds } },
+      });
+    }
+    if (analyticsEnrollmentIds.length > 0) {
+      await prisma.enrollment.deleteMany({
+        where: { id: { in: analyticsEnrollmentIds } },
+      });
+    }
+    if (admissionsDecisionIds.length > 0) {
+      await prisma.admissionDecision.deleteMany({
+        where: { id: { in: admissionsDecisionIds } },
+      });
+    }
+    if (admissionsApplicationIds.length > 0) {
+      await prisma.application.deleteMany({
+        where: { id: { in: admissionsApplicationIds } },
+      });
+    }
     if (attendanceExcuseIds.length > 0) {
       await prisma.attendanceExcuseRequest.deleteMany({
         where: { id: { in: attendanceExcuseIds } },
