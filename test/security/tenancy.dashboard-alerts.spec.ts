@@ -221,9 +221,11 @@ describe('Dashboard alerts tenancy/security contracts', () => {
     const repository = new DashboardAlertsRepository(prisma);
     const window = {
       now: new Date('2026-06-01T12:00:00.000Z'),
+      todayDate: new Date('2026-06-01T00:00:00.000Z'),
       todayStart: new Date('2026-06-01T00:00:00.000Z'),
-      last30DaysStart: new Date('2026-05-02T12:00:00.000Z'),
-      next7DaysEnd: new Date('2026-06-08T12:00:00.000Z'),
+      todayEndExclusive: new Date('2026-06-02T00:00:00.000Z'),
+      last30DaysStart: new Date('2026-05-02T00:00:00.000Z'),
+      next7DaysEndExclusive: new Date('2026-06-08T09:00:00.000Z'),
     };
 
     const schoolASignals = await withSchoolScope(schoolAId, () =>

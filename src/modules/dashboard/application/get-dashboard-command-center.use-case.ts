@@ -16,6 +16,7 @@ import { DashboardActivityFeedRepository } from '../infrastructure/dashboard-act
 import { DashboardAlertsRepository } from '../infrastructure/dashboard-alerts.repository';
 import { DashboardSummaryRepository } from '../infrastructure/dashboard-summary.repository';
 import { presentDashboardCommandCenter } from '../presenters/dashboard-command-center.presenter';
+import { DashboardTimeContextService } from './dashboard-time-context.service';
 
 @Injectable()
 export class GetDashboardCommandCenterUseCase {
@@ -23,20 +24,22 @@ export class GetDashboardCommandCenterUseCase {
     private readonly dashboardSummaryRepository: DashboardSummaryRepository,
     private readonly dashboardAlertsRepository: DashboardAlertsRepository,
     private readonly dashboardActivityFeedRepository: DashboardActivityFeedRepository,
+    private readonly dashboardTimeContextService: DashboardTimeContextService,
   ) {}
 
   async execute(): Promise<DashboardCommandCenterResponseDto> {
     const scope = requireDashboardScope();
-    const now = new Date();
+    const timeContext =
+      await this.dashboardTimeContextService.resolveForSchool(scope);
 
     const [summary, alertSignals, activityAuditRecords] = await Promise.all([
       this.dashboardSummaryRepository.loadSummarySnapshot(
         scope,
-        buildDashboardSummaryDateWindow(now),
+        buildDashboardSummaryDateWindow(timeContext),
       ),
       this.dashboardAlertsRepository.loadAlertSignals(
         scope,
-        buildDashboardAlertsDateWindow(now),
+        buildDashboardAlertsDateWindow(timeContext),
       ),
       this.dashboardActivityFeedRepository.listActivityAuditRecords(scope, {
         take: 20,
@@ -53,7 +56,7 @@ export class GetDashboardCommandCenterUseCase {
       .slice(0, 6);
 
     return presentDashboardCommandCenter({
-      generatedAt: now,
+      timeContext,
       summary,
       alerts,
       activityItems,

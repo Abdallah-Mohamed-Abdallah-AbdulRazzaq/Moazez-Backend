@@ -2,7 +2,10 @@ import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { DashboardAnalyticsChartDto } from './dashboard-analytics.dto';
 import { DashboardAnalyticsChartDataResponseDto } from './dashboard-analytics-data.dto';
-import { DashboardWidgetActionDto, DashboardWidgetDto } from './dashboard-widgets.dto';
+import {
+  DashboardWidgetActionDto,
+  DashboardWidgetDto,
+} from './dashboard-widgets.dto';
 import {
   DASHBOARD_MODULE_MAX_LIMIT,
   DASHBOARD_MODULE_DEFAULT_LIMIT,
@@ -18,6 +21,7 @@ import type {
   DashboardModuleStatus,
   DashboardModuleTone,
 } from '../domain/dashboard-module-pages';
+import { DashboardFreshnessMetadataDto } from './dashboard-metadata.dto';
 
 export class ListDashboardModulesQueryDto {
   @IsOptional()
@@ -98,6 +102,7 @@ export class DashboardModulesDeferredDto {
 export class DashboardModulesMetaDto {
   source!: 'dashboard_module_pages';
   version!: 'v1';
+  freshness!: DashboardFreshnessMetadataDto;
 }
 
 export class DashboardModulesResponseDto {
@@ -174,6 +179,7 @@ export class DashboardModulePageMetaDto {
   source!: 'dashboard_module_page';
   version!: 'v1';
   dataFreshness!: 'live';
+  freshness!: DashboardFreshnessMetadataDto;
   deferred!: DashboardModulePageDeferredDto;
 }
 

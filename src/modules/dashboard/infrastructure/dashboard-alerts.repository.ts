@@ -29,9 +29,11 @@ import { DashboardScope } from '../dashboard-context';
 
 export interface DashboardAlertsDateWindow {
   now: Date;
+  todayDate: Date;
   todayStart: Date;
+  todayEndExclusive: Date;
   last30DaysStart: Date;
-  next7DaysEnd: Date;
+  next7DaysEndExclusive: Date;
 }
 
 export interface DashboardAlertAcademicContextSnapshot {
@@ -267,7 +269,7 @@ export class DashboardAlertsRepository {
         {},
         academicContext,
       ),
-      date: window.todayStart,
+      date: window.todayDate,
     };
 
     const [
@@ -519,7 +521,7 @@ export class DashboardAlertsRepository {
             status: CommunicationAnnouncementStatus.PUBLISHED,
             expiresAt: {
               gte: window.now,
-              lte: window.next7DaysEnd,
+              lt: window.next7DaysEndExclusive,
             },
           },
         }),

@@ -14,6 +14,7 @@ import {
   DashboardAnalyticsSource,
   DashboardAnalyticsStatus,
 } from '../domain/dashboard-analytics-catalog';
+import { dashboardFreshness } from './dashboard-metadata.presenter';
 
 export interface DashboardAnalyticsCatalogPresentationInput {
   generatedAt: Date;
@@ -58,6 +59,7 @@ export function presentDashboardAnalyticsCatalog(
     meta: {
       source: 'dashboard_analytics_catalog',
       dataFreshness: 'catalog',
+      freshness: dashboardFreshness('static_catalog'),
     },
   };
 }
@@ -77,7 +79,7 @@ export function presentDashboardAnalyticsCharts(
       status: input.filters.status ?? null,
       limit: input.filters.limit,
     },
-    deferred: dashboardAnalyticsChartsDeferred(),
+    deferred: dashboardAnalyticsChartsDeferred(input.charts),
   };
 }
 
@@ -87,7 +89,7 @@ export function presentDashboardAnalyticsChart(
   return {
     generatedAt: input.generatedAt.toISOString(),
     chart: presentChartDetail(input.chart),
-    deferred: dashboardAnalyticsChartsDeferred(),
+    deferred: dashboardAnalyticsChartsDeferred([input.chart]),
   };
 }
 
@@ -124,6 +126,9 @@ function presentChartDefinition(
     supportedGranularities: chart.supportedGranularities,
     requiredPermission: chart.requiredPermission,
     endpoint: chart.endpoint,
+    definitionEndpoint: chart.definitionEndpoint,
+    dataEndpoint: chart.dataEndpoint,
+    endpointPurpose: chart.endpointPurpose,
     series: chart.series.map((series) => ({ ...series })),
     filters: chart.filters,
     emptyState: { ...chart.emptyState },
@@ -179,7 +184,8 @@ function summarizeCharts(charts: readonly DashboardAnalyticsChartDto[]) {
 
 function dashboardAnalyticsCatalogDeferred() {
   return {
-    computedSeries: 'deferred',
+    computedSeries: 'snapshot_only',
+    historicalSeries: 'deferred',
     drilldownData: 'deferred',
     savedReports: 'deferred',
     customDashboards: 'deferred',
@@ -188,9 +194,16 @@ function dashboardAnalyticsCatalogDeferred() {
   } as const;
 }
 
-function dashboardAnalyticsChartsDeferred() {
+function dashboardAnalyticsChartsDeferred(
+  charts: readonly DashboardAnalyticsChartDefinition[],
+) {
+  const hasComputedSnapshot = charts.some(
+    (chart) => chart.meta.dataAvailability === 'computed_snapshot',
+  );
+
   return {
-    computedSeries: 'deferred',
+    computedSeries: hasComputedSnapshot ? 'snapshot_only' : 'deferred',
+    historicalSeries: 'deferred',
     drilldownData: 'deferred',
   } as const;
 }

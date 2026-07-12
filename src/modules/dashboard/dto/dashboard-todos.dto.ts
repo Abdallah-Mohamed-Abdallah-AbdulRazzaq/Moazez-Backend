@@ -13,6 +13,7 @@ import {
   Min,
   ValidateIf,
 } from 'class-validator';
+import { DashboardFreshnessMetadataDto } from './dashboard-metadata.dto';
 
 export const DASHBOARD_TODO_STATUSES = ['pending', 'completed'] as const;
 export const DASHBOARD_TODO_PRIORITIES = ['low', 'normal', 'high'] as const;
@@ -134,6 +135,7 @@ export class DashboardTodosMetaDto {
   source!: 'dashboard_todos';
   version!: 'v1';
   scope!: 'owner';
+  freshness!: DashboardFreshnessMetadataDto;
 }
 
 export class DashboardTodosResponseDto {

@@ -15,6 +15,8 @@ import { GetDashboardAnalyticsChartDataUseCase } from '../../src/modules/dashboa
 import { DashboardController } from '../../src/modules/dashboard/controller/dashboard.controller';
 import { DashboardAlertsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-alerts.repository';
 import { DashboardSummaryRepository } from '../../src/modules/dashboard/infrastructure/dashboard-summary.repository';
+import { DashboardTimeContextService } from '../../src/modules/dashboard/application/dashboard-time-context.service';
+import { DashboardTimeContextRepository } from '../../src/modules/dashboard/infrastructure/dashboard-time-context.repository';
 
 jest.setTimeout(60000);
 
@@ -163,6 +165,9 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
     const useCase = new GetDashboardAnalyticsChartDataUseCase(
       new DashboardSummaryRepository(prisma),
       new DashboardAlertsRepository(prisma),
+      new DashboardTimeContextService(
+        new DashboardTimeContextRepository(prisma),
+      ),
     );
 
     const schoolAResponse = await withSchoolScope(schoolAId, () =>
@@ -201,6 +206,9 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
     const useCase = new GetDashboardAnalyticsChartDataUseCase(
       new DashboardSummaryRepository(prisma),
       new DashboardAlertsRepository(prisma),
+      new DashboardTimeContextService(
+        new DashboardTimeContextRepository(prisma),
+      ),
     );
 
     const response = await withSchoolScope(schoolAId, () =>

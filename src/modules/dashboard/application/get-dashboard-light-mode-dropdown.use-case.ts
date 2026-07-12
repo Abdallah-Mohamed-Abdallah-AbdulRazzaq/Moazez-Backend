@@ -18,12 +18,16 @@ import {
   presentDashboardLightModeDropdown,
 } from '../presenters/dashboard-light-mode-dropdown.presenter';
 import { toDashboardTodoDate } from './dashboard-todo.helpers';
+import {
+  buildDashboardTimeContext,
+  formatDashboardCivilDate,
+  resolveDashboardTimezone,
+} from '../domain/dashboard-time-context';
 
 const DEFAULT_DASHBOARD_DROPDOWN_LOCALE: DashboardLightModeDropdownLocale =
   'en';
 const DEFAULT_DASHBOARD_DROPDOWN_UNITS: DashboardLightModeDropdownUnits =
   'metric';
-const DEFAULT_DASHBOARD_DROPDOWN_TIMEZONE = 'UTC';
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface NormalizedDashboardLightModeDropdownQuery {
@@ -74,22 +78,23 @@ export function normalizeDashboardLightModeDropdownQuery(
   schoolLocation: DashboardLightModeDropdownSchoolLocationSnapshot,
   generatedAt: Date,
 ): NormalizedDashboardLightModeDropdownQuery {
-  const timezone = resolveDashboardLightModeDropdownTimezone(
-    query.timezone,
-    schoolLocation.profile?.timezone,
-  );
+  const timeContext = buildDashboardTimeContext({
+    generatedAt,
+    explicitTimezone: query.timezone,
+    schoolTimezone: schoolLocation.profile?.timezone,
+  });
 
   return {
     locale: isDashboardLightModeDropdownLocale(query.locale)
       ? query.locale
       : DEFAULT_DASHBOARD_DROPDOWN_LOCALE,
-    timezone,
+    timezone: timeContext.timezone,
     units: isDashboardLightModeDropdownUnits(query.units)
       ? query.units
       : DEFAULT_DASHBOARD_DROPDOWN_UNITS,
     date: normalizeDashboardLightModeDropdownDate(
       query.date,
-      timezone,
+      timeContext.timezone,
       generatedAt,
     ),
   };
@@ -99,17 +104,7 @@ export function resolveDashboardLightModeDropdownTimezone(
   queryTimezone: string | undefined,
   schoolTimezone: string | null | undefined,
 ): string {
-  const normalizedQueryTimezone = normalizeOptionalText(queryTimezone);
-  if (normalizedQueryTimezone && isValidTimeZone(normalizedQueryTimezone)) {
-    return normalizedQueryTimezone;
-  }
-
-  const normalizedSchoolTimezone = normalizeOptionalText(schoolTimezone);
-  if (normalizedSchoolTimezone && isValidTimeZone(normalizedSchoolTimezone)) {
-    return normalizedSchoolTimezone;
-  }
-
-  return DEFAULT_DASHBOARD_DROPDOWN_TIMEZONE;
+  return resolveDashboardTimezone(queryTimezone, schoolTimezone);
 }
 
 export function normalizeDashboardLightModeDropdownDate(
@@ -130,15 +125,7 @@ export function normalizeDashboardLightModeDropdownDate(
 }
 
 export function formatDateInTimezone(date: Date, timezone: string): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-  const partByType = new Map(parts.map((part) => [part.type, part.value]));
-
-  return `${partByType.get('year')}-${partByType.get('month')}-${partByType.get('day')}`;
+  return formatDashboardCivilDate(date, timezone);
 }
 
 function isDashboardLightModeDropdownLocale(
@@ -157,15 +144,6 @@ function isDashboardLightModeDropdownUnits(
     typeof value === 'string' &&
     (DASHBOARD_LIGHT_MODE_DROPDOWN_UNITS as readonly string[]).includes(value)
   );
-}
-
-function isValidTimeZone(timezone: string): boolean {
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function isValidDateOnly(value: string): boolean {

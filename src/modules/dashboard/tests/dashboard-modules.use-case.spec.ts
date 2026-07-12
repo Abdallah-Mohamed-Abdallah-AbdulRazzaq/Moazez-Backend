@@ -18,11 +18,15 @@ import {
   DashboardSummaryRepository,
   DashboardSummarySnapshot,
 } from '../infrastructure/dashboard-summary.repository';
+import { dashboardTimeContextServiceMock } from './dashboard-test-time-context';
 
 describe('Dashboard modules use cases', () => {
   it('returns the stable module list response shape with all required module keys', async () => {
     const alertsRepository = alertsRepositoryMock(alertSignals());
-    const useCase = new ListDashboardModulesUseCase(alertsRepository as any);
+    const useCase = new ListDashboardModulesUseCase(
+      alertsRepository as any,
+      dashboardTimeContextServiceMock() as any,
+    );
 
     const response = await withSchoolScope(() => useCase.execute());
 
@@ -36,7 +40,7 @@ describe('Dashboard modules use cases', () => {
         now: expect.any(Date),
         todayStart: expect.any(Date),
         last30DaysStart: expect.any(Date),
-        next7DaysEnd: expect.any(Date),
+        next7DaysEndExclusive: new Date('2026-07-18T22:30:00.000Z'),
       }),
     );
     expect(response).toMatchObject({
@@ -60,6 +64,11 @@ describe('Dashboard modules use cases', () => {
       meta: {
         source: 'dashboard_module_pages',
         version: 'v1',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
     expect(response.modules.map((modulePage) => modulePage.moduleKey)).toEqual([
@@ -74,7 +83,11 @@ describe('Dashboard modules use cases', () => {
       'communication',
       'settings',
     ]);
-    expect(response.modules.find((modulePage) => modulePage.moduleKey === 'attendance')).toMatchObject({
+    expect(
+      response.modules.find(
+        (modulePage) => modulePage.moduleKey === 'attendance',
+      ),
+    ).toMatchObject({
       frontendRoute: '/dashboard/modules/attendance',
       sourceRoute: '/attendance/roll-call',
       summary: {
@@ -95,6 +108,7 @@ describe('Dashboard modules use cases', () => {
   it('filters by status/source and normalizes limit defensively', async () => {
     const useCase = new ListDashboardModulesUseCase(
       alertsRepositoryMock(alertSignals()) as any,
+      dashboardTimeContextServiceMock() as any,
     );
 
     const response = await withSchoolScope(() =>
@@ -157,7 +171,7 @@ describe('Dashboard modules use cases', () => {
         now: expect.any(Date),
         todayStart: expect.any(Date),
         last30DaysStart: expect.any(Date),
-        next7DaysEnd: expect.any(Date),
+        next7DaysEndExclusive: new Date('2026-07-18T22:30:00.000Z'),
       }),
     );
     expect(response).toMatchObject({
@@ -187,6 +201,11 @@ describe('Dashboard modules use cases', () => {
         source: 'dashboard_module_page',
         version: 'v1',
         dataFreshness: 'live',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
     expect(response.widgets.map((widget) => widget.widgetKey)).toEqual([
@@ -201,10 +220,12 @@ describe('Dashboard modules use cases', () => {
       'attendance.pending_sessions',
       'attendance.excuse_status',
     ]);
-    expect(response.analytics.availableData.map((data) => data.chartKey)).toEqual([
-      'attendance.pending_sessions',
-    ]);
-    expect(response.analytics.plannedCharts.map((chart) => chart.chartKey)).toEqual([
+    expect(
+      response.analytics.availableData.map((data) => data.chartKey),
+    ).toEqual(['attendance.pending_sessions']);
+    expect(
+      response.analytics.plannedCharts.map((chart) => chart.chartKey),
+    ).toEqual([
       'attendance.daily_trend',
       'attendance.status_distribution',
       'attendance.absence_rate',
@@ -234,7 +255,9 @@ describe('Dashboard modules use cases', () => {
       'settings.email_connection',
       'settings.login_identity',
     ]);
-    expect(response.analytics.availableData.map((data) => data.chartKey)).toEqual([
+    expect(
+      response.analytics.availableData.map((data) => data.chartKey),
+    ).toEqual([
       'settings.email_connection_readiness',
       'settings.login_identity_readiness',
     ]);
@@ -243,9 +266,9 @@ describe('Dashboard modules use cases', () => {
         (data) => data.chartKey === 'settings.email_connection_readiness',
       )?.data.summary,
     ).toMatchObject({ value: 100 });
-    expect(response.analytics.plannedCharts.map((chart) => chart.chartKey)).toEqual([
-      'settings.notification_readiness',
-    ]);
+    expect(
+      response.analytics.plannedCharts.map((chart) => chart.chartKey),
+    ).toEqual(['settings.notification_readiness']);
     expectNoInternalLeaks(response);
   });
 
@@ -265,6 +288,7 @@ describe('Dashboard modules use cases', () => {
   it('rejects callers without an active school scope', async () => {
     const useCase = new ListDashboardModulesUseCase(
       alertsRepositoryMock(alertSignals()) as any,
+      dashboardTimeContextServiceMock() as any,
     );
 
     await expect(
@@ -304,6 +328,7 @@ function detailUseCaseWith(input: {
     useCase: new GetDashboardModulePageUseCase(
       summaryRepository as any,
       alertsRepository as any,
+      dashboardTimeContextServiceMock() as any,
     ),
   };
 }
@@ -316,9 +341,9 @@ function summaryRepositoryMock(
   };
 }
 
-function alertsRepositoryMock(alertSignals: DashboardAlertSignals): jest.Mocked<
-  Pick<DashboardAlertsRepository, 'loadAlertSignals'>
-> {
+function alertsRepositoryMock(
+  alertSignals: DashboardAlertSignals,
+): jest.Mocked<Pick<DashboardAlertsRepository, 'loadAlertSignals'>> {
   return {
     loadAlertSignals: jest.fn().mockResolvedValue(alertSignals),
   };

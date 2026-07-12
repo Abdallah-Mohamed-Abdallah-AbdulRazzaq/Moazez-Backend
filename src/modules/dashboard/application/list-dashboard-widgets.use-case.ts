@@ -24,6 +24,8 @@ import {
   DashboardWidgetsPresentationInput,
   presentDashboardWidgets,
 } from '../presenters/dashboard-widgets.presenter';
+import { DashboardTimeContextService } from './dashboard-time-context.service';
+import { DashboardTimeContext } from '../domain/dashboard-time-context';
 
 export interface NormalizedDashboardWidgetsQuery {
   source?: DashboardWidgetSource;
@@ -37,14 +39,16 @@ export class ListDashboardWidgetsUseCase {
     private readonly dashboardSummaryRepository: DashboardSummaryRepository,
     private readonly dashboardAlertsRepository: DashboardAlertsRepository,
     private readonly dashboardActivityFeedRepository: DashboardActivityFeedRepository,
+    private readonly dashboardTimeContextService: DashboardTimeContextService,
   ) {}
 
   async execute(
     query: ListDashboardWidgetsQueryDto = new ListDashboardWidgetsQueryDto(),
   ): Promise<DashboardWidgetsResponseDto> {
     const scope = requireDashboardScope();
-    const now = new Date();
-    const input = await this.loadPresentationInput(scope, now);
+    const timeContext =
+      await this.dashboardTimeContextService.resolveForSchool(scope);
+    const input = await this.loadPresentationInput(scope, timeContext);
 
     return presentDashboardWidgets({
       ...input,
@@ -54,16 +58,16 @@ export class ListDashboardWidgetsUseCase {
 
   private async loadPresentationInput(
     scope: DashboardScope,
-    now: Date,
+    timeContext: DashboardTimeContext,
   ): Promise<DashboardWidgetsPresentationInput> {
     const [summary, alertSignals, activityAuditRecords] = await Promise.all([
       this.dashboardSummaryRepository.loadSummarySnapshot(
         scope,
-        buildDashboardSummaryDateWindow(now),
+        buildDashboardSummaryDateWindow(timeContext),
       ),
       this.dashboardAlertsRepository.loadAlertSignals(
         scope,
-        buildDashboardAlertsDateWindow(now),
+        buildDashboardAlertsDateWindow(timeContext),
       ),
       this.dashboardActivityFeedRepository.listActivityAuditRecords(scope, {
         take: 20,
@@ -76,7 +80,7 @@ export class ListDashboardWidgetsUseCase {
       .slice(0, 5);
 
     return {
-      generatedAt: now,
+      generatedAt: timeContext.generatedAt,
       summary,
       alertSignals,
       activityItems,

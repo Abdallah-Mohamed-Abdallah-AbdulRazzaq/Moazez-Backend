@@ -40,9 +40,11 @@ describe('Dashboard widgets presenter', () => {
       deferred: {
         customLayouts: 'deferred',
         widgetPreferences: 'deferred',
-        analyticsCharts: 'deferred',
+        analyticsCharts: 'integration_deferred',
         weatherWidgets: 'deferred',
-        todoWidgets: 'deferred',
+        todoWidgets: 'integration_deferred',
+        analyticsStandalone: 'snapshot_only',
+        todosStandalone: 'persisted',
       },
     });
     expect(response.widgets.map((widget) => widget.widgetKey)).toEqual([
@@ -79,6 +81,11 @@ describe('Dashboard widgets presenter', () => {
         emptyState: null,
         meta: {
           freshness: 'live',
+          freshnessDetails: {
+            dataMode: 'request_time_snapshot',
+            cacheStatus: 'not_used',
+            realtimeStatus: 'not_used',
+          },
         },
       }),
     );

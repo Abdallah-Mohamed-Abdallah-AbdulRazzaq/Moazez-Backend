@@ -3,6 +3,7 @@ import {
   DashboardAlertsResponseDto,
   DashboardAlertsSummaryDto,
 } from '../dto/dashboard-alerts.dto';
+import { dashboardFreshness } from './dashboard-metadata.presenter';
 
 export interface DashboardAlertsPresentationInput {
   generatedAt: Date;
@@ -33,7 +34,11 @@ export function presentDashboardAlerts(
       persistence: 'deferred',
       acknowledge: 'deferred',
       dismiss: 'deferred',
-      activityFeed: 'deferred',
+      activityFeed: 'available',
+    },
+    meta: {
+      source: 'dashboard_alerts',
+      freshness: dashboardFreshness('request_time_snapshot'),
     },
   };
 }

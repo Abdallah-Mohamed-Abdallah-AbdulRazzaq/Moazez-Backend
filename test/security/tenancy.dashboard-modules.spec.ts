@@ -22,6 +22,8 @@ import {
   presentDashboardModules,
 } from '../../src/modules/dashboard/presenters/dashboard-modules.presenter';
 import { buildDashboardAlerts } from '../../src/modules/dashboard/application/list-dashboard-alerts.use-case';
+import { DashboardTimeContextService } from '../../src/modules/dashboard/application/dashboard-time-context.service';
+import { DashboardTimeContextRepository } from '../../src/modules/dashboard/infrastructure/dashboard-time-context.repository';
 
 jest.setTimeout(60000);
 
@@ -178,21 +180,26 @@ describe('Dashboard modules tenancy/security contracts', () => {
   it('keeps school A from observing school B module data and ignores override-shaped input', async () => {
     const listUseCase = new ListDashboardModulesUseCase(
       new DashboardAlertsRepository(prisma),
+      new DashboardTimeContextService(
+        new DashboardTimeContextRepository(prisma),
+      ),
     );
     const detailUseCase = new GetDashboardModulePageUseCase(
       new DashboardSummaryRepository(prisma),
       new DashboardAlertsRepository(prisma),
+      new DashboardTimeContextService(
+        new DashboardTimeContextRepository(prisma),
+      ),
     );
 
     const listResponse = await withSchoolScope(schoolAId, () =>
-      (listUseCase.execute as unknown as (query: unknown) => Promise<unknown>).call(
-        listUseCase,
-        {
-          schoolId: schoolBId,
-          organizationId,
-          source: 'students',
-        },
-      ),
+      (
+        listUseCase.execute as unknown as (query: unknown) => Promise<unknown>
+      ).call(listUseCase, {
+        schoolId: schoolBId,
+        organizationId,
+        source: 'students',
+      }),
     );
     const detailResponse = await withSchoolScope(schoolAId, () =>
       detailUseCase.execute('students'),
@@ -242,9 +249,14 @@ describe('Dashboard modules tenancy/security contracts', () => {
       alerts,
     });
 
-    expect(listResponse.modules.map((modulePage) => modulePage.moduleKey)).not.toContain(
-      'platform-admin',
-    );
+    expect(
+      listResponse.modules.map((modulePage) => modulePage.moduleKey),
+    ).not.toContain('platform-admin');
+    expect(listResponse.meta.freshness).toEqual({
+      dataMode: 'request_time_snapshot',
+      cacheStatus: 'not_used',
+      realtimeStatus: 'not_used',
+    });
     expect(detailResponse.module.moduleKey).toBe('attendance');
     expectNoInternalLeaks(listResponse);
     expectNoInternalLeaks(detailResponse);

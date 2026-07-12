@@ -38,6 +38,11 @@ describe('Dashboard modules presenter', () => {
       meta: {
         source: 'dashboard_module_pages',
         version: 'v1',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
     expect(response.modules.map((modulePage) => modulePage.moduleKey)).toEqual([
@@ -135,6 +140,11 @@ describe('Dashboard modules presenter', () => {
         source: 'dashboard_module_page',
         version: 'v1',
         dataFreshness: 'live',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
         deferred: {
           customLayouts: 'deferred',
           userPreferences: 'deferred',
@@ -164,9 +174,9 @@ describe('Dashboard modules presenter', () => {
       'attendance.absent_entries_today',
       'attendance.sessions_pending_submission',
     ]);
-    expect(response.analytics.availableData.map((data) => data.chartKey)).toEqual([
-      'attendance.pending_sessions',
-    ]);
+    expect(
+      response.analytics.availableData.map((data) => data.chartKey),
+    ).toEqual(['attendance.pending_sessions']);
     expect(response.analytics.availableData[0]).toMatchObject({
       data: {
         series: [
@@ -182,7 +192,9 @@ describe('Dashboard modules presenter', () => {
         dataAvailability: 'computed_snapshot',
       },
     });
-    expect(response.analytics.plannedCharts.map((chart) => chart.chartKey)).toEqual([
+    expect(
+      response.analytics.plannedCharts.map((chart) => chart.chartKey),
+    ).toEqual([
       'attendance.daily_trend',
       'attendance.status_distribution',
       'attendance.absence_rate',
@@ -246,13 +258,15 @@ describe('Dashboard modules presenter', () => {
       ),
     });
 
-    expect(response.analytics.availableData.map((data) => data.chartKey)).toEqual([
+    expect(
+      response.analytics.availableData.map((data) => data.chartKey),
+    ).toEqual([
       'settings.email_connection_readiness',
       'settings.login_identity_readiness',
     ]);
-    expect(response.analytics.plannedCharts.map((chart) => chart.chartKey)).toEqual([
-      'settings.notification_readiness',
-    ]);
+    expect(
+      response.analytics.plannedCharts.map((chart) => chart.chartKey),
+    ).toEqual(['settings.notification_readiness']);
     expect(
       response.analytics.plannedCharts.every(
         (chart) =>
@@ -268,7 +282,9 @@ describe('Dashboard modules presenter', () => {
 
   it('omits missing widget and chart references without crashing', () => {
     const students = findDashboardModulePageDefinition('students');
-    const chart = findDashboardAnalyticsChartDefinition('students.enrollment_growth');
+    const chart = findDashboardAnalyticsChartDefinition(
+      'students.enrollment_growth',
+    );
     expect(students).toBeDefined();
     expect(chart).toBeDefined();
 

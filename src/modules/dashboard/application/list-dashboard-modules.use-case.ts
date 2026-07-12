@@ -18,6 +18,7 @@ import {
   buildDashboardAlerts,
   buildDashboardAlertsDateWindow,
 } from './list-dashboard-alerts.use-case';
+import { DashboardTimeContextService } from './dashboard-time-context.service';
 
 export interface NormalizedDashboardModulesQuery {
   status?: DashboardModuleStatus;
@@ -29,16 +30,19 @@ export interface NormalizedDashboardModulesQuery {
 export class ListDashboardModulesUseCase {
   constructor(
     private readonly dashboardAlertsRepository: DashboardAlertsRepository,
+    private readonly dashboardTimeContextService: DashboardTimeContextService,
   ) {}
 
   async execute(
     query: ListDashboardModulesQueryDto = new ListDashboardModulesQueryDto(),
   ): Promise<DashboardModulesResponseDto> {
     const scope = requireDashboardScope();
-    const generatedAt = new Date();
+    const timeContext =
+      await this.dashboardTimeContextService.resolveForSchool(scope);
+    const generatedAt = timeContext.generatedAt;
     const alertSignals = await this.dashboardAlertsRepository.loadAlertSignals(
       scope,
-      buildDashboardAlertsDateWindow(generatedAt),
+      buildDashboardAlertsDateWindow(timeContext),
     );
 
     return presentDashboardModules({

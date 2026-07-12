@@ -13,9 +13,11 @@ import {
 } from '../dto/dashboard-command-center.dto';
 import { DashboardAlertDto } from '../dto/dashboard-alerts.dto';
 import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
+import { DashboardTimeContext } from '../domain/dashboard-time-context';
+import { dashboardFreshness } from './dashboard-metadata.presenter';
 
 export interface DashboardCommandCenterPresentationInput {
-  generatedAt: Date;
+  timeContext: DashboardTimeContext;
   summary: DashboardSummarySnapshot;
   alerts: DashboardAlertDto[];
   activityItems: DashboardActivityFeedItemDto[];
@@ -32,14 +34,13 @@ type ReadinessSignal = {
 export function presentDashboardCommandCenter(
   input: DashboardCommandCenterPresentationInput,
 ): DashboardCommandCenterResponseDto {
-  const timezone = resolveSafeTimezone(input.summary.school.timezone);
   const readinessSignals = resolveReadinessSignals(input.alerts);
 
   return {
-    generatedAt: input.generatedAt.toISOString(),
+    generatedAt: input.timeContext.generatedAt.toISOString(),
     school: {
       name: input.summary.school.name,
-      timezone: input.summary.school.timezone,
+      timezone: input.timeContext.timezone,
       locale: input.summary.school.locale,
     },
     academicContext: {
@@ -61,9 +62,12 @@ export function presentDashboardCommandCenter(
       userType: input.operator.userType,
     },
     today: {
-      date: formatDateInTimezone(input.generatedAt, timezone),
-      dayOfWeek: formatDayOfWeekInTimezone(input.generatedAt, timezone),
-      timezone,
+      date: input.timeContext.civilDate,
+      dayOfWeek: formatDayOfWeekInTimezone(
+        input.timeContext.generatedAt,
+        input.timeContext.timezone,
+      ),
+      timezone: input.timeContext.timezone,
     },
     quickStats: buildQuickStats(input.summary),
     operationalHealth: buildOperationalHealth(input.summary, readinessSignals),
@@ -90,11 +94,12 @@ export function presentDashboardCommandCenter(
       source: 'dashboard_command_center',
       version: 'v2',
       dataFreshness: 'live',
+      freshness: dashboardFreshness('request_time_snapshot'),
       deferred: {
-        widgets: 'deferred',
-        analytics: 'deferred',
-        lightModeDropdown: 'deferred',
-        todos: 'deferred',
+        widgets: 'available',
+        analytics: 'snapshot_only',
+        lightModeDropdown: 'foundation',
+        todos: 'persisted',
         weather: 'deferred',
         planner: 'deferred',
         alertLifecycle: 'deferred',
@@ -798,31 +803,6 @@ function toCommandCenterAction(
     target,
     kind: 'frontend-route',
   };
-}
-
-function resolveSafeTimezone(timezone: string | null): string {
-  if (!timezone) return 'UTC';
-
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
-    return timezone;
-  } catch {
-    return 'UTC';
-  }
-}
-
-function formatDateInTimezone(date: Date, timezone: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-  const year = parts.find((part) => part.type === 'year')?.value ?? '1970';
-  const month = parts.find((part) => part.type === 'month')?.value ?? '01';
-  const day = parts.find((part) => part.type === 'day')?.value ?? '01';
-
-  return `${year}-${month}-${day}`;
 }
 
 function formatDayOfWeekInTimezone(date: Date, timezone: string): string {

@@ -4,6 +4,7 @@ import {
   DashboardActivityFeedResponseDto,
   DashboardActivityFeedSource,
 } from '../dto/dashboard-activity-feed.dto';
+import { dashboardFreshness } from './dashboard-metadata.presenter';
 
 export interface DashboardActivityFeedPresentationInput {
   generatedAt: Date;
@@ -62,6 +63,11 @@ export function presentDashboardActivityFeed(
       pinning: 'deferred',
       realtime: 'deferred',
       analyticsBuilder: 'deferred',
+    },
+    meta: {
+      source: 'dashboard_activity_feed',
+      capability: 'available',
+      freshness: dashboardFreshness('request_time_snapshot'),
     },
   };
 }

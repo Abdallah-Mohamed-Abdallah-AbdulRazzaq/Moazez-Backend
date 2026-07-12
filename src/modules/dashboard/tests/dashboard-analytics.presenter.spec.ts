@@ -1,5 +1,6 @@
 import {
   DASHBOARD_ANALYTICS_CATALOG,
+  DASHBOARD_ANALYTICS_CHARTS,
   DASHBOARD_ANALYTICS_CHART_TYPES,
   DASHBOARD_ANALYTICS_GRANULARITIES,
   DASHBOARD_ANALYTICS_RANGES,
@@ -27,7 +28,8 @@ describe('Dashboard analytics presenter', () => {
         supportedGranularities: DASHBOARD_ANALYTICS_GRANULARITIES,
       },
       deferred: {
-        computedSeries: 'deferred',
+        computedSeries: 'snapshot_only',
+        historicalSeries: 'deferred',
         drilldownData: 'deferred',
         savedReports: 'deferred',
         customDashboards: 'deferred',
@@ -37,6 +39,11 @@ describe('Dashboard analytics presenter', () => {
       meta: {
         source: 'dashboard_analytics_catalog',
         dataFreshness: 'catalog',
+        freshness: {
+          dataMode: 'static_catalog',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
     expect(response.catalog.sources.map((source) => source.source)).toEqual(
@@ -123,6 +130,7 @@ describe('Dashboard analytics presenter', () => {
       },
       deferred: {
         computedSeries: 'deferred',
+        historicalSeries: 'deferred',
         drilldownData: 'deferred',
       },
     });
@@ -144,6 +152,26 @@ describe('Dashboard analytics presenter', () => {
     expect(JSON.stringify(response.charts)).not.toContain('points');
     expect(JSON.stringify(response.charts)).not.toContain('computedSeriesData');
     expectNoInternalLeaks(response);
+  });
+
+  it('reports snapshot-only computed series for returned computed charts', () => {
+    const chart = DASHBOARD_ANALYTICS_CHARTS.find(
+      (candidate) => candidate.chartKey === 'attendance.pending_sessions',
+    );
+    expect(chart).toBeDefined();
+
+    const listResponse = presentDashboardAnalyticsCharts({
+      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      charts: [chart!],
+      filters: { limit: 1 },
+    });
+    const detailResponse = presentDashboardAnalyticsChart({
+      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      chart: chart!,
+    });
+
+    expect(listResponse.deferred.computedSeries).toBe('snapshot_only');
+    expect(detailResponse.deferred.computedSeries).toBe('snapshot_only');
   });
 
   it('returns chart detail with a future data contract and no tenant fields', () => {
@@ -218,6 +246,7 @@ describe('Dashboard analytics presenter', () => {
       },
       deferred: {
         computedSeries: 'deferred',
+        historicalSeries: 'deferred',
         drilldownData: 'deferred',
       },
     });

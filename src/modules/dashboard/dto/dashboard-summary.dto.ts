@@ -1,3 +1,8 @@
+import {
+  DashboardCapabilityState,
+  DashboardFreshnessMetadataDto,
+} from './dashboard-metadata.dto';
+
 export class DashboardSummaryResponseDto {
   generatedAt!: string;
   school!: DashboardSchoolSummaryDto;
@@ -5,11 +10,12 @@ export class DashboardSummaryResponseDto {
   cards!: DashboardSummaryCardsDto;
   alertsPreview!: DashboardAlertPreviewDto[];
   deferred!: DashboardDeferredFeaturesDto;
+  meta!: DashboardSummaryMetaDto;
 }
 
 export class DashboardSchoolSummaryDto {
   name!: string | null;
-  timezone!: string | null;
+  timezone!: string;
   locale!: string | null;
 }
 
@@ -131,7 +137,12 @@ export class DashboardAlertPreviewDto {
 }
 
 export class DashboardDeferredFeaturesDto {
-  activityFeed!: 'deferred';
-  alertsEngine!: 'deferred';
+  activityFeed!: Extract<DashboardCapabilityState, 'available' | 'deferred'>;
+  alertsEngine!: Extract<DashboardCapabilityState, 'available' | 'deferred'>;
   analyticsBuilder!: 'out_of_scope_v1';
+}
+
+export class DashboardSummaryMetaDto {
+  source!: 'dashboard_summary';
+  freshness!: DashboardFreshnessMetadataDto;
 }

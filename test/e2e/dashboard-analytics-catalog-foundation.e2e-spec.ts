@@ -180,7 +180,14 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
           'table',
           'timeline',
         ],
-        supportedRanges: ['7d', '30d', '90d', 'term', 'academic_year', 'custom'],
+        supportedRanges: [
+          '7d',
+          '30d',
+          '90d',
+          'term',
+          'academic_year',
+          'custom',
+        ],
         supportedGranularities: ['day', 'week', 'month'],
         filters: expect.any(Array),
         metrics: expect.any(Array),
@@ -188,7 +195,8 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         charts: expect.any(Array),
       },
       deferred: {
-        computedSeries: 'deferred',
+        computedSeries: 'snapshot_only',
+        historicalSeries: 'deferred',
         drilldownData: 'deferred',
         savedReports: 'deferred',
         customDashboards: 'deferred',
@@ -198,6 +206,11 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       meta: {
         source: 'dashboard_analytics_catalog',
         dataFreshness: 'catalog',
+        freshness: {
+          dataMode: 'static_catalog',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
     expect(
@@ -232,7 +245,9 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       ]),
     );
     expectNoInternalLeaks(response.body);
-    expect(JSON.stringify(response.body.catalog.charts)).not.toContain('points');
+    expect(JSON.stringify(response.body.catalog.charts)).not.toContain(
+      'points',
+    );
   });
 
   it('returns chart definitions and supports source/type/status/limit filters', async () => {
@@ -240,7 +255,12 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
 
     const response = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts`)
-      .query({ source: 'attendance', type: 'line', status: 'planned', limit: '2' })
+      .query({
+        source: 'attendance',
+        type: 'line',
+        status: 'planned',
+        limit: '2',
+      })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
 
@@ -261,6 +281,7 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       },
       deferred: {
         computedSeries: 'deferred',
+        historicalSeries: 'deferred',
         drilldownData: 'deferred',
       },
     });
@@ -293,6 +314,10 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         status: 'planned',
         requiredPermission: 'dashboard.analytics.view',
         endpoint: '/dashboard/analytics/charts/attendance.daily_trend',
+        definitionEndpoint:
+          '/dashboard/analytics/charts/attendance.daily_trend',
+        dataEndpoint: '/dashboard/analytics/charts/attendance.daily_trend/data',
+        endpointPurpose: 'definition',
         futureDataContract: {
           series: [
             {
@@ -329,6 +354,7 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       },
       deferred: {
         computedSeries: 'deferred',
+        historicalSeries: 'deferred',
         drilldownData: 'deferred',
       },
     });

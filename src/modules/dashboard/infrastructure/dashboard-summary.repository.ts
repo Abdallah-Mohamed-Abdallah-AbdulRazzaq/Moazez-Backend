@@ -33,7 +33,9 @@ import { DashboardScope } from '../dashboard-context';
 
 export interface DashboardSummaryDateWindow {
   now: Date;
+  todayDate: Date;
   todayStart: Date;
+  todayEndExclusive: Date;
   last7DaysStart: Date;
   last30DaysStart: Date;
 }
@@ -488,7 +490,7 @@ export class DashboardSummaryRepository {
       );
     const todaySessionWhere: Prisma.AttendanceSessionWhereInput = {
       ...attendanceWhere,
-      date: window.todayStart,
+      date: window.todayDate,
     };
     const todayEntryWhere: Prisma.AttendanceEntryWhereInput = {
       session: todaySessionWhere,

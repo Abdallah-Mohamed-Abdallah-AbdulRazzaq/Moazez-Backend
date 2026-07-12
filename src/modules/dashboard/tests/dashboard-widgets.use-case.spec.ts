@@ -22,6 +22,7 @@ import {
   DashboardSummaryRepository,
   DashboardSummarySnapshot,
 } from '../infrastructure/dashboard-summary.repository';
+import { dashboardTimeContextServiceMock } from './dashboard-test-time-context';
 
 describe('Dashboard widgets use cases', () => {
   it('returns the stable list response from existing dashboard read models', async () => {
@@ -45,6 +46,7 @@ describe('Dashboard widgets use cases', () => {
       summaryRepository as any,
       alertsRepository as any,
       activityFeedRepository as any,
+      dashboardTimeContextServiceMock() as any,
     );
 
     const response = await withSchoolScope(() => useCase.execute());
@@ -68,7 +70,7 @@ describe('Dashboard widgets use cases', () => {
         now: expect.any(Date),
         todayStart: expect.any(Date),
         last30DaysStart: expect.any(Date),
-        next7DaysEnd: expect.any(Date),
+        next7DaysEndExclusive: new Date('2026-07-18T22:30:00.000Z'),
       }),
     );
     expect(
@@ -97,9 +99,11 @@ describe('Dashboard widgets use cases', () => {
     expect(response.deferred).toEqual({
       customLayouts: 'deferred',
       widgetPreferences: 'deferred',
-      analyticsCharts: 'deferred',
+      analyticsCharts: 'integration_deferred',
       weatherWidgets: 'deferred',
-      todoWidgets: 'deferred',
+      todoWidgets: 'integration_deferred',
+      analyticsStandalone: 'snapshot_only',
+      todosStandalone: 'persisted',
     });
     expect(
       response.widgets.every(
@@ -120,6 +124,7 @@ describe('Dashboard widgets use cases', () => {
       summaryRepositoryMock(snapshot()) as any,
       alertsRepositoryMock(signals()) as any,
       activityFeedRepositoryMock([]) as any,
+      dashboardTimeContextServiceMock() as any,
     );
 
     const response = await withSchoolScope(() =>
@@ -156,6 +161,7 @@ describe('Dashboard widgets use cases', () => {
       summaryRepositoryMock(snapshot()) as any,
       alertsRepositoryMock(signals()) as any,
       activityFeedRepositoryMock([]) as any,
+      dashboardTimeContextServiceMock() as any,
     );
 
     const response = await withSchoolScope(() =>
@@ -183,6 +189,7 @@ describe('Dashboard widgets use cases', () => {
       summaryRepositoryMock(snapshot()) as any,
       alertsRepositoryMock(signals()) as any,
       activityFeedRepositoryMock([]) as any,
+      dashboardTimeContextServiceMock() as any,
     );
 
     await expect(
@@ -195,6 +202,7 @@ describe('Dashboard widgets use cases', () => {
       summaryRepositoryMock(snapshot()) as any,
       alertsRepositoryMock(signals()) as any,
       activityFeedRepositoryMock([]) as any,
+      dashboardTimeContextServiceMock() as any,
     );
 
     await expect(
@@ -225,6 +233,7 @@ describe('Dashboard widgets use cases', () => {
         }),
       ) as any,
       activityFeedRepositoryMock([]) as any,
+      dashboardTimeContextServiceMock() as any,
     );
 
     const response = await withSchoolScope(() => useCase.execute());

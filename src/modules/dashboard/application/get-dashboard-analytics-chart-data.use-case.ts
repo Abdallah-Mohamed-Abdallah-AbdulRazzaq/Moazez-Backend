@@ -14,13 +14,12 @@ import {
   findDashboardAnalyticsChartDefinition,
 } from '../domain/dashboard-analytics-catalog';
 import { isDashboardAnalyticsComputedSnapshotChartKey } from '../domain/dashboard-analytics-data-pack';
-import {
-  buildDashboardSummaryDateWindow,
-} from './get-dashboard-summary.use-case';
+import { buildDashboardSummaryDateWindow } from './get-dashboard-summary.use-case';
 import { buildDashboardAlertsDateWindow } from './list-dashboard-alerts.use-case';
 import { DashboardAlertsRepository } from '../infrastructure/dashboard-alerts.repository';
 import { DashboardSummaryRepository } from '../infrastructure/dashboard-summary.repository';
 import { presentDashboardAnalyticsChartData } from '../presenters/dashboard-analytics-data.presenter';
+import { DashboardTimeContextService } from './dashboard-time-context.service';
 
 export const DASHBOARD_ANALYTICS_DATA_DEFAULT_RANGE = '30d' as const;
 export const DASHBOARD_ANALYTICS_DATA_DEFAULT_GRANULARITY = 'day' as const;
@@ -30,6 +29,7 @@ export class GetDashboardAnalyticsChartDataUseCase {
   constructor(
     private readonly dashboardSummaryRepository: DashboardSummaryRepository,
     private readonly dashboardAlertsRepository: DashboardAlertsRepository,
+    private readonly dashboardTimeContextService: DashboardTimeContextService,
   ) {}
 
   async execute(
@@ -46,7 +46,9 @@ export class GetDashboardAnalyticsChartDataUseCase {
     }
 
     const filters = normalizeDashboardAnalyticsChartDataQuery(query);
-    const generatedAt = new Date();
+    const timeContext =
+      await this.dashboardTimeContextService.resolveForSchool(scope);
+    const generatedAt = timeContext.generatedAt;
 
     if (!isDashboardAnalyticsComputedSnapshotChartKey(chart.chartKey)) {
       return presentDashboardAnalyticsChartData({
@@ -59,11 +61,11 @@ export class GetDashboardAnalyticsChartDataUseCase {
     const [summary, alertSignals] = await Promise.all([
       this.dashboardSummaryRepository.loadSummarySnapshot(
         scope,
-        buildDashboardSummaryDateWindow(generatedAt),
+        buildDashboardSummaryDateWindow(timeContext),
       ),
       this.dashboardAlertsRepository.loadAlertSignals(
         scope,
-        buildDashboardAlertsDateWindow(generatedAt),
+        buildDashboardAlertsDateWindow(timeContext),
       ),
     ]);
 

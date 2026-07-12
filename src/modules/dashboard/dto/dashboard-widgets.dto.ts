@@ -1,5 +1,9 @@
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  DashboardCapabilityState,
+  DashboardFreshnessMetadataDto,
+} from './dashboard-metadata.dto';
 
 export const DASHBOARD_WIDGET_SOURCES = [
   'admissions',
@@ -70,6 +74,7 @@ export class DashboardWidgetEmptyStateDto {
 
 export class DashboardWidgetMetaDto {
   freshness!: 'live';
+  freshnessDetails!: DashboardFreshnessMetadataDto;
 }
 
 export class DashboardWidgetDto {
@@ -101,9 +106,17 @@ export class DashboardWidgetsFiltersDto {
 export class DashboardWidgetsDeferredDto {
   customLayouts!: 'deferred';
   widgetPreferences!: 'deferred';
-  analyticsCharts!: 'deferred';
+  analyticsCharts!: Extract<
+    DashboardCapabilityState,
+    'integration_deferred' | 'deferred'
+  >;
   weatherWidgets!: 'deferred';
-  todoWidgets!: 'deferred';
+  todoWidgets!: Extract<
+    DashboardCapabilityState,
+    'integration_deferred' | 'deferred'
+  >;
+  analyticsStandalone!: 'snapshot_only';
+  todosStandalone!: 'persisted';
 }
 
 export class DashboardWidgetsResponseDto {

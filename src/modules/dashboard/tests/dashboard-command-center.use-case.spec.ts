@@ -17,6 +17,10 @@ import {
   DashboardSummaryRepository,
   DashboardSummarySnapshot,
 } from '../infrastructure/dashboard-summary.repository';
+import {
+  DASHBOARD_TEST_GENERATED_AT,
+  dashboardTimeContextServiceMock,
+} from './dashboard-test-time-context';
 
 describe('GetDashboardCommandCenterUseCase', () => {
   it('requires school scope and composes the command center from existing dashboard foundations', async () => {
@@ -34,10 +38,12 @@ describe('GetDashboardCommandCenterUseCase', () => {
         resourceId: 'resource-1',
       }),
     ]);
+    const timeContextService = dashboardTimeContextServiceMock();
     const useCase = new GetDashboardCommandCenterUseCase(
       summaryRepository as any,
       alertsRepository as any,
       activityFeedRepository as any,
+      timeContextService as any,
     );
 
     const response = await withSchoolScope(() => useCase.execute());
@@ -49,19 +55,21 @@ describe('GetDashboardCommandCenterUseCase', () => {
         schoolId: 'school-1',
       }),
       expect.objectContaining({
-        now: expect.any(Date),
-        todayStart: expect.any(Date),
-        last7DaysStart: expect.any(Date),
-        last30DaysStart: expect.any(Date),
+        now: DASHBOARD_TEST_GENERATED_AT,
+        todayDate: new Date('2026-07-12T00:00:00.000Z'),
+        todayStart: new Date('2026-07-11T21:00:00.000Z'),
+        last7DaysStart: new Date('2026-07-04T21:00:00.000Z'),
+        last30DaysStart: new Date('2026-06-11T21:00:00.000Z'),
       }),
     );
     expect(alertsRepository.loadAlertSignals).toHaveBeenCalledWith(
       expect.objectContaining({ schoolId: 'school-1' }),
       expect.objectContaining({
-        now: expect.any(Date),
-        todayStart: expect.any(Date),
-        last30DaysStart: expect.any(Date),
-        next7DaysEnd: expect.any(Date),
+        now: DASHBOARD_TEST_GENERATED_AT,
+        todayDate: new Date('2026-07-12T00:00:00.000Z'),
+        todayStart: new Date('2026-07-11T21:00:00.000Z'),
+        last30DaysStart: new Date('2026-06-11T21:00:00.000Z'),
+        next7DaysEndExclusive: new Date('2026-07-18T22:30:00.000Z'),
       }),
     );
     expect(
@@ -85,7 +93,7 @@ describe('GetDashboardCommandCenterUseCase', () => {
         userType: UserType.SCHOOL_USER,
       },
       today: {
-        date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        date: '2026-07-12',
         dayOfWeek: expect.any(String),
         timezone: 'Africa/Cairo',
       },
@@ -100,6 +108,11 @@ describe('GetDashboardCommandCenterUseCase', () => {
         source: 'dashboard_command_center',
         version: 'v2',
         dataFreshness: 'live',
+        freshness: {
+          dataMode: 'request_time_snapshot',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
       },
     });
     expect(
@@ -121,6 +134,12 @@ describe('GetDashboardCommandCenterUseCase', () => {
     expect(JSON.stringify(response)).not.toContain('resource-1');
     expect(summaryRepository.createAuditLog).not.toHaveBeenCalled();
     expect(alertsRepository.updateDashboardAlert).not.toHaveBeenCalled();
+    const summaryWindow =
+      summaryRepository.loadSummarySnapshot.mock.calls[0][1];
+    const alertsWindow = alertsRepository.loadAlertSignals.mock.calls[0][1];
+    expect(summaryWindow.now).toBe(alertsWindow.now);
+    expect(response.generatedAt).toBe(summaryWindow.now.toISOString());
+    expect(timeContextService.resolveForSchool).toHaveBeenCalledTimes(1);
   });
 
   it('rejects callers without an active school scope', async () => {
@@ -128,6 +147,7 @@ describe('GetDashboardCommandCenterUseCase', () => {
       summaryRepositoryMock(snapshot()) as any,
       alertsRepositoryMock(signals()) as any,
       activityFeedRepositoryMock([]) as any,
+      dashboardTimeContextServiceMock() as any,
     );
 
     await expect(
@@ -167,11 +187,13 @@ describe('GetDashboardCommandCenterUseCase', () => {
         }),
       ) as any,
       activityFeedRepositoryMock([]) as any,
+      dashboardTimeContextServiceMock({ schoolTimezone: 'UTC' }) as any,
     );
 
     const response = await withSchoolScope(() => useCase.execute());
 
     expect(response.today.timezone).toBe('UTC');
+    expect(response.school.timezone).toBe('UTC');
     expect(response.quickStats).toHaveLength(6);
     expect(response.moduleReadiness.map((entry) => entry.source)).toEqual([
       'admissions',
@@ -187,10 +209,10 @@ describe('GetDashboardCommandCenterUseCase', () => {
     ]);
     expect(response.activityPreview).toEqual([]);
     expect(response.meta.deferred).toEqual({
-      widgets: 'deferred',
-      analytics: 'deferred',
-      lightModeDropdown: 'deferred',
-      todos: 'deferred',
+      widgets: 'available',
+      analytics: 'snapshot_only',
+      lightModeDropdown: 'foundation',
+      todos: 'persisted',
       weather: 'deferred',
       planner: 'deferred',
       alertLifecycle: 'deferred',
