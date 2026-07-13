@@ -11,6 +11,8 @@ import {
   AttendanceScopeType,
   AttendanceSessionStatus,
   AttendanceStatus,
+  BehaviorRecordStatus,
+  BehaviorRecordType,
   CurriculumStatus,
   GradeAssessmentApprovalStatus,
   GradeAssessmentDeliveryMode,
@@ -22,11 +24,16 @@ import {
   LessonPlanStatus,
   MembershipStatus,
   PrismaClient,
+  ReinforcementSource,
+  ReinforcementTaskStatus,
+  RewardCatalogItemStatus,
+  RewardRedemptionStatus,
   StudentEnrollmentStatus,
   TimetableConfigStatus,
   TimetableScopeType,
   UserStatus,
   UserType,
+  XpSourceType,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
 import request from 'supertest';
@@ -104,6 +111,13 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
   const homeworkAssignmentIds: string[] = [];
   const homeworkTargetIds: string[] = [];
   const homeworkSubmissionIds: string[] = [];
+  const behaviorCategoryIds: string[] = [];
+  const behaviorRecordIds: string[] = [];
+  const reinforcementTaskIds: string[] = [];
+  const reinforcementAssignmentIds: string[] = [];
+  const xpLedgerIds: string[] = [];
+  const rewardCatalogItemIds: string[] = [];
+  const rewardRedemptionIds: string[] = [];
 
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -136,6 +150,7 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     await createAdmissionsStudentsAnalyticsFixtures();
     await createAcademicsAnalyticsFixtures();
     await createGradesHomeworkAnalyticsFixtures();
+    await createBehaviorReinforcementAnalyticsFixtures();
 
     const permissionIds = await ensureDashboardPermissions();
     await ensureDemoAdminHasDashboardPermissions(Object.values(permissionIds));
@@ -916,6 +931,310 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     expectNoInternalLeaks(response.body);
   });
 
+  it('returns approved Behavior records in deterministic timezone-aware day, week, and month buckets', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/behavior.positive_negative_trend/data`;
+    const baseQuery = {
+      range: 'custom',
+      dateFrom: '2026-07-01',
+      dateTo: '2026-07-10',
+      academicYearId,
+      termId,
+      gradeId,
+      sectionId,
+      classroomId,
+    };
+
+    const day = await request(app.getHttpServer())
+      .get(path)
+      .query({ ...baseQuery, granularity: 'day' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const week = await request(app.getHttpServer())
+      .get(path)
+      .query({ ...baseQuery, granularity: 'week' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const month = await request(app.getHttpServer())
+      .get(path)
+      .query({ ...baseQuery, dateTo: '2026-07-31', granularity: 'month' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(day.body).toMatchObject({
+      chartKey: 'behavior.positive_negative_trend',
+      data: {
+        totals: { positive: 1, negative: 1 },
+        summary: { value: 2, label: 'Approved behavior records' },
+        empty: false,
+      },
+      meta: {
+        pack: 'behavior_reinforcement_v1',
+        dataAvailability: 'computed_series',
+        computation: 'behavior_approved_positive_negative_trend',
+      },
+    });
+    expect(
+      day.body.data.series.map((series: { key: string }) => series.key),
+    ).toEqual(['positive', 'negative']);
+    expect(
+      day.body.data.series[0].points.find(
+        (point: { y: number }) => point.y === 1,
+      ),
+    ).toMatchObject({
+      x: '2026-07-03',
+      coordinate: { kind: 'civil_date', date: '2026-07-03' },
+    });
+    expect(
+      week.body.data.series[0].points.map((point: { y: number }) => point.y),
+    ).toEqual([1, 0]);
+    expect(
+      week.body.data.series[1].points.map((point: { y: number }) => point.y),
+    ).toEqual([0, 1]);
+    expect(month.body.data.series[0].points).toEqual([
+      expect.objectContaining({
+        x: '2026-07',
+        y: 1,
+        coordinate: { kind: 'calendar_month', month: '2026-07' },
+      }),
+    ]);
+    for (const response of [day, week, month]) {
+      expectNoInternalLeaks(response.body);
+    }
+  });
+
+  it('returns submitted-only Behavior review snapshot and approved category counts', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const hierarchyQuery = {
+      academicYearId,
+      termId,
+      gradeId,
+      sectionId,
+      classroomId,
+    };
+    const pending = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/behavior.pending_review/data`,
+      )
+      .query({ range: '30d', granularity: 'day', ...hierarchyQuery })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const categories = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/behavior.records_by_category/data`,
+      )
+      .query({
+        range: 'custom',
+        granularity: 'day',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-10',
+        ...hierarchyQuery,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const empty = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/behavior.records_by_category/data`,
+      )
+      .query({
+        range: 'custom',
+        granularity: 'day',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-10',
+        classroomId: secondClassroomId,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(pending.body).toMatchObject({
+      data: {
+        totals: { pending_review: 1 },
+        summary: { value: 1, label: 'Behavior records pending review' },
+      },
+      meta: {
+        pack: 'behavior_reinforcement_v1',
+        dataAvailability: 'computed_snapshot',
+        computation: 'behavior_current_pending_review',
+        query: {
+          appliedFilters: expect.arrayContaining(Object.keys(hierarchyQuery)),
+          notApplicableFilters: ['range', 'granularity'],
+        },
+      },
+    });
+    expect(categories.body).toMatchObject({
+      data: {
+        totals: { records: 2 },
+        summary: { value: 2, label: 'Approved behavior records' },
+      },
+      meta: {
+        pack: 'behavior_reinforcement_v1',
+        dataAvailability: 'computed_category',
+        computation: 'behavior_approved_records_by_category',
+        query: { notApplicableFilters: ['granularity'] },
+      },
+    });
+    expect(categories.body.data.series[0].points).toEqual([
+      expect.objectContaining({ x: 'Respect', y: 1 }),
+      expect.objectContaining({ x: 'Uncategorized', y: 1 }),
+    ]);
+    expect(empty.body).toMatchObject({
+      data: { totals: { records: 0 }, empty: true },
+      emptyState: { reason: 'no_data' },
+    });
+    for (const response of [pending, categories, empty]) {
+      expectNoInternalLeaks(response.body);
+    }
+  });
+
+  it('returns net XpLedger activity with negative values preserved across day, week, and month buckets', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/reinforcement.xp_activity_trend/data`;
+    const baseQuery = {
+      range: 'custom',
+      dateFrom: '2026-07-01',
+      dateTo: '2026-07-10',
+      academicYearId,
+      termId,
+      classroomId,
+    };
+    const responses = await Promise.all(
+      ['day', 'week', 'month'].map((granularity) =>
+        request(app.getHttpServer())
+          .get(path)
+          .query({
+            ...baseQuery,
+            dateTo: granularity === 'month' ? '2026-07-31' : baseQuery.dateTo,
+            granularity,
+          })
+          .set('Authorization', `Bearer ${adminToken}`)
+          .expect(200),
+      ),
+    );
+    const [day, week, month] = responses;
+
+    expect(day.body).toMatchObject({
+      data: {
+        totals: { xp: 6 },
+        summary: { value: 6, label: 'Net XP activity' },
+        empty: false,
+      },
+      meta: {
+        pack: 'behavior_reinforcement_v1',
+        dataAvailability: 'computed_series',
+        computation: 'reinforcement_xp_activity_trend',
+      },
+    });
+    expect(day.body.data.series[0].points).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ x: '2026-07-03', y: 10 }),
+        expect.objectContaining({ x: '2026-07-08', y: -4 }),
+      ]),
+    );
+    expect(
+      week.body.data.series[0].points.map((point: { y: number }) => point.y),
+    ).toEqual([10, -4]);
+    expect(month.body.data.series[0].points).toEqual([
+      expect.objectContaining({ x: '2026-07', y: 6 }),
+    ]);
+    for (const response of responses) {
+      expectNoInternalLeaks(response.body);
+    }
+  });
+
+  it('returns assignment-level completion and cumulative reward redemption funnel semantics', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const hierarchyQuery = {
+      academicYearId,
+      termId,
+      gradeId,
+      sectionId,
+      classroomId,
+    };
+    const completion = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/reinforcement.task_completion/data`,
+      )
+      .query({ range: '30d', granularity: 'day', ...hierarchyQuery })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const funnel = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/reinforcement.reward_redemption_status/data`,
+      )
+      .query({
+        range: 'custom',
+        granularity: 'day',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-10',
+        ...hierarchyQuery,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(completion.body).toMatchObject({
+      data: {
+        totals: { completed: 1, pending: 1, overdue: 1 },
+        summary: { value: 3, label: 'Current reinforcement assignments' },
+      },
+      meta: {
+        pack: 'behavior_reinforcement_v1',
+        dataAvailability: 'computed_category',
+        computation: 'reinforcement_current_assignment_completion',
+        query: {
+          appliedFilters: expect.arrayContaining(Object.keys(hierarchyQuery)),
+          notApplicableFilters: ['range', 'granularity'],
+        },
+      },
+    });
+    expect(
+      completion.body.data.series.map((series: { key: string }) => series.key),
+    ).toEqual(['completed', 'pending', 'overdue']);
+    expect(funnel.body).toMatchObject({
+      data: {
+        totals: { requested: 5, approved: 2, fulfilled: 1 },
+        summary: { value: 5, label: 'Reward redemption requests' },
+      },
+      meta: {
+        pack: 'behavior_reinforcement_v1',
+        dataAvailability: 'computed_category',
+        computation: 'reinforcement_reward_redemption_funnel',
+        query: { notApplicableFilters: ['granularity'] },
+      },
+    });
+    expect(
+      funnel.body.data.series.map((series: { key: string }) => series.key),
+    ).toEqual(['requested', 'approved', 'fulfilled']);
+    expect(
+      funnel.body.data.series.map(
+        (series: { points: [{ coordinate: unknown }] }) =>
+          series.points[0].coordinate,
+      ),
+    ).toEqual([
+      { kind: 'funnel_stage', stageKey: 'requested', order: 0 },
+      { kind: 'funnel_stage', stageKey: 'approved', order: 1 },
+      { kind: 'funnel_stage', stageKey: 'fulfilled', order: 2 },
+    ]);
+    for (const response of [completion, funnel]) {
+      expectNoInternalLeaks(response.body);
+    }
+  });
+
+  it('enforces Behavior and Reinforcement chart-specific time compatibility', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    for (const [chartKey, query] of [
+      ['behavior.records_by_category', { granularity: 'week' }],
+      ['reinforcement.reward_redemption_status', { granularity: 'month' }],
+      ['reinforcement.task_completion', { range: '7d' }],
+      ['reinforcement.task_completion', { dateFrom: '2026-07-01' }],
+    ] as const) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/${chartKey}/data`)
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    }
+  });
+
   it('returns day, week, and month Attendance observation buckets from submitted sessions only', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
     const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.daily_trend/data`;
@@ -1386,6 +1705,40 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
           ]),
         );
       });
+
+    for (const [moduleKey, chartKeys] of [
+      [
+        'behavior',
+        [
+          'behavior.positive_negative_trend',
+          'behavior.pending_review',
+          'behavior.records_by_category',
+        ],
+      ],
+      [
+        'reinforcement',
+        [
+          'reinforcement.xp_activity_trend',
+          'reinforcement.task_completion',
+          'reinforcement.reward_redemption_status',
+        ],
+      ],
+    ] as const) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/dashboard/modules/${moduleKey}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200)
+        .expect((response) => {
+          expect(response.body.analytics.availableData).toEqual([]);
+          expect(response.body.analytics.charts).toEqual(
+            expect.arrayContaining(
+              chartKeys.map((chartKey) =>
+                expect.objectContaining({ chartKey, status: 'available' }),
+              ),
+            ),
+          );
+        });
+    }
 
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/dashboard/alerts`)
@@ -2193,6 +2546,214 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     homeworkSubmissionIds.push(...submissions.map(({ id }) => id));
   }
 
+  async function createBehaviorReinforcementAnalyticsFixtures(): Promise<void> {
+    const category = await prisma.behaviorCategory.create({
+      data: {
+        schoolId: demoSchoolId,
+        code: `${marker}-respect`,
+        nameEn: 'Respect',
+        type: BehaviorRecordType.POSITIVE,
+      },
+      select: { id: true },
+    });
+    behaviorCategoryIds.push(category.id);
+
+    const behaviorRecords = await Promise.all(
+      [
+        {
+          type: BehaviorRecordType.POSITIVE,
+          status: BehaviorRecordStatus.APPROVED,
+          categoryId: category.id,
+          occurredAt: new Date('2026-07-02T22:30:00.000Z'),
+          deletedAt: null,
+        },
+        {
+          type: BehaviorRecordType.NEGATIVE,
+          status: BehaviorRecordStatus.APPROVED,
+          categoryId: null,
+          occurredAt: new Date('2026-07-08T10:00:00.000Z'),
+          deletedAt: null,
+        },
+        {
+          type: BehaviorRecordType.NEGATIVE,
+          status: BehaviorRecordStatus.SUBMITTED,
+          categoryId: null,
+          occurredAt: new Date('2026-07-04T10:00:00.000Z'),
+          deletedAt: null,
+        },
+        {
+          type: BehaviorRecordType.POSITIVE,
+          status: BehaviorRecordStatus.REJECTED,
+          categoryId: category.id,
+          occurredAt: new Date('2026-07-05T10:00:00.000Z'),
+          deletedAt: null,
+        },
+        {
+          type: BehaviorRecordType.POSITIVE,
+          status: BehaviorRecordStatus.APPROVED,
+          categoryId: category.id,
+          occurredAt: new Date('2026-07-06T10:00:00.000Z'),
+          deletedAt: new Date('2026-07-07T00:00:00.000Z'),
+        },
+      ].map((record, index) =>
+        prisma.behaviorRecord.create({
+          data: {
+            schoolId: demoSchoolId,
+            academicYearId,
+            termId,
+            studentId: attendanceStudentIds[0],
+            enrollmentId: analyticsEnrollmentIds[0],
+            titleEn: `${marker}-behavior-${index}`,
+            severity: 'LOW',
+            points: record.type === BehaviorRecordType.POSITIVE ? 2 : -2,
+            ...record,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    behaviorRecordIds.push(...behaviorRecords.map(({ id }) => id));
+
+    const now = Date.now();
+    const taskInputs = [
+      {
+        taskStatus: ReinforcementTaskStatus.COMPLETED,
+        assignmentStatus: ReinforcementTaskStatus.COMPLETED,
+        dueDate: new Date(now - 24 * 60 * 60 * 1000),
+      },
+      {
+        taskStatus: ReinforcementTaskStatus.IN_PROGRESS,
+        assignmentStatus: ReinforcementTaskStatus.IN_PROGRESS,
+        dueDate: new Date(now + 24 * 60 * 60 * 1000),
+      },
+      {
+        taskStatus: ReinforcementTaskStatus.UNDER_REVIEW,
+        assignmentStatus: ReinforcementTaskStatus.UNDER_REVIEW,
+        dueDate: new Date(now - 24 * 60 * 60 * 1000),
+      },
+      {
+        taskStatus: ReinforcementTaskStatus.CANCELLED,
+        assignmentStatus: ReinforcementTaskStatus.NOT_COMPLETED,
+        dueDate: new Date(now + 24 * 60 * 60 * 1000),
+      },
+      {
+        taskStatus: ReinforcementTaskStatus.NOT_COMPLETED,
+        assignmentStatus: ReinforcementTaskStatus.CANCELLED,
+        dueDate: new Date(now + 24 * 60 * 60 * 1000),
+      },
+    ];
+    for (const [index, input] of taskInputs.entries()) {
+      const task = await prisma.reinforcementTask.create({
+        data: {
+          schoolId: demoSchoolId,
+          academicYearId,
+          termId,
+          titleEn: `${marker}-task-${index}`,
+          source: ReinforcementSource.TEACHER,
+          status: input.taskStatus,
+          dueDate: input.dueDate,
+        },
+        select: { id: true },
+      });
+      reinforcementTaskIds.push(task.id);
+      const assignment = await prisma.reinforcementAssignment.create({
+        data: {
+          schoolId: demoSchoolId,
+          taskId: task.id,
+          academicYearId,
+          termId,
+          studentId: attendanceStudentIds[0],
+          enrollmentId: analyticsEnrollmentIds[0],
+          status: input.assignmentStatus,
+          completedAt:
+            input.assignmentStatus === ReinforcementTaskStatus.COMPLETED
+              ? new Date(now - 12 * 60 * 60 * 1000)
+              : null,
+        },
+        select: { id: true },
+      });
+      reinforcementAssignmentIds.push(assignment.id);
+    }
+
+    const xpEntries = await Promise.all(
+      [
+        {
+          amount: 10,
+          sourceType: XpSourceType.REINFORCEMENT_TASK,
+          occurredAt: new Date('2026-07-02T22:30:00.000Z'),
+        },
+        {
+          amount: -4,
+          sourceType: XpSourceType.SYSTEM,
+          occurredAt: new Date('2026-07-08T10:00:00.000Z'),
+        },
+      ].map((entry, index) =>
+        prisma.xpLedger.create({
+          data: {
+            schoolId: demoSchoolId,
+            academicYearId,
+            termId,
+            studentId: attendanceStudentIds[0],
+            enrollmentId: analyticsEnrollmentIds[0],
+            sourceId: `${marker}-xp-${index}`,
+            ...entry,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    xpLedgerIds.push(...xpEntries.map(({ id }) => id));
+
+    const redemptionStatuses = [
+      RewardRedemptionStatus.REQUESTED,
+      RewardRedemptionStatus.APPROVED,
+      RewardRedemptionStatus.REJECTED,
+      RewardRedemptionStatus.FULFILLED,
+      RewardRedemptionStatus.CANCELLED,
+    ];
+    for (const [index, status] of redemptionStatuses.entries()) {
+      const reward = await prisma.rewardCatalogItem.create({
+        data: {
+          schoolId: demoSchoolId,
+          academicYearId,
+          termId,
+          titleEn: `${marker}-archived-reward-${index}`,
+          status: RewardCatalogItemStatus.ARCHIVED,
+          archivedAt: new Date('2026-07-01T00:00:00.000Z'),
+          deletedAt: new Date('2026-07-01T00:00:00.000Z'),
+        },
+        select: { id: true },
+      });
+      rewardCatalogItemIds.push(reward.id);
+      const redemption = await prisma.rewardRedemption.create({
+        data: {
+          schoolId: demoSchoolId,
+          catalogItemId: reward.id,
+          studentId: attendanceStudentIds[0],
+          enrollmentId: analyticsEnrollmentIds[0],
+          academicYearId,
+          termId,
+          status,
+          requestedAt: new Date(
+            `2026-07-${String(index + 2).padStart(2, '0')}T12:00:00.000Z`,
+          ),
+          reviewedAt:
+            status === RewardRedemptionStatus.APPROVED ||
+            status === RewardRedemptionStatus.REJECTED ||
+            status === RewardRedemptionStatus.FULFILLED
+              ? new Date('2026-07-08T12:00:00.000Z')
+              : null,
+          fulfilledAt:
+            status === RewardRedemptionStatus.FULFILLED
+              ? new Date('2026-07-09T12:00:00.000Z')
+              : null,
+        },
+        select: { id: true },
+      });
+      rewardRedemptionIds.push(redemption.id);
+    }
+  }
+
   function enrollmentInput(
     studentId: string,
     status: StudentEnrollmentStatus,
@@ -2212,6 +2773,41 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
   }
 
   async function cleanupAnalyticsHierarchyFixtures(): Promise<void> {
+    if (rewardRedemptionIds.length > 0) {
+      await prisma.rewardRedemption.deleteMany({
+        where: { id: { in: rewardRedemptionIds } },
+      });
+    }
+    if (rewardCatalogItemIds.length > 0) {
+      await prisma.rewardCatalogItem.deleteMany({
+        where: { id: { in: rewardCatalogItemIds } },
+      });
+    }
+    if (xpLedgerIds.length > 0) {
+      await prisma.xpLedger.deleteMany({
+        where: { id: { in: xpLedgerIds } },
+      });
+    }
+    if (reinforcementAssignmentIds.length > 0) {
+      await prisma.reinforcementAssignment.deleteMany({
+        where: { id: { in: reinforcementAssignmentIds } },
+      });
+    }
+    if (reinforcementTaskIds.length > 0) {
+      await prisma.reinforcementTask.deleteMany({
+        where: { id: { in: reinforcementTaskIds } },
+      });
+    }
+    if (behaviorRecordIds.length > 0) {
+      await prisma.behaviorRecord.deleteMany({
+        where: { id: { in: behaviorRecordIds } },
+      });
+    }
+    if (behaviorCategoryIds.length > 0) {
+      await prisma.behaviorCategory.deleteMany({
+        where: { id: { in: behaviorCategoryIds } },
+      });
+    }
     if (homeworkSubmissionIds.length > 0) {
       await prisma.homeworkSubmission.deleteMany({
         where: { id: { in: homeworkSubmissionIds } },

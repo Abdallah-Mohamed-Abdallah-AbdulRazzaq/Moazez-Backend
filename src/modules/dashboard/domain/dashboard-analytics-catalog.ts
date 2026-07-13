@@ -347,6 +347,17 @@ const GRADES_HOMEWORK_CATEGORY_FILTERS: readonly DashboardAnalyticsFilterKey[] =
     'classroomId',
   ];
 
+const BEHAVIOR_REINFORCEMENT_CATEGORY_FILTERS: readonly DashboardAnalyticsFilterKey[] =
+  [
+    'range',
+    'granularity',
+    'academicYearId',
+    'termId',
+    'gradeId',
+    'sectionId',
+    'classroomId',
+  ];
+
 export const DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS = [
   'attendance.pending_sessions',
   'grades.pending_submission_reviews',
@@ -401,6 +412,18 @@ export const DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK_CHART_KEYS = [
 
 export type DashboardAnalyticsGradesHomeworkPackChartKey =
   (typeof DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK_CHART_KEYS)[number];
+
+export const DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK_CHART_KEYS = [
+  'behavior.positive_negative_trend',
+  'behavior.pending_review',
+  'behavior.records_by_category',
+  'reinforcement.xp_activity_trend',
+  'reinforcement.task_completion',
+  'reinforcement.reward_redemption_status',
+] as const;
+
+export type DashboardAnalyticsBehaviorReinforcementPackChartKey =
+  (typeof DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK_CHART_KEYS)[number];
 
 export const DASHBOARD_ANALYTICS_SOURCES_CATALOG: readonly DashboardAnalyticsSourceDefinition[] =
   [
@@ -1191,6 +1214,12 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'Positive and negative behavior records over time.',
       'stacked-bar',
       [series('positive', 'Positive'), series('negative', 'Negative')],
+      STANDARD_OPERATIONAL_FILTERS,
+      computedSeriesOptions({
+        emptyStateMessage:
+          'No approved behavior records found for the selected range.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+      }),
     ),
     chart(
       'behavior.pending_review',
@@ -1200,6 +1229,10 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'bar',
       [series('pending_review', 'Pending review')],
       REVIEW_FILTERS,
+      computedSnapshotOptions(
+        'No behavior records are currently waiting for review.',
+        DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+      ),
     ),
     chart(
       'behavior.records_by_category',
@@ -1208,6 +1241,13 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'Behavior record counts grouped by category.',
       'bar',
       [series('records', 'Records')],
+      STANDARD_OPERATIONAL_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage:
+          'No approved behavior records found for the selected range.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+        timeFilterMode: 'range_only',
+      }),
     ),
     chart(
       'reinforcement.xp_activity_trend',
@@ -1216,6 +1256,11 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'XP activity over time.',
       'area',
       [series('xp', 'XP')],
+      STANDARD_OPERATIONAL_FILTERS,
+      computedSeriesOptions({
+        emptyStateMessage: 'No XP activity found for the selected range.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+      }),
     ),
     chart(
       'reinforcement.task_completion',
@@ -1228,6 +1273,13 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
         series('pending', 'Pending'),
         series('overdue', 'Overdue'),
       ],
+      BEHAVIOR_REINFORCEMENT_CATEGORY_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage:
+          'No current reinforcement assignments found for the selected academic scope.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+        timeFilterMode: 'compatibility_defaults',
+      }),
     ),
     chart(
       'reinforcement.reward_redemption_status',
@@ -1240,6 +1292,13 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
         series('approved', 'Approved'),
         series('fulfilled', 'Fulfilled'),
       ],
+      STANDARD_OPERATIONAL_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage:
+          'No reward redemption requests found for the selected range.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+        timeFilterMode: 'range_only',
+      }),
     ),
     chart(
       'communication.message_volume',
@@ -1493,14 +1552,14 @@ function computedSeriesOptions(input: {
 function computedCategoryOptions(input: {
   emptyStateMessage: string;
   hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
-  timeFilterMode: 'compatibility_defaults';
+  timeFilterMode: 'compatibility_defaults' | 'range_only';
   requiredHierarchyFilters?: readonly DashboardAnalyticsHierarchyFilterKey[];
 }): {
   status: 'available';
   dataAvailability: 'computed_category';
   emptyState: DashboardAnalyticsChartEmptyState;
   hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
-  timeFilterMode: 'compatibility_defaults';
+  timeFilterMode: 'compatibility_defaults' | 'range_only';
   requiredHierarchyFilters?: readonly DashboardAnalyticsHierarchyFilterKey[];
 } {
   return {

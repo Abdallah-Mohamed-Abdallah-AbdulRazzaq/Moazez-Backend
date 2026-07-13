@@ -15,12 +15,14 @@ import {
 import { computeDashboardAttendanceAnalyticsData } from '../domain/dashboard-attendance-analytics';
 import { computeDashboardAcademicsAnalyticsData } from '../domain/dashboard-academics-analytics';
 import { computeDashboardGradesHomeworkAnalyticsData } from '../domain/dashboard-grades-homework-analytics';
+import { computeDashboardBehaviorReinforcementAnalyticsData } from '../domain/dashboard-behavior-reinforcement-analytics';
 import {
   isDashboardAnalyticsAcademicsPackChartKey,
   isDashboardAnalyticsAttendancePackChartKey,
   isDashboardAnalyticsAdmissionsStudentsPackChartKey,
   isDashboardAnalyticsComputedSnapshotChartKey,
   isDashboardAnalyticsGradesHomeworkPackChartKey,
+  isDashboardAnalyticsBehaviorReinforcementPackChartKey,
 } from '../domain/dashboard-analytics-data-pack';
 import { normalizeDashboardAnalyticsQuery } from '../domain/dashboard-analytics-query';
 import { DashboardAnalyticsSnapshotRepository } from '../infrastructure/dashboard-analytics-snapshot.repository';
@@ -29,6 +31,8 @@ import { DashboardStudentsAnalyticsRepository } from '../infrastructure/dashboar
 import { DashboardAcademicsAnalyticsRepository } from '../infrastructure/dashboard-academics-analytics.repository';
 import { DashboardGradesAnalyticsRepository } from '../infrastructure/dashboard-grades-analytics.repository';
 import { DashboardHomeworkAnalyticsRepository } from '../infrastructure/dashboard-homework-analytics.repository';
+import { DashboardBehaviorAnalyticsRepository } from '../infrastructure/dashboard-behavior-analytics.repository';
+import { DashboardReinforcementAnalyticsRepository } from '../infrastructure/dashboard-reinforcement-analytics.repository';
 import { presentDashboardAnalyticsChartData } from '../presenters/dashboard-analytics-data.presenter';
 import { DashboardAnalyticsQueryContextService } from './dashboard-analytics-query-context.service';
 
@@ -46,6 +50,8 @@ export class GetDashboardAnalyticsChartDataUseCase {
     private readonly dashboardAcademicsAnalyticsRepository: DashboardAcademicsAnalyticsRepository,
     private readonly dashboardGradesAnalyticsRepository: DashboardGradesAnalyticsRepository,
     private readonly dashboardHomeworkAnalyticsRepository: DashboardHomeworkAnalyticsRepository,
+    private readonly dashboardBehaviorAnalyticsRepository: DashboardBehaviorAnalyticsRepository,
+    private readonly dashboardReinforcementAnalyticsRepository: DashboardReinforcementAnalyticsRepository,
   ) {}
 
   async execute(
@@ -387,6 +393,128 @@ export class GetDashboardAnalyticsChartDataUseCase {
             queryContext,
             chart,
             gradesHomeworkData,
+          });
+        }
+      }
+    }
+
+    if (isDashboardAnalyticsBehaviorReinforcementPackChartKey(chart.chartKey)) {
+      const hierarchy = queryContext.hierarchy;
+
+      switch (chart.chartKey) {
+        case 'behavior.positive_negative_trend': {
+          const behaviorReinforcementData =
+            computeDashboardBehaviorReinforcementAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              behaviorRecordTypes:
+                await this.dashboardBehaviorAnalyticsRepository.aggregateApprovedRecordTypesByCivilDate(
+                  {
+                    scope,
+                    timezone: queryContext.timezone,
+                    window: queryContext,
+                    hierarchy,
+                  },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            behaviorReinforcementData,
+          });
+        }
+
+        case 'behavior.pending_review': {
+          const behaviorReinforcementData =
+            computeDashboardBehaviorReinforcementAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              pendingBehaviorReview:
+                await this.dashboardBehaviorAnalyticsRepository.countCurrentPendingReview(
+                  { scope, hierarchy },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            behaviorReinforcementData,
+          });
+        }
+
+        case 'behavior.records_by_category': {
+          const behaviorReinforcementData =
+            computeDashboardBehaviorReinforcementAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              behaviorCategories:
+                await this.dashboardBehaviorAnalyticsRepository.countApprovedRecordsByCategory(
+                  { scope, window: queryContext, hierarchy },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            behaviorReinforcementData,
+          });
+        }
+
+        case 'reinforcement.xp_activity_trend': {
+          const behaviorReinforcementData =
+            computeDashboardBehaviorReinforcementAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              xpActivity:
+                await this.dashboardReinforcementAnalyticsRepository.aggregateXpActivityByCivilDate(
+                  {
+                    scope,
+                    timezone: queryContext.timezone,
+                    window: queryContext,
+                    hierarchy,
+                  },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            behaviorReinforcementData,
+          });
+        }
+
+        case 'reinforcement.task_completion': {
+          const behaviorReinforcementData =
+            computeDashboardBehaviorReinforcementAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              assignmentCompletion:
+                await this.dashboardReinforcementAnalyticsRepository.countCurrentAssignmentCompletion(
+                  {
+                    scope,
+                    generatedAt: queryContext.generatedAt,
+                    hierarchy,
+                  },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            behaviorReinforcementData,
+          });
+        }
+
+        case 'reinforcement.reward_redemption_status': {
+          const behaviorReinforcementData =
+            computeDashboardBehaviorReinforcementAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              rewardRedemptionFunnel:
+                await this.dashboardReinforcementAnalyticsRepository.countRewardRedemptionFunnel(
+                  { scope, window: queryContext, hierarchy },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            behaviorReinforcementData,
           });
         }
       }

@@ -167,12 +167,80 @@ describe('Dashboard analytics data use case', () => {
     for (const repository of [
       setup.gradesRepository,
       setup.homeworkRepository,
+      setup.behaviorRepository,
+      setup.reinforcementRepository,
     ]) {
       for (const mock of Object.values(repository)) {
         expect(mock).not.toHaveBeenCalled();
       }
     }
   });
+
+  it.each([
+    [
+      'behavior.positive_negative_trend',
+      'behaviorRepository',
+      'aggregateApprovedRecordTypesByCivilDate',
+      'behavior_approved_positive_negative_trend',
+    ],
+    [
+      'behavior.pending_review',
+      'behaviorRepository',
+      'countCurrentPendingReview',
+      'behavior_current_pending_review',
+    ],
+    [
+      'behavior.records_by_category',
+      'behaviorRepository',
+      'countApprovedRecordsByCategory',
+      'behavior_approved_records_by_category',
+    ],
+    [
+      'reinforcement.xp_activity_trend',
+      'reinforcementRepository',
+      'aggregateXpActivityByCivilDate',
+      'reinforcement_xp_activity_trend',
+    ],
+    [
+      'reinforcement.task_completion',
+      'reinforcementRepository',
+      'countCurrentAssignmentCompletion',
+      'reinforcement_current_assignment_completion',
+    ],
+    [
+      'reinforcement.reward_redemption_status',
+      'reinforcementRepository',
+      'countRewardRedemptionFunnel',
+      'reinforcement_reward_redemption_funnel',
+    ],
+  ] as const)(
+    'dispatches %s to exactly one Behavior/Reinforcement aggregate',
+    async (chartKey, repositoryName, expectedMethod, computation) => {
+      const setup = useCaseWith(0);
+      const response = await withSchoolScope(() =>
+        setup.useCase.execute(chartKey, {}),
+      );
+
+      expect(response.meta).toMatchObject({
+        pack: 'behavior_reinforcement_v1',
+        computation,
+      });
+      for (const name of [
+        'behaviorRepository',
+        'reinforcementRepository',
+      ] as const) {
+        for (const [method, mock] of Object.entries(setup[name])) {
+          if (name === repositoryName && method === expectedMethod) {
+            expect(mock).toHaveBeenCalledTimes(1);
+          } else {
+            expect(mock).not.toHaveBeenCalled();
+          }
+        }
+      }
+      expect(setup.snapshotRepository.loadChartValue).not.toHaveBeenCalled();
+      expectNoInternalLeaks(response);
+    },
+  );
 
   it.each([
     [
@@ -517,6 +585,20 @@ function useCaseWith(snapshotValue: number) {
       .fn()
       .mockResolvedValue({ linked: 0, pending: 0 }),
   };
+  const behaviorRepository = {
+    aggregateApprovedRecordTypesByCivilDate: jest.fn().mockResolvedValue([]),
+    countCurrentPendingReview: jest.fn().mockResolvedValue(0),
+    countApprovedRecordsByCategory: jest.fn().mockResolvedValue([]),
+  };
+  const reinforcementRepository = {
+    aggregateXpActivityByCivilDate: jest.fn().mockResolvedValue([]),
+    countCurrentAssignmentCompletion: jest
+      .fn()
+      .mockResolvedValue({ completed: 0, pending: 0, overdue: 0 }),
+    countRewardRedemptionFunnel: jest
+      .fn()
+      .mockResolvedValue({ requested: 0, approved: 0, fulfilled: 0 }),
+  };
 
   return {
     queryContextService,
@@ -527,6 +609,8 @@ function useCaseWith(snapshotValue: number) {
     academicsRepository,
     gradesRepository,
     homeworkRepository,
+    behaviorRepository,
+    reinforcementRepository,
     useCase: new GetDashboardAnalyticsChartDataUseCase(
       queryContextService as any,
       snapshotRepository as any,
@@ -536,6 +620,8 @@ function useCaseWith(snapshotValue: number) {
       academicsRepository as any,
       gradesRepository as any,
       homeworkRepository as any,
+      behaviorRepository as any,
+      reinforcementRepository as any,
     ),
   };
 }

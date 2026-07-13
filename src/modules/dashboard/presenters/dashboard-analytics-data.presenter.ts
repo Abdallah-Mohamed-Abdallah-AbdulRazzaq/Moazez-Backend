@@ -12,6 +12,7 @@ import { DashboardAttendanceAnalyticsData } from '../domain/dashboard-attendance
 import { DashboardAdmissionsStudentsAnalyticsData } from '../domain/dashboard-admissions-students-analytics';
 import { DashboardAcademicsAnalyticsData } from '../domain/dashboard-academics-analytics';
 import { DashboardGradesHomeworkAnalyticsData } from '../domain/dashboard-grades-homework-analytics';
+import { DashboardBehaviorReinforcementAnalyticsData } from '../domain/dashboard-behavior-reinforcement-analytics';
 import {
   DashboardAnalyticsQueryContext,
   DashboardAnalyticsResolvedHierarchy,
@@ -22,16 +23,19 @@ import {
   DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK,
   DASHBOARD_ANALYTICS_ACADEMICS_PACK,
   DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK,
+  DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK,
   getDashboardAnalyticsAcademicsComputation,
   getDashboardAnalyticsAdmissionsStudentsComputation,
   getDashboardAnalyticsAttendanceComputation,
   getDashboardAnalyticsChartComputation,
   getDashboardAnalyticsGradesHomeworkComputation,
+  getDashboardAnalyticsBehaviorReinforcementComputation,
   isDashboardAnalyticsAttendancePackChartKey,
   isDashboardAnalyticsAdmissionsStudentsPackChartKey,
   isDashboardAnalyticsAcademicsPackChartKey,
   isDashboardAnalyticsComputedSnapshotChartKey,
   isDashboardAnalyticsGradesHomeworkPackChartKey,
+  isDashboardAnalyticsBehaviorReinforcementPackChartKey,
 } from '../domain/dashboard-analytics-data-pack';
 import { DashboardAlertSignals } from '../infrastructure/dashboard-alerts.repository';
 import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
@@ -47,11 +51,24 @@ export interface DashboardAnalyticsChartDataPresentationInput {
   admissionsStudentsData?: DashboardAdmissionsStudentsAnalyticsData;
   academicsData?: DashboardAcademicsAnalyticsData;
   gradesHomeworkData?: DashboardGradesHomeworkAnalyticsData;
+  behaviorReinforcementData?: DashboardBehaviorReinforcementAnalyticsData;
 }
 
 export function presentDashboardAnalyticsChartData(
   input: DashboardAnalyticsChartDataPresentationInput,
 ): DashboardAnalyticsChartDataResponseDto {
+  if (
+    isDashboardAnalyticsBehaviorReinforcementPackChartKey(
+      input.chart.chartKey,
+    ) &&
+    input.behaviorReinforcementData
+  ) {
+    return presentComputedBehaviorReinforcementChartData(
+      input,
+      input.behaviorReinforcementData,
+    );
+  }
+
   if (
     isDashboardAnalyticsGradesHomeworkPackChartKey(input.chart.chartKey) &&
     input.gradesHomeworkData
@@ -94,6 +111,41 @@ export function presentDashboardAnalyticsChartData(
   }
 
   return presentUnsupportedChartData(input);
+}
+
+function presentComputedBehaviorReinforcementChartData(
+  input: DashboardAnalyticsChartDataPresentationInput,
+  data: DashboardBehaviorReinforcementAnalyticsData,
+): DashboardAnalyticsChartDataResponseDto {
+  if (
+    !isDashboardAnalyticsBehaviorReinforcementPackChartKey(input.chart.chartKey)
+  ) {
+    return presentUnsupportedChartData(input);
+  }
+
+  return {
+    ...responseIdentity(input),
+    data,
+    emptyState: data.empty ? noDataEmptyState(input.chart) : null,
+    meta: {
+      source: 'dashboard_analytics_data_pack',
+      pack: DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK,
+      dataAvailability: input.chart.meta.dataAvailability,
+      computation: getDashboardAnalyticsBehaviorReinforcementComputation(
+        input.chart.chartKey,
+      ),
+      freshness: dashboardFreshness('request_time_snapshot'),
+      query: presentQueryMetadata(input.queryContext),
+      deferred: {
+        ...(input.chart.meta.dataAvailability !== 'computed_series'
+          ? { historicalSeries: 'deferred' as const }
+          : {}),
+        drilldown: 'deferred',
+        exports: 'deferred',
+        realtime: 'deferred',
+      },
+    },
+  };
 }
 
 function presentComputedGradesHomeworkChartData(

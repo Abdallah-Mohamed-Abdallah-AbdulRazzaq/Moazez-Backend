@@ -12,6 +12,8 @@ import {
   AttendanceScopeType,
   AttendanceSessionStatus,
   AttendanceStatus,
+  BehaviorRecordStatus,
+  BehaviorRecordType,
   CurriculumStatus,
   GradeAssessmentApprovalStatus,
   GradeAssessmentType,
@@ -19,12 +21,16 @@ import {
   HomeworkAssignmentStatus,
   HomeworkSubmissionStatus,
   LessonPlanStatus,
+  ReinforcementSource,
+  ReinforcementTaskStatus,
+  RewardRedemptionStatus,
   SchoolLoginSettingsStatus,
   StudentEnrollmentStatus,
   TimetableConfigStatus,
   TimetableScopeType,
   UserStatus,
   UserType,
+  XpSourceType,
 } from '@prisma/client';
 import {
   createRequestContext,
@@ -47,6 +53,8 @@ import { DashboardStudentsAnalyticsRepository } from '../../src/modules/dashboar
 import { DashboardAcademicsAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-academics-analytics.repository';
 import { DashboardGradesAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-grades-analytics.repository';
 import { DashboardHomeworkAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-homework-analytics.repository';
+import { DashboardBehaviorAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-behavior-analytics.repository';
+import { DashboardReinforcementAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-reinforcement-analytics.repository';
 
 jest.setTimeout(60000);
 
@@ -433,6 +441,101 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
         reviewedByUserId: analyticsUser.id,
       },
     });
+
+    const behaviorCategory = await prisma.behaviorCategory.create({
+      data: {
+        schoolId: schoolBId,
+        code: `${marker}-positive`,
+        nameEn: 'Positive conduct',
+        type: BehaviorRecordType.POSITIVE,
+      },
+      select: { id: true },
+    });
+    await prisma.behaviorRecord.createMany({
+      data: [
+        {
+          schoolId: schoolBId,
+          academicYearId: academicYear.id,
+          termId: term.id,
+          studentId: student.id,
+          enrollmentId: activeEnrollment.id,
+          categoryId: behaviorCategory.id,
+          type: BehaviorRecordType.POSITIVE,
+          status: BehaviorRecordStatus.APPROVED,
+          occurredAt: new Date('2026-07-10T10:00:00.000Z'),
+        },
+        {
+          schoolId: schoolBId,
+          academicYearId: academicYear.id,
+          termId: term.id,
+          studentId: student.id,
+          enrollmentId: activeEnrollment.id,
+          type: BehaviorRecordType.NEGATIVE,
+          status: BehaviorRecordStatus.SUBMITTED,
+          occurredAt: new Date('2026-07-10T11:00:00.000Z'),
+        },
+      ],
+    });
+
+    const reinforcementTask = await prisma.reinforcementTask.create({
+      data: {
+        schoolId: schoolBId,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        titleEn: `${marker}-reinforcement-task`,
+        source: ReinforcementSource.TEACHER,
+        status: ReinforcementTaskStatus.IN_PROGRESS,
+        dueDate: new Date('2100-01-01T00:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    await prisma.reinforcementAssignment.create({
+      data: {
+        schoolId: schoolBId,
+        taskId: reinforcementTask.id,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        studentId: student.id,
+        enrollmentId: activeEnrollment.id,
+        status: ReinforcementTaskStatus.IN_PROGRESS,
+      },
+    });
+    await prisma.xpLedger.create({
+      data: {
+        schoolId: schoolBId,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        studentId: student.id,
+        enrollmentId: activeEnrollment.id,
+        sourceType: XpSourceType.SYSTEM,
+        sourceId: `${marker}-xp`,
+        amount: 5,
+        occurredAt: new Date('2026-07-10T12:00:00.000Z'),
+      },
+    });
+    const reward = await prisma.rewardCatalogItem.create({
+      data: {
+        schoolId: schoolBId,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        titleEn: `${marker}-reward`,
+      },
+      select: { id: true },
+    });
+    await prisma.rewardRedemption.create({
+      data: {
+        schoolId: schoolBId,
+        catalogItemId: reward.id,
+        studentId: student.id,
+        enrollmentId: activeEnrollment.id,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        status: RewardRedemptionStatus.FULFILLED,
+        requestedAt: new Date('2026-07-10T13:00:00.000Z'),
+        reviewedAt: new Date('2026-07-10T14:00:00.000Z'),
+        fulfilledAt: new Date('2026-07-10T15:00:00.000Z'),
+      },
+    });
   });
 
   afterAll(async () => {
@@ -443,6 +546,23 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
       where: { schoolId: schoolBId },
     });
     await prisma.attendanceSession.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.rewardRedemption.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.rewardCatalogItem.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.xpLedger.deleteMany({ where: { schoolId: schoolBId } });
+    await prisma.reinforcementAssignment.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.reinforcementTask.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.behaviorRecord.deleteMany({ where: { schoolId: schoolBId } });
+    await prisma.behaviorCategory.deleteMany({
       where: { schoolId: schoolBId },
     });
     await prisma.studentGuardian.deleteMany({ where: { schoolId: schoolBId } });
@@ -806,6 +926,53 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
     expectNoInternalLeaks(schoolBGradebook);
   });
 
+  it('isolates all six Behavior/Reinforcement aggregates and ignores tenant override-shaped input', async () => {
+    const useCase = analyticsDataUseCase();
+    const historical = {
+      range: 'custom' as const,
+      granularity: 'day' as const,
+      dateFrom: '2026-07-10',
+      dateTo: '2026-07-10',
+    };
+    const rangeOnly = {
+      range: 'custom' as const,
+      granularity: 'day' as const,
+      dateFrom: '2026-07-10',
+      dateTo: '2026-07-10',
+    };
+    const chartQueries = [
+      ['behavior.positive_negative_trend', historical],
+      ['behavior.pending_review', {}],
+      ['behavior.records_by_category', rangeOnly],
+      ['reinforcement.xp_activity_trend', historical],
+      ['reinforcement.task_completion', {}],
+      ['reinforcement.reward_redemption_status', rangeOnly],
+    ] as const;
+
+    for (const [chartKey, query] of chartQueries) {
+      const schoolAResponse = await withSchoolScope(schoolAId, () =>
+        useCase.execute(chartKey, {
+          ...query,
+          schoolId: schoolBId,
+          organizationId,
+        } as any),
+      );
+      const schoolBResponse = await withSchoolScope(schoolBId, () =>
+        useCase.execute(chartKey, query),
+      );
+
+      expect(schoolAResponse.data.empty).toBe(true);
+      expect(schoolBResponse.data.empty).toBe(false);
+      for (const response of [schoolAResponse, schoolBResponse]) {
+        const serialized = JSON.stringify(response);
+        expect(serialized).not.toContain(schoolAId);
+        expect(serialized).not.toContain(schoolBId);
+        expect(serialized).not.toContain(schoolBAnalyticsUserId);
+        expectNoInternalLeaks(response);
+      }
+    }
+  });
+
   it('does not resolve any School B hierarchy identifier from School A', async () => {
     const useCase = analyticsDataUseCase();
     const crossSchoolFilters = [
@@ -852,6 +1019,8 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
       new DashboardAcademicsAnalyticsRepository(prisma),
       new DashboardGradesAnalyticsRepository(prisma),
       new DashboardHomeworkAnalyticsRepository(prisma),
+      new DashboardBehaviorAnalyticsRepository(prisma),
+      new DashboardReinforcementAnalyticsRepository(prisma),
     );
   }
 

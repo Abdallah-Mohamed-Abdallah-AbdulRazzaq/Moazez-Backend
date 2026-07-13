@@ -239,6 +239,52 @@ describe('Dashboard analytics data presenter', () => {
     expectNoInternalLeaks(response);
   });
 
+  it('presents Behavior/Reinforcement pack metadata without internal identifiers', () => {
+    const chart = findDashboardAnalyticsChartDefinition(
+      'reinforcement.task_completion',
+    )!;
+    const response = presentDashboardAnalyticsChartData({
+      queryContext: {
+        ...defaultQueryContext(),
+        explicitlySuppliedKeys: ['gradeId'],
+        hierarchy: {
+          ...defaultQueryContext().hierarchy,
+          gradeId: '33333333-3333-4333-8333-333333333333',
+        },
+        filtersApplied: ['gradeId'],
+        filtersNotApplicable: ['range', 'granularity'],
+      },
+      chart,
+      behaviorReinforcementData: {
+        series: [
+          {
+            key: 'completed',
+            label: 'Completed',
+            points: [
+              dashboardAnalyticsCategoryPoint('completed', 'Completed', 2),
+            ],
+          },
+        ],
+        totals: { completed: 2, pending: 0, overdue: 0 },
+        summary: { value: 2, label: 'Current reinforcement assignments' },
+        empty: false,
+      },
+    });
+
+    expect(response.meta).toMatchObject({
+      pack: 'behavior_reinforcement_v1',
+      dataAvailability: 'computed_category',
+      computation: 'reinforcement_current_assignment_completion',
+      query: {
+        requestedFilters: ['gradeId'],
+        appliedFilters: ['gradeId'],
+        notApplicableFilters: ['range', 'granularity'],
+      },
+      deferred: { historicalSeries: 'deferred' },
+    });
+    expectNoInternalLeaks(response);
+  });
+
   it('presents computed Attendance series with the attendance pack and no historical deferral', () => {
     const chart = findDashboardAnalyticsChartDefinition(
       'attendance.daily_trend',
@@ -453,6 +499,12 @@ describe('Dashboard analytics data presenter', () => {
       'homework.assignment_status_distribution',
       'homework.submission_review_trend',
       'homework.grade_sync_coverage',
+      'behavior.positive_negative_trend',
+      'behavior.pending_review',
+      'behavior.records_by_category',
+      'reinforcement.xp_activity_trend',
+      'reinforcement.task_completion',
+      'reinforcement.reward_redemption_status',
       'communication.moderation_queue',
       'settings.email_connection_readiness',
       'settings.login_identity_readiness',
