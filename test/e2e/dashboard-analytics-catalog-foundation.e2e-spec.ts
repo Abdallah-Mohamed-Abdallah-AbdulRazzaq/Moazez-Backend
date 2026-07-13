@@ -249,13 +249,13 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         (chart: { meta: { dataAvailability: string } }) =>
           chart.meta.dataAvailability !== 'definition_only',
       ),
-    ).toHaveLength(20);
+    ).toHaveLength(25);
     expect(
       response.body.catalog.charts.filter(
         (chart: { meta: { dataAvailability: string } }) =>
           chart.meta.dataAvailability === 'definition_only',
       ),
-    ).toHaveLength(17);
+    ).toHaveLength(12);
     expectNoInternalLeaks(response.body);
     expect(JSON.stringify(response.body.catalog.charts)).not.toContain(
       'points',
@@ -406,6 +406,50 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       },
     });
     expectNoInternalLeaks(academicsResponse.body);
+
+    const gradebookResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/grades.gradebook_completion`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(gradebookResponse.body.chart).toMatchObject({
+      status: 'available',
+      series: [{ key: 'complete' }, { key: 'missing' }],
+      meta: { dataAvailability: 'computed_category' },
+      queryCapabilities: {
+        timeFilterMode: 'compatibility_defaults',
+        requiredHierarchyFilters: ['academicYearId', 'termId'],
+        supportedHierarchyFilters: [
+          'academicYearId',
+          'termId',
+          'gradeId',
+          'sectionId',
+          'classroomId',
+        ],
+      },
+    });
+    expectNoInternalLeaks(gradebookResponse.body);
+
+    const homeworkTrendResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/homework.submission_review_trend`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(homeworkTrendResponse.body.chart).toMatchObject({
+      status: 'available',
+      series: [{ key: 'submitted' }, { key: 'reviewed' }],
+      filters: expect.arrayContaining(['range', 'granularity']),
+      meta: { dataAvailability: 'computed_series' },
+      queryCapabilities: {
+        timeFilterMode: 'historical',
+        historicalSeriesCapable: true,
+        granularityApplicable: true,
+        requiredHierarchyFilters: [],
+      },
+    });
+    expectNoInternalLeaks(homeworkTrendResponse.body);
 
     const statusDistributionResponse = await request(app.getHttpServer())
       .get(

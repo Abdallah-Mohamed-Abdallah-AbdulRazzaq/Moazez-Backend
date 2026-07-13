@@ -4,9 +4,7 @@ import {
   DASHBOARD_ANALYTICS_CHART_TYPES,
   DASHBOARD_ANALYTICS_DEFAULT_CHART_LIMIT,
   DASHBOARD_ANALYTICS_FILTER_KEYS,
-  DASHBOARD_ANALYTICS_GRANULARITIES,
   DASHBOARD_ANALYTICS_MAX_CHART_LIMIT,
-  DASHBOARD_ANALYTICS_RANGES,
   DASHBOARD_ANALYTICS_SOURCES,
   DASHBOARD_ANALYTICS_STATUSES,
 } from '../domain/dashboard-analytics-catalog';
@@ -116,6 +114,7 @@ export class DashboardAnalyticsChartQueryCapabilitiesDto {
   supportedRanges!: readonly DashboardAnalyticsRange[];
   supportedGranularities!: readonly DashboardAnalyticsGranularity[];
   supportedHierarchyFilters!: readonly DashboardAnalyticsHierarchyFilterKey[];
+  requiredHierarchyFilters!: readonly DashboardAnalyticsHierarchyFilterKey[];
 }
 
 export class DashboardAnalyticsChartDto {

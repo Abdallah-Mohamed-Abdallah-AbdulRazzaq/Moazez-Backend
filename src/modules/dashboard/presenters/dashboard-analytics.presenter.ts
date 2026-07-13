@@ -142,6 +142,9 @@ function presentChartDefinition(
       supportedHierarchyFilters: [
         ...chart.queryCapabilities.supportedHierarchyFilters,
       ],
+      requiredHierarchyFilters: [
+        ...chart.queryCapabilities.requiredHierarchyFilters,
+      ],
     },
   };
 }

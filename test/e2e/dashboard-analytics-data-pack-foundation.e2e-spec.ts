@@ -12,6 +12,13 @@ import {
   AttendanceSessionStatus,
   AttendanceStatus,
   CurriculumStatus,
+  GradeAssessmentApprovalStatus,
+  GradeAssessmentDeliveryMode,
+  GradeAssessmentType,
+  GradeItemStatus,
+  GradeScopeType,
+  HomeworkAssignmentStatus,
+  HomeworkSubmissionStatus,
   LessonPlanStatus,
   MembershipStatus,
   PrismaClient,
@@ -92,6 +99,11 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
   const academicsTimetableConfigIds: string[] = [];
   const academicsCurriculumIds: string[] = [];
   const academicsLessonPlanIds: string[] = [];
+  const gradesAssessmentIds: string[] = [];
+  const gradesItemIds: string[] = [];
+  const homeworkAssignmentIds: string[] = [];
+  const homeworkTargetIds: string[] = [];
+  const homeworkSubmissionIds: string[] = [];
 
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -123,6 +135,7 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     await createAttendanceAnalyticsFixtures();
     await createAdmissionsStudentsAnalyticsFixtures();
     await createAcademicsAnalyticsFixtures();
+    await createGradesHomeworkAnalyticsFixtures();
 
     const permissionIds = await ensureDashboardPermissions();
     await ensureDemoAdminHasDashboardPermissions(Object.values(permissionIds));
@@ -766,6 +779,143 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     }
   });
 
+  it('returns exact current Grades and Homework category aggregates', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const cases = [
+      [
+        'grades.assessment_status_distribution',
+        { draft: 1, published: 1, approved: 1, locked: 1 },
+        ['draft', 'published', 'approved', 'locked'],
+        'Current assessments',
+        'grades_current_assessment_status_distribution',
+      ],
+      [
+        'homework.assignment_status_distribution',
+        { draft: 1, published: 1, closed: 1, cancelled: 1 },
+        ['draft', 'published', 'closed', 'cancelled'],
+        'Current homework assignments',
+        'homework_current_assignment_status_distribution',
+      ],
+      [
+        'homework.grade_sync_coverage',
+        { linked: 1, pending: 2 },
+        ['linked', 'pending'],
+        'Graded homework assignments',
+        'homework_current_grade_sync_link_coverage',
+      ],
+    ] as const;
+
+    for (const [chartKey, totals, seriesKeys, label, computation] of cases) {
+      const response = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/${chartKey}/data`)
+        .query({
+          range: '30d',
+          granularity: 'day',
+          academicYearId,
+          termId,
+          gradeId,
+          sectionId,
+          classroomId,
+        })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(response.body.data.totals).toEqual(totals);
+      expect(response.body.data.summary).toEqual({
+        value: Object.values(totals).reduce((sum, value) => sum + value, 0),
+        label,
+      });
+      expect(
+        response.body.data.series.map((series: { key: string }) => series.key),
+      ).toEqual(seriesKeys);
+      expect(response.body.meta).toMatchObject({
+        pack: 'grades_homework_v1',
+        computation,
+        query: {
+          appliedFilters: [
+            'academicYearId',
+            'termId',
+            'gradeId',
+            'sectionId',
+            'classroomId',
+          ],
+          notApplicableFilters: ['range', 'granularity'],
+        },
+      });
+      expectNoInternalLeaks(response.body);
+    }
+  });
+
+  it('requires explicit AcademicYear and Term and returns Enrollment x Assessment gradebook completion', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/grades.gradebook_completion/data`;
+
+    for (const query of [{}, { academicYearId }, { termId }]) {
+      await request(app.getHttpServer())
+        .get(path)
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    }
+
+    const response = await request(app.getHttpServer())
+      .get(path)
+      .query({ academicYearId, termId, classroomId })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(response.body).toMatchObject({
+      data: {
+        totals: { complete: 2, missing: 4 },
+        summary: { value: 6, label: 'Expected gradebook cells' },
+      },
+      meta: {
+        pack: 'grades_homework_v1',
+        computation: 'grades_current_gradebook_completion',
+      },
+    });
+    expectNoInternalLeaks(response.body);
+  });
+
+  it('returns independently timestamped, timezone-aware Homework submission and review buckets', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const response = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/homework.submission_review_trend/data`,
+      )
+      .query({
+        range: 'custom',
+        granularity: 'week',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-14',
+        academicYearId,
+        termId,
+        classroomId,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body.data.totals).toEqual({ submitted: 2, reviewed: 1 });
+    expect(
+      response.body.data.series.map((series: { key: string }) => series.key),
+    ).toEqual(['submitted', 'reviewed']);
+    expect(
+      response.body.data.series[0].points.map(
+        (point: { y: number }) => point.y,
+      ),
+    ).toEqual([2, 0, 0]);
+    expect(
+      response.body.data.series[1].points.map(
+        (point: { y: number }) => point.y,
+      ),
+    ).toEqual([0, 1, 0]);
+    expect(response.body.meta).toMatchObject({
+      pack: 'grades_homework_v1',
+      computation: 'homework_submission_review_trend',
+      dataAvailability: 'computed_series',
+    });
+    expectNoInternalLeaks(response.body);
+  });
+
   it('returns day, week, and month Attendance observation buckets from submitted sessions only', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
     const path = `${GLOBAL_PREFIX}/dashboard/analytics/charts/attendance.daily_trend/data`;
@@ -1181,6 +1331,57 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
             expect.objectContaining({
               chartKey: 'academics.structure_readiness',
               status: 'planned',
+            }),
+          ]),
+        );
+      });
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/modules/grades`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(
+          response.body.analytics.availableData.map(
+            (item: { chartKey: string }) => item.chartKey,
+          ),
+        ).toEqual([
+          'grades.pending_submission_reviews',
+          'grades.pending_answer_reviews',
+        ]);
+        expect(response.body.analytics.charts).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              chartKey: 'grades.assessment_status_distribution',
+              status: 'available',
+            }),
+            expect.objectContaining({
+              chartKey: 'grades.gradebook_completion',
+              status: 'available',
+            }),
+          ]),
+        );
+      });
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/modules/homework`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.analytics.availableData).toEqual([]);
+        expect(response.body.analytics.charts).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              chartKey: 'homework.assignment_status_distribution',
+              status: 'available',
+            }),
+            expect.objectContaining({
+              chartKey: 'homework.submission_review_trend',
+              status: 'available',
+            }),
+            expect.objectContaining({
+              chartKey: 'homework.grade_sync_coverage',
+              status: 'available',
             }),
           ]),
         );
@@ -1839,6 +2040,159 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     academicsLessonPlanIds.push(...lessonPlans.map(({ id }) => id));
   }
 
+  async function createGradesHomeworkAnalyticsFixtures(): Promise<void> {
+    const admin = await prisma.user.findUnique({
+      where: { email: DEMO_ADMIN_EMAIL },
+      select: { id: true },
+    });
+    if (!admin) throw new Error('Demo admin not found for Grades fixtures.');
+
+    const assessmentInputs = [
+      { approvalStatus: GradeAssessmentApprovalStatus.DRAFT, lockedAt: null },
+      {
+        approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+        lockedAt: null,
+      },
+      {
+        approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+        lockedAt: null,
+      },
+      {
+        approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+        lockedAt: new Date('2026-07-05T12:00:00.000Z'),
+      },
+    ];
+    const assessments = await Promise.all(
+      assessmentInputs.map((assessment, index) =>
+        prisma.gradeAssessment.create({
+          data: {
+            schoolId: demoSchoolId,
+            academicYearId,
+            termId,
+            subjectId: academicsSubjectIds[0],
+            scopeType: GradeScopeType.CLASSROOM,
+            scopeKey: classroomId,
+            classroomId,
+            titleEn: `${marker}-assessment-${index}`,
+            type: GradeAssessmentType.QUIZ,
+            deliveryMode: GradeAssessmentDeliveryMode.SCORE_ONLY,
+            date: new Date(`2026-07-0${index + 1}T00:00:00.000Z`),
+            weight: 10,
+            maxScore: 20,
+            createdById: admin.id,
+            ...assessment,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    gradesAssessmentIds.push(...assessments.map(({ id }) => id));
+
+    const items = await Promise.all([
+      prisma.gradeItem.create({
+        data: {
+          schoolId: demoSchoolId,
+          termId,
+          assessmentId: assessments[1].id,
+          studentId: attendanceStudentIds[0],
+          enrollmentId: analyticsEnrollmentIds[0],
+          score: 18,
+          status: GradeItemStatus.ENTERED,
+        },
+        select: { id: true },
+      }),
+      prisma.gradeItem.create({
+        data: {
+          schoolId: demoSchoolId,
+          termId,
+          assessmentId: assessments[2].id,
+          studentId: attendanceStudentIds[0],
+          enrollmentId: analyticsEnrollmentIds[0],
+          status: GradeItemStatus.ABSENT,
+        },
+        select: { id: true },
+      }),
+    ]);
+    gradesItemIds.push(...items.map(({ id }) => id));
+
+    const statuses = [
+      HomeworkAssignmentStatus.DRAFT,
+      HomeworkAssignmentStatus.PUBLISHED,
+      HomeworkAssignmentStatus.CLOSED,
+      HomeworkAssignmentStatus.CANCELLED,
+      HomeworkAssignmentStatus.ARCHIVED,
+    ];
+    const assignments = await Promise.all(
+      statuses.map((status, index) =>
+        prisma.homeworkAssignment.create({
+          data: {
+            schoolId: demoSchoolId,
+            academicYearId,
+            termId,
+            classroomId,
+            subjectId: academicsSubjectIds[0],
+            teacherUserId: admin.id,
+            teacherSubjectAllocationId: academicsTeacherAllocationIds[0],
+            title: `${marker}-homework-${index}`,
+            status,
+            dueAt: new Date('2026-07-20T12:00:00.000Z'),
+            isGraded: index < 3,
+            gradeAssessmentId: index === 1 ? assessments[2].id : null,
+            createdByUserId: admin.id,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    homeworkAssignmentIds.push(...assignments.map(({ id }) => id));
+
+    const targets = await Promise.all(
+      [attendanceStudentIds[0], attendanceStudentIds[3]].map(
+        (studentId, index) =>
+          prisma.homeworkTarget.create({
+            data: {
+              schoolId: demoSchoolId,
+              homeworkAssignmentId: assignments[1].id,
+              studentId,
+              enrollmentId: analyticsEnrollmentIds[index === 0 ? 0 : 3],
+            },
+            select: { id: true },
+          }),
+      ),
+    );
+    homeworkTargetIds.push(...targets.map(({ id }) => id));
+
+    const submissions = await Promise.all([
+      prisma.homeworkSubmission.create({
+        data: {
+          schoolId: demoSchoolId,
+          homeworkAssignmentId: assignments[1].id,
+          homeworkTargetId: targets[0].id,
+          studentId: attendanceStudentIds[0],
+          enrollmentId: analyticsEnrollmentIds[0],
+          status: HomeworkSubmissionStatus.REVIEWED,
+          submittedAt: new Date('2026-07-02T12:00:00.000Z'),
+          reviewedAt: new Date('2026-07-08T12:00:00.000Z'),
+          reviewedByUserId: admin.id,
+        },
+        select: { id: true },
+      }),
+      prisma.homeworkSubmission.create({
+        data: {
+          schoolId: demoSchoolId,
+          homeworkAssignmentId: assignments[1].id,
+          homeworkTargetId: targets[1].id,
+          studentId: attendanceStudentIds[3],
+          enrollmentId: analyticsEnrollmentIds[3],
+          status: HomeworkSubmissionStatus.SUBMITTED,
+          submittedAt: new Date('2026-07-03T12:00:00.000Z'),
+        },
+        select: { id: true },
+      }),
+    ]);
+    homeworkSubmissionIds.push(...submissions.map(({ id }) => id));
+  }
+
   function enrollmentInput(
     studentId: string,
     status: StudentEnrollmentStatus,
@@ -1858,6 +2212,31 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
   }
 
   async function cleanupAnalyticsHierarchyFixtures(): Promise<void> {
+    if (homeworkSubmissionIds.length > 0) {
+      await prisma.homeworkSubmission.deleteMany({
+        where: { id: { in: homeworkSubmissionIds } },
+      });
+    }
+    if (homeworkTargetIds.length > 0) {
+      await prisma.homeworkTarget.deleteMany({
+        where: { id: { in: homeworkTargetIds } },
+      });
+    }
+    if (homeworkAssignmentIds.length > 0) {
+      await prisma.homeworkAssignment.deleteMany({
+        where: { id: { in: homeworkAssignmentIds } },
+      });
+    }
+    if (gradesItemIds.length > 0) {
+      await prisma.gradeItem.deleteMany({
+        where: { id: { in: gradesItemIds } },
+      });
+    }
+    if (gradesAssessmentIds.length > 0) {
+      await prisma.gradeAssessment.deleteMany({
+        where: { id: { in: gradesAssessmentIds } },
+      });
+    }
     if (academicsLessonPlanIds.length > 0) {
       await prisma.lessonPlan.deleteMany({
         where: { id: { in: academicsLessonPlanIds } },

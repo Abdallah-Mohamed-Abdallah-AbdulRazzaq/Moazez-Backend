@@ -127,6 +127,7 @@ export class DashboardAnalyticsChartDataMetaDto {
     | 'attendance_v1'
     | 'admissions_students_v1'
     | 'academics_v1'
+    | 'grades_homework_v1'
     | null;
   dataAvailability!: DashboardAnalyticsDataAvailability;
   computation!:
@@ -146,6 +147,11 @@ export class DashboardAnalyticsChartDataMetaDto {
     | 'academics_current_timetable_publication_status'
     | 'academics_current_curriculum_activation_status'
     | 'academics_current_lesson_plan_activation_status'
+    | 'grades_current_assessment_status_distribution'
+    | 'grades_current_gradebook_completion'
+    | 'homework_current_assignment_status_distribution'
+    | 'homework_submission_review_trend'
+    | 'homework_current_grade_sync_link_coverage'
     | null;
   freshness!: DashboardFreshnessMetadataDto;
   query!: DashboardAnalyticsQueryMetadataDto;

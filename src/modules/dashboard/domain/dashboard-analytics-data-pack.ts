@@ -3,10 +3,12 @@ import {
   DASHBOARD_ANALYTICS_ACADEMICS_PACK_CHART_KEYS,
   DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK_CHART_KEYS,
   DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS,
+  DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK_CHART_KEYS,
   DashboardAnalyticsAcademicsPackChartKey,
   DashboardAnalyticsAdmissionsStudentsPackChartKey,
   DashboardAnalyticsAttendancePackChartKey,
   DashboardAnalyticsComputedSnapshotChartKey,
+  DashboardAnalyticsGradesHomeworkPackChartKey,
 } from './dashboard-analytics-catalog';
 
 export const DASHBOARD_ANALYTICS_OPERATIONAL_SNAPSHOT_PACK =
@@ -31,6 +33,12 @@ export const DASHBOARD_ANALYTICS_ACADEMICS_PACK = 'academics_v1' as const;
 export type DashboardAnalyticsAcademicsPack =
   typeof DASHBOARD_ANALYTICS_ACADEMICS_PACK;
 
+export const DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK =
+  'grades_homework_v1' as const;
+
+export type DashboardAnalyticsGradesHomeworkPack =
+  typeof DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK;
+
 export type DashboardAnalyticsDataComputation =
   | 'dashboard_summary_snapshot'
   | 'dashboard_alert_readiness_snapshot'
@@ -47,7 +55,12 @@ export type DashboardAnalyticsDataComputation =
   | 'academics_teacher_allocation_coverage'
   | 'academics_current_timetable_publication_status'
   | 'academics_current_curriculum_activation_status'
-  | 'academics_current_lesson_plan_activation_status';
+  | 'academics_current_lesson_plan_activation_status'
+  | 'grades_current_assessment_status_distribution'
+  | 'grades_current_gradebook_completion'
+  | 'homework_current_assignment_status_distribution'
+  | 'homework_submission_review_trend'
+  | 'homework_current_grade_sync_link_coverage';
 
 export function isDashboardAnalyticsComputedSnapshotChartKey(
   chartKey: string,
@@ -78,6 +91,14 @@ export function isDashboardAnalyticsAcademicsPackChartKey(
 ): chartKey is DashboardAnalyticsAcademicsPackChartKey {
   return (
     DASHBOARD_ANALYTICS_ACADEMICS_PACK_CHART_KEYS as readonly string[]
+  ).includes(chartKey);
+}
+
+export function isDashboardAnalyticsGradesHomeworkPackChartKey(
+  chartKey: string,
+): chartKey is DashboardAnalyticsGradesHomeworkPackChartKey {
+  return (
+    DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK_CHART_KEYS as readonly string[]
   ).includes(chartKey);
 }
 
@@ -140,5 +161,22 @@ export function getDashboardAnalyticsAcademicsComputation(
       return 'academics_current_curriculum_activation_status';
     case 'academics.lesson_plan_activation':
       return 'academics_current_lesson_plan_activation_status';
+  }
+}
+
+export function getDashboardAnalyticsGradesHomeworkComputation(
+  chartKey: DashboardAnalyticsGradesHomeworkPackChartKey,
+): DashboardAnalyticsDataComputation {
+  switch (chartKey) {
+    case 'grades.assessment_status_distribution':
+      return 'grades_current_assessment_status_distribution';
+    case 'grades.gradebook_completion':
+      return 'grades_current_gradebook_completion';
+    case 'homework.assignment_status_distribution':
+      return 'homework_current_assignment_status_distribution';
+    case 'homework.submission_review_trend':
+      return 'homework_submission_review_trend';
+    case 'homework.grade_sync_coverage':
+      return 'homework_current_grade_sync_link_coverage';
   }
 }

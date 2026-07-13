@@ -138,6 +138,17 @@ export function validateDashboardAnalyticsChartQueryCapabilities(
     );
   }
 
+  const missingRequiredHierarchy = capabilities.requiredHierarchyFilters.filter(
+    (key) => !explicitlySuppliedKeys.includes(key) || query[key] === null,
+  );
+
+  if (missingRequiredHierarchy.length > 0) {
+    throw validationError(
+      'Analytics chart requires explicit hierarchy filters',
+      missingRequiredHierarchy,
+    );
+  }
+
   const explicitTimeKeys = explicitlySuppliedKeys.filter((key) =>
     ['range', 'granularity', 'dateFrom', 'dateTo'].includes(key),
   );
