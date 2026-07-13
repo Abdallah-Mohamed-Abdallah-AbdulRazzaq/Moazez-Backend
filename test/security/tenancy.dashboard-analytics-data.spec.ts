@@ -14,6 +14,8 @@ import {
   AttendanceStatus,
   BehaviorRecordStatus,
   BehaviorRecordType,
+  CommunicationAnnouncementStatus,
+  CommunicationConversationType,
   CurriculumStatus,
   GradeAssessmentApprovalStatus,
   GradeAssessmentType,
@@ -55,6 +57,7 @@ import { DashboardGradesAnalyticsRepository } from '../../src/modules/dashboard/
 import { DashboardHomeworkAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-homework-analytics.repository';
 import { DashboardBehaviorAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-behavior-analytics.repository';
 import { DashboardReinforcementAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-reinforcement-analytics.repository';
+import { DashboardCommunicationAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-communication-analytics.repository';
 
 jest.setTimeout(60000);
 
@@ -536,11 +539,50 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
         fulfilledAt: new Date('2026-07-10T15:00:00.000Z'),
       },
     });
+
+    const conversation = await prisma.communicationConversation.create({
+      data: {
+        schoolId: schoolBId,
+        type: CommunicationConversationType.GROUP,
+        titleEn: `${marker} private conversation`,
+        academicYearId: schoolBAcademicYearId,
+        termId: schoolBTermId,
+        gradeId: schoolBGradeId,
+        sectionId: schoolBSectionId,
+        classroomId: schoolBClassroomId,
+      },
+      select: { id: true },
+    });
+    await prisma.communicationMessage.create({
+      data: {
+        schoolId: schoolBId,
+        conversationId: conversation.id,
+        body: `${marker} private message body`,
+        sentAt: new Date('2026-07-10T08:00:00.000Z'),
+      },
+    });
+    await prisma.communicationAnnouncement.create({
+      data: {
+        schoolId: schoolBId,
+        title: `${marker} private announcement title`,
+        body: `${marker} private announcement body`,
+        status: CommunicationAnnouncementStatus.SCHEDULED,
+      },
+    });
   });
 
   afterAll(async () => {
     if (!prisma) return;
 
+    await prisma.communicationAnnouncement.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.communicationMessage.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.communicationConversation.deleteMany({
+      where: { schoolId: schoolBId },
+    });
     await prisma.attendanceEntry.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.attendanceExcuseRequest.deleteMany({
       where: { schoolId: schoolBId },
@@ -973,6 +1015,35 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
     }
   });
 
+  it('isolates both Communication aggregates and returns no message or announcement content', async () => {
+    const useCase = analyticsDataUseCase();
+    for (const chartKey of [
+      'communication.message_volume',
+      'communication.announcement_status',
+    ]) {
+      const schoolAResponse = await withSchoolScope(schoolAId, () =>
+        useCase.execute(chartKey, {
+          schoolId: schoolBId,
+          organizationId,
+        } as any),
+      );
+      const schoolBResponse = await withSchoolScope(schoolBId, () =>
+        useCase.execute(chartKey, {}),
+      );
+
+      expect(schoolAResponse.data.empty).toBe(true);
+      expect(schoolBResponse.data.empty).toBe(false);
+      for (const response of [schoolAResponse, schoolBResponse]) {
+        const serialized = JSON.stringify(response);
+        expect(serialized).not.toContain(marker);
+        expect(serialized).not.toContain('private message body');
+        expect(serialized).not.toContain('private announcement title');
+        expect(serialized).not.toContain('private announcement body');
+        expectNoInternalLeaks(response);
+      }
+    }
+  });
+
   it('does not resolve any School B hierarchy identifier from School A', async () => {
     const useCase = analyticsDataUseCase();
     const crossSchoolFilters = [
@@ -1021,6 +1092,7 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
       new DashboardHomeworkAnalyticsRepository(prisma),
       new DashboardBehaviorAnalyticsRepository(prisma),
       new DashboardReinforcementAnalyticsRepository(prisma),
+      new DashboardCommunicationAnalyticsRepository(prisma),
     );
   }
 

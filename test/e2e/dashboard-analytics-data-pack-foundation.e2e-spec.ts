@@ -13,6 +13,10 @@ import {
   AttendanceStatus,
   BehaviorRecordStatus,
   BehaviorRecordType,
+  CommunicationAnnouncementStatus,
+  CommunicationConversationStatus,
+  CommunicationConversationType,
+  CommunicationMessageStatus,
   CurriculumStatus,
   GradeAssessmentApprovalStatus,
   GradeAssessmentDeliveryMode,
@@ -118,6 +122,16 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
   const xpLedgerIds: string[] = [];
   const rewardCatalogItemIds: string[] = [];
   const rewardRedemptionIds: string[] = [];
+  const communicationConversationIds: string[] = [];
+  const communicationMessageIds: string[] = [];
+  const communicationAnnouncementIds: string[] = [];
+  let communicationAnnouncementExpected = {
+    draft: 0,
+    scheduled: 0,
+    published: 0,
+    archived: 0,
+    cancelled: 0,
+  };
 
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -151,6 +165,7 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     await createAcademicsAnalyticsFixtures();
     await createGradesHomeworkAnalyticsFixtures();
     await createBehaviorReinforcementAnalyticsFixtures();
+    await createCommunicationSettingsAnalyticsFixtures();
 
     const permissionIds = await ensureDashboardPermissions();
     await ensureDemoAdminHasDashboardPermissions(Object.values(permissionIds));
@@ -1233,6 +1248,202 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(400);
     }
+  });
+
+  it('returns timezone-aware Communication message volume and all five current announcement statuses', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const messagePath = `${GLOBAL_PREFIX}/dashboard/analytics/charts/communication.message_volume/data`;
+    const hierarchy = {
+      academicYearId,
+      termId,
+      gradeId,
+      sectionId,
+      classroomId,
+    };
+    const day = await request(app.getHttpServer())
+      .get(messagePath)
+      .query({
+        range: 'custom',
+        granularity: 'day',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-31',
+        ...hierarchy,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const week = await request(app.getHttpServer())
+      .get(messagePath)
+      .query({
+        range: 'custom',
+        granularity: 'week',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-31',
+        ...hierarchy,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const month = await request(app.getHttpServer())
+      .get(messagePath)
+      .query({
+        range: 'custom',
+        granularity: 'month',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-31',
+        ...hierarchy,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(day.body).toMatchObject({
+      chartKey: 'communication.message_volume',
+      status: 'available',
+      data: {
+        totals: { messages: 3 },
+        summary: { value: 3, label: 'Sent communication messages' },
+        empty: false,
+      },
+      meta: {
+        pack: 'communication_settings_v1',
+        dataAvailability: 'computed_series',
+        computation: 'communication_message_volume_trend',
+        query: {
+          effectiveTimezone: 'Africa/Cairo',
+          appliedFilters: [
+            'range',
+            'granularity',
+            'dateFrom',
+            'dateTo',
+            'academicYearId',
+            'termId',
+            'gradeId',
+            'sectionId',
+            'classroomId',
+          ],
+          notApplicableFilters: [],
+        },
+      },
+    });
+    expect(day.body.data.series[0].points).toHaveLength(31);
+    expect(
+      day.body.data.series[0].points
+        .filter((point: { y: number }) => point.y > 0)
+        .map((point: { x: string; y: number }) => [point.x, point.y]),
+    ).toEqual([
+      ['2026-07-03', 1],
+      ['2026-07-08', 1],
+      ['2026-07-15', 1],
+    ]);
+    expect(week.body.data.series[0].points).toMatchObject([
+      { x: '2026-07-01/2026-07-05', y: 1 },
+      { x: '2026-07-06/2026-07-12', y: 1 },
+      { x: '2026-07-13/2026-07-19', y: 1 },
+      { x: '2026-07-20/2026-07-26', y: 0 },
+      { x: '2026-07-27/2026-07-31', y: 0 },
+    ]);
+    expect(month.body.data.series[0].points).toEqual([
+      {
+        x: '2026-07',
+        y: 3,
+        coordinate: { kind: 'calendar_month', month: '2026-07' },
+      },
+    ]);
+
+    const noData = await request(app.getHttpServer())
+      .get(messagePath)
+      .query({
+        range: 'custom',
+        granularity: 'day',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-31',
+        sectionId: otherSectionId,
+      })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(noData.body).toMatchObject({
+      data: { totals: { messages: 0 }, empty: true },
+      emptyState: { reason: 'no_data' },
+    });
+
+    const announcements = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/communication.announcement_status/data`,
+      )
+      .query({ range: '30d', granularity: 'day' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(announcements.body).toMatchObject({
+      chartKey: 'communication.announcement_status',
+      data: {
+        totals: {
+          ...communicationAnnouncementExpected,
+        },
+        summary: {
+          value: Object.values(communicationAnnouncementExpected).reduce(
+            (sum, count) => sum + count,
+            0,
+          ),
+          label: 'Current announcements',
+        },
+        empty: false,
+      },
+      meta: {
+        pack: 'communication_settings_v1',
+        dataAvailability: 'computed_category',
+        computation: 'communication_current_announcement_status_distribution',
+        query: {
+          appliedFilters: [],
+          notApplicableFilters: ['range', 'granularity'],
+        },
+      },
+    });
+    expect(
+      announcements.body.data.series.map(
+        (series: { key: string; points: [{ y: number }] }) => [
+          series.key,
+          series.points[0].y,
+        ],
+      ),
+    ).toEqual([
+      ['draft', communicationAnnouncementExpected.draft],
+      ['scheduled', communicationAnnouncementExpected.scheduled],
+      ['published', communicationAnnouncementExpected.published],
+      ['archived', communicationAnnouncementExpected.archived],
+      ['cancelled', communicationAnnouncementExpected.cancelled],
+    ]);
+    for (const response of [day, week, month, noData, announcements]) {
+      expectNoInternalLeaks(response.body);
+      expect(JSON.stringify(response.body)).not.toContain(marker);
+    }
+  });
+
+  it('enforces Communication chart capabilities and preserves notification readiness fallback', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const announcementPath = `${GLOBAL_PREFIX}/dashboard/analytics/charts/communication.announcement_status/data`;
+    for (const query of [
+      { range: '7d' },
+      { granularity: 'week' },
+      { dateFrom: '2026-07-01' },
+      { gradeId },
+    ]) {
+      await request(app.getHttpServer())
+        .get(announcementPath)
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    }
+
+    const deferred = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/settings.notification_readiness/data`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(deferred.body).toMatchObject({
+      status: 'planned',
+      emptyState: { reason: 'not_implemented' },
+      meta: { pack: null, dataAvailability: 'definition_only' },
+    });
+    expectNoInternalLeaks(deferred.body);
   });
 
   it('returns day, week, and month Attendance observation buckets from submitted sessions only', async () => {
@@ -2754,6 +2965,105 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     }
   }
 
+  async function createCommunicationSettingsAnalyticsFixtures(): Promise<void> {
+    const conversationInputs = [
+      {
+        status: CommunicationConversationStatus.ACTIVE,
+        deletedAt: null,
+        messageStatus: CommunicationMessageStatus.SENT,
+        sentAt: new Date('2026-07-02T22:30:00.000Z'),
+        messageDeletedAt: null,
+      },
+      {
+        status: CommunicationConversationStatus.ARCHIVED,
+        deletedAt: null,
+        messageStatus: CommunicationMessageStatus.HIDDEN,
+        sentAt: new Date('2026-07-08T10:00:00.000Z'),
+        messageDeletedAt: null,
+      },
+      {
+        status: CommunicationConversationStatus.CLOSED,
+        deletedAt: null,
+        messageStatus: CommunicationMessageStatus.DELETED,
+        sentAt: new Date('2026-07-15T10:00:00.000Z'),
+        messageDeletedAt: new Date('2026-07-16T10:00:00.000Z'),
+      },
+      {
+        status: CommunicationConversationStatus.ACTIVE,
+        deletedAt: new Date('2026-07-09T00:00:00.000Z'),
+        messageStatus: CommunicationMessageStatus.SENT,
+        sentAt: new Date('2026-07-08T12:00:00.000Z'),
+        messageDeletedAt: null,
+      },
+    ];
+
+    for (const [index, input] of conversationInputs.entries()) {
+      const conversation = await prisma.communicationConversation.create({
+        data: {
+          schoolId: demoSchoolId,
+          type: CommunicationConversationType.GROUP,
+          status: input.status,
+          titleEn: `${marker}-conversation-${index}`,
+          academicYearId,
+          termId,
+          gradeId,
+          sectionId,
+          classroomId,
+          deletedAt: input.deletedAt,
+        },
+        select: { id: true },
+      });
+      communicationConversationIds.push(conversation.id);
+      const message = await prisma.communicationMessage.create({
+        data: {
+          schoolId: demoSchoolId,
+          conversationId: conversation.id,
+          status: input.messageStatus,
+          body: `${marker}-private-message-${index}`,
+          sentAt: input.sentAt,
+          deletedAt: input.messageDeletedAt,
+        },
+        select: { id: true },
+      });
+      communicationMessageIds.push(message.id);
+    }
+
+    for (const status of [
+      CommunicationAnnouncementStatus.DRAFT,
+      CommunicationAnnouncementStatus.SCHEDULED,
+      CommunicationAnnouncementStatus.PUBLISHED,
+      CommunicationAnnouncementStatus.ARCHIVED,
+      CommunicationAnnouncementStatus.CANCELLED,
+    ]) {
+      const announcement = await prisma.communicationAnnouncement.create({
+        data: {
+          schoolId: demoSchoolId,
+          title: `${marker}-private-announcement-${status}`,
+          body: `${marker}-private-announcement-body-${status}`,
+          status,
+        },
+        select: { id: true },
+      });
+      communicationAnnouncementIds.push(announcement.id);
+    }
+
+    const statusRows = await prisma.communicationAnnouncement.groupBy({
+      by: ['status'],
+      where: { schoolId: demoSchoolId },
+      _count: { _all: true },
+    });
+    const counts = new Map(
+      statusRows.map((row) => [row.status, row._count._all]),
+    );
+    communicationAnnouncementExpected = {
+      draft: counts.get(CommunicationAnnouncementStatus.DRAFT) ?? 0,
+      scheduled: counts.get(CommunicationAnnouncementStatus.SCHEDULED) ?? 0,
+      published: counts.get(CommunicationAnnouncementStatus.PUBLISHED) ?? 0,
+      archived: counts.get(CommunicationAnnouncementStatus.ARCHIVED) ?? 0,
+      cancelled: counts.get(CommunicationAnnouncementStatus.CANCELLED) ?? 0,
+    };
+  }
+
   function enrollmentInput(
     studentId: string,
     status: StudentEnrollmentStatus,
@@ -2773,6 +3083,21 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
   }
 
   async function cleanupAnalyticsHierarchyFixtures(): Promise<void> {
+    if (communicationAnnouncementIds.length > 0) {
+      await prisma.communicationAnnouncement.deleteMany({
+        where: { id: { in: communicationAnnouncementIds } },
+      });
+    }
+    if (communicationMessageIds.length > 0) {
+      await prisma.communicationMessage.deleteMany({
+        where: { id: { in: communicationMessageIds } },
+      });
+    }
+    if (communicationConversationIds.length > 0) {
+      await prisma.communicationConversation.deleteMany({
+        where: { id: { in: communicationConversationIds } },
+      });
+    }
     if (rewardRedemptionIds.length > 0) {
       await prisma.rewardRedemption.deleteMany({
         where: { id: { in: rewardRedemptionIds } },

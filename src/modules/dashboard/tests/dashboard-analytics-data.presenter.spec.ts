@@ -285,6 +285,52 @@ describe('Dashboard analytics data presenter', () => {
     expectNoInternalLeaks(response);
   });
 
+  it('presents Communication/Settings pack metadata and preserves compatibility filter metadata', () => {
+    const chart = findDashboardAnalyticsChartDefinition(
+      'communication.announcement_status',
+    )!;
+    const response = presentDashboardAnalyticsChartData({
+      queryContext: {
+        ...defaultQueryContext(),
+        explicitlySuppliedKeys: ['range', 'granularity'],
+        filtersApplied: [],
+        filtersNotApplicable: ['range', 'granularity'],
+      },
+      chart,
+      communicationSettingsData: {
+        series: [
+          {
+            key: 'draft',
+            label: 'Draft',
+            points: [dashboardAnalyticsCategoryPoint('draft', 'Draft', 1)],
+          },
+        ],
+        totals: {
+          draft: 1,
+          scheduled: 0,
+          published: 0,
+          archived: 0,
+          cancelled: 0,
+        },
+        summary: { value: 1, label: 'Current announcements' },
+        empty: false,
+      },
+    });
+
+    expect(response.meta).toMatchObject({
+      pack: 'communication_settings_v1',
+      dataAvailability: 'computed_category',
+      computation: 'communication_current_announcement_status_distribution',
+      query: {
+        requestedFilters: ['range', 'granularity'],
+        appliedFilters: [],
+        notApplicableFilters: ['range', 'granularity'],
+      },
+      deferred: { historicalSeries: 'deferred' },
+    });
+    expectNoInternalLeaks(response);
+  });
+
   it('presents computed Attendance series with the attendance pack and no historical deferral', () => {
     const chart = findDashboardAnalyticsChartDefinition(
       'attendance.daily_trend',
@@ -505,6 +551,8 @@ describe('Dashboard analytics data presenter', () => {
       'reinforcement.xp_activity_trend',
       'reinforcement.task_completion',
       'reinforcement.reward_redemption_status',
+      'communication.message_volume',
+      'communication.announcement_status',
       'communication.moderation_queue',
       'settings.email_connection_readiness',
       'settings.login_identity_readiness',

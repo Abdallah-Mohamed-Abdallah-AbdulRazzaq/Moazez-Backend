@@ -358,6 +358,9 @@ const BEHAVIOR_REINFORCEMENT_CATEGORY_FILTERS: readonly DashboardAnalyticsFilter
     'classroomId',
   ];
 
+const COMMUNICATION_ANNOUNCEMENT_FILTERS: readonly DashboardAnalyticsFilterKey[] =
+  ['range', 'granularity'];
+
 export const DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS = [
   'attendance.pending_sessions',
   'grades.pending_submission_reviews',
@@ -424,6 +427,14 @@ export const DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK_CHART_KEYS = [
 
 export type DashboardAnalyticsBehaviorReinforcementPackChartKey =
   (typeof DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK_CHART_KEYS)[number];
+
+export const DASHBOARD_ANALYTICS_COMMUNICATION_SETTINGS_PACK_CHART_KEYS = [
+  'communication.message_volume',
+  'communication.announcement_status',
+] as const;
+
+export type DashboardAnalyticsCommunicationSettingsPackChartKey =
+  (typeof DASHBOARD_ANALYTICS_COMMUNICATION_SETTINGS_PACK_CHART_KEYS)[number];
 
 export const DASHBOARD_ANALYTICS_SOURCES_CATALOG: readonly DashboardAnalyticsSourceDefinition[] =
   [
@@ -1307,18 +1318,32 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'Communication message volume over time.',
       'line',
       [series('messages', 'Messages')],
+      STANDARD_OPERATIONAL_FILTERS,
+      computedSeriesOptions({
+        emptyStateMessage:
+          'No communication messages found for the selected range.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+      }),
     ),
     chart(
       'communication.announcement_status',
       'communication',
       'Announcement status',
-      'Announcements grouped by status.',
+      'Current announcements grouped by persisted workflow status.',
       'donut',
       [
         series('draft', 'Draft'),
+        series('scheduled', 'Scheduled'),
         series('published', 'Published'),
         series('archived', 'Archived'),
+        series('cancelled', 'Cancelled'),
       ],
+      COMMUNICATION_ANNOUNCEMENT_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage: 'No current communication announcements found.',
+        hierarchyFilters: [],
+        timeFilterMode: 'compatibility_defaults',
+      }),
     ),
     chart(
       'communication.moderation_queue',

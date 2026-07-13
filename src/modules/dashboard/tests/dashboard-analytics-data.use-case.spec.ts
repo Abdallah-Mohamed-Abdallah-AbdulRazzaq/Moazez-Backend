@@ -103,6 +103,59 @@ describe('Dashboard analytics data use case', () => {
 
   it.each([
     [
+      'communication.message_volume',
+      'aggregateMessageVolumeByCivilDate',
+      'communication_message_volume_trend',
+    ],
+    [
+      'communication.announcement_status',
+      'countCurrentAnnouncementsByStatus',
+      'communication_current_announcement_status_distribution',
+    ],
+  ] as const)(
+    'dispatches %s to exactly one Communication aggregate',
+    async (chartKey, expectedMethod, computation) => {
+      const setup = useCaseWith(0);
+      const response = await withSchoolScope(() =>
+        setup.useCase.execute(chartKey, {}),
+      );
+
+      expect(response.meta).toMatchObject({
+        pack: 'communication_settings_v1',
+        computation,
+      });
+      for (const [method, mock] of Object.entries(
+        setup.communicationRepository,
+      )) {
+        if (method === expectedMethod) {
+          expect(mock).toHaveBeenCalledTimes(1);
+        } else {
+          expect(mock).not.toHaveBeenCalled();
+        }
+      }
+      expect(setup.snapshotRepository.loadChartValue).not.toHaveBeenCalled();
+      expectNoInternalLeaks(response);
+    },
+  );
+
+  it('keeps notification readiness on the definition-only fallback without Communication fanout', async () => {
+    const setup = useCaseWith(0);
+    const response = await withSchoolScope(() =>
+      setup.useCase.execute('settings.notification_readiness', {}),
+    );
+
+    expect(response).toMatchObject({
+      status: 'planned',
+      emptyState: { reason: 'not_implemented' },
+      meta: { pack: null, dataAvailability: 'definition_only' },
+    });
+    for (const mock of Object.values(setup.communicationRepository)) {
+      expect(mock).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    [
       'grades.assessment_status_distribution',
       'gradesRepository',
       'countCurrentAssessmentStatusDistribution',
@@ -599,6 +652,16 @@ function useCaseWith(snapshotValue: number) {
       .fn()
       .mockResolvedValue({ requested: 0, approved: 0, fulfilled: 0 }),
   };
+  const communicationRepository = {
+    aggregateMessageVolumeByCivilDate: jest.fn().mockResolvedValue([]),
+    countCurrentAnnouncementsByStatus: jest.fn().mockResolvedValue({
+      draft: 0,
+      scheduled: 0,
+      published: 0,
+      archived: 0,
+      cancelled: 0,
+    }),
+  };
 
   return {
     queryContextService,
@@ -611,6 +674,7 @@ function useCaseWith(snapshotValue: number) {
     homeworkRepository,
     behaviorRepository,
     reinforcementRepository,
+    communicationRepository,
     useCase: new GetDashboardAnalyticsChartDataUseCase(
       queryContextService as any,
       snapshotRepository as any,
@@ -622,6 +686,7 @@ function useCaseWith(snapshotValue: number) {
       homeworkRepository as any,
       behaviorRepository as any,
       reinforcementRepository as any,
+      communicationRepository as any,
     ),
   };
 }
