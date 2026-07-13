@@ -13,6 +13,11 @@ import {
   AttendanceSessionStatus,
   AttendanceStatus,
   CurriculumStatus,
+  GradeAssessmentApprovalStatus,
+  GradeAssessmentType,
+  GradeScopeType,
+  HomeworkAssignmentStatus,
+  HomeworkSubmissionStatus,
   LessonPlanStatus,
   SchoolLoginSettingsStatus,
   StudentEnrollmentStatus,
@@ -40,6 +45,8 @@ import { AttendanceDashboardAnalyticsRepository } from '../../src/modules/attend
 import { DashboardAdmissionsAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-admissions-analytics.repository';
 import { DashboardStudentsAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-students-analytics.repository';
 import { DashboardAcademicsAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-academics-analytics.repository';
+import { DashboardGradesAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-grades-analytics.repository';
+import { DashboardHomeworkAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-homework-analytics.repository';
 
 jest.setTimeout(60000);
 
@@ -362,6 +369,70 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
         createdByUserId: analyticsUser.id,
       },
     });
+
+    const assessment = await prisma.gradeAssessment.create({
+      data: {
+        schoolId: schoolBId,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        subjectId: subject.id,
+        scopeType: GradeScopeType.CLASSROOM,
+        scopeKey: classroom.id,
+        classroomId: classroom.id,
+        titleEn: `${marker}-assessment`,
+        type: GradeAssessmentType.QUIZ,
+        date: new Date('2026-07-10T00:00:00.000Z'),
+        weight: 10,
+        maxScore: 20,
+        approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+        createdById: analyticsUser.id,
+      },
+      select: { id: true },
+    });
+    const assignment = await prisma.homeworkAssignment.create({
+      data: {
+        schoolId: schoolBId,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        classroomId: classroom.id,
+        subjectId: subject.id,
+        teacherUserId: analyticsUser.id,
+        teacherSubjectAllocationId: teacherAllocation.id,
+        title: `${marker}-homework`,
+        status: HomeworkAssignmentStatus.PUBLISHED,
+        dueAt: new Date('2026-07-20T00:00:00.000Z'),
+        isGraded: true,
+        gradeAssessmentId: assessment.id,
+        createdByUserId: analyticsUser.id,
+      },
+      select: { id: true },
+    });
+    const activeEnrollment = await prisma.enrollment.findFirstOrThrow({
+      where: { schoolId: schoolBId, studentId: student.id },
+      select: { id: true },
+    });
+    const target = await prisma.homeworkTarget.create({
+      data: {
+        schoolId: schoolBId,
+        homeworkAssignmentId: assignment.id,
+        studentId: student.id,
+        enrollmentId: activeEnrollment.id,
+      },
+      select: { id: true },
+    });
+    await prisma.homeworkSubmission.create({
+      data: {
+        schoolId: schoolBId,
+        homeworkAssignmentId: assignment.id,
+        homeworkTargetId: target.id,
+        studentId: student.id,
+        enrollmentId: activeEnrollment.id,
+        status: HomeworkSubmissionStatus.REVIEWED,
+        submittedAt: new Date('2026-07-10T08:00:00.000Z'),
+        reviewedAt: new Date('2026-07-10T09:00:00.000Z'),
+        reviewedByUserId: analyticsUser.id,
+      },
+    });
   });
 
   afterAll(async () => {
@@ -376,6 +447,15 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
     });
     await prisma.studentGuardian.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.guardian.deleteMany({ where: { schoolId: schoolBId } });
+    await prisma.homeworkSubmission.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.homeworkTarget.deleteMany({ where: { schoolId: schoolBId } });
+    await prisma.homeworkAssignment.deleteMany({
+      where: { schoolId: schoolBId },
+    });
+    await prisma.gradeItem.deleteMany({ where: { schoolId: schoolBId } });
+    await prisma.gradeAssessment.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.enrollment.deleteMany({ where: { schoolId: schoolBId } });
     await prisma.admissionDecision.deleteMany({
       where: { schoolId: schoolBId },
@@ -670,6 +750,62 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
     }
   });
 
+  it('isolates all five Grades/Homework aggregates and leaks no source identifiers', async () => {
+    const useCase = analyticsDataUseCase();
+    const historical = {
+      range: 'custom' as const,
+      granularity: 'day' as const,
+      dateFrom: '2026-07-10',
+      dateTo: '2026-07-10',
+    };
+    const chartQueries = [
+      ['grades.assessment_status_distribution', {}],
+      ['homework.assignment_status_distribution', {}],
+      ['homework.submission_review_trend', historical],
+      ['homework.grade_sync_coverage', {}],
+    ] as const;
+
+    for (const [chartKey, query] of chartQueries) {
+      const schoolAResponse = await withSchoolScope(schoolAId, () =>
+        useCase.execute(chartKey, {
+          ...query,
+          schoolId: schoolBId,
+          organizationId,
+        } as any),
+      );
+      const schoolBResponse = await withSchoolScope(schoolBId, () =>
+        useCase.execute(chartKey, query),
+      );
+      expect(schoolAResponse.data.empty).toBe(true);
+      expect(schoolBResponse.data.empty).toBe(false);
+      expectNoInternalLeaks(schoolAResponse);
+      expectNoInternalLeaks(schoolBResponse);
+    }
+
+    const gradebookError = await withSchoolScope(schoolAId, () =>
+      useCase
+        .execute('grades.gradebook_completion', {
+          academicYearId: schoolBAcademicYearId,
+          termId: schoolBTermId,
+        })
+        .then(() => null)
+        .catch((caught: unknown) => caught),
+    );
+    expect(gradebookError).toMatchObject({
+      code: 'not_found',
+      message: 'Dashboard analytics hierarchy was not found',
+      details: undefined,
+    });
+    const schoolBGradebook = await withSchoolScope(schoolBId, () =>
+      useCase.execute('grades.gradebook_completion', {
+        academicYearId: schoolBAcademicYearId,
+        termId: schoolBTermId,
+      }),
+    );
+    expect(schoolBGradebook.data.empty).toBe(false);
+    expectNoInternalLeaks(schoolBGradebook);
+  });
+
   it('does not resolve any School B hierarchy identifier from School A', async () => {
     const useCase = analyticsDataUseCase();
     const crossSchoolFilters = [
@@ -714,6 +850,8 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
       new DashboardAdmissionsAnalyticsRepository(prisma),
       new DashboardStudentsAnalyticsRepository(prisma),
       new DashboardAcademicsAnalyticsRepository(prisma),
+      new DashboardGradesAnalyticsRepository(prisma),
+      new DashboardHomeworkAnalyticsRepository(prisma),
     );
   }
 

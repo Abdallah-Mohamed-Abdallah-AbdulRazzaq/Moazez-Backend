@@ -253,7 +253,7 @@ describe('Dashboard analytics presenter', () => {
     expectNoInternalLeaks(response);
   });
 
-  it('marks exactly twenty charts as computed and leaves seventeen definition-only', () => {
+  it('marks exactly twenty-five charts as computed and leaves twelve definition-only', () => {
     const response = presentDashboardAnalyticsCatalog({
       generatedAt: new Date('2026-07-09T12:00:00.000Z'),
       catalog: DASHBOARD_ANALYTICS_CATALOG,
@@ -285,6 +285,13 @@ describe('Dashboard analytics presenter', () => {
       'academics.timetable_publication_status',
       'academics.curriculum_activation',
       'academics.lesson_plan_activation',
+    ];
+    const gradesHomeworkPackChartKeys = [
+      'grades.assessment_status_distribution',
+      'grades.gradebook_completion',
+      'homework.assignment_status_distribution',
+      'homework.submission_review_trend',
+      'homework.grade_sync_coverage',
     ];
 
     expect(
@@ -329,7 +336,8 @@ describe('Dashboard analytics presenter', () => {
             !computedSnapshotChartKeys.includes(chart.chartKey) &&
             !attendancePackChartKeys.includes(chart.chartKey) &&
             !admissionsStudentsPackChartKeys.includes(chart.chartKey) &&
-            !academicsPackChartKeys.includes(chart.chartKey),
+            !academicsPackChartKeys.includes(chart.chartKey) &&
+            !gradesHomeworkPackChartKeys.includes(chart.chartKey),
         )
         .every(
           (chart) =>
@@ -341,12 +349,12 @@ describe('Dashboard analytics presenter', () => {
       response.catalog.charts.filter(
         (chart) => chart.meta.dataAvailability !== 'definition_only',
       ),
-    ).toHaveLength(20);
+    ).toHaveLength(25);
     expect(
       response.catalog.charts.filter(
         (chart) => chart.meta.dataAvailability === 'definition_only',
       ),
-    ).toHaveLength(17);
+    ).toHaveLength(12);
   });
 
   it('publishes one truthful typed query capability matrix', () => {
@@ -390,6 +398,7 @@ describe('Dashboard analytics presenter', () => {
         'sectionId',
         'classroomId',
       ],
+      requiredHierarchyFilters: [],
     });
     expect(
       communicationSnapshot?.queryCapabilities.supportedHierarchyFilters,
@@ -414,23 +423,30 @@ describe('Dashboard analytics presenter', () => {
         granularityApplicable: true,
       },
     });
-    for (const definition of [
-      homeworkReviewDefinition,
-      behaviorReviewDefinition,
-    ]) {
-      expect(definition).toMatchObject({
-        status: 'planned',
-        meta: { dataAvailability: 'definition_only' },
-        queryCapabilities: {
-          timeFilterMode: 'unsupported',
-          definitionOnly: true,
-          timeFiltersApplicable: false,
-          granularityApplicable: false,
-          supportedRanges: [],
-          supportedGranularities: [],
-        },
-      });
-    }
+    expect(homeworkReviewDefinition).toMatchObject({
+      status: 'available',
+      meta: { dataAvailability: 'computed_series' },
+      queryCapabilities: {
+        timeFilterMode: 'historical',
+        definitionOnly: false,
+        timeFiltersApplicable: true,
+        granularityApplicable: true,
+        supportedRanges: DASHBOARD_ANALYTICS_RANGES,
+        supportedGranularities: DASHBOARD_ANALYTICS_GRANULARITIES,
+      },
+    });
+    expect(behaviorReviewDefinition).toMatchObject({
+      status: 'planned',
+      meta: { dataAvailability: 'definition_only' },
+      queryCapabilities: {
+        timeFilterMode: 'unsupported',
+        definitionOnly: true,
+        timeFiltersApplicable: false,
+        granularityApplicable: false,
+        supportedRanges: [],
+        supportedGranularities: [],
+      },
+    });
 
     const excuseDefinition = response.catalog.charts.find(
       (chart) => chart.chartKey === 'attendance.excuse_status',
@@ -588,6 +604,76 @@ describe('Dashboard analytics presenter', () => {
         status: 'planned',
         meta: { dataAvailability: 'definition_only' },
         queryCapabilities: { timeFilterMode: 'historical' },
+      });
+    }
+  });
+
+  it('publishes the five Grades/Homework contracts and generic required hierarchy metadata', () => {
+    const response = presentDashboardAnalyticsCatalog({
+      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      catalog: DASHBOARD_ANALYTICS_CATALOG,
+    });
+    const byKey = new Map(
+      response.catalog.charts.map((chart) => [chart.chartKey, chart]),
+    );
+    const expected = [
+      [
+        'grades.assessment_status_distribution',
+        ['draft', 'published', 'approved', 'locked'],
+        'computed_category',
+      ],
+      [
+        'grades.gradebook_completion',
+        ['complete', 'missing'],
+        'computed_category',
+      ],
+      [
+        'homework.assignment_status_distribution',
+        ['draft', 'published', 'closed', 'cancelled'],
+        'computed_category',
+      ],
+      [
+        'homework.submission_review_trend',
+        ['submitted', 'reviewed'],
+        'computed_series',
+      ],
+      [
+        'homework.grade_sync_coverage',
+        ['linked', 'pending'],
+        'computed_category',
+      ],
+    ] as const;
+
+    for (const [chartKey, seriesKeys, availability] of expected) {
+      const chart = byKey.get(chartKey);
+      expect(chart).toMatchObject({
+        status: 'available',
+        meta: { dataAvailability: availability },
+      });
+      expect(chart?.series.map((series) => series.key)).toEqual(seriesKeys);
+      expect(chart?.queryCapabilities.requiredHierarchyFilters).toEqual(
+        chartKey === 'grades.gradebook_completion'
+          ? ['academicYearId', 'termId']
+          : [],
+      );
+    }
+    expect(
+      byKey.get('homework.submission_review_trend')?.queryCapabilities,
+    ).toMatchObject({
+      timeFilterMode: 'historical',
+      timeFiltersApplicable: true,
+      granularityApplicable: true,
+    });
+    for (const chartKey of [
+      'grades.assessment_status_distribution',
+      'grades.gradebook_completion',
+      'homework.assignment_status_distribution',
+      'homework.grade_sync_coverage',
+    ]) {
+      expect(byKey.get(chartKey)?.queryCapabilities).toMatchObject({
+        timeFilterMode: 'compatibility_defaults',
+        supportedRanges: ['30d'],
+        supportedGranularities: ['day'],
       });
     }
   });

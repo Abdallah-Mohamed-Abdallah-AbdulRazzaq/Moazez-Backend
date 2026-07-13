@@ -14,17 +14,21 @@ import {
 } from '../domain/dashboard-admissions-students-analytics';
 import { computeDashboardAttendanceAnalyticsData } from '../domain/dashboard-attendance-analytics';
 import { computeDashboardAcademicsAnalyticsData } from '../domain/dashboard-academics-analytics';
+import { computeDashboardGradesHomeworkAnalyticsData } from '../domain/dashboard-grades-homework-analytics';
 import {
   isDashboardAnalyticsAcademicsPackChartKey,
   isDashboardAnalyticsAttendancePackChartKey,
   isDashboardAnalyticsAdmissionsStudentsPackChartKey,
   isDashboardAnalyticsComputedSnapshotChartKey,
+  isDashboardAnalyticsGradesHomeworkPackChartKey,
 } from '../domain/dashboard-analytics-data-pack';
 import { normalizeDashboardAnalyticsQuery } from '../domain/dashboard-analytics-query';
 import { DashboardAnalyticsSnapshotRepository } from '../infrastructure/dashboard-analytics-snapshot.repository';
 import { DashboardAdmissionsAnalyticsRepository } from '../infrastructure/dashboard-admissions-analytics.repository';
 import { DashboardStudentsAnalyticsRepository } from '../infrastructure/dashboard-students-analytics.repository';
 import { DashboardAcademicsAnalyticsRepository } from '../infrastructure/dashboard-academics-analytics.repository';
+import { DashboardGradesAnalyticsRepository } from '../infrastructure/dashboard-grades-analytics.repository';
+import { DashboardHomeworkAnalyticsRepository } from '../infrastructure/dashboard-homework-analytics.repository';
 import { presentDashboardAnalyticsChartData } from '../presenters/dashboard-analytics-data.presenter';
 import { DashboardAnalyticsQueryContextService } from './dashboard-analytics-query-context.service';
 
@@ -40,6 +44,8 @@ export class GetDashboardAnalyticsChartDataUseCase {
     private readonly dashboardAdmissionsAnalyticsRepository: DashboardAdmissionsAnalyticsRepository,
     private readonly dashboardStudentsAnalyticsRepository: DashboardStudentsAnalyticsRepository,
     private readonly dashboardAcademicsAnalyticsRepository: DashboardAcademicsAnalyticsRepository,
+    private readonly dashboardGradesAnalyticsRepository: DashboardGradesAnalyticsRepository,
+    private readonly dashboardHomeworkAnalyticsRepository: DashboardHomeworkAnalyticsRepository,
   ) {}
 
   async execute(
@@ -285,6 +291,102 @@ export class GetDashboardAnalyticsChartDataUseCase {
             queryContext,
             chart,
             academicsData,
+          });
+        }
+      }
+    }
+
+    if (isDashboardAnalyticsGradesHomeworkPackChartKey(chart.chartKey)) {
+      const hierarchy = queryContext.hierarchy;
+
+      switch (chart.chartKey) {
+        case 'grades.assessment_status_distribution': {
+          const gradesHomeworkData =
+            computeDashboardGradesHomeworkAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              assessmentStatus:
+                await this.dashboardGradesAnalyticsRepository.countCurrentAssessmentStatusDistribution(
+                  { scope, hierarchy },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            gradesHomeworkData,
+          });
+        }
+
+        case 'grades.gradebook_completion': {
+          const gradesHomeworkData =
+            computeDashboardGradesHomeworkAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              gradebookCompletion:
+                await this.dashboardGradesAnalyticsRepository.countCurrentGradebookCompletion(
+                  { scope, hierarchy },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            gradesHomeworkData,
+          });
+        }
+
+        case 'homework.assignment_status_distribution': {
+          const gradesHomeworkData =
+            computeDashboardGradesHomeworkAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              assignmentStatus:
+                await this.dashboardHomeworkAnalyticsRepository.countCurrentAssignmentStatusDistribution(
+                  { scope, hierarchy },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            gradesHomeworkData,
+          });
+        }
+
+        case 'homework.submission_review_trend': {
+          const gradesHomeworkData =
+            computeDashboardGradesHomeworkAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              submissionReviewEvents:
+                await this.dashboardHomeworkAnalyticsRepository.aggregateSubmissionReviewEventsByCivilDate(
+                  {
+                    scope,
+                    timezone: queryContext.timezone,
+                    window: queryContext,
+                    hierarchy,
+                  },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            gradesHomeworkData,
+          });
+        }
+
+        case 'homework.grade_sync_coverage': {
+          const gradesHomeworkData =
+            computeDashboardGradesHomeworkAnalyticsData({
+              chartKey: chart.chartKey,
+              queryContext,
+              gradeSyncCoverage:
+                await this.dashboardHomeworkAnalyticsRepository.countCurrentGradeSyncLinkCoverage(
+                  { scope, hierarchy },
+                ),
+            });
+          return presentDashboardAnalyticsChartData({
+            queryContext,
+            chart,
+            gradesHomeworkData,
           });
         }
       }

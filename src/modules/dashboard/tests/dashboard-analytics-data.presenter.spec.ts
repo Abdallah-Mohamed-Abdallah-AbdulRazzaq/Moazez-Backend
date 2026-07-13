@@ -6,6 +6,7 @@ import { DashboardAlertSignals } from '../infrastructure/dashboard-alerts.reposi
 import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
 import { presentDashboardAnalyticsChartData } from '../presenters/dashboard-analytics-data.presenter';
 import { DashboardAnalyticsQueryContext } from '../domain/dashboard-analytics-query';
+import { dashboardAnalyticsCategoryPoint } from '../domain/dashboard-analytics-coordinate';
 
 describe('Dashboard analytics data presenter', () => {
   it('returns a stable computed snapshot response for an available chart', () => {
@@ -190,6 +191,51 @@ describe('Dashboard analytics data presenter', () => {
       },
     });
     expect(response.data.series).toHaveLength(0);
+    expectNoInternalLeaks(response);
+  });
+
+  it('presents Grades/Homework pack metadata without internal identifiers', () => {
+    const chart = findDashboardAnalyticsChartDefinition(
+      'grades.assessment_status_distribution',
+    )!;
+    const response = presentDashboardAnalyticsChartData({
+      queryContext: {
+        ...defaultQueryContext(),
+        hierarchy: {
+          academicYearId: 'year-1',
+          termId: 'term-1',
+          gradeId: null,
+          sectionId: null,
+          classroomId: null,
+        },
+        filtersApplied: ['academicYearId', 'termId'],
+        filtersNotApplicable: ['range', 'granularity'],
+      },
+      chart,
+      gradesHomeworkData: {
+        series: [
+          {
+            key: 'draft',
+            label: 'Draft',
+            points: [dashboardAnalyticsCategoryPoint('draft', 'Draft', 2)],
+          },
+        ],
+        totals: { draft: 2, published: 0, approved: 0, locked: 0 },
+        summary: { value: 2, label: 'Current assessments' },
+        empty: false,
+      },
+    });
+
+    expect(response.meta).toMatchObject({
+      pack: 'grades_homework_v1',
+      dataAvailability: 'computed_category',
+      computation: 'grades_current_assessment_status_distribution',
+      query: {
+        appliedFilters: ['academicYearId', 'termId'],
+        notApplicableFilters: ['range', 'granularity'],
+      },
+      deferred: { historicalSeries: 'deferred' },
+    });
     expectNoInternalLeaks(response);
   });
 
@@ -400,8 +446,13 @@ describe('Dashboard analytics data presenter', () => {
       'academics.timetable_publication_status',
       'academics.curriculum_activation',
       'academics.lesson_plan_activation',
+      'grades.assessment_status_distribution',
       'grades.pending_submission_reviews',
       'grades.pending_answer_reviews',
+      'grades.gradebook_completion',
+      'homework.assignment_status_distribution',
+      'homework.submission_review_trend',
+      'homework.grade_sync_coverage',
       'communication.moderation_queue',
       'settings.email_connection_readiness',
       'settings.login_identity_readiness',

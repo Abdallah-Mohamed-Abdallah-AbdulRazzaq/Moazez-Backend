@@ -205,6 +205,7 @@ export interface DashboardAnalyticsChartQueryCapabilities {
   supportedRanges: readonly DashboardAnalyticsRange[];
   supportedGranularities: readonly DashboardAnalyticsGranularity[];
   supportedHierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
+  requiredHierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
 }
 
 export interface DashboardAnalyticsChartDefinition {
@@ -335,6 +336,17 @@ const ACADEMICS_LESSON_PLAN_FILTERS: readonly DashboardAnalyticsFilterKey[] = [
   'classroomId',
 ];
 
+const GRADES_HOMEWORK_CATEGORY_FILTERS: readonly DashboardAnalyticsFilterKey[] =
+  [
+    'range',
+    'granularity',
+    'academicYearId',
+    'termId',
+    'gradeId',
+    'sectionId',
+    'classroomId',
+  ];
+
 export const DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS = [
   'attendance.pending_sessions',
   'grades.pending_submission_reviews',
@@ -378,6 +390,17 @@ export const DASHBOARD_ANALYTICS_ACADEMICS_PACK_CHART_KEYS = [
 
 export type DashboardAnalyticsAcademicsPackChartKey =
   (typeof DASHBOARD_ANALYTICS_ACADEMICS_PACK_CHART_KEYS)[number];
+
+export const DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK_CHART_KEYS = [
+  'grades.assessment_status_distribution',
+  'grades.gradebook_completion',
+  'homework.assignment_status_distribution',
+  'homework.submission_review_trend',
+  'homework.grade_sync_coverage',
+] as const;
+
+export type DashboardAnalyticsGradesHomeworkPackChartKey =
+  (typeof DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK_CHART_KEYS)[number];
 
 export const DASHBOARD_ANALYTICS_SOURCES_CATALOG: readonly DashboardAnalyticsSourceDefinition[] =
   [
@@ -1054,7 +1077,7 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'grades.assessment_status_distribution',
       'grades',
       'Assessment status distribution',
-      'Assessments grouped by workflow status.',
+      'Current assessments grouped by workflow status.',
       'donut',
       [
         series('draft', 'Draft'),
@@ -1062,6 +1085,13 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
         series('approved', 'Approved'),
         series('locked', 'Locked'),
       ],
+      GRADES_HOMEWORK_CATEGORY_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage:
+          'No current assessments found for the selected academic scope.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+        timeFilterMode: 'compatibility_defaults',
+      }),
     ),
     chart(
       'grades.pending_submission_reviews',
@@ -1093,9 +1123,17 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'grades.gradebook_completion',
       'grades',
       'Gradebook completion',
-      'Gradebook completion coverage.',
+      'Current grade-entry completion across expected gradebook cells, not academic performance.',
       'radial-progress',
       [series('complete', 'Complete'), series('missing', 'Missing')],
+      GRADES_HOMEWORK_CATEGORY_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage:
+          'No expected gradebook cells found for the selected academic scope.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+        requiredHierarchyFilters: ['academicYearId', 'termId'],
+        timeFilterMode: 'compatibility_defaults',
+      }),
     ),
     chart(
       'homework.assignment_status_distribution',
@@ -1109,6 +1147,13 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
         series('closed', 'Closed'),
         series('cancelled', 'Cancelled'),
       ],
+      GRADES_HOMEWORK_CATEGORY_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage:
+          'No current homework assignments found for the selected academic scope.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+        timeFilterMode: 'compatibility_defaults',
+      }),
     ),
     chart(
       'homework.submission_review_trend',
@@ -1117,7 +1162,12 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'Homework submission review workload over time.',
       'line',
       [series('submitted', 'Submitted'), series('reviewed', 'Reviewed')],
-      REVIEW_FILTERS,
+      STANDARD_OPERATIONAL_FILTERS,
+      computedSeriesOptions({
+        emptyStateMessage:
+          'No homework submission or review events found for the selected range.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+      }),
     ),
     chart(
       'homework.grade_sync_coverage',
@@ -1126,6 +1176,13 @@ export const DASHBOARD_ANALYTICS_CHARTS: readonly DashboardAnalyticsChartDefinit
       'Homework assignments linked to grade sync versus pending.',
       'donut',
       [series('linked', 'Linked'), series('pending', 'Pending')],
+      GRADES_HOMEWORK_CATEGORY_FILTERS,
+      computedCategoryOptions({
+        emptyStateMessage:
+          'No graded homework assignments found for the selected academic scope.',
+        hierarchyFilters: DASHBOARD_ANALYTICS_HIERARCHY_FILTER_KEYS,
+        timeFilterMode: 'compatibility_defaults',
+      }),
     ),
     chart(
       'behavior.positive_negative_trend',
@@ -1338,6 +1395,7 @@ function chart(
     hierarchyFilters?: readonly DashboardAnalyticsHierarchyFilterKey[];
     granularityApplicable?: boolean;
     timeFilterMode?: DashboardAnalyticsTimeFilterMode;
+    requiredHierarchyFilters?: readonly DashboardAnalyticsHierarchyFilterKey[];
   } = {},
 ): DashboardAnalyticsChartDefinition {
   const definitionEndpoint = `/dashboard/analytics/charts/${chartKey}`;
@@ -1374,6 +1432,7 @@ function chart(
       options.hierarchyFilters ?? options.snapshotHierarchyFilters,
       options.granularityApplicable,
       options.timeFilterMode,
+      options.requiredHierarchyFilters,
     ),
   };
 }
@@ -1435,12 +1494,14 @@ function computedCategoryOptions(input: {
   emptyStateMessage: string;
   hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
   timeFilterMode: 'compatibility_defaults';
+  requiredHierarchyFilters?: readonly DashboardAnalyticsHierarchyFilterKey[];
 }): {
   status: 'available';
   dataAvailability: 'computed_category';
   emptyState: DashboardAnalyticsChartEmptyState;
   hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[];
   timeFilterMode: 'compatibility_defaults';
+  requiredHierarchyFilters?: readonly DashboardAnalyticsHierarchyFilterKey[];
 } {
   return {
     status: 'available',
@@ -1448,6 +1509,7 @@ function computedCategoryOptions(input: {
     emptyState: { reason: 'no_data', message: input.emptyStateMessage },
     hierarchyFilters: input.hierarchyFilters,
     timeFilterMode: input.timeFilterMode,
+    requiredHierarchyFilters: input.requiredHierarchyFilters,
   };
 }
 
@@ -1478,6 +1540,7 @@ function buildChartQueryCapabilities(
   hierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[] = [],
   granularityApplicableOverride?: boolean,
   timeFilterModeOverride?: DashboardAnalyticsTimeFilterMode,
+  requiredHierarchyFilters: readonly DashboardAnalyticsHierarchyFilterKey[] = [],
 ): DashboardAnalyticsChartQueryCapabilities {
   const legacySnapshotOnly = dataAvailability === 'computed_snapshot';
   const legacyTimeFiltersApplicable =
@@ -1561,6 +1624,7 @@ function buildChartQueryCapabilities(
     supportedRanges,
     supportedGranularities,
     supportedHierarchyFilters,
+    requiredHierarchyFilters,
   };
 }
 

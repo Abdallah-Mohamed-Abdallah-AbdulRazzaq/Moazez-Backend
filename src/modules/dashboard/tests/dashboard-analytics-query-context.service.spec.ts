@@ -273,24 +273,35 @@ describe('DashboardAnalyticsQueryContextService', () => {
     },
   );
 
-  it.each(['homework.submission_review_trend', 'behavior.pending_review'])(
-    'preserves Phase 2A time-filter rejection for %s',
-    async (chartKey) => {
-      for (const query of [
-        { range: '7d' as const },
-        { granularity: 'week' as const },
-      ]) {
-        const repository = hierarchyRepositoryMock();
-        await expect(
-          queryService(repository).resolve(scope(), chart(chartKey), query),
-        ).rejects.toMatchObject({
-          constructor: ValidationDomainException,
-          message: 'Analytics time filter is not supported by this chart',
-        });
-        expect(repository.findActiveAcademicYear).not.toHaveBeenCalled();
-      }
-    },
-  );
+  it('preserves Phase 2A time-filter rejection for behavior.pending_review', async () => {
+    for (const query of [
+      { range: '7d' as const },
+      { granularity: 'week' as const },
+    ]) {
+      const repository = hierarchyRepositoryMock();
+      await expect(
+        queryService(repository).resolve(
+          scope(),
+          chart('behavior.pending_review'),
+          query,
+        ),
+      ).rejects.toMatchObject({
+        constructor: ValidationDomainException,
+        message: 'Analytics time filter is not supported by this chart',
+      });
+      expect(repository.findActiveAcademicYear).not.toHaveBeenCalled();
+    }
+  });
+
+  it('applies historical range and granularity to the homework submission review trend', async () => {
+    const context = await queryService(hierarchyRepositoryMock()).resolve(
+      scope(),
+      chart('homework.submission_review_trend'),
+      { range: '30d', granularity: 'week' },
+    );
+    expect(context.filtersApplied).toEqual(['range', 'granularity']);
+    expect(context.filtersNotApplicable).toEqual([]);
+  });
 
   it.each(['admissions.applications_by_status', 'students.guardian_coverage'])(
     'accepts only compatibility defaults and preserves hierarchy metadata for %s',
@@ -457,6 +468,42 @@ describe('DashboardAnalyticsQueryContextService', () => {
 
     expect(context.filtersApplied).toEqual(['range', 'granularity']);
     expect(context.filtersNotApplicable).toEqual([]);
+  });
+
+  it.each([
+    ['neither', {}],
+    ['academic year only', { academicYearId: ACADEMIC_YEAR_ID }],
+    ['term only', { termId: TERM_ID }],
+    ['empty academic year', { academicYearId: '', termId: TERM_ID }],
+  ])(
+    'rejects gradebook completion when %s required context is supplied',
+    async (_label, rawQuery) => {
+      const repository = hierarchyRepositoryMock();
+      await expect(
+        queryService(repository).resolve(
+          scope(),
+          chart('grades.gradebook_completion'),
+          rawQuery,
+        ),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+      expect(repository.findAcademicYearById).not.toHaveBeenCalled();
+      expect(repository.findTermById).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts explicit same-school gradebook AcademicYear and Term and preserves compatibility metadata', async () => {
+    const context = await queryService(hierarchyRepositoryMock()).resolve(
+      scope(),
+      chart('grades.gradebook_completion'),
+      { academicYearId: ACADEMIC_YEAR_ID, termId: TERM_ID },
+    );
+
+    expect(context.hierarchy).toMatchObject({
+      academicYearId: ACADEMIC_YEAR_ID,
+      termId: TERM_ID,
+    });
+    expect(context.filtersApplied).toEqual(['academicYearId', 'termId']);
+    expect(context.filtersNotApplicable).toEqual(['range', 'granularity']);
   });
 });
 

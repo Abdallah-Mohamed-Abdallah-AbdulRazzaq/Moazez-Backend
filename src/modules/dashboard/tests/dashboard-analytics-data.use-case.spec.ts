@@ -103,6 +103,79 @@ describe('Dashboard analytics data use case', () => {
 
   it.each([
     [
+      'grades.assessment_status_distribution',
+      'gradesRepository',
+      'countCurrentAssessmentStatusDistribution',
+      'grades_current_assessment_status_distribution',
+    ],
+    [
+      'grades.gradebook_completion',
+      'gradesRepository',
+      'countCurrentGradebookCompletion',
+      'grades_current_gradebook_completion',
+    ],
+    [
+      'homework.assignment_status_distribution',
+      'homeworkRepository',
+      'countCurrentAssignmentStatusDistribution',
+      'homework_current_assignment_status_distribution',
+    ],
+    [
+      'homework.submission_review_trend',
+      'homeworkRepository',
+      'aggregateSubmissionReviewEventsByCivilDate',
+      'homework_submission_review_trend',
+    ],
+    [
+      'homework.grade_sync_coverage',
+      'homeworkRepository',
+      'countCurrentGradeSyncLinkCoverage',
+      'homework_current_grade_sync_link_coverage',
+    ],
+  ] as const)(
+    'dispatches %s to exactly one Grades/Homework aggregate',
+    async (chartKey, repositoryName, expectedMethod, computation) => {
+      const setup = useCaseWith(0);
+      const response = await withSchoolScope(() =>
+        setup.useCase.execute(chartKey, {}),
+      );
+
+      expect(response.meta).toMatchObject({
+        pack: 'grades_homework_v1',
+        computation,
+      });
+      for (const name of ['gradesRepository', 'homeworkRepository'] as const) {
+        for (const [method, mock] of Object.entries(setup[name])) {
+          if (name === repositoryName && method === expectedMethod) {
+            expect(mock).toHaveBeenCalledTimes(1);
+          } else {
+            expect(mock).not.toHaveBeenCalled();
+          }
+        }
+      }
+      expect(setup.snapshotRepository.loadChartValue).not.toHaveBeenCalled();
+      expectNoInternalLeaks(response);
+    },
+  );
+
+  it('keeps existing Grades snapshots on the operational pack without new repository fanout', async () => {
+    const setup = useCaseWith(4);
+    const response = await withSchoolScope(() =>
+      setup.useCase.execute('grades.pending_submission_reviews', {}),
+    );
+    expect(response.meta.pack).toBe('operational_snapshot_v1');
+    for (const repository of [
+      setup.gradesRepository,
+      setup.homeworkRepository,
+    ]) {
+      for (const mock of Object.values(repository)) {
+        expect(mock).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  it.each([
+    [
       'academics.teacher_allocation_coverage',
       'countTeacherAllocationCoverage',
       'academics_teacher_allocation_coverage',
@@ -424,6 +497,26 @@ function useCaseWith(snapshotValue: number) {
       .fn()
       .mockResolvedValue({ active: 0, draft: 0 }),
   };
+  const gradesRepository = {
+    countCurrentAssessmentStatusDistribution: jest
+      .fn()
+      .mockResolvedValue({ draft: 0, published: 0, approved: 0, locked: 0 }),
+    countCurrentGradebookCompletion: jest
+      .fn()
+      .mockResolvedValue({ complete: 0, missing: 0 }),
+  };
+  const homeworkRepository = {
+    countCurrentAssignmentStatusDistribution: jest.fn().mockResolvedValue({
+      draft: 0,
+      published: 0,
+      closed: 0,
+      cancelled: 0,
+    }),
+    aggregateSubmissionReviewEventsByCivilDate: jest.fn().mockResolvedValue([]),
+    countCurrentGradeSyncLinkCoverage: jest
+      .fn()
+      .mockResolvedValue({ linked: 0, pending: 0 }),
+  };
 
   return {
     queryContextService,
@@ -432,6 +525,8 @@ function useCaseWith(snapshotValue: number) {
     admissionsRepository,
     studentsRepository,
     academicsRepository,
+    gradesRepository,
+    homeworkRepository,
     useCase: new GetDashboardAnalyticsChartDataUseCase(
       queryContextService as any,
       snapshotRepository as any,
@@ -439,6 +534,8 @@ function useCaseWith(snapshotValue: number) {
       admissionsRepository as any,
       studentsRepository as any,
       academicsRepository as any,
+      gradesRepository as any,
+      homeworkRepository as any,
     ),
   };
 }
