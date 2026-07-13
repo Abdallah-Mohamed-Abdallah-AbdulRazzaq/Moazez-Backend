@@ -345,6 +345,64 @@ describe('DashboardAnalyticsQueryContextService', () => {
     expect(context.filtersNotApplicable).toEqual(['range', 'granularity']);
   });
 
+  it('applies message-volume time and persisted conversation hierarchy filters', async () => {
+    const context = await queryService(hierarchyRepositoryMock()).resolve(
+      scope(),
+      chart('communication.message_volume'),
+      {
+        range: '30d',
+        granularity: 'week',
+        academicYearId: ACADEMIC_YEAR_ID,
+        termId: TERM_ID,
+        gradeId: GRADE_ID,
+        sectionId: SECTION_ID,
+        classroomId: CLASSROOM_ID,
+      },
+    );
+
+    expect(context.filtersApplied).toEqual([
+      'range',
+      'granularity',
+      'academicYearId',
+      'termId',
+      'gradeId',
+      'sectionId',
+      'classroomId',
+    ]);
+    expect(context.filtersNotApplicable).toEqual([]);
+  });
+
+  it('accepts only announcement compatibility defaults and rejects hierarchy filters', async () => {
+    const accepted = await queryService(hierarchyRepositoryMock()).resolve(
+      scope(),
+      chart('communication.announcement_status'),
+      { range: '30d', granularity: 'day' },
+    );
+    expect(accepted.filtersApplied).toEqual([]);
+    expect(accepted.filtersNotApplicable).toEqual(['range', 'granularity']);
+
+    for (const query of [
+      { range: '7d' as const },
+      { granularity: 'week' as const },
+      {
+        range: 'custom' as const,
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-02',
+      },
+      { gradeId: GRADE_ID },
+    ]) {
+      const repository = hierarchyRepositoryMock();
+      await expect(
+        queryService(repository).resolve(
+          scope(),
+          chart('communication.announcement_status'),
+          query,
+        ),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+      expect(repository.findGradeById).not.toHaveBeenCalled();
+    }
+  });
+
   it('applies historical range and granularity to the homework submission review trend', async () => {
     const context = await queryService(hierarchyRepositoryMock()).resolve(
       scope(),

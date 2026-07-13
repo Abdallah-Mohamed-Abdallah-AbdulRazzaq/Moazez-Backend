@@ -37,6 +37,7 @@ import { DashboardGradesAnalyticsRepository } from './infrastructure/dashboard-g
 import { DashboardHomeworkAnalyticsRepository } from './infrastructure/dashboard-homework-analytics.repository';
 import { DashboardBehaviorAnalyticsRepository } from './infrastructure/dashboard-behavior-analytics.repository';
 import { DashboardReinforcementAnalyticsRepository } from './infrastructure/dashboard-reinforcement-analytics.repository';
+import { DashboardCommunicationAnalyticsRepository } from './infrastructure/dashboard-communication-analytics.repository';
 
 @Module({
   imports: [AuthModule, ReportsModule],
@@ -57,6 +58,7 @@ import { DashboardReinforcementAnalyticsRepository } from './infrastructure/dash
     DashboardHomeworkAnalyticsRepository,
     DashboardBehaviorAnalyticsRepository,
     DashboardReinforcementAnalyticsRepository,
+    DashboardCommunicationAnalyticsRepository,
     DashboardTimeContextService,
     DashboardAnalyticsQueryContextService,
     GetDashboardAnalyticsCatalogUseCase,

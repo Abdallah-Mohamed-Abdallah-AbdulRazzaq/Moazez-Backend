@@ -129,6 +129,7 @@ export class DashboardAnalyticsChartDataMetaDto {
     | 'academics_v1'
     | 'grades_homework_v1'
     | 'behavior_reinforcement_v1'
+    | 'communication_settings_v1'
     | null;
   dataAvailability!: DashboardAnalyticsDataAvailability;
   computation!:
@@ -159,6 +160,8 @@ export class DashboardAnalyticsChartDataMetaDto {
     | 'reinforcement_xp_activity_trend'
     | 'reinforcement_current_assignment_completion'
     | 'reinforcement_reward_redemption_funnel'
+    | 'communication_message_volume_trend'
+    | 'communication_current_announcement_status_distribution'
     | null;
   freshness!: DashboardFreshnessMetadataDto;
   query!: DashboardAnalyticsQueryMetadataDto;

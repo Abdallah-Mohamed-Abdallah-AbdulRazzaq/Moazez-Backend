@@ -5,12 +5,14 @@ import {
   DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS,
   DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK_CHART_KEYS,
   DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK_CHART_KEYS,
+  DASHBOARD_ANALYTICS_COMMUNICATION_SETTINGS_PACK_CHART_KEYS,
   DashboardAnalyticsAcademicsPackChartKey,
   DashboardAnalyticsAdmissionsStudentsPackChartKey,
   DashboardAnalyticsAttendancePackChartKey,
   DashboardAnalyticsComputedSnapshotChartKey,
   DashboardAnalyticsGradesHomeworkPackChartKey,
   DashboardAnalyticsBehaviorReinforcementPackChartKey,
+  DashboardAnalyticsCommunicationSettingsPackChartKey,
 } from './dashboard-analytics-catalog';
 
 export const DASHBOARD_ANALYTICS_OPERATIONAL_SNAPSHOT_PACK =
@@ -47,6 +49,12 @@ export const DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK =
 export type DashboardAnalyticsBehaviorReinforcementPack =
   typeof DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK;
 
+export const DASHBOARD_ANALYTICS_COMMUNICATION_SETTINGS_PACK =
+  'communication_settings_v1' as const;
+
+export type DashboardAnalyticsCommunicationSettingsPack =
+  typeof DASHBOARD_ANALYTICS_COMMUNICATION_SETTINGS_PACK;
+
 export type DashboardAnalyticsDataComputation =
   | 'dashboard_summary_snapshot'
   | 'dashboard_alert_readiness_snapshot'
@@ -74,7 +82,9 @@ export type DashboardAnalyticsDataComputation =
   | 'behavior_approved_records_by_category'
   | 'reinforcement_xp_activity_trend'
   | 'reinforcement_current_assignment_completion'
-  | 'reinforcement_reward_redemption_funnel';
+  | 'reinforcement_reward_redemption_funnel'
+  | 'communication_message_volume_trend'
+  | 'communication_current_announcement_status_distribution';
 
 export function isDashboardAnalyticsComputedSnapshotChartKey(
   chartKey: string,
@@ -121,6 +131,14 @@ export function isDashboardAnalyticsBehaviorReinforcementPackChartKey(
 ): chartKey is DashboardAnalyticsBehaviorReinforcementPackChartKey {
   return (
     DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK_CHART_KEYS as readonly string[]
+  ).includes(chartKey);
+}
+
+export function isDashboardAnalyticsCommunicationSettingsPackChartKey(
+  chartKey: string,
+): chartKey is DashboardAnalyticsCommunicationSettingsPackChartKey {
+  return (
+    DASHBOARD_ANALYTICS_COMMUNICATION_SETTINGS_PACK_CHART_KEYS as readonly string[]
   ).includes(chartKey);
 }
 
@@ -219,5 +237,16 @@ export function getDashboardAnalyticsBehaviorReinforcementComputation(
       return 'reinforcement_current_assignment_completion';
     case 'reinforcement.reward_redemption_status':
       return 'reinforcement_reward_redemption_funnel';
+  }
+}
+
+export function getDashboardAnalyticsCommunicationSettingsComputation(
+  chartKey: DashboardAnalyticsCommunicationSettingsPackChartKey,
+): DashboardAnalyticsDataComputation {
+  switch (chartKey) {
+    case 'communication.message_volume':
+      return 'communication_message_volume_trend';
+    case 'communication.announcement_status':
+      return 'communication_current_announcement_status_distribution';
   }
 }

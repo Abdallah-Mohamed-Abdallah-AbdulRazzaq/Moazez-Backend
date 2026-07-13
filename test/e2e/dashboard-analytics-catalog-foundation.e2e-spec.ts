@@ -246,6 +246,8 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         'reinforcement.xp_activity_trend',
         'reinforcement.task_completion',
         'reinforcement.reward_redemption_status',
+        'communication.message_volume',
+        'communication.announcement_status',
         'communication.moderation_queue',
         'settings.notification_readiness',
       ]),
@@ -255,13 +257,26 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         (chart: { meta: { dataAvailability: string } }) =>
           chart.meta.dataAvailability !== 'definition_only',
       ),
-    ).toHaveLength(31);
+    ).toHaveLength(33);
     expect(
       response.body.catalog.charts.filter(
         (chart: { meta: { dataAvailability: string } }) =>
           chart.meta.dataAvailability === 'definition_only',
       ),
-    ).toHaveLength(6);
+    ).toHaveLength(4);
+    expect(
+      response.body.catalog.charts
+        .filter(
+          (chart: { meta: { dataAvailability: string } }) =>
+            chart.meta.dataAvailability === 'definition_only',
+        )
+        .map((chart: { chartKey: string }) => chart.chartKey),
+    ).toEqual([
+      'admissions.funnel',
+      'academics.structure_readiness',
+      'academics.subject_allocation_coverage',
+      'settings.notification_readiness',
+    ]);
     expectNoInternalLeaks(response.body);
     expect(JSON.stringify(response.body.catalog.charts)).not.toContain(
       'points',
@@ -526,6 +541,64 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       ).toEqual(seriesKeys);
       expectNoInternalLeaks(chartResponse.body);
     }
+
+    const messageVolumeResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/communication.message_volume`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(messageVolumeResponse.body.chart).toMatchObject({
+      status: 'available',
+      series: [{ key: 'messages' }],
+      meta: { dataAvailability: 'computed_series' },
+      queryCapabilities: {
+        timeFilterMode: 'historical',
+        supportedRanges: [
+          '7d',
+          '30d',
+          '90d',
+          'term',
+          'academic_year',
+          'custom',
+        ],
+        supportedGranularities: ['day', 'week', 'month'],
+        supportedHierarchyFilters: [
+          'academicYearId',
+          'termId',
+          'gradeId',
+          'sectionId',
+          'classroomId',
+        ],
+      },
+    });
+    expectNoInternalLeaks(messageVolumeResponse.body);
+
+    const announcementStatusResponse = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/dashboard/analytics/charts/communication.announcement_status`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(announcementStatusResponse.body.chart).toMatchObject({
+      status: 'available',
+      filters: ['range', 'granularity'],
+      series: [
+        { key: 'draft' },
+        { key: 'scheduled' },
+        { key: 'published' },
+        { key: 'archived' },
+        { key: 'cancelled' },
+      ],
+      meta: { dataAvailability: 'computed_category' },
+      queryCapabilities: {
+        timeFilterMode: 'compatibility_defaults',
+        supportedRanges: ['30d'],
+        supportedGranularities: ['day'],
+        supportedHierarchyFilters: [],
+      },
+    });
+    expectNoInternalLeaks(announcementStatusResponse.body);
 
     const statusDistributionResponse = await request(app.getHttpServer())
       .get(

@@ -6,6 +6,7 @@ import {
   DASHBOARD_ANALYTICS_RANGES,
   DASHBOARD_ANALYTICS_SOURCES,
   DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK_CHART_KEYS,
+  DASHBOARD_ANALYTICS_COMMUNICATION_SETTINGS_PACK_CHART_KEYS,
 } from '../domain/dashboard-analytics-catalog';
 import {
   presentDashboardAnalyticsCatalog,
@@ -254,7 +255,7 @@ describe('Dashboard analytics presenter', () => {
     expectNoInternalLeaks(response);
   });
 
-  it('marks exactly thirty-one charts as computed and leaves six definition-only', () => {
+  it('marks exactly thirty-three charts as computed and leaves four definition-only', () => {
     const response = presentDashboardAnalyticsCatalog({
       generatedAt: new Date('2026-07-09T12:00:00.000Z'),
       catalog: DASHBOARD_ANALYTICS_CATALOG,
@@ -302,6 +303,10 @@ describe('Dashboard analytics presenter', () => {
       'reinforcement.task_completion',
       'reinforcement.reward_redemption_status',
     ];
+    const communicationSettingsPackChartKeys = [
+      'communication.message_volume',
+      'communication.announcement_status',
+    ];
 
     expect(
       response.catalog.sources.every((source) =>
@@ -347,7 +352,8 @@ describe('Dashboard analytics presenter', () => {
             !admissionsStudentsPackChartKeys.includes(chart.chartKey) &&
             !academicsPackChartKeys.includes(chart.chartKey) &&
             !gradesHomeworkPackChartKeys.includes(chart.chartKey) &&
-            !behaviorReinforcementPackChartKeys.includes(chart.chartKey),
+            !behaviorReinforcementPackChartKeys.includes(chart.chartKey) &&
+            !communicationSettingsPackChartKeys.includes(chart.chartKey),
         )
         .every(
           (chart) =>
@@ -359,12 +365,12 @@ describe('Dashboard analytics presenter', () => {
       response.catalog.charts.filter(
         (chart) => chart.meta.dataAvailability !== 'definition_only',
       ),
-    ).toHaveLength(31);
+    ).toHaveLength(33);
     expect(
       response.catalog.charts.filter(
         (chart) => chart.meta.dataAvailability === 'definition_only',
       ),
-    ).toHaveLength(6);
+    ).toHaveLength(4);
   });
 
   it('publishes one truthful typed query capability matrix', () => {
@@ -763,6 +769,76 @@ describe('Dashboard analytics presenter', () => {
       });
       expect(chart?.series.map((series) => series.key)).toEqual(seriesKeys);
     }
+  });
+
+  it('publishes the exact two-chart Communication/Settings pack and keeps notification readiness deferred', () => {
+    const response = presentDashboardAnalyticsCatalog({
+      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      catalog: DASHBOARD_ANALYTICS_CATALOG,
+    });
+    const byKey = new Map(
+      response.catalog.charts.map((chart) => [chart.chartKey, chart]),
+    );
+
+    expect(DASHBOARD_ANALYTICS_COMMUNICATION_SETTINGS_PACK_CHART_KEYS).toEqual([
+      'communication.message_volume',
+      'communication.announcement_status',
+    ]);
+    expect(byKey.get('communication.message_volume')).toMatchObject({
+      status: 'available',
+      series: [{ key: 'messages' }],
+      meta: { dataAvailability: 'computed_series' },
+      queryCapabilities: {
+        timeFilterMode: 'historical',
+        supportedRanges: [
+          '7d',
+          '30d',
+          '90d',
+          'term',
+          'academic_year',
+          'custom',
+        ],
+        supportedGranularities: ['day', 'week', 'month'],
+        supportedHierarchyFilters: [
+          'academicYearId',
+          'termId',
+          'gradeId',
+          'sectionId',
+          'classroomId',
+        ],
+      },
+    });
+    expect(byKey.get('communication.announcement_status')).toMatchObject({
+      status: 'available',
+      series: [
+        { key: 'draft' },
+        { key: 'scheduled' },
+        { key: 'published' },
+        { key: 'archived' },
+        { key: 'cancelled' },
+      ],
+      meta: { dataAvailability: 'computed_category' },
+      queryCapabilities: {
+        timeFilterMode: 'compatibility_defaults',
+        supportedRanges: ['30d'],
+        supportedGranularities: ['day'],
+        supportedHierarchyFilters: [],
+      },
+    });
+    expect(byKey.get('settings.notification_readiness')).toMatchObject({
+      status: 'planned',
+      meta: { dataAvailability: 'definition_only' },
+    });
+    expect(
+      response.catalog.charts
+        .filter((chart) => chart.meta.dataAvailability === 'definition_only')
+        .map((chart) => chart.chartKey),
+    ).toEqual([
+      'admissions.funnel',
+      'academics.structure_readiness',
+      'academics.subject_allocation_coverage',
+      'settings.notification_readiness',
+    ]);
   });
 });
 

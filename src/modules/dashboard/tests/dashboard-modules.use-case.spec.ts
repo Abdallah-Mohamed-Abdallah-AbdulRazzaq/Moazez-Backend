@@ -271,6 +271,31 @@ describe('Dashboard modules use cases', () => {
     expectNoInternalLeaks(response);
   });
 
+  it('exposes Communication definitions without standalone Communication analytics data fanout', async () => {
+    const { useCase } = detailUseCaseWith({
+      summary: summarySnapshot(),
+      alertSignals: alertSignals(),
+    });
+
+    const response = await withSchoolScope(() =>
+      useCase.execute('communication'),
+    );
+
+    expect(response.analytics.charts.map((chart) => chart.chartKey)).toEqual([
+      'communication.message_volume',
+      'communication.announcement_status',
+      'communication.moderation_queue',
+    ]);
+    expect(
+      response.analytics.charts.every((chart) => chart.status === 'available'),
+    ).toBe(true);
+    expect(
+      response.analytics.availableData.map((data) => data.chartKey),
+    ).toEqual(['communication.moderation_queue']);
+    expect(response.analytics.plannedCharts).toEqual([]);
+    expectNoInternalLeaks(response);
+  });
+
   it('throws not found for unknown module keys', async () => {
     const { useCase, summaryRepository, alertsRepository } = detailUseCaseWith({
       summary: summarySnapshot(),

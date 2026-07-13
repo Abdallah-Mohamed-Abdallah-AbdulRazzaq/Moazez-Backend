@@ -447,6 +447,34 @@ describe('DASHBOARD-MODULE-PAGES-1A foundation (e2e)', () => {
     expectNoInternalLeaks(students.body);
   });
 
+  it('shows Communication computed definitions without standalone chart-data fanout', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/modules/communication`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(
+      response.body.analytics.charts.map(
+        (chart: { chartKey: string; status: string }) => ({
+          chartKey: chart.chartKey,
+          status: chart.status,
+        }),
+      ),
+    ).toEqual([
+      { chartKey: 'communication.message_volume', status: 'available' },
+      { chartKey: 'communication.announcement_status', status: 'available' },
+      { chartKey: 'communication.moderation_queue', status: 'available' },
+    ]);
+    expect(
+      response.body.analytics.availableData.map(
+        (data: { chartKey: string }) => data.chartKey,
+      ),
+    ).toEqual(['communication.moderation_queue']);
+    expect(response.body.analytics.plannedCharts).toEqual([]);
+    expectNoInternalLeaks(response.body);
+  });
+
   it('keeps existing dashboard routes working', async () => {
     const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
 
