@@ -5,6 +5,7 @@ import {
   DASHBOARD_ANALYTICS_GRANULARITIES,
   DASHBOARD_ANALYTICS_RANGES,
   DASHBOARD_ANALYTICS_SOURCES,
+  DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK_CHART_KEYS,
 } from '../domain/dashboard-analytics-catalog';
 import {
   presentDashboardAnalyticsCatalog,
@@ -253,7 +254,7 @@ describe('Dashboard analytics presenter', () => {
     expectNoInternalLeaks(response);
   });
 
-  it('marks exactly twenty-five charts as computed and leaves twelve definition-only', () => {
+  it('marks exactly thirty-one charts as computed and leaves six definition-only', () => {
     const response = presentDashboardAnalyticsCatalog({
       generatedAt: new Date('2026-07-09T12:00:00.000Z'),
       catalog: DASHBOARD_ANALYTICS_CATALOG,
@@ -292,6 +293,14 @@ describe('Dashboard analytics presenter', () => {
       'homework.assignment_status_distribution',
       'homework.submission_review_trend',
       'homework.grade_sync_coverage',
+    ];
+    const behaviorReinforcementPackChartKeys = [
+      'behavior.positive_negative_trend',
+      'behavior.pending_review',
+      'behavior.records_by_category',
+      'reinforcement.xp_activity_trend',
+      'reinforcement.task_completion',
+      'reinforcement.reward_redemption_status',
     ];
 
     expect(
@@ -337,7 +346,8 @@ describe('Dashboard analytics presenter', () => {
             !attendancePackChartKeys.includes(chart.chartKey) &&
             !admissionsStudentsPackChartKeys.includes(chart.chartKey) &&
             !academicsPackChartKeys.includes(chart.chartKey) &&
-            !gradesHomeworkPackChartKeys.includes(chart.chartKey),
+            !gradesHomeworkPackChartKeys.includes(chart.chartKey) &&
+            !behaviorReinforcementPackChartKeys.includes(chart.chartKey),
         )
         .every(
           (chart) =>
@@ -349,12 +359,12 @@ describe('Dashboard analytics presenter', () => {
       response.catalog.charts.filter(
         (chart) => chart.meta.dataAvailability !== 'definition_only',
       ),
-    ).toHaveLength(25);
+    ).toHaveLength(31);
     expect(
       response.catalog.charts.filter(
         (chart) => chart.meta.dataAvailability === 'definition_only',
       ),
-    ).toHaveLength(12);
+    ).toHaveLength(6);
   });
 
   it('publishes one truthful typed query capability matrix', () => {
@@ -436,15 +446,15 @@ describe('Dashboard analytics presenter', () => {
       },
     });
     expect(behaviorReviewDefinition).toMatchObject({
-      status: 'planned',
-      meta: { dataAvailability: 'definition_only' },
+      status: 'available',
+      meta: { dataAvailability: 'computed_snapshot' },
       queryCapabilities: {
-        timeFilterMode: 'unsupported',
-        definitionOnly: true,
+        timeFilterMode: 'snapshot_compatibility',
+        definitionOnly: false,
         timeFiltersApplicable: false,
         granularityApplicable: false,
-        supportedRanges: [],
-        supportedGranularities: [],
+        supportedRanges: ['30d'],
+        supportedGranularities: ['day'],
       },
     });
 
@@ -675,6 +685,83 @@ describe('Dashboard analytics presenter', () => {
         supportedRanges: ['30d'],
         supportedGranularities: ['day'],
       });
+    }
+  });
+
+  it('publishes the exact six-chart Behavior/Reinforcement pack capability contracts', () => {
+    const response = presentDashboardAnalyticsCatalog({
+      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      catalog: DASHBOARD_ANALYTICS_CATALOG,
+    });
+    const byKey = new Map(
+      response.catalog.charts.map((chart) => [chart.chartKey, chart]),
+    );
+    const expected = [
+      [
+        'behavior.positive_negative_trend',
+        ['positive', 'negative'],
+        'computed_series',
+        'historical',
+      ],
+      [
+        'behavior.pending_review',
+        ['pending_review'],
+        'computed_snapshot',
+        'snapshot_compatibility',
+      ],
+      [
+        'behavior.records_by_category',
+        ['records'],
+        'computed_category',
+        'range_only',
+      ],
+      [
+        'reinforcement.xp_activity_trend',
+        ['xp'],
+        'computed_series',
+        'historical',
+      ],
+      [
+        'reinforcement.task_completion',
+        ['completed', 'pending', 'overdue'],
+        'computed_category',
+        'compatibility_defaults',
+      ],
+      [
+        'reinforcement.reward_redemption_status',
+        ['requested', 'approved', 'fulfilled'],
+        'computed_category',
+        'range_only',
+      ],
+    ] as const;
+
+    expect(DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK_CHART_KEYS).toEqual(
+      expected.map(([chartKey]) => chartKey),
+    );
+
+    for (const [
+      chartKey,
+      seriesKeys,
+      dataAvailability,
+      timeFilterMode,
+    ] of expected) {
+      const chart = byKey.get(chartKey);
+      expect(chart).toMatchObject({
+        status: 'available',
+        meta: { dataAvailability },
+        queryCapabilities: {
+          timeFilterMode,
+          definitionOnly: false,
+          supportedHierarchyFilters: [
+            'academicYearId',
+            'termId',
+            'gradeId',
+            'sectionId',
+            'classroomId',
+          ],
+        },
+      });
+      expect(chart?.series.map((series) => series.key)).toEqual(seriesKeys);
     }
   });
 });

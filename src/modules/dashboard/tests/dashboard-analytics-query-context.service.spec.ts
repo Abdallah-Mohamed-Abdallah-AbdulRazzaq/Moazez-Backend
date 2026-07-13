@@ -273,7 +273,15 @@ describe('DashboardAnalyticsQueryContextService', () => {
     },
   );
 
-  it('preserves Phase 2A time-filter rejection for behavior.pending_review', async () => {
+  it('applies snapshot compatibility to behavior.pending_review', async () => {
+    const accepted = await queryService(hierarchyRepositoryMock()).resolve(
+      scope(),
+      chart('behavior.pending_review'),
+      { range: '30d', granularity: 'day' },
+    );
+    expect(accepted.filtersApplied).toEqual(['academicYearId', 'termId']);
+    expect(accepted.filtersNotApplicable).toEqual(['range', 'granularity']);
+
     for (const query of [
       { range: '7d' as const },
       { granularity: 'week' as const },
@@ -287,10 +295,54 @@ describe('DashboardAnalyticsQueryContextService', () => {
         ),
       ).rejects.toMatchObject({
         constructor: ValidationDomainException,
-        message: 'Analytics time filter is not supported by this chart',
+        message: 'Snapshot chart does not support the requested time filter',
       });
       expect(repository.findActiveAcademicYear).not.toHaveBeenCalled();
     }
+  });
+
+  it.each([
+    'behavior.positive_negative_trend',
+    'reinforcement.xp_activity_trend',
+  ])('applies historical range and granularity for %s', async (chartKey) => {
+    const context = await queryService(hierarchyRepositoryMock()).resolve(
+      scope(),
+      chart(chartKey),
+      { range: '30d', granularity: 'week' },
+    );
+    expect(context.filtersApplied).toEqual(['range', 'granularity']);
+    expect(context.filtersNotApplicable).toEqual([]);
+  });
+
+  it.each([
+    'behavior.records_by_category',
+    'reinforcement.reward_redemption_status',
+  ])('applies range but not granularity for %s', async (chartKey) => {
+    const context = await queryService(hierarchyRepositoryMock()).resolve(
+      scope(),
+      chart(chartKey),
+      { range: '7d', granularity: 'day', gradeId: GRADE_ID },
+    );
+    expect(context.filtersApplied).toEqual(['range', 'gradeId']);
+    expect(context.filtersNotApplicable).toEqual(['granularity']);
+
+    await expect(
+      queryService(hierarchyRepositoryMock()).resolve(
+        scope(),
+        chart(chartKey),
+        { granularity: 'week' },
+      ),
+    ).rejects.toBeInstanceOf(ValidationDomainException);
+  });
+
+  it('preserves hierarchy metadata for reinforcement task compatibility defaults', async () => {
+    const context = await queryService(hierarchyRepositoryMock()).resolve(
+      scope(),
+      chart('reinforcement.task_completion'),
+      { range: '30d', granularity: 'day', gradeId: GRADE_ID },
+    );
+    expect(context.filtersApplied).toEqual(['gradeId']);
+    expect(context.filtersNotApplicable).toEqual(['range', 'granularity']);
   });
 
   it('applies historical range and granularity to the homework submission review trend', async () => {

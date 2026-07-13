@@ -4,11 +4,13 @@ import {
   DASHBOARD_ANALYTICS_ADMISSIONS_STUDENTS_PACK_CHART_KEYS,
   DASHBOARD_ANALYTICS_COMPUTED_SNAPSHOT_CHART_KEYS,
   DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK_CHART_KEYS,
+  DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK_CHART_KEYS,
   DashboardAnalyticsAcademicsPackChartKey,
   DashboardAnalyticsAdmissionsStudentsPackChartKey,
   DashboardAnalyticsAttendancePackChartKey,
   DashboardAnalyticsComputedSnapshotChartKey,
   DashboardAnalyticsGradesHomeworkPackChartKey,
+  DashboardAnalyticsBehaviorReinforcementPackChartKey,
 } from './dashboard-analytics-catalog';
 
 export const DASHBOARD_ANALYTICS_OPERATIONAL_SNAPSHOT_PACK =
@@ -39,6 +41,12 @@ export const DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK =
 export type DashboardAnalyticsGradesHomeworkPack =
   typeof DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK;
 
+export const DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK =
+  'behavior_reinforcement_v1' as const;
+
+export type DashboardAnalyticsBehaviorReinforcementPack =
+  typeof DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK;
+
 export type DashboardAnalyticsDataComputation =
   | 'dashboard_summary_snapshot'
   | 'dashboard_alert_readiness_snapshot'
@@ -60,7 +68,13 @@ export type DashboardAnalyticsDataComputation =
   | 'grades_current_gradebook_completion'
   | 'homework_current_assignment_status_distribution'
   | 'homework_submission_review_trend'
-  | 'homework_current_grade_sync_link_coverage';
+  | 'homework_current_grade_sync_link_coverage'
+  | 'behavior_approved_positive_negative_trend'
+  | 'behavior_current_pending_review'
+  | 'behavior_approved_records_by_category'
+  | 'reinforcement_xp_activity_trend'
+  | 'reinforcement_current_assignment_completion'
+  | 'reinforcement_reward_redemption_funnel';
 
 export function isDashboardAnalyticsComputedSnapshotChartKey(
   chartKey: string,
@@ -99,6 +113,14 @@ export function isDashboardAnalyticsGradesHomeworkPackChartKey(
 ): chartKey is DashboardAnalyticsGradesHomeworkPackChartKey {
   return (
     DASHBOARD_ANALYTICS_GRADES_HOMEWORK_PACK_CHART_KEYS as readonly string[]
+  ).includes(chartKey);
+}
+
+export function isDashboardAnalyticsBehaviorReinforcementPackChartKey(
+  chartKey: string,
+): chartKey is DashboardAnalyticsBehaviorReinforcementPackChartKey {
+  return (
+    DASHBOARD_ANALYTICS_BEHAVIOR_REINFORCEMENT_PACK_CHART_KEYS as readonly string[]
   ).includes(chartKey);
 }
 
@@ -178,5 +200,24 @@ export function getDashboardAnalyticsGradesHomeworkComputation(
       return 'homework_submission_review_trend';
     case 'homework.grade_sync_coverage':
       return 'homework_current_grade_sync_link_coverage';
+  }
+}
+
+export function getDashboardAnalyticsBehaviorReinforcementComputation(
+  chartKey: DashboardAnalyticsBehaviorReinforcementPackChartKey,
+): DashboardAnalyticsDataComputation {
+  switch (chartKey) {
+    case 'behavior.positive_negative_trend':
+      return 'behavior_approved_positive_negative_trend';
+    case 'behavior.pending_review':
+      return 'behavior_current_pending_review';
+    case 'behavior.records_by_category':
+      return 'behavior_approved_records_by_category';
+    case 'reinforcement.xp_activity_trend':
+      return 'reinforcement_xp_activity_trend';
+    case 'reinforcement.task_completion':
+      return 'reinforcement_current_assignment_completion';
+    case 'reinforcement.reward_redemption_status':
+      return 'reinforcement_reward_redemption_funnel';
   }
 }

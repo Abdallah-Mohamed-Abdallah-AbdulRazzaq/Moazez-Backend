@@ -240,6 +240,12 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         'academics.structure_readiness',
         'grades.gradebook_completion',
         'homework.grade_sync_coverage',
+        'behavior.positive_negative_trend',
+        'behavior.pending_review',
+        'behavior.records_by_category',
+        'reinforcement.xp_activity_trend',
+        'reinforcement.task_completion',
+        'reinforcement.reward_redemption_status',
         'communication.moderation_queue',
         'settings.notification_readiness',
       ]),
@@ -249,13 +255,13 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
         (chart: { meta: { dataAvailability: string } }) =>
           chart.meta.dataAvailability !== 'definition_only',
       ),
-    ).toHaveLength(25);
+    ).toHaveLength(31);
     expect(
       response.body.catalog.charts.filter(
         (chart: { meta: { dataAvailability: string } }) =>
           chart.meta.dataAvailability === 'definition_only',
       ),
-    ).toHaveLength(12);
+    ).toHaveLength(6);
     expectNoInternalLeaks(response.body);
     expect(JSON.stringify(response.body.catalog.charts)).not.toContain(
       'points',
@@ -450,6 +456,76 @@ describe('DASHBOARD-ANALYTICS-1A catalog foundation (e2e)', () => {
       },
     });
     expectNoInternalLeaks(homeworkTrendResponse.body);
+
+    const behaviorReinforcementDefinitions = [
+      [
+        'behavior.positive_negative_trend',
+        ['positive', 'negative'],
+        'computed_series',
+        'historical',
+      ],
+      [
+        'behavior.pending_review',
+        ['pending_review'],
+        'computed_snapshot',
+        'snapshot_compatibility',
+      ],
+      [
+        'behavior.records_by_category',
+        ['records'],
+        'computed_category',
+        'range_only',
+      ],
+      [
+        'reinforcement.xp_activity_trend',
+        ['xp'],
+        'computed_series',
+        'historical',
+      ],
+      [
+        'reinforcement.task_completion',
+        ['completed', 'pending', 'overdue'],
+        'computed_category',
+        'compatibility_defaults',
+      ],
+      [
+        'reinforcement.reward_redemption_status',
+        ['requested', 'approved', 'fulfilled'],
+        'computed_category',
+        'range_only',
+      ],
+    ] as const;
+    for (const [
+      chartKey,
+      seriesKeys,
+      dataAvailability,
+      timeFilterMode,
+    ] of behaviorReinforcementDefinitions) {
+      const chartResponse = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/dashboard/analytics/charts/${chartKey}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect(chartResponse.body.chart).toMatchObject({
+        status: 'available',
+        meta: { dataAvailability },
+        queryCapabilities: {
+          timeFilterMode,
+          supportedHierarchyFilters: [
+            'academicYearId',
+            'termId',
+            'gradeId',
+            'sectionId',
+            'classroomId',
+          ],
+        },
+      });
+      expect(
+        chartResponse.body.chart.series.map(
+          (series: { key: string }) => series.key,
+        ),
+      ).toEqual(seriesKeys);
+      expectNoInternalLeaks(chartResponse.body);
+    }
 
     const statusDistributionResponse = await request(app.getHttpServer())
       .get(

@@ -128,6 +128,7 @@ export class DashboardAnalyticsChartDataMetaDto {
     | 'admissions_students_v1'
     | 'academics_v1'
     | 'grades_homework_v1'
+    | 'behavior_reinforcement_v1'
     | null;
   dataAvailability!: DashboardAnalyticsDataAvailability;
   computation!:
@@ -152,6 +153,12 @@ export class DashboardAnalyticsChartDataMetaDto {
     | 'homework_current_assignment_status_distribution'
     | 'homework_submission_review_trend'
     | 'homework_current_grade_sync_link_coverage'
+    | 'behavior_approved_positive_negative_trend'
+    | 'behavior_current_pending_review'
+    | 'behavior_approved_records_by_category'
+    | 'reinforcement_xp_activity_trend'
+    | 'reinforcement_current_assignment_completion'
+    | 'reinforcement_reward_redemption_funnel'
     | null;
   freshness!: DashboardFreshnessMetadataDto;
   query!: DashboardAnalyticsQueryMetadataDto;
