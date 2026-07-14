@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { DashboardScope } from '../dashboard-context';
-import { DashboardTimeContext } from '../domain/dashboard-time-context';
+import {
+  addDashboardCivilDays,
+  dashboardCivilDateToPrismaDate,
+  DashboardTimeContext,
+} from '../domain/dashboard-time-context';
 import {
   buildDashboardWidgetCompositionPlan,
   DashboardWidgetAnalyticsChartKey,
@@ -12,6 +16,7 @@ import { DashboardActivityFeedRepository } from '../infrastructure/dashboard-act
 import { DashboardAlertsRepository } from '../infrastructure/dashboard-alerts.repository';
 import { DashboardSummaryRepository } from '../infrastructure/dashboard-summary.repository';
 import { DashboardTodosRepository } from '../infrastructure/dashboard-todos.repository';
+import { DashboardPlannerCalendarRepository } from '../infrastructure/dashboard-planner-calendar.repository';
 import { buildDashboardWidgetRegistry } from '../presenters/dashboard-widgets.presenter';
 import { buildDashboardSummaryDateWindow } from './get-dashboard-summary.use-case';
 import { buildDashboardAlertsDateWindow } from './list-dashboard-alerts.use-case';
@@ -30,6 +35,7 @@ export class DashboardWidgetCompositionService {
     private readonly dashboardActivityFeedRepository: DashboardActivityFeedRepository,
     private readonly dashboardTodosRepository: DashboardTodosRepository,
     private readonly getDashboardAnalyticsChartDataUseCase: GetDashboardAnalyticsChartDataUseCase,
+    private readonly dashboardPlannerCalendarRepository: DashboardPlannerCalendarRepository,
   ) {}
 
   async compose(input: {
@@ -40,7 +46,7 @@ export class DashboardWidgetCompositionService {
     const plan = buildDashboardWidgetCompositionPlan(input.definitions);
     const todoDate = toDashboardTodoDate(input.timeContext.civilDate);
 
-    const [summary, alertSignals, activityAuditRecords, todos] =
+    const [summary, alertSignals, activityAuditRecords, todos, calendarEvents] =
       await Promise.all([
         plan.loadSummary
           ? this.dashboardSummaryRepository.loadSummarySnapshot(
@@ -71,6 +77,20 @@ export class DashboardWidgetCompositionService {
                 todoDate,
               ),
             ])
+          : null,
+        plan.loadCalendar
+          ? this.dashboardPlannerCalendarRepository.listSchoolEvents(
+              input.scope,
+              {
+                from: input.timeContext.todayStart,
+                toExclusive: input.timeContext.todayEndExclusive,
+                allDayFrom: input.timeContext.todayDate,
+                allDayToExclusive: dashboardCivilDateToPrismaDate(
+                  addDashboardCivilDays(input.timeContext.civilDate, 1),
+                ),
+                limit: 5,
+              },
+            )
           : null,
       ]);
 
@@ -161,6 +181,13 @@ export class DashboardWidgetCompositionService {
             date: input.timeContext.civilDate,
             items: todos[0],
             counts: todos[1],
+          }
+        : null,
+      calendar: calendarEvents
+        ? {
+            date: input.timeContext.civilDate,
+            timezone: input.timeContext.timezone,
+            events: calendarEvents,
           }
         : null,
     });

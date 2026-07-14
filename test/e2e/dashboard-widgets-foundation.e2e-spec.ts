@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AcademicCalendarEventScopeType,
+  AcademicCalendarEventType,
   MembershipStatus,
   PrismaClient,
   UserStatus,
@@ -56,6 +58,9 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
   let demoOrganizationId = '';
   let widgetsPermissionId = '';
   let deniedPrincipal: CreatedPrincipal;
+  let previewOnlyPrincipal: CreatedPrincipal;
+  let calendarEventId = '';
+  let dashboardTodoId = '';
 
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -82,6 +87,57 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       schoolId: demoSchoolId,
       permissionIds: [],
     });
+    previewOnlyPrincipal = await createPrincipal({
+      label: 'preview-only',
+      organizationId: demoOrganizationId,
+      schoolId: demoSchoolId,
+      permissionIds: [widgetsPermissionId],
+    });
+
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { email: DEMO_ADMIN_EMAIL },
+      select: { id: true },
+    });
+    const academicYear = await prisma.academicYear.findFirstOrThrow({
+      where: { schoolId: demoSchoolId, deletedAt: null },
+      orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }],
+      select: { id: true },
+    });
+    const term = await prisma.term.findFirstOrThrow({
+      where: {
+        schoolId: demoSchoolId,
+        academicYearId: academicYear.id,
+        deletedAt: null,
+      },
+      orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }],
+      select: { id: true },
+    });
+    const today = civilDate(new Date(), 'Africa/Cairo');
+    const event = await prisma.academicCalendarEvent.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        title: `${marker} calendar event`,
+        type: AcademicCalendarEventType.ACTIVITY,
+        scopeType: AcademicCalendarEventScopeType.SCHOOL,
+        allDay: true,
+        startDate: new Date(`${today}T00:00:00.000Z`),
+        endDate: new Date(`${today}T00:00:00.000Z`),
+      },
+      select: { id: true },
+    });
+    calendarEventId = event.id;
+    const todo = await prisma.dashboardTodo.create({
+      data: {
+        schoolId: demoSchoolId,
+        ownerUserId: admin.id,
+        date: new Date(`${today}T00:00:00.000Z`),
+        title: `${marker} owner todo`,
+      },
+      select: { id: true },
+    });
+    dashboardTodoId = todo.id;
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -184,7 +240,7 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
         analyticsStandalone: 'available',
         todosStandalone: 'persisted',
         calendarTodoComposition: 'available',
-        plannerCalendar: 'deferred',
+        plannerCalendar: 'available',
         crossModulePlannerItems: 'deferred',
       },
     });
@@ -315,7 +371,7 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
         analyticsStandalone: 'available',
         todosStandalone: 'persisted',
         calendarTodoComposition: 'available',
-        plannerCalendar: 'deferred',
+        plannerCalendar: 'available',
         crossModulePlannerItems: 'deferred',
       },
     });
@@ -367,10 +423,44 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
     expect(calendar.body.widget.data).toMatchObject({
-      sourceMode: 'todo_only',
-      eventDates: expect.any(Array),
-      events: expect.any(Array),
+      sourceMode: 'academic_calendar_and_todos',
+      eventDates: [expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)],
+      events: [
+        expect.objectContaining({
+          source: 'academic_calendar',
+          title: `${marker} calendar event`,
+        }),
+        expect.objectContaining({
+          source: 'todo',
+          title: `${marker} owner todo`,
+        }),
+      ],
+      summary: { total: 2, academicCalendar: 1, todos: 1 },
     });
+    expectNoInternalLeaks(calendar.body);
+  });
+
+  it('keeps Todo source output free of Calendar events and allows fixed Widget preview permission only', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const todos = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/widgets`)
+      .query({ source: 'todos' })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(JSON.stringify(todos.body)).toContain(`${marker} owner todo`);
+    expect(JSON.stringify(todos.body)).not.toContain(
+      `${marker} calendar event`,
+    );
+
+    const previewToken = await login(previewOnlyPrincipal.email, PASSWORD);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/widgets/calendar.today`)
+      .set('Authorization', `Bearer ${previewToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/calendar/events`)
+      .set('Authorization', `Bearer ${previewToken}`)
+      .expect(403);
   });
 
   it('validates widget query parameters', async () => {
@@ -592,6 +682,14 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
   }
 
   async function cleanupE2eData(): Promise<void> {
+    if (dashboardTodoId) {
+      await prisma.dashboardTodo.deleteMany({ where: { id: dashboardTodoId } });
+    }
+    if (calendarEventId) {
+      await prisma.academicCalendarEvent.deleteMany({
+        where: { id: calendarEventId },
+      });
+    }
     if (createdUserIds.length > 0) {
       await prisma.auditLog.deleteMany({
         where: { actorId: { in: createdUserIds } },
@@ -633,6 +731,17 @@ function expectNoInternalLeaks(body: unknown): void {
   ]) {
     expect(serialized).not.toContain(forbidden);
   }
+}
+
+function civilDate(date: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const byType = new Map(parts.map((part) => [part.type, part.value]));
+  return `${byType.get('year')}-${byType.get('month')}-${byType.get('day')}`;
 }
 
 function createNoopBullmqService(): Pick<

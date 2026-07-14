@@ -31,6 +31,7 @@ import { UpdateDashboardTodoUseCase } from '../../src/modules/dashboard/applicat
 import { DashboardTodosController } from '../../src/modules/dashboard/controller/dashboard-todos.controller';
 import { DashboardController } from '../../src/modules/dashboard/controller/dashboard.controller';
 import { DashboardLightModeDropdownRepository } from '../../src/modules/dashboard/infrastructure/dashboard-light-mode-dropdown.repository';
+import { DashboardPlannerCalendarRepository } from '../../src/modules/dashboard/infrastructure/dashboard-planner-calendar.repository';
 import { DashboardTodosRepository } from '../../src/modules/dashboard/infrastructure/dashboard-todos.repository';
 import { presentDashboardTodo } from '../../src/modules/dashboard/presenters/dashboard-todos.presenter';
 
@@ -299,6 +300,7 @@ describe('Dashboard todos tenancy and security contracts', () => {
     const useCase = new GetDashboardLightModeDropdownUseCase(
       new DashboardLightModeDropdownRepository(prisma),
       new DashboardTodosRepository(prisma),
+      new DashboardPlannerCalendarRepository(prisma),
     );
 
     await withOwnerAScope(async () => {

@@ -14,6 +14,10 @@ import {
 } from '../infrastructure/dashboard-light-mode-dropdown.repository';
 import { DashboardTodosRepository } from '../infrastructure/dashboard-todos.repository';
 import {
+  DashboardPlannerCalendarRepository,
+  DashboardPlannerCalendarWindow,
+} from '../infrastructure/dashboard-planner-calendar.repository';
+import {
   DashboardLightModeDropdownPresentationInput,
   presentDashboardLightModeDropdown,
 } from '../presenters/dashboard-light-mode-dropdown.presenter';
@@ -21,7 +25,10 @@ import { toDashboardTodoDate } from './dashboard-todo.helpers';
 import {
   buildDashboardTimeContext,
   formatDashboardCivilDate,
+  addDashboardCivilDays,
+  dashboardCivilDateToPrismaDate,
   resolveDashboardTimezone,
+  startOfDashboardCivilDate,
 } from '../domain/dashboard-time-context';
 
 const DEFAULT_DASHBOARD_DROPDOWN_LOCALE: DashboardLightModeDropdownLocale =
@@ -42,6 +49,7 @@ export class GetDashboardLightModeDropdownUseCase {
   constructor(
     private readonly dashboardLightModeDropdownRepository: DashboardLightModeDropdownRepository,
     private readonly dashboardTodosRepository: DashboardTodosRepository,
+    private readonly dashboardPlannerCalendarRepository: DashboardPlannerCalendarRepository,
   ) {}
 
   async execute(
@@ -58,19 +66,50 @@ export class GetDashboardLightModeDropdownUseCase {
       schoolLocation,
       generatedAt,
     );
-    const todos = await this.dashboardTodosRepository.listOwnedTodos(scope, {
-      date: toDashboardTodoDate(normalizedQuery.date),
-      limit: 100,
-    });
+    const calendarWindow = buildDashboardPlannerCalendarWindow(
+      normalizedQuery.date,
+      normalizedQuery.timezone,
+      100,
+    );
+    const [todos, calendarEvents] = await Promise.all([
+      this.dashboardTodosRepository.listOwnedTodos(scope, {
+        date: toDashboardTodoDate(normalizedQuery.date),
+        limit: 100,
+      }),
+      this.dashboardPlannerCalendarRepository.listSchoolEvents(
+        scope,
+        calendarWindow,
+      ),
+    ]);
     const input: DashboardLightModeDropdownPresentationInput = {
       generatedAt,
       schoolLocation,
       query: normalizedQuery,
       todos,
+      calendarEvents,
     };
 
     return presentDashboardLightModeDropdown(input);
   }
+}
+
+export function buildDashboardPlannerCalendarWindow(
+  date: string,
+  timezone: string,
+  limit: number,
+): DashboardPlannerCalendarWindow {
+  return {
+    from: startOfDashboardCivilDate(date, timezone),
+    toExclusive: startOfDashboardCivilDate(
+      addDashboardCivilDays(date, 1),
+      timezone,
+    ),
+    allDayFrom: dashboardCivilDateToPrismaDate(date),
+    allDayToExclusive: dashboardCivilDateToPrismaDate(
+      addDashboardCivilDays(date, 1),
+    ),
+    limit,
+  };
 }
 
 export function normalizeDashboardLightModeDropdownQuery(

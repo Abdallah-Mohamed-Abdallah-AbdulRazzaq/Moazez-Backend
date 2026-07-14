@@ -2,7 +2,12 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { StudentEnrollmentStatus, UserType } from '@prisma/client';
+import {
+  AcademicCalendarEventScopeType,
+  AcademicCalendarEventType,
+  StudentEnrollmentStatus,
+  UserType,
+} from '@prisma/client';
 import {
   createRequestContext,
   runWithRequestContext,
@@ -40,6 +45,8 @@ import { DashboardHomeworkAnalyticsRepository } from '../../src/modules/dashboar
 import { DashboardBehaviorAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-behavior-analytics.repository';
 import { DashboardReinforcementAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-reinforcement-analytics.repository';
 import { DashboardCommunicationAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-communication-analytics.repository';
+import { DashboardPlannerCalendarRepository } from '../../src/modules/dashboard/infrastructure/dashboard-planner-calendar.repository';
+import { CalendarEventsController } from '../../src/modules/academics/calendar/controller/calendar-events.controller';
 
 jest.setTimeout(60000);
 
@@ -178,11 +185,39 @@ describe('Dashboard widgets tenancy/security contracts', () => {
         },
       ],
     });
+    await prisma.academicCalendarEvent.createMany({
+      data: [
+        calendarEvent(
+          schoolAId,
+          schoolAContext.academicYearId,
+          schoolAContext.termId,
+          `${marker} school A calendar`,
+        ),
+        calendarEvent(
+          schoolBId,
+          schoolBContext.academicYearId,
+          schoolBContext.termId,
+          `${marker} school B calendar`,
+        ),
+        {
+          ...calendarEvent(
+            schoolAId,
+            schoolAContext.academicYearId,
+            schoolAContext.termId,
+            `${marker} deleted calendar`,
+          ),
+          deletedAt: new Date('2026-07-01T00:00:00.000Z'),
+        },
+      ],
+    });
   });
 
   afterAll(async () => {
     if (!prisma) return;
 
+    await prisma.academicCalendarEvent.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
     await prisma.enrollment.deleteMany({
       where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
     });
@@ -258,6 +293,13 @@ describe('Dashboard widgets tenancy/security contracts', () => {
     ]);
     expect(readPermissions('listWidgets')).toEqual(['dashboard.widgets.view']);
     expect(readPermissions('getWidget')).toEqual(['dashboard.widgets.view']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_METADATA,
+        // eslint-disable-next-line @typescript-eslint/unbound-method
+        CalendarEventsController.prototype.listEvents,
+      ),
+    ).toEqual(['academics.calendar.view']);
     expect(controllerMethods(DashboardController)).not.toEqual(
       expect.arrayContaining([
         'createWidget',
@@ -326,6 +368,7 @@ describe('Dashboard widgets tenancy/security contracts', () => {
       new DashboardActivityFeedRepository(prisma),
       new DashboardTodosRepository(prisma),
       analyticsDataUseCase(prisma),
+      new DashboardPlannerCalendarRepository(prisma),
     );
     const useCase = new ListDashboardWidgetsUseCase(
       new DashboardTimeContextService(
@@ -375,6 +418,7 @@ describe('Dashboard widgets tenancy/security contracts', () => {
       new DashboardActivityFeedRepository(prisma),
       new DashboardTodosRepository(prisma),
       { execute: jest.fn() } as any,
+      new DashboardPlannerCalendarRepository(prisma),
     );
     const definitions = ['todos.today', 'calendar.today'].map((key) => {
       const definition = findDashboardWidgetDefinition(key);
@@ -404,8 +448,11 @@ describe('Dashboard widgets tenancy/security contracts', () => {
 
     const serialized = JSON.stringify(widgets);
     expect(serialized).toContain(`${marker} owner A todo`);
+    expect(serialized).toContain(`${marker} school A calendar`);
     expect(serialized).not.toContain(`${marker} owner B private todo`);
     expect(serialized).not.toContain(`${marker} school B private todo`);
+    expect(serialized).not.toContain(`${marker} school B calendar`);
+    expect(serialized).not.toContain(`${marker} deleted calendar`);
     expectNoInternalLeaks(widgets);
   });
 
@@ -528,6 +575,25 @@ function readPermissions(methodName: string): string[] | undefined {
     REQUIRED_PERMISSIONS_METADATA,
     DashboardController.prototype[methodName],
   );
+}
+
+function calendarEvent(
+  schoolId: string,
+  academicYearId: string,
+  termId: string,
+  title: string,
+) {
+  return {
+    schoolId,
+    academicYearId,
+    termId,
+    title,
+    type: AcademicCalendarEventType.ACTIVITY,
+    scopeType: AcademicCalendarEventScopeType.SCHOOL,
+    allDay: true,
+    startDate: new Date('2026-07-12T00:00:00.000Z'),
+    endDate: new Date('2026-07-12T00:00:00.000Z'),
+  };
 }
 
 function controllerMethods(controller: Function): string[] {

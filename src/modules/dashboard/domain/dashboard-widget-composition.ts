@@ -2,7 +2,8 @@ export type DashboardWidgetCompositionDependency =
   | 'summary'
   | 'alerts'
   | 'activity'
-  | 'todos';
+  | 'todos'
+  | 'calendar';
 
 export type DashboardWidgetAnalyticsChartKey =
   | 'students.enrollment_growth'
@@ -27,6 +28,7 @@ export interface DashboardWidgetCompositionPlan {
   loadAlerts: boolean;
   loadActivity: boolean;
   loadTodos: boolean;
+  loadCalendar: boolean;
   analytics: readonly DashboardWidgetAnalyticsBinding[];
 }
 
@@ -57,6 +59,7 @@ export function buildDashboardWidgetCompositionPlan(
     loadAlerts: dependencies.has('alerts'),
     loadActivity: dependencies.has('activity'),
     loadTodos: dependencies.has('todos'),
+    loadCalendar: dependencies.has('calendar'),
     analytics: [...analyticsByChartKey.values()],
   };
 }

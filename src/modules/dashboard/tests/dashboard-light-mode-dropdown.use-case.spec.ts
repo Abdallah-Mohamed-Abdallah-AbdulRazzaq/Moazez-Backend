@@ -22,6 +22,7 @@ import {
   DashboardLightModeDropdownSchoolLocationSnapshot,
 } from '../infrastructure/dashboard-light-mode-dropdown.repository';
 import { DashboardTodosRepository } from '../infrastructure/dashboard-todos.repository';
+import { DashboardPlannerCalendarRepository } from '../infrastructure/dashboard-planner-calendar.repository';
 
 describe('Dashboard LightModeDropdown use case', () => {
   it('returns a stable response shape from the active school profile', async () => {
@@ -30,6 +31,7 @@ describe('Dashboard LightModeDropdown use case', () => {
     const useCase = new GetDashboardLightModeDropdownUseCase(
       repository as any,
       todosRepository as any,
+      calendarRepositoryMock() as any,
     );
 
     const response = await withSchoolScope(() => useCase.execute());
@@ -83,13 +85,13 @@ describe('Dashboard LightModeDropdown use case', () => {
         locale: 'en',
         units: 'metric',
         weatherStatus: 'provider_not_configured',
-        plannerStatus: 'foundation_only',
+        plannerStatus: 'calendar_available',
         todosStatus: 'persisted',
         deferred: {
           weatherProvider: 'deferred',
           weatherCache: 'deferred',
           todoPersistence: 'persisted',
-          plannerCalendar: 'deferred',
+          plannerCalendar: 'available',
           crossModulePlannerItems: 'deferred',
           realtime: 'deferred',
         },
@@ -105,6 +107,7 @@ describe('Dashboard LightModeDropdown use case', () => {
     const useCase = new GetDashboardLightModeDropdownUseCase(
       repository as any,
       todosRepositoryMock() as any,
+      calendarRepositoryMock() as any,
     );
 
     const response = await withSchoolScope(() =>
@@ -147,6 +150,7 @@ describe('Dashboard LightModeDropdown use case', () => {
     const useCase = new GetDashboardLightModeDropdownUseCase(
       repository as any,
       todosRepositoryMock() as any,
+      calendarRepositoryMock() as any,
     );
 
     const response = await withSchoolScope(() => useCase.execute());
@@ -165,7 +169,7 @@ describe('Dashboard LightModeDropdown use case', () => {
     expect(response.planner.todos).toEqual([]);
     expect(response.meta.deferred).toMatchObject({
       weatherProvider: 'deferred',
-      plannerCalendar: 'deferred',
+      plannerCalendar: 'available',
       todoPersistence: 'persisted',
     });
   });
@@ -206,6 +210,7 @@ describe('Dashboard LightModeDropdown use case', () => {
     const useCase = new GetDashboardLightModeDropdownUseCase(
       repositoryMock(locationSnapshot()) as any,
       todosRepositoryMock() as any,
+      calendarRepositoryMock() as any,
     );
 
     await expect(
@@ -235,6 +240,7 @@ describe('Dashboard LightModeDropdown use case', () => {
     const useCase = new GetDashboardLightModeDropdownUseCase(
       repositoryMock(locationSnapshot()) as any,
       todosRepository as any,
+      calendarRepositoryMock() as any,
     );
 
     const response = await withSchoolScope(() =>
@@ -249,6 +255,96 @@ describe('Dashboard LightModeDropdown use case', () => {
       }),
     ]);
     expect(response.meta.todosStatus).toBe('persisted');
+  });
+
+  it('normalizes the selected date and timezone before loading Calendar and Todos in parallel', async () => {
+    const todosRepository = todosRepositoryMock();
+    const calendarRepository = calendarRepositoryMock();
+    const pending: Array<() => void> = [];
+    todosRepository.listOwnedTodos.mockImplementation(
+      () => new Promise((resolve) => pending.push(() => resolve([]))),
+    );
+    calendarRepository.listSchoolEvents.mockImplementation(
+      () => new Promise((resolve) => pending.push(() => resolve([]))),
+    );
+    const useCase = new GetDashboardLightModeDropdownUseCase(
+      repositoryMock(locationSnapshot()) as any,
+      todosRepository as any,
+      calendarRepository as any,
+    );
+
+    const result = withSchoolScope(() =>
+      useCase.execute({
+        date: '2026-04-24',
+        timezone: 'Africa/Cairo',
+      }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(pending).toHaveLength(2);
+    expect(todosRepository.listOwnedTodos).toHaveBeenCalledWith(
+      expect.objectContaining({ schoolId: 'school-1', actorId: 'user-1' }),
+      { date: new Date('2026-04-24T00:00:00.000Z'), limit: 100 },
+    );
+    expect(calendarRepository.listSchoolEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ schoolId: 'school-1', actorId: 'user-1' }),
+      {
+        from: new Date('2026-04-23T22:00:00.000Z'),
+        toExclusive: new Date('2026-04-24T21:00:00.000Z'),
+        allDayFrom: new Date('2026-04-24T00:00:00.000Z'),
+        allDayToExclusive: new Date('2026-04-25T00:00:00.000Z'),
+        limit: 100,
+      },
+    );
+    pending.forEach((resolve) => resolve());
+    await expect(result).resolves.toMatchObject({
+      planner: { date: '2026-04-24', timezone: 'Africa/Cairo' },
+    });
+  });
+
+  it('uses the normalized school timezone fallback and propagates Calendar errors', async () => {
+    const calendarRepository = calendarRepositoryMock();
+    const failure = new Error('calendar unavailable');
+    calendarRepository.listSchoolEvents.mockRejectedValue(failure);
+    const useCase = new GetDashboardLightModeDropdownUseCase(
+      repositoryMock(locationSnapshot()) as any,
+      todosRepositoryMock() as any,
+      calendarRepository as any,
+    );
+
+    await expect(
+      withSchoolScope(() => useCase.execute({ date: '2026-07-09' })),
+    ).rejects.toBe(failure);
+    expect(calendarRepository.listSchoolEvents).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses logical UTC all-day bounds independently from negative-offset timed bounds', async () => {
+    const calendarRepository = calendarRepositoryMock();
+    const useCase = new GetDashboardLightModeDropdownUseCase(
+      repositoryMock(locationSnapshot()) as any,
+      todosRepositoryMock() as any,
+      calendarRepository as any,
+    );
+
+    await withSchoolScope(() =>
+      useCase.execute({
+        date: '2026-07-09',
+        timezone: 'America/Los_Angeles',
+      }),
+    );
+
+    expect(calendarRepository.listSchoolEvents).toHaveBeenCalledTimes(1);
+    expect(calendarRepository.listSchoolEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ schoolId: 'school-1', actorId: 'user-1' }),
+      {
+        from: new Date('2026-07-09T07:00:00.000Z'),
+        toExclusive: new Date('2026-07-10T07:00:00.000Z'),
+        allDayFrom: new Date('2026-07-09T00:00:00.000Z'),
+        allDayToExclusive: new Date('2026-07-10T00:00:00.000Z'),
+        limit: 100,
+      },
+    );
   });
 });
 
@@ -282,6 +378,14 @@ function todosRepositoryMock(): jest.Mocked<
 > {
   return {
     listOwnedTodos: jest.fn().mockResolvedValue([]),
+  };
+}
+
+function calendarRepositoryMock(): jest.Mocked<
+  Pick<DashboardPlannerCalendarRepository, 'listSchoolEvents'>
+> {
+  return {
+    listSchoolEvents: jest.fn().mockResolvedValue([]),
   };
 }
 

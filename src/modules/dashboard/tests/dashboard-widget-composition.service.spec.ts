@@ -1,6 +1,7 @@
 import {
   DashboardTodoPriority,
   DashboardTodoStatus,
+  AcademicCalendarEventType,
   UserType,
 } from '@prisma/client';
 import { DashboardWidgetCompositionService } from '../application/dashboard-widget-composition.service';
@@ -21,6 +22,7 @@ import { DashboardActivityFeedRepository } from '../infrastructure/dashboard-act
 import { DashboardAlertsRepository } from '../infrastructure/dashboard-alerts.repository';
 import { DashboardSummaryRepository } from '../infrastructure/dashboard-summary.repository';
 import { DashboardTodosRepository } from '../infrastructure/dashboard-todos.repository';
+import { DashboardPlannerCalendarRepository } from '../infrastructure/dashboard-planner-calendar.repository';
 
 const GENERATED_AT = new Date('2026-07-11T22:30:00.000Z');
 const TIME_CONTEXT = buildDashboardTimeContext({
@@ -54,6 +56,7 @@ describe('DashboardWidgetCompositionService', () => {
       {
         ...expected,
         loadTodos: false,
+        loadCalendar: false,
         analytics: [],
       },
     );
@@ -116,7 +119,7 @@ describe('DashboardWidgetCompositionService', () => {
     );
   });
 
-  it('shares one Todo list/count pair between Todo and Calendar', async () => {
+  it('shares one Todo list/count pair and loads Calendar once for Todo and Calendar', async () => {
     const fixture = fixtureService();
     const widgets = await fixture.service.compose({
       scope: SCOPE,
@@ -126,6 +129,7 @@ describe('DashboardWidgetCompositionService', () => {
 
     expect(fixture.todos.listOwnedTodos).toHaveBeenCalledTimes(1);
     expect(fixture.todos.countOwnedTodos).toHaveBeenCalledTimes(1);
+    expect(fixture.calendar.listSchoolEvents).toHaveBeenCalledTimes(1);
     expect(fixture.todos.listOwnedTodos).toHaveBeenCalledWith(SCOPE, {
       date: new Date('2026-07-12T00:00:00.000Z'),
       limit: 5,
@@ -134,7 +138,54 @@ describe('DashboardWidgetCompositionService', () => {
       'todos.today',
       'calendar.today',
     ]);
+    expect(fixture.calendar.listSchoolEvents).toHaveBeenCalledWith(SCOPE, {
+      from: new Date('2026-07-11T21:00:00.000Z'),
+      toExclusive: new Date('2026-07-12T21:00:00.000Z'),
+      allDayFrom: new Date('2026-07-12T00:00:00.000Z'),
+      allDayToExclusive: new Date('2026-07-13T00:00:00.000Z'),
+      limit: 5,
+    });
+    expectOnlyCalls(fixture, { todoList: 1, todoCount: 1, calendar: 1 });
+  });
+
+  it('keeps Todo-only composition free of Calendar calls', async () => {
+    const fixture = fixtureService();
+    await fixture.service.compose({
+      scope: SCOPE,
+      timeContext: TIME_CONTEXT,
+      definitions: definitions('todos.today'),
+    });
+
     expectOnlyCalls(fixture, { todoList: 1, todoCount: 1 });
+  });
+
+  it('loads Calendar and Todos once for Calendar-only composition with the same scope and time context', async () => {
+    const fixture = fixtureService();
+    const [widget] = await fixture.service.compose({
+      scope: SCOPE,
+      timeContext: TIME_CONTEXT,
+      definitions: definitions('calendar.today'),
+    });
+
+    expectOnlyCalls(fixture, { todoList: 1, todoCount: 1, calendar: 1 });
+    expect(widget).toMatchObject({
+      widgetKey: 'calendar.today',
+      data: {
+        date: '2026-07-12',
+        sourceMode: 'academic_calendar_and_todos',
+        summary: { total: 2, academicCalendar: 1, todos: 1 },
+      },
+    });
+    expect(fixture.calendar.listSchoolEvents).toHaveBeenCalledWith(
+      SCOPE,
+      expect.objectContaining({
+        from: TIME_CONTEXT.todayStart,
+        toExclusive: TIME_CONTEXT.todayEndExclusive,
+        allDayFrom: TIME_CONTEXT.todayDate,
+        allDayToExclusive: new Date('2026-07-13T00:00:00.000Z'),
+        limit: 5,
+      }),
+    );
   });
 
   it('deduplicates Analytics keys, preserves selection order, and shares generatedAt', async () => {
@@ -302,6 +353,9 @@ function fixtureService(
       },
     ),
   };
+  const calendar = {
+    listSchoolEvents: jest.fn().mockResolvedValue([calendarEvent()]),
+  };
 
   return {
     summary,
@@ -309,12 +363,14 @@ function fixtureService(
     activity,
     todos,
     analytics,
+    calendar,
     service: new DashboardWidgetCompositionService(
       summary as unknown as DashboardSummaryRepository,
       alerts as unknown as DashboardAlertsRepository,
       activity as unknown as DashboardActivityFeedRepository,
       todos as unknown as DashboardTodosRepository,
       analytics as unknown as GetDashboardAnalyticsChartDataUseCase,
+      calendar as unknown as DashboardPlannerCalendarRepository,
     ),
   };
 }
@@ -336,7 +392,8 @@ function expectOnlyCalls(
       | 'activity'
       | 'todoList'
       | 'todoCount'
-      | 'analytics',
+      | 'analytics'
+      | 'calendar',
       number
     >
   >,
@@ -359,8 +416,22 @@ function expectOnlyCalls(
   expect(fixture.analytics.execute).toHaveBeenCalledTimes(
     expected.analytics ?? 0,
   );
+  expect(fixture.calendar.listSchoolEvents).toHaveBeenCalledTimes(
+    expected.calendar ?? 0,
+  );
   expect(fixture.summary.createAuditLog).not.toHaveBeenCalled();
   expect(fixture.alerts.updateDashboardAlert).not.toHaveBeenCalled();
+}
+
+function calendarEvent() {
+  return {
+    id: 'event-1',
+    title: 'School activity',
+    type: AcademicCalendarEventType.ACTIVITY,
+    allDay: true,
+    startDate: new Date('2026-07-12T00:00:00.000Z'),
+    endDate: new Date('2026-07-12T00:00:00.000Z'),
+  };
 }
 
 function auditRecord(index: number) {

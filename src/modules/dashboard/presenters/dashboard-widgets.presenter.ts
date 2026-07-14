@@ -10,6 +10,8 @@ import {
   DashboardWidgetsResponseDto,
   DashboardWidgetResponseDto,
   DashboardWidgetTodoDataDto,
+  DashboardWidgetCalendarDataDto,
+  DashboardWidgetCalendarEventDto,
 } from '../dto/dashboard-widgets.dto';
 import { DashboardWidgetDefinition } from '../domain/dashboard-widget-registry';
 import { DashboardWidgetAnalyticsChartKey } from '../domain/dashboard-widget-composition';
@@ -25,6 +27,8 @@ import {
   DashboardTodoSnapshot,
 } from '../infrastructure/dashboard-todos.repository';
 import { dashboardFreshness } from './dashboard-metadata.presenter';
+import { DashboardPlannerCalendarEventSnapshot } from '../infrastructure/dashboard-planner-calendar.repository';
+import { presentDashboardPlannerCalendarEvent } from './dashboard-light-mode-dropdown.presenter';
 
 export interface DashboardWidgetDataPresentationInput {
   generatedAt: Date;
@@ -44,6 +48,11 @@ export interface DashboardWidgetDataPresentationInput {
     date: string;
     items: DashboardTodoSnapshot[];
     counts: DashboardTodoCounts;
+  } | null;
+  calendar?: {
+    date: string;
+    timezone: string;
+    events: DashboardPlannerCalendarEventSnapshot[];
   } | null;
 }
 
@@ -249,7 +258,11 @@ function buildDashboardWidget(
       return todoWidget(definition, requireTodos(input));
 
     case 'calendar.today':
-      return calendarWidget(definition, requireTodos(input));
+      return calendarWidget(
+        definition,
+        requireTodos(input),
+        requireCalendar(input),
+      );
 
     default:
       return statWidget(definition, 0, 'neutral');
@@ -470,28 +483,85 @@ function todoWidget(
 function calendarWidget(
   definition: DashboardWidgetDefinition,
   todos: NonNullable<DashboardWidgetDataPresentationInput['todos']>,
+  calendar: NonNullable<DashboardWidgetDataPresentationInput['calendar']>,
 ): DashboardWidgetDto {
-  const events = todos.items.map((todo) => ({
+  if (calendar.date !== todos.date) {
+    throw new Error('Dashboard Calendar and Todo dates must match');
+  }
+  const academicCalendarEvents: DashboardWidgetCalendarEventDto[] =
+    calendar.events.map((event) => {
+      const presented = presentDashboardPlannerCalendarEvent(
+        event,
+        calendar.timezone,
+      );
+      return {
+        source: presented.source,
+        title: presented.title,
+        date: presented.date,
+        endDate: presented.endDate,
+        startTime: presented.startTime,
+        endTime: presented.endTime,
+        allDay: presented.allDay,
+        eventType: presented.eventType,
+        status: null,
+        priority: null,
+        tone: presented.tone,
+        iconKey: presented.iconKey,
+      };
+    });
+  const todoEvents: DashboardWidgetCalendarEventDto[] = todos.items.map(
+    (todo) => {
+      const status = todo.status.toLowerCase() as 'pending' | 'completed';
+      const priority = todo.priority.toLowerCase() as 'low' | 'normal' | 'high';
+      return {
+        source: 'todo',
+        title: todo.title,
+        date: todos.date,
+        endDate: todos.date,
+        startTime: null,
+        endTime: null,
+        allDay: true,
+        eventType: null,
+        status,
+        priority,
+        tone:
+          status === 'completed'
+            ? 'success'
+            : priority === 'high'
+              ? 'warning'
+              : 'info',
+        iconKey: 'list-todo',
+      };
+    },
+  );
+  const events = [...academicCalendarEvents, ...todoEvents];
+  const data: DashboardWidgetCalendarDataDto = {
     date: todos.date,
-    title: todo.title,
-    status: todo.status.toLowerCase() as 'pending' | 'completed',
-    priority: todo.priority.toLowerCase() as 'low' | 'normal' | 'high',
-    source: 'todo' as const,
-    allDay: true as const,
-  }));
+    sourceMode: 'academic_calendar_and_todos',
+    eventDates: events.length > 0 ? [todos.date] : [],
+    events,
+    summary: {
+      total: events.length,
+      academicCalendar: academicCalendarEvents.length,
+      todos: todoEvents.length,
+    },
+  };
+  const tone: DashboardWidgetTone =
+    events.length === 0
+      ? 'neutral'
+      : todos.counts.pending > 0
+        ? 'warning'
+        : academicCalendarEvents.length > 0
+          ? 'info'
+          : 'success';
 
   return widget(
     definition,
-    todoTone(todos.counts),
-    {
-      date: todos.date,
-      sourceMode: 'todo_only',
-      eventDates: events.length > 0 ? [todos.date] : [],
-      events,
-    },
+    tone,
+    data as unknown as Record<string, unknown>,
     null,
     null,
-    'persisted_user_data',
+    'request_time_snapshot',
   );
 }
 
@@ -592,6 +662,15 @@ function requireTodos(
   return input.todos;
 }
 
+function requireCalendar(
+  input: DashboardWidgetDataPresentationInput,
+): NonNullable<DashboardWidgetDataPresentationInput['calendar']> {
+  if (!input.calendar) {
+    throw new Error('Dashboard widget Calendar data is missing');
+  }
+  return input.calendar;
+}
+
 function requireValue(value: number | undefined): number {
   if (value === undefined) {
     throw new Error('Dashboard widget summary data is missing');
@@ -652,7 +731,7 @@ function dashboardWidgetsDeferred(): DashboardWidgetsDeferredDto {
     analyticsStandalone: 'available',
     todosStandalone: 'persisted',
     calendarTodoComposition: 'available',
-    plannerCalendar: 'deferred',
+    plannerCalendar: 'available',
     crossModulePlannerItems: 'deferred',
   };
 }

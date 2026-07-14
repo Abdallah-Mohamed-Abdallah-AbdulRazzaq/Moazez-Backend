@@ -2,7 +2,11 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { UserType } from '@prisma/client';
+import {
+  AcademicCalendarEventScopeType,
+  AcademicCalendarEventType,
+  UserType,
+} from '@prisma/client';
 import {
   createRequestContext,
   runWithRequestContext,
@@ -15,6 +19,8 @@ import { GetDashboardLightModeDropdownUseCase } from '../../src/modules/dashboar
 import { DashboardController } from '../../src/modules/dashboard/controller/dashboard.controller';
 import { DashboardLightModeDropdownRepository } from '../../src/modules/dashboard/infrastructure/dashboard-light-mode-dropdown.repository';
 import { DashboardTodosRepository } from '../../src/modules/dashboard/infrastructure/dashboard-todos.repository';
+import { DashboardPlannerCalendarRepository } from '../../src/modules/dashboard/infrastructure/dashboard-planner-calendar.repository';
+import { CalendarEventsController } from '../../src/modules/academics/calendar/controller/calendar-events.controller';
 import { presentDashboardLightModeDropdown } from '../../src/modules/dashboard/presenters/dashboard-light-mode-dropdown.presenter';
 
 jest.setTimeout(60000);
@@ -28,6 +34,10 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
   let organizationId = '';
   let schoolAId = '';
   let schoolBId = '';
+  let academicYearAId = '';
+  let academicYearBId = '';
+  let termAId = '';
+  let termBId = '';
 
   beforeAll(async () => {
     prisma = new PrismaService();
@@ -87,11 +97,88 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
         },
       ],
     });
+
+    const [yearA, yearB] = await Promise.all(
+      [schoolAId, schoolBId].map((schoolId, index) =>
+        prisma.academicYear.create({
+          data: {
+            schoolId,
+            nameAr: `${marker}-year-${index}-ar`,
+            nameEn: `${marker}-year-${index}-en`,
+            startDate: new Date('2026-01-01T00:00:00.000Z'),
+            endDate: new Date('2026-12-31T00:00:00.000Z'),
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    academicYearAId = yearA.id;
+    academicYearBId = yearB.id;
+    const [termA, termB] = await Promise.all([
+      prisma.term.create({
+        data: {
+          schoolId: schoolAId,
+          academicYearId: academicYearAId,
+          nameAr: `${marker}-term-a-ar`,
+          nameEn: `${marker}-term-a-en`,
+          startDate: new Date('2026-01-01T00:00:00.000Z'),
+          endDate: new Date('2026-12-31T00:00:00.000Z'),
+        },
+        select: { id: true },
+      }),
+      prisma.term.create({
+        data: {
+          schoolId: schoolBId,
+          academicYearId: academicYearBId,
+          nameAr: `${marker}-term-b-ar`,
+          nameEn: `${marker}-term-b-en`,
+          startDate: new Date('2026-01-01T00:00:00.000Z'),
+          endDate: new Date('2026-12-31T00:00:00.000Z'),
+        },
+        select: { id: true },
+      }),
+    ]);
+    termAId = termA.id;
+    termBId = termB.id;
+    await prisma.academicCalendarEvent.createMany({
+      data: [
+        calendarEvent(
+          schoolAId,
+          academicYearAId,
+          termAId,
+          `${marker} School A event`,
+        ),
+        calendarEvent(
+          schoolBId,
+          academicYearBId,
+          termBId,
+          `${marker} School B event`,
+        ),
+        {
+          ...calendarEvent(
+            schoolAId,
+            academicYearAId,
+            termAId,
+            `${marker} deleted event`,
+          ),
+          deletedAt: new Date('2026-07-01T00:00:00.000Z'),
+        },
+      ],
+    });
   });
 
   afterAll(async () => {
     if (!prisma) return;
 
+    await prisma.academicCalendarEvent.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.term.deleteMany({
+      where: { id: { in: [termAId, termBId].filter(Boolean) } },
+    });
+    await prisma.academicYear.deleteMany({
+      where: { id: { in: [academicYearAId, academicYearBId].filter(Boolean) } },
+    });
     await prisma.schoolProfile.deleteMany({
       where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
     });
@@ -123,6 +210,13 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
     expect(readPermissions('getLightModeDropdown')).toEqual([
       'dashboard.light_mode_dropdown.view',
     ]);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_METADATA,
+        // eslint-disable-next-line @typescript-eslint/unbound-method
+        CalendarEventsController.prototype.listEvents,
+      ),
+    ).toEqual(['academics.calendar.view']);
     expect(controllerMethods(DashboardController)).not.toEqual(
       expect.arrayContaining([
         'refreshWeatherProvider',
@@ -184,10 +278,11 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
     );
   });
 
-  it('keeps school A from observing school B location/timezone and ignores schoolId overrides', async () => {
+  it('keeps school A from observing school B Calendar/location data, hides soft deletes, and ignores tenant overrides', async () => {
     const useCase = new GetDashboardLightModeDropdownUseCase(
       new DashboardLightModeDropdownRepository(prisma),
       new DashboardTodosRepository(prisma),
+      new DashboardPlannerCalendarRepository(prisma),
     );
 
     const response = await withSchoolScope(schoolAId, () =>
@@ -197,6 +292,7 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
           schoolId: schoolBId,
           organizationId,
           ownerUserId: 'owner-b',
+          date: '2026-07-09',
         },
       ),
     );
@@ -217,7 +313,12 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
       forecast: [],
       planner: {
         timezone: 'Africa/Cairo',
-        events: [],
+        events: [
+          expect.objectContaining({
+            source: 'academic_calendar',
+            title: `${marker} School A event`,
+          }),
+        ],
         todos: [],
       },
     });
@@ -229,6 +330,8 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
     expect(serialized).not.toContain(organizationId);
     expect(serialized).not.toContain(OWNER_A_ID);
     expect(serialized).not.toContain('owner-b');
+    expect(serialized).not.toContain(`${marker} School B event`);
+    expect(serialized).not.toContain(`${marker} deleted event`);
     expectNoInternalLeaks(response);
   });
 
@@ -282,6 +385,25 @@ describe('Dashboard LightModeDropdown tenancy/security contracts', () => {
     });
   }
 });
+
+function calendarEvent(
+  schoolId: string,
+  academicYearId: string,
+  termId: string,
+  title: string,
+) {
+  return {
+    schoolId,
+    academicYearId,
+    termId,
+    title,
+    type: AcademicCalendarEventType.ACTIVITY,
+    scopeType: AcademicCalendarEventScopeType.SCHOOL,
+    allDay: true,
+    startDate: new Date('2026-07-09T00:00:00.000Z'),
+    endDate: new Date('2026-07-09T00:00:00.000Z'),
+  };
+}
 
 function readPermissions(methodName: string): string[] | undefined {
   return Reflect.getMetadata(

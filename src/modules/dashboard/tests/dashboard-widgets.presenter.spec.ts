@@ -1,4 +1,8 @@
-import { DashboardTodoPriority, DashboardTodoStatus } from '@prisma/client';
+import {
+  AcademicCalendarEventType,
+  DashboardTodoPriority,
+  DashboardTodoStatus,
+} from '@prisma/client';
 import { DashboardAnalyticsChartDataResponseDto } from '../dto/dashboard-analytics-data.dto';
 import { DashboardActivityFeedItemDto } from '../dto/dashboard-activity-feed.dto';
 import { dashboardAnalyticsCivilDatePoint } from '../domain/dashboard-analytics-coordinate';
@@ -191,12 +195,17 @@ describe('Dashboard widgets presenter', () => {
     expect(gradebookWidget.tone).toBe('neutral');
   });
 
-  it('uses the strict Todo and Todo-only Calendar allowlists', () => {
-    const widgets = compose(['todos.today', 'calendar.today'], [], {
-      date: '2026-07-12',
-      items: [todo()],
-      counts: { total: 1, pending: 1, completed: 0 },
-    });
+  it('uses strict Todo and combined Calendar allowlists with deterministic event order', () => {
+    const widgets = compose(
+      ['todos.today', 'calendar.today'],
+      [],
+      {
+        date: '2026-07-12',
+        items: [todo()],
+        counts: { total: 1, pending: 1, completed: 0 },
+      },
+      calendarInput([calendarEvent()]),
+    );
 
     expect(widgets[0].data).toEqual({
       date: '2026-07-12',
@@ -205,18 +214,39 @@ describe('Dashboard widgets presenter', () => {
     });
     expect(widgets[1].data).toEqual({
       date: '2026-07-12',
-      sourceMode: 'todo_only',
+      sourceMode: 'academic_calendar_and_todos',
       eventDates: ['2026-07-12'],
       events: [
         {
+          source: 'academic_calendar',
+          title: 'School exam',
           date: '2026-07-12',
+          endDate: '2026-07-12',
+          startTime: null,
+          endTime: null,
+          allDay: true,
+          eventType: 'exam',
+          status: null,
+          priority: null,
+          tone: 'warning',
+          iconKey: 'clock',
+        },
+        {
+          source: 'todo',
           title: 'Review reports',
+          date: '2026-07-12',
+          endDate: '2026-07-12',
+          startTime: null,
+          endTime: null,
+          allDay: true,
+          eventType: null,
           status: 'pending',
           priority: 'high',
-          source: 'todo',
-          allDay: true,
+          tone: 'warning',
+          iconKey: 'list-todo',
         },
       ],
+      summary: { total: 2, academicCalendar: 1, todos: 1 },
     });
     expect(JSON.stringify(widgets)).not.toMatch(
       /todoId|notes|completedAt|createdAt|updatedAt|sortOrder|ownerUserId/,
@@ -224,14 +254,23 @@ describe('Dashboard widgets presenter', () => {
     expect(widgets[0].meta.freshnessDetails.dataMode).toBe(
       'persisted_user_data',
     );
+    expect(widgets[1].meta.freshnessDetails.dataMode).toBe(
+      'request_time_snapshot',
+    );
+    expect(widgets[1].tone).toBe('warning');
   });
 
   it('returns stable empty Todo/Calendar data and exact capability metadata', () => {
-    const widgets = compose(['todos.today', 'calendar.today'], [], {
-      date: '2026-07-12',
-      items: [],
-      counts: { total: 0, pending: 0, completed: 0 },
-    });
+    const widgets = compose(
+      ['todos.today', 'calendar.today'],
+      [],
+      {
+        date: '2026-07-12',
+        items: [],
+        counts: { total: 0, pending: 0, completed: 0 },
+      },
+      calendarInput([]),
+    );
     const response = presentDashboardWidgets({
       generatedAt: GENERATED_AT,
       widgets,
@@ -252,7 +291,7 @@ describe('Dashboard widgets presenter', () => {
       analyticsStandalone: 'available',
       todosStandalone: 'persisted',
       calendarTodoComposition: 'available',
-      plannerCalendar: 'deferred',
+      plannerCalendar: 'available',
       crossModulePlannerItems: 'deferred',
     });
     expect(
@@ -262,6 +301,108 @@ describe('Dashboard widgets presenter', () => {
       widget: widgets[0],
     });
   });
+
+  it('caps Calendar and Todo sources independently at five and applies Calendar tone precedence', () => {
+    const calendarEvents = Array.from({ length: 5 }, (_, index) => ({
+      ...calendarEvent(`event-${index}`),
+      title: `Calendar ${index}`,
+    }));
+    const todoItems = Array.from({ length: 5 }, (_, index) => ({
+      ...todo(),
+      id: `todo-${index}`,
+      title: `Todo ${index}`,
+      status: DashboardTodoStatus.COMPLETED,
+    }));
+    const [widget] = compose(
+      ['calendar.today'],
+      [],
+      {
+        date: '2026-07-12',
+        items: todoItems,
+        counts: { total: 5, pending: 0, completed: 5 },
+      },
+      calendarInput(calendarEvents),
+    );
+
+    expect(widget.data.events as unknown[]).toHaveLength(10);
+    expect(widget.data).toMatchObject({
+      summary: { total: 10, academicCalendar: 5, todos: 5 },
+    });
+    expect(
+      (widget.data.events as Array<{ source: string }>).map(
+        (event) => event.source,
+      ),
+    ).toEqual([
+      'academic_calendar',
+      'academic_calendar',
+      'academic_calendar',
+      'academic_calendar',
+      'academic_calendar',
+      'todo',
+      'todo',
+      'todo',
+      'todo',
+      'todo',
+    ]);
+    expect(widget.tone).toBe('info');
+    expect(JSON.stringify(widget)).not.toMatch(
+      /eventId|todoId|notes|sortOrder|completedAt|createdAt|updatedAt|academicYearId|termId|schoolId|organizationId|ownerUserId/,
+    );
+  });
+
+  it.each([
+    ['Todo only', [], [todo()], 'warning'],
+    ['Calendar only', [calendarEvent()], [], 'info'],
+    [
+      'completed Todo only',
+      [],
+      [{ ...todo(), status: DashboardTodoStatus.COMPLETED }],
+      'success',
+    ],
+    ['empty', [], [], 'neutral'],
+  ] as const)(
+    'maps the %s Calendar state and widget tone',
+    (_label, calendarEvents, todoItems, tone) => {
+      const typedCalendarEvents = [...calendarEvents] as ReturnType<
+        typeof calendarEvent
+      >[];
+      const typedTodoItems = [...todoItems] as Array<
+        Omit<ReturnType<typeof todo>, 'status'> & {
+          status: DashboardTodoStatus;
+        }
+      >;
+      const [widget] = compose(
+        ['calendar.today'],
+        [],
+        {
+          date: '2026-07-12',
+          items: typedTodoItems,
+          counts: {
+            total: typedTodoItems.length,
+            pending: typedTodoItems.filter(
+              (item) => item.status === DashboardTodoStatus.PENDING,
+            ).length,
+            completed: typedTodoItems.filter(
+              (item) => item.status === DashboardTodoStatus.COMPLETED,
+            ).length,
+          },
+        },
+        calendarInput(typedCalendarEvents),
+      );
+      expect(widget.tone).toBe(tone);
+      expect(widget.data).toMatchObject({
+        eventDates:
+          typedCalendarEvents.length + typedTodoItems.length > 0
+            ? ['2026-07-12']
+            : [],
+        summary: {
+          total: typedCalendarEvents.length + typedTodoItems.length,
+          academicCalendar: typedCalendarEvents.length,
+          todos: typedTodoItems.length,
+        },
+      });
+    },
+  );
 
   it.each([
     ['missing', { missing: 2 }],
@@ -502,6 +643,9 @@ function compose(
   keys: string[],
   analytics: DashboardAnalyticsChartDataResponseDto[] = [],
   todos: Parameters<typeof buildDashboardWidgetRegistry>[0]['todos'] = null,
+  calendar: Parameters<
+    typeof buildDashboardWidgetRegistry
+  >[0]['calendar'] = null,
 ) {
   return buildDashboardWidgetRegistry({
     generatedAt: GENERATED_AT,
@@ -513,7 +657,27 @@ function compose(
       analytics.map((response) => [response.chartKey, response] as const),
     ) as any,
     todos,
+    calendar,
   });
+}
+
+function calendarInput(events: ReturnType<typeof calendarEvent>[]) {
+  return {
+    date: '2026-07-12',
+    timezone: 'Africa/Cairo',
+    events,
+  };
+}
+
+function calendarEvent(id = 'event-1') {
+  return {
+    id,
+    title: 'School exam',
+    type: AcademicCalendarEventType.EXAM,
+    allDay: true,
+    startDate: new Date('2026-07-12T00:00:00.000Z'),
+    endDate: new Date('2026-07-12T00:00:00.000Z'),
+  };
 }
 
 function requireDefinition(key: string) {

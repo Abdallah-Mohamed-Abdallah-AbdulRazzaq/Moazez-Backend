@@ -73,6 +73,8 @@ describe('Dashboard widgets use cases', () => {
       'progress-card',
       ['academics.teacher_allocation_coverage', 'grades.gradebook_completion'],
     ],
+    ['todo-card', ['todos.today']],
+    ['calendar-card', ['calendar.today']],
   ] as const)('filters type=%s before composition', async (type, keys) => {
     const composition = compositionServiceMock();
     const useCase = listUseCase(composition);
@@ -92,6 +94,7 @@ describe('Dashboard widgets use cases', () => {
   it.each([
     ['students.enrollment_growth', 'students.enrollment_growth'],
     ['todos.today', 'todos.today'],
+    ['calendar.today', 'calendar.today'],
   ])('composes only the requested detail widget %s', async (widgetKey) => {
     const composition = compositionServiceMock();
     const useCase = detailUseCase(composition);
