@@ -91,6 +91,24 @@ describe('Dashboard widgets use cases', () => {
     expect(composedKeys(composition)).toEqual(['students.active']);
   });
 
+  it('selects Todo-only and full Planner dependencies before composition', async () => {
+    const todosComposition = compositionServiceMock();
+    await withSchoolScope(() =>
+      listUseCase(todosComposition).execute({ source: 'todos' } as any),
+    );
+    expect(
+      composedDefinitions(todosComposition)[0].composition.dependencies,
+    ).toEqual(['todos']);
+
+    const calendarComposition = compositionServiceMock();
+    await withSchoolScope(() =>
+      listUseCase(calendarComposition).execute({ source: 'calendar' } as any),
+    );
+    expect(
+      composedDefinitions(calendarComposition)[0].composition.dependencies,
+    ).toEqual(['todos', 'calendar', 'planner_items']);
+  });
+
   it.each([
     ['students.enrollment_growth', 'students.enrollment_growth'],
     ['todos.today', 'todos.today'],
@@ -168,9 +186,16 @@ function compositionServiceMock() {
 }
 
 function composedKeys(composition: ReturnType<typeof compositionServiceMock>) {
-  const definitions = composition.compose.mock.calls[0][0]
+  return composedDefinitions(composition).map(
+    (definition) => definition.widgetKey,
+  );
+}
+
+function composedDefinitions(
+  composition: ReturnType<typeof compositionServiceMock>,
+): DashboardWidgetDefinition[] {
+  return composition.compose.mock.calls[0][0]
     .definitions as DashboardWidgetDefinition[];
-  return definitions.map((definition) => definition.widgetKey);
 }
 
 function widgetFromDefinition(

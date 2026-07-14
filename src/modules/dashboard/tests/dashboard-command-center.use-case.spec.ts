@@ -197,6 +197,9 @@ describe('GetDashboardCommandCenterUseCase', () => {
     const calendarRepository = {
       listSchoolEvents: jest.fn(),
     };
+    const plannerItemsRepository = {
+      listSchoolItems: jest.fn(),
+    };
     const compositionService = new DashboardWidgetCompositionService(
       summaryRepository as any,
       alertsRepository as any,
@@ -204,6 +207,7 @@ describe('GetDashboardCommandCenterUseCase', () => {
       todosRepository as unknown as DashboardTodosRepository,
       analyticsUseCase as any,
       calendarRepository as any,
+      plannerItemsRepository as any,
     );
     const useCase = new GetDashboardCommandCenterUseCase(
       summaryRepository as any,
@@ -229,6 +233,7 @@ describe('GetDashboardCommandCenterUseCase', () => {
     expect(todosRepository.listOwnedTodos).toHaveBeenCalledTimes(1);
     expect(todosRepository.countOwnedTodos).toHaveBeenCalledTimes(1);
     expect(calendarRepository.listSchoolEvents).not.toHaveBeenCalled();
+    expect(plannerItemsRepository.listSchoolItems).not.toHaveBeenCalled();
     expect(response.analyticsPreview).toHaveLength(3);
     expect(response.todoPreview.items).toEqual([]);
   });

@@ -228,7 +228,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
     iconKey: 'calendar-days',
     dataLabel: 'Today’s calendar',
     action: frontendRoute('Open planner', '/dashboard/light-mode-dropdown'),
-    composition: dependencies('todos', 'calendar'),
+    composition: dependencies('todos', 'calendar', 'planner_items'),
   },
 ];
 

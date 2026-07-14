@@ -34,6 +34,7 @@ import { DashboardBehaviorAnalyticsRepository } from '../../src/modules/dashboar
 import { DashboardReinforcementAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-reinforcement-analytics.repository';
 import { DashboardCommunicationAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-communication-analytics.repository';
 import { DashboardPlannerCalendarRepository } from '../../src/modules/dashboard/infrastructure/dashboard-planner-calendar.repository';
+import { DashboardPlannerItemsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-planner-items.repository';
 
 jest.setTimeout(60000);
 
@@ -332,6 +333,11 @@ describe('Dashboard command center tenancy/security contracts', () => {
       plannerCalendarRepository,
       'listSchoolEvents',
     );
+    const plannerItemsRepository = new DashboardPlannerItemsRepository(prisma);
+    const plannerItemsSpy = jest.spyOn(
+      plannerItemsRepository,
+      'listSchoolItems',
+    );
     const compositionService = new DashboardWidgetCompositionService(
       new DashboardSummaryRepository(prisma),
       new DashboardAlertsRepository(prisma),
@@ -339,6 +345,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
       new DashboardTodosRepository(prisma),
       analyticsUseCase,
       plannerCalendarRepository,
+      plannerItemsRepository,
     );
     const useCase = new GetDashboardCommandCenterUseCase(
       new DashboardSummaryRepository(prisma),
@@ -397,6 +404,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
 
     const serialized = JSON.stringify(response);
     expect(calendarSpy).not.toHaveBeenCalled();
+    expect(plannerItemsSpy).not.toHaveBeenCalled();
     expect(serialized).not.toContain(`Command Center School B ${suffix}`);
     expect(serialized).not.toContain(`${marker} owner B private todo`);
     expect(serialized).not.toContain(`${marker} school B private todo`);

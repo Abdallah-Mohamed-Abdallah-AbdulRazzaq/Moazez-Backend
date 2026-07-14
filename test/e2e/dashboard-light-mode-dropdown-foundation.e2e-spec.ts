@@ -4,7 +4,18 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   AcademicCalendarEventScopeType,
   AcademicCalendarEventType,
+  AdmissionApplicationSource,
+  AdmissionApplicationStatus,
+  AttendanceMode,
+  AttendanceScopeType,
+  AttendanceSessionStatus,
+  GradeAssessmentApprovalStatus,
+  GradeAssessmentType,
+  GradeScopeType,
+  HomeworkAssignmentStatus,
+  InterviewStatus,
   MembershipStatus,
+  PlacementTestStatus,
   PrismaClient,
   UserStatus,
   UserType,
@@ -43,6 +54,7 @@ type CreatedPrincipal = {
 };
 
 type LightModePlannerEventBody = {
+  eventId: string;
   title: string;
   source: string;
   eventType: string;
@@ -165,6 +177,278 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
       select: { id: true },
     });
     termId = term.id;
+    const subject = await prisma.subject.create({
+      data: {
+        schoolId,
+        nameAr: `${marker}-subject-ar`,
+        nameEn: `${marker}-subject-en`,
+        code: `LM-${suffix}`,
+      },
+      select: { id: true },
+    });
+    const application = await prisma.application.create({
+      data: {
+        schoolId,
+        organizationId,
+        studentName: 'Private applicant name',
+        source: AdmissionApplicationSource.IN_APP,
+        status: AdmissionApplicationStatus.SUBMITTED,
+        submittedAt: new Date('2026-07-01T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    const deletedApplication = await prisma.application.create({
+      data: {
+        schoolId,
+        organizationId,
+        studentName: 'Deleted private applicant name',
+        source: AdmissionApplicationSource.IN_APP,
+        status: AdmissionApplicationStatus.SUBMITTED,
+        submittedAt: new Date('2026-07-01T08:00:00.000Z'),
+        deletedAt: new Date('2026-07-02T08:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    const privateInterviewer = await prisma.user.create({
+      data: {
+        email: `${marker}-private-interviewer@example.test`,
+        firstName: 'Private',
+        lastName: 'Interviewer',
+        userType: UserType.SCHOOL_USER,
+      },
+      select: { id: true },
+    });
+    createdUserIds.push(privateInterviewer.id);
+    await Promise.all([
+      prisma.attendanceSession.create({
+        data: {
+          schoolId,
+          academicYearId,
+          termId,
+          date: new Date('2026-07-09T00:00:00.000Z'),
+          scopeType: AttendanceScopeType.SCHOOL,
+          scopeKey: schoolId,
+          mode: AttendanceMode.DAILY,
+          periodKey: 'DAILY',
+          periodLabelEn: 'Morning attendance',
+          status: AttendanceSessionStatus.SUBMITTED,
+        },
+      }),
+      prisma.placementTest.create({
+        data: {
+          schoolId,
+          applicationId: application.id,
+          type: 'GENERAL',
+          scheduledAt: new Date('2026-07-09T09:00:00.000Z'),
+          status: PlacementTestStatus.SCHEDULED,
+        },
+      }),
+      prisma.interview.create({
+        data: {
+          schoolId,
+          applicationId: application.id,
+          scheduledAt: new Date('2026-07-09T11:00:00.000Z'),
+          interviewerUserId: privateInterviewer.id,
+          status: InterviewStatus.RESCHEDULED,
+        },
+      }),
+      prisma.placementTest.create({
+        data: {
+          schoolId,
+          applicationId: deletedApplication.id,
+          type: `${marker}-deleted-application-placement`,
+          scheduledAt: new Date('2026-07-09T09:15:00.000Z'),
+          status: PlacementTestStatus.SCHEDULED,
+        },
+      }),
+      prisma.interview.create({
+        data: {
+          schoolId,
+          applicationId: deletedApplication.id,
+          scheduledAt: new Date('2026-07-09T11:15:00.000Z'),
+          interviewerUserId: privateInterviewer.id,
+          status: InterviewStatus.SCHEDULED,
+        },
+      }),
+      prisma.placementTest.create({
+        data: {
+          schoolId,
+          applicationId: application.id,
+          type: `${marker}-cancelled-placement`,
+          scheduledAt: new Date('2026-07-09T09:30:00.000Z'),
+          status: PlacementTestStatus.CANCELLED,
+        },
+      }),
+      prisma.interview.create({
+        data: {
+          schoolId,
+          applicationId: application.id,
+          scheduledAt: new Date('2026-07-09T11:30:00.000Z'),
+          interviewerUserId: privateInterviewer.id,
+          status: InterviewStatus.CANCELLED,
+        },
+      }),
+      prisma.gradeAssessment.create({
+        data: {
+          schoolId,
+          academicYearId,
+          termId,
+          subjectId: subject.id,
+          scopeType: GradeScopeType.SCHOOL,
+          scopeKey: schoolId,
+          titleEn: `${marker} grade assessment`,
+          titleAr: `${marker} تقييم`,
+          type: GradeAssessmentType.QUIZ,
+          date: new Date('2026-07-09T00:00:00.000Z'),
+          weight: 10,
+          maxScore: 20,
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+        },
+      }),
+      prisma.gradeAssessment.create({
+        data: {
+          schoolId,
+          academicYearId,
+          termId,
+          subjectId: subject.id,
+          scopeType: GradeScopeType.SCHOOL,
+          scopeKey: schoolId,
+          titleEn: `${marker} soft-deleted grade assessment`,
+          type: GradeAssessmentType.QUIZ,
+          date: new Date('2026-07-09T00:00:00.000Z'),
+          weight: 10,
+          maxScore: 20,
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+          deletedAt: new Date('2026-07-02T08:00:00.000Z'),
+        },
+      }),
+      prisma.gradeAssessment.create({
+        data: {
+          schoolId,
+          academicYearId,
+          termId,
+          subjectId: subject.id,
+          scopeType: GradeScopeType.SCHOOL,
+          scopeKey: schoolId,
+          titleEn: `${marker} draft grade assessment`,
+          type: GradeAssessmentType.QUIZ,
+          date: new Date('2026-07-09T00:00:00.000Z'),
+          weight: 10,
+          maxScore: 20,
+          approvalStatus: GradeAssessmentApprovalStatus.DRAFT,
+        },
+      }),
+      prisma.gradeAssessment.create({
+        data: {
+          schoolId,
+          academicYearId,
+          termId,
+          subjectId: subject.id,
+          scopeType: GradeScopeType.SCHOOL,
+          scopeKey: schoolId,
+          titleEn: `${marker} assignment grade assessment`,
+          type: GradeAssessmentType.ASSIGNMENT,
+          date: new Date('2026-07-09T00:00:00.000Z'),
+          weight: 10,
+          maxScore: 20,
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+        },
+      }),
+    ]);
+    const stage = await prisma.stage.create({
+      data: {
+        schoolId,
+        nameAr: `${marker}-stage-ar`,
+        nameEn: `${marker}-stage-en`,
+      },
+      select: { id: true },
+    });
+    const grade = await prisma.grade.create({
+      data: {
+        schoolId,
+        stageId: stage.id,
+        nameAr: `${marker}-grade-ar`,
+        nameEn: `${marker}-grade-en`,
+      },
+      select: { id: true },
+    });
+    const section = await prisma.section.create({
+      data: {
+        schoolId,
+        gradeId: grade.id,
+        nameAr: `${marker}-section-ar`,
+        nameEn: `${marker}-section-en`,
+      },
+      select: { id: true },
+    });
+    const classroom = await prisma.classroom.create({
+      data: {
+        schoolId,
+        sectionId: section.id,
+        nameAr: `${marker}-classroom-ar`,
+        nameEn: `${marker}-classroom-en`,
+      },
+      select: { id: true },
+    });
+    const allocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId,
+        teacherUserId: adminPrincipal.userId,
+        subjectId: subject.id,
+        classroomId: classroom.id,
+        termId,
+      },
+      select: { id: true },
+    });
+    await prisma.homeworkAssignment.createMany({
+      data: [
+        homeworkAssignment(
+          `${marker} homework due`,
+          HomeworkAssignmentStatus.PUBLISHED,
+        ),
+        {
+          ...homeworkAssignment(
+            `${marker} soft-deleted homework due`,
+            HomeworkAssignmentStatus.PUBLISHED,
+          ),
+          deletedAt: new Date('2026-07-02T08:00:00.000Z'),
+        },
+        homeworkAssignment(
+          `${marker} draft homework due`,
+          HomeworkAssignmentStatus.DRAFT,
+        ),
+        homeworkAssignment(
+          `${marker} scheduled homework due`,
+          HomeworkAssignmentStatus.DRAFT,
+          new Date('2026-07-09T08:00:00.000Z'),
+        ),
+        homeworkAssignment(
+          `${marker} cancelled homework due`,
+          HomeworkAssignmentStatus.CANCELLED,
+        ),
+      ],
+    });
+
+    function homeworkAssignment(
+      title: string,
+      status: HomeworkAssignmentStatus,
+      publishAt: Date | null = null,
+    ) {
+      return {
+        schoolId,
+        academicYearId,
+        termId,
+        classroomId: classroom.id,
+        subjectId: subject.id,
+        teacherUserId: adminPrincipal.userId,
+        teacherSubjectAllocationId: allocation.id,
+        title,
+        status,
+        publishAt,
+        dueAt: new Date('2026-07-09T12:00:00.000Z'),
+        createdByUserId: adminPrincipal.userId,
+      };
+    }
     await prisma.academicCalendarEvent.createMany({
       data: [
         calendarEvent(
@@ -353,14 +637,14 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
         locale: 'en',
         units: 'metric',
         weatherStatus: 'provider_not_configured',
-        plannerStatus: 'calendar_available',
+        plannerStatus: 'cross_module_available',
         todosStatus: 'persisted',
         deferred: {
           weatherProvider: 'deferred',
           weatherCache: 'deferred',
           todoPersistence: 'persisted',
           plannerCalendar: 'available',
-          crossModulePlannerItems: 'deferred',
+          crossModulePlannerItems: 'available',
           realtime: 'deferred',
         },
       },
@@ -391,6 +675,11 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
       'Multi-day activity',
       'All-day holiday',
       'Timed exam',
+      'Morning attendance',
+      `${marker} grade assessment`,
+      'Placement test — GENERAL',
+      'Admissions interview',
+      `${marker} homework due`,
     ]);
     expect(body.planner.events).toEqual([
       expect.objectContaining({
@@ -410,17 +699,76 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
         endTime: '12:00',
         allDay: false,
       }),
+      expect.objectContaining({
+        source: 'attendance_session',
+        eventType: 'attendance',
+        allDay: true,
+      }),
+      expect.objectContaining({
+        source: 'grade_assessment',
+        eventType: 'assessment',
+      }),
+      expect.objectContaining({
+        source: 'placement_test',
+        startTime: '11:00',
+      }),
+      expect.objectContaining({
+        source: 'interview',
+        startTime: '13:00',
+      }),
+      expect.objectContaining({
+        source: 'homework_due',
+        startTime: '14:00',
+      }),
     ]);
+    const crossModuleEventIds = body.planner.events
+      .slice(3)
+      .map((event) => event.eventId);
+    expect(crossModuleEventIds).toHaveLength(5);
+    expect(crossModuleEventIds[0]).toMatch(/^attendance_session:/);
+    expect(crossModuleEventIds[1]).toMatch(/^grade_assessment:/);
+    expect(crossModuleEventIds[2]).toMatch(/^placement_test:/);
+    expect(crossModuleEventIds[3]).toMatch(/^interview:/);
+    expect(crossModuleEventIds[4]).toMatch(/^homework_due:/);
     expect(JSON.stringify(body)).not.toMatch(
       /Next-day excluded|Non-overlapping|Soft-deleted/,
+    );
+    const serialized = JSON.stringify(body);
+    for (const excludedMarker of [
+      `${marker}-deleted-application-placement`,
+      `${marker}-cancelled-placement`,
+      `${marker} soft-deleted grade assessment`,
+      `${marker} draft grade assessment`,
+      `${marker} assignment grade assessment`,
+      `${marker} soft-deleted homework due`,
+      `${marker} draft homework due`,
+      `${marker} scheduled homework due`,
+      `${marker} cancelled homework due`,
+    ]) {
+      expect(serialized).not.toContain(excludedMarker);
+    }
+    expect(
+      body.planner.events.filter((event) => event.source === 'placement_test'),
+    ).toHaveLength(1);
+    expect(
+      body.planner.events.filter((event) => event.source === 'interview'),
+    ).toHaveLength(1);
+    expect(serialized).not.toContain('Private applicant name');
+    expect(serialized).not.toContain('Deleted private applicant name');
+    expect(serialized).not.toContain('Private Interviewer');
+    expect(serialized).not.toContain(
+      `${marker}-private-interviewer@example.test`,
     );
     expect(body.planner.todos).toEqual([
       expect.objectContaining({ title: `${marker} selected-day todo` }),
     ]);
     expect(body.meta).toMatchObject({
-      plannerStatus: 'calendar_available',
+      plannerStatus: 'cross_module_available',
       componentFreshness: { plannerEvents: 'persisted_school_data' },
-      deferred: { plannerCalendar: 'available' },
+      deferred: {
+        plannerCalendar: 'available',
+        crossModulePlannerItems: 'available',
+      },
     });
     expectNoInternalLeaks(body);
   });
@@ -465,6 +813,18 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
       .query({ from: '2026-07-09', to: '2026-07-09' })
       .set('Authorization', `Bearer ${token}`)
       .expect(403);
+    for (const path of [
+      '/attendance/roll-call/sessions',
+      '/admissions/tests',
+      '/admissions/interviews',
+      '/homework/assignments',
+      '/grades/assessments',
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}${path}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+    }
   });
 
   it('supports allowed query controls and rejects invalid or override-shaped input', async () => {
@@ -716,8 +1076,20 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
 
   async function cleanupE2eData(): Promise<void> {
     if (schoolId) {
+      await prisma.homeworkAssignment.deleteMany({ where: { schoolId } });
+      await prisma.gradeAssessment.deleteMany({ where: { schoolId } });
+      await prisma.teacherSubjectAllocation.deleteMany({ where: { schoolId } });
+      await prisma.attendanceSession.deleteMany({ where: { schoolId } });
+      await prisma.placementTest.deleteMany({ where: { schoolId } });
+      await prisma.interview.deleteMany({ where: { schoolId } });
+      await prisma.application.deleteMany({ where: { schoolId } });
       await prisma.academicCalendarEvent.deleteMany({ where: { schoolId } });
       await prisma.dashboardTodo.deleteMany({ where: { schoolId } });
+      await prisma.classroom.deleteMany({ where: { schoolId } });
+      await prisma.section.deleteMany({ where: { schoolId } });
+      await prisma.grade.deleteMany({ where: { schoolId } });
+      await prisma.stage.deleteMany({ where: { schoolId } });
+      await prisma.subject.deleteMany({ where: { schoolId } });
     }
     if (academicYearId) {
       await prisma.term.deleteMany({ where: { id: termId } });

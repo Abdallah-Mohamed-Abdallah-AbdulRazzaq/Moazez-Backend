@@ -17,6 +17,7 @@ import { DashboardAlertsRepository } from '../infrastructure/dashboard-alerts.re
 import { DashboardSummaryRepository } from '../infrastructure/dashboard-summary.repository';
 import { DashboardTodosRepository } from '../infrastructure/dashboard-todos.repository';
 import { DashboardPlannerCalendarRepository } from '../infrastructure/dashboard-planner-calendar.repository';
+import { DashboardPlannerItemsRepository } from '../infrastructure/dashboard-planner-items.repository';
 import { buildDashboardWidgetRegistry } from '../presenters/dashboard-widgets.presenter';
 import { buildDashboardSummaryDateWindow } from './get-dashboard-summary.use-case';
 import { buildDashboardAlertsDateWindow } from './list-dashboard-alerts.use-case';
@@ -36,6 +37,7 @@ export class DashboardWidgetCompositionService {
     private readonly dashboardTodosRepository: DashboardTodosRepository,
     private readonly getDashboardAnalyticsChartDataUseCase: GetDashboardAnalyticsChartDataUseCase,
     private readonly dashboardPlannerCalendarRepository: DashboardPlannerCalendarRepository,
+    private readonly dashboardPlannerItemsRepository: DashboardPlannerItemsRepository,
   ) {}
 
   async compose(input: {
@@ -46,53 +48,70 @@ export class DashboardWidgetCompositionService {
     const plan = buildDashboardWidgetCompositionPlan(input.definitions);
     const todoDate = toDashboardTodoDate(input.timeContext.civilDate);
 
-    const [summary, alertSignals, activityAuditRecords, todos, calendarEvents] =
-      await Promise.all([
-        plan.loadSummary
-          ? this.dashboardSummaryRepository.loadSummarySnapshot(
+    const [
+      summary,
+      alertSignals,
+      activityAuditRecords,
+      todos,
+      calendarEvents,
+      plannerItems,
+    ] = await Promise.all([
+      plan.loadSummary
+        ? this.dashboardSummaryRepository.loadSummarySnapshot(
+            input.scope,
+            buildDashboardSummaryDateWindow(input.timeContext),
+          )
+        : null,
+      plan.loadAlerts
+        ? this.dashboardAlertsRepository.loadAlertSignals(
+            input.scope,
+            buildDashboardAlertsDateWindow(input.timeContext),
+          )
+        : null,
+      plan.loadActivity
+        ? this.dashboardActivityFeedRepository.listActivityAuditRecords(
+            input.scope,
+            { take: 20 },
+          )
+        : [],
+      plan.loadTodos
+        ? Promise.all([
+            this.dashboardTodosRepository.listOwnedTodos(input.scope, {
+              date: todoDate,
+              limit: 5,
+            }),
+            this.dashboardTodosRepository.countOwnedTodos(
               input.scope,
-              buildDashboardSummaryDateWindow(input.timeContext),
-            )
-          : null,
-        plan.loadAlerts
-          ? this.dashboardAlertsRepository.loadAlertSignals(
-              input.scope,
-              buildDashboardAlertsDateWindow(input.timeContext),
-            )
-          : null,
-        plan.loadActivity
-          ? this.dashboardActivityFeedRepository.listActivityAuditRecords(
-              input.scope,
-              { take: 20 },
-            )
-          : [],
-        plan.loadTodos
-          ? Promise.all([
-              this.dashboardTodosRepository.listOwnedTodos(input.scope, {
-                date: todoDate,
-                limit: 5,
-              }),
-              this.dashboardTodosRepository.countOwnedTodos(
-                input.scope,
-                todoDate,
+              todoDate,
+            ),
+          ])
+        : null,
+      plan.loadCalendar
+        ? this.dashboardPlannerCalendarRepository.listSchoolEvents(
+            input.scope,
+            {
+              from: input.timeContext.todayStart,
+              toExclusive: input.timeContext.todayEndExclusive,
+              allDayFrom: input.timeContext.todayDate,
+              allDayToExclusive: dashboardCivilDateToPrismaDate(
+                addDashboardCivilDays(input.timeContext.civilDate, 1),
               ),
-            ])
-          : null,
-        plan.loadCalendar
-          ? this.dashboardPlannerCalendarRepository.listSchoolEvents(
-              input.scope,
-              {
-                from: input.timeContext.todayStart,
-                toExclusive: input.timeContext.todayEndExclusive,
-                allDayFrom: input.timeContext.todayDate,
-                allDayToExclusive: dashboardCivilDateToPrismaDate(
-                  addDashboardCivilDays(input.timeContext.civilDate, 1),
-                ),
-                limit: 5,
-              },
-            )
-          : null,
-      ]);
+              limit: 5,
+            },
+          )
+        : null,
+      plan.loadPlannerItems
+        ? this.dashboardPlannerItemsRepository.listSchoolItems(input.scope, {
+            from: input.timeContext.todayStart,
+            toExclusive: input.timeContext.todayEndExclusive,
+            allDayFrom: input.timeContext.todayDate,
+            allDayToExclusive: dashboardCivilDateToPrismaDate(
+              addDashboardCivilDays(input.timeContext.civilDate, 1),
+            ),
+            limit: 5,
+          })
+        : null,
+    ]);
 
     const analytics = await Promise.all(
       plan.analytics.map(async (binding) => {
@@ -188,6 +207,13 @@ export class DashboardWidgetCompositionService {
             date: input.timeContext.civilDate,
             timezone: input.timeContext.timezone,
             events: calendarEvents,
+          }
+        : null,
+      plannerItems: plannerItems
+        ? {
+            date: input.timeContext.civilDate,
+            timezone: input.timeContext.timezone,
+            items: plannerItems,
           }
         : null,
     });

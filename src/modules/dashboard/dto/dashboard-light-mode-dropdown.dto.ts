@@ -132,8 +132,23 @@ export class DashboardLightModeDropdownForecastDto {
 
 export class DashboardLightModeDropdownPlannerEventDto {
   eventId!: string;
-  source!: 'academic_calendar';
-  eventType!: 'holiday' | 'exam' | 'activity' | 'other';
+  source!:
+    | 'academic_calendar'
+    | 'attendance_session'
+    | 'placement_test'
+    | 'interview'
+    | 'homework_due'
+    | 'grade_assessment';
+  eventType!:
+    | 'holiday'
+    | 'exam'
+    | 'activity'
+    | 'other'
+    | 'attendance'
+    | 'placement_test'
+    | 'interview'
+    | 'homework_due'
+    | 'assessment';
   title!: string;
   date!: string;
   endDate!: string;
@@ -170,7 +185,7 @@ export class DashboardLightModeDropdownDeferredDto {
   weatherCache!: 'deferred';
   todoPersistence!: 'persisted';
   plannerCalendar!: 'available';
-  crossModulePlannerItems!: 'deferred';
+  crossModulePlannerItems!: 'available';
   realtime!: 'deferred';
 }
 
@@ -180,7 +195,7 @@ export class DashboardLightModeDropdownMetaDto {
   locale!: DashboardLightModeDropdownLocale;
   units!: DashboardLightModeDropdownUnits;
   weatherStatus!: 'provider_not_configured' | 'location_missing';
-  plannerStatus!: 'calendar_available';
+  plannerStatus!: 'cross_module_available';
   todosStatus!: 'persisted';
   freshness!: DashboardFreshnessMetadataDto;
   componentFreshness!: {

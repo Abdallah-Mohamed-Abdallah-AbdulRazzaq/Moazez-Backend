@@ -143,14 +143,31 @@ export class DashboardWidgetTodoDataDto {
 }
 
 export class DashboardWidgetCalendarEventDto {
-  source!: 'academic_calendar' | 'todo';
+  source!:
+    | 'academic_calendar'
+    | 'attendance_session'
+    | 'placement_test'
+    | 'interview'
+    | 'homework_due'
+    | 'grade_assessment'
+    | 'todo';
   title!: string;
   date!: string;
   endDate!: string;
   startTime!: string | null;
   endTime!: string | null;
   allDay!: boolean;
-  eventType!: 'holiday' | 'exam' | 'activity' | 'other' | null;
+  eventType!:
+    | 'holiday'
+    | 'exam'
+    | 'activity'
+    | 'other'
+    | 'attendance'
+    | 'placement_test'
+    | 'interview'
+    | 'homework_due'
+    | 'assessment'
+    | null;
   status!: 'pending' | 'completed' | null;
   priority!: 'low' | 'normal' | 'high' | null;
   tone!: DashboardWidgetTone;
@@ -159,12 +176,18 @@ export class DashboardWidgetCalendarEventDto {
 
 export class DashboardWidgetCalendarDataDto {
   date!: string;
-  sourceMode!: 'academic_calendar_and_todos';
+  sourceMode!: 'academic_calendar_cross_module_and_todos';
   eventDates!: string[];
   events!: DashboardWidgetCalendarEventDto[];
   summary!: {
     total: number;
     academicCalendar: number;
+    crossModule: number;
+    attendanceSessions: number;
+    placementTests: number;
+    interviews: number;
+    homeworkDue: number;
+    gradeAssessments: number;
     todos: number;
   };
 }
@@ -214,7 +237,7 @@ export class DashboardWidgetsDeferredDto {
   todosStandalone!: 'persisted';
   calendarTodoComposition!: Extract<DashboardCapabilityState, 'available'>;
   plannerCalendar!: 'available';
-  crossModulePlannerItems!: 'deferred';
+  crossModulePlannerItems!: 'available';
 }
 
 export class DashboardWidgetsResponseDto {

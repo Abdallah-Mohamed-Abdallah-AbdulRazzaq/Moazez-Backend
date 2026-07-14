@@ -23,6 +23,7 @@ import {
 } from '../infrastructure/dashboard-light-mode-dropdown.repository';
 import { DashboardTodosRepository } from '../infrastructure/dashboard-todos.repository';
 import { DashboardPlannerCalendarRepository } from '../infrastructure/dashboard-planner-calendar.repository';
+import { DashboardPlannerItemsRepository } from '../infrastructure/dashboard-planner-items.repository';
 
 describe('Dashboard LightModeDropdown use case', () => {
   it('returns a stable response shape from the active school profile', async () => {
@@ -32,6 +33,7 @@ describe('Dashboard LightModeDropdown use case', () => {
       repository as any,
       todosRepository as any,
       calendarRepositoryMock() as any,
+      plannerItemsRepositoryMock() as any,
     );
 
     const response = await withSchoolScope(() => useCase.execute());
@@ -85,14 +87,14 @@ describe('Dashboard LightModeDropdown use case', () => {
         locale: 'en',
         units: 'metric',
         weatherStatus: 'provider_not_configured',
-        plannerStatus: 'calendar_available',
+        plannerStatus: 'cross_module_available',
         todosStatus: 'persisted',
         deferred: {
           weatherProvider: 'deferred',
           weatherCache: 'deferred',
           todoPersistence: 'persisted',
           plannerCalendar: 'available',
-          crossModulePlannerItems: 'deferred',
+          crossModulePlannerItems: 'available',
           realtime: 'deferred',
         },
       },
@@ -108,6 +110,7 @@ describe('Dashboard LightModeDropdown use case', () => {
       repository as any,
       todosRepositoryMock() as any,
       calendarRepositoryMock() as any,
+      plannerItemsRepositoryMock() as any,
     );
 
     const response = await withSchoolScope(() =>
@@ -151,6 +154,7 @@ describe('Dashboard LightModeDropdown use case', () => {
       repository as any,
       todosRepositoryMock() as any,
       calendarRepositoryMock() as any,
+      plannerItemsRepositoryMock() as any,
     );
 
     const response = await withSchoolScope(() => useCase.execute());
@@ -211,6 +215,7 @@ describe('Dashboard LightModeDropdown use case', () => {
       repositoryMock(locationSnapshot()) as any,
       todosRepositoryMock() as any,
       calendarRepositoryMock() as any,
+      plannerItemsRepositoryMock() as any,
     );
 
     await expect(
@@ -241,6 +246,7 @@ describe('Dashboard LightModeDropdown use case', () => {
       repositoryMock(locationSnapshot()) as any,
       todosRepository as any,
       calendarRepositoryMock() as any,
+      plannerItemsRepositoryMock() as any,
     );
 
     const response = await withSchoolScope(() =>
@@ -260,6 +266,7 @@ describe('Dashboard LightModeDropdown use case', () => {
   it('normalizes the selected date and timezone before loading Calendar and Todos in parallel', async () => {
     const todosRepository = todosRepositoryMock();
     const calendarRepository = calendarRepositoryMock();
+    const plannerItemsRepository = plannerItemsRepositoryMock();
     const pending: Array<() => void> = [];
     todosRepository.listOwnedTodos.mockImplementation(
       () => new Promise((resolve) => pending.push(() => resolve([]))),
@@ -267,10 +274,14 @@ describe('Dashboard LightModeDropdown use case', () => {
     calendarRepository.listSchoolEvents.mockImplementation(
       () => new Promise((resolve) => pending.push(() => resolve([]))),
     );
+    plannerItemsRepository.listSchoolItems.mockImplementation(
+      () => new Promise((resolve) => pending.push(() => resolve([]))),
+    );
     const useCase = new GetDashboardLightModeDropdownUseCase(
       repositoryMock(locationSnapshot()) as any,
       todosRepository as any,
       calendarRepository as any,
+      plannerItemsRepository as any,
     );
 
     const result = withSchoolScope(() =>
@@ -282,12 +293,22 @@ describe('Dashboard LightModeDropdown use case', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(pending).toHaveLength(2);
+    expect(pending).toHaveLength(3);
     expect(todosRepository.listOwnedTodos).toHaveBeenCalledWith(
       expect.objectContaining({ schoolId: 'school-1', actorId: 'user-1' }),
       { date: new Date('2026-04-24T00:00:00.000Z'), limit: 100 },
     );
     expect(calendarRepository.listSchoolEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ schoolId: 'school-1', actorId: 'user-1' }),
+      {
+        from: new Date('2026-04-23T22:00:00.000Z'),
+        toExclusive: new Date('2026-04-24T21:00:00.000Z'),
+        allDayFrom: new Date('2026-04-24T00:00:00.000Z'),
+        allDayToExclusive: new Date('2026-04-25T00:00:00.000Z'),
+        limit: 100,
+      },
+    );
+    expect(plannerItemsRepository.listSchoolItems).toHaveBeenCalledWith(
       expect.objectContaining({ schoolId: 'school-1', actorId: 'user-1' }),
       {
         from: new Date('2026-04-23T22:00:00.000Z'),
@@ -311,6 +332,7 @@ describe('Dashboard LightModeDropdown use case', () => {
       repositoryMock(locationSnapshot()) as any,
       todosRepositoryMock() as any,
       calendarRepository as any,
+      plannerItemsRepositoryMock() as any,
     );
 
     await expect(
@@ -325,6 +347,7 @@ describe('Dashboard LightModeDropdown use case', () => {
       repositoryMock(locationSnapshot()) as any,
       todosRepositoryMock() as any,
       calendarRepository as any,
+      plannerItemsRepositoryMock() as any,
     );
 
     await withSchoolScope(() =>
@@ -345,6 +368,23 @@ describe('Dashboard LightModeDropdown use case', () => {
         limit: 100,
       },
     );
+  });
+
+  it('propagates Planner Items infrastructure errors', async () => {
+    const plannerItemsRepository = plannerItemsRepositoryMock();
+    const failure = new Error('planner items unavailable');
+    plannerItemsRepository.listSchoolItems.mockRejectedValue(failure);
+    const useCase = new GetDashboardLightModeDropdownUseCase(
+      repositoryMock(locationSnapshot()) as any,
+      todosRepositoryMock() as any,
+      calendarRepositoryMock() as any,
+      plannerItemsRepository as any,
+    );
+
+    await expect(
+      withSchoolScope(() => useCase.execute({ date: '2026-07-09' })),
+    ).rejects.toBe(failure);
+    expect(plannerItemsRepository.listSchoolItems).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -386,6 +426,14 @@ function calendarRepositoryMock(): jest.Mocked<
 > {
   return {
     listSchoolEvents: jest.fn().mockResolvedValue([]),
+  };
+}
+
+function plannerItemsRepositoryMock(): jest.Mocked<
+  Pick<DashboardPlannerItemsRepository, 'listSchoolItems'>
+> {
+  return {
+    listSchoolItems: jest.fn().mockResolvedValue([]),
   };
 }
 

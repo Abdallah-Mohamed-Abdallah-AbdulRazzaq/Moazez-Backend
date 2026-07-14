@@ -8,6 +8,7 @@ import type { NormalizedDashboardLightModeDropdownQuery } from '../application/g
 import { AcademicCalendarEventType } from '@prisma/client';
 import { formatDashboardCivilDate } from '../domain/dashboard-time-context';
 import { DashboardPlannerCalendarEventSnapshot } from '../infrastructure/dashboard-planner-calendar.repository';
+import { DashboardPlannerItemSnapshot } from '../infrastructure/dashboard-planner-items.repository';
 import { DashboardLightModeDropdownSchoolLocationSnapshot } from '../infrastructure/dashboard-light-mode-dropdown.repository';
 import { DashboardTodoSnapshot } from '../infrastructure/dashboard-todos.repository';
 import { presentDashboardTodo } from './dashboard-todos.presenter';
@@ -19,6 +20,7 @@ export interface DashboardLightModeDropdownPresentationInput {
   query: NormalizedDashboardLightModeDropdownQuery;
   todos?: DashboardTodoSnapshot[];
   calendarEvents?: DashboardPlannerCalendarEventSnapshot[];
+  plannerItems?: DashboardPlannerItemSnapshot[];
 }
 
 export function presentDashboardLightModeDropdown(
@@ -29,6 +31,9 @@ export function presentDashboardLightModeDropdown(
 
   const calendarEvents = (input.calendarEvents ?? []).map((event) =>
     presentDashboardPlannerCalendarEvent(event, input.query.timezone),
+  );
+  const plannerItems = (input.plannerItems ?? []).map((item) =>
+    presentDashboardPlannerItem(item, input.query.timezone, input.query.locale),
   );
   const todos = (input.todos ?? []).map(presentDashboardTodo);
 
@@ -57,8 +62,10 @@ export function presentDashboardLightModeDropdown(
       timezone: input.query.timezone,
       date: input.query.date,
       eventDates:
-        calendarEvents.length > 0 || todos.length > 0 ? [input.query.date] : [],
-      events: calendarEvents,
+        calendarEvents.length > 0 || plannerItems.length > 0 || todos.length > 0
+          ? [input.query.date]
+          : [],
+      events: [...calendarEvents, ...plannerItems],
       todos,
     },
     meta: {
@@ -67,7 +74,7 @@ export function presentDashboardLightModeDropdown(
       locale: input.query.locale,
       units: input.query.units,
       weatherStatus,
-      plannerStatus: 'calendar_available',
+      plannerStatus: 'cross_module_available',
       todosStatus: 'persisted',
       freshness: dashboardFreshness('request_time_snapshot'),
       componentFreshness: {
@@ -81,7 +88,7 @@ export function presentDashboardLightModeDropdown(
         weatherCache: 'deferred',
         todoPersistence: 'persisted',
         plannerCalendar: 'available',
-        crossModulePlannerItems: 'deferred',
+        crossModulePlannerItems: 'available',
         realtime: 'deferred',
       },
     },
@@ -117,6 +124,116 @@ export function presentDashboardPlannerCalendarEvent(
     tone: presentation.tone,
     iconKey: presentation.iconKey,
   };
+}
+
+export function presentDashboardPlannerItem(
+  item: DashboardPlannerItemSnapshot,
+  timezone: string,
+  locale: 'en' | 'ar',
+): DashboardLightModeDropdownPlannerEventDto {
+  switch (item.source) {
+    case 'attendance_session':
+      return {
+        eventId: `attendance_session:${item.id}`,
+        source: item.source,
+        eventType: 'attendance',
+        title:
+          normalizeOptionalText(item.periodLabelEn) ??
+          normalizeOptionalText(item.periodLabelAr) ??
+          'Attendance session',
+        date: logicalDate(item.date),
+        endDate: logicalDate(item.date),
+        startTime: null,
+        endTime: null,
+        allDay: true,
+        tone: item.status === 'DRAFT' ? 'warning' : 'success',
+        iconKey: item.status === 'DRAFT' ? 'clock' : 'check-circle',
+      };
+
+    case 'placement_test': {
+      const type = normalizeOptionalText(item.type);
+      return timedPlannerItem({
+        eventId: `placement_test:${item.id}`,
+        source: item.source,
+        eventType: 'placement_test',
+        title: type ? `Placement test — ${type}` : 'Placement test',
+        instant: item.scheduledAt,
+        timezone,
+        tone: 'warning',
+      });
+    }
+
+    case 'interview':
+      return timedPlannerItem({
+        eventId: `interview:${item.id}`,
+        source: item.source,
+        eventType: 'interview',
+        title: 'Admissions interview',
+        instant: item.scheduledAt,
+        timezone,
+        tone: 'info',
+      });
+
+    case 'homework_due':
+      return timedPlannerItem({
+        eventId: `homework_due:${item.id}`,
+        source: item.source,
+        eventType: 'homework_due',
+        title: item.title,
+        instant: item.dueAt,
+        timezone,
+        tone: 'warning',
+      });
+
+    case 'grade_assessment':
+      return {
+        eventId: `grade_assessment:${item.id}`,
+        source: item.source,
+        eventType: 'assessment',
+        title:
+          (locale === 'ar'
+            ? (normalizeOptionalText(item.titleAr) ??
+              normalizeOptionalText(item.titleEn))
+            : (normalizeOptionalText(item.titleEn) ??
+              normalizeOptionalText(item.titleAr))) ?? 'Grade assessment',
+        date: logicalDate(item.date),
+        endDate: logicalDate(item.date),
+        startTime: null,
+        endTime: null,
+        allDay: true,
+        tone: 'warning',
+        iconKey: 'calendar',
+      };
+  }
+}
+
+function timedPlannerItem(input: {
+  eventId: string;
+  source: 'placement_test' | 'interview' | 'homework_due';
+  eventType: 'placement_test' | 'interview' | 'homework_due';
+  title: string;
+  instant: Date;
+  timezone: string;
+  tone: 'info' | 'warning';
+}): DashboardLightModeDropdownPlannerEventDto {
+  const date = formatDashboardCivilDate(input.instant, input.timezone);
+  return {
+    eventId: input.eventId,
+    source: input.source,
+    eventType: input.eventType,
+    title: input.title,
+    date,
+    endDate: date,
+    startTime: formatDashboardPlannerTime(input.instant, input.timezone),
+    endTime: null,
+    allDay: false,
+    tone: input.tone,
+    iconKey: 'clock',
+  };
+}
+
+function logicalDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 function calendarEventPresentation(type: AcademicCalendarEventType): {

@@ -4,6 +4,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   AcademicCalendarEventScopeType,
   AcademicCalendarEventType,
+  AttendanceMode,
+  AttendanceScopeType,
+  AttendanceSessionStatus,
   MembershipStatus,
   PrismaClient,
   UserStatus,
@@ -61,6 +64,7 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
   let previewOnlyPrincipal: CreatedPrincipal;
   let calendarEventId = '';
   let dashboardTodoId = '';
+  let attendanceSessionId = '';
 
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -138,6 +142,22 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       select: { id: true },
     });
     dashboardTodoId = todo.id;
+    const attendanceSession = await prisma.attendanceSession.create({
+      data: {
+        schoolId: demoSchoolId,
+        academicYearId: academicYear.id,
+        termId: term.id,
+        date: new Date(`${today}T00:00:00.000Z`),
+        scopeType: AttendanceScopeType.SCHOOL,
+        scopeKey: demoSchoolId,
+        mode: AttendanceMode.DAILY,
+        periodKey: `DASHBOARD-${suffix}`,
+        periodLabelEn: `${marker} attendance session`,
+        status: AttendanceSessionStatus.DRAFT,
+      },
+      select: { id: true },
+    });
+    attendanceSessionId = attendanceSession.id;
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -241,7 +261,7 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
         todosStandalone: 'persisted',
         calendarTodoComposition: 'available',
         plannerCalendar: 'available',
-        crossModulePlannerItems: 'deferred',
+        crossModulePlannerItems: 'available',
       },
     });
     expect(
@@ -372,7 +392,7 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
         todosStandalone: 'persisted',
         calendarTodoComposition: 'available',
         plannerCalendar: 'available',
-        crossModulePlannerItems: 'deferred',
+        crossModulePlannerItems: 'available',
       },
     });
     expectNoInternalLeaks(knownResponse.body);
@@ -423,7 +443,7 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
     expect(calendar.body.widget.data).toMatchObject({
-      sourceMode: 'academic_calendar_and_todos',
+      sourceMode: 'academic_calendar_cross_module_and_todos',
       eventDates: [expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)],
       events: [
         expect.objectContaining({
@@ -431,11 +451,22 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
           title: `${marker} calendar event`,
         }),
         expect.objectContaining({
+          source: 'attendance_session',
+          title: `${marker} attendance session`,
+          eventType: 'attendance',
+        }),
+        expect.objectContaining({
           source: 'todo',
           title: `${marker} owner todo`,
         }),
       ],
-      summary: { total: 2, academicCalendar: 1, todos: 1 },
+      summary: {
+        total: 3,
+        academicCalendar: 1,
+        crossModule: 1,
+        attendanceSessions: 1,
+        todos: 1,
+      },
     });
     expectNoInternalLeaks(calendar.body);
   });
@@ -461,6 +492,18 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       .get(`${GLOBAL_PREFIX}/academics/calendar/events`)
       .set('Authorization', `Bearer ${previewToken}`)
       .expect(403);
+    for (const path of [
+      '/attendance/roll-call/sessions',
+      '/admissions/tests',
+      '/admissions/interviews',
+      '/homework/assignments',
+      '/grades/assessments',
+    ]) {
+      await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}${path}`)
+        .set('Authorization', `Bearer ${previewToken}`)
+        .expect(403);
+    }
   });
 
   it('validates widget query parameters', async () => {
@@ -682,6 +725,11 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
   }
 
   async function cleanupE2eData(): Promise<void> {
+    if (attendanceSessionId) {
+      await prisma.attendanceSession.deleteMany({
+        where: { id: attendanceSessionId },
+      });
+    }
     if (dashboardTodoId) {
       await prisma.dashboardTodo.deleteMany({ where: { id: dashboardTodoId } });
     }

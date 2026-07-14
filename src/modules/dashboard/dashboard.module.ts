@@ -40,6 +40,7 @@ import { DashboardReinforcementAnalyticsRepository } from './infrastructure/dash
 import { DashboardCommunicationAnalyticsRepository } from './infrastructure/dashboard-communication-analytics.repository';
 import { DashboardWidgetCompositionService } from './application/dashboard-widget-composition.service';
 import { DashboardPlannerCalendarRepository } from './infrastructure/dashboard-planner-calendar.repository';
+import { DashboardPlannerItemsRepository } from './infrastructure/dashboard-planner-items.repository';
 
 @Module({
   imports: [AuthModule, ReportsModule],
@@ -51,6 +52,7 @@ import { DashboardPlannerCalendarRepository } from './infrastructure/dashboard-p
     DashboardLightModeDropdownRepository,
     DashboardTodosRepository,
     DashboardPlannerCalendarRepository,
+    DashboardPlannerItemsRepository,
     DashboardTimeContextRepository,
     DashboardAnalyticsHierarchyRepository,
     DashboardAnalyticsSnapshotRepository,

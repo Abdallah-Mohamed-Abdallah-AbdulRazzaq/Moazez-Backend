@@ -32,6 +32,7 @@ import { DashboardTodosController } from '../../src/modules/dashboard/controller
 import { DashboardController } from '../../src/modules/dashboard/controller/dashboard.controller';
 import { DashboardLightModeDropdownRepository } from '../../src/modules/dashboard/infrastructure/dashboard-light-mode-dropdown.repository';
 import { DashboardPlannerCalendarRepository } from '../../src/modules/dashboard/infrastructure/dashboard-planner-calendar.repository';
+import { DashboardPlannerItemsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-planner-items.repository';
 import { DashboardTodosRepository } from '../../src/modules/dashboard/infrastructure/dashboard-todos.repository';
 import { presentDashboardTodo } from '../../src/modules/dashboard/presenters/dashboard-todos.presenter';
 
@@ -301,6 +302,7 @@ describe('Dashboard todos tenancy and security contracts', () => {
       new DashboardLightModeDropdownRepository(prisma),
       new DashboardTodosRepository(prisma),
       new DashboardPlannerCalendarRepository(prisma),
+      new DashboardPlannerItemsRepository(prisma),
     );
 
     await withOwnerAScope(async () => {
