@@ -4,6 +4,13 @@ import {
   DashboardCapabilityState,
   DashboardFreshnessMetadataDto,
 } from './dashboard-metadata.dto';
+import type {
+  DashboardAnalyticsChartDataMetaDto,
+  DashboardAnalyticsChartDataSeriesDto,
+  DashboardAnalyticsChartDataSummaryDto,
+} from './dashboard-analytics-data.dto';
+import type { DashboardAnalyticsChartType } from '../domain/dashboard-analytics-catalog';
+import type { DashboardWidgetAnalyticsChartKey } from '../domain/dashboard-widget-composition';
 
 export const DASHBOARD_WIDGET_SOURCES = [
   'admissions',
@@ -17,6 +24,8 @@ export const DASHBOARD_WIDGET_SOURCES = [
   'communication',
   'settings',
   'activity',
+  'todos',
+  'calendar',
 ] as const;
 
 export const DASHBOARD_WIDGET_TYPES = [
@@ -25,6 +34,9 @@ export const DASHBOARD_WIDGET_TYPES = [
   'risk-card',
   'action-card',
   'timeline-card',
+  'mini-chart-card',
+  'calendar-card',
+  'todo-card',
 ] as const;
 
 export const DASHBOARD_WIDGET_TONES = [
@@ -75,6 +87,72 @@ export class DashboardWidgetEmptyStateDto {
 export class DashboardWidgetMetaDto {
   freshness!: 'live';
   freshnessDetails!: DashboardFreshnessMetadataDto;
+  analytics!: DashboardWidgetAnalyticsReferenceDto | null;
+}
+
+export class DashboardWidgetAnalyticsReferenceDto {
+  chartKey!: DashboardWidgetAnalyticsChartKey;
+  chartType!: DashboardAnalyticsChartType;
+  definitionEndpoint!: string;
+  dataEndpoint!: string;
+  defaultRange!: '30d';
+  defaultGranularity!: 'day';
+  dataAvailability!: DashboardAnalyticsChartDataMetaDto['dataAvailability'];
+  pack!: DashboardAnalyticsChartDataMetaDto['pack'];
+  computation!: DashboardAnalyticsChartDataMetaDto['computation'];
+}
+
+export class DashboardWidgetMiniChartDataDto {
+  series!: readonly DashboardAnalyticsChartDataSeriesDto[];
+  totals!: Record<string, number>;
+  summary!: DashboardAnalyticsChartDataSummaryDto | null;
+  empty!: boolean;
+}
+
+export class DashboardWidgetProgressSegmentDto {
+  key!: string;
+  label!: string;
+  value!: number;
+}
+
+export class DashboardWidgetProgressDataDto {
+  value!: number;
+  max!: number;
+  percent!: number;
+  unit!: 'percent';
+  label!: string;
+  segments!: DashboardWidgetProgressSegmentDto[];
+}
+
+export class DashboardWidgetTodoItemDto {
+  title!: string;
+  status!: 'pending' | 'completed';
+  priority!: 'low' | 'normal' | 'high';
+}
+
+export class DashboardWidgetTodoSummaryDto {
+  total!: number;
+  pending!: number;
+  completed!: number;
+}
+
+export class DashboardWidgetTodoDataDto {
+  date!: string;
+  items!: DashboardWidgetTodoItemDto[];
+  summary!: DashboardWidgetTodoSummaryDto;
+}
+
+export class DashboardWidgetCalendarEventDto extends DashboardWidgetTodoItemDto {
+  date!: string;
+  source!: 'todo';
+  allDay!: true;
+}
+
+export class DashboardWidgetCalendarDataDto {
+  date!: string;
+  sourceMode!: 'todo_only';
+  eventDates!: string[];
+  events!: DashboardWidgetCalendarEventDto[];
 }
 
 export class DashboardWidgetDto {
@@ -108,15 +186,21 @@ export class DashboardWidgetsDeferredDto {
   widgetPreferences!: 'deferred';
   analyticsCharts!: Extract<
     DashboardCapabilityState,
-    'integration_deferred' | 'deferred'
+    'available' | 'integration_deferred' | 'deferred'
   >;
   weatherWidgets!: 'deferred';
   todoWidgets!: Extract<
     DashboardCapabilityState,
-    'integration_deferred' | 'deferred'
+    'available' | 'integration_deferred' | 'deferred'
   >;
-  analyticsStandalone!: 'snapshot_only';
+  analyticsStandalone!: Extract<
+    DashboardCapabilityState,
+    'available' | 'snapshot_only'
+  >;
   todosStandalone!: 'persisted';
+  calendarTodoComposition!: Extract<DashboardCapabilityState, 'available'>;
+  plannerCalendar!: 'deferred';
+  crossModulePlannerItems!: 'deferred';
 }
 
 export class DashboardWidgetsResponseDto {

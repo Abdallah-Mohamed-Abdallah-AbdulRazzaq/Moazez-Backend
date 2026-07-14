@@ -3,6 +3,7 @@ import {
   DashboardWidgetSource,
   DashboardWidgetType,
 } from '../dto/dashboard-widgets.dto';
+import { DashboardWidgetCompositionDescriptor } from './dashboard-widget-composition';
 
 export interface DashboardWidgetDefinition {
   widgetKey: string;
@@ -13,6 +14,7 @@ export interface DashboardWidgetDefinition {
   iconKey: string;
   dataLabel: string;
   action: DashboardWidgetActionDto;
+  composition: DashboardWidgetCompositionDescriptor;
 }
 
 export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
@@ -25,6 +27,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
     iconKey: 'users',
     dataLabel: 'Active students',
     action: frontendRoute('Open students', '/students'),
+    composition: dependency('summary'),
   },
   {
     widgetKey: 'admissions.open_applications',
@@ -35,6 +38,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
     iconKey: 'clipboard-list',
     dataLabel: 'Open applications',
     action: frontendRoute('Open applications', '/admissions/applications'),
+    composition: dependency('summary'),
   },
   {
     widgetKey: 'attendance.pending_today',
@@ -45,6 +49,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
     iconKey: 'calendar-check',
     dataLabel: 'Pending attendance sessions',
     action: frontendRoute('Review attendance', '/attendance/roll-call'),
+    composition: dependency('summary'),
   },
   {
     widgetKey: 'attendance.absences_today',
@@ -55,6 +60,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
     iconKey: 'user-x',
     dataLabel: 'Absences today',
     action: frontendRoute('Review attendance', '/attendance/roll-call'),
+    composition: dependency('summary'),
   },
   {
     widgetKey: 'homework.waiting_review',
@@ -65,6 +71,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
     iconKey: 'book-open-check',
     dataLabel: 'Homework waiting review',
     action: frontendRoute('Review homework', '/homework/submissions'),
+    composition: dependency('summary'),
   },
   {
     widgetKey: 'grades.pending_review',
@@ -75,6 +82,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
     iconKey: 'graduation-cap',
     dataLabel: 'Grade reviews pending',
     action: frontendRoute('Review grades', '/grades/submissions'),
+    composition: dependency('summary'),
   },
   {
     widgetKey: 'behavior.pending_review',
@@ -85,6 +93,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
     iconKey: 'clipboard-check',
     dataLabel: 'Behavior reviews pending',
     action: frontendRoute('Review behavior', '/behavior/review'),
+    composition: dependency('summary'),
   },
   {
     widgetKey: 'reinforcement.pending_reviews',
@@ -95,6 +104,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
     iconKey: 'award',
     dataLabel: 'Reinforcement reviews pending',
     action: frontendRoute('Review reinforcement', '/reinforcement/reviews'),
+    composition: dependency('summary'),
   },
   {
     widgetKey: 'communication.moderation_queue',
@@ -105,6 +115,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
     iconKey: 'message-square-warning',
     dataLabel: 'Moderation reports pending',
     action: frontendRoute('Review moderation', '/communication/moderation'),
+    composition: dependency('summary'),
   },
   {
     widgetKey: 'settings.email_connection',
@@ -115,6 +126,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
     iconKey: 'mail-check',
     dataLabel: 'Email connection status',
     action: frontendRoute('Configure email', '/settings/email/connection'),
+    composition: dependency('alerts'),
   },
   {
     widgetKey: 'settings.login_identity',
@@ -128,6 +140,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
       'Configure login identity',
       '/settings/login-identity',
     ),
+    composition: dependency('alerts'),
   },
   {
     widgetKey: 'activity.recent',
@@ -138,6 +151,84 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
     iconKey: 'activity',
     dataLabel: 'Recent activity',
     action: frontendRoute('Open activity feed', '/dashboard/activity-feed'),
+    composition: dependency('activity'),
+  },
+  {
+    widgetKey: 'students.enrollment_growth',
+    type: 'mini-chart-card',
+    source: 'students',
+    title: 'Enrollment growth',
+    subtitle: null,
+    iconKey: 'users-round',
+    dataLabel: 'Enrollment growth',
+    action: frontendRoute('Open analytics', '/dashboard/analytics'),
+    composition: analytics('students.enrollment_growth'),
+  },
+  {
+    widgetKey: 'attendance.daily_trend',
+    type: 'mini-chart-card',
+    source: 'attendance',
+    title: 'Attendance daily trend',
+    subtitle: null,
+    iconKey: 'chart-no-axes-combined',
+    dataLabel: 'Attendance daily trend',
+    action: frontendRoute('Open analytics', '/dashboard/analytics'),
+    composition: analytics('attendance.daily_trend'),
+  },
+  {
+    widgetKey: 'communication.message_volume',
+    type: 'mini-chart-card',
+    source: 'communication',
+    title: 'Message volume',
+    subtitle: null,
+    iconKey: 'messages-square',
+    dataLabel: 'Message volume',
+    action: frontendRoute('Open analytics', '/dashboard/analytics'),
+    composition: analytics('communication.message_volume'),
+  },
+  {
+    widgetKey: 'academics.teacher_allocation_coverage',
+    type: 'progress-card',
+    source: 'academics',
+    title: 'Teacher allocation coverage',
+    subtitle: null,
+    iconKey: 'user-round-check',
+    dataLabel: 'Teacher allocation coverage',
+    action: frontendRoute('Open academics', '/academics/structure'),
+    composition: analytics('academics.teacher_allocation_coverage'),
+  },
+  {
+    widgetKey: 'grades.gradebook_completion',
+    type: 'progress-card',
+    source: 'grades',
+    title: 'Gradebook completion',
+    subtitle: null,
+    iconKey: 'notebook-tabs',
+    dataLabel: 'Gradebook completion',
+    action: frontendRoute('Open gradebook', '/grades/gradebook'),
+    composition: analytics('grades.gradebook_completion', ['summary']),
+  },
+  {
+    widgetKey: 'todos.today',
+    type: 'todo-card',
+    source: 'todos',
+    title: 'Today’s todos',
+    subtitle: null,
+    iconKey: 'list-todo',
+    dataLabel: 'Today’s todos',
+    action: frontendRoute('Open todos', '/dashboard/light-mode-dropdown'),
+    composition: dependency('todos'),
+  },
+  {
+    widgetKey: 'calendar.today',
+    type: 'calendar-card',
+    source: 'calendar',
+    title: 'Today’s calendar',
+    subtitle: null,
+    iconKey: 'calendar-days',
+    dataLabel: 'Today’s calendar',
+    action: frontendRoute('Open planner', '/dashboard/light-mode-dropdown'),
+    composition: dependency('todos'),
   },
 ];
 
@@ -161,5 +252,23 @@ function frontendRoute(
     label,
     target,
     kind: 'frontend-route',
+  };
+}
+
+function dependency(
+  value: DashboardWidgetCompositionDescriptor['dependencies'][number],
+): DashboardWidgetCompositionDescriptor {
+  return { dependencies: [value], analytics: null };
+}
+
+function analytics(
+  chartKey: NonNullable<
+    DashboardWidgetCompositionDescriptor['analytics']
+  >['chartKey'],
+  dependencies: DashboardWidgetCompositionDescriptor['dependencies'] = [],
+): DashboardWidgetCompositionDescriptor {
+  return {
+    dependencies,
+    analytics: { chartKey, range: '30d', granularity: 'day' },
   };
 }

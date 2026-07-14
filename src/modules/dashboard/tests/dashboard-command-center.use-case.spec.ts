@@ -7,6 +7,7 @@ import {
 } from '../../../common/context/request-context';
 import { ScopeMissingException } from '../../iam/auth/domain/auth.exceptions';
 import { GetDashboardCommandCenterUseCase } from '../application/get-dashboard-command-center.use-case';
+import { DashboardWidgetCompositionService } from '../application/dashboard-widget-composition.service';
 import { DashboardActivityAuditRecord } from '../infrastructure/dashboard-activity-feed.repository';
 import { DashboardActivityFeedRepository } from '../infrastructure/dashboard-activity-feed.repository';
 import {
@@ -17,6 +18,7 @@ import {
   DashboardSummaryRepository,
   DashboardSummarySnapshot,
 } from '../infrastructure/dashboard-summary.repository';
+import { DashboardTodosRepository } from '../infrastructure/dashboard-todos.repository';
 import {
   DASHBOARD_TEST_GENERATED_AT,
   dashboardTimeContextServiceMock,
@@ -39,11 +41,13 @@ describe('GetDashboardCommandCenterUseCase', () => {
       }),
     ]);
     const timeContextService = dashboardTimeContextServiceMock();
+    const compositionService = compositionServiceMock();
     const useCase = new GetDashboardCommandCenterUseCase(
       summaryRepository as any,
       alertsRepository as any,
       activityFeedRepository as any,
       timeContextService as any,
+      compositionService as any,
     );
 
     const response = await withSchoolScope(() => useCase.execute());
@@ -140,6 +144,20 @@ describe('GetDashboardCommandCenterUseCase', () => {
     expect(summaryWindow.now).toBe(alertsWindow.now);
     expect(response.generatedAt).toBe(summaryWindow.now.toISOString());
     expect(timeContextService.resolveForSchool).toHaveBeenCalledTimes(1);
+    expect(compositionService.compose).toHaveBeenCalledTimes(1);
+    expect(
+      compositionService.compose.mock.calls[0][0].definitions.map(
+        (definition: { widgetKey: string }) => definition.widgetKey,
+      ),
+    ).toEqual([
+      'students.enrollment_growth',
+      'attendance.daily_trend',
+      'communication.message_volume',
+      'todos.today',
+    ]);
+    expect(
+      compositionService.compose.mock.calls[0][0].timeContext.generatedAt,
+    ).toBe(summaryWindow.now);
   });
 
   it('rejects callers without an active school scope', async () => {
@@ -148,6 +166,7 @@ describe('GetDashboardCommandCenterUseCase', () => {
       alertsRepositoryMock(signals()) as any,
       activityFeedRepositoryMock([]) as any,
       dashboardTimeContextServiceMock() as any,
+      compositionServiceMock() as any,
     );
 
     await expect(
@@ -156,6 +175,57 @@ describe('GetDashboardCommandCenterUseCase', () => {
         return useCase.execute();
       }),
     ).rejects.toBeInstanceOf(ScopeMissingException);
+  });
+
+  it('uses one shared timestamp for three Analytics previews and one Todo load', async () => {
+    const summaryRepository = summaryRepositoryMock(snapshot());
+    const alertsRepository = alertsRepositoryMock(signals());
+    const activityRepository = activityFeedRepositoryMock([]);
+    const todosRepository = {
+      listOwnedTodos: jest.fn().mockResolvedValue([]),
+      countOwnedTodos: jest
+        .fn()
+        .mockResolvedValue({ total: 0, pending: 0, completed: 0 }),
+    };
+    const analyticsUseCase = {
+      execute: jest
+        .fn()
+        .mockImplementation((chartKey: string) =>
+          Promise.resolve(analyticsChartResponse(chartKey)),
+        ),
+    };
+    const compositionService = new DashboardWidgetCompositionService(
+      summaryRepository as any,
+      alertsRepository as any,
+      activityRepository as any,
+      todosRepository as unknown as DashboardTodosRepository,
+      analyticsUseCase as any,
+    );
+    const useCase = new GetDashboardCommandCenterUseCase(
+      summaryRepository as any,
+      alertsRepository as any,
+      activityRepository as any,
+      dashboardTimeContextServiceMock() as any,
+      compositionService,
+    );
+
+    const response = await withSchoolScope(() => useCase.execute());
+
+    expect(analyticsUseCase.execute).toHaveBeenCalledTimes(3);
+    expect(analyticsUseCase.execute.mock.calls.map((call) => call[0])).toEqual([
+      'students.enrollment_growth',
+      'attendance.daily_trend',
+      'communication.message_volume',
+    ]);
+    const analyticsGeneratedAt = analyticsUseCase.execute.mock.calls[0][2];
+    expect(analyticsGeneratedAt).toEqual(DASHBOARD_TEST_GENERATED_AT);
+    for (const call of analyticsUseCase.execute.mock.calls) {
+      expect(call[2]).toBe(analyticsGeneratedAt);
+    }
+    expect(todosRepository.listOwnedTodos).toHaveBeenCalledTimes(1);
+    expect(todosRepository.countOwnedTodos).toHaveBeenCalledTimes(1);
+    expect(response.analyticsPreview).toHaveLength(3);
+    expect(response.todoPreview.items).toEqual([]);
   });
 
   it('handles empty/minimal data with stable arrays and deferred flags', async () => {
@@ -188,6 +258,7 @@ describe('GetDashboardCommandCenterUseCase', () => {
       ) as any,
       activityFeedRepositoryMock([]) as any,
       dashboardTimeContextServiceMock({ schoolTimezone: 'UTC' }) as any,
+      compositionServiceMock({ date: '2026-07-12' }) as any,
     );
 
     const response = await withSchoolScope(() => useCase.execute());
@@ -208,11 +279,19 @@ describe('GetDashboardCommandCenterUseCase', () => {
       'settings',
     ]);
     expect(response.activityPreview).toEqual([]);
+    expect(response.analyticsPreview).toHaveLength(3);
+    expect(response.todoPreview).toMatchObject({
+      date: '2026-07-12',
+      items: [],
+      summary: { total: 0, pending: 0, completed: 0 },
+    });
     expect(response.meta.deferred).toEqual({
       widgets: 'available',
-      analytics: 'snapshot_only',
+      analytics: 'available',
+      analyticsPreview: 'available',
       lightModeDropdown: 'foundation',
       todos: 'persisted',
+      todoPreview: 'available',
       weather: 'deferred',
       planner: 'deferred',
       alertLifecycle: 'deferred',
@@ -220,6 +299,72 @@ describe('GetDashboardCommandCenterUseCase', () => {
     });
   });
 });
+
+function compositionServiceMock(options: { date?: string } = {}) {
+  const analytics = [
+    'students.enrollment_growth',
+    'attendance.daily_trend',
+    'communication.message_volume',
+  ].map((widgetKey) => ({
+    widgetKey,
+    type: 'mini-chart-card',
+    source: widgetKey.split('.')[0],
+    title: widgetKey,
+    subtitle: null,
+    iconKey: 'chart',
+    tone: 'neutral',
+    data: { series: [], totals: {}, summary: null, empty: true },
+    action: {
+      label: 'Open analytics',
+      target: '/dashboard/analytics',
+      kind: 'frontend-route',
+    },
+    emptyState: null,
+    meta: {
+      freshness: 'live',
+      freshnessDetails: {
+        dataMode: 'request_time_snapshot',
+        cacheStatus: 'not_used',
+        realtimeStatus: 'not_used',
+      },
+      analytics: analyticsReference(widgetKey),
+    },
+  }));
+  return {
+    compose: jest.fn().mockResolvedValue([
+      ...analytics,
+      {
+        widgetKey: 'todos.today',
+        type: 'todo-card',
+        source: 'todos',
+        title: 'Today’s todos',
+        subtitle: null,
+        iconKey: 'list-todo',
+        tone: 'neutral',
+        data: {
+          date: options.date ?? '2026-07-12',
+          items: [],
+          summary: { total: 0, pending: 0, completed: 0 },
+        },
+        action: {
+          label: 'Open todos',
+          target: '/dashboard/light-mode-dropdown',
+          kind: 'frontend-route',
+        },
+        emptyState: null,
+        meta: {
+          freshness: 'live',
+          freshnessDetails: {
+            dataMode: 'persisted_user_data',
+            cacheStatus: 'not_used',
+            realtimeStatus: 'not_used',
+          },
+          analytics: null,
+        },
+      },
+    ]),
+  };
+}
 
 async function withSchoolScope<T>(fn: () => Promise<T>): Promise<T> {
   return runWithRequestContext(createRequestContext(), async () => {
@@ -234,6 +379,62 @@ async function withSchoolScope<T>(fn: () => Promise<T>): Promise<T> {
 
     return fn();
   });
+}
+
+function analyticsReference(widgetKey: string) {
+  const references = {
+    'students.enrollment_growth': {
+      chartType: 'line',
+      pack: 'admissions_students_v1',
+      computation: 'students_active_enrollment_stock',
+    },
+    'attendance.daily_trend': {
+      chartType: 'line',
+      pack: 'attendance_v1',
+      computation: 'attendance_daily_status_counts',
+    },
+    'communication.message_volume': {
+      chartType: 'area',
+      pack: 'communication_settings_v1',
+      computation: 'communication_message_volume_trend',
+    },
+  } as const;
+  const reference = references[widgetKey as keyof typeof references];
+
+  return {
+    chartKey: widgetKey,
+    chartType: reference.chartType,
+    definitionEndpoint: `/api/v1/dashboard/analytics/charts/${widgetKey}`,
+    dataEndpoint: `/api/v1/dashboard/analytics/charts/${widgetKey}/data`,
+    defaultRange: '30d',
+    defaultGranularity: 'day',
+    dataAvailability: 'computed_series',
+    pack: reference.pack,
+    computation: reference.computation,
+  };
+}
+
+function analyticsChartResponse(chartKey: string) {
+  return {
+    generatedAt: DASHBOARD_TEST_GENERATED_AT.toISOString(),
+    chartKey,
+    source: chartKey.split('.')[0],
+    title: chartKey,
+    type: 'line',
+    status: 'available',
+    range: '30d',
+    granularity: 'day',
+    filters: {},
+    data: { series: [], totals: {}, summary: null, empty: true },
+    emptyState: { reason: 'no_data', message: 'No data found.' },
+    meta: {
+      source: 'dashboard_analytics_data_pack',
+      pack: analyticsReference(chartKey).pack,
+      freshness: 'request_time_snapshot',
+      dataAvailability: 'computed_series',
+      computation: analyticsReference(chartKey).computation,
+    },
+  };
 }
 
 function summaryRepositoryMock(

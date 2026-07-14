@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DashboardScope, requireDashboardScope } from '../dashboard-context';
+import { requireDashboardScope } from '../dashboard-context';
 import {
   DASHBOARD_WIDGET_DEFAULT_LIMIT,
   DASHBOARD_WIDGET_MAX_LIMIT,
@@ -10,22 +10,10 @@ import {
   DashboardWidgetsResponseDto,
   ListDashboardWidgetsQueryDto,
 } from '../dto/dashboard-widgets.dto';
-import {
-  compareDashboardActivityItems,
-  mapAuditRecordToDashboardActivity,
-} from './list-dashboard-activity-feed.use-case';
-import { buildDashboardAlertsDateWindow } from './list-dashboard-alerts.use-case';
-import { buildDashboardSummaryDateWindow } from './get-dashboard-summary.use-case';
-import { DashboardActivityFeedItemDto } from '../dto/dashboard-activity-feed.dto';
-import { DashboardActivityFeedRepository } from '../infrastructure/dashboard-activity-feed.repository';
-import { DashboardAlertsRepository } from '../infrastructure/dashboard-alerts.repository';
-import { DashboardSummaryRepository } from '../infrastructure/dashboard-summary.repository';
-import {
-  DashboardWidgetsPresentationInput,
-  presentDashboardWidgets,
-} from '../presenters/dashboard-widgets.presenter';
+import { DASHBOARD_WIDGET_REGISTRY } from '../domain/dashboard-widget-registry';
+import { presentDashboardWidgets } from '../presenters/dashboard-widgets.presenter';
 import { DashboardTimeContextService } from './dashboard-time-context.service';
-import { DashboardTimeContext } from '../domain/dashboard-time-context';
+import { DashboardWidgetCompositionService } from './dashboard-widget-composition.service';
 
 export interface NormalizedDashboardWidgetsQuery {
   source?: DashboardWidgetSource;
@@ -36,55 +24,33 @@ export interface NormalizedDashboardWidgetsQuery {
 @Injectable()
 export class ListDashboardWidgetsUseCase {
   constructor(
-    private readonly dashboardSummaryRepository: DashboardSummaryRepository,
-    private readonly dashboardAlertsRepository: DashboardAlertsRepository,
-    private readonly dashboardActivityFeedRepository: DashboardActivityFeedRepository,
     private readonly dashboardTimeContextService: DashboardTimeContextService,
+    private readonly dashboardWidgetCompositionService: DashboardWidgetCompositionService,
   ) {}
 
   async execute(
     query: ListDashboardWidgetsQueryDto = new ListDashboardWidgetsQueryDto(),
   ): Promise<DashboardWidgetsResponseDto> {
+    const filters = normalizeDashboardWidgetsQuery(query);
+    const definitions = DASHBOARD_WIDGET_REGISTRY.filter(
+      (definition) => !filters.source || definition.source === filters.source,
+    )
+      .filter((definition) => !filters.type || definition.type === filters.type)
+      .slice(0, filters.limit);
     const scope = requireDashboardScope();
     const timeContext =
       await this.dashboardTimeContextService.resolveForSchool(scope);
-    const input = await this.loadPresentationInput(scope, timeContext);
+    const widgets = await this.dashboardWidgetCompositionService.compose({
+      scope,
+      timeContext,
+      definitions,
+    });
 
     return presentDashboardWidgets({
-      ...input,
-      filters: normalizeDashboardWidgetsQuery(query),
-    });
-  }
-
-  private async loadPresentationInput(
-    scope: DashboardScope,
-    timeContext: DashboardTimeContext,
-  ): Promise<DashboardWidgetsPresentationInput> {
-    const [summary, alertSignals, activityAuditRecords] = await Promise.all([
-      this.dashboardSummaryRepository.loadSummarySnapshot(
-        scope,
-        buildDashboardSummaryDateWindow(timeContext),
-      ),
-      this.dashboardAlertsRepository.loadAlertSignals(
-        scope,
-        buildDashboardAlertsDateWindow(timeContext),
-      ),
-      this.dashboardActivityFeedRepository.listActivityAuditRecords(scope, {
-        take: 20,
-      }),
-    ]);
-    const activityItems = activityAuditRecords
-      .map(mapAuditRecordToDashboardActivity)
-      .filter((item): item is DashboardActivityFeedItemDto => item !== null)
-      .sort(compareDashboardActivityItems)
-      .slice(0, 5);
-
-    return {
       generatedAt: timeContext.generatedAt,
-      summary,
-      alertSignals,
-      activityItems,
-    };
+      widgets,
+      filters,
+    });
   }
 }
 

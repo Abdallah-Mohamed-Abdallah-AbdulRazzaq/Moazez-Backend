@@ -183,6 +183,21 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
       topActions: expect.any(Array),
       alertsPreview: expect.any(Array),
       activityPreview: expect.any(Array),
+      analyticsPreview: expect.any(Array),
+      todoPreview: {
+        date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        items: expect.any(Array),
+        summary: {
+          total: expect.any(Number),
+          pending: expect.any(Number),
+          completed: expect.any(Number),
+        },
+        action: {
+          label: 'Open todos',
+          target: '/dashboard/light-mode-dropdown',
+          kind: 'frontend-route',
+        },
+      },
       meta: {
         source: 'dashboard_command_center',
         version: 'v2',
@@ -194,9 +209,11 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
         },
         deferred: {
           widgets: 'available',
-          analytics: 'snapshot_only',
+          analytics: 'available',
+          analyticsPreview: 'available',
           lightModeDropdown: 'foundation',
           todos: 'persisted',
+          todoPreview: 'available',
           weather: 'deferred',
           planner: 'deferred',
           alertLifecycle: 'deferred',
@@ -207,6 +224,16 @@ describe('DASHBOARD-COMMAND-CENTER-1A foundation (e2e)', () => {
     expect(response.body.academicContext).toHaveProperty('academicYear');
     expect(response.body.academicContext).toHaveProperty('term');
     expect(response.body.school.timezone).toBe(response.body.today.timezone);
+    expect(
+      response.body.analyticsPreview.map(
+        (preview: { chartKey: string }) => preview.chartKey,
+      ),
+    ).toEqual([
+      'students.enrollment_growth',
+      'attendance.daily_trend',
+      'communication.message_volume',
+    ]);
+    expect(response.body).not.toHaveProperty('calendarPreview');
     expect(response.body.quickStats).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

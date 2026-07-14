@@ -1,53 +1,24 @@
+import { DashboardTodoPriority, DashboardTodoStatus } from '@prisma/client';
+import { DashboardAnalyticsChartDataResponseDto } from '../dto/dashboard-analytics-data.dto';
 import { DashboardActivityFeedItemDto } from '../dto/dashboard-activity-feed.dto';
+import { dashboardAnalyticsCivilDatePoint } from '../domain/dashboard-analytics-coordinate';
+import {
+  DASHBOARD_WIDGET_REGISTRY,
+  findDashboardWidgetDefinition,
+} from '../domain/dashboard-widget-registry';
+import { DashboardAlertSignals } from '../infrastructure/dashboard-alerts.repository';
+import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
 import {
   buildDashboardWidgetRegistry,
   presentDashboardWidget,
   presentDashboardWidgets,
 } from '../presenters/dashboard-widgets.presenter';
-import { DashboardAlertSignals } from '../infrastructure/dashboard-alerts.repository';
-import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
+
+const GENERATED_AT = new Date('2026-07-12T12:00:00.000Z');
 
 describe('Dashboard widgets presenter', () => {
-  it('returns the stable widgets list response shape with the required initial registry', () => {
-    const response = presentDashboardWidgets({
-      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
-      summary: snapshot(),
-      alertSignals: signals({
-        settings: {
-          missingLoginIdentity: 1,
-          missingActiveEmailConnection: 1,
-        },
-      }),
-      activityItems: [activityItem()],
-      filters: {
-        limit: 20,
-      },
-    });
-
-    expect(response).toMatchObject({
-      generatedAt: '2026-07-09T12:00:00.000Z',
-      widgets: expect.any(Array),
-      summary: {
-        total: 12,
-        byType: expect.any(Object),
-        bySource: expect.any(Object),
-      },
-      filters: {
-        source: null,
-        type: null,
-        limit: 20,
-      },
-      deferred: {
-        customLayouts: 'deferred',
-        widgetPreferences: 'deferred',
-        analyticsCharts: 'integration_deferred',
-        weatherWidgets: 'deferred',
-        todoWidgets: 'integration_deferred',
-        analyticsStandalone: 'snapshot_only',
-        todosStandalone: 'persisted',
-      },
-    });
-    expect(response.widgets.map((widget) => widget.widgetKey)).toEqual([
+  it('preserves the original 12 widgets and appends the seven locked definitions', () => {
+    expect(DASHBOARD_WIDGET_REGISTRY.map((item) => item.widgetKey)).toEqual([
       'students.active',
       'admissions.open_applications',
       'attendance.pending_today',
@@ -60,19 +31,289 @@ describe('Dashboard widgets presenter', () => {
       'settings.email_connection',
       'settings.login_identity',
       'activity.recent',
+      'students.enrollment_growth',
+      'attendance.daily_trend',
+      'communication.message_volume',
+      'academics.teacher_allocation_coverage',
+      'grades.gradebook_completion',
+      'todos.today',
+      'calendar.today',
     ]);
-    expect(response.widgets[0]).toEqual(
+    expect(DASHBOARD_WIDGET_REGISTRY).toHaveLength(19);
+    expect(
+      DASHBOARD_WIDGET_REGISTRY.slice(0, 12).map((definition) => [
+        definition.widgetKey,
+        definition.type,
+        definition.iconKey,
+        definition.action.target,
+      ]),
+    ).toEqual([
+      ['students.active', 'stat-card', 'users', '/students'],
+      [
+        'admissions.open_applications',
+        'stat-card',
+        'clipboard-list',
+        '/admissions/applications',
+      ],
+      [
+        'attendance.pending_today',
+        'action-card',
+        'calendar-check',
+        '/attendance/roll-call',
+      ],
+      [
+        'attendance.absences_today',
+        'risk-card',
+        'user-x',
+        '/attendance/roll-call',
+      ],
+      [
+        'homework.waiting_review',
+        'action-card',
+        'book-open-check',
+        '/homework/submissions',
+      ],
+      [
+        'grades.pending_review',
+        'action-card',
+        'graduation-cap',
+        '/grades/submissions',
+      ],
+      [
+        'behavior.pending_review',
+        'action-card',
+        'clipboard-check',
+        '/behavior/review',
+      ],
+      [
+        'reinforcement.pending_reviews',
+        'action-card',
+        'award',
+        '/reinforcement/reviews',
+      ],
+      [
+        'communication.moderation_queue',
+        'risk-card',
+        'message-square-warning',
+        '/communication/moderation',
+      ],
+      [
+        'settings.email_connection',
+        'action-card',
+        'mail-check',
+        '/settings/email/connection',
+      ],
+      [
+        'settings.login_identity',
+        'action-card',
+        'key-round',
+        '/settings/login-identity',
+      ],
+      [
+        'activity.recent',
+        'timeline-card',
+        'activity',
+        '/dashboard/activity-feed',
+      ],
+    ]);
+  });
+
+  it('preserves real Analytics points and adds the safe Analytics reference', () => {
+    const analytics = analyticsResponse('attendance.daily_trend', {
+      series: [
+        {
+          key: 'present',
+          label: 'Present',
+          points: [
+            dashboardAnalyticsCivilDatePoint('2026-07-11', 0),
+            dashboardAnalyticsCivilDatePoint('2026-07-12', 7),
+          ],
+        },
+      ],
+      totals: { present: 7 },
+      summary: { value: 7, label: 'Attendance observations' },
+      empty: false,
+    });
+    const [widget] = compose(['attendance.daily_trend'], [analytics]);
+
+    expect(widget.data).toEqual(analytics.data);
+    expect(widget.data).not.toHaveProperty('delta');
+    expect(widget.data).not.toHaveProperty('trend');
+    expect(widget.meta).toMatchObject({
+      freshnessDetails: { dataMode: 'request_time_snapshot' },
+      analytics: {
+        chartKey: 'attendance.daily_trend',
+        chartType: 'line',
+        definitionEndpoint:
+          '/api/v1/dashboard/analytics/charts/attendance.daily_trend',
+        dataEndpoint:
+          '/api/v1/dashboard/analytics/charts/attendance.daily_trend/data',
+        defaultRange: '30d',
+        defaultGranularity: 'day',
+        dataAvailability: 'computed_series',
+        pack: 'attendance_v1',
+      },
+    });
+    expect(widget.tone).toBe('info');
+  });
+
+  it('computes progress segments, tones, zero denominators, and two-decimal rounding', () => {
+    const teacher = analyticsResponse(
+      'academics.teacher_allocation_coverage',
+      data({ allocated: 2, missing: 1 }),
+    );
+    const gradebook = analyticsResponse(
+      'grades.gradebook_completion',
+      data({ complete: 0, missing: 0 }),
+    );
+    const [teacherWidget, gradebookWidget] = compose(
+      ['academics.teacher_allocation_coverage', 'grades.gradebook_completion'],
+      [teacher, gradebook],
+    );
+
+    expect(teacherWidget.data).toEqual({
+      value: 2,
+      max: 3,
+      percent: 66.67,
+      unit: 'percent',
+      label: 'Teacher allocation coverage',
+      segments: [
+        { key: 'allocated', label: 'Allocated', value: 2 },
+        { key: 'missing', label: 'Missing', value: 1 },
+      ],
+    });
+    expect(teacherWidget.tone).toBe('warning');
+    expect(gradebookWidget.data).toMatchObject({
+      value: 0,
+      max: 0,
+      percent: 0,
+    });
+    expect(gradebookWidget.tone).toBe('neutral');
+  });
+
+  it('uses the strict Todo and Todo-only Calendar allowlists', () => {
+    const widgets = compose(['todos.today', 'calendar.today'], [], {
+      date: '2026-07-12',
+      items: [todo()],
+      counts: { total: 1, pending: 1, completed: 0 },
+    });
+
+    expect(widgets[0].data).toEqual({
+      date: '2026-07-12',
+      items: [{ title: 'Review reports', status: 'pending', priority: 'high' }],
+      summary: { total: 1, pending: 1, completed: 0 },
+    });
+    expect(widgets[1].data).toEqual({
+      date: '2026-07-12',
+      sourceMode: 'todo_only',
+      eventDates: ['2026-07-12'],
+      events: [
+        {
+          date: '2026-07-12',
+          title: 'Review reports',
+          status: 'pending',
+          priority: 'high',
+          source: 'todo',
+          allDay: true,
+        },
+      ],
+    });
+    expect(JSON.stringify(widgets)).not.toMatch(
+      /todoId|notes|completedAt|createdAt|updatedAt|sortOrder|ownerUserId/,
+    );
+    expect(widgets[0].meta.freshnessDetails.dataMode).toBe(
+      'persisted_user_data',
+    );
+  });
+
+  it('returns stable empty Todo/Calendar data and exact capability metadata', () => {
+    const widgets = compose(['todos.today', 'calendar.today'], [], {
+      date: '2026-07-12',
+      items: [],
+      counts: { total: 0, pending: 0, completed: 0 },
+    });
+    const response = presentDashboardWidgets({
+      generatedAt: GENERATED_AT,
+      widgets,
+      filters: { limit: 20 },
+    });
+
+    expect(widgets.map((widget) => widget.tone)).toEqual([
+      'neutral',
+      'neutral',
+    ]);
+    expect(widgets[1].data).toMatchObject({ eventDates: [], events: [] });
+    expect(response.deferred).toEqual({
+      customLayouts: 'deferred',
+      widgetPreferences: 'deferred',
+      analyticsCharts: 'available',
+      weatherWidgets: 'deferred',
+      todoWidgets: 'available',
+      analyticsStandalone: 'available',
+      todosStandalone: 'persisted',
+      calendarTodoComposition: 'available',
+      plannerCalendar: 'deferred',
+      crossModulePlannerItems: 'deferred',
+    });
+    expect(
+      presentDashboardWidget({ generatedAt: GENERATED_AT, widget: widgets[0] }),
+    ).toMatchObject({
+      generatedAt: GENERATED_AT.toISOString(),
+      widget: widgets[0],
+    });
+  });
+
+  it.each([
+    ['missing', { missing: 2 }],
+    ['non-finite', { allocated: Number.POSITIVE_INFINITY, missing: 2 }],
+    ['negative', { allocated: -1, missing: 2 }],
+  ])('rejects %s required Analytics totals', (_case, totals) => {
+    const response = analyticsResponse(
+      'academics.teacher_allocation_coverage',
+      data(totals),
+    );
+
+    expect(() =>
+      compose(['academics.teacher_allocation_coverage'], [response]),
+    ).toThrow('Dashboard widget Analytics total is invalid: allocated');
+  });
+
+  it('throws when a selected definition is missing its required source result', () => {
+    expect(() => compose(['attendance.daily_trend'])).toThrow(
+      'Dashboard widget analytics data is missing: attendance.daily_trend',
+    );
+    expect(() =>
+      buildDashboardWidgetRegistry({
+        generatedAt: GENERATED_AT,
+        definitions: [requireDefinition('students.active')],
+        summary: null,
+        alertSignals: null,
+        activityItems: [],
+      }),
+    ).toThrow('Dashboard widget summary data is missing');
+  });
+});
+
+describe('Dashboard widgets legacy 12 regression', () => {
+  it('preserves exact original Widget behavior, actions, tones, and freshness', () => {
+    const widgets = composeLegacy(
+      legacySnapshot(),
+      legacySignals({
+        settings: {
+          missingLoginIdentity: 1,
+          missingActiveEmailConnection: 0,
+        },
+      }),
+    );
+
+    expect(findWidget(widgets, 'students.active')).toEqual(
       expect.objectContaining({
         type: 'stat-card',
         source: 'students',
         title: 'Active students',
         iconKey: 'users',
         tone: 'info',
-        data: {
-          value: 120,
-          unit: null,
-          label: 'Active students',
-        },
+        data: { value: 120, unit: null, label: 'Active students' },
         action: {
           label: 'Open students',
           target: '/students',
@@ -86,137 +327,138 @@ describe('Dashboard widgets presenter', () => {
             cacheStatus: 'not_used',
             realtimeStatus: 'not_used',
           },
+          analytics: null,
         },
       }),
     );
-  });
-
-  it('filters by source and type and normalizes the response summary to returned widgets', () => {
-    const response = presentDashboardWidgets({
-      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
-      summary: snapshot(),
-      alertSignals: signals(),
-      activityItems: [],
-      filters: {
-        source: 'attendance',
-        type: 'risk-card',
-        limit: 20,
-      },
+    expect(findWidget(widgets, 'admissions.open_applications')).toMatchObject({
+      tone: 'warning',
+      data: { value: 4, unit: null, label: 'Open applications' },
     });
-
-    expect(response.widgets.map((widget) => widget.widgetKey)).toEqual([
-      'attendance.absences_today',
-    ]);
-    expect(response.summary).toEqual({
-      total: 1,
-      byType: { 'risk-card': 1 },
-      bySource: { attendance: 1 },
-    });
-    expect(response.filters).toEqual({
-      source: 'attendance',
-      type: 'risk-card',
-      limit: 20,
-    });
-  });
-
-  it('builds deterministic tones from counts and readiness signals', () => {
-    const widgets = buildDashboardWidgetRegistry({
-      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
-      summary: snapshot(),
-      alertSignals: signals({
-        settings: {
-          missingLoginIdentity: 1,
-          missingActiveEmailConnection: 0,
-        },
-      }),
-      activityItems: [],
-    });
-
     expect(findWidget(widgets, 'attendance.pending_today')).toMatchObject({
       tone: 'warning',
-      data: expect.objectContaining({
-        value: 3,
-        status: 'needs_review',
-      }),
+      data: { value: 3, status: 'needs_review' },
     });
     expect(findWidget(widgets, 'attendance.absences_today')).toMatchObject({
       tone: 'critical',
-      data: expect.objectContaining({
-        count: 2,
-        riskLevel: 'critical',
-      }),
+      data: { count: 2, riskLevel: 'critical' },
     });
+    expect(findWidget(widgets, 'homework.waiting_review')).toMatchObject({
+      tone: 'warning',
+      data: { value: 3, status: 'needs_review' },
+    });
+    expect(findWidget(widgets, 'grades.pending_review')).toMatchObject({
+      tone: 'warning',
+      data: { value: 6, status: 'needs_review' },
+    });
+    expect(findWidget(widgets, 'behavior.pending_review')).toMatchObject({
+      tone: 'warning',
+      data: { value: 1, status: 'needs_review' },
+    });
+    expect(findWidget(widgets, 'reinforcement.pending_reviews')).toMatchObject({
+      tone: 'warning',
+      data: { value: 2, status: 'needs_review' },
+    });
+    expect(findWidget(widgets, 'communication.moderation_queue')).toMatchObject(
+      { tone: 'critical', data: { count: 1, riskLevel: 'critical' } },
+    );
     expect(findWidget(widgets, 'settings.email_connection')).toMatchObject({
       tone: 'success',
-      data: expect.objectContaining({
-        value: 'active',
-      }),
+      data: { value: 'active', status: 'active' },
     });
     expect(findWidget(widgets, 'settings.login_identity')).toMatchObject({
       tone: 'warning',
-      data: expect.objectContaining({
-        value: 'not_configured',
-      }),
+      data: { value: 'not_configured', status: 'not_configured' },
     });
   });
 
-  it('returns one widget by widgetKey and preserves safe activity preview fields only', () => {
-    const response = presentDashboardWidget({
-      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
-      summary: snapshot(),
-      alertSignals: signals(),
-      activityItems: [
-        {
-          ...activityItem(),
-          actor: {
-            id: 'actor-1',
-            displayName: 'Teacher One',
-            type: 'teacher',
-          },
-          subject: {
-            type: 'homework_submission',
-            id: 'submission-1',
-            label: 'Homework Submission',
-          },
-          schoolId: 'school-1',
-          organizationId: 'org-1',
-          raw: { auditLogId: 'audit-1' },
-        } as DashboardActivityFeedItemDto,
-      ],
-      widgetKey: 'activity.recent',
-    });
-
-    expect(response).toMatchObject({
-      generatedAt: '2026-07-09T12:00:00.000Z',
-      widget: {
-        widgetKey: 'activity.recent',
-        type: 'timeline-card',
-        data: {
-          count: 1,
-          items: [
-            {
-              source: 'homework',
-              eventType: 'homework.submission.review',
-              actor: {
-                displayName: 'Teacher One',
-                type: 'teacher',
-              },
-              subject: {
-                type: 'homework_submission',
-                label: 'Homework Submission',
-              },
-            },
-          ],
+  it('preserves zero/minimal Summary and clear-state behavior', () => {
+    const snapshot = legacySnapshot();
+    snapshot.academicContext = { academicYear: null, term: null };
+    snapshot.cards = legacyZeroCards();
+    const widgets = composeLegacy(
+      snapshot,
+      legacySignals({
+        settings: {
+          missingLoginIdentity: 1,
+          missingActiveEmailConnection: 1,
         },
+      }),
+    );
+
+    expect(widgets).toHaveLength(12);
+    expect(findWidget(widgets, 'students.active')).toMatchObject({
+      data: { value: 0, unit: null, label: 'Active students' },
+    });
+    expect(findWidget(widgets, 'admissions.open_applications').tone).toBe(
+      'success',
+    );
+    expect(findWidget(widgets, 'attendance.pending_today').tone).toBe(
+      'success',
+    );
+    expect(findWidget(widgets, 'attendance.absences_today').tone).toBe(
+      'success',
+    );
+    expect(findWidget(widgets, 'homework.waiting_review').tone).toBe('success');
+    expect(findWidget(widgets, 'grades.pending_review').tone).toBe('success');
+    expect(findWidget(widgets, 'behavior.pending_review').tone).toBe('success');
+    expect(findWidget(widgets, 'reinforcement.pending_reviews').tone).toBe(
+      'success',
+    );
+    expect(findWidget(widgets, 'communication.moderation_queue').tone).toBe(
+      'success',
+    );
+    expect(findWidget(widgets, 'activity.recent')).toMatchObject({
+      data: { items: [], count: 0 },
+    });
+  });
+
+  it('preserves the safe Activity preview allowlist', () => {
+    const unsafeActivity = {
+      ...legacyActivityItem(),
+      actor: {
+        id: 'actor-1',
+        displayName: 'Teacher One',
+        type: 'teacher',
+      },
+      subject: {
+        type: 'homework_submission',
+        id: 'submission-1',
+        label: 'Homework Submission',
+      },
+      schoolId: 'school-1',
+      organizationId: 'org-1',
+      raw: { auditLogId: 'audit-1' },
+    } as DashboardActivityFeedItemDto;
+    const widgets = composeLegacy(legacySnapshot(), legacySignals(), [
+      unsafeActivity,
+    ]);
+    const activity = findWidget(widgets, 'activity.recent');
+
+    expect(activity).toMatchObject({
+      data: {
+        count: 1,
+        items: [
+          {
+            source: 'homework',
+            eventType: 'homework.submission.review',
+            actor: { displayName: 'Teacher One', type: 'teacher' },
+            subject: {
+              type: 'homework_submission',
+              label: 'Homework Submission',
+            },
+          },
+        ],
       },
     });
-
-    const serialized = JSON.stringify(response);
+    const serialized = JSON.stringify(activity);
     for (const forbidden of [
       'schoolId',
       'organizationId',
       'membershipId',
       'roleId',
+      'actorId',
+      'resourceId',
       'actor-1',
       'submission-1',
       'auditLogId',
@@ -228,66 +470,180 @@ describe('Dashboard widgets presenter', () => {
     }
   });
 
-  it('returns null for unknown widget keys and handles minimal data with stable widgets', () => {
-    const input = {
-      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
-      summary: {
-        ...snapshot(),
-        academicContext: { academicYear: null, term: null },
-        cards: zeroCards(),
-      },
-      alertSignals: signals({
-        academics: {
-          missingActiveAcademicYear: 1,
-          missingActiveTerm: 1,
-        },
-        settings: {
-          missingLoginIdentity: 1,
-          missingActiveEmailConnection: 1,
-        },
-      }),
-      activityItems: [],
-    };
-
-    expect(
-      presentDashboardWidget({
-        ...input,
-        widgetKey: 'unknown.widget',
-      }),
-    ).toBeNull();
-
+  it('preserves original registry order and list summary/filter shaping', () => {
+    const widgets = composeLegacy(legacySnapshot(), legacySignals());
+    expect(widgets.map((widget) => widget.widgetKey)).toEqual(
+      DASHBOARD_WIDGET_REGISTRY.slice(0, 12).map(
+        (definition) => definition.widgetKey,
+      ),
+    );
+    const absence = widgets.filter(
+      (widget) => widget.source === 'attendance' && widget.type === 'risk-card',
+    );
     const response = presentDashboardWidgets({
-      ...input,
-      filters: {
-        limit: 20,
-      },
+      generatedAt: GENERATED_AT,
+      widgets: absence,
+      filters: { source: 'attendance', type: 'risk-card', limit: 20 },
     });
-    expect(response.widgets).toHaveLength(12);
-    expect(findWidget(response.widgets, 'students.active')).toMatchObject({
-      data: {
-        value: 0,
-        unit: null,
-        label: 'Active students',
-      },
+    expect(response.summary).toEqual({
+      total: 1,
+      byType: { 'risk-card': 1 },
+      bySource: { attendance: 1 },
     });
-    expect(findWidget(response.widgets, 'activity.recent')).toMatchObject({
-      data: expect.objectContaining({
-        items: [],
-        count: 0,
-      }),
+    expect(response.filters).toEqual({
+      source: 'attendance',
+      type: 'risk-card',
+      limit: 20,
     });
   });
 });
 
-function findWidget(widgets: { widgetKey: string }[], widgetKey: string) {
-  const widget = widgets.find((candidate) => candidate.widgetKey === widgetKey);
-  expect(widget).toBeDefined();
-  return widget;
+function compose(
+  keys: string[],
+  analytics: DashboardAnalyticsChartDataResponseDto[] = [],
+  todos: Parameters<typeof buildDashboardWidgetRegistry>[0]['todos'] = null,
+) {
+  return buildDashboardWidgetRegistry({
+    generatedAt: GENERATED_AT,
+    definitions: keys.map((key) => requireDefinition(key)),
+    summary: null,
+    alertSignals: null,
+    activityItems: [],
+    analyticsByChartKey: new Map(
+      analytics.map((response) => [response.chartKey, response] as const),
+    ) as any,
+    todos,
+  });
 }
 
-function snapshot(): DashboardSummarySnapshot {
+function requireDefinition(key: string) {
+  const definition = findDashboardWidgetDefinition(key);
+  if (!definition) throw new Error(`Missing fixture definition: ${key}`);
+  return definition;
+}
+
+function data(totals: Record<string, number>) {
+  const value = Object.values(totals).reduce((sum, item) => sum + item, 0);
   return {
-    generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+    series: [],
+    totals,
+    summary: { value, label: 'Summary' },
+    empty: value === 0,
+  };
+}
+
+function analyticsResponse(
+  chartKey: string,
+  chartData: DashboardAnalyticsChartDataResponseDto['data'],
+): DashboardAnalyticsChartDataResponseDto {
+  const chartType = chartKey.includes('daily_trend') ? 'line' : 'bar';
+  const pack = chartKey.startsWith('attendance.')
+    ? 'attendance_v1'
+    : chartKey.startsWith('academics.')
+      ? 'academics_v1'
+      : 'grades_homework_v1';
+  return {
+    generatedAt: GENERATED_AT.toISOString(),
+    chartKey,
+    source: chartKey.split('.')[0] as any,
+    title: chartKey,
+    type: chartType,
+    status: 'available',
+    range: '30d',
+    granularity: 'day',
+    filters: {
+      range: '30d',
+      granularity: 'day',
+      dateFrom: null,
+      dateTo: null,
+      academicYearId: null,
+      termId: null,
+      gradeId: null,
+      sectionId: null,
+      classroomId: null,
+    },
+    data: chartData,
+    emptyState: chartData.empty
+      ? { reason: 'no_data', message: 'No data found.' }
+      : null,
+    meta: {
+      source: 'dashboard_analytics_data_pack',
+      pack,
+      dataAvailability:
+        chartType === 'line' ? 'computed_series' : 'computed_category',
+      computation:
+        chartKey === 'attendance.daily_trend'
+          ? 'attendance_observation_daily_trend'
+          : chartKey === 'academics.teacher_allocation_coverage'
+            ? 'academics_teacher_allocation_coverage'
+            : 'grades_current_gradebook_completion',
+      freshness: {
+        dataMode: 'request_time_snapshot',
+        cacheStatus: 'not_used',
+        realtimeStatus: 'not_used',
+      },
+      query: {
+        effectiveTimezone: 'Africa/Cairo',
+        requestedFilters: [],
+        appliedFilters: [],
+        notApplicableFilters: [],
+        resolvedWindow: {
+          startInclusive: '2026-06-12T21:00:00.000Z',
+          endExclusive: '2026-07-12T21:00:00.000Z',
+          startCivilDate: '2026-06-13',
+          endCivilDate: '2026-07-12',
+        },
+      },
+      deferred: {
+        drilldown: 'deferred',
+        exports: 'deferred',
+        realtime: 'deferred',
+      },
+    },
+  } as DashboardAnalyticsChartDataResponseDto;
+}
+
+function todo() {
+  return {
+    id: 'todo-1',
+    date: new Date('2026-07-12T00:00:00.000Z'),
+    title: 'Review reports',
+    notes: 'secret notes',
+    status: DashboardTodoStatus.PENDING,
+    priority: DashboardTodoPriority.HIGH,
+    sortOrder: 4,
+    completedAt: null,
+    createdAt: new Date('2026-07-11T10:00:00.000Z'),
+    updatedAt: new Date('2026-07-11T10:00:00.000Z'),
+  };
+}
+
+function composeLegacy(
+  summary: DashboardSummarySnapshot,
+  alertSignals: DashboardAlertSignals,
+  activityItems: DashboardActivityFeedItemDto[] = [],
+) {
+  return buildDashboardWidgetRegistry({
+    definitions: DASHBOARD_WIDGET_REGISTRY.slice(0, 12),
+    generatedAt: GENERATED_AT,
+    summary,
+    alertSignals,
+    activityItems,
+  });
+}
+
+function findWidget(
+  widgets: ReturnType<typeof buildDashboardWidgetRegistry>,
+  widgetKey: string,
+) {
+  const widget = widgets.find((candidate) => candidate.widgetKey === widgetKey);
+  expect(widget).toBeDefined();
+  return widget!;
+}
+
+function legacySnapshot(): DashboardSummarySnapshot {
+  return {
+    generatedAt: GENERATED_AT,
     school: {
       name: 'Moazez Academy',
       timezone: 'Africa/Cairo',
@@ -297,79 +653,75 @@ function snapshot(): DashboardSummarySnapshot {
       academicYear: { id: 'year-1', name: '2026/2027' },
       term: { id: 'term-1', name: 'Term 1', academicYearId: 'year-1' },
     },
-    cards: cards(),
-  };
-}
-
-function cards(): DashboardSummarySnapshot['cards'] {
-  return {
-    ...zeroCards(),
-    admissions: {
-      totalLeads: 5,
-      openApplications: 4,
-      submittedApplications: 2,
-      acceptedApplications: 1,
-      pendingTests: 1,
-      pendingInterviews: 0,
-      recentDecisions: 1,
-    },
-    students: {
-      activeStudents: 120,
-      activeEnrollments: 118,
-      guardians: 180,
-      newEnrollmentsLast30Days: 3,
-      withdrawnEnrollments: 1,
-    },
-    attendance: {
-      todaySessions: 10,
-      submittedSessionsToday: 7,
-      pendingSessionsToday: 3,
-      absentEntriesToday: 2,
-      lateEntriesToday: 1,
-      pendingExcuses: 1,
-    },
-    grades: {
-      activeAssessments: 7,
-      draftAssessments: 1,
-      publishedAssessments: 3,
-      approvedAssessments: 3,
-      lockedAssessments: 1,
-      gradeItems: 50,
-      pendingSubmissions: 2,
-      pendingAnswerReviews: 4,
-    },
-    homework: {
-      draftAssignments: 2,
-      publishedAssignments: 5,
-      closedAssignments: 1,
-      submissionsWaitingReview: 3,
-      reviewedSubmissions: 6,
-      gradeSyncLinkedAssignments: 1,
-      gradeSyncPendingAssignments: 1,
-    },
-    behavior: {
-      recentRecords: 4,
-      pendingReviewRecords: 1,
-      positiveRecords: 3,
-      negativeRecords: 1,
-    },
-    reinforcement: {
-      activeTasks: 5,
-      pendingReviews: 2,
-      completedAssignments: 12,
-      recentXpLedgerEntries: 8,
-      rewardsPending: 1,
-    },
-    communication: {
-      activeAnnouncements: 2,
-      recentMessages: 20,
-      activeConversations: 9,
-      pendingModerationReports: 1,
+    cards: {
+      ...legacyZeroCards(),
+      admissions: {
+        totalLeads: 5,
+        openApplications: 4,
+        submittedApplications: 2,
+        acceptedApplications: 1,
+        pendingTests: 1,
+        pendingInterviews: 0,
+        recentDecisions: 1,
+      },
+      students: {
+        activeStudents: 120,
+        activeEnrollments: 118,
+        guardians: 180,
+        newEnrollmentsLast30Days: 3,
+        withdrawnEnrollments: 1,
+      },
+      attendance: {
+        todaySessions: 10,
+        submittedSessionsToday: 7,
+        pendingSessionsToday: 3,
+        absentEntriesToday: 2,
+        lateEntriesToday: 1,
+        pendingExcuses: 1,
+      },
+      grades: {
+        activeAssessments: 7,
+        draftAssessments: 1,
+        publishedAssessments: 3,
+        approvedAssessments: 3,
+        lockedAssessments: 1,
+        gradeItems: 50,
+        pendingSubmissions: 2,
+        pendingAnswerReviews: 4,
+      },
+      homework: {
+        draftAssignments: 2,
+        publishedAssignments: 5,
+        closedAssignments: 1,
+        submissionsWaitingReview: 3,
+        reviewedSubmissions: 6,
+        gradeSyncLinkedAssignments: 1,
+        gradeSyncPendingAssignments: 1,
+      },
+      behavior: {
+        recentRecords: 4,
+        pendingReviewRecords: 1,
+        positiveRecords: 3,
+        negativeRecords: 1,
+      },
+      reinforcement: {
+        activeTasks: 5,
+        pendingReviews: 2,
+        completedAssignments: 12,
+        recentXpLedgerEntries: 8,
+        rewardsPending: 1,
+      },
+      communication: {
+        activeAnnouncements: 2,
+        recentMessages: 20,
+        activeConversations: 9,
+        pendingModerationReports: 1,
+      },
     },
   };
 }
 
-function zeroCards(): DashboardSummarySnapshot['cards'] {
+function legacyZeroCards(): DashboardSummarySnapshot['cards'] {
   return {
     admissions: {
       totalLeads: 0,
@@ -452,21 +804,14 @@ function zeroCards(): DashboardSummarySnapshot['cards'] {
   };
 }
 
-function signals(
+function legacySignals(
   overrides: {
-    admissions?: Partial<DashboardAlertSignals['admissions']>;
     academics?: Partial<DashboardAlertSignals['academics']>;
-    attendance?: Partial<DashboardAlertSignals['attendance']>;
-    grades?: Partial<DashboardAlertSignals['grades']>;
-    homework?: Partial<DashboardAlertSignals['homework']>;
-    behavior?: Partial<DashboardAlertSignals['behavior']>;
-    reinforcement?: Partial<DashboardAlertSignals['reinforcement']>;
-    communication?: Partial<DashboardAlertSignals['communication']>;
     settings?: Partial<DashboardAlertSignals['settings']>;
   } = {},
 ): DashboardAlertSignals {
   return {
-    generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+    generatedAt: GENERATED_AT,
     academicContext: {
       academicYear: { id: 'year-1', name: '2026/2027' },
       term: { id: 'term-1', name: 'Term 1', academicYearId: 'year-1' },
@@ -475,7 +820,6 @@ function signals(
       applicationsWaitingDecision: 0,
       testsPending: 0,
       interviewsPending: 0,
-      ...overrides.admissions,
     },
     academics: {
       missingActiveAcademicYear: 0,
@@ -489,35 +833,23 @@ function signals(
       todayAbsentEntries: 0,
       todayLateEntries: 0,
       pendingExcuses: 0,
-      ...overrides.attendance,
     },
     grades: {
       draftAssessments: 0,
       publishedAssessmentsPendingApproval: 0,
       pendingSubmissions: 0,
       pendingAnswerReviews: 0,
-      ...overrides.grades,
     },
     homework: {
       submissionsWaitingReview: 0,
       gradedAssignmentsMissingSyncLink: 0,
       pastDueMissingSubmissions: 0,
-      ...overrides.homework,
     },
-    behavior: {
-      pendingReviews: 0,
-      recentNegativeRecords: 0,
-      ...overrides.behavior,
-    },
-    reinforcement: {
-      pendingReviews: 0,
-      overdueActiveTasks: 0,
-      ...overrides.reinforcement,
-    },
+    behavior: { pendingReviews: 0, recentNegativeRecords: 0 },
+    reinforcement: { pendingReviews: 0, overdueActiveTasks: 0 },
     communication: {
       pendingModerationReports: 0,
       activeAnnouncementsExpiringSoon: 0,
-      ...overrides.communication,
     },
     settings: {
       missingLoginIdentity: 0,
@@ -527,18 +859,14 @@ function signals(
   };
 }
 
-function activityItem(): DashboardActivityFeedItemDto {
+function legacyActivityItem(): DashboardActivityFeedItemDto {
   return {
     activityId: 'audit:activity-1',
     source: 'homework',
     eventType: 'homework.submission.review',
     title: 'Homework reviewed',
     description: 'A homework submission was reviewed.',
-    actor: {
-      id: null,
-      displayName: 'System',
-      type: 'system',
-    },
+    actor: { id: null, displayName: 'System', type: 'system' },
     subject: {
       type: 'homework_submission',
       id: null,

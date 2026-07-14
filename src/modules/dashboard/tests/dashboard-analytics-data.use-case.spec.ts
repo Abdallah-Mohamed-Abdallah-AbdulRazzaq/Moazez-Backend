@@ -69,6 +69,7 @@ describe('Dashboard analytics data use case', () => {
       expect.objectContaining({ schoolId: 'school-1' }),
       expect.objectContaining({ chartKey: 'attendance.pending_sessions' }),
       {},
+      undefined,
     );
     expect(snapshotRepository.loadChartValue).toHaveBeenCalledWith(
       expect.objectContaining({ schoolId: 'school-1' }),
@@ -76,6 +77,64 @@ describe('Dashboard analytics data use case', () => {
       expect.objectContaining({ timezone: 'Africa/Cairo' }),
     );
     expectNoInternalLeaks(response);
+  });
+
+  it('passes an optional generatedAt through query-context resolution', async () => {
+    const { useCase, queryContextService } = useCaseWith(1);
+    const generatedAt = new Date('2026-07-12T01:02:03.000Z');
+
+    await withSchoolScope(() =>
+      useCase.execute('attendance.pending_sessions', {}, generatedAt),
+    );
+
+    expect(queryContextService.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ schoolId: 'school-1' }),
+      expect.objectContaining({ chartKey: 'attendance.pending_sessions' }),
+      {},
+      generatedAt,
+    );
+    expect(queryContextService.resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes the original Analytics query unchanged and generatedAt only as the fourth argument', async () => {
+    const { useCase, queryContextService } = useCaseWith(0);
+    const generatedAt = new Date('2026-07-12T01:02:03.000Z');
+    const query = {
+      range: '30d' as const,
+      granularity: 'day' as const,
+      academicYearId: '11111111-1111-4111-8111-111111111111',
+      termId: '22222222-2222-4222-8222-222222222222',
+    };
+
+    await withSchoolScope(() =>
+      useCase.execute('grades.gradebook_completion', query, generatedAt),
+    );
+
+    expect(queryContextService.resolve).toHaveBeenCalledTimes(1);
+    const call = queryContextService.resolve.mock.calls[0];
+    expect(call).toHaveLength(4);
+    expect(call?.[2]).toBe(query);
+    expect(call?.[3]).toBe(generatedAt);
+  });
+
+  it('preserves required-hierarchy validation when generatedAt is supplied', async () => {
+    const { useCase, queryContextService } = useCaseWith(0);
+    const query = {};
+    const generatedAt = new Date('2026-07-12T01:02:03.000Z');
+    const error = new ValidationDomainException(
+      'Required Analytics hierarchy filter is missing',
+      { fields: ['academicYearId', 'termId'] },
+    );
+    queryContextService.resolve.mockRejectedValueOnce(error);
+
+    await expect(
+      withSchoolScope(() =>
+        useCase.execute('grades.gradebook_completion', query, generatedAt),
+      ),
+    ).rejects.toBe(error);
+    expect(queryContextService.resolve).toHaveBeenCalledTimes(1);
+    expect(queryContextService.resolve.mock.calls[0]?.[2]).toBe(query);
+    expect(queryContextService.resolve.mock.calls[0]?.[3]).toBe(generatedAt);
   });
 
   it.each([
@@ -662,7 +721,6 @@ function useCaseWith(snapshotValue: number) {
       cancelled: 0,
     }),
   };
-
   return {
     queryContextService,
     snapshotRepository,

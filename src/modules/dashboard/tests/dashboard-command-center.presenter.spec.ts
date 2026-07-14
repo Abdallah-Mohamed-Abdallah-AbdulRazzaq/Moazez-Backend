@@ -4,6 +4,7 @@ import { DashboardAlertDto } from '../dto/dashboard-alerts.dto';
 import { presentDashboardCommandCenter } from '../presenters/dashboard-command-center.presenter';
 import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
 import { buildDashboardTimeContext } from '../domain/dashboard-time-context';
+import { DashboardWidgetDto } from '../dto/dashboard-widgets.dto';
 
 const GENERATED_AT = new Date('2026-07-09T12:00:00.000Z');
 
@@ -14,6 +15,7 @@ describe('Dashboard command center presenter', () => {
       summary: snapshot(),
       alerts: alerts(),
       activityItems: [activityItem()],
+      compositionWidgets: compositionWidgets(),
       operator: {
         userType: UserType.SCHOOL_USER,
       },
@@ -53,6 +55,7 @@ describe('Dashboard command center presenter', () => {
       'topActions',
       'alertsPreview',
       'activityPreview',
+      'analyticsPreview',
     ]) {
       expect(response).toHaveProperty(section);
       expect(Array.isArray(response[section as keyof typeof response])).toBe(
@@ -67,6 +70,7 @@ describe('Dashboard command center presenter', () => {
       summary: snapshot(),
       alerts: alerts(),
       activityItems: [],
+      compositionWidgets: compositionWidgets(),
       operator: {
         userType: UserType.SCHOOL_USER,
       },
@@ -161,6 +165,7 @@ describe('Dashboard command center presenter', () => {
           raw: { auditLogId: 'audit-1' },
         } as DashboardActivityFeedItemDto,
       ],
+      compositionWidgets: compositionWidgets(),
       operator: {
         userType: UserType.SCHOOL_USER,
       },
@@ -168,9 +173,11 @@ describe('Dashboard command center presenter', () => {
 
     expect(response.meta.deferred).toEqual({
       widgets: 'available',
-      analytics: 'snapshot_only',
+      analytics: 'available',
+      analyticsPreview: 'available',
       lightModeDropdown: 'foundation',
       todos: 'persisted',
+      todoPreview: 'available',
       weather: 'deferred',
       planner: 'deferred',
       alertLifecycle: 'deferred',
@@ -210,6 +217,7 @@ describe('Dashboard command center presenter', () => {
       },
       alerts: [],
       activityItems: [],
+      compositionWidgets: compositionWidgets(),
       operator: {
         userType: UserType.SCHOOL_USER,
       },
@@ -225,6 +233,35 @@ describe('Dashboard command center presenter', () => {
     expect(response.topRisks).toEqual([]);
     expect(response.alertsPreview).toEqual([]);
     expect(response.activityPreview).toEqual([]);
+    expect(response.analyticsPreview.map((item) => item.chartKey)).toEqual([
+      'students.enrollment_growth',
+      'attendance.daily_trend',
+      'communication.message_volume',
+    ]);
+    expect(Object.keys(response.analyticsPreview[0]).sort()).toEqual(
+      [
+        'action',
+        'analytics',
+        'chartKey',
+        'empty',
+        'series',
+        'source',
+        'summary',
+        'title',
+        'totals',
+        'type',
+      ].sort(),
+    );
+    expect(response.todoPreview).toEqual({
+      date: '2026-07-09',
+      items: [],
+      summary: { total: 0, pending: 0, completed: 0 },
+      action: {
+        label: 'Open todos',
+        target: '/dashboard/light-mode-dropdown',
+        kind: 'frontend-route',
+      },
+    });
   });
 
   it.each([
@@ -245,6 +282,7 @@ describe('Dashboard command center presenter', () => {
         },
         alerts: [],
         activityItems: [],
+        compositionWidgets: compositionWidgets(),
         operator: { userType: UserType.SCHOOL_USER },
       });
 
@@ -257,6 +295,104 @@ describe('Dashboard command center presenter', () => {
     },
   );
 });
+
+function compositionWidgets(): DashboardWidgetDto[] {
+  const analytics = [
+    'students.enrollment_growth',
+    'attendance.daily_trend',
+    'communication.message_volume',
+  ].map((widgetKey) => ({
+    widgetKey,
+    type: 'mini-chart-card' as const,
+    source: widgetKey.split('.')[0] as DashboardWidgetDto['source'],
+    title: widgetKey,
+    subtitle: null,
+    iconKey: 'chart',
+    tone: 'neutral' as const,
+    data: { series: [], totals: {}, summary: null, empty: true },
+    action: {
+      label: 'Open analytics',
+      target: '/dashboard/analytics',
+      kind: 'frontend-route' as const,
+    },
+    emptyState: null,
+    meta: {
+      freshness: 'live' as const,
+      freshnessDetails: {
+        dataMode: 'request_time_snapshot' as const,
+        cacheStatus: 'not_used' as const,
+        realtimeStatus: 'not_used' as const,
+      },
+      analytics: analyticsReference(widgetKey),
+    },
+  }));
+
+  return [
+    ...analytics,
+    {
+      widgetKey: 'todos.today',
+      type: 'todo-card',
+      source: 'todos',
+      title: 'Today’s todos',
+      subtitle: null,
+      iconKey: 'list-todo',
+      tone: 'neutral',
+      data: {
+        date: '2026-07-09',
+        items: [],
+        summary: { total: 0, pending: 0, completed: 0 },
+      },
+      action: {
+        label: 'Open todos',
+        target: '/dashboard/light-mode-dropdown',
+        kind: 'frontend-route',
+      },
+      emptyState: null,
+      meta: {
+        freshness: 'live',
+        freshnessDetails: {
+          dataMode: 'persisted_user_data',
+          cacheStatus: 'not_used',
+          realtimeStatus: 'not_used',
+        },
+        analytics: null,
+      },
+    },
+  ] as DashboardWidgetDto[];
+}
+
+function analyticsReference(widgetKey: string) {
+  const references = {
+    'students.enrollment_growth': {
+      chartType: 'line',
+      pack: 'admissions_students_v1',
+      computation: 'students_active_enrollment_stock',
+    },
+    'attendance.daily_trend': {
+      chartType: 'line',
+      pack: 'attendance_v1',
+      computation: 'attendance_daily_status_counts',
+    },
+    'communication.message_volume': {
+      chartType: 'area',
+      pack: 'communication_settings_v1',
+      computation: 'communication_message_volume_trend',
+    },
+  } as const;
+  const reference = references[widgetKey as keyof typeof references];
+
+  return {
+    chartKey: widgetKey,
+    chartType: reference.chartType,
+    definitionEndpoint: `/api/v1/dashboard/analytics/charts/${widgetKey}`,
+    dataEndpoint: `/api/v1/dashboard/analytics/charts/${widgetKey}/data`,
+    defaultRange: '30d' as const,
+    defaultGranularity: 'day' as const,
+    dataAvailability: 'computed_series' as const,
+    pack: reference.pack,
+    computation: reference.computation,
+  };
+}
 
 function alerts(): DashboardAlertDto[] {
   return [

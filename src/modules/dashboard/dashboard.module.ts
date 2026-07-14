@@ -38,6 +38,7 @@ import { DashboardHomeworkAnalyticsRepository } from './infrastructure/dashboard
 import { DashboardBehaviorAnalyticsRepository } from './infrastructure/dashboard-behavior-analytics.repository';
 import { DashboardReinforcementAnalyticsRepository } from './infrastructure/dashboard-reinforcement-analytics.repository';
 import { DashboardCommunicationAnalyticsRepository } from './infrastructure/dashboard-communication-analytics.repository';
+import { DashboardWidgetCompositionService } from './application/dashboard-widget-composition.service';
 
 @Module({
   imports: [AuthModule, ReportsModule],
@@ -61,6 +62,7 @@ import { DashboardCommunicationAnalyticsRepository } from './infrastructure/dash
     DashboardCommunicationAnalyticsRepository,
     DashboardTimeContextService,
     DashboardAnalyticsQueryContextService,
+    DashboardWidgetCompositionService,
     GetDashboardAnalyticsCatalogUseCase,
     GetDashboardAnalyticsChartDataUseCase,
     GetDashboardAnalyticsChartUseCase,

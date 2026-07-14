@@ -3,6 +3,7 @@ import { DashboardActivityFeedItemDto } from '../dto/dashboard-activity-feed.dto
 import {
   DashboardCommandCenterActionDto,
   DashboardCommandCenterActionPriority,
+  DashboardCommandCenterAnalyticsPreviewDto,
   DashboardCommandCenterHealthStatus,
   DashboardCommandCenterMetricDto,
   DashboardCommandCenterModuleReadinessDto,
@@ -10,17 +11,30 @@ import {
   DashboardCommandCenterQuickStatDto,
   DashboardCommandCenterResponseDto,
   DashboardCommandCenterRiskDto,
+  DashboardCommandCenterTodoPreviewDto,
 } from '../dto/dashboard-command-center.dto';
 import { DashboardAlertDto } from '../dto/dashboard-alerts.dto';
 import { DashboardSummarySnapshot } from '../infrastructure/dashboard-summary.repository';
 import { DashboardTimeContext } from '../domain/dashboard-time-context';
 import { dashboardFreshness } from './dashboard-metadata.presenter';
+import {
+  DashboardWidgetDto,
+  DashboardWidgetMiniChartDataDto,
+  DashboardWidgetTodoDataDto,
+} from '../dto/dashboard-widgets.dto';
+
+const COMMAND_CENTER_ANALYTICS_PREVIEW_KEYS = [
+  'students.enrollment_growth',
+  'attendance.daily_trend',
+  'communication.message_volume',
+] as const;
 
 export interface DashboardCommandCenterPresentationInput {
   timeContext: DashboardTimeContext;
   summary: DashboardSummarySnapshot;
   alerts: DashboardAlertDto[];
   activityItems: DashboardActivityFeedItemDto[];
+  compositionWidgets: DashboardWidgetDto[];
   operator: {
     userType: UserType;
   };
@@ -90,6 +104,12 @@ export function presentDashboardCommandCenter(
       },
       occurredAt: item.occurredAt,
     })),
+    analyticsPreview: COMMAND_CENTER_ANALYTICS_PREVIEW_KEYS.map((widgetKey) =>
+      buildAnalyticsPreview(
+        requireCompositionWidget(input.compositionWidgets, widgetKey),
+      ),
+    ),
+    todoPreview: buildTodoPreview(input.compositionWidgets),
     meta: {
       source: 'dashboard_command_center',
       version: 'v2',
@@ -97,9 +117,11 @@ export function presentDashboardCommandCenter(
       freshness: dashboardFreshness('request_time_snapshot'),
       deferred: {
         widgets: 'available',
-        analytics: 'snapshot_only',
+        analytics: 'available',
+        analyticsPreview: 'available',
         lightModeDropdown: 'foundation',
         todos: 'persisted',
+        todoPreview: 'available',
         weather: 'deferred',
         planner: 'deferred',
         alertLifecycle: 'deferred',
@@ -107,6 +129,77 @@ export function presentDashboardCommandCenter(
       },
     },
   };
+}
+
+function buildAnalyticsPreview(
+  widget: DashboardWidgetDto,
+): DashboardCommandCenterAnalyticsPreviewDto {
+  if (
+    widget.type !== 'mini-chart-card' ||
+    !widget.action ||
+    !widget.meta.analytics
+  ) {
+    throw new Error('Dashboard command-center Analytics preview is invalid');
+  }
+  const data = widget.data as unknown as DashboardWidgetMiniChartDataDto;
+  const chartKey = widget.meta.analytics.chartKey;
+  if (!isCommandCenterAnalyticsPreviewKey(chartKey)) {
+    throw new Error(
+      `Dashboard command-center Analytics chart is invalid: ${chartKey}`,
+    );
+  }
+
+  return {
+    chartKey,
+    source:
+      widget.source as DashboardCommandCenterAnalyticsPreviewDto['source'],
+    title: widget.title,
+    type: widget.type,
+    series: data.series,
+    totals: data.totals,
+    summary: data.summary,
+    empty: data.empty,
+    action: widget.action,
+    analytics: widget.meta.analytics,
+  };
+}
+
+function isCommandCenterAnalyticsPreviewKey(
+  chartKey: string,
+): chartKey is DashboardCommandCenterAnalyticsPreviewDto['chartKey'] {
+  return COMMAND_CENTER_ANALYTICS_PREVIEW_KEYS.some(
+    (candidate) => candidate === chartKey,
+  );
+}
+
+function buildTodoPreview(
+  widgets: DashboardWidgetDto[],
+): DashboardCommandCenterTodoPreviewDto {
+  const widget = requireCompositionWidget(widgets, 'todos.today');
+  const data = widget.data as unknown as DashboardWidgetTodoDataDto;
+  if (!widget.action) {
+    throw new Error('Dashboard command-center Todo action is missing');
+  }
+
+  return {
+    date: data.date,
+    items: data.items,
+    summary: data.summary,
+    action: widget.action,
+  };
+}
+
+function requireCompositionWidget(
+  widgets: DashboardWidgetDto[],
+  widgetKey: string,
+): DashboardWidgetDto {
+  const widget = widgets.find((candidate) => candidate.widgetKey === widgetKey);
+  if (!widget) {
+    throw new Error(
+      `Dashboard command-center composition is missing: ${widgetKey}`,
+    );
+  }
+  return widget;
 }
 
 function buildQuickStats(

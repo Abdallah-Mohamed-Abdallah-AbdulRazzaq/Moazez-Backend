@@ -61,6 +61,7 @@ export class GetDashboardAnalyticsChartDataUseCase {
   async execute(
     chartKey: string,
     query: GetDashboardAnalyticsChartDataQueryDto = new GetDashboardAnalyticsChartDataQueryDto(),
+    generatedAt?: Date,
   ): Promise<DashboardAnalyticsChartDataResponseDto> {
     const scope = requireDashboardScope();
     const chart = findDashboardAnalyticsChartDefinition(chartKey);
@@ -76,6 +77,7 @@ export class GetDashboardAnalyticsChartDataUseCase {
         scope,
         chart,
         query,
+        generatedAt,
       );
 
     if (isDashboardAnalyticsComputedSnapshotChartKey(chart.chartKey)) {
