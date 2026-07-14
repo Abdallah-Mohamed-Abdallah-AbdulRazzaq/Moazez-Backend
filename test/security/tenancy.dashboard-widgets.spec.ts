@@ -5,6 +5,17 @@ import { join } from 'node:path';
 import {
   AcademicCalendarEventScopeType,
   AcademicCalendarEventType,
+  AdmissionApplicationSource,
+  AdmissionApplicationStatus,
+  AttendanceMode,
+  AttendanceScopeType,
+  AttendanceSessionStatus,
+  GradeAssessmentApprovalStatus,
+  GradeAssessmentType,
+  GradeScopeType,
+  HomeworkAssignmentStatus,
+  InterviewStatus,
+  PlacementTestStatus,
   StudentEnrollmentStatus,
   UserType,
 } from '@prisma/client';
@@ -46,6 +57,7 @@ import { DashboardBehaviorAnalyticsRepository } from '../../src/modules/dashboar
 import { DashboardReinforcementAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-reinforcement-analytics.repository';
 import { DashboardCommunicationAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-communication-analytics.repository';
 import { DashboardPlannerCalendarRepository } from '../../src/modules/dashboard/infrastructure/dashboard-planner-calendar.repository';
+import { DashboardPlannerItemsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-planner-items.repository';
 import { CalendarEventsController } from '../../src/modules/academics/calendar/controller/calendar-events.controller';
 
 jest.setTimeout(60000);
@@ -61,6 +73,9 @@ describe('Dashboard widgets tenancy/security contracts', () => {
   let ownerAId = '';
   let ownerBId = '';
   let ownerSchoolBId = '';
+  const schoolAPlannerSourceIds: string[] = [];
+  const schoolBPlannerSourceIds: string[] = [];
+  const excludedPlannerSourceIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaService();
@@ -163,6 +178,33 @@ describe('Dashboard widgets tenancy/security contracts', () => {
       ),
     );
     [ownerAId, ownerBId, ownerSchoolBId] = owners.map((owner) => owner.id);
+    const [plannerA, plannerB] = await Promise.all([
+      createWidgetPlannerFixtures(prisma, {
+        organizationId,
+        schoolId: schoolAId,
+        academicYearId: schoolAContext.academicYearId,
+        termId: schoolAContext.termId,
+        classroomId: schoolAContext.classroomId,
+        subjectId: schoolAContext.subjectId,
+        sourceUserId: ownerAId,
+        marker: `${marker} school A`,
+        includeExcluded: true,
+      }),
+      createWidgetPlannerFixtures(prisma, {
+        organizationId,
+        schoolId: schoolBId,
+        academicYearId: schoolBContext.academicYearId,
+        termId: schoolBContext.termId,
+        classroomId: schoolBContext.classroomId,
+        subjectId: schoolBContext.subjectId,
+        sourceUserId: ownerSchoolBId,
+        marker: `${marker} school B`,
+        includeExcluded: false,
+      }),
+    ]);
+    schoolAPlannerSourceIds.push(...plannerA.visibleIds);
+    schoolBPlannerSourceIds.push(...plannerB.visibleIds);
+    excludedPlannerSourceIds.push(...plannerA.excludedIds);
     await prisma.dashboardTodo.createMany({
       data: [
         {
@@ -210,11 +252,58 @@ describe('Dashboard widgets tenancy/security contracts', () => {
         },
       ],
     });
+    await prisma.attendanceSession.createMany({
+      data: [
+        plannerAttendanceSession(
+          schoolAId,
+          schoolAContext.academicYearId,
+          schoolAContext.termId,
+          `${marker} school A attendance`,
+        ),
+        plannerAttendanceSession(
+          schoolBId,
+          schoolBContext.academicYearId,
+          schoolBContext.termId,
+          `${marker} school B attendance`,
+        ),
+        {
+          ...plannerAttendanceSession(
+            schoolAId,
+            schoolAContext.academicYearId,
+            schoolAContext.termId,
+            `${marker} deleted attendance`,
+            'DELETED',
+          ),
+          deletedAt: new Date('2026-07-01T00:00:00.000Z'),
+        },
+      ],
+    });
   });
 
   afterAll(async () => {
     if (!prisma) return;
 
+    await prisma.homeworkAssignment.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.gradeAssessment.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.teacherSubjectAllocation.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.attendanceSession.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.placementTest.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.interview.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.application.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
     await prisma.academicCalendarEvent.deleteMany({
       where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
     });
@@ -237,6 +326,9 @@ describe('Dashboard widgets tenancy/security contracts', () => {
       where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
     });
     await prisma.stage.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.subject.deleteMany({
       where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
     });
     await prisma.term.deleteMany({
@@ -369,6 +461,7 @@ describe('Dashboard widgets tenancy/security contracts', () => {
       new DashboardTodosRepository(prisma),
       analyticsDataUseCase(prisma),
       new DashboardPlannerCalendarRepository(prisma),
+      new DashboardPlannerItemsRepository(prisma),
     );
     const useCase = new ListDashboardWidgetsUseCase(
       new DashboardTimeContextService(
@@ -419,6 +512,7 @@ describe('Dashboard widgets tenancy/security contracts', () => {
       new DashboardTodosRepository(prisma),
       { execute: jest.fn() } as any,
       new DashboardPlannerCalendarRepository(prisma),
+      new DashboardPlannerItemsRepository(prisma),
     );
     const definitions = ['todos.today', 'calendar.today'].map((key) => {
       const definition = findDashboardWidgetDefinition(key);
@@ -449,12 +543,81 @@ describe('Dashboard widgets tenancy/security contracts', () => {
     const serialized = JSON.stringify(widgets);
     expect(serialized).toContain(`${marker} owner A todo`);
     expect(serialized).toContain(`${marker} school A calendar`);
+    expect(serialized).toContain(`${marker} school A attendance`);
+    expect(serialized).toContain(`${marker} school A placement`);
+    expect(serialized).toContain(`${marker} school A homework due`);
+    expect(serialized).toContain(`${marker} school A grade assessment`);
     expect(serialized).not.toContain(`${marker} owner B private todo`);
     expect(serialized).not.toContain(`${marker} school B private todo`);
     expect(serialized).not.toContain(`${marker} school B calendar`);
+    expect(serialized).not.toContain(`${marker} school B attendance`);
+    expect(serialized).not.toContain(`${marker} school B placement`);
+    expect(serialized).not.toContain(`${marker} school B homework due`);
+    expect(serialized).not.toContain(`${marker} school B grade assessment`);
     expect(serialized).not.toContain(`${marker} deleted calendar`);
+    expect(serialized).not.toContain(`${marker} deleted attendance`);
+    for (const markerValue of [
+      `${marker} school A deleted application placement`,
+      `${marker} school A cancelled placement`,
+      `${marker} school A deleted homework due`,
+      `${marker} school A draft homework due`,
+      `${marker} school A scheduled homework due`,
+      `${marker} school A cancelled homework due`,
+      `${marker} school A deleted grade assessment`,
+      `${marker} school A draft grade assessment`,
+      `${marker} school A assignment grade assessment`,
+    ]) {
+      expect(serialized).not.toContain(markerValue);
+    }
+    for (const id of [
+      ...schoolAPlannerSourceIds,
+      ...schoolBPlannerSourceIds,
+      ...excludedPlannerSourceIds,
+    ]) {
+      expect(serialized).not.toContain(id);
+    }
+    expect(serialized).not.toContain(`${marker} school A private applicant`);
+    expect(serialized).not.toContain(`${marker} A Student 1`);
+    expect(serialized).not.toContain('Widget owner-a');
+    expect(serialized).not.toContain(`${marker}-owner-a@example.test`);
+    const calendarWidget = widgets.find(
+      (widget) => widget.widgetKey === 'calendar.today',
+    );
+    const calendarEvents = (
+      calendarWidget?.data as { events?: Array<{ source: string }> }
+    ).events;
+    expect(calendarEvents?.map((event) => event.source)).toEqual([
+      'academic_calendar',
+      'attendance_session',
+      'grade_assessment',
+      'placement_test',
+      'interview',
+      'homework_due',
+      'todo',
+    ]);
     expectNoInternalLeaks(widgets);
   });
+
+  function plannerAttendanceSession(
+    schoolId: string,
+    academicYearId: string,
+    termId: string,
+    periodLabelEn: string,
+    key = 'VISIBLE',
+  ) {
+    return {
+      schoolId,
+      academicYearId,
+      termId,
+      date: new Date('2026-07-12T00:00:00.000Z'),
+      scopeType: AttendanceScopeType.SCHOOL,
+      scopeKey: schoolId,
+      mode: AttendanceMode.DAILY,
+      periodKey: `${marker}-${key}`,
+      periodLabelEn,
+      status: AttendanceSessionStatus.DRAFT,
+    };
+  }
 
   it('does not expose tenant or raw activity fields in the widgets presenter', () => {
     const widgets = buildDashboardWidgetRegistry({
@@ -642,6 +805,7 @@ async function createAcademicContext(
   academicYearId: string;
   termId: string;
   classroomId: string;
+  subjectId: string;
 }> {
   const academicYear = await prisma.academicYear.create({
     data: {
@@ -699,11 +863,275 @@ async function createAcademicContext(
     },
     select: { id: true },
   });
+  const subject = await prisma.subject.create({
+    data: {
+      schoolId,
+      nameAr: `${marker}-subject-ar`,
+      nameEn: `${marker}-subject-en`,
+      code: `${marker}-${randomUUID()}`,
+    },
+    select: { id: true },
+  });
 
   return {
     academicYearId: academicYear.id,
     termId: term.id,
     classroomId: classroom.id,
+    subjectId: subject.id,
+  };
+}
+
+async function createWidgetPlannerFixtures(
+  prisma: PrismaService,
+  input: {
+    organizationId: string;
+    schoolId: string;
+    academicYearId: string;
+    termId: string;
+    classroomId: string;
+    subjectId: string;
+    sourceUserId: string;
+    marker: string;
+    includeExcluded: boolean;
+  },
+): Promise<{ visibleIds: string[]; excludedIds: string[] }> {
+  const allocation = await prisma.teacherSubjectAllocation.create({
+    data: {
+      schoolId: input.schoolId,
+      teacherUserId: input.sourceUserId,
+      subjectId: input.subjectId,
+      classroomId: input.classroomId,
+      termId: input.termId,
+    },
+    select: { id: true },
+  });
+  const application = await prisma.application.create({
+    data: {
+      schoolId: input.schoolId,
+      organizationId: input.organizationId,
+      studentName: `${input.marker} private applicant`,
+      source: AdmissionApplicationSource.IN_APP,
+      status: AdmissionApplicationStatus.SUBMITTED,
+      submittedAt: new Date('2026-07-01T08:00:00.000Z'),
+    },
+    select: { id: true },
+  });
+  const [placement, interview, homework, assessment] = await Promise.all([
+    prisma.placementTest.create({
+      data: {
+        schoolId: input.schoolId,
+        applicationId: application.id,
+        type: `${input.marker} placement`,
+        scheduledAt: new Date('2026-07-12T09:00:00.000Z'),
+        status: PlacementTestStatus.SCHEDULED,
+      },
+      select: { id: true },
+    }),
+    prisma.interview.create({
+      data: {
+        schoolId: input.schoolId,
+        applicationId: application.id,
+        interviewerUserId: input.sourceUserId,
+        scheduledAt: new Date('2026-07-12T10:00:00.000Z'),
+        status: InterviewStatus.SCHEDULED,
+      },
+      select: { id: true },
+    }),
+    prisma.homeworkAssignment.create({
+      data: widgetHomeworkData(input, allocation.id, {
+        title: `${input.marker} homework due`,
+        status: HomeworkAssignmentStatus.PUBLISHED,
+      }),
+      select: { id: true },
+    }),
+    prisma.gradeAssessment.create({
+      data: widgetAssessmentData(input, {
+        title: `${input.marker} grade assessment`,
+        type: GradeAssessmentType.QUIZ,
+        status: GradeAssessmentApprovalStatus.PUBLISHED,
+      }),
+      select: { id: true },
+    }),
+  ]);
+
+  if (!input.includeExcluded) {
+    return {
+      visibleIds: [placement.id, interview.id, homework.id, assessment.id],
+      excludedIds: [],
+    };
+  }
+
+  const deletedApplication = await prisma.application.create({
+    data: {
+      schoolId: input.schoolId,
+      organizationId: input.organizationId,
+      studentName: `${input.marker} deleted private applicant`,
+      source: AdmissionApplicationSource.IN_APP,
+      status: AdmissionApplicationStatus.SUBMITTED,
+      submittedAt: new Date('2026-07-01T08:00:00.000Z'),
+      deletedAt: new Date('2026-07-02T08:00:00.000Z'),
+    },
+    select: { id: true },
+  });
+  const excluded = await Promise.all([
+    prisma.placementTest.create({
+      data: {
+        schoolId: input.schoolId,
+        applicationId: deletedApplication.id,
+        type: `${input.marker} deleted application placement`,
+        scheduledAt: new Date('2026-07-12T09:15:00.000Z'),
+        status: PlacementTestStatus.SCHEDULED,
+      },
+      select: { id: true },
+    }),
+    prisma.interview.create({
+      data: {
+        schoolId: input.schoolId,
+        applicationId: deletedApplication.id,
+        interviewerUserId: input.sourceUserId,
+        scheduledAt: new Date('2026-07-12T10:15:00.000Z'),
+        status: InterviewStatus.SCHEDULED,
+      },
+      select: { id: true },
+    }),
+    prisma.placementTest.create({
+      data: {
+        schoolId: input.schoolId,
+        applicationId: application.id,
+        type: `${input.marker} cancelled placement`,
+        scheduledAt: new Date('2026-07-12T09:30:00.000Z'),
+        status: PlacementTestStatus.CANCELLED,
+      },
+      select: { id: true },
+    }),
+    prisma.interview.create({
+      data: {
+        schoolId: input.schoolId,
+        applicationId: application.id,
+        interviewerUserId: input.sourceUserId,
+        scheduledAt: new Date('2026-07-12T10:30:00.000Z'),
+        status: InterviewStatus.CANCELLED,
+      },
+      select: { id: true },
+    }),
+    prisma.homeworkAssignment.create({
+      data: {
+        ...widgetHomeworkData(input, allocation.id, {
+          title: `${input.marker} deleted homework due`,
+          status: HomeworkAssignmentStatus.PUBLISHED,
+        }),
+        deletedAt: new Date('2026-07-02T08:00:00.000Z'),
+      },
+      select: { id: true },
+    }),
+    ...[
+      { label: 'draft', status: HomeworkAssignmentStatus.DRAFT },
+      {
+        label: 'scheduled',
+        status: HomeworkAssignmentStatus.DRAFT,
+        publishAt: new Date('2026-07-12T08:00:00.000Z'),
+      },
+      { label: 'cancelled', status: HomeworkAssignmentStatus.CANCELLED },
+    ].map(({ label, status, publishAt }) =>
+      prisma.homeworkAssignment.create({
+        data: {
+          ...widgetHomeworkData(input, allocation.id, {
+            title: `${input.marker} ${label} homework due`,
+            status,
+          }),
+          publishAt,
+        },
+        select: { id: true },
+      }),
+    ),
+    prisma.gradeAssessment.create({
+      data: {
+        ...widgetAssessmentData(input, {
+          title: `${input.marker} deleted grade assessment`,
+          type: GradeAssessmentType.QUIZ,
+          status: GradeAssessmentApprovalStatus.PUBLISHED,
+        }),
+        deletedAt: new Date('2026-07-02T08:00:00.000Z'),
+      },
+      select: { id: true },
+    }),
+    prisma.gradeAssessment.create({
+      data: widgetAssessmentData(input, {
+        title: `${input.marker} draft grade assessment`,
+        type: GradeAssessmentType.QUIZ,
+        status: GradeAssessmentApprovalStatus.DRAFT,
+      }),
+      select: { id: true },
+    }),
+    prisma.gradeAssessment.create({
+      data: widgetAssessmentData(input, {
+        title: `${input.marker} assignment grade assessment`,
+        type: GradeAssessmentType.ASSIGNMENT,
+        status: GradeAssessmentApprovalStatus.PUBLISHED,
+      }),
+      select: { id: true },
+    }),
+  ]);
+
+  return {
+    visibleIds: [placement.id, interview.id, homework.id, assessment.id],
+    excludedIds: excluded.map((row) => row.id),
+  };
+}
+
+function widgetHomeworkData(
+  input: {
+    schoolId: string;
+    academicYearId: string;
+    termId: string;
+    classroomId: string;
+    subjectId: string;
+    sourceUserId: string;
+  },
+  allocationId: string,
+  source: { title: string; status: HomeworkAssignmentStatus },
+) {
+  return {
+    schoolId: input.schoolId,
+    academicYearId: input.academicYearId,
+    termId: input.termId,
+    classroomId: input.classroomId,
+    subjectId: input.subjectId,
+    teacherUserId: input.sourceUserId,
+    teacherSubjectAllocationId: allocationId,
+    title: source.title,
+    status: source.status,
+    dueAt: new Date('2026-07-12T12:00:00.000Z'),
+    createdByUserId: input.sourceUserId,
+  };
+}
+
+function widgetAssessmentData(
+  input: {
+    schoolId: string;
+    academicYearId: string;
+    termId: string;
+    subjectId: string;
+  },
+  source: {
+    title: string;
+    type: GradeAssessmentType;
+    status: GradeAssessmentApprovalStatus;
+  },
+) {
+  return {
+    schoolId: input.schoolId,
+    academicYearId: input.academicYearId,
+    termId: input.termId,
+    subjectId: input.subjectId,
+    scopeType: GradeScopeType.SCHOOL,
+    scopeKey: input.schoolId,
+    titleEn: source.title,
+    type: source.type,
+    date: new Date('2026-07-12T00:00:00.000Z'),
+    weight: 10,
+    maxScore: 20,
+    approvalStatus: source.status,
   };
 }
 

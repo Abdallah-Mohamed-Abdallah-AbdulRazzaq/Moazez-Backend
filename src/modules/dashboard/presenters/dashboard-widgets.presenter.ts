@@ -28,7 +28,11 @@ import {
 } from '../infrastructure/dashboard-todos.repository';
 import { dashboardFreshness } from './dashboard-metadata.presenter';
 import { DashboardPlannerCalendarEventSnapshot } from '../infrastructure/dashboard-planner-calendar.repository';
-import { presentDashboardPlannerCalendarEvent } from './dashboard-light-mode-dropdown.presenter';
+import { DashboardPlannerItemSnapshot } from '../infrastructure/dashboard-planner-items.repository';
+import {
+  presentDashboardPlannerCalendarEvent,
+  presentDashboardPlannerItem,
+} from './dashboard-light-mode-dropdown.presenter';
 
 export interface DashboardWidgetDataPresentationInput {
   generatedAt: Date;
@@ -53,6 +57,11 @@ export interface DashboardWidgetDataPresentationInput {
     date: string;
     timezone: string;
     events: DashboardPlannerCalendarEventSnapshot[];
+  } | null;
+  plannerItems?: {
+    date: string;
+    timezone: string;
+    items: DashboardPlannerItemSnapshot[];
   } | null;
 }
 
@@ -262,6 +271,7 @@ function buildDashboardWidget(
         definition,
         requireTodos(input),
         requireCalendar(input),
+        requirePlannerItems(input),
       );
 
     default:
@@ -484,15 +494,44 @@ function calendarWidget(
   definition: DashboardWidgetDefinition,
   todos: NonNullable<DashboardWidgetDataPresentationInput['todos']>,
   calendar: NonNullable<DashboardWidgetDataPresentationInput['calendar']>,
+  plannerItems: NonNullable<
+    DashboardWidgetDataPresentationInput['plannerItems']
+  >,
 ): DashboardWidgetDto {
-  if (calendar.date !== todos.date) {
-    throw new Error('Dashboard Calendar and Todo dates must match');
+  if (
+    calendar.date !== todos.date ||
+    plannerItems.date !== todos.date ||
+    plannerItems.timezone !== calendar.timezone
+  ) {
+    throw new Error('Dashboard Planner composition context must match');
   }
   const academicCalendarEvents: DashboardWidgetCalendarEventDto[] =
     calendar.events.map((event) => {
       const presented = presentDashboardPlannerCalendarEvent(
         event,
         calendar.timezone,
+      );
+      return {
+        source: presented.source,
+        title: presented.title,
+        date: presented.date,
+        endDate: presented.endDate,
+        startTime: presented.startTime,
+        endTime: presented.endTime,
+        allDay: presented.allDay,
+        eventType: presented.eventType,
+        status: null,
+        priority: null,
+        tone: presented.tone,
+        iconKey: presented.iconKey,
+      };
+    });
+  const crossModuleEvents: DashboardWidgetCalendarEventDto[] =
+    plannerItems.items.map((item) => {
+      const presented = presentDashboardPlannerItem(
+        item,
+        plannerItems.timezone,
+        'en',
       );
       return {
         source: presented.source,
@@ -534,15 +573,27 @@ function calendarWidget(
       };
     },
   );
-  const events = [...academicCalendarEvents, ...todoEvents];
+  const events = [
+    ...academicCalendarEvents,
+    ...crossModuleEvents,
+    ...todoEvents,
+  ];
+  const countSource = (source: DashboardWidgetCalendarEventDto['source']) =>
+    crossModuleEvents.filter((event) => event.source === source).length;
   const data: DashboardWidgetCalendarDataDto = {
     date: todos.date,
-    sourceMode: 'academic_calendar_and_todos',
+    sourceMode: 'academic_calendar_cross_module_and_todos',
     eventDates: events.length > 0 ? [todos.date] : [],
     events,
     summary: {
       total: events.length,
       academicCalendar: academicCalendarEvents.length,
+      crossModule: crossModuleEvents.length,
+      attendanceSessions: countSource('attendance_session'),
+      placementTests: countSource('placement_test'),
+      interviews: countSource('interview'),
+      homeworkDue: countSource('homework_due'),
+      gradeAssessments: countSource('grade_assessment'),
       todos: todoEvents.length,
     },
   };
@@ -551,9 +602,15 @@ function calendarWidget(
       ? 'neutral'
       : todos.counts.pending > 0
         ? 'warning'
-        : academicCalendarEvents.length > 0
-          ? 'info'
-          : 'success';
+        : crossModuleEvents.some(
+              (event) =>
+                event.source === 'homework_due' ||
+                event.source === 'grade_assessment',
+            )
+          ? 'warning'
+          : academicCalendarEvents.length > 0 || crossModuleEvents.length > 0
+            ? 'info'
+            : 'success';
 
   return widget(
     definition,
@@ -671,6 +728,15 @@ function requireCalendar(
   return input.calendar;
 }
 
+function requirePlannerItems(
+  input: DashboardWidgetDataPresentationInput,
+): NonNullable<DashboardWidgetDataPresentationInput['plannerItems']> {
+  if (!input.plannerItems) {
+    throw new Error('Dashboard widget Planner Items data is missing');
+  }
+  return input.plannerItems;
+}
+
 function requireValue(value: number | undefined): number {
   if (value === undefined) {
     throw new Error('Dashboard widget summary data is missing');
@@ -732,6 +798,6 @@ function dashboardWidgetsDeferred(): DashboardWidgetsDeferredDto {
     todosStandalone: 'persisted',
     calendarTodoComposition: 'available',
     plannerCalendar: 'available',
-    crossModulePlannerItems: 'deferred',
+    crossModulePlannerItems: 'available',
   };
 }

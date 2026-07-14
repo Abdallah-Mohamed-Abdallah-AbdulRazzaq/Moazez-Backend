@@ -17,6 +17,7 @@ import {
   DashboardPlannerCalendarRepository,
   DashboardPlannerCalendarWindow,
 } from '../infrastructure/dashboard-planner-calendar.repository';
+import { DashboardPlannerItemsRepository } from '../infrastructure/dashboard-planner-items.repository';
 import {
   DashboardLightModeDropdownPresentationInput,
   presentDashboardLightModeDropdown,
@@ -50,6 +51,7 @@ export class GetDashboardLightModeDropdownUseCase {
     private readonly dashboardLightModeDropdownRepository: DashboardLightModeDropdownRepository,
     private readonly dashboardTodosRepository: DashboardTodosRepository,
     private readonly dashboardPlannerCalendarRepository: DashboardPlannerCalendarRepository,
+    private readonly dashboardPlannerItemsRepository: DashboardPlannerItemsRepository,
   ) {}
 
   async execute(
@@ -71,12 +73,16 @@ export class GetDashboardLightModeDropdownUseCase {
       normalizedQuery.timezone,
       100,
     );
-    const [todos, calendarEvents] = await Promise.all([
+    const [todos, calendarEvents, plannerItems] = await Promise.all([
       this.dashboardTodosRepository.listOwnedTodos(scope, {
         date: toDashboardTodoDate(normalizedQuery.date),
         limit: 100,
       }),
       this.dashboardPlannerCalendarRepository.listSchoolEvents(
+        scope,
+        calendarWindow,
+      ),
+      this.dashboardPlannerItemsRepository.listSchoolItems(
         scope,
         calendarWindow,
       ),
@@ -87,6 +93,7 @@ export class GetDashboardLightModeDropdownUseCase {
       query: normalizedQuery,
       todos,
       calendarEvents,
+      plannerItems,
     };
 
     return presentDashboardLightModeDropdown(input);

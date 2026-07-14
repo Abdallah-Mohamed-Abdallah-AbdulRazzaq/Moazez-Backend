@@ -3,7 +3,16 @@ import {
   DashboardLightModeDropdownIconKey,
 } from '../dto/dashboard-light-mode-dropdown.dto';
 import { presentDashboardLightModeDropdown } from '../presenters/dashboard-light-mode-dropdown.presenter';
-import { AcademicCalendarEventType } from '@prisma/client';
+import {
+  AcademicCalendarEventType,
+  AttendanceMode,
+  AttendanceSessionStatus,
+  GradeAssessmentApprovalStatus,
+  GradeAssessmentType,
+  HomeworkAssignmentStatus,
+  InterviewStatus,
+  PlacementTestStatus,
+} from '@prisma/client';
 
 describe('Dashboard LightModeDropdown presenter', () => {
   it('returns the stable provider-not-configured response shape without fake weather data', () => {
@@ -69,7 +78,7 @@ describe('Dashboard LightModeDropdown presenter', () => {
         locale: 'en',
         units: 'metric',
         weatherStatus: 'provider_not_configured',
-        plannerStatus: 'calendar_available',
+        plannerStatus: 'cross_module_available',
         todosStatus: 'persisted',
         freshness: {
           dataMode: 'request_time_snapshot',
@@ -87,7 +96,7 @@ describe('Dashboard LightModeDropdown presenter', () => {
           weatherCache: 'deferred',
           todoPersistence: 'persisted',
           plannerCalendar: 'available',
-          crossModulePlannerItems: 'deferred',
+          crossModulePlannerItems: 'available',
           realtime: 'deferred',
         },
       },
@@ -218,11 +227,11 @@ describe('Dashboard LightModeDropdown presenter', () => {
       }),
     ]);
     expect(response.meta).toMatchObject({
-      plannerStatus: 'calendar_available',
+      plannerStatus: 'cross_module_available',
       componentFreshness: { plannerEvents: 'persisted_school_data' },
       deferred: {
         plannerCalendar: 'available',
-        crossModulePlannerItems: 'deferred',
+        crossModulePlannerItems: 'available',
         weatherProvider: 'deferred',
       },
     });
@@ -251,6 +260,134 @@ describe('Dashboard LightModeDropdown presenter', () => {
       allDay: false,
     });
     expect(response.planner.events[0].startTime).not.toBe('24:00');
+  });
+
+  it('maps the five cross-module sources safely after Calendar events', () => {
+    const response = presentDashboardLightModeDropdown({
+      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      schoolLocation: schoolLocation(),
+      query: query(),
+      calendarEvents: [
+        calendarEvent('calendar-1', AcademicCalendarEventType.OTHER, true),
+      ],
+      plannerItems: [
+        {
+          source: 'attendance_session',
+          id: 'attendance-1',
+          sortInstant: new Date('2026-07-09T00:00:00.000Z'),
+          date: new Date('2026-07-09T00:00:00.000Z'),
+          mode: AttendanceMode.PERIOD,
+          periodLabelEn: 'Period 2',
+          periodLabelAr: 'الحصة الثانية',
+          status: AttendanceSessionStatus.SUBMITTED,
+        },
+        {
+          source: 'grade_assessment',
+          id: 'assessment-1',
+          sortInstant: new Date('2026-07-09T00:00:00.000Z'),
+          date: new Date('2026-07-09T00:00:00.000Z'),
+          titleEn: 'Math quiz',
+          titleAr: 'اختبار الرياضيات',
+          type: GradeAssessmentType.QUIZ,
+          approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+        },
+        {
+          source: 'placement_test',
+          id: 'placement-1',
+          sortInstant: new Date('2026-07-09T21:00:00.000Z'),
+          scheduledAt: new Date('2026-07-09T21:00:00.000Z'),
+          type: 'GENERAL',
+          status: PlacementTestStatus.RESCHEDULED,
+        },
+        {
+          source: 'interview',
+          id: 'interview-1',
+          sortInstant: new Date('2026-07-09T10:30:00.000Z'),
+          scheduledAt: new Date('2026-07-09T10:30:00.000Z'),
+          status: InterviewStatus.SCHEDULED,
+        },
+        {
+          source: 'homework_due',
+          id: 'homework-1',
+          sortInstant: new Date('2026-07-09T12:45:00.000Z'),
+          dueAt: new Date('2026-07-09T12:45:00.000Z'),
+          title: 'Read chapter 4',
+          status: HomeworkAssignmentStatus.PUBLISHED,
+        },
+      ],
+    });
+
+    expect(response.planner.events.map((event) => event.source)).toEqual([
+      'academic_calendar',
+      'attendance_session',
+      'grade_assessment',
+      'placement_test',
+      'interview',
+      'homework_due',
+    ]);
+    expect(response.planner.events.slice(1)).toEqual([
+      expect.objectContaining({
+        eventId: 'attendance_session:attendance-1',
+        eventType: 'attendance',
+        title: 'Period 2',
+        allDay: true,
+        tone: 'success',
+        iconKey: 'check-circle',
+      }),
+      expect.objectContaining({
+        eventId: 'grade_assessment:assessment-1',
+        eventType: 'assessment',
+        title: 'Math quiz',
+        allDay: true,
+        tone: 'warning',
+        iconKey: 'calendar',
+      }),
+      expect.objectContaining({
+        eventId: 'placement_test:placement-1',
+        eventType: 'placement_test',
+        title: 'Placement test — GENERAL',
+        date: '2026-07-10',
+        startTime: '00:00',
+        endTime: null,
+        allDay: false,
+      }),
+      expect.objectContaining({
+        eventId: 'interview:interview-1',
+        eventType: 'interview',
+        title: 'Admissions interview',
+        tone: 'info',
+      }),
+      expect.objectContaining({
+        eventId: 'homework_due:homework-1',
+        eventType: 'homework_due',
+        title: 'Read chapter 4',
+        tone: 'warning',
+      }),
+    ]);
+    expect(response.planner.events[3].startTime).not.toBe('24:00');
+    expectNoInternalLeaks(response);
+  });
+
+  it('uses Arabic then English assessment title fallback for Arabic locale', () => {
+    const response = presentDashboardLightModeDropdown({
+      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      schoolLocation: schoolLocation(),
+      query: { ...query(), locale: 'ar' },
+      plannerItems: [
+        {
+          source: 'grade_assessment',
+          id: 'assessment-1',
+          sortInstant: new Date('2026-07-09T00:00:00.000Z'),
+          date: new Date('2026-07-09T00:00:00.000Z'),
+          titleEn: 'English fallback',
+          titleAr: null,
+          type: GradeAssessmentType.QUIZ,
+          approvalStatus: GradeAssessmentApprovalStatus.APPROVED,
+        },
+      ],
+    });
+
+    expect(response.planner.events[0].title).toBe('English fallback');
   });
 
   it.each([

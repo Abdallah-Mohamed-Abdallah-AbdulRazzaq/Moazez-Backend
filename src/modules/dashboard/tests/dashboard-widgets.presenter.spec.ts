@@ -1,5 +1,12 @@
 import {
   AcademicCalendarEventType,
+  AttendanceMode,
+  AttendanceSessionStatus,
+  GradeAssessmentApprovalStatus,
+  GradeAssessmentType,
+  HomeworkAssignmentStatus,
+  InterviewStatus,
+  PlacementTestStatus,
   DashboardTodoPriority,
   DashboardTodoStatus,
 } from '@prisma/client';
@@ -205,6 +212,7 @@ describe('Dashboard widgets presenter', () => {
         counts: { total: 1, pending: 1, completed: 0 },
       },
       calendarInput([calendarEvent()]),
+      plannerItemsInput([plannerAttendance()]),
     );
 
     expect(widgets[0].data).toEqual({
@@ -214,7 +222,7 @@ describe('Dashboard widgets presenter', () => {
     });
     expect(widgets[1].data).toEqual({
       date: '2026-07-12',
-      sourceMode: 'academic_calendar_and_todos',
+      sourceMode: 'academic_calendar_cross_module_and_todos',
       eventDates: ['2026-07-12'],
       events: [
         {
@@ -226,6 +234,20 @@ describe('Dashboard widgets presenter', () => {
           endTime: null,
           allDay: true,
           eventType: 'exam',
+          status: null,
+          priority: null,
+          tone: 'warning',
+          iconKey: 'clock',
+        },
+        {
+          source: 'attendance_session',
+          title: 'Morning roll call',
+          date: '2026-07-12',
+          endDate: '2026-07-12',
+          startTime: null,
+          endTime: null,
+          allDay: true,
+          eventType: 'attendance',
           status: null,
           priority: null,
           tone: 'warning',
@@ -246,7 +268,17 @@ describe('Dashboard widgets presenter', () => {
           iconKey: 'list-todo',
         },
       ],
-      summary: { total: 2, academicCalendar: 1, todos: 1 },
+      summary: {
+        total: 3,
+        academicCalendar: 1,
+        crossModule: 1,
+        attendanceSessions: 1,
+        placementTests: 0,
+        interviews: 0,
+        homeworkDue: 0,
+        gradeAssessments: 0,
+        todos: 1,
+      },
     });
     expect(JSON.stringify(widgets)).not.toMatch(
       /todoId|notes|completedAt|createdAt|updatedAt|sortOrder|ownerUserId/,
@@ -292,7 +324,7 @@ describe('Dashboard widgets presenter', () => {
       todosStandalone: 'persisted',
       calendarTodoComposition: 'available',
       plannerCalendar: 'available',
-      crossModulePlannerItems: 'deferred',
+      crossModulePlannerItems: 'available',
     });
     expect(
       presentDashboardWidget({ generatedAt: GENERATED_AT, widget: widgets[0] }),
@@ -302,7 +334,7 @@ describe('Dashboard widgets presenter', () => {
     });
   });
 
-  it('caps Calendar and Todo sources independently at five and applies Calendar tone precedence', () => {
+  it('preserves independent five-item Calendar, cross-module, and Todo limits with source order', () => {
     const calendarEvents = Array.from({ length: 5 }, (_, index) => ({
       ...calendarEvent(`event-${index}`),
       title: `Calendar ${index}`,
@@ -322,11 +354,22 @@ describe('Dashboard widgets presenter', () => {
         counts: { total: 5, pending: 0, completed: 5 },
       },
       calendarInput(calendarEvents),
+      plannerItemsInput(plannerItemFixtures()),
     );
 
-    expect(widget.data.events as unknown[]).toHaveLength(10);
+    expect(widget.data.events as unknown[]).toHaveLength(15);
     expect(widget.data).toMatchObject({
-      summary: { total: 10, academicCalendar: 5, todos: 5 },
+      summary: {
+        total: 15,
+        academicCalendar: 5,
+        crossModule: 5,
+        attendanceSessions: 1,
+        placementTests: 1,
+        interviews: 1,
+        homeworkDue: 1,
+        gradeAssessments: 1,
+        todos: 5,
+      },
     });
     expect(
       (widget.data.events as Array<{ source: string }>).map(
@@ -338,13 +381,18 @@ describe('Dashboard widgets presenter', () => {
       'academic_calendar',
       'academic_calendar',
       'academic_calendar',
+      'attendance_session',
+      'grade_assessment',
+      'placement_test',
+      'interview',
+      'homework_due',
       'todo',
       'todo',
       'todo',
       'todo',
       'todo',
     ]);
-    expect(widget.tone).toBe('info');
+    expect(widget.tone).toBe('warning');
     expect(JSON.stringify(widget)).not.toMatch(
       /eventId|todoId|notes|sortOrder|completedAt|createdAt|updatedAt|academicYearId|termId|schoolId|organizationId|ownerUserId/,
     );
@@ -398,6 +446,7 @@ describe('Dashboard widgets presenter', () => {
         summary: {
           total: typedCalendarEvents.length + typedTodoItems.length,
           academicCalendar: typedCalendarEvents.length,
+          crossModule: 0,
           todos: typedTodoItems.length,
         },
       });
@@ -646,6 +695,9 @@ function compose(
   calendar: Parameters<
     typeof buildDashboardWidgetRegistry
   >[0]['calendar'] = null,
+  plannerItems: Parameters<
+    typeof buildDashboardWidgetRegistry
+  >[0]['plannerItems'] = calendar ? plannerItemsInput([]) : null,
 ) {
   return buildDashboardWidgetRegistry({
     generatedAt: GENERATED_AT,
@@ -658,6 +710,7 @@ function compose(
     ) as any,
     todos,
     calendar,
+    plannerItems,
   });
 }
 
@@ -667,6 +720,68 @@ function calendarInput(events: ReturnType<typeof calendarEvent>[]) {
     timezone: 'Africa/Cairo',
     events,
   };
+}
+
+function plannerItemsInput(items: ReturnType<typeof plannerItemFixtures>) {
+  return {
+    date: '2026-07-12',
+    timezone: 'Africa/Cairo',
+    items,
+  };
+}
+
+function plannerAttendance() {
+  const date = new Date('2026-07-12T00:00:00.000Z');
+  return {
+    source: 'attendance_session' as const,
+    id: 'attendance-1',
+    sortInstant: date,
+    date,
+    mode: AttendanceMode.DAILY,
+    periodLabelAr: null,
+    periodLabelEn: 'Morning roll call',
+    status: AttendanceSessionStatus.DRAFT,
+  };
+}
+
+function plannerItemFixtures() {
+  const logicalDate = new Date('2026-07-12T00:00:00.000Z');
+  return [
+    plannerAttendance(),
+    {
+      source: 'grade_assessment' as const,
+      id: 'assessment-1',
+      sortInstant: logicalDate,
+      date: logicalDate,
+      titleEn: 'Quiz',
+      titleAr: null,
+      type: GradeAssessmentType.QUIZ,
+      approvalStatus: GradeAssessmentApprovalStatus.PUBLISHED,
+    },
+    {
+      source: 'placement_test' as const,
+      id: 'placement-1',
+      sortInstant: new Date('2026-07-12T08:00:00.000Z'),
+      scheduledAt: new Date('2026-07-12T08:00:00.000Z'),
+      type: 'GENERAL',
+      status: PlacementTestStatus.SCHEDULED,
+    },
+    {
+      source: 'interview' as const,
+      id: 'interview-1',
+      sortInstant: new Date('2026-07-12T09:00:00.000Z'),
+      scheduledAt: new Date('2026-07-12T09:00:00.000Z'),
+      status: InterviewStatus.SCHEDULED,
+    },
+    {
+      source: 'homework_due' as const,
+      id: 'homework-1',
+      sortInstant: new Date('2026-07-12T10:00:00.000Z'),
+      dueAt: new Date('2026-07-12T10:00:00.000Z'),
+      title: 'Homework',
+      status: HomeworkAssignmentStatus.PUBLISHED,
+    },
+  ];
 }
 
 function calendarEvent(id = 'event-1') {
