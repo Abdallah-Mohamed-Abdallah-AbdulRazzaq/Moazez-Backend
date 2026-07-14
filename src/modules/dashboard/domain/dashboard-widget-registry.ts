@@ -228,7 +228,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
     iconKey: 'calendar-days',
     dataLabel: 'Today’s calendar',
     action: frontendRoute('Open planner', '/dashboard/light-mode-dropdown'),
-    composition: dependency('todos'),
+    composition: dependencies('todos', 'calendar'),
   },
 ];
 
@@ -259,6 +259,12 @@ function dependency(
   value: DashboardWidgetCompositionDescriptor['dependencies'][number],
 ): DashboardWidgetCompositionDescriptor {
   return { dependencies: [value], analytics: null };
+}
+
+function dependencies(
+  ...values: DashboardWidgetCompositionDescriptor['dependencies']
+): DashboardWidgetCompositionDescriptor {
+  return { dependencies: values, analytics: null };
 }
 
 function analytics(

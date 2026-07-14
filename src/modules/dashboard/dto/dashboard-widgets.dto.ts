@@ -142,17 +142,31 @@ export class DashboardWidgetTodoDataDto {
   summary!: DashboardWidgetTodoSummaryDto;
 }
 
-export class DashboardWidgetCalendarEventDto extends DashboardWidgetTodoItemDto {
+export class DashboardWidgetCalendarEventDto {
+  source!: 'academic_calendar' | 'todo';
+  title!: string;
   date!: string;
-  source!: 'todo';
-  allDay!: true;
+  endDate!: string;
+  startTime!: string | null;
+  endTime!: string | null;
+  allDay!: boolean;
+  eventType!: 'holiday' | 'exam' | 'activity' | 'other' | null;
+  status!: 'pending' | 'completed' | null;
+  priority!: 'low' | 'normal' | 'high' | null;
+  tone!: DashboardWidgetTone;
+  iconKey!: string;
 }
 
 export class DashboardWidgetCalendarDataDto {
   date!: string;
-  sourceMode!: 'todo_only';
+  sourceMode!: 'academic_calendar_and_todos';
   eventDates!: string[];
   events!: DashboardWidgetCalendarEventDto[];
+  summary!: {
+    total: number;
+    academicCalendar: number;
+    todos: number;
+  };
 }
 
 export class DashboardWidgetDto {
@@ -199,7 +213,7 @@ export class DashboardWidgetsDeferredDto {
   >;
   todosStandalone!: 'persisted';
   calendarTodoComposition!: Extract<DashboardCapabilityState, 'available'>;
-  plannerCalendar!: 'deferred';
+  plannerCalendar!: 'available';
   crossModulePlannerItems!: 'deferred';
 }
 

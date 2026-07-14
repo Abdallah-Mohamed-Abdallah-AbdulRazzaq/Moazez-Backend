@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AcademicCalendarEventScopeType,
+  AcademicCalendarEventType,
   MembershipStatus,
   PrismaClient,
   UserStatus,
@@ -40,6 +42,31 @@ type CreatedPrincipal = {
   schoolId: string;
 };
 
+type LightModePlannerEventBody = {
+  title: string;
+  source: string;
+  eventType: string;
+  date: string;
+  endDate: string;
+  startTime: string | null;
+  endTime: string | null;
+  allDay: boolean;
+};
+
+type LightModeResponseBody = {
+  generatedAt: string;
+  location: { timezone: string };
+  forecast: unknown[];
+  planner: {
+    timezone: string;
+    date: string;
+    eventDates: string[];
+    events: LightModePlannerEventBody[];
+    todos: unknown[];
+  };
+  meta: Record<string, unknown>;
+};
+
 jest.setTimeout(90000);
 
 describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
@@ -52,6 +79,9 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
   let schoolId = '';
   let adminPrincipal: CreatedPrincipal;
   let deniedPrincipal: CreatedPrincipal;
+  let previewOnlyPrincipal: CreatedPrincipal;
+  let academicYearId = '';
+  let termId = '';
 
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -104,6 +134,100 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
       organizationId,
       schoolId,
       permissionIds: [],
+    });
+    previewOnlyPrincipal = await createPrincipal({
+      label: 'preview-only',
+      organizationId,
+      schoolId,
+      permissionIds: [permissionIds.lightModeDropdown],
+    });
+
+    const academicYear = await prisma.academicYear.create({
+      data: {
+        schoolId,
+        nameAr: `${marker}-year-ar`,
+        nameEn: `${marker}-year-en`,
+        startDate: new Date('2026-01-01T00:00:00.000Z'),
+        endDate: new Date('2026-12-31T00:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    academicYearId = academicYear.id;
+    const term = await prisma.term.create({
+      data: {
+        schoolId,
+        academicYearId,
+        nameAr: `${marker}-term-ar`,
+        nameEn: `${marker}-term-en`,
+        startDate: new Date('2026-01-01T00:00:00.000Z'),
+        endDate: new Date('2026-12-31T00:00:00.000Z'),
+      },
+      select: { id: true },
+    });
+    termId = term.id;
+    await prisma.academicCalendarEvent.createMany({
+      data: [
+        calendarEvent(
+          'All-day holiday',
+          AcademicCalendarEventType.HOLIDAY,
+          true,
+          '2026-07-09T00:00:00.000Z',
+          '2026-07-09T00:00:00.000Z',
+        ),
+        calendarEvent(
+          'Next-day all-day excluded',
+          AcademicCalendarEventType.OTHER,
+          true,
+          '2026-07-10T00:00:00.000Z',
+          '2026-07-10T00:00:00.000Z',
+        ),
+        calendarEvent(
+          'Timed exam',
+          AcademicCalendarEventType.EXAM,
+          false,
+          '2026-07-09T08:30:00.000Z',
+          '2026-07-09T10:00:00.000Z',
+        ),
+        calendarEvent(
+          'Multi-day activity',
+          AcademicCalendarEventType.ACTIVITY,
+          true,
+          '2026-07-08T00:00:00.000Z',
+          '2026-07-10T00:00:00.000Z',
+        ),
+        calendarEvent(
+          'Next-day excluded',
+          AcademicCalendarEventType.OTHER,
+          false,
+          '2026-07-09T22:00:00.000Z',
+          '2026-07-09T23:00:00.000Z',
+        ),
+        calendarEvent(
+          'Non-overlapping',
+          AcademicCalendarEventType.OTHER,
+          true,
+          '2026-07-11T00:00:00.000Z',
+          '2026-07-11T00:00:00.000Z',
+        ),
+        {
+          ...calendarEvent(
+            'Soft-deleted',
+            AcademicCalendarEventType.OTHER,
+            true,
+            '2026-07-09T00:00:00.000Z',
+            '2026-07-09T00:00:00.000Z',
+          ),
+          deletedAt: new Date('2026-07-01T00:00:00.000Z'),
+        },
+      ],
+    });
+    await prisma.dashboardTodo.create({
+      data: {
+        schoolId,
+        ownerUserId: adminPrincipal.userId,
+        date: new Date('2026-07-09T00:00:00.000Z'),
+        title: `${marker} selected-day todo`,
+      },
     });
 
     const moduleRef: TestingModule = await Test.createTestingModule({
@@ -187,9 +311,9 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
       .get(`${GLOBAL_PREFIX}/dashboard/light-mode-dropdown`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
+    const body = response.body as LightModeResponseBody;
 
-    expect(response.body).toMatchObject({
-      generatedAt: expect.any(String),
+    expect(body).toMatchObject({
       location: {
         label: 'New Cairo, Cairo Governorate, Egypt',
         city: 'Cairo',
@@ -219,7 +343,6 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
       forecast: [],
       planner: {
         timezone: 'Africa/Cairo',
-        date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
         eventDates: [],
         events: [],
         todos: [],
@@ -230,26 +353,118 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
         locale: 'en',
         units: 'metric',
         weatherStatus: 'provider_not_configured',
-        plannerStatus: 'foundation_only',
+        plannerStatus: 'calendar_available',
         todosStatus: 'persisted',
         deferred: {
           weatherProvider: 'deferred',
           weatherCache: 'deferred',
           todoPersistence: 'persisted',
-          plannerCalendar: 'deferred',
+          plannerCalendar: 'available',
           crossModulePlannerItems: 'deferred',
           realtime: 'deferred',
         },
       },
     });
-    expect(response.body.forecast).toEqual([]);
-    expect(response.body.planner.todos).toEqual([]);
-    expect(response.body.planner.eventDates.every(isDateOnly)).toBe(true);
-    expectIconKeysAreSemanticStrings(response.body);
-    expectNoInternalLeaks(response.body);
-    expect(JSON.stringify(response.body)).not.toContain('React');
-    expect(JSON.stringify(response.body)).not.toContain('jsx');
-    expect(JSON.stringify(response.body)).not.toMatch(/[<](svg|div|span)/i);
+    expect(typeof body.generatedAt).toBe('string');
+    expect(body.planner.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(body.forecast).toEqual([]);
+    expect(body.planner.todos).toEqual([]);
+    expect(body.planner.eventDates.every(isDateOnly)).toBe(true);
+    expectIconKeysAreSemanticStrings(body);
+    expectNoInternalLeaks(body);
+    expect(JSON.stringify(body)).not.toContain('React');
+    expect(JSON.stringify(body)).not.toContain('jsx');
+    expect(JSON.stringify(body)).not.toMatch(/[<](svg|div|span)/i);
+  });
+
+  it('composes overlapping Calendar events and owner Todos for the selected civil day', async () => {
+    const token = await login(adminPrincipal.email, PASSWORD);
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/light-mode-dropdown`)
+      .query({ date: '2026-07-09', timezone: 'Europe/Berlin' })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const body = response.body as LightModeResponseBody;
+
+    expect(body.planner.eventDates).toEqual(['2026-07-09']);
+    expect(body.planner.events.map((event) => event.title)).toEqual([
+      'Multi-day activity',
+      'All-day holiday',
+      'Timed exam',
+    ]);
+    expect(body.planner.events).toEqual([
+      expect.objectContaining({
+        source: 'academic_calendar',
+        eventType: 'activity',
+        date: '2026-07-08',
+        endDate: '2026-07-10',
+        startTime: null,
+        endTime: null,
+      }),
+      expect.objectContaining({ eventType: 'holiday', allDay: true }),
+      expect.objectContaining({
+        eventType: 'exam',
+        date: '2026-07-09',
+        endDate: '2026-07-09',
+        startTime: '10:30',
+        endTime: '12:00',
+        allDay: false,
+      }),
+    ]);
+    expect(JSON.stringify(body)).not.toMatch(
+      /Next-day excluded|Non-overlapping|Soft-deleted/,
+    );
+    expect(body.planner.todos).toEqual([
+      expect.objectContaining({ title: `${marker} selected-day todo` }),
+    ]);
+    expect(body.meta).toMatchObject({
+      plannerStatus: 'calendar_available',
+      componentFreshness: { plannerEvents: 'persisted_school_data' },
+      deferred: { plannerCalendar: 'available' },
+    });
+    expectNoInternalLeaks(body);
+  });
+
+  it('uses logical all-day dates in a negative UTC offset without admitting the next day', async () => {
+    const token = await login(adminPrincipal.email, PASSWORD);
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/light-mode-dropdown`)
+      .query({ date: '2026-07-09', timezone: 'America/Los_Angeles' })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const body = response.body as LightModeResponseBody;
+
+    const titles = body.planner.events.map((event) => event.title);
+    expect(titles).toContain('All-day holiday');
+    expect(titles).not.toContain('Next-day all-day excluded');
+    expect(
+      body.planner.events.find((event) => event.title === 'All-day holiday'),
+    ).toMatchObject({
+      date: '2026-07-09',
+      endDate: '2026-07-09',
+      startTime: null,
+      endTime: null,
+      allDay: true,
+    });
+    expect(body.planner).toMatchObject({
+      timezone: 'America/Los_Angeles',
+      date: '2026-07-09',
+      eventDates: ['2026-07-09'],
+    });
+  });
+
+  it('allows the fixed Dashboard preview permission without granting standalone Academics Calendar access', async () => {
+    const token = await login(previewOnlyPrincipal.email, PASSWORD);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/light-mode-dropdown`)
+      .query({ date: '2026-07-09' })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/academics/calendar/events`)
+      .query({ from: '2026-07-09', to: '2026-07-09' })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(403);
   });
 
   it('supports allowed query controls and rejects invalid or override-shaped input', async () => {
@@ -265,19 +480,20 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
       })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
+    const body = response.body as LightModeResponseBody;
 
-    expect(response.body.location.timezone).toBe('Europe/Berlin');
-    expect(response.body.planner).toMatchObject({
+    expect(body.location.timezone).toBe('Europe/Berlin');
+    expect(body.planner).toMatchObject({
       timezone: 'Europe/Berlin',
       date: '2026-07-09',
-      events: [],
-      todos: [],
     });
-    expect(response.body.meta).toMatchObject({
+    expect(Array.isArray(body.planner.events)).toBe(true);
+    expect(Array.isArray(body.planner.todos)).toBe(true);
+    expect(body.meta).toMatchObject({
       locale: 'ar',
       units: 'imperial',
     });
-    expectNoInternalLeaks(response.body);
+    expectNoInternalLeaks(body);
 
     for (const query of [
       { locale: 'fr' },
@@ -459,7 +675,7 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
       .send({ email, password })
       .expect(200);
 
-    return response.body.accessToken;
+    return (response.body as { accessToken: string }).accessToken;
   }
 
   function listRegisteredRoutes(): string[] {
@@ -499,6 +715,14 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
   }
 
   async function cleanupE2eData(): Promise<void> {
+    if (schoolId) {
+      await prisma.academicCalendarEvent.deleteMany({ where: { schoolId } });
+      await prisma.dashboardTodo.deleteMany({ where: { schoolId } });
+    }
+    if (academicYearId) {
+      await prisma.term.deleteMany({ where: { id: termId } });
+      await prisma.academicYear.deleteMany({ where: { id: academicYearId } });
+    }
     if (createdUserIds.length > 0) {
       await prisma.auditLog.deleteMany({
         where: { actorId: { in: createdUserIds } },
@@ -528,6 +752,26 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
     if (organizationId) {
       await prisma.organization.deleteMany({ where: { id: organizationId } });
     }
+  }
+
+  function calendarEvent(
+    title: string,
+    type: AcademicCalendarEventType,
+    allDay: boolean,
+    startDate: string,
+    endDate: string,
+  ) {
+    return {
+      schoolId,
+      academicYearId,
+      termId,
+      title,
+      type,
+      scopeType: AcademicCalendarEventScopeType.SCHOOL,
+      allDay,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+    };
   }
 });
 

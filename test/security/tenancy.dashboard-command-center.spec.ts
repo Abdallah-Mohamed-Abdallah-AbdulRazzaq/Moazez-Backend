@@ -33,6 +33,7 @@ import { DashboardHomeworkAnalyticsRepository } from '../../src/modules/dashboar
 import { DashboardBehaviorAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-behavior-analytics.repository';
 import { DashboardReinforcementAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-reinforcement-analytics.repository';
 import { DashboardCommunicationAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-communication-analytics.repository';
+import { DashboardPlannerCalendarRepository } from '../../src/modules/dashboard/infrastructure/dashboard-planner-calendar.repository';
 
 jest.setTimeout(60000);
 
@@ -324,12 +325,20 @@ describe('Dashboard command center tenancy/security contracts', () => {
 
   it('keeps school A from observing school B command center data and ignores override-shaped input', async () => {
     const analyticsUseCase = analyticsDataUseCase(prisma);
+    const plannerCalendarRepository = new DashboardPlannerCalendarRepository(
+      prisma,
+    );
+    const calendarSpy = jest.spyOn(
+      plannerCalendarRepository,
+      'listSchoolEvents',
+    );
     const compositionService = new DashboardWidgetCompositionService(
       new DashboardSummaryRepository(prisma),
       new DashboardAlertsRepository(prisma),
       new DashboardActivityFeedRepository(prisma),
       new DashboardTodosRepository(prisma),
       analyticsUseCase,
+      plannerCalendarRepository,
     );
     const useCase = new GetDashboardCommandCenterUseCase(
       new DashboardSummaryRepository(prisma),
@@ -387,6 +396,7 @@ describe('Dashboard command center tenancy/security contracts', () => {
     ]);
 
     const serialized = JSON.stringify(response);
+    expect(calendarSpy).not.toHaveBeenCalled();
     expect(serialized).not.toContain(`Command Center School B ${suffix}`);
     expect(serialized).not.toContain(`${marker} owner B private todo`);
     expect(serialized).not.toContain(`${marker} school B private todo`);

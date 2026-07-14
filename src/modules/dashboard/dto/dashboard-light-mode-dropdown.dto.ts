@@ -132,13 +132,15 @@ export class DashboardLightModeDropdownForecastDto {
 
 export class DashboardLightModeDropdownPlannerEventDto {
   eventId!: string;
-  source!: string;
+  source!: 'academic_calendar';
+  eventType!: 'holiday' | 'exam' | 'activity' | 'other';
   title!: string;
   date!: string;
+  endDate!: string;
   startTime!: string | null;
   endTime!: string | null;
   allDay!: boolean;
-  tone!: 'info' | 'warning' | 'critical' | 'success' | 'neutral';
+  tone!: 'info' | 'warning' | 'success' | 'neutral';
   iconKey!: DashboardLightModeDropdownIconKey;
 }
 
@@ -167,7 +169,7 @@ export class DashboardLightModeDropdownDeferredDto {
   weatherProvider!: 'deferred';
   weatherCache!: 'deferred';
   todoPersistence!: 'persisted';
-  plannerCalendar!: 'deferred';
+  plannerCalendar!: 'available';
   crossModulePlannerItems!: 'deferred';
   realtime!: 'deferred';
 }
@@ -178,14 +180,14 @@ export class DashboardLightModeDropdownMetaDto {
   locale!: DashboardLightModeDropdownLocale;
   units!: DashboardLightModeDropdownUnits;
   weatherStatus!: 'provider_not_configured' | 'location_missing';
-  plannerStatus!: 'foundation_only';
+  plannerStatus!: 'calendar_available';
   todosStatus!: 'persisted';
   freshness!: DashboardFreshnessMetadataDto;
   componentFreshness!: {
     location: 'request_time_snapshot';
     todos: 'persisted_user_data';
     weather: 'not_available';
-    plannerEvents: 'not_available';
+    plannerEvents: 'persisted_school_data';
   };
   deferred!: DashboardLightModeDropdownDeferredDto;
 }
