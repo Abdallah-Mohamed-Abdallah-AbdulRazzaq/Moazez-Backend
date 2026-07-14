@@ -166,7 +166,7 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       generatedAt: expect.any(String),
       widgets: expect.any(Array),
       summary: {
-        total: expect.any(Number),
+        total: 19,
         byType: expect.any(Object),
         bySource: expect.any(Object),
       },
@@ -178,33 +178,41 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       deferred: {
         customLayouts: 'deferred',
         widgetPreferences: 'deferred',
-        analyticsCharts: 'integration_deferred',
+        analyticsCharts: 'available',
         weatherWidgets: 'deferred',
-        todoWidgets: 'integration_deferred',
-        analyticsStandalone: 'snapshot_only',
+        todoWidgets: 'available',
+        analyticsStandalone: 'available',
         todosStandalone: 'persisted',
+        calendarTodoComposition: 'available',
+        plannerCalendar: 'deferred',
+        crossModulePlannerItems: 'deferred',
       },
     });
     expect(
       response.body.widgets.map(
         (widget: { widgetKey: string }) => widget.widgetKey,
       ),
-    ).toEqual(
-      expect.arrayContaining([
-        'students.active',
-        'admissions.open_applications',
-        'attendance.pending_today',
-        'attendance.absences_today',
-        'homework.waiting_review',
-        'grades.pending_review',
-        'behavior.pending_review',
-        'reinforcement.pending_reviews',
-        'communication.moderation_queue',
-        'settings.email_connection',
-        'settings.login_identity',
-        'activity.recent',
-      ]),
-    );
+    ).toEqual([
+      'students.active',
+      'admissions.open_applications',
+      'attendance.pending_today',
+      'attendance.absences_today',
+      'homework.waiting_review',
+      'grades.pending_review',
+      'behavior.pending_review',
+      'reinforcement.pending_reviews',
+      'communication.moderation_queue',
+      'settings.email_connection',
+      'settings.login_identity',
+      'activity.recent',
+      'students.enrollment_growth',
+      'attendance.daily_trend',
+      'communication.message_volume',
+      'academics.teacher_allocation_coverage',
+      'grades.gradebook_completion',
+      'todos.today',
+      'calendar.today',
+    ]);
     expect(response.body.widgets[0]).toMatchObject({
       widgetKey: expect.any(String),
       type: expect.any(String),
@@ -215,6 +223,7 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       data: expect.any(Object),
       meta: {
         freshness: 'live',
+        analytics: null,
       },
     });
     expectNoInternalLeaks(response.body);
@@ -241,6 +250,40 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       type: 'risk-card',
     });
     expectNoInternalLeaks(response.body);
+
+    for (const [query, keys] of [
+      [{ source: 'todos' }, ['todos.today']],
+      [{ source: 'calendar' }, ['calendar.today']],
+      [
+        { type: 'mini-chart-card' },
+        [
+          'students.enrollment_growth',
+          'attendance.daily_trend',
+          'communication.message_volume',
+        ],
+      ],
+      [
+        { type: 'progress-card' },
+        [
+          'academics.teacher_allocation_coverage',
+          'grades.gradebook_completion',
+        ],
+      ],
+      [{ type: 'todo-card' }, ['todos.today']],
+      [{ type: 'calendar-card' }, ['calendar.today']],
+    ] as const) {
+      const filtered = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/dashboard/widgets`)
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect(
+        filtered.body.widgets.map(
+          (widget: { widgetKey: string }) => widget.widgetKey,
+        ),
+      ).toEqual(keys);
+      expectNoInternalLeaks(filtered.body);
+    }
   });
 
   it('returns one known widget and 404 for an unknown widget', async () => {
@@ -266,11 +309,14 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       deferred: {
         customLayouts: 'deferred',
         widgetPreferences: 'deferred',
-        analyticsCharts: 'integration_deferred',
+        analyticsCharts: 'available',
         weatherWidgets: 'deferred',
-        todoWidgets: 'integration_deferred',
-        analyticsStandalone: 'snapshot_only',
+        todoWidgets: 'available',
+        analyticsStandalone: 'available',
         todosStandalone: 'persisted',
+        calendarTodoComposition: 'available',
+        plannerCalendar: 'deferred',
+        crossModulePlannerItems: 'deferred',
       },
     });
     expectNoInternalLeaks(knownResponse.body);
@@ -279,6 +325,52 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       .get(`${GLOBAL_PREFIX}/dashboard/widgets/unknown.widget`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
+  });
+
+  it('returns safe composed detail for all seven new widgets', async () => {
+    const adminToken = await login(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD);
+    const analyticsKeys = new Set([
+      'students.enrollment_growth',
+      'attendance.daily_trend',
+      'communication.message_volume',
+      'academics.teacher_allocation_coverage',
+      'grades.gradebook_completion',
+    ]);
+
+    for (const widgetKey of [
+      ...analyticsKeys,
+      'todos.today',
+      'calendar.today',
+    ]) {
+      const response = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/dashboard/widgets/${widgetKey}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect(response.body.widget.widgetKey).toBe(widgetKey);
+
+      if (analyticsKeys.has(widgetKey)) {
+        expect(response.body.widget.meta.analytics).toMatchObject({
+          chartKey: widgetKey,
+          definitionEndpoint: `${GLOBAL_PREFIX}/dashboard/analytics/charts/${widgetKey}`,
+          dataEndpoint: `${GLOBAL_PREFIX}/dashboard/analytics/charts/${widgetKey}/data`,
+          defaultRange: '30d',
+          defaultGranularity: 'day',
+        });
+      } else {
+        expect(response.body.widget.meta.analytics).toBeNull();
+      }
+      expectNoInternalLeaks(response.body);
+    }
+
+    const calendar = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/dashboard/widgets/calendar.today`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(calendar.body.widget.data).toMatchObject({
+      sourceMode: 'todo_only',
+      eventDates: expect.any(Array),
+      events: expect.any(Array),
+    });
   });
 
   it('validates widget query parameters', async () => {
@@ -291,7 +383,7 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
       .expect(400);
     await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/dashboard/widgets`)
-      .query({ type: 'mini-chart-card' })
+      .query({ type: 'unsupported-card' })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(400);
     await request(app.getHttpServer())

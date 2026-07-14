@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { UserType } from '@prisma/client';
+import { StudentEnrollmentStatus, UserType } from '@prisma/client';
 import {
   createRequestContext,
   runWithRequestContext,
@@ -19,6 +19,27 @@ import { presentDashboardWidgets } from '../../src/modules/dashboard/presenters/
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 import { DashboardTimeContextService } from '../../src/modules/dashboard/application/dashboard-time-context.service';
 import { DashboardTimeContextRepository } from '../../src/modules/dashboard/infrastructure/dashboard-time-context.repository';
+import { DashboardWidgetCompositionService } from '../../src/modules/dashboard/application/dashboard-widget-composition.service';
+import { DashboardTodosRepository } from '../../src/modules/dashboard/infrastructure/dashboard-todos.repository';
+import {
+  DASHBOARD_WIDGET_REGISTRY,
+  findDashboardWidgetDefinition,
+} from '../../src/modules/dashboard/domain/dashboard-widget-registry';
+import { buildDashboardTimeContext } from '../../src/modules/dashboard/domain/dashboard-time-context';
+import { buildDashboardWidgetRegistry } from '../../src/modules/dashboard/presenters/dashboard-widgets.presenter';
+import { GetDashboardAnalyticsChartDataUseCase } from '../../src/modules/dashboard/application/get-dashboard-analytics-chart-data.use-case';
+import { DashboardAnalyticsQueryContextService } from '../../src/modules/dashboard/application/dashboard-analytics-query-context.service';
+import { DashboardAnalyticsHierarchyRepository } from '../../src/modules/dashboard/infrastructure/dashboard-analytics-hierarchy.repository';
+import { DashboardAnalyticsSnapshotRepository } from '../../src/modules/dashboard/infrastructure/dashboard-analytics-snapshot.repository';
+import { AttendanceDashboardAnalyticsRepository } from '../../src/modules/attendance/reports/infrastructure/attendance-dashboard-analytics.repository';
+import { DashboardAdmissionsAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-admissions-analytics.repository';
+import { DashboardStudentsAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-students-analytics.repository';
+import { DashboardAcademicsAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-academics-analytics.repository';
+import { DashboardGradesAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-grades-analytics.repository';
+import { DashboardHomeworkAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-homework-analytics.repository';
+import { DashboardBehaviorAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-behavior-analytics.repository';
+import { DashboardReinforcementAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-reinforcement-analytics.repository';
+import { DashboardCommunicationAnalyticsRepository } from '../../src/modules/dashboard/infrastructure/dashboard-communication-analytics.repository';
 
 jest.setTimeout(60000);
 
@@ -30,6 +51,9 @@ describe('Dashboard widgets tenancy/security contracts', () => {
   let organizationId = '';
   let schoolAId = '';
   let schoolBId = '';
+  let ownerAId = '';
+  let ownerBId = '';
+  let ownerSchoolBId = '';
 
   beforeAll(async () => {
     prisma = new PrismaService();
@@ -93,12 +117,97 @@ describe('Dashboard widgets tenancy/security contracts', () => {
         },
       ],
     });
+
+    const [schoolAContext, schoolBContext] = await Promise.all([
+      createAcademicContext(prisma, schoolAId, `${marker}-a`),
+      createAcademicContext(prisma, schoolBId, `${marker}-b`),
+    ]);
+    const students = await prisma.student.findMany({
+      where: { schoolId: { in: [schoolAId, schoolBId] } },
+      select: { id: true, schoolId: true },
+    });
+    await prisma.enrollment.createMany({
+      data: students.map((student) => {
+        const context =
+          student.schoolId === schoolAId ? schoolAContext : schoolBContext;
+        return {
+          schoolId: student.schoolId,
+          studentId: student.id,
+          academicYearId: context.academicYearId,
+          termId: context.termId,
+          classroomId: context.classroomId,
+          status: StudentEnrollmentStatus.ACTIVE,
+          enrolledAt: new Date('2026-07-01T00:00:00.000Z'),
+        };
+      }),
+    });
+
+    const owners = await Promise.all(
+      ['owner-a', 'owner-b', 'owner-school-b'].map((label) =>
+        prisma.user.create({
+          data: {
+            email: `${marker}-${label}@example.test`,
+            firstName: 'Widget',
+            lastName: label,
+            userType: UserType.SCHOOL_USER,
+          },
+          select: { id: true },
+        }),
+      ),
+    );
+    [ownerAId, ownerBId, ownerSchoolBId] = owners.map((owner) => owner.id);
+    await prisma.dashboardTodo.createMany({
+      data: [
+        {
+          schoolId: schoolAId,
+          ownerUserId: ownerAId,
+          date: new Date('2026-07-12T00:00:00.000Z'),
+          title: `${marker} owner A todo`,
+        },
+        {
+          schoolId: schoolAId,
+          ownerUserId: ownerBId,
+          date: new Date('2026-07-12T00:00:00.000Z'),
+          title: `${marker} owner B private todo`,
+        },
+        {
+          schoolId: schoolBId,
+          ownerUserId: ownerSchoolBId,
+          date: new Date('2026-07-12T00:00:00.000Z'),
+          title: `${marker} school B private todo`,
+        },
+      ],
+    });
   });
 
   afterAll(async () => {
     if (!prisma) return;
 
+    await prisma.enrollment.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
     await prisma.student.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.dashboardTodo.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.classroom.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.section.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.grade.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.stage.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.term.deleteMany({
+      where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
+    });
+    await prisma.academicYear.deleteMany({
       where: { schoolId: { in: [schoolAId, schoolBId].filter(Boolean) } },
     });
     await prisma.school.deleteMany({
@@ -106,6 +215,11 @@ describe('Dashboard widgets tenancy/security contracts', () => {
     });
     await prisma.organization.deleteMany({
       where: { id: organizationId },
+    });
+    await prisma.user.deleteMany({
+      where: {
+        id: { in: [ownerAId, ownerBId, ownerSchoolBId].filter(Boolean) },
+      },
     });
     await prisma.$disconnect();
   });
@@ -206,13 +320,18 @@ describe('Dashboard widgets tenancy/security contracts', () => {
   });
 
   it('keeps school A from observing school B widget data and ignores override-shaped input', async () => {
-    const useCase = new ListDashboardWidgetsUseCase(
+    const compositionService = new DashboardWidgetCompositionService(
       new DashboardSummaryRepository(prisma),
       new DashboardAlertsRepository(prisma),
       new DashboardActivityFeedRepository(prisma),
+      new DashboardTodosRepository(prisma),
+      analyticsDataUseCase(prisma),
+    );
+    const useCase = new ListDashboardWidgetsUseCase(
       new DashboardTimeContextService(
         new DashboardTimeContextRepository(prisma),
       ),
+      compositionService,
     );
 
     const response = await withSchoolScope(schoolAId, () =>
@@ -221,18 +340,26 @@ describe('Dashboard widgets tenancy/security contracts', () => {
         {
           schoolId: schoolBId,
           organizationId,
-          limit: 20,
+          source: 'students',
         },
       ),
     );
 
     const body = response as {
-      widgets: Array<{ widgetKey: string; data: { value?: number } }>;
+      widgets: Array<{
+        widgetKey: string;
+        data: { value?: number; totals?: Record<string, number> };
+      }>;
     };
     expect(
       body.widgets.find((widget) => widget.widgetKey === 'students.active')
         ?.data.value,
     ).toBe(1);
+    const enrollmentGrowth = body.widgets.find(
+      (widget) => widget.widgetKey === 'students.enrollment_growth',
+    );
+    expect(enrollmentGrowth?.data.totals?.active_enrollments).toBe(1);
+    expect(enrollmentGrowth?.data.totals?.active_enrollments).not.toBe(3);
 
     const serialized = JSON.stringify(response);
     expect(serialized).not.toContain(`Dashboard Widgets School B ${suffix}`);
@@ -241,8 +368,50 @@ describe('Dashboard widgets tenancy/security contracts', () => {
     expectNoInternalLeaks(response);
   });
 
+  it('isolates Todo and Calendar composition by school and owner', async () => {
+    const composition = new DashboardWidgetCompositionService(
+      new DashboardSummaryRepository(prisma),
+      new DashboardAlertsRepository(prisma),
+      new DashboardActivityFeedRepository(prisma),
+      new DashboardTodosRepository(prisma),
+      { execute: jest.fn() } as any,
+    );
+    const definitions = ['todos.today', 'calendar.today'].map((key) => {
+      const definition = findDashboardWidgetDefinition(key);
+      if (!definition) throw new Error(`Missing widget definition: ${key}`);
+      return definition;
+    });
+
+    const widgets = await withSchoolScope(
+      schoolAId,
+      () =>
+        composition.compose({
+          scope: {
+            actorId: ownerAId,
+            userType: UserType.SCHOOL_USER,
+            organizationId,
+            schoolId: schoolAId,
+            roleId: `role-${schoolAId}`,
+          },
+          timeContext: buildDashboardTimeContext({
+            generatedAt: new Date('2026-07-12T12:00:00.000Z'),
+            schoolTimezone: 'UTC',
+          }),
+          definitions,
+        }),
+      ownerAId,
+    );
+
+    const serialized = JSON.stringify(widgets);
+    expect(serialized).toContain(`${marker} owner A todo`);
+    expect(serialized).not.toContain(`${marker} owner B private todo`);
+    expect(serialized).not.toContain(`${marker} school B private todo`);
+    expectNoInternalLeaks(widgets);
+  });
+
   it('does not expose tenant or raw activity fields in the widgets presenter', () => {
-    const response = presentDashboardWidgets({
+    const widgets = buildDashboardWidgetRegistry({
+      definitions: DASHBOARD_WIDGET_REGISTRY.slice(0, 12),
       generatedAt: new Date('2026-07-09T12:00:00.000Z'),
       summary: {
         generatedAt: new Date('2026-07-09T12:00:00.000Z'),
@@ -324,6 +493,10 @@ describe('Dashboard widgets tenancy/security contracts', () => {
           raw: { resourceId: 'submission-1' },
         } as any,
       ],
+    });
+    const response = presentDashboardWidgets({
+      generatedAt: new Date('2026-07-09T12:00:00.000Z'),
+      widgets,
       filters: { limit: 20 },
     });
 
@@ -333,9 +506,10 @@ describe('Dashboard widgets tenancy/security contracts', () => {
   async function withSchoolScope<T>(
     schoolId: string,
     fn: () => Promise<T>,
+    actorId = `actor-${schoolId}`,
   ): Promise<T> {
     return runWithRequestContext(createRequestContext(), async () => {
-      setActor({ id: `actor-${schoolId}`, userType: UserType.SCHOOL_USER });
+      setActor({ id: actorId, userType: UserType.SCHOOL_USER });
       setActiveMembership({
         membershipId: `membership-${schoolId}`,
         organizationId,
@@ -380,14 +554,115 @@ function expectNoInternalLeaks(body: unknown): void {
     'deletedAt',
     'actorId',
     'resourceId',
+    'ownerUserId',
+    'todoId',
+    'notes',
     'actor-1',
     'submission-1',
     'bucket',
     'objectKey',
     'raw',
+    'queryRaw',
   ]) {
     expect(serialized).not.toContain(forbidden);
   }
+}
+
+async function createAcademicContext(
+  prisma: PrismaService,
+  schoolId: string,
+  marker: string,
+): Promise<{
+  academicYearId: string;
+  termId: string;
+  classroomId: string;
+}> {
+  const academicYear = await prisma.academicYear.create({
+    data: {
+      schoolId,
+      nameAr: `${marker}-year-ar`,
+      nameEn: `${marker}-year-en`,
+      startDate: new Date('2026-01-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T00:00:00.000Z'),
+    },
+    select: { id: true },
+  });
+  const term = await prisma.term.create({
+    data: {
+      schoolId,
+      academicYearId: academicYear.id,
+      nameAr: `${marker}-term-ar`,
+      nameEn: `${marker}-term-en`,
+      startDate: new Date('2026-01-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T00:00:00.000Z'),
+    },
+    select: { id: true },
+  });
+  const stage = await prisma.stage.create({
+    data: {
+      schoolId,
+      nameAr: `${marker}-stage-ar`,
+      nameEn: `${marker}-stage-en`,
+    },
+    select: { id: true },
+  });
+  const grade = await prisma.grade.create({
+    data: {
+      schoolId,
+      stageId: stage.id,
+      nameAr: `${marker}-grade-ar`,
+      nameEn: `${marker}-grade-en`,
+    },
+    select: { id: true },
+  });
+  const section = await prisma.section.create({
+    data: {
+      schoolId,
+      gradeId: grade.id,
+      nameAr: `${marker}-section-ar`,
+      nameEn: `${marker}-section-en`,
+    },
+    select: { id: true },
+  });
+  const classroom = await prisma.classroom.create({
+    data: {
+      schoolId,
+      sectionId: section.id,
+      nameAr: `${marker}-classroom-ar`,
+      nameEn: `${marker}-classroom-en`,
+    },
+    select: { id: true },
+  });
+
+  return {
+    academicYearId: academicYear.id,
+    termId: term.id,
+    classroomId: classroom.id,
+  };
+}
+
+function analyticsDataUseCase(
+  prisma: PrismaService,
+): GetDashboardAnalyticsChartDataUseCase {
+  const timeContextService = new DashboardTimeContextService(
+    new DashboardTimeContextRepository(prisma),
+  );
+  return new GetDashboardAnalyticsChartDataUseCase(
+    new DashboardAnalyticsQueryContextService(
+      timeContextService,
+      new DashboardAnalyticsHierarchyRepository(prisma),
+    ),
+    new DashboardAnalyticsSnapshotRepository(prisma),
+    new AttendanceDashboardAnalyticsRepository(prisma),
+    new DashboardAdmissionsAnalyticsRepository(prisma),
+    new DashboardStudentsAnalyticsRepository(prisma),
+    new DashboardAcademicsAnalyticsRepository(prisma),
+    new DashboardGradesAnalyticsRepository(prisma),
+    new DashboardHomeworkAnalyticsRepository(prisma),
+    new DashboardBehaviorAnalyticsRepository(prisma),
+    new DashboardReinforcementAnalyticsRepository(prisma),
+    new DashboardCommunicationAnalyticsRepository(prisma),
+  );
 }
 
 function zeroCards() {

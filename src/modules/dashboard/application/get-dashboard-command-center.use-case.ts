@@ -17,6 +17,16 @@ import { DashboardAlertsRepository } from '../infrastructure/dashboard-alerts.re
 import { DashboardSummaryRepository } from '../infrastructure/dashboard-summary.repository';
 import { presentDashboardCommandCenter } from '../presenters/dashboard-command-center.presenter';
 import { DashboardTimeContextService } from './dashboard-time-context.service';
+import { DashboardWidgetCompositionService } from './dashboard-widget-composition.service';
+import { findDashboardWidgetDefinition } from '../domain/dashboard-widget-registry';
+import { DashboardWidgetDefinition } from '../domain/dashboard-widget-registry';
+
+const COMMAND_CENTER_COMPOSITION_WIDGET_KEYS = [
+  'students.enrollment_growth',
+  'attendance.daily_trend',
+  'communication.message_volume',
+  'todos.today',
+] as const;
 
 @Injectable()
 export class GetDashboardCommandCenterUseCase {
@@ -25,6 +35,7 @@ export class GetDashboardCommandCenterUseCase {
     private readonly dashboardAlertsRepository: DashboardAlertsRepository,
     private readonly dashboardActivityFeedRepository: DashboardActivityFeedRepository,
     private readonly dashboardTimeContextService: DashboardTimeContextService,
+    private readonly dashboardWidgetCompositionService: DashboardWidgetCompositionService,
   ) {}
 
   async execute(): Promise<DashboardCommandCenterResponseDto> {
@@ -32,19 +43,25 @@ export class GetDashboardCommandCenterUseCase {
     const timeContext =
       await this.dashboardTimeContextService.resolveForSchool(scope);
 
-    const [summary, alertSignals, activityAuditRecords] = await Promise.all([
-      this.dashboardSummaryRepository.loadSummarySnapshot(
-        scope,
-        buildDashboardSummaryDateWindow(timeContext),
-      ),
-      this.dashboardAlertsRepository.loadAlertSignals(
-        scope,
-        buildDashboardAlertsDateWindow(timeContext),
-      ),
-      this.dashboardActivityFeedRepository.listActivityAuditRecords(scope, {
-        take: 20,
-      }),
-    ]);
+    const [summary, alertSignals, activityAuditRecords, compositionWidgets] =
+      await Promise.all([
+        this.dashboardSummaryRepository.loadSummarySnapshot(
+          scope,
+          buildDashboardSummaryDateWindow(timeContext),
+        ),
+        this.dashboardAlertsRepository.loadAlertSignals(
+          scope,
+          buildDashboardAlertsDateWindow(timeContext),
+        ),
+        this.dashboardActivityFeedRepository.listActivityAuditRecords(scope, {
+          take: 20,
+        }),
+        this.dashboardWidgetCompositionService.compose({
+          scope,
+          timeContext,
+          definitions: commandCenterCompositionDefinitions(),
+        }),
+      ]);
 
     const alerts = buildDashboardAlerts(alertSignals)
       .filter((alert) => alert.count > 0)
@@ -60,11 +77,24 @@ export class GetDashboardCommandCenterUseCase {
       summary,
       alerts,
       activityItems,
+      compositionWidgets,
       operator: {
         userType: scope.userType,
       },
     });
   }
+}
+
+function commandCenterCompositionDefinitions(): DashboardWidgetDefinition[] {
+  return COMMAND_CENTER_COMPOSITION_WIDGET_KEYS.map((widgetKey) => {
+    const definition = findDashboardWidgetDefinition(widgetKey);
+    if (!definition) {
+      throw new Error(
+        `Dashboard command-center widget is missing: ${widgetKey}`,
+      );
+    }
+    return definition;
+  });
 }
 
 function compareCommandCenterAlerts(

@@ -12,6 +12,18 @@ import {
   DashboardCapabilityState,
   DashboardFreshnessMetadataDto,
 } from './dashboard-metadata.dto';
+import {
+  DashboardWidgetAnalyticsReferenceDto,
+  DashboardWidgetActionDto,
+  DashboardWidgetSource,
+  DashboardWidgetType,
+  DashboardWidgetTodoItemDto,
+  DashboardWidgetTodoSummaryDto,
+} from './dashboard-widgets.dto';
+import {
+  DashboardAnalyticsChartDataSeriesDto,
+  DashboardAnalyticsChartDataSummaryDto,
+} from './dashboard-analytics-data.dto';
 
 export type DashboardCommandCenterActionKind = 'frontend-route';
 export type DashboardCommandCenterTone =
@@ -45,7 +57,35 @@ export class DashboardCommandCenterResponseDto {
   topActions!: DashboardCommandCenterNextActionDto[];
   alertsPreview!: DashboardCommandCenterAlertPreviewDto[];
   activityPreview!: DashboardCommandCenterActivityPreviewDto[];
+  analyticsPreview!: DashboardCommandCenterAnalyticsPreviewDto[];
+  todoPreview!: DashboardCommandCenterTodoPreviewDto;
   meta!: DashboardCommandCenterMetaDto;
+}
+
+export class DashboardCommandCenterAnalyticsPreviewDto {
+  chartKey!:
+    | 'students.enrollment_growth'
+    | 'attendance.daily_trend'
+    | 'communication.message_volume';
+  source!: Extract<
+    DashboardWidgetSource,
+    'students' | 'attendance' | 'communication'
+  >;
+  title!: string;
+  type!: Extract<DashboardWidgetType, 'mini-chart-card'>;
+  series!: readonly DashboardAnalyticsChartDataSeriesDto[];
+  totals!: Record<string, number>;
+  summary!: DashboardAnalyticsChartDataSummaryDto | null;
+  empty!: boolean;
+  action!: DashboardWidgetActionDto;
+  analytics!: DashboardWidgetAnalyticsReferenceDto;
+}
+
+export class DashboardCommandCenterTodoPreviewDto {
+  date!: string;
+  items!: DashboardWidgetTodoItemDto[];
+  summary!: DashboardWidgetTodoSummaryDto;
+  action!: DashboardWidgetActionDto;
 }
 
 export class DashboardCommandCenterOperatorDto {
@@ -150,13 +190,15 @@ export class DashboardCommandCenterActivityPreviewDto {
 }
 
 export class DashboardCommandCenterDeferredDto {
-  widgets!: Extract<DashboardCapabilityState, 'available' | 'deferred'>;
-  analytics!: Extract<DashboardCapabilityState, 'snapshot_only' | 'deferred'>;
+  widgets!: Extract<DashboardCapabilityState, 'available'>;
+  analytics!: Extract<DashboardCapabilityState, 'available'>;
+  analyticsPreview!: Extract<DashboardCapabilityState, 'available'>;
   lightModeDropdown!: Extract<
     DashboardCapabilityState,
     'foundation' | 'deferred'
   >;
   todos!: Extract<DashboardCapabilityState, 'persisted' | 'deferred'>;
+  todoPreview!: Extract<DashboardCapabilityState, 'available'>;
   weather!: 'deferred';
   planner!: 'deferred';
   alertLifecycle!: 'deferred';

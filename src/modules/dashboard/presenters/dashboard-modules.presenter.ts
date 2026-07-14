@@ -26,7 +26,10 @@ import {
   DashboardAnalyticsChartDefinition,
 } from '../domain/dashboard-analytics-catalog';
 import { isDashboardAnalyticsComputedSnapshotChartKey } from '../domain/dashboard-analytics-data-pack';
-import { DASHBOARD_WIDGET_KEYS } from '../domain/dashboard-widget-registry';
+import {
+  DASHBOARD_WIDGET_KEYS,
+  DASHBOARD_WIDGET_REGISTRY,
+} from '../domain/dashboard-widget-registry';
 import {
   DASHBOARD_MODULE_PAGE_REGISTRY,
   DashboardModuleCapabilityStatus,
@@ -217,15 +220,18 @@ function presentModuleBase(
 function moduleWidgets(
   input: DashboardModulePagePresentationInput,
 ): DashboardWidgetDto[] {
-  const widgets = buildDashboardWidgetRegistry({
+  const allowedKeys = new Set(input.definition.widgetKeys);
+  const definitions = DASHBOARD_WIDGET_REGISTRY.filter((definition) =>
+    allowedKeys.has(definition.widgetKey),
+  );
+
+  return buildDashboardWidgetRegistry({
+    definitions,
     generatedAt: input.generatedAt,
     summary: input.summary,
     alertSignals: input.alertSignals,
     activityItems: [],
   });
-  const allowedKeys = new Set(input.definition.widgetKeys);
-
-  return widgets.filter((widget) => allowedKeys.has(widget.widgetKey));
 }
 
 function moduleWidgetKeyCount(
