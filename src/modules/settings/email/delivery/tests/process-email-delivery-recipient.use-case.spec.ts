@@ -216,7 +216,17 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
           rejected: [],
         }),
     } as unknown as SchoolEmailTransport;
-    const renderer = new SchoolEmailRendererService(emailSettingsRepository);
+    const logoResolver = {
+      resolveForSchool: jest
+        .fn()
+        .mockResolvedValue(
+          'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
+        ),
+    } as unknown as ConstructorParameters<typeof SchoolEmailRendererService>[1];
+    const renderer = new SchoolEmailRendererService(
+      emailSettingsRepository,
+      logoResolver,
+    );
     const useCase = new ProcessEmailDeliveryRecipientUseCase(
       deliveryRepository,
       emailSettingsRepository,
@@ -258,7 +268,9 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
     expect(mocks.passwordService.hash).toHaveBeenCalledWith(
       expect.stringMatching(/^MZ-/),
     );
-    expect(mocks.credentialsRepository.updateUserCredential).toHaveBeenCalledWith(
+    expect(
+      mocks.credentialsRepository.updateUserCredential,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'user-1',
         mustChangePassword: true,
@@ -273,7 +285,16 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
         html: expect.stringContaining('MZ-'),
       }),
     );
-    expect(mocks.deliveryRepository.updateRecipientMetadata).toHaveBeenCalledWith(
+    const emailHtml = mocks.transport.sendEmail.mock.calls[0][0].html as string;
+    expect(emailHtml).toContain(
+      'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
+    );
+    expect(emailHtml).not.toMatch(
+      /data-logo-file-id|bucket|objectKey|checksum|X-Amz-|fileId/,
+    );
+    expect(
+      mocks.deliveryRepository.updateRecipientMetadata,
+    ).toHaveBeenCalledWith(
       'recipient-1',
       expect.objectContaining({
         pendingCredential: expect.objectContaining({
@@ -306,7 +327,9 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
       ),
     ).rejects.toThrow('smtp temporary failure [redacted]');
 
-    expect(mocks.credentialsRepository.updateUserCredential).not.toHaveBeenCalled();
+    expect(
+      mocks.credentialsRepository.updateUserCredential,
+    ).not.toHaveBeenCalled();
     expect(mocks.authRepository.revokeUserSessions).not.toHaveBeenCalled();
     expect(mocks.deliveryRepository.markRecipientFailed).toHaveBeenCalledWith({
       recipientId: 'recipient-1',
@@ -366,7 +389,9 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
     const retryHtml = retrySend.mock.calls[0][0].html as string;
     expect(retryHtml).toContain(firstTemporaryPassword);
     expect(retryRun.emailSecretCrypto.encrypt).not.toHaveBeenCalled();
-    expect(retryRun.credentialsRepository.updateUserCredential).toHaveBeenCalledTimes(1);
+    expect(
+      retryRun.credentialsRepository.updateUserCredential,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it('rejects generate mode for existing-password users before delivery', async () => {
@@ -388,7 +413,9 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
     ).rejects.toThrow('credential_recipient_already_has_password');
 
     expect(mocks.transport.sendEmail).not.toHaveBeenCalled();
-    expect(mocks.credentialsRepository.updateUserCredential).not.toHaveBeenCalled();
+    expect(
+      mocks.credentialsRepository.updateUserCredential,
+    ).not.toHaveBeenCalled();
   });
 
   it('revokes sessions after successful regenerate delivery', async () => {
@@ -432,7 +459,9 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
     );
 
     expect(mocks.transport.sendEmail).not.toHaveBeenCalled();
-    expect(mocks.deliveryRepository.markRecipientSending).not.toHaveBeenCalled();
+    expect(
+      mocks.deliveryRepository.markRecipientSending,
+    ).not.toHaveBeenCalled();
   });
 
   it('respects cancelled batches', async () => {
@@ -451,10 +480,9 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
       }),
     );
 
-    expect(mocks.deliveryRepository.markRecipientCancelled).toHaveBeenCalledWith(
-      'recipient-1',
-      'batch_cancelled',
-    );
+    expect(
+      mocks.deliveryRepository.markRecipientCancelled,
+    ).toHaveBeenCalledWith('recipient-1', 'batch_cancelled');
     expect(mocks.transport.sendEmail).not.toHaveBeenCalled();
   });
 });

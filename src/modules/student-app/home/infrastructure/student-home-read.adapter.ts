@@ -76,7 +76,7 @@ export type StudentHomeEnrollmentRecord = Prisma.EnrollmentGetPayload<
 
 export interface StudentHomeSchoolDisplayRecord {
   name: string | null;
-  logoUrl: null;
+  logoUrl: string | null;
 }
 
 const PENDING_ASSIGNMENT_STATUSES = [

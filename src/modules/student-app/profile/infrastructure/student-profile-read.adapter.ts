@@ -77,7 +77,7 @@ export type StudentProfileEnrollmentRecord = Prisma.EnrollmentGetPayload<
 
 export interface StudentProfileSchoolDisplayRecord {
   name: string | null;
-  logoUrl: null;
+  logoUrl: string | null;
 }
 
 @Injectable()

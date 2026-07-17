@@ -7,7 +7,7 @@ export class ParentHomeParentDto {
 
 export class ParentHomeSchoolDto {
   name!: string | null;
-  logoUrl!: null;
+  logoUrl!: string | null;
 }
 
 export class ParentHomeHierarchyNodeDto {

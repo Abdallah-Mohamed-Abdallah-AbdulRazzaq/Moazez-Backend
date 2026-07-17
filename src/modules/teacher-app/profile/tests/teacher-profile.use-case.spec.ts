@@ -24,8 +24,15 @@ describe('Teacher Profile use cases', () => {
   });
 
   it('profile returns current teacher identity, school display, role, and summaries', async () => {
-    const { profileUseCase, allocationReadAdapter, profileReadAdapter } =
-      createUseCases();
+    const {
+      profileUseCase,
+      allocationReadAdapter,
+      profileReadAdapter,
+      logoResolver,
+    } = createUseCases();
+    logoResolver.resolveForSchool.mockResolvedValue(
+      'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
+    );
     allocationReadAdapter.listAllOwnedAllocations.mockResolvedValue([
       allocationFixture({ id: 'allocation-1', subjectId: 'subject-1' }),
       allocationFixture({
@@ -39,7 +46,9 @@ describe('Teacher Profile use cases', () => {
         subjectId: 'subject-2',
       }),
     ]);
-    profileReadAdapter.countDistinctStudentsForAllocations.mockResolvedValue(54);
+    profileReadAdapter.countDistinctStudentsForAllocations.mockResolvedValue(
+      54,
+    );
 
     const result = await profileUseCase.execute();
 
@@ -53,7 +62,8 @@ describe('Teacher Profile use cases', () => {
     });
     expect(result.school).toEqual({
       name: 'Moazez Academy',
-      logoUrl: null,
+      logoUrl:
+        'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
     });
     expect(result.role).toEqual({
       name: 'Teacher',
@@ -117,6 +127,7 @@ function createUseCases(): {
   accessService: jest.Mocked<TeacherAppAccessService>;
   allocationReadAdapter: jest.Mocked<TeacherAppAllocationReadAdapter>;
   profileReadAdapter: jest.Mocked<TeacherProfileReadAdapter>;
+  logoResolver: { resolveForSchool: jest.Mock };
 } {
   const accessService = {
     assertCurrentTeacher: jest.fn(() => ({
@@ -157,17 +168,24 @@ function createUseCases(): {
     ),
     countDistinctStudentsForAllocations: jest.fn(() => Promise.resolve(12)),
   } as unknown as jest.Mocked<TeacherProfileReadAdapter>;
+  const logoResolver = {
+    resolveForSchool: jest.fn().mockResolvedValue(null),
+  };
 
   return {
     profileUseCase: new GetTeacherProfileUseCase(
       accessService,
       allocationReadAdapter,
       profileReadAdapter,
+      logoResolver as unknown as ConstructorParameters<
+        typeof GetTeacherProfileUseCase
+      >[3],
     ),
     employmentUseCase: new GetTeacherEmploymentProfileUseCase(accessService),
     accessService,
     allocationReadAdapter,
     profileReadAdapter,
+    logoResolver,
   };
 }
 

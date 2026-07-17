@@ -23,8 +23,11 @@ describe('GetParentHomeUseCase', () => {
   });
 
   it('returns current parent identity and current-school children only', async () => {
-    const { useCase, accessService, readAdapter } =
+    const { useCase, accessService, readAdapter, logoResolver } =
       createUseCaseWithValidAccess();
+    logoResolver.resolveForSchool.mockResolvedValue(
+      'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
+    );
     accessService.getParentAppContext.mockResolvedValue({
       ...contextFixture(),
       children: [
@@ -67,6 +70,11 @@ describe('GetParentHomeUseCase', () => {
       displayName: 'Mona Parent',
       email: 'parent@example.test',
       phone: null,
+    });
+    expect(result.school).toEqual({
+      name: 'Moazez Demo School',
+      logoUrl:
+        'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
     });
     expect(result.children).toEqual(
       expect.arrayContaining([
@@ -176,6 +184,7 @@ function createUseCase(extraAdapterMethods?: Record<string, jest.Mock>): {
   useCase: GetParentHomeUseCase;
   accessService: jest.Mocked<ParentAppAccessService>;
   readAdapter: jest.Mocked<ParentHomeReadAdapter>;
+  logoResolver: { resolveForSchool: jest.Mock };
 } {
   const accessService = {
     getParentAppContext: jest.fn(),
@@ -187,11 +196,21 @@ function createUseCase(extraAdapterMethods?: Record<string, jest.Mock>): {
     countPendingTasksForChildren: jest.fn(),
     ...extraAdapterMethods,
   } as unknown as jest.Mocked<ParentHomeReadAdapter>;
+  const logoResolver = {
+    resolveForSchool: jest.fn().mockResolvedValue(null),
+  };
 
   return {
-    useCase: new GetParentHomeUseCase(accessService, readAdapter),
+    useCase: new GetParentHomeUseCase(
+      accessService,
+      readAdapter,
+      logoResolver as unknown as ConstructorParameters<
+        typeof GetParentHomeUseCase
+      >[2],
+    ),
     accessService,
     readAdapter,
+    logoResolver,
   };
 }
 
@@ -201,6 +220,7 @@ function createUseCaseWithValidAccess(
   useCase: GetParentHomeUseCase;
   accessService: jest.Mocked<ParentAppAccessService>;
   readAdapter: jest.Mocked<ParentHomeReadAdapter>;
+  logoResolver: { resolveForSchool: jest.Mock };
 } {
   const created = createUseCase(extraAdapterMethods);
   created.accessService.getParentAppContext.mockResolvedValue(contextFixture());

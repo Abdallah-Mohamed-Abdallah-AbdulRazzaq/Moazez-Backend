@@ -6,6 +6,7 @@ import { DiscoverableSchoolRecord } from '../infrastructure/applicant-portal.rep
 
 export function presentDiscoverableSchool(
   school: DiscoverableSchoolRecord,
+  logoUrl: string | null = null,
 ): DiscoverableSchoolResponseDto {
   const profile = school.schoolProfile;
 
@@ -16,7 +17,7 @@ export function presentDiscoverableSchool(
     city: publicText(profile?.city),
     country: publicText(profile?.country),
     address: firstPublicText(profile?.formattedAddress, profile?.addressLine),
-    logoUrl: presentPublicLogoUrl(profile?.logoUrl),
+    logoUrl,
   };
 }
 
@@ -25,12 +26,18 @@ export function presentDiscoverableSchoolsList(input: {
   page: number;
   limit: number;
   total: number;
+  logoUrlsBySchoolId?: Map<string, string | null>;
 }): DiscoverableSchoolsListResponseDto {
   const totalPages =
     input.total === 0 ? 0 : Math.ceil(input.total / input.limit);
 
   return {
-    data: input.items.map(presentDiscoverableSchool),
+    data: input.items.map((school) =>
+      presentDiscoverableSchool(
+        school,
+        input.logoUrlsBySchoolId?.get(school.id) ?? null,
+      ),
+    ),
     meta: {
       page: input.page,
       limit: input.limit,
@@ -55,18 +62,4 @@ function firstPublicText(
 function publicText(value: string | null | undefined): string | null {
   const normalized = value?.trim().replace(/\s+/g, ' ');
   return normalized && normalized.length > 0 ? normalized : null;
-}
-
-function presentPublicLogoUrl(value: string | null | undefined): string | null {
-  const normalized = publicText(value);
-  if (!normalized) return null;
-
-  try {
-    const parsed = new URL(normalized);
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
-      ? normalized
-      : null;
-  } catch {
-    return null;
-  }
 }

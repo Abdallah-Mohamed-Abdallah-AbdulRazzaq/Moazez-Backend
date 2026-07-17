@@ -12,6 +12,7 @@ import { TeacherXpReadAdapter } from '../../xp/infrastructure/teacher-xp-read.ad
 import { TeacherXpPresenter } from '../../xp/presenters/teacher-xp.presenter';
 import { TeacherHomeResponseDto } from '../dto/teacher-home.dto';
 import { TeacherHomePresenter } from '../presenters/teacher-home.presenter';
+import { ResolveSchoolLogoUrlService } from '../../../settings/branding/application/resolve-school-logo-url.service';
 
 const ACTIVE_TASK_STATUSES = new Set<ReinforcementTaskStatus>([
   ReinforcementTaskStatus.NOT_COMPLETED,
@@ -29,16 +30,16 @@ export class GetTeacherHomeUseCase {
     private readonly taskReviewReadAdapter: TeacherTaskReviewReadAdapter,
     private readonly xpReadAdapter: TeacherXpReadAdapter,
     private readonly messagesReadAdapter: TeacherMessagesReadAdapter,
+    private readonly logoResolver: ResolveSchoolLogoUrlService,
   ) {}
 
   async execute(): Promise<TeacherHomeResponseDto> {
     const context = this.accessService.assertCurrentTeacher();
-    const [teacher, school, allocations] = await Promise.all([
+    const [teacher, school, allocations, logoUrl] = await Promise.all([
       this.compositionReadAdapter.findTeacherIdentity(context.teacherUserId),
       this.compositionReadAdapter.findSchoolSummary(context),
-      this.allocationReadAdapter.listAllOwnedAllocations(
-        context.teacherUserId,
-      ),
+      this.allocationReadAdapter.listAllOwnedAllocations(context.teacherUserId),
+      this.logoResolver.resolveForSchool(context.schoolId),
     ]);
 
     if (!teacher) {
@@ -47,7 +48,9 @@ export class GetTeacherHomeUseCase {
       });
     }
 
-    const classroomIds = allocations.map((allocation) => allocation.classroomId);
+    const classroomIds = allocations.map(
+      (allocation) => allocation.classroomId,
+    );
     const [
       studentsCount,
       pendingTasksCount,
@@ -98,7 +101,7 @@ export class GetTeacherHomeUseCase {
 
     return TeacherHomePresenter.present({
       teacher,
-      school,
+      school: { ...school, logoUrl },
       classesCount: allocations.length,
       studentsCount,
       pendingTasksCount,

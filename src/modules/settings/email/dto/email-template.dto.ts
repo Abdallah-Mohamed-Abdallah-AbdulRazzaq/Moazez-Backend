@@ -7,7 +7,6 @@ import {
   IsObject,
   IsOptional,
   IsString,
-  IsUUID,
   IsUrl,
   MaxLength,
   ValidateNested,
@@ -145,16 +144,6 @@ export class UpdateEmailTemplateDto {
   footerHtml?: string | null;
 
   @ApiPropertyOptional({
-    description:
-      'File id for the school logo used by this template. Null clears it.',
-    format: 'uuid',
-    nullable: true,
-  })
-  @IsOptional()
-  @IsUUID('4')
-  logoFileId?: string | null;
-
-  @ApiPropertyOptional({
     description: 'Support email rendered in the template. Null clears it.',
     example: 'support@demo-school.moazez.local',
     nullable: true,
@@ -263,9 +252,6 @@ export class EmailTemplateResponseDto {
     nullable: true,
   })
   footerHtml!: string | null;
-
-  @ApiProperty({ format: 'uuid', nullable: true })
-  logoFileId!: string | null;
 
   @ApiProperty({ example: 'support@demo-school.moazez.local', nullable: true })
   supportEmail!: string | null;

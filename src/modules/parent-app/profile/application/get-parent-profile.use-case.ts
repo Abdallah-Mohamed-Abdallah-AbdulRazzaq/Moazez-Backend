@@ -8,22 +8,25 @@ import {
 import { ParentProfileResponseDto } from '../dto/parent-profile.dto';
 import { ParentProfileReadAdapter } from '../infrastructure/parent-profile-read.adapter';
 import { ParentProfilePresenter } from '../presenters/parent-profile.presenter';
+import { ResolveSchoolLogoUrlService } from '../../../settings/branding/application/resolve-school-logo-url.service';
 
 @Injectable()
 export class GetParentProfileUseCase {
   constructor(
     private readonly accessService: ParentAppAccessService,
     private readonly readAdapter: ParentProfileReadAdapter,
+    private readonly logoResolver: ResolveSchoolLogoUrlService,
   ) {}
 
   async execute(): Promise<ParentProfileResponseDto> {
     const context = await this.accessService.getParentAppContext();
 
-    const [parent, guardians, children, school] = await Promise.all([
+    const [parent, guardians, children, school, logoUrl] = await Promise.all([
       this.readAdapter.findParentIdentity(context),
       this.readAdapter.listGuardians(context),
       this.readAdapter.listChildren(context),
       this.readAdapter.findSchoolDisplay(context),
+      this.logoResolver.resolveForSchool(context.schoolId),
     ]);
 
     if (!parent) {
@@ -48,7 +51,7 @@ export class GetParentProfileUseCase {
       parent,
       guardians,
       children,
-      school,
+      school: { ...school, logoUrl },
     });
   }
 }

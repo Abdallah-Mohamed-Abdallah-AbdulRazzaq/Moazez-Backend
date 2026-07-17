@@ -23,6 +23,7 @@ import { EmailRecipientTargetingService } from '../application/email-recipient-t
 import { EmailDeliveryRepository } from '../infrastructure/email-delivery.repository';
 import { SchoolEmailDeliveryQueueService } from '../application/school-email-delivery-queue.service';
 import { SchoolEmailRendererService } from '../application/school-email-renderer.service';
+import { ResolveSchoolLogoUrlService } from '../../../branding/application/resolve-school-logo-url.service';
 import {
   EmailCampaignCredentialVariablesForbiddenException,
   EmailDeliveryBatchNotFoundException,
@@ -130,7 +131,6 @@ describe('email delivery use cases', () => {
       findTemplate: jest.fn().mockResolvedValue(null),
       findSchoolBranding: jest.fn().mockResolvedValue({
         name: 'School',
-        logoUrl: null,
         supportEmail: 'support@example.com',
         supportPhone: null,
       }),
@@ -147,7 +147,17 @@ describe('email delivery use cases', () => {
     const authRepository = {
       createAuditLog: jest.fn().mockResolvedValue(undefined),
     } as unknown as AuthRepository;
-    const renderer = new SchoolEmailRendererService(emailSettingsRepository);
+    const logoResolver = {
+      resolveForSchool: jest
+        .fn()
+        .mockResolvedValue(
+          'https://api.example.com/api/v1/public/schools/school-1/branding/logo?v=opaque',
+        ),
+    } as unknown as ResolveSchoolLogoUrlService;
+    const renderer = new SchoolEmailRendererService(
+      emailSettingsRepository,
+      logoResolver,
+    );
 
     return {
       recipientTargeting,
@@ -226,6 +236,7 @@ describe('email delivery use cases', () => {
 
     expect(preview.subject).toContain('Preview User');
     expect(preview.html).toContain('School');
+    expect(preview.html).toContain('src="https://api.example.com/api/v1/');
   });
 
   it('creates a queued general campaign without credential mutation', async () => {

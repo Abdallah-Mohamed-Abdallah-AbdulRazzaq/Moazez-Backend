@@ -76,7 +76,7 @@ describe('Applicant Portal school discovery tenancy (security)', () => {
       status: SchoolStatus.ACTIVE,
       schoolName: `${marker} Active Public`,
       city: 'Cairo',
-      logoUrl: `https://assets.example.test/${marker}/active-logo.png`,
+      logoUrl: `https://assets.school-domain.com/${marker}/active-logo.png`,
     });
     suspendedSchoolId = await createSchoolWithProfile({
       slug: `${marker}-suspended`,
@@ -207,7 +207,7 @@ describe('Applicant Portal school discovery tenancy (security)', () => {
         city: 'Cairo',
         country: null,
         address: null,
-        logoUrl: `https://assets.example.test/${marker}/active-logo.png`,
+        logoUrl: `https://assets.school-domain.com/${marker}/active-logo.png`,
       },
     ]);
     expectNoForbiddenPublicFields(response.body);

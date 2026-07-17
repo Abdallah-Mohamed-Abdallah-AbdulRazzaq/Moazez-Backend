@@ -53,8 +53,7 @@ const SUPPORT_PERMISSIONS = [
     module: 'platform',
     resource: 'support',
     action: 'reply',
-    description:
-      'Reply to school support conversations as Moazez Support.',
+    description: 'Reply to school support conversations as Moazez Support.',
   },
   {
     code: 'platform.support.manage',
@@ -226,16 +225,16 @@ describe('School support chat tenancy and IAM contracts', () => {
   });
 
   it('guards support controllers with the sprint-specific permissions', () => {
-    expect(Reflect.getMetadata(PLATFORM_SCOPE_METADATA, PlatformSupportController)).toBe(
-      true,
-    );
-    expect(Reflect.getMetadata(PLATFORM_SCOPE_METADATA, SchoolSupportController)).toBe(
-      undefined,
-    );
+    expect(
+      Reflect.getMetadata(PLATFORM_SCOPE_METADATA, PlatformSupportController),
+    ).toBe(true);
+    expect(
+      Reflect.getMetadata(PLATFORM_SCOPE_METADATA, SchoolSupportController),
+    ).toBe(undefined);
 
-    expect(readPermissions(SchoolSupportController, 'getConversation')).toEqual([
-      'school.support.view',
-    ]);
+    expect(readPermissions(SchoolSupportController, 'getConversation')).toEqual(
+      ['school.support.view'],
+    );
     expect(readPermissions(SchoolSupportController, 'listMessages')).toEqual([
       'school.support.view',
     ]);
@@ -249,9 +248,9 @@ describe('School support chat tenancy and IAM contracts', () => {
     expect(
       readPermissions(PlatformSupportController, 'listConversations'),
     ).toEqual(['platform.support.view']);
-    expect(readPermissions(PlatformSupportController, 'getConversation')).toEqual([
-      'platform.support.view',
-    ]);
+    expect(
+      readPermissions(PlatformSupportController, 'getConversation'),
+    ).toEqual(['platform.support.view']);
     expect(readPermissions(PlatformSupportController, 'listMessages')).toEqual([
       'platform.support.view',
     ]);
@@ -261,9 +260,9 @@ describe('School support chat tenancy and IAM contracts', () => {
     expect(readPermissions(PlatformSupportController, 'markRead')).toEqual([
       'platform.support.view',
     ]);
-    expect(readPermissions(PlatformSupportController, 'closeConversation')).toEqual([
-      'platform.support.manage',
-    ]);
+    expect(
+      readPermissions(PlatformSupportController, 'closeConversation'),
+    ).toEqual(['platform.support.manage']);
     expect(
       readPermissions(PlatformSupportController, 'reopenConversation'),
     ).toEqual(['platform.support.manage']);
@@ -319,7 +318,9 @@ describe('School support chat tenancy and IAM contracts', () => {
       .expect(403);
 
     await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/communication/conversations/${conversationId}/messages`)
+      .post(
+        `${GLOBAL_PREFIX}/communication/conversations/${conversationId}/messages`,
+      )
       .set('Authorization', `Bearer ${platformToken}`)
       .send({ body: 'Generic communication platform reply must fail.' })
       .expect(403)
@@ -589,14 +590,36 @@ function extractArrayLiteral(source: string, arrayName: string): string {
   return match?.[1] ?? '';
 }
 
-function createNoopBullmqService(): Pick<
-  BullmqService,
-  'addEmailJob' | 'addImportJob' | 'createWorker' | 'onModuleDestroy'
-> {
+type AppModuleBullmqServiceMock = {
+  addEmailJob: (...args: unknown[]) => Promise<void>;
+  addImportJob: (...args: unknown[]) => Promise<void>;
+  addJob: (...args: Parameters<BullmqService['addJob']>) => Promise<void>;
+  getQueueReadiness: BullmqService['getQueueReadiness'];
+  createWorker: (
+    ...args: Parameters<BullmqService['createWorker']>
+  ) => NoopBullmqWorker;
+  onModuleDestroy: BullmqService['onModuleDestroy'];
+};
+
+type NoopBullmqWorker = {
+  on: (event: string, listener: (...args: unknown[]) => void) => void;
+  close: () => Promise<void>;
+};
+
+function createNoopBullmqService(): AppModuleBullmqServiceMock {
   return {
     addEmailJob: jest.fn().mockResolvedValue(undefined),
     addImportJob: jest.fn().mockResolvedValue(undefined),
-    createWorker: jest.fn().mockReturnValue({ close: jest.fn() }),
+    addJob: jest.fn().mockResolvedValue(undefined),
+    getQueueReadiness: jest.fn().mockResolvedValue({
+      name: 'settings-branding-logo-cleanup',
+      status: 'ok',
+      counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+    }),
+    createWorker: jest.fn().mockReturnValue({
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    }),
     onModuleDestroy: jest.fn().mockResolvedValue(undefined),
   };
 }

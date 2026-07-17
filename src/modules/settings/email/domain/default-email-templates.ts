@@ -9,7 +9,6 @@ export interface EmailTemplateContent {
   bodyHtml: string;
   bodyText: string | null;
   footerHtml: string | null;
-  logoFileId: string | null;
   supportEmail: string | null;
   supportPhone: string | null;
   socialLinks: EmailTemplateSocialLinks | null;
@@ -111,7 +110,6 @@ export const DEFAULT_EMAIL_TEMPLATES: Record<
     ].join('\n'),
     footerHtml:
       '<p>Need help? Contact {{support.email}} or {{support.phone}}.</p>',
-    logoFileId: null,
     supportEmail: null,
     supportPhone: null,
     socialLinks: null,
@@ -139,7 +137,6 @@ export const DEFAULT_EMAIL_TEMPLATES: Record<
     ].join('\n'),
     footerHtml:
       '<p>This password reset link is for your school account only.</p>',
-    logoFileId: null,
     supportEmail: null,
     supportPhone: null,
     socialLinks: null,
@@ -156,7 +153,6 @@ export const DEFAULT_EMAIL_TEMPLATES: Record<
     bodyText:
       'Hello {{user.fullName}},\n\nThis is a school message from {{school.name}}.',
     footerHtml: '<p>Support: {{support.email}} {{support.phone}}</p>',
-    logoFileId: null,
     supportEmail: null,
     supportPhone: null,
     socialLinks: null,

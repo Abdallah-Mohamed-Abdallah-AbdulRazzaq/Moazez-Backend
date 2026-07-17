@@ -1,8 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  SchoolEmailTemplate,
-  SchoolEmailTemplateKey,
-} from '@prisma/client';
+import { SchoolEmailTemplate, SchoolEmailTemplateKey } from '@prisma/client';
 import {
   allowedVariablesForTemplate,
   buildDefaultPreviewData,
@@ -22,6 +19,7 @@ import {
   EmailDeliveryTemplateMissingException,
 } from '../../domain/email.exceptions';
 import { EmailSettingsRepository } from '../../infrastructure/email-settings.repository';
+import { ResolveSchoolLogoUrlService } from '../../../branding/application/resolve-school-logo-url.service';
 
 export interface CampaignContentInput {
   subject?: string | null;
@@ -49,6 +47,7 @@ export interface RenderUserData {
 export class SchoolEmailRendererService {
   constructor(
     private readonly emailSettingsRepository: EmailSettingsRepository,
+    private readonly logoResolver: ResolveSchoolLogoUrlService,
   ) {}
 
   async renderCredentialEmail(args: {
@@ -57,33 +56,39 @@ export class SchoolEmailRendererService {
     user: RenderUserData;
     temporaryPassword?: string | null;
   }): Promise<RenderedSchoolEmail> {
-    const [content, branding] = await Promise.all([
+    const [content, branding, logoUrl] = await Promise.all([
       this.loadTemplateContent(args.templateKey),
       this.emailSettingsRepository.findSchoolBranding(args.schoolId),
+      this.logoResolver.resolveForSchool(args.schoolId),
     ]);
     const allowedVariables = allowedVariablesForTemplate(args.templateKey);
     validateTemplateContent(content, allowedVariables);
 
-    return this.renderContent(content, allowedVariables, {
-      school: {
-        name: branding.name,
-        logoUrl: branding.logoUrl,
+    return this.renderContent(
+      content,
+      allowedVariables,
+      {
+        school: {
+          name: branding.name,
+          logoUrl,
+        },
+        user: {
+          fullName: args.user.fullName ?? '',
+          username: args.user.username ?? '',
+          loginEmail: args.user.loginEmail ?? '',
+        },
+        credential: {
+          activationUrl: null,
+          temporaryPassword: args.temporaryPassword ?? null,
+        },
+        support: {
+          email: content.supportEmail ?? branding.supportEmail,
+          phone: content.supportPhone ?? branding.supportPhone,
+        },
+        social: content.socialLinks ?? {},
       },
-      user: {
-        fullName: args.user.fullName ?? '',
-        username: args.user.username ?? '',
-        loginEmail: args.user.loginEmail ?? '',
-      },
-      credential: {
-        activationUrl: null,
-        temporaryPassword: args.temporaryPassword ?? null,
-      },
-      support: {
-        email: content.supportEmail ?? branding.supportEmail,
-        phone: content.supportPhone ?? branding.supportPhone,
-      },
-      social: content.socialLinks ?? {},
-    });
+      logoUrl,
+    );
   }
 
   async renderCampaignEmail(args: {
@@ -93,9 +98,10 @@ export class SchoolEmailRendererService {
     user: RenderUserData;
     previewData?: Record<string, unknown> | null;
   }): Promise<RenderedSchoolEmail> {
-    const [template, branding] = await Promise.all([
+    const [template, branding, logoUrl] = await Promise.all([
       this.loadTemplateContent(args.templateKey),
       this.emailSettingsRepository.findSchoolBranding(args.schoolId),
+      this.logoResolver.resolveForSchool(args.schoolId),
     ]);
     const content: EmailTemplateContent = {
       ...template,
@@ -114,30 +120,37 @@ export class SchoolEmailRendererService {
 
     this.validateGeneralCampaignContent(content);
 
+    const renderData = buildDefaultPreviewData(
+      deepMerge(
+        {
+          school: {
+            name: branding.name,
+            logoUrl,
+          },
+          user: {
+            fullName: args.user.fullName ?? '',
+            username: args.user.username ?? '',
+            loginEmail: args.user.loginEmail ?? '',
+          },
+          support: {
+            email: content.supportEmail ?? branding.supportEmail,
+            phone: content.supportPhone ?? branding.supportPhone,
+          },
+          social: content.socialLinks ?? {},
+        },
+        args.previewData ?? {},
+      ),
+    );
+    renderData.school = {
+      ...((renderData.school as Record<string, unknown> | undefined) ?? {}),
+      logoUrl,
+    };
+
     return this.renderContent(
       content,
       [...GENERAL_MESSAGE_VARIABLES],
-      buildDefaultPreviewData(
-        deepMerge(
-          {
-            school: {
-              name: branding.name,
-              logoUrl: branding.logoUrl,
-            },
-            user: {
-              fullName: args.user.fullName ?? '',
-              username: args.user.username ?? '',
-              loginEmail: args.user.loginEmail ?? '',
-            },
-            support: {
-              email: content.supportEmail ?? branding.supportEmail,
-              phone: content.supportPhone ?? branding.supportPhone,
-            },
-            social: content.socialLinks ?? {},
-          },
-          args.previewData ?? {},
-        ),
-      ),
+      renderData,
+      logoUrl,
     );
   }
 
@@ -168,7 +181,9 @@ export class SchoolEmailRendererService {
       throw new EmailDeliveryTemplateMissingException({ templateKey: key });
     }
 
-    return existing ? templateRecordToContent(existing) : defaultTemplateForKey(key);
+    return existing
+      ? templateRecordToContent(existing)
+      : defaultTemplateForKey(key);
   }
 
   validateGeneralCampaignContent(content: EmailTemplateContent): void {
@@ -179,7 +194,9 @@ export class SchoolEmailRendererService {
       content.bodyText,
       content.footerHtml,
     ].filter((value): value is string => Boolean(value));
-    const issues = collectRenderIssues(templates, [...GENERAL_MESSAGE_VARIABLES]);
+    const issues = collectRenderIssues(templates, [
+      ...GENERAL_MESSAGE_VARIABLES,
+    ]);
     const credentialVariables = issues.unknownVariables.filter((variable) =>
       variable.startsWith('credential.'),
     );
@@ -202,6 +219,7 @@ export class SchoolEmailRendererService {
     content: EmailTemplateContent,
     allowedVariables: string[],
     data: Record<string, unknown>,
+    logoUrl: string | null,
   ): RenderedSchoolEmail {
     const subject = renderTemplate(content.subject, {
       allowedVariables,
@@ -233,7 +251,7 @@ export class SchoolEmailRendererService {
     return {
       subject: subject.rendered,
       html: buildEmailHtml({
-        logoFileId: content.logoFileId,
+        logoUrl,
         title: title.rendered,
         subtitle: subtitle.rendered,
         bodyHtml: bodyHtml.rendered,
@@ -266,10 +284,10 @@ function templateRecordToContent(
     bodyHtml: template.bodyHtml,
     bodyText: template.bodyText,
     footerHtml: template.footerHtml,
-    logoFileId: template.logoFileId,
     supportEmail: template.supportEmail,
     supportPhone: template.supportPhone,
-    socialLinks: (template.socialLinks ?? null) as EmailTemplateContent['socialLinks'],
+    socialLinks: (template.socialLinks ??
+      null) as EmailTemplateContent['socialLinks'],
     isActive: template.isActive,
   };
 }
@@ -300,14 +318,14 @@ function renderOptional(
 }
 
 function buildEmailHtml(input: {
-  logoFileId: string | null;
+  logoUrl: string | null;
   title: string | null;
   subtitle: string | null;
   bodyHtml: string;
   footerHtml: string | null;
 }): string {
-  const logo = input.logoFileId
-    ? `<div data-logo-file-id="${escapeHtml(input.logoFileId)}"></div>`
+  const logo = input.logoUrl
+    ? `<img src="${escapeHtml(input.logoUrl)}" alt="" />`
     : '';
   const title = input.title ? `<h1>${escapeHtml(input.title)}</h1>` : '';
   const subtitle = input.subtitle

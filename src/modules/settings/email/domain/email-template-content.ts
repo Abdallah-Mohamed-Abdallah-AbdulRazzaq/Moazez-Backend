@@ -29,8 +29,6 @@ export function mergeTemplateContent(
     bodyText: command.bodyText === undefined ? base.bodyText : command.bodyText,
     footerHtml:
       command.footerHtml === undefined ? base.footerHtml : command.footerHtml,
-    logoFileId:
-      command.logoFileId === undefined ? base.logoFileId : command.logoFileId,
     supportEmail:
       command.supportEmail === undefined
         ? base.supportEmail

@@ -42,7 +42,6 @@ export class UpdateEmailTemplateUseCase {
         bodyHtml: content.bodyHtml,
         bodyText: nullableTrim(content.bodyText),
         footerHtml: nullableTrim(content.footerHtml),
-        logoFileId: content.logoFileId,
         supportEmail: nullableTrim(content.supportEmail),
         supportPhone: nullableTrim(content.supportPhone),
         socialLinks: socialLinksToJson(content.socialLinks),
@@ -82,7 +81,6 @@ function summarizeTemplate(template: {
   preheader: string | null;
   title: string | null;
   subtitle: string | null;
-  logoFileId: string | null;
   supportEmail: string | null;
   supportPhone: string | null;
   isActive: boolean;
@@ -93,7 +91,6 @@ function summarizeTemplate(template: {
     preheader: template.preheader,
     title: template.title,
     subtitle: template.subtitle,
-    logoFileId: template.logoFileId,
     supportEmail: template.supportEmail,
     supportPhone: template.supportPhone,
     isActive: template.isActive,

@@ -19,7 +19,7 @@ export class StudentProfileAvatarDto {
 
 export class StudentProfileSchoolDto {
   name!: string | null;
-  logoUrl!: null;
+  logoUrl!: string | null;
 }
 
 export class StudentProfileHierarchyNodeDto {

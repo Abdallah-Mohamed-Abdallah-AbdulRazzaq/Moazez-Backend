@@ -32,7 +32,10 @@ describe('Teacher Settings use cases', () => {
   });
 
   it('about returns stable app, school, legal, and unsupported settings shape', async () => {
-    const { aboutUseCase } = createUseCases();
+    const { aboutUseCase, logoResolver } = createUseCases();
+    logoResolver.resolveForSchool.mockResolvedValue(
+      'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
+    );
 
     const result = await aboutUseCase.execute();
 
@@ -44,7 +47,8 @@ describe('Teacher Settings use cases', () => {
       },
       school: {
         name: 'Moazez Academy',
-        logoUrl: null,
+        logoUrl:
+          'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
       },
       legal: {
         termsUrl: null,
@@ -89,6 +93,7 @@ function createUseCases(): {
   contactUseCase: GetTeacherSettingsContactUseCase;
   accessService: jest.Mocked<TeacherAppAccessService>;
   settingsReadAdapter: jest.Mocked<TeacherSettingsReadAdapter>;
+  logoResolver: { resolveForSchool: jest.Mock };
 } {
   const accessService = {
     assertCurrentTeacher: jest.fn(() => ({
@@ -111,11 +116,17 @@ function createUseCases(): {
       }),
     ),
   } as unknown as jest.Mocked<TeacherSettingsReadAdapter>;
+  const logoResolver = {
+    resolveForSchool: jest.fn().mockResolvedValue(null),
+  };
 
   return {
     aboutUseCase: new GetTeacherSettingsAboutUseCase(
       accessService,
       settingsReadAdapter,
+      logoResolver as unknown as ConstructorParameters<
+        typeof GetTeacherSettingsAboutUseCase
+      >[2],
     ),
     contactUseCase: new GetTeacherSettingsContactUseCase(
       accessService,
@@ -123,5 +134,6 @@ function createUseCases(): {
     ),
     accessService,
     settingsReadAdapter,
+    logoResolver,
   };
 }

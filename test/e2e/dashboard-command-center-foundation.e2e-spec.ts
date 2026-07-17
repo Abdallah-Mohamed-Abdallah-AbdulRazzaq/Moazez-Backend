@@ -502,14 +502,36 @@ function expectNoInternalLeaks(body: unknown): void {
   }
 }
 
-function createNoopBullmqService(): Pick<
-  BullmqService,
-  'addEmailJob' | 'addImportJob' | 'createWorker' | 'onModuleDestroy'
-> {
+type AppModuleBullmqServiceMock = {
+  addEmailJob: (...args: unknown[]) => Promise<void>;
+  addImportJob: (...args: unknown[]) => Promise<void>;
+  addJob: (...args: Parameters<BullmqService['addJob']>) => Promise<void>;
+  getQueueReadiness: BullmqService['getQueueReadiness'];
+  createWorker: (
+    ...args: Parameters<BullmqService['createWorker']>
+  ) => NoopBullmqWorker;
+  onModuleDestroy: BullmqService['onModuleDestroy'];
+};
+
+type NoopBullmqWorker = {
+  on: (event: string, listener: (...args: unknown[]) => void) => void;
+  close: () => Promise<void>;
+};
+
+function createNoopBullmqService(): AppModuleBullmqServiceMock {
   return {
     addEmailJob: jest.fn().mockResolvedValue(undefined),
     addImportJob: jest.fn().mockResolvedValue(undefined),
-    createWorker: jest.fn().mockReturnValue({ close: jest.fn() }),
+    addJob: jest.fn().mockResolvedValue(undefined),
+    getQueueReadiness: jest.fn().mockResolvedValue({
+      name: 'settings-branding-logo-cleanup',
+      status: 'ok',
+      counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+    }),
+    createWorker: jest.fn().mockReturnValue({
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    }),
     onModuleDestroy: jest.fn().mockResolvedValue(undefined),
   };
 }

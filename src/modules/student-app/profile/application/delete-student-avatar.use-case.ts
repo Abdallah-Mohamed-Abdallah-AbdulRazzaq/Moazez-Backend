@@ -1,6 +1,7 @@
 import { AuditOutcome, UserType } from '@prisma/client';
 import { Injectable } from '@nestjs/common';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
+import { ResolveSchoolLogoUrlService } from '../../../settings/branding/application/resolve-school-logo-url.service';
 import { StudentAppAccessService } from '../../access/student-app-access.service';
 import type { StudentAppContext } from '../../shared/student-app.types';
 import { StudentAppStudentNotFoundException } from '../../shared/student-app-errors';
@@ -16,6 +17,7 @@ export class DeleteStudentAvatarUseCase {
     private readonly avatarRepository: StudentAvatarRepository,
     private readonly readAdapter: StudentProfileReadAdapter,
     private readonly authRepository: AuthRepository,
+    private readonly logoResolver: ResolveSchoolLogoUrlService,
   ) {}
 
   async execute(): Promise<StudentProfileResponseDto> {
@@ -45,6 +47,7 @@ export class DeleteStudentAvatarUseCase {
     return buildStudentProfileResponse({
       context,
       readAdapter: this.readAdapter,
+      logoResolver: this.logoResolver,
     });
   }
 

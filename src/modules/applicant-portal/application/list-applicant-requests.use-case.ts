@@ -7,12 +7,14 @@ import { normalizeApplicantRequestsQuery } from '../domain/applicant-request.inp
 import { ApplicantPortalRepository } from '../infrastructure/applicant-portal.repository';
 import { presentApplicantRequestsList } from '../presenters/applicant-request.presenter';
 import { ApplicantPortalAccessService } from './applicant-portal-access.service';
+import { ResolveSchoolLogoUrlService } from '../../settings/branding/application/resolve-school-logo-url.service';
 
 @Injectable()
 export class ListApplicantRequestsUseCase {
   constructor(
     private readonly applicantPortalAccessService: ApplicantPortalAccessService,
     private readonly applicantPortalRepository: ApplicantPortalRepository,
+    private readonly logoResolver: ResolveSchoolLogoUrlService,
   ) {}
 
   async execute(
@@ -32,18 +34,25 @@ export class ListApplicantRequestsUseCase {
         },
       );
 
-    const [missingItemsCountByRequestId, mandatoryItemsCountBySchoolId] =
-      await Promise.all([
-        this.countMissingItemsByRequestId(result.items),
-        this.countMandatoryItemsBySchoolId(
-          result.items.map((request) => request.school.id),
-        ),
-      ]);
+    const [
+      missingItemsCountByRequestId,
+      mandatoryItemsCountBySchoolId,
+      logoUrlsBySchoolId,
+    ] = await Promise.all([
+      this.countMissingItemsByRequestId(result.items),
+      this.countMandatoryItemsBySchoolId(
+        result.items.map((request) => request.school.id),
+      ),
+      this.logoResolver.resolveForSchools(
+        result.items.map((request) => request.school.id),
+      ),
+    ]);
 
     return presentApplicantRequestsList({
       ...result,
       missingItemsCountByRequestId,
       mandatoryItemsCountBySchoolId,
+      logoUrlsBySchoolId,
     });
   }
 

@@ -12,6 +12,7 @@ import { HeroJourneyModule } from '../reinforcement/hero-journey/hero-journey.mo
 import { ReviewsModule } from '../reinforcement/reviews/reviews.module';
 import { RewardsModule } from '../reinforcement/rewards/rewards.module';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
+import { BrandingModule } from '../settings/branding/branding.module';
 import { StudentAppAccessService } from './access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from './access/student-app-student-read.adapter';
 import { GetStudentAnnouncementUseCase } from './announcements/application/get-student-announcement.use-case';
@@ -143,6 +144,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     AppDeviceTokensModule,
     AuthModule,
     CommunicationModule,
+    BrandingModule,
     DisciplineModule,
     HeroJourneyModule,
     ProfileCorrectionRequestsModule,

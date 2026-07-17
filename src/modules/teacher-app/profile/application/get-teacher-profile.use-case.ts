@@ -5,6 +5,7 @@ import { TeacherAppRequiredTeacherException } from '../../shared/teacher-app.err
 import { TeacherProfileResponseDto } from '../dto/teacher-profile.dto';
 import { TeacherProfileReadAdapter } from '../infrastructure/teacher-profile-read.adapter';
 import { TeacherProfilePresenter } from '../presenters/teacher-profile.presenter';
+import { ResolveSchoolLogoUrlService } from '../../../settings/branding/application/resolve-school-logo-url.service';
 
 @Injectable()
 export class GetTeacherProfileUseCase {
@@ -12,17 +13,17 @@ export class GetTeacherProfileUseCase {
     private readonly accessService: TeacherAppAccessService,
     private readonly allocationReadAdapter: TeacherAppAllocationReadAdapter,
     private readonly profileReadAdapter: TeacherProfileReadAdapter,
+    private readonly logoResolver: ResolveSchoolLogoUrlService,
   ) {}
 
   async execute(): Promise<TeacherProfileResponseDto> {
     const context = this.accessService.assertCurrentTeacher();
-    const [teacher, school, role, allocations] = await Promise.all([
+    const [teacher, school, role, allocations, logoUrl] = await Promise.all([
       this.profileReadAdapter.findTeacherIdentity(context.teacherUserId),
       this.profileReadAdapter.findSchoolDisplay(context),
       this.profileReadAdapter.findTeacherRole(context),
-      this.allocationReadAdapter.listAllOwnedAllocations(
-        context.teacherUserId,
-      ),
+      this.allocationReadAdapter.listAllOwnedAllocations(context.teacherUserId),
+      this.logoResolver.resolveForSchool(context.schoolId),
     ]);
 
     if (!teacher) {
@@ -38,7 +39,7 @@ export class GetTeacherProfileUseCase {
 
     return TeacherProfilePresenter.presentProfile({
       teacher,
-      school,
+      school: { ...school, logoUrl },
       role,
       classesSummary: {
         classesCount: allocations.length,

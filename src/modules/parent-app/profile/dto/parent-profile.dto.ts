@@ -21,7 +21,7 @@ export class ParentProfileChildDto {
 
 export class ParentProfileSchoolDto {
   name!: string | null;
-  logoUrl!: null;
+  logoUrl!: string | null;
 }
 
 export class ParentProfileUnsupportedDto {

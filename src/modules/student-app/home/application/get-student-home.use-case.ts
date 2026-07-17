@@ -7,12 +7,14 @@ import {
 import { StudentHomeResponseDto } from '../dto/student-home.dto';
 import { StudentHomeReadAdapter } from '../infrastructure/student-home-read.adapter';
 import { StudentHomePresenter } from '../presenters/student-home.presenter';
+import { ResolveSchoolLogoUrlService } from '../../../settings/branding/application/resolve-school-logo-url.service';
 
 @Injectable()
 export class GetStudentHomeUseCase {
   constructor(
     private readonly accessService: StudentAppAccessService,
     private readonly readAdapter: StudentHomeReadAdapter,
+    private readonly logoResolver: ResolveSchoolLogoUrlService,
   ) {}
 
   async execute(): Promise<StudentHomeResponseDto> {
@@ -26,6 +28,7 @@ export class GetStudentHomeUseCase {
       subjectsCount,
       pendingTasksCount,
       totalXp,
+      logoUrl,
     ] = await Promise.all([
       this.readAdapter.findStudentIdentity(context),
       this.readAdapter.findSchoolDisplay(context),
@@ -33,6 +36,7 @@ export class GetStudentHomeUseCase {
       this.readAdapter.countSubjectsForCurrentClassroom(context),
       this.readAdapter.countPendingTasksForCurrentStudent(context),
       this.readAdapter.sumTotalXpForCurrentStudent(context),
+      this.logoResolver.resolveForSchool(context.schoolId),
     ]);
 
     if (!student) {
@@ -49,7 +53,7 @@ export class GetStudentHomeUseCase {
 
     return StudentHomePresenter.present({
       student,
-      school,
+      school: { ...school, logoUrl },
       enrollment,
       subjectsCount,
       pendingTasksCount,

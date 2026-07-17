@@ -16,6 +16,7 @@ import {
 import { EmailTemplateInvalidException } from '../domain/email.exceptions';
 import { renderTemplate } from '../domain/email-template-renderer';
 import { EmailSettingsRepository } from '../infrastructure/email-settings.repository';
+import { ResolveSchoolLogoUrlService } from '../../branding/application/resolve-school-logo-url.service';
 
 describe('email template use cases', () => {
   function runScoped<T>(fn: () => Promise<T>): Promise<T> {
@@ -54,7 +55,6 @@ describe('email template use cases', () => {
       }),
       findSchoolBranding: jest.fn().mockResolvedValue({
         name: 'Sample School',
-        logoUrl: null,
         supportEmail: 'support@school.example',
         supportPhone: '+20 100 000 0000',
       }),
@@ -87,6 +87,7 @@ describe('email template use cases', () => {
         'credential.temporaryPassword',
       ]),
     );
+    expect(result).not.toHaveProperty('logoFileId');
   });
 
   it('updates a school template and audits without rendered credentials', async () => {
@@ -136,7 +137,17 @@ describe('email template use cases', () => {
 
   it('previews variables and reports missing and unknown variables without persisting', async () => {
     const { emailSettingsRepository } = repositories();
-    const useCase = new PreviewEmailTemplateUseCase(emailSettingsRepository);
+    const logoResolver = {
+      resolveForSchool: jest
+        .fn()
+        .mockResolvedValue(
+          'https://api.example.com/api/v1/public/schools/school-1/branding/logo?v=opaque',
+        ),
+    } as unknown as ResolveSchoolLogoUrlService;
+    const useCase = new PreviewEmailTemplateUseCase(
+      emailSettingsRepository,
+      logoResolver,
+    );
 
     const result = await runScoped(() =>
       useCase.execute(SchoolEmailTemplateKey.ACCOUNT_CREDENTIALS, {
@@ -154,6 +165,10 @@ describe('email template use cases', () => {
     expect(result.unknownVariables).toContain('system.secret');
     expect(result.missingVariables).toContain('credential.temporaryPassword');
     expect(result.html).toContain('https://example.com/activate/sample-token');
+    expect(result.html).toContain(
+      'src="https://api.example.com/api/v1/public/schools/school-1/branding/logo?v=opaque"',
+    );
+    expect(result.html).not.toContain('data-logo-file-id');
     expect(
       emailSettingsRepository.saveTemplate as unknown as jest.Mock,
     ).not.toHaveBeenCalled();

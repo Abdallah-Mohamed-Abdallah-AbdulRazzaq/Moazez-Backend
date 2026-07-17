@@ -56,7 +56,7 @@ export type ParentProfileChildRecord = Prisma.EnrollmentGetPayload<
 
 export interface ParentProfileSchoolDisplayRecord {
   name: string | null;
-  logoUrl: null;
+  logoUrl: string | null;
 }
 
 @Injectable()

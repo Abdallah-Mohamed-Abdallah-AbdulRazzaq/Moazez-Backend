@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { BucketItemStat, Client } from 'minio';
+import { Readable } from 'node:stream';
+import { BucketItem, BucketItemStat, Client } from 'minio';
 
 type PutObjectInput = {
   bucket: string;
@@ -56,9 +57,7 @@ export class MinioAdapter {
     await this.ensureBucketExists(input.bucket);
 
     const metadata = {
-      ...(input.contentType
-        ? { 'Content-Type': input.contentType }
-        : {}),
+      ...(input.contentType ? { 'Content-Type': input.contentType } : {}),
       ...(input.metadata ?? {}),
     };
 
@@ -92,6 +91,62 @@ export class MinioAdapter {
     objectKey: string;
   }): Promise<BucketItemStat> {
     return this.client.statObject(input.bucket, input.objectKey);
+  }
+
+  getObject(input: { bucket: string; objectKey: string }): Promise<Readable> {
+    return this.client.getObject(input.bucket, input.objectKey);
+  }
+
+  listObjectsPage(input: {
+    bucket: string;
+    prefix: string;
+    startAfter?: string;
+    limit: number;
+  }): Promise<{
+    objects: Array<{ objectKey: string; size: number; lastModified: Date }>;
+    nextStartAfter: string | null;
+  }> {
+    return new Promise((resolve, reject) => {
+      const objects: Array<{
+        objectKey: string;
+        size: number;
+        lastModified: Date;
+      }> = [];
+      let settled = false;
+      const stream = this.client.listObjectsV2(
+        input.bucket,
+        input.prefix,
+        true,
+        input.startAfter,
+      );
+
+      stream.on('data', (item: BucketItem) => {
+        if (settled || !item.name) return;
+        if (objects.length < input.limit) {
+          objects.push({
+            objectKey: item.name,
+            size: item.size,
+            lastModified: item.lastModified,
+          });
+          return;
+        }
+
+        settled = true;
+        stream.destroy();
+        resolve({
+          objects,
+          nextStartAfter: objects[objects.length - 1]?.objectKey ?? null,
+        });
+      });
+      stream.on('error', (error) => {
+        if (!settled) reject(error);
+      });
+      stream.on('end', () => {
+        if (settled) return;
+        settled = true;
+        resolve({ objects, nextStartAfter: null });
+      });
+    });
   }
 
   createPresignedGetUrl(input: PresignedGetUrlInput): Promise<string> {

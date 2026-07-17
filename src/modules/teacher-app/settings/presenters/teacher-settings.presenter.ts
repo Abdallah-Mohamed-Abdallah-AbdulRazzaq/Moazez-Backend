@@ -16,7 +16,7 @@ export class TeacherSettingsPresenter {
       },
       school: {
         name: school.name,
-        logoUrl: null,
+        logoUrl: school.logoUrl,
       },
       legal: {
         termsUrl: null,

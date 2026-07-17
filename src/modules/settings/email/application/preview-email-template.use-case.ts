@@ -12,11 +12,13 @@ import {
   PreviewEmailTemplateDto,
 } from '../dto/email-template.dto';
 import { EmailSettingsRepository } from '../infrastructure/email-settings.repository';
+import { ResolveSchoolLogoUrlService } from '../../branding/application/resolve-school-logo-url.service';
 
 @Injectable()
 export class PreviewEmailTemplateUseCase {
   constructor(
     private readonly emailSettingsRepository: EmailSettingsRepository,
+    private readonly logoResolver: ResolveSchoolLogoUrlService,
   ) {}
 
   async execute(
@@ -24,9 +26,10 @@ export class PreviewEmailTemplateUseCase {
     command: PreviewEmailTemplateDto,
   ): Promise<EmailTemplatePreviewResponseDto> {
     const scope = requireSettingsScope();
-    const [existing, branding] = await Promise.all([
+    const [existing, branding, logoUrl] = await Promise.all([
       this.emailSettingsRepository.findTemplate(key),
       this.emailSettingsRepository.findSchoolBranding(scope.schoolId),
+      this.logoResolver.resolveForSchool(scope.schoolId),
     ]);
     const content = mergeTemplateContent(key, existing, command);
     const allowedVariables = allowedVariablesForTemplate(key);
@@ -35,7 +38,7 @@ export class PreviewEmailTemplateUseCase {
         {
           school: {
             name: branding.name,
-            logoUrl: branding.logoUrl,
+            logoUrl,
           },
           support: {
             email: content.supportEmail ?? branding.supportEmail,
@@ -46,6 +49,10 @@ export class PreviewEmailTemplateUseCase {
         command.previewData ?? {},
       ),
     );
+    previewData.school = {
+      ...((previewData.school as Record<string, unknown> | undefined) ?? {}),
+      logoUrl,
+    };
 
     const renderedSubject = renderTemplate(content.subject, {
       allowedVariables,
@@ -82,7 +89,7 @@ export class PreviewEmailTemplateUseCase {
       subject: renderedSubject.rendered,
       preheader: renderedPreheader.rendered,
       html: buildPreviewHtml({
-        logoFileId: content.logoFileId,
+        logoUrl,
         title: renderedTitle.rendered,
         subtitle: renderedSubtitle.rendered,
         bodyHtml: renderedBodyHtml.rendered,
@@ -154,14 +161,14 @@ function emptyRender(rendered: string | null): OptionalTemplateRenderResult {
 }
 
 function buildPreviewHtml(input: {
-  logoFileId: string | null;
+  logoUrl: string | null;
   title: string | null;
   subtitle: string | null;
   bodyHtml: string;
   footerHtml: string | null;
 }): string {
-  const logo = input.logoFileId
-    ? `<div data-logo-file-id="${escapeHtml(input.logoFileId)}"></div>`
+  const logo = input.logoUrl
+    ? `<img src="${escapeHtml(input.logoUrl)}" alt="" />`
     : '';
   const title = input.title ? `<h1>${escapeHtml(input.title)}</h1>` : '';
   const subtitle = input.subtitle

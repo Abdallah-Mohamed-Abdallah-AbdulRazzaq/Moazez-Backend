@@ -6,6 +6,7 @@ import { CommunicationModule } from '../communication/communication.module';
 import { DisciplineModule } from '../discipline/discipline.module';
 import { DismissalModule } from '../dismissal/dismissal.module';
 import { IamModule } from '../iam/iam.module';
+import { BrandingModule } from '../settings/branding/branding.module';
 import { ParentAppAccessService } from './access/parent-app-access.service';
 import { ParentAppGuardianReadAdapter } from './access/parent-app-guardian-read.adapter';
 import { GetParentAnnouncementUseCase } from './announcements/application/get-parent-announcement.use-case';
@@ -129,6 +130,7 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
     AppCalendarReadModelModule,
     AppDeviceTokensModule,
     CommunicationModule,
+    BrandingModule,
     DisciplineModule,
     DismissalModule,
     IamModule,
