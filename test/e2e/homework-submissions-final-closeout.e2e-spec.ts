@@ -404,7 +404,9 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     expectSafeAppPayload(late.body);
 
     const dashboardSubmissions = await request(app.getHttpServer())
-      .get(`${GLOBAL_PREFIX}/homework/assignments/${reviewedHomeworkId}/submissions`)
+      .get(
+        `${GLOBAL_PREFIX}/homework/assignments/${reviewedHomeworkId}/submissions`,
+      )
       .set('Authorization', bearer(adminAuth))
       .expect(200);
 
@@ -1118,21 +1120,46 @@ describe('Sprint 14E Homework Submissions final closeout (e2e)', () => {
     }
   }
 
-  function createNoopBullmqService(): Pick<
-    BullmqService,
-    'addJob' | 'createWorker' | 'getQueue'
-  > {
+  type AppModuleBullmqServiceMock = {
+    getQueue: (
+      ...args: Parameters<BullmqService['getQueue']>
+    ) => NoopBullmqQueue;
+    addJob: (
+      ...args: Parameters<BullmqService['addJob']>
+    ) => Promise<{ id: string }>;
+    getQueueReadiness: BullmqService['getQueueReadiness'];
+    createWorker: (
+      ...args: Parameters<BullmqService['createWorker']>
+    ) => NoopBullmqWorker;
+  };
+
+  type NoopBullmqQueue = {
+    add: (...args: unknown[]) => Promise<{ id: string }>;
+    close: () => Promise<void>;
+  };
+
+  type NoopBullmqWorker = {
+    on: (event: string, listener: (...args: unknown[]) => void) => void;
+    close: () => Promise<void>;
+  };
+
+  function createNoopBullmqService(): AppModuleBullmqServiceMock {
     return {
       getQueue: jest.fn(() => ({
         add: jest.fn().mockResolvedValue({ id: 'noop-job' }),
         close: jest.fn().mockResolvedValue(undefined),
       })),
       addJob: jest.fn().mockResolvedValue({ id: 'noop-job' }),
+      getQueueReadiness: jest.fn().mockResolvedValue({
+        name: 'settings-branding-logo-cleanup',
+        status: 'ok',
+        counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+      }),
       createWorker: jest.fn(() => ({
         close: jest.fn().mockResolvedValue(undefined),
         on: jest.fn(),
       })),
-    } as unknown as Pick<BullmqService, 'addJob' | 'createWorker' | 'getQueue'>;
+    };
   }
 
   async function cleanupCloseoutData(): Promise<void> {

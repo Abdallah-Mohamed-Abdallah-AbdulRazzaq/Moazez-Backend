@@ -120,9 +120,7 @@ describe('Sprint 17E Platform Admin feature control foundation (e2e)', () => {
     );
     await app.init();
 
-    platformAccessToken = await login(
-      `${TEST_PREFIX}-platform@moazez.local`,
-    );
+    platformAccessToken = await login(`${TEST_PREFIX}-platform@moazez.local`);
     schoolAdminAccessToken = await login(
       `${TEST_PREFIX}-school-admin@moazez.local`,
     );
@@ -299,7 +297,9 @@ describe('Sprint 17E Platform Admin feature control foundation (e2e)', () => {
 
   it('enables and disables a single feature control', async () => {
     const enabled = await request(app.getHttpServer())
-      .put(`${GLOBAL_PREFIX}/platform-admin/schools/${schoolId}/features/dashboard`)
+      .put(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${schoolId}/features/dashboard`,
+      )
       .set('Authorization', `Bearer ${platformAccessToken}`)
       .send({
         enabled: true,
@@ -321,7 +321,9 @@ describe('Sprint 17E Platform Admin feature control foundation (e2e)', () => {
     });
 
     const disabled = await request(app.getHttpServer())
-      .put(`${GLOBAL_PREFIX}/platform-admin/schools/${schoolId}/features/dashboard`)
+      .put(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${schoolId}/features/dashboard`,
+      )
       .set('Authorization', `Bearer ${platformAccessToken}`)
       .send({
         enabled: false,
@@ -424,7 +426,9 @@ describe('Sprint 17E Platform Admin feature control foundation (e2e)', () => {
 
   it('rejects unknown feature keys, duplicate bulk keys, archived schools, and out-of-scope fields', async () => {
     await request(app.getHttpServer())
-      .put(`${GLOBAL_PREFIX}/platform-admin/schools/${schoolId}/features/billing`)
+      .put(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${schoolId}/features/billing`,
+      )
       .set('Authorization', `Bearer ${platformAccessToken}`)
       .send({ enabled: true, source: 'platform' })
       .expect(422)
@@ -462,7 +466,9 @@ describe('Sprint 17E Platform Admin feature control foundation (e2e)', () => {
       });
 
     await request(app.getHttpServer())
-      .put(`${GLOBAL_PREFIX}/platform-admin/schools/${schoolId}/features/grades`)
+      .put(
+        `${GLOBAL_PREFIX}/platform-admin/schools/${schoolId}/features/grades`,
+      )
       .set('Authorization', `Bearer ${platformAccessToken}`)
       .send({
         enabled: true,
@@ -1115,14 +1121,36 @@ function permission(
   };
 }
 
-function createNoopBullmqService(): Pick<
-  BullmqService,
-  'addEmailJob' | 'addImportJob' | 'createWorker' | 'onModuleDestroy'
-> {
+type AppModuleBullmqServiceMock = {
+  addEmailJob: (...args: unknown[]) => Promise<void>;
+  addImportJob: (...args: unknown[]) => Promise<void>;
+  addJob: (...args: Parameters<BullmqService['addJob']>) => Promise<void>;
+  getQueueReadiness: BullmqService['getQueueReadiness'];
+  createWorker: (
+    ...args: Parameters<BullmqService['createWorker']>
+  ) => NoopBullmqWorker;
+  onModuleDestroy: BullmqService['onModuleDestroy'];
+};
+
+type NoopBullmqWorker = {
+  on: (event: string, listener: (...args: unknown[]) => void) => void;
+  close: () => Promise<void>;
+};
+
+function createNoopBullmqService(): AppModuleBullmqServiceMock {
   return {
     addEmailJob: jest.fn().mockResolvedValue(undefined),
     addImportJob: jest.fn().mockResolvedValue(undefined),
-    createWorker: jest.fn().mockReturnValue({ close: jest.fn() }),
+    addJob: jest.fn().mockResolvedValue(undefined),
+    getQueueReadiness: jest.fn().mockResolvedValue({
+      name: 'settings-branding-logo-cleanup',
+      status: 'ok',
+      counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+    }),
+    createWorker: jest.fn().mockReturnValue({
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    }),
     onModuleDestroy: jest.fn().mockResolvedValue(undefined),
   };
 }

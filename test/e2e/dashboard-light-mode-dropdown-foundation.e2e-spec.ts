@@ -94,6 +94,8 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
   let previewOnlyPrincipal: CreatedPrincipal;
   let academicYearId = '';
   let termId = '';
+  let bullmqServiceMock: AppModuleBullmqServiceMock;
+  const bullmqWorkerOn = jest.fn();
 
   const createdUserIds: string[] = [];
   const createdRoleIds: string[] = [];
@@ -514,11 +516,12 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
       },
     });
 
+    bullmqServiceMock = createNoopBullmqService(bullmqWorkerOn);
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(BullmqService)
-      .useValue(createNoopBullmqService())
+      .useValue(bullmqServiceMock)
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -531,6 +534,21 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
       }),
     );
     await app.init();
+
+    expect(bullmqServiceMock.addJob).toHaveBeenCalledWith(
+      'settings-branding-logo-cleanup',
+      expect.any(String),
+      expect.any(Object),
+      expect.any(Object),
+    );
+    expect(bullmqServiceMock.getQueueReadiness).toHaveBeenCalledWith(
+      'settings-branding-logo-cleanup',
+    );
+    expect(bullmqServiceMock.createWorker).toHaveBeenCalledWith(
+      'settings-branding-logo-cleanup',
+      expect.any(Function),
+    );
+    expect(bullmqWorkerOn).toHaveBeenCalledWith('failed', expect.any(Function));
   });
 
   afterAll(async () => {
@@ -1221,14 +1239,43 @@ function expectNoInternalLeaks(body: unknown): void {
   expect(serialized).not.toMatch(/[<](svg|div|span)/i);
 }
 
-function createNoopBullmqService(): Pick<
-  BullmqService,
-  'addEmailJob' | 'addImportJob' | 'createWorker' | 'onModuleDestroy'
-> {
+type AppModuleBullmqServiceMock = {
+  addEmailJob: (...args: unknown[]) => Promise<void>;
+  addImportJob: (...args: unknown[]) => Promise<void>;
+  addJob: (...args: Parameters<BullmqService['addJob']>) => Promise<void>;
+  getQueueReadiness: BullmqService['getQueueReadiness'];
+  createWorker: (
+    ...args: Parameters<BullmqService['createWorker']>
+  ) => NoopBullmqWorker;
+  onModuleDestroy: BullmqService['onModuleDestroy'];
+};
+
+type NoopBullmqWorker = {
+  on: (event: string, listener: (...args: unknown[]) => void) => void;
+  close: () => Promise<void>;
+};
+
+function createNoopBullmqService(
+  workerOn: NoopBullmqWorker['on'] = jest.fn(),
+): AppModuleBullmqServiceMock {
   return {
     addEmailJob: jest.fn().mockResolvedValue(undefined),
     addImportJob: jest.fn().mockResolvedValue(undefined),
-    createWorker: jest.fn().mockReturnValue({ close: jest.fn() }),
+    addJob: jest.fn().mockResolvedValue(undefined),
+    getQueueReadiness: jest.fn().mockResolvedValue({
+      name: 'settings-branding-logo-cleanup',
+      status: 'ok',
+      counts: {
+        waiting: 0,
+        active: 0,
+        delayed: 0,
+        failed: 0,
+      },
+    }),
+    createWorker: jest.fn().mockReturnValue({
+      on: workerOn,
+      close: jest.fn().mockResolvedValue(undefined),
+    }),
     onModuleDestroy: jest.fn().mockResolvedValue(undefined),
   };
 }

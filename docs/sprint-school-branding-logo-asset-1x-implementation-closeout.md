@@ -4,13 +4,16 @@
 
 ```text
 PROGRAM: SCHOOL-BRANDING-LOGO-ASSET-1X
-STATUS: IMPLEMENTED AND INTEGRATED VALIDATION PASSED
+STATUS: IMPLEMENTED; CI MOCK COMPATIBILITY CORRECTION VALIDATED
 IMPLEMENTATION BASELINE: 9993a58a6b23fb4401434cdcd7ed3fa05520ed26
 BRANCH: feat/school-branding-logo-asset-1x
 ARCHITECTURE CONTRACT: docs/sprint-school-branding-logo-asset-0a-reality-contract-audit.md
-STAGED FILES: 0 REQUIRED UNTIL A SEPARATE GUARDED STAGING GATE
-COMMITS AFTER BASELINE: 0 REQUIRED
-REMOTE BRANCH: ABSENT REQUIRED
+PULL REQUEST: #21
+ORIGINAL IMPLEMENTATION COMMIT: c35dcf7c50d4aef5f1220482af06121b4fa29a15
+CORRECTION COMMIT SUBJECT: test(ci): complete BullMQ AppModule mocks
+PR HEAD AFTER CORRECTION: the correction commit, not the original implementation commit
+COMMITS AFTER BASELINE AFTER PUBLICATION: 2
+STAGED FILES AFTER PUBLICATION: 0
 ```
 
 This document is the working scope ledger and will become the final unified
@@ -165,6 +168,32 @@ test/e2e/identity-credentials-email-final-closeout.e2e-spec.ts
 
 scripts/audits/classify-school-branding-logo-values.ts
 docs/sprint-school-branding-logo-asset-1x-implementation-closeout.md
+
+test/e2e/communication-security-contract.e2e-spec.ts
+test/e2e/dashboard-activity-feed-foundation.e2e-spec.ts
+test/e2e/dashboard-alerts-foundation.e2e-spec.ts
+test/e2e/dashboard-analytics-catalog-foundation.e2e-spec.ts
+test/e2e/dashboard-analytics-data-pack-foundation.e2e-spec.ts
+test/e2e/dashboard-command-center-foundation.e2e-spec.ts
+test/e2e/dashboard-light-mode-dropdown-foundation.e2e-spec.ts
+test/e2e/dashboard-module-pages-foundation.e2e-spec.ts
+test/e2e/dashboard-summary-foundation.e2e-spec.ts
+test/e2e/dashboard-todos-crud.e2e-spec.ts
+test/e2e/dashboard-widgets-foundation.e2e-spec.ts
+test/e2e/homework-answer-review-completion.e2e-spec.ts
+test/e2e/homework-answers-attachments-foundation.e2e-spec.ts
+test/e2e/homework-final-closeout.e2e-spec.ts
+test/e2e/homework-grade-sync-integration.e2e-spec.ts
+test/e2e/homework-questions-attachments-foundation.e2e-spec.ts
+test/e2e/homework-submissions-final-closeout.e2e-spec.ts
+test/e2e/platform-admin-entitlements-seat-usage.e2e-spec.ts
+test/e2e/platform-admin-feature-control-foundation.e2e-spec.ts
+test/e2e/platform-admin-organizations-schools-foundation.e2e-spec.ts
+test/e2e/platform-admin-school-provisioning.e2e-spec.ts
+test/e2e/platform-admin-student-seat-limit-enforcement.e2e-spec.ts
+test/e2e/school-support-chat.e2e-spec.ts
+test/security/tenancy.platform-admin.spec.ts
+test/security/tenancy.school-support-chat.spec.ts
 ```
 
 The Phase 1B correction is locked: the Student Home, Student Profile, Parent
@@ -214,6 +243,21 @@ must not silently widen scope.
    JSON entries would not localize runtime errors and would create a false
    assurance. `ERROR_CATALOG.md`, already allowlisted, was corrected to describe
    the authoritative runtime behavior. No i18n JSON or other path was added.
+
+4. **SCOPE STOP - CI-discovered AppModule BullMQ mock compatibility.** GitHub
+   Actions fresh-replay smoke tests load `AppModule` and override
+   `BullmqService` with historical no-op test doubles. The managed Branding
+   cleanup providers added legitimate initialization calls to `addJob`,
+   `getQueueReadiness`, and `createWorker().on(...)`. The historical Dashboard
+   double did not implement that dependency contract, so `app.init()` failed
+   before its Dashboard assertions executed. Repository-wide inspection found
+   25 AppModule override suites with the same incomplete contract. The
+   correction expands the allowlist by exactly the 25 test paths listed above
+   and this already-allowlisted closeout document. Architecture and production
+   behavior impact: none; this is test-only compatibility. Security and tenancy
+   impact: none. Migration impact: none. Production dependency strictness,
+   periodic reconciliation, cleanup worker registration, and Redis/BullMQ
+   behavior are unchanged.
 
 These decisions do not authorize any further path. Every path outside the
 corrected materialized allowlist remains a scope stop.
@@ -455,6 +499,17 @@ Build and test evidence:
   the complete focused Branding and Applicant/Teacher/Student/Parent/Email
   resolver regression passed 21 suites and 226 tests.
 - Full unit regression: 472 suites and 2,982 tests passed.
+- CI compatibility correction: the exact formerly failing GitHub Actions smoke
+  command passed 4 suites and 23 tests; the Dashboard LightModeDropdown suite
+  independently passed 1 suite and 8 tests.
+- All 25 AppModule suites that override `BullmqService` passed 25 suites and
+  166 tests with complete no-op test doubles. The Dashboard double additionally
+  asserts successful periodic reconciliation scheduling, readiness inspection,
+  cleanup worker creation, and failed-event handler registration; overriding
+  the provider prevents any live Redis or BullMQ connection.
+- Focused Branding cleanup and lifecycle regression passed 2 suites and 20
+  tests. Branding E2E and security/tenancy regression passed 2 suites and 8
+  tests. Generic Files privacy regression passed 2 suites and 9 tests.
 - Final cross-surface E2E regression: 11 suites and 75 tests passed, covering
   Branding, Applicant account/discovery/requests, Teacher, Student/avatar,
   Parent, email, and generic Files privacy flows.
@@ -492,31 +547,37 @@ authoritative whitespace check across every tracked and untracked change.
 
 ## Scope and Change Audit
 
-Every changed path is contained in the corrected materialized allowlist above,
-including the four explicitly recorded expansion paths. No package,
-environment, deployment, seed, generic Files controller/permission, Dashboard,
-i18n JSON, or historical audit file changed. There are no staged files,
-commits after the implementation baseline, or remote implementation branch.
-The final surgical corrections required no additional Scope Stop or allowlist
-expansion and did not alter the locked migration.
+Every changed path is contained in the corrected materialized allowlist above.
+The CI compatibility correction records Scope Stop 4 and changes only 25 test
+files plus this existing closeout. No production source, package, environment,
+deployment, seed, schema, migration, generic Files controller/permission, i18n
+JSON, or historical audit file changed. The correction does not alter the
+locked additive Branding migration.
 
 ```text
+PULL REQUEST FILES AFTER CORRECTION:
 ADDED FILES: 26
-MODIFIED FILES: 70
+MODIFIED FILES: 95
 DELETED FILES: 0
-TOTAL FILES: 96
-NEW MIGRATIONS: 1
-REAL STAGED FILES: 0
-COMMITS AFTER BASELINE: 0
-REMOTE BRANCH: ABSENT
+TOTAL FILES: 121
+
+CORRECTION COMMIT FILES: 26
+PRODUCTION SOURCE FILES: 0
+TEST FILES: 25
+DOCUMENTATION FILES: 1
+MIGRATION FILES: 0
+NEW MIGRATIONS IN CORRECTION: 0
+TOTAL BRANDING MIGRATIONS: 1
+COMMITS AFTER BASELINE AFTER PUBLICATION: 2
+CORRECTION COMMIT SUBJECT: test(ci): complete BullMQ AppModule mocks
 ```
 
 ```text
-PRETTIER (CHANGED TYPESCRIPT + CLOSEOUT): PASS
+PRETTIER (CORRECTION TESTS + CLOSEOUT): PASS
 GIT DIFF CHECK: PASS
-STAGING: PROHIBITED
-COMMIT: PROHIBITED
-PUSH: PROHIBITED
+CORRECTION STAGING: EXACT APPROVED FILES ONLY
+CORRECTION COMMIT: ONE AUTHORIZED COMMIT
+CORRECTION PUSH: EXISTING PR BRANCH ONLY; NO FORCE PUSH
 ```
 
 ## Known Blockers and Deferred Work
@@ -538,7 +599,8 @@ delivery, or SSRF boundaries.
 
 ## Final Verdict
 
-The unified managed school-branding-logo implementation and its integrated
-validation are complete and ready for a separate unified content audit. This
-closeout does not authorize staging, committing, pushing, a pull request, or
-destructive legacy retirement.
+The unified managed school-branding-logo implementation remains unchanged. The
+CI-discovered AppModule BullMQ mock compatibility correction is validated and
+is limited to test harnesses plus this closeout. The correction is ready for
+the authorized single commit and normal push to existing PR #21. This closeout
+does not authorize merging the pull request or destructive legacy retirement.

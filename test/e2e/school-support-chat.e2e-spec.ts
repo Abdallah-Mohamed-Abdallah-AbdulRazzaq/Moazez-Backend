@@ -54,8 +54,7 @@ const SUPPORT_PERMISSIONS = [
     module: 'platform',
     resource: 'support',
     action: 'reply',
-    description:
-      'Reply to school support conversations as Moazez Support.',
+    description: 'Reply to school support conversations as Moazez Support.',
   },
   {
     code: 'platform.support.manage',
@@ -644,9 +643,12 @@ describe('School support chat V1 final acceptance (e2e)', () => {
     expect(conversationSpy).toHaveBeenCalledTimes(
       sideEffectCallsBeforeSchoolReplay.conversation,
     );
-    expect(userSpy).toHaveBeenCalledTimes(sideEffectCallsBeforeSchoolReplay.user);
-    await expect(readNotificationsForMessage(schoolFollowUp.body.id)).resolves
-      .toHaveLength(sideEffectCallsBeforeSchoolReplay.notifications);
+    expect(userSpy).toHaveBeenCalledTimes(
+      sideEffectCallsBeforeSchoolReplay.user,
+    );
+    await expect(
+      readNotificationsForMessage(schoolFollowUp.body.id),
+    ).resolves.toHaveLength(sideEffectCallsBeforeSchoolReplay.notifications);
 
     await expect(countPushAttempts()).resolves.toBe(0);
 
@@ -770,8 +772,9 @@ describe('School support chat V1 final acceptance (e2e)', () => {
     expect(userSpy).toHaveBeenCalledTimes(
       sideEffectCallsBeforePlatformReplay.user,
     );
-    await expect(readNotificationsForMessage(platformReply.body.id)).resolves
-      .toHaveLength(sideEffectCallsBeforePlatformReplay.notifications);
+    await expect(
+      readNotificationsForMessage(platformReply.body.id),
+    ).resolves.toHaveLength(sideEffectCallsBeforePlatformReplay.notifications);
 
     const schoolUnread = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/school-support/conversation`)
@@ -1152,14 +1155,36 @@ describe('School support chat V1 final acceptance (e2e)', () => {
   }
 });
 
-function createNoopBullmqService(): Pick<
-  BullmqService,
-  'addEmailJob' | 'addImportJob' | 'createWorker' | 'onModuleDestroy'
-> {
+type AppModuleBullmqServiceMock = {
+  addEmailJob: (...args: unknown[]) => Promise<void>;
+  addImportJob: (...args: unknown[]) => Promise<void>;
+  addJob: (...args: Parameters<BullmqService['addJob']>) => Promise<void>;
+  getQueueReadiness: BullmqService['getQueueReadiness'];
+  createWorker: (
+    ...args: Parameters<BullmqService['createWorker']>
+  ) => NoopBullmqWorker;
+  onModuleDestroy: BullmqService['onModuleDestroy'];
+};
+
+type NoopBullmqWorker = {
+  on: (event: string, listener: (...args: unknown[]) => void) => void;
+  close: () => Promise<void>;
+};
+
+function createNoopBullmqService(): AppModuleBullmqServiceMock {
   return {
     addEmailJob: jest.fn().mockResolvedValue(undefined),
     addImportJob: jest.fn().mockResolvedValue(undefined),
-    createWorker: jest.fn().mockReturnValue({ close: jest.fn() }),
+    addJob: jest.fn().mockResolvedValue(undefined),
+    getQueueReadiness: jest.fn().mockResolvedValue({
+      name: 'settings-branding-logo-cleanup',
+      status: 'ok',
+      counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+    }),
+    createWorker: jest.fn().mockReturnValue({
+      on: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    }),
     onModuleDestroy: jest.fn().mockResolvedValue(undefined),
   };
 }
