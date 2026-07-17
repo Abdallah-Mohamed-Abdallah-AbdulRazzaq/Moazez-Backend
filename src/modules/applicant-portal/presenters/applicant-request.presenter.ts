@@ -14,12 +14,14 @@ export function presentApplicantRequestDetail(
   request: ApplicantAdmissionRequestRecord,
   missingItemsCount: number,
   mandatoryItemsCount = missingItemsCount,
+  logoUrl: string | null = null,
 ): ApplicantRequestDetailResponseDto {
   return {
     ...presentApplicantRequestCard(
       request,
       missingItemsCount,
       mandatoryItemsCount,
+      logoUrl,
     ),
     child: {
       firstName: request.childFirstName,
@@ -41,6 +43,7 @@ export function presentApplicantRequestsList(input: {
   total: number;
   missingItemsCountByRequestId: Map<string, number>;
   mandatoryItemsCountBySchoolId?: Map<string, number>;
+  logoUrlsBySchoolId?: Map<string, string | null>;
 }): ApplicantRequestsListResponseDto {
   const totalPages =
     input.total === 0 ? 0 : Math.ceil(input.total / input.limit);
@@ -51,6 +54,7 @@ export function presentApplicantRequestsList(input: {
         request,
         input.missingItemsCountByRequestId.get(request.id) ?? 0,
         input.mandatoryItemsCountBySchoolId?.get(request.school.id) ?? 0,
+        input.logoUrlsBySchoolId?.get(request.school.id) ?? null,
       ),
     ),
     meta: {
@@ -67,6 +71,7 @@ export function presentApplicantRequestCard(
   request: ApplicantAdmissionRequestRecord,
   missingItemsCount: number,
   mandatoryItemsCount = missingItemsCount,
+  logoUrl: string | null = null,
 ): ApplicantRequestCardResponseDto {
   const status = presentRequestStatus(request);
 
@@ -83,6 +88,7 @@ export function presentApplicantRequestCard(
       shortName: publicText(request.school.schoolProfile?.shortName),
       city: publicText(request.school.schoolProfile?.city),
       country: publicText(request.school.schoolProfile?.country),
+      logoUrl,
     },
     childFullName: request.childFullName,
     requestedAcademicYear: request.requestedAcademicYear

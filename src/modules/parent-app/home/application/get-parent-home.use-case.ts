@@ -7,23 +7,27 @@ import {
 import { ParentHomeResponseDto } from '../dto/parent-home.dto';
 import { ParentHomeReadAdapter } from '../infrastructure/parent-home-read.adapter';
 import { ParentHomePresenter } from '../presenters/parent-home.presenter';
+import { ResolveSchoolLogoUrlService } from '../../../settings/branding/application/resolve-school-logo-url.service';
 
 @Injectable()
 export class GetParentHomeUseCase {
   constructor(
     private readonly accessService: ParentAppAccessService,
     private readonly readAdapter: ParentHomeReadAdapter,
+    private readonly logoResolver: ResolveSchoolLogoUrlService,
   ) {}
 
   async execute(): Promise<ParentHomeResponseDto> {
     const context = await this.accessService.getParentAppContext();
 
-    const [parent, school, children, pendingTaskCounts] = await Promise.all([
-      this.readAdapter.findParentIdentity(context),
-      this.readAdapter.findSchoolDisplay(context),
-      this.readAdapter.listChildren(context),
-      this.readAdapter.countPendingTasksForChildren(context),
-    ]);
+    const [parent, school, children, pendingTaskCounts, logoUrl] =
+      await Promise.all([
+        this.readAdapter.findParentIdentity(context),
+        this.readAdapter.findSchoolDisplay(context),
+        this.readAdapter.listChildren(context),
+        this.readAdapter.countPendingTasksForChildren(context),
+        this.logoResolver.resolveForSchool(context.schoolId),
+      ]);
 
     if (!parent) {
       throw new ParentAppRequiredParentException({
@@ -39,7 +43,7 @@ export class GetParentHomeUseCase {
 
     return ParentHomePresenter.present({
       parent,
-      school,
+      school: { ...school, logoUrl },
       children,
       pendingTaskCounts,
     });

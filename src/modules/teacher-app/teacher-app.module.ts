@@ -6,6 +6,7 @@ import { RollCallModule } from '../attendance/roll-call/roll-call.module';
 import { AssessmentsModule } from '../grades/assessments/assessments.module';
 import { ReviewsModule } from '../reinforcement/reviews/reviews.module';
 import { TasksModule } from '../reinforcement/tasks/tasks.module';
+import { BrandingModule } from '../settings/branding/branding.module';
 import {
   ArchiveTeacherAnnouncementUseCase,
   CreateTeacherAnnouncementUseCase,
@@ -132,6 +133,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     TasksModule,
     ReviewsModule,
     CommunicationModule,
+    BrandingModule,
     TeacherHomeworksModule,
   ],
   controllers: [

@@ -45,7 +45,7 @@ export type TeacherProfileRoleRecord = Prisma.MembershipGetPayload<
 
 export interface TeacherProfileSchoolDisplayRecord {
   name: string | null;
-  logoUrl: null;
+  logoUrl: string | null;
 }
 
 @Injectable()

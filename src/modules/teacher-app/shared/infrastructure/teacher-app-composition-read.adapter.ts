@@ -32,7 +32,7 @@ export type TeacherAppTeacherIdentityRecord = Prisma.UserGetPayload<
 
 export interface TeacherAppSchoolSummaryRecord {
   name: string | null;
-  logoUrl: null;
+  logoUrl: string | null;
 }
 
 export interface TeacherAppClassMetricRecord {
@@ -206,8 +206,7 @@ export class TeacherAppCompositionReadAdapter {
       metrics.set(allocation.id, {
         ...emptyMetric(),
         studentsCount: studentCounts.get(allocation.classroomId) ?? 0,
-        activeAssignmentsCount:
-          assignmentMetric?.activeAssignmentsCount ?? 0,
+        activeAssignmentsCount: assignmentMetric?.activeAssignmentsCount ?? 0,
         pendingReviewCount: assignmentMetric?.pendingReviewCount ?? 0,
       });
     }

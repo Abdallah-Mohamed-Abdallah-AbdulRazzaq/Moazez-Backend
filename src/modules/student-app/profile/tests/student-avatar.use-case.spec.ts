@@ -47,6 +47,9 @@ describe('Student avatar use cases', () => {
       avatarFileId: 'avatar-file-1',
       avatarFile: avatarFileFixture('avatar-file-1'),
     });
+    deps.logoResolver.resolveForSchool.mockResolvedValue(
+      'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
+    );
     mockProfileResponse(deps.readAdapter, avatarFileFixture('avatar-file-1'));
 
     const result = await deps.uploadUseCase.execute(imageFile());
@@ -73,6 +76,9 @@ describe('Student avatar use cases', () => {
       }),
     );
     expect(result.student).not.toHaveProperty('userId');
+    expect(result.school.logoUrl).toBe(
+      'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
+    );
     expect(result.student.avatarUrl).toBe(
       '/api/v1/files/avatar-file-1/download',
     );
@@ -262,6 +268,7 @@ function createUseCases(): {
   registerFileMetadataUseCase: jest.Mocked<RegisterFileMetadataUseCase>;
   filesRepository: jest.Mocked<FilesRepository>;
   authRepository: jest.Mocked<AuthRepository>;
+  logoResolver: { resolveForSchool: jest.Mock };
 } {
   const accessService = {
     getCurrentStudentWithEnrollment: jest.fn(),
@@ -290,6 +297,9 @@ function createUseCases(): {
   const authRepository = {
     createAuditLog: jest.fn().mockResolvedValue(undefined),
   } as unknown as jest.Mocked<AuthRepository>;
+  const logoResolver = {
+    resolveForSchool: jest.fn().mockResolvedValue(null),
+  };
 
   return {
     uploadUseCase: new UploadStudentAvatarUseCase(
@@ -300,12 +310,18 @@ function createUseCases(): {
       registerFileMetadataUseCase,
       filesRepository,
       authRepository,
+      logoResolver as unknown as ConstructorParameters<
+        typeof UploadStudentAvatarUseCase
+      >[7],
     ),
     deleteUseCase: new DeleteStudentAvatarUseCase(
       accessService,
       avatarRepository,
       readAdapter,
       authRepository,
+      logoResolver as unknown as ConstructorParameters<
+        typeof DeleteStudentAvatarUseCase
+      >[4],
     ),
     accessService,
     avatarRepository,
@@ -314,6 +330,7 @@ function createUseCases(): {
     registerFileMetadataUseCase,
     filesRepository,
     authRepository,
+    logoResolver,
   };
 }
 
@@ -418,7 +435,9 @@ function enrollmentFixture(): StudentProfileEnrollmentRecord {
   };
 }
 
-function imageFile(overrides?: Partial<UploadedMultipartFile>): UploadedMultipartFile {
+function imageFile(
+  overrides?: Partial<UploadedMultipartFile>,
+): UploadedMultipartFile {
   const buffer = overrides?.buffer ?? Buffer.alloc(1024, 65);
 
   return {

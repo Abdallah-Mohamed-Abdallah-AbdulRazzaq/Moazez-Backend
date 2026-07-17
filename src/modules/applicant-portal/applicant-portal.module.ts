@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { AuthModule } from '../iam/auth/auth.module';
+import { BrandingModule } from '../settings/branding/branding.module';
 import { ApplicantPortalAccessService } from './application/applicant-portal-access.service';
 import { CreateApplicantAccountUseCase } from './application/create-applicant-account.use-case';
 import { CreateApplicantRequestUseCase } from './application/create-applicant-request.use-case';
@@ -21,7 +22,7 @@ import { ApplicantPortalController } from './controller/applicant-portal.control
 import { ApplicantPortalRepository } from './infrastructure/applicant-portal.repository';
 
 @Module({
-  imports: [AuthModule, StorageModule],
+  imports: [AuthModule, StorageModule, BrandingModule],
   controllers: [ApplicantPortalController],
   providers: [
     ApplicantPortalRepository,

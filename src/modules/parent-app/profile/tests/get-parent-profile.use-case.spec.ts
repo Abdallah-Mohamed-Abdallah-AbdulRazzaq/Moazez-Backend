@@ -24,7 +24,11 @@ describe('GetParentProfileUseCase', () => {
   });
 
   it('returns current parent, guardian summaries, and current-school children safely', async () => {
-    const { useCase, readAdapter } = createUseCaseWithValidAccess();
+    const { useCase, readAdapter, logoResolver } =
+      createUseCaseWithValidAccess();
+    logoResolver.resolveForSchool.mockResolvedValue(
+      'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
+    );
     readAdapter.findParentIdentity.mockResolvedValue(parentIdentityFixture());
     readAdapter.listGuardians.mockResolvedValue([guardianFixture()]);
     readAdapter.listChildren.mockResolvedValue([childFixture()]);
@@ -57,6 +61,11 @@ describe('GetParentProfileUseCase', () => {
         enrollmentId: 'enrollment-1',
       },
     ]);
+    expect(result.school).toEqual({
+      name: 'Moazez Demo School',
+      logoUrl:
+        'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
+    });
     expect(result.unsupported).toEqual({
       avatarUpload: true,
       preferences: true,
@@ -102,6 +111,7 @@ function createUseCase(extraAdapterMethods?: Record<string, jest.Mock>): {
   useCase: GetParentProfileUseCase;
   accessService: jest.Mocked<ParentAppAccessService>;
   readAdapter: jest.Mocked<ParentProfileReadAdapter>;
+  logoResolver: { resolveForSchool: jest.Mock };
 } {
   const accessService = {
     getParentAppContext: jest.fn(),
@@ -113,11 +123,21 @@ function createUseCase(extraAdapterMethods?: Record<string, jest.Mock>): {
     findSchoolDisplay: jest.fn(),
     ...extraAdapterMethods,
   } as unknown as jest.Mocked<ParentProfileReadAdapter>;
+  const logoResolver = {
+    resolveForSchool: jest.fn().mockResolvedValue(null),
+  };
 
   return {
-    useCase: new GetParentProfileUseCase(accessService, readAdapter),
+    useCase: new GetParentProfileUseCase(
+      accessService,
+      readAdapter,
+      logoResolver as unknown as ConstructorParameters<
+        typeof GetParentProfileUseCase
+      >[2],
+    ),
     accessService,
     readAdapter,
+    logoResolver,
   };
 }
 
@@ -127,6 +147,7 @@ function createUseCaseWithValidAccess(
   useCase: GetParentProfileUseCase;
   accessService: jest.Mocked<ParentAppAccessService>;
   readAdapter: jest.Mocked<ParentProfileReadAdapter>;
+  logoResolver: { resolveForSchool: jest.Mock };
 } {
   const created = createUseCase(extraAdapterMethods);
   created.accessService.getParentAppContext.mockResolvedValue(contextFixture());

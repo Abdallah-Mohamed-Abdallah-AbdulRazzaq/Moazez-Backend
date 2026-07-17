@@ -38,7 +38,6 @@ const DISCOVERABLE_SCHOOL_ARGS = {
         formattedAddress: true,
         city: true,
         country: true,
-        logoUrl: true,
       },
     },
   },
@@ -848,8 +847,7 @@ export class ApplicantPortalRepository {
             },
             {
               applicationDocumentId: { not: null },
-              status:
-                ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
+              status: ApplicantAdmissionRequestDocumentStatus.NEEDS_REPLACEMENT,
             },
           ],
         },

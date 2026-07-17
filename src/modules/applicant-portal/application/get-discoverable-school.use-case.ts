@@ -3,11 +3,13 @@ import { NotFoundDomainException } from '../../../common/exceptions/domain-excep
 import { DiscoverableSchoolResponseDto } from '../dto/school-discovery.dto';
 import { ApplicantPortalRepository } from '../infrastructure/applicant-portal.repository';
 import { presentDiscoverableSchool } from '../presenters/school-discovery.presenter';
+import { ResolveSchoolLogoUrlService } from '../../settings/branding/application/resolve-school-logo-url.service';
 
 @Injectable()
 export class GetDiscoverableSchoolUseCase {
   constructor(
     private readonly applicantPortalRepository: ApplicantPortalRepository,
+    private readonly logoResolver: ResolveSchoolLogoUrlService,
   ) {}
 
   async execute(schoolId: string): Promise<DiscoverableSchoolResponseDto> {
@@ -17,6 +19,9 @@ export class GetDiscoverableSchoolUseCase {
       throw new NotFoundDomainException('School not found', { schoolId });
     }
 
-    return presentDiscoverableSchool(school);
+    return presentDiscoverableSchool(
+      school,
+      await this.logoResolver.resolveForSchool(school.id),
+    );
   }
 }

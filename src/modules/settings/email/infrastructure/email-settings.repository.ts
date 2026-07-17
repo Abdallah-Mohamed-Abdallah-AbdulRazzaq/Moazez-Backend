@@ -35,7 +35,6 @@ export interface SaveEmailTemplateData {
   bodyHtml: string;
   bodyText?: string | null;
   footerHtml?: string | null;
-  logoFileId?: string | null;
   supportEmail?: string | null;
   supportPhone?: string | null;
   socialLinks?: Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue;
@@ -152,7 +151,6 @@ export class EmailSettingsRepository {
 
   async findSchoolBranding(schoolId: string): Promise<{
     name: string;
-    logoUrl: string | null;
     supportEmail: string | null;
     supportPhone: string | null;
   }> {
@@ -163,7 +161,7 @@ export class EmailSettingsRepository {
       }),
       this.scopedPrisma.schoolProfile.findFirst({
         where: {},
-        select: { schoolName: true, logoUrl: true },
+        select: { schoolName: true },
       }),
       this.prisma.user.findFirst({
         where: {
@@ -182,7 +180,6 @@ export class EmailSettingsRepository {
 
     return {
       name: profile?.schoolName ?? school?.name ?? 'School',
-      logoUrl: profile?.logoUrl ?? null,
       supportEmail: securityEmail?.contactEmail ?? securityEmail?.email ?? null,
       supportPhone: securityEmail?.phone ?? null,
     };

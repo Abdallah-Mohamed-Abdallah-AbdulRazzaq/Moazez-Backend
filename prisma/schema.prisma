@@ -1750,6 +1750,7 @@ model SchoolProfile {
   country          String?
   footerSignature  String?  @map("footer_signature")
   logoUrl          String?  @map("logo_url")
+  logoFileId       String?  @map("logo_file_id") @db.Uuid
   latitude         Decimal? @db.Decimal(9, 6)
   longitude        Decimal? @db.Decimal(9, 6)
   mapPlaceLabel    String?  @map("map_place_label")
@@ -1759,8 +1760,10 @@ model SchoolProfile {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   school    School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  logoFile  File?  @relation("SchoolProfileLogoFile", fields: [logoFileId, schoolId], references: [id, schoolId], onDelete: Restrict)
   updatedBy User?  @relation("SchoolProfileUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
+  @@index([logoFileId])
   @@index([updatedById])
   @@map("settings_school_profile")
 }
@@ -6433,8 +6436,10 @@ model File {
   communicationMessageAttachments      CommunicationMessageAttachment[]
   communicationAnnouncementImages      CommunicationAnnouncement[]           @relation("CommunicationAnnouncementImageFile")
   communicationAnnouncementAttachments CommunicationAnnouncementAttachment[]
+  schoolProfileLogos                   SchoolProfile[]                       @relation("SchoolProfileLogoFile")
 
   @@unique([bucket, objectKey])
+  @@unique([id, schoolId])
   @@index([organizationId])
   @@index([schoolId])
   @@index([uploaderId])

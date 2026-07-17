@@ -79,7 +79,7 @@ export type ParentHomeChildRecord = Prisma.EnrollmentGetPayload<
 
 export interface ParentHomeSchoolDisplayRecord {
   name: string | null;
-  logoUrl: null;
+  logoUrl: string | null;
 }
 
 export interface ParentHomePendingTaskCountRecord {

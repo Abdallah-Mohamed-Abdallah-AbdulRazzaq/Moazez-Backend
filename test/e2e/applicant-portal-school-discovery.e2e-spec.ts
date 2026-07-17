@@ -77,7 +77,7 @@ describe('Applicant Portal school discovery (e2e)', () => {
       addressLine: `North Road ${suffix}`,
       city: 'Cairo',
       country: 'Egypt',
-      logoUrl: `https://assets.example.test/${marker}/north-logo.png`,
+      logoUrl: `https://assets.school-domain.com/${marker}/north-logo.png`,
     });
     activeWestSchoolId = await createSchoolWithProfile({
       organizationId: activeOrganization.id,
@@ -297,7 +297,7 @@ describe('Applicant Portal school discovery (e2e)', () => {
       id: activeNorthSchoolId,
       name: `${marker} North Public`,
       city: 'Cairo',
-      logoUrl: `https://assets.example.test/${marker}/north-logo.png`,
+      logoUrl: `https://assets.school-domain.com/${marker}/north-logo.png`,
     });
 
     const cityResponse = await request(app.getHttpServer())
@@ -324,7 +324,7 @@ describe('Applicant Portal school discovery (e2e)', () => {
       city: 'Cairo',
       country: 'Egypt',
       address: `North Road, Cairo, Egypt ${suffix}`,
-      logoUrl: `https://assets.example.test/${marker}/north-logo.png`,
+      logoUrl: `https://assets.school-domain.com/${marker}/north-logo.png`,
     });
     expectNoForbiddenPublicFields(response.body);
   });

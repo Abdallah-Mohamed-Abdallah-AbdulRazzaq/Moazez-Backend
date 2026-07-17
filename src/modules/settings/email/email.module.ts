@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { QueueModule } from '../../../infrastructure/queue/queue.module';
 import { AuthModule } from '../../iam/auth/auth.module';
 import { UsersModule } from '../users/users.module';
+import { BrandingModule } from '../branding/branding.module';
 import { ActivateEmailConnectionUseCase } from './application/activate-email-connection.use-case';
 import { DisableEmailConnectionUseCase } from './application/disable-email-connection.use-case';
 import { GetEmailConnectionUseCase } from './application/get-email-connection.use-case';
@@ -41,7 +42,7 @@ import { EmailSecretCrypto } from './domain/email-secret-crypto';
 import { EmailSettingsRepository } from './infrastructure/email-settings.repository';
 
 @Module({
-  imports: [AuthModule, QueueModule, UsersModule],
+  imports: [AuthModule, BrandingModule, QueueModule, UsersModule],
   controllers: [
     EmailConnectionController,
     EmailTemplateController,

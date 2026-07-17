@@ -19,7 +19,8 @@ export class StorageService {
     metadata?: Record<string, string>;
   }): Promise<{ bucket: string; etag: string }> {
     const bucket =
-      input.bucket ?? this.signedUrlService.resolveBucket(
+      input.bucket ??
+      this.signedUrlService.resolveBucket(
         input.visibility ?? FileVisibility.PRIVATE,
       );
 
@@ -51,11 +52,25 @@ export class StorageService {
     return this.signedUrlService.createDownloadUrl(input);
   }
 
-  statObject(input: {
-    bucket: string;
-    objectKey: string;
-  }) {
+  statObject(input: { bucket: string; objectKey: string }) {
     return this.minioAdapter.statObject(input);
+  }
+
+  getObject(input: { bucket: string; objectKey: string }) {
+    return this.minioAdapter.getObject(input);
+  }
+
+  listObjectsPage(input: {
+    bucket: string;
+    prefix: string;
+    startAfter?: string;
+    limit: number;
+  }) {
+    return this.minioAdapter.listObjectsPage(input);
+  }
+
+  resolveBucket(visibility: FileVisibility): string {
+    return this.signedUrlService.resolveBucket(visibility);
   }
 
   async checkReadiness(): Promise<void> {

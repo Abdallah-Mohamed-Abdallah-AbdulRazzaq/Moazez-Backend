@@ -6,7 +6,7 @@ export class StudentHomeStudentDto {
 
 export class StudentHomeSchoolDto {
   name!: string | null;
-  logoUrl!: null;
+  logoUrl!: string | null;
 }
 
 export class StudentHomeHierarchyNodeDto {

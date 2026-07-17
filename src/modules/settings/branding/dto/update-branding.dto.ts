@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsNumber, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateBrandingDto {
   @IsOptional()
@@ -38,10 +38,6 @@ export class UpdateBrandingDto {
   @IsOptional()
   @IsString()
   footerSignature?: string;
-
-  @IsOptional()
-  @IsUrl({ require_tld: false })
-  logoUrl?: string;
 
   @IsOptional()
   @IsNumber()

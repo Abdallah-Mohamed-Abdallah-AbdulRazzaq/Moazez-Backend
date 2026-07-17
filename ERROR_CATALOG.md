@@ -37,6 +37,7 @@ All error responses follow this shape:
 | 422    | Unprocessable Entity  | Semantic validation failure                     |
 | 429    | Too Many Requests     | Rate limit exceeded                             |
 | 500    | Internal Server Error | Unhandled or unexpected                         |
+| 503    | Service Unavailable   | Temporary operational dependency outage        |
 
 ## 3. Code Naming Convention
 
@@ -143,6 +144,10 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `settings.email.delivery_send_failed`    | 422  | Email delivery send failed                        |
 | `settings.email.campaign_invalid`        | 422  | School email campaign is invalid                  |
 | `settings.email.campaign_credential_variables_forbidden` | 422 | Credential variables are not allowed in general email campaigns |
+| `settings.branding.logo.mime_not_allowed` | 415 | Only PNG and JPEG school logos are allowed |
+| `settings.branding.logo.mime_mismatch` | 400 | Declared image type does not match file content |
+| `settings.branding.logo.invalid_structure` | 400 | School logo file structure is invalid or incomplete |
+| `settings.branding.logo.size_exceeded` | 413 | School logo exceeds the maximum allowed size |
 
 ### Admissions
 
@@ -606,18 +611,27 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `rate_limit.exceeded` | 429  | Too many requests                                     |
 | `not_found`           | 404  | Resource not found                                    |
 | `internal_error`      | 500  | An unexpected error occurred                          |
+| `service_unavailable` | 503  | Service temporarily unavailable                       |
 
 ## 5. Internationalization
 
-- `message` field is in English by default.
-- Clients requesting AR should pass `Accept-Language: ar`; the API returns the Arabic version if available.
-- All error messages have AR and EN translations in `src/common/i18n/errors.{ar,en}.json`.
-- The `code` field never translates.
+- Runtime error messages are currently the English messages embedded in each
+  `DomainException`.
+- `GlobalExceptionFilter` formats the exception envelope but does not currently
+  consult `src/common/i18n/errors.{ar,en}.json` or `Accept-Language`.
+- The JSON translation files are not an authoritative runtime registry until a
+  localization integration is explicitly implemented and tested.
+- The stable `code` field does not translate.
 
 ## 6. Adding a New Error Code
 
 1. Add entry to this file.
-2. Add AR and EN translations to `src/common/i18n/errors.{ar,en}.json`.
-3. Add the error class to `src/common/exceptions/domain-exception.ts`.
-4. Throw it from the service; the global exception filter formats the response.
-5. Add a unit test that verifies the correct code is thrown.
+2. Add the error class in the owning domain module, or to
+   `src/common/exceptions/domain-exception.ts` when it is genuinely
+   cross-cutting.
+3. Throw it from the application/service layer; the global exception filter
+   formats the response.
+4. Add a unit or integration test that verifies the stable code, HTTP status,
+   message, and safe details.
+5. Add AR/EN translation entries only when the runtime localization mechanism
+   is implemented and the error is wired into that mechanism.

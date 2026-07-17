@@ -4,7 +4,7 @@ import type { TeacherAppContext } from '../../shared/teacher-app-context';
 
 export interface TeacherSettingsSchoolRecord {
   name: string | null;
-  logoUrl: null;
+  logoUrl: string | null;
   email: null;
   phone: null;
   address: string | null;

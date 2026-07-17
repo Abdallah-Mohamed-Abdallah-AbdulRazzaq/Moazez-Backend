@@ -3,12 +3,14 @@ import { StudentAppAccessService } from '../../access/student-app-access.service
 import { StudentProfileResponseDto } from '../dto/student-profile.dto';
 import { StudentProfileReadAdapter } from '../infrastructure/student-profile-read.adapter';
 import { buildStudentProfileResponse } from './student-profile-response.builder';
+import { ResolveSchoolLogoUrlService } from '../../../settings/branding/application/resolve-school-logo-url.service';
 
 @Injectable()
 export class GetStudentProfileUseCase {
   constructor(
     private readonly accessService: StudentAppAccessService,
     private readonly readAdapter: StudentProfileReadAdapter,
+    private readonly logoResolver: ResolveSchoolLogoUrlService,
   ) {}
 
   async execute(): Promise<StudentProfileResponseDto> {
@@ -18,6 +20,7 @@ export class GetStudentProfileUseCase {
     return buildStudentProfileResponse({
       context,
       readAdapter: this.readAdapter,
+      logoResolver: this.logoResolver,
     });
   }
 }

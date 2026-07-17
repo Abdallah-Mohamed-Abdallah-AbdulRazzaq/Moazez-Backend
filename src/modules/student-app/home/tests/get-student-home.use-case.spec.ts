@@ -23,7 +23,11 @@ describe('GetStudentHomeUseCase', () => {
   });
 
   it('returns current student identity and active enrollment hierarchy', async () => {
-    const { useCase, readAdapter } = createUseCaseWithValidAccess();
+    const { useCase, readAdapter, logoResolver } =
+      createUseCaseWithValidAccess();
+    logoResolver.resolveForSchool.mockResolvedValue(
+      'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
+    );
     readAdapter.findStudentIdentity.mockResolvedValue(studentIdentityFixture());
     readAdapter.findSchoolDisplay.mockResolvedValue({
       name: 'Moazez Demo School',
@@ -43,7 +47,8 @@ describe('GetStudentHomeUseCase', () => {
     });
     expect(result.school).toEqual({
       name: 'Moazez Demo School',
-      logoUrl: null,
+      logoUrl:
+        'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
     });
     expect(result.enrollment).toMatchObject({
       enrollmentId: 'enrollment-1',
@@ -128,9 +133,8 @@ describe('GetStudentHomeUseCase', () => {
       delete: jest.fn(),
       deleteMany: jest.fn(),
     };
-    const { useCase, readAdapter } = createUseCaseWithValidAccess(
-      mutationMocks,
-    );
+    const { useCase, readAdapter } =
+      createUseCaseWithValidAccess(mutationMocks);
     readAdapter.findStudentIdentity.mockResolvedValue(studentIdentityFixture());
     readAdapter.findSchoolDisplay.mockResolvedValue({
       name: 'Moazez Demo School',
@@ -153,6 +157,7 @@ function createUseCase(extraAdapterMethods?: Record<string, jest.Mock>): {
   useCase: GetStudentHomeUseCase;
   accessService: jest.Mocked<StudentAppAccessService>;
   readAdapter: jest.Mocked<StudentHomeReadAdapter>;
+  logoResolver: { resolveForSchool: jest.Mock };
 } {
   const accessService = {
     getCurrentStudentWithEnrollment: jest.fn(),
@@ -166,11 +171,21 @@ function createUseCase(extraAdapterMethods?: Record<string, jest.Mock>): {
     sumTotalXpForCurrentStudent: jest.fn(),
     ...extraAdapterMethods,
   } as unknown as jest.Mocked<StudentHomeReadAdapter>;
+  const logoResolver = {
+    resolveForSchool: jest.fn().mockResolvedValue(null),
+  };
 
   return {
-    useCase: new GetStudentHomeUseCase(accessService, readAdapter),
+    useCase: new GetStudentHomeUseCase(
+      accessService,
+      readAdapter,
+      logoResolver as unknown as ConstructorParameters<
+        typeof GetStudentHomeUseCase
+      >[2],
+    ),
     accessService,
     readAdapter,
+    logoResolver,
   };
 }
 
@@ -180,6 +195,7 @@ function createUseCaseWithValidAccess(
   useCase: GetStudentHomeUseCase;
   accessService: jest.Mocked<StudentAppAccessService>;
   readAdapter: jest.Mocked<StudentHomeReadAdapter>;
+  logoResolver: { resolveForSchool: jest.Mock };
 } {
   const created = createUseCase(extraAdapterMethods);
   created.accessService.getCurrentStudentWithEnrollment.mockResolvedValue(

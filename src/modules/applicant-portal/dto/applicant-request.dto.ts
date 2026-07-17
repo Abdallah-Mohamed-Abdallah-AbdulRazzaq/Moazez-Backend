@@ -125,6 +125,13 @@ export class ApplicantRequestSchoolSummaryDto {
 
   @ApiProperty({ example: 'Egypt', nullable: true })
   country!: string | null;
+
+  @ApiProperty({
+    example:
+      'https://api.example.test/api/v1/public/schools/id/branding/logo?v=opaque',
+    nullable: true,
+  })
+  logoUrl!: string | null;
 }
 
 export class ApplicantRequestAcademicLabelDto {

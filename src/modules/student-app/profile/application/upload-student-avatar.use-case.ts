@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { ValidationDomainException } from '../../../../common/exceptions/domain-exception';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
+import { ResolveSchoolLogoUrlService } from '../../../settings/branding/application/resolve-school-logo-url.service';
 import { RegisterFileMetadataUseCase } from '../../../files/uploads/application/register-file-metadata.use-case';
 import { FileRecordResponseDto } from '../../../files/uploads/dto/register-file-metadata.dto';
 import {
@@ -38,6 +39,7 @@ export class UploadStudentAvatarUseCase {
     private readonly registerFileMetadataUseCase: RegisterFileMetadataUseCase,
     private readonly filesRepository: FilesRepository,
     private readonly authRepository: AuthRepository,
+    private readonly logoResolver: ResolveSchoolLogoUrlService,
   ) {}
 
   async execute(
@@ -87,7 +89,6 @@ export class UploadStudentAvatarUseCase {
           reason: 'student_avatar_update_target_missing',
         });
       }
-
     } catch (error) {
       await this.deleteStoredObjectQuietly(storedObject.bucket, objectKey);
       await this.softDeleteFileQuietly(storedFile.id);
@@ -108,6 +109,7 @@ export class UploadStudentAvatarUseCase {
     return buildStudentProfileResponse({
       context,
       readAdapter: this.readAdapter,
+      logoResolver: this.logoResolver,
     });
   }
 
@@ -125,7 +127,9 @@ export class UploadStudentAvatarUseCase {
         uploaderId: params.context.studentUserId,
         bucket: params.storedObject.bucket,
         objectKey: params.objectKey,
-        originalName: normalizeOriginalFileName(params.uploadedFile.originalname),
+        originalName: normalizeOriginalFileName(
+          params.uploadedFile.originalname,
+        ),
         mimeType: params.mimeType,
         sizeBytes: BigInt(params.uploadedFile.buffer.byteLength),
         checksumSha256: createHash('sha256')

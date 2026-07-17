@@ -35,8 +35,15 @@ describe('GetTeacherHomeUseCase', () => {
   });
 
   it('returns current teacher identity and safe home summary data', async () => {
-    const { useCase, allocationReadAdapter, compositionReadAdapter } =
-      createUseCase();
+    const {
+      useCase,
+      allocationReadAdapter,
+      compositionReadAdapter,
+      logoResolver,
+    } = createUseCase();
+    logoResolver.resolveForSchool.mockResolvedValue(
+      'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
+    );
     allocationReadAdapter.listAllOwnedAllocations.mockResolvedValue([
       allocationFixture({ id: 'allocation-1', classroomId: 'classroom-1' }),
       allocationFixture({ id: 'allocation-2', classroomId: 'classroom-2' }),
@@ -55,6 +62,11 @@ describe('GetTeacherHomeUseCase', () => {
       name: 'Test Teacher',
       email: 'teacher@moazez.local',
       userType: 'teacher',
+    });
+    expect(result.school).toEqual({
+      name: 'Moazez Academy',
+      logoUrl:
+        'https://api.school-domain.com/api/v1/public/schools/school-1/branding/logo?v=managed',
     });
     expect(result.summary).toMatchObject({
       classesCount: 2,
@@ -198,6 +210,7 @@ function createUseCase(extraCompositionMethods?: Record<string, jest.Mock>): {
   taskReviewReadAdapter: jest.Mocked<TeacherTaskReviewReadAdapter>;
   xpReadAdapter: jest.Mocked<TeacherXpReadAdapter>;
   messagesReadAdapter: jest.Mocked<TeacherMessagesReadAdapter>;
+  logoResolver: { resolveForSchool: jest.Mock };
 } {
   const accessService = {
     assertCurrentTeacher: jest.fn(() => ({
@@ -263,6 +276,9 @@ function createUseCase(extraCompositionMethods?: Record<string, jest.Mock>): {
       }),
     ),
   } as unknown as jest.Mocked<TeacherMessagesReadAdapter>;
+  const logoResolver = {
+    resolveForSchool: jest.fn().mockResolvedValue(null),
+  };
 
   return {
     useCase: new GetTeacherHomeUseCase(
@@ -273,6 +289,9 @@ function createUseCase(extraCompositionMethods?: Record<string, jest.Mock>): {
       taskReviewReadAdapter,
       xpReadAdapter,
       messagesReadAdapter,
+      logoResolver as unknown as ConstructorParameters<
+        typeof GetTeacherHomeUseCase
+      >[7],
     ),
     accessService,
     allocationReadAdapter,
@@ -281,6 +300,7 @@ function createUseCase(extraCompositionMethods?: Record<string, jest.Mock>): {
     taskReviewReadAdapter,
     xpReadAdapter,
     messagesReadAdapter,
+    logoResolver,
   };
 }
 

@@ -116,7 +116,6 @@ describe('Applicant Portal school discovery', () => {
             formattedAddress: true,
             city: true,
             country: true,
-            logoUrl: true,
           },
         },
       },
@@ -169,7 +168,6 @@ describe('Applicant Portal school discovery', () => {
             formattedAddress: true,
             city: true,
             country: true,
-            logoUrl: true,
           },
         },
       },
@@ -184,7 +182,19 @@ describe('Applicant Portal school discovery', () => {
       limit: 100,
       total: 1,
     });
-    const useCase = new ListDiscoverableSchoolsUseCase(repository);
+    const logoResolver = {
+      resolveForSchools: jest
+        .fn()
+        .mockResolvedValue(
+          new Map([
+            [SCHOOL_ID, 'https://api.example.com/api/v1/public/logo?v=opaque'],
+          ]),
+        ),
+    };
+    const useCase = new ListDiscoverableSchoolsUseCase(
+      repository,
+      logoResolver as never,
+    );
 
     const response = await useCase.execute({
       search: '  public ',
@@ -200,16 +210,59 @@ describe('Applicant Portal school discovery', () => {
       limit: 100,
     });
     expect(response.meta.limit).toBe(100);
+    expect(response.data[0].logoUrl).toContain('https://api.example.com/');
   });
 
   it('returns 404 for nonexistent or non-discoverable detail records', async () => {
     const repository = mockApplicantRepository();
     repository.findDiscoverableSchoolById.mockResolvedValue(null);
-    const useCase = new GetDiscoverableSchoolUseCase(repository);
+    const useCase = new GetDiscoverableSchoolUseCase(repository, {
+      resolveForSchool: jest.fn().mockResolvedValue(null),
+    } as never);
 
     await expect(useCase.execute(SCHOOL_ID)).rejects.toMatchObject({
       code: 'not_found',
     });
+  });
+
+  it.each([
+    [
+      'eligible managed URL',
+      'https://api.school-domain.com/api/v1/public/schools/00000000-0000-0000-0000-000000000101/branding/logo?v=managed',
+    ],
+    ['safe legacy URL', 'https://cdn.school-domain.com/logo.png'],
+    ['rejected legacy value', null],
+  ])('uses the central resolver for detail: %s', async (_label, logoUrl) => {
+    const repository = mockApplicantRepository();
+    repository.findDiscoverableSchoolById.mockResolvedValue(
+      schoolRecordFixture(),
+    );
+    const logoResolver = {
+      resolveForSchool: jest.fn().mockResolvedValue(logoUrl),
+    };
+    const useCase = new GetDiscoverableSchoolUseCase(
+      repository,
+      logoResolver as never,
+    );
+
+    const response = await useCase.execute(SCHOOL_ID);
+
+    expect(logoResolver.resolveForSchool).toHaveBeenCalledWith(SCHOOL_ID);
+    expect(response.logoUrl).toBe(logoUrl);
+    expect(Object.keys(response).sort()).toEqual(
+      [
+        'id',
+        'name',
+        'shortName',
+        'city',
+        'country',
+        'address',
+        'logoUrl',
+      ].sort(),
+    );
+    expect(JSON.stringify(response)).not.toMatch(
+      /organizationId|fileId|bucket|objectKey|checksum|uploaderId/,
+    );
   });
 
   it('presents only safe public fields for a discoverable school', () => {
@@ -221,6 +274,7 @@ describe('Applicant Portal school discovery', () => {
         entitlement: { plan: 'internal' },
         featureControls: [{ featureKey: 'applicant_portal' }],
       } as unknown as Partial<DiscoverableSchoolRecord>),
+      'https://assets.school-domain.com/school-logo.png',
     );
 
     expect(response).toEqual({
@@ -230,7 +284,7 @@ describe('Applicant Portal school discovery', () => {
       city: 'Cairo',
       country: 'Egypt',
       address: 'New Cairo, Cairo, Egypt',
-      logoUrl: 'https://assets.example.test/school-logo.png',
+      logoUrl: 'https://assets.school-domain.com/school-logo.png',
     });
 
     const serialized = JSON.stringify(response);
@@ -247,14 +301,13 @@ describe('Applicant Portal school discovery', () => {
   });
 
   it('does not return raw storage keys as logo URLs', () => {
-    const response = presentDiscoverableSchool(
-      schoolRecordFixture({
-        schoolProfile: {
-          ...schoolRecordFixture().schoolProfile,
-          logoUrl: 'raw-storage-key/school-logo.png',
-        },
-      }),
-    );
+    const response = presentDiscoverableSchool({
+      ...schoolRecordFixture(),
+      schoolProfile: {
+        ...schoolRecordFixture().schoolProfile,
+        logoUrl: 'raw-storage-key/school-logo.png',
+      },
+    } as unknown as DiscoverableSchoolRecord);
 
     expect(response.logoUrl).toBeNull();
   });
@@ -290,7 +343,6 @@ function schoolRecordFixture(
       formattedAddress: ' New Cairo, Cairo, Egypt ',
       city: ' Cairo ',
       country: ' Egypt ',
-      logoUrl: 'https://assets.example.test/school-logo.png',
     },
     ...overrides,
   } as DiscoverableSchoolRecord;

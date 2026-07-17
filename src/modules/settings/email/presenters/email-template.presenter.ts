@@ -29,7 +29,6 @@ export function presentEmailTemplate(
     bodyHtml: view.bodyHtml,
     bodyText: view.bodyText,
     footerHtml: view.footerHtml,
-    logoFileId: view.logoFileId,
     supportEmail: view.supportEmail,
     supportPhone: view.supportPhone,
     socialLinks: normalizeSocialLinks(view.socialLinks),

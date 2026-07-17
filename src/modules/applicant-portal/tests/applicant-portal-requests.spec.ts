@@ -222,6 +222,18 @@ describe('Applicant Portal request ownership foundation', () => {
     const useCase = new ListApplicantRequestsUseCase(
       mockAccessService(),
       repository,
+      {
+        resolveForSchools: jest
+          .fn()
+          .mockResolvedValue(
+            new Map([
+              [
+                SCHOOL_ID,
+                'https://api.example.com/api/v1/public/logo?v=opaque',
+              ],
+            ]),
+          ),
+      } as never,
     );
 
     const response = await useCase.execute({ page: 1, limit: 500 });
@@ -242,6 +254,9 @@ describe('Applicant Portal request ownership foundation', () => {
     ).toHaveBeenCalledTimes(2);
     expect(response.meta).toMatchObject({ page: 1, limit: 100, total: 2 });
     expect(response.data.map((item) => item.missingItemsCount)).toEqual([2, 1]);
+    expect(response.data[0].school.logoUrl).toContain(
+      'https://api.example.com/',
+    );
   });
 
   it('reads only the current applicant request and returns not found on cross-applicant ids', async () => {
@@ -256,11 +271,19 @@ describe('Applicant Portal request ownership foundation', () => {
     const useCase = new GetApplicantRequestUseCase(
       mockAccessService(),
       repository,
+      {
+        resolveForSchool: jest
+          .fn()
+          .mockResolvedValue(
+            'https://api.example.com/api/v1/public/logo?v=opaque',
+          ),
+      } as never,
     );
 
     await expect(useCase.execute(REQUEST_ID)).resolves.toMatchObject({
       id: REQUEST_ID,
       missingItemsCount: 1,
+      school: { logoUrl: expect.stringContaining('https://api.example.com/') },
     });
     expect(
       repository.findApplicantAdmissionRequestForApplicant,
@@ -426,6 +449,7 @@ describe('Applicant Portal request ownership foundation', () => {
         shortName: 'Moazez',
         city: 'Cairo',
         country: 'Egypt',
+        logoUrl: null,
       },
       childFullName: 'Layla Hassan',
       requestedAcademicYear: {
