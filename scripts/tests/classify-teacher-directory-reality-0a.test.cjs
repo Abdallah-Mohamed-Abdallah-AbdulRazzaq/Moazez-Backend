@@ -1,14 +1,17 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
 const { test } = require('node:test');
 const {
   buildClassification,
   classifyAllocationTermState,
   classifyCredentialReadiness,
   classifyMemberships,
+  classifyProfileSnapshot,
   classifyRoleAndUserTypeMismatch,
   formatSafeReport,
+  isExactOperationalTeacherMembership,
   iterateCursorPages,
   strictModeExitCode,
 } = require('../classify-teacher-directory-reality-0a.cjs');
@@ -56,6 +59,39 @@ test('classifies role-key and userType mismatches without reading PII', () => {
     school_admin: 1,
     teacher: 1,
   });
+});
+
+test('requires an exact live and school-compatible Teacher role', () => {
+  assert.equal(
+    isExactOperationalTeacherMembership(membership('global', 'user-1')),
+    true,
+  );
+  assert.equal(
+    isExactOperationalTeacherMembership(
+      membership('same-school', 'user-1', { roleSchoolId: 'school-1' }),
+    ),
+    true,
+  );
+  assert.equal(
+    isExactOperationalTeacherMembership(
+      membership('deleted-role', 'user-1', { roleDeletedAt: AS_OF }),
+    ),
+    false,
+  );
+  assert.equal(
+    isExactOperationalTeacherMembership(
+      membership('cross-school-role', 'user-1', {
+        roleSchoolId: 'school-2',
+      }),
+    ),
+    false,
+  );
+  assert.equal(
+    isExactOperationalTeacherMembership(
+      membership('missing-role', 'user-1', { roleKey: null }),
+    ),
+    false,
+  );
 });
 
 test('classifies credential readiness from booleans only', () => {
@@ -193,6 +229,86 @@ test('builds aggregate counts for allocations and future profile backfill', () =
   assert.equal(report.allocationsByTermState.current_active, 1);
 });
 
+test('classifies post-schema profile integrity and separates remediation', () => {
+  const teacherUsers = [
+    teacherUser('user-1'),
+    teacherUser('user-2'),
+    teacherUser('user-3'),
+    teacherUser('user-4'),
+  ];
+  const memberships = [
+    membership('membership-1', 'user-1', { schoolId: 'school-1' }),
+    membership('membership-2', 'user-2', { schoolId: 'school-2' }),
+    membership('membership-3', 'user-3', { schoolId: 'school-3' }),
+    membership('membership-4', 'user-4', { schoolId: 'school-5' }),
+    membership('membership-5', 'user-5', {
+      schoolId: 'school-7',
+      status: 'TRANSFERRED',
+      endedAt: AS_OF,
+    }),
+  ];
+  const profiles = [
+    teacherProfile('profile-1', 'user-1', 'school-1'),
+    teacherProfile('profile-2', 'user-3', 'school-3'),
+    teacherProfile('profile-3', 'user-3', 'school-4'),
+    teacherProfile('profile-4', 'user-4', 'school-6', {
+      firstNameAr: null,
+      user: { userType: 'SCHOOL_USER', deletedAt: null },
+    }),
+    teacherProfile('profile-5', 'user-5', 'school-7'),
+    teacherProfile('profile-6', 'user-5', 'school-7', { deletedAt: AS_OF }),
+  ];
+
+  const profileState = classifyProfileSnapshot(
+    teacherUsers,
+    memberships,
+    profiles,
+  );
+  assert.equal(profileState.totalTeacherProfiles, 6);
+  assert.equal(profileState.liveTeacherProfiles, 5);
+  assert.equal(profileState.archivedTeacherProfiles, 1);
+  assert.deepEqual(profileState.teacherUsersMissingLiveMatchingProfile, [
+    'user-2',
+    'user-4',
+  ]);
+  assert.deepEqual(profileState.usersWithMoreThanOneLiveProfile, ['user-3']);
+  assert.deepEqual(profileState.duplicateSchoolIdUserIdProfileFootprints, [
+    'profile-5',
+  ]);
+  assert.deepEqual(profileState.liveProfileLinkedToNonTeacherOrDeletedUser, [
+    'profile-4',
+  ]);
+  assert.equal(
+    profileState.liveProfileWithoutMatchingOperationalTeacherMembership.length,
+    3,
+  );
+  assert.equal(
+    profileState.liveProfileSchoolDifferentFromActiveTeacherMembershipSchool
+      .length,
+    2,
+  );
+  assert.deepEqual(
+    profileState.transferredMembershipWhoseSourceProfileRemainsLive,
+    ['membership-5'],
+  );
+  assert.deepEqual(
+    profileState.activeTeacherMembershipWithoutMatchingLiveDestinationProfile,
+    ['membership-2', 'membership-4'],
+  );
+  assert.deepEqual(profileState.incompleteLiveProfile, ['profile-4']);
+  assert.deepEqual(profileState.backfillEligible, ['user-2']);
+  assert.deepEqual(profileState.backfillAmbiguous, ['user-4']);
+
+  const report = buildClassification(
+    { teacherUsers, memberships, allocations: [], teacherProfiles: profiles },
+    { asOf: AS_OF, sampleLimit: 1 },
+  );
+  assert.equal(report.counts.totalTeacherProfiles, 6);
+  assert.equal(report.counts.backfillEligible, 1);
+  assert.equal(report.counts.backfillAmbiguous, 1);
+  assert.equal(report.anomalies.incompleteLiveProfile.sampleIds.length, 1);
+});
+
 test('joins allocation membership by both Teacher User and school', () => {
   const wrongSchoolMembershipReport = buildClassification(
     {
@@ -246,6 +362,65 @@ test('joins allocation membership by both Teacher User and school', () => {
       .teacherAllocationsWithInvalidSchoolRelationships,
     1,
   );
+});
+
+test('uses exact Role validity for profiles, allocations, mismatches, and backfill', () => {
+  const teacherUsers = [
+    teacherUser('user-deleted-profile'),
+    teacherUser('user-cross-profile'),
+    teacherUser('user-deleted-backfill'),
+    teacherUser('user-cross-backfill'),
+  ];
+  const memberships = [
+    membership('membership-deleted-profile', 'user-deleted-profile', {
+      roleDeletedAt: AS_OF,
+    }),
+    membership('membership-cross-profile', 'user-cross-profile', {
+      roleSchoolId: 'school-2',
+    }),
+    membership('membership-deleted-backfill', 'user-deleted-backfill', {
+      roleDeletedAt: AS_OF,
+    }),
+    membership('membership-cross-backfill', 'user-cross-backfill', {
+      roleSchoolId: 'school-2',
+    }),
+  ];
+  const report = buildClassification(
+    {
+      teacherUsers,
+      memberships,
+      teacherProfiles: [
+        teacherProfile(
+          'profile-deleted-role',
+          'user-deleted-profile',
+          'school-1',
+        ),
+        teacherProfile('profile-cross-role', 'user-cross-profile', 'school-1'),
+      ],
+      allocations: [
+        allocation('allocation-deleted-role', 'user-deleted-profile'),
+        allocation('allocation-cross-role', 'user-cross-profile'),
+      ],
+    },
+    { asOf: AS_OF, sampleLimit: 10 },
+  );
+
+  assert.equal(
+    report.counts.liveProfileWithoutMatchingOperationalTeacherMembership,
+    2,
+  );
+  assert.equal(
+    report.counts.teacherAllocationsWithInvalidTeacherMembershipState,
+    2,
+  );
+  assert.equal(report.counts.backfillEligible, 0);
+  assert.equal(report.counts.backfillAmbiguous, 4);
+  assert.equal(report.counts.teacherUsersWithRoleKeyOrUserTypeMismatch, 4);
+  assert.equal(
+    report.anomalies.activeTeacherFootprintsWithRoleOrUserTypeMismatch.count,
+    4,
+  );
+  assert.deepEqual(report.mismatchedRoleKeyCounts, { teacher: 4 });
 });
 
 test('paginates deterministically through multiple pages and an empty final page', async () => {
@@ -309,6 +484,54 @@ test('rejects a repeated cursor row before duplicate counting', async () => {
     /non_monotonic_page/,
   );
   assert.equal(count, 1);
+});
+
+test('classifier source uses only bounded Prisma findMany reads', async () => {
+  const source = readFileSync(
+    require.resolve('../classify-teacher-directory-reality-0a.cjs'),
+    'utf8',
+  );
+  const forbiddenMethods = [
+    'findFirst',
+    'findUnique',
+    'count',
+    'aggregate',
+    'groupBy',
+  ];
+
+  for (const method of forbiddenMethods) {
+    const prismaMethodPattern = new RegExp(`\\.${method}\\s*\\(`, 'g');
+    assert.equal(source.match(prismaMethodPattern)?.length ?? 0, 0, method);
+  }
+  assert.equal(source.match(/\.\$queryRaw\b/g)?.length ?? 0, 0);
+  assert.equal(source.match(/\.\$executeRaw\b/g)?.length ?? 0, 0);
+
+  const directCalls = [
+    ...source.matchAll(/prisma\.\w+\.findMany\(\{([\s\S]*?)\n\s{2,}\}\);/g),
+  ];
+  assert.equal(directCalls.length, 5);
+  for (const [, queryBody] of directCalls) {
+    assert.match(queryBody, /\borderBy:\s*\{\s*id:\s*'asc'\s*\}/);
+    assert.match(queryBody, /\bselect:\s*/);
+    const take = queryBody.match(/\btake:\s*(\d+)/);
+    assert.notEqual(take, null);
+    assert.ok(Number(take[1]) <= 500);
+  }
+
+  assert.equal(
+    source.match(/\.findMany\s*\(/g)?.length ?? 0,
+    directCalls.length + 1,
+  );
+  assert.match(source, /const rows = await delegate\.findMany\(query\)/);
+
+  await assert.rejects(
+    iterateCursorPages(
+      { async findMany() {} },
+      { where: { safe: true } },
+      () => {},
+    ),
+    /explicit_select_required/,
+  );
 });
 
 test('formats an allowlisted JSON-safe report without PII or storage data', () => {
@@ -391,6 +614,8 @@ function membership(id, userId, overrides = {}) {
     endedAt: null,
     deletedAt: null,
     roleKey: 'teacher',
+    roleSchoolId: null,
+    roleDeletedAt: null,
     user: { userType: 'TEACHER', deletedAt: null },
     ...overrides,
   };
@@ -429,6 +654,23 @@ function allocation(id, teacherUserId, overrides = {}) {
         },
       },
     },
+    ...overrides,
+  };
+}
+
+function teacherProfile(id, userId, schoolId, overrides = {}) {
+  return {
+    id,
+    userId,
+    schoolId,
+    teacherCode: 'T01',
+    firstNameAr: 'أ',
+    lastNameAr: 'ب',
+    firstNameEn: 'A',
+    lastNameEn: 'B',
+    gender: 'MALE',
+    deletedAt: null,
+    user: { userType: 'TEACHER', deletedAt: null },
     ...overrides,
   };
 }

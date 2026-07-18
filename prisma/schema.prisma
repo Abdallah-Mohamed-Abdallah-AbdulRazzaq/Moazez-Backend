@@ -127,6 +127,41 @@ enum UserStatus {
   @@map("user_status")
 }
 
+enum TeacherGender {
+  MALE
+  FEMALE
+
+  @@map("teacher_gender")
+}
+
+enum TeacherEmploymentStatus {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+
+  @@map("teacher_employment_status")
+}
+
+enum TeacherEmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+
+  @@map("teacher_employment_type")
+}
+
+enum TeacherWorkDay {
+  SUNDAY
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+
+  @@map("teacher_work_day")
+}
+
 enum SchoolLoginSettingsStatus {
   ACTIVE
   DISABLED
@@ -1257,6 +1292,7 @@ model School {
   subjects                              Subject[]
   subjectAllocations                    SubjectAllocation[]
   teacherSubjectAllocations             TeacherSubjectAllocation[]
+  teacherProfiles                       TeacherProfile[]
   rooms                                 Room[]
   academicCalendarEvents                AcademicCalendarEvent[]
   curricula                             Curriculum[]
@@ -1459,6 +1495,7 @@ model User {
   admissionInterviews                            Interview[]                            @relation("AdmissionInterviewInterviewer")
   admissionDecisionsCreated                      AdmissionDecision[]                    @relation("AdmissionDecisionDecidedBy")
   teacherSubjectAllocations                      TeacherSubjectAllocation[]             @relation("TeacherSubjectAllocationTeacher")
+  teacherProfiles                                TeacherProfile[]
   curriculaCreated                               Curriculum[]                           @relation("CurriculumCreatedBy")
   curriculaUpdated                               Curriculum[]                           @relation("CurriculumUpdatedBy")
   lessonContentItemsCreated                      LessonContentItem[]                    @relation("LessonContentItemCreatedBy")
@@ -3483,6 +3520,54 @@ model TimetableConflict {
 // ============================================================
 // AUDIT â€” append-only activity trail
 // ============================================================
+
+// ============================================================
+// TEACHERS - school-specific profile and employment truth
+// ============================================================
+
+model TeacherProfile {
+  id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schoolId         String                  @map("school_id") @db.Uuid
+  userId           String                  @map("user_id") @db.Uuid
+  teacherCode      String?                 @map("teacher_code") @db.VarChar(20)
+  firstNameAr      String?                 @map("first_name_ar") @db.VarChar(50)
+  lastNameAr       String?                 @map("last_name_ar") @db.VarChar(50)
+  firstNameEn      String?                 @map("first_name_en") @db.VarChar(50)
+  lastNameEn       String?                 @map("last_name_en") @db.VarChar(50)
+  gender           TeacherGender?
+  employmentStatus TeacherEmploymentStatus @default(INACTIVE) @map("employment_status")
+  department       String?                 @db.VarChar(120)
+  specialization   String?                 @db.VarChar(120)
+  employmentType   TeacherEmploymentType?  @map("employment_type")
+  experienceYears  Int?                    @map("experience_years")
+  hireDate         DateTime?               @map("hire_date") @db.Date
+  workingDays      TeacherWorkDay[]        @default([]) @map("working_days")
+  workStartTime    DateTime?               @map("work_start_time") @db.Time(0)
+  workEndTime      DateTime?               @map("work_end_time") @db.Time(0)
+  notesAr          String?                 @map("notes_ar") @db.VarChar(500)
+  notesEn          String?                 @map("notes_en") @db.VarChar(500)
+  avatarFileId     String?                 @map("avatar_file_id") @db.Uuid
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  avatarFile File? @relation("TeacherProfileAvatarFile", fields: [avatarFileId, schoolId], references: [id, schoolId], onDelete: Restrict)
+
+  @@unique([id, schoolId])
+  @@unique([schoolId, userId])
+  @@unique([schoolId, teacherCode])
+  @@index([schoolId])
+  @@index([userId])
+  @@index([schoolId, employmentStatus, deletedAt])
+  @@index([avatarFileId])
+  @@index([deletedAt])
+  @@map("teacher_profiles")
+}
 
 // ============================================================
 // STUDENTS - source-of-truth learner records and placements
@@ -6429,6 +6514,7 @@ model File {
   applicantAdmissionRequestDocuments   ApplicantAdmissionRequestDocument[]
   studentDocuments                     StudentDocument[]
   studentAvatars                       Student[]                             @relation("StudentAvatarFile")
+  teacherProfileAvatars                TeacherProfile[]                      @relation("TeacherProfileAvatarFile")
   importJobsUploaded                   ImportJob[]                           @relation("ImportJobUploadedFile")
   heroBadges                           HeroBadge[]
   rewardCatalogItemImages              RewardCatalogItem[]                   @relation("RewardCatalogItemImageFile")
