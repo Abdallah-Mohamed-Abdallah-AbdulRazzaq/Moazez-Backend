@@ -28,6 +28,17 @@ const ANOMALY_CATEGORIES = [
   'teacherAllocationsWithInvalidTermState',
   'teacherUsersRequiringFutureTeacherProfileBackfill',
   'teacherUsersWhoseProfileBackfillRequiresRemediation',
+  'teacherUsersMissingLiveMatchingProfile',
+  'usersWithMoreThanOneLiveProfile',
+  'duplicateSchoolIdUserIdProfileFootprints',
+  'liveProfileLinkedToNonTeacherOrDeletedUser',
+  'liveProfileWithoutMatchingOperationalTeacherMembership',
+  'liveProfileSchoolDifferentFromActiveTeacherMembershipSchool',
+  'transferredMembershipWhoseSourceProfileRemainsLive',
+  'activeTeacherMembershipWithoutMatchingLiveDestinationProfile',
+  'incompleteLiveProfile',
+  'backfillEligible',
+  'backfillAmbiguous',
 ];
 
 function isOperationallyActiveMembership(membership) {
@@ -38,11 +49,36 @@ function isOperationallyActiveMembership(membership) {
   );
 }
 
+function isTeacherRoleValidForMembership(membership) {
+  return (
+    membership.roleKey === 'teacher' &&
+    membership.roleDeletedAt == null &&
+    (membership.roleSchoolId == null ||
+      membership.roleSchoolId === membership.schoolId)
+  );
+}
+
+function isTeacherFootprintMembership(membership) {
+  return (
+    membership.userType === 'TEACHER' ||
+    membership.user?.userType === 'TEACHER' ||
+    membership.roleKey === 'teacher'
+  );
+}
+
+function isConsistentTeacherFootprintMembership(membership) {
+  return (
+    isExactOperationalTeacherMembership(membership) &&
+    membership.user?.userType === 'TEACHER' &&
+    membership.user?.deletedAt == null
+  );
+}
+
 function classifyMemberships(teacherUsers, memberships) {
   const teacherUserIds = new Set(teacherUsers.map((user) => user.id));
   const activeMemberships = memberships.filter(isOperationallyActiveMembership);
   const activeTeacherMemberships = activeMemberships.filter(
-    (membership) => membership.userType === 'TEACHER',
+    isExactOperationalTeacherMembership,
   );
   const activeTeacherMembershipsByUserId = groupBy(
     activeTeacherMemberships,
@@ -98,22 +134,15 @@ function classifyRoleAndUserTypeMismatch(teacherUsers, memberships) {
   for (const user of teacherUsers) {
     const membershipsForUser = activeMembershipsByUserId.get(user.id) ?? [];
     const hasMismatch = membershipsForUser.some(
-      (membership) =>
-        membership.userType !== 'TEACHER' || membership.roleKey !== 'teacher',
+      (membership) => !isConsistentTeacherFootprintMembership(membership),
     );
     if (hasMismatch) mismatchUserIds.push(user.id);
   }
 
   for (const membership of activeMemberships) {
-    const hasTeacherFootprint =
-      membership.userType === 'TEACHER' ||
-      membership.user?.userType === 'TEACHER' ||
-      membership.roleKey === 'teacher';
+    const hasTeacherFootprint = isTeacherFootprintMembership(membership);
     const isConsistentTeacher =
-      membership.userType === 'TEACHER' &&
-      membership.user?.userType === 'TEACHER' &&
-      membership.user?.deletedAt == null &&
-      membership.roleKey === 'teacher';
+      isConsistentTeacherFootprintMembership(membership);
 
     if (hasTeacherFootprint && !isConsistentTeacher) {
       mismatchedTeacherFootprintMembershipIds.push(membership.id);
@@ -206,10 +235,166 @@ function hasValidTeacherMembershipForAllocation(allocation, memberships) {
     (membership) =>
       membership.userId === allocation.teacherUserId &&
       membership.schoolId === allocation.schoolId &&
-      membership.userType === 'TEACHER' &&
-      membership.roleKey === 'teacher' &&
-      isOperationallyActiveMembership(membership),
+      isExactOperationalTeacherMembership(membership),
   );
+}
+
+function isExactOperationalTeacherMembership(membership) {
+  return (
+    isOperationallyActiveMembership(membership) &&
+    membership.schoolId != null &&
+    membership.userType === 'TEACHER' &&
+    isTeacherRoleValidForMembership(membership)
+  );
+}
+
+function isTeacherProfileComplete(profile) {
+  return (
+    hasNonBlankValue(profile.teacherCode) &&
+    hasNonBlankValue(profile.firstNameAr) &&
+    hasNonBlankValue(profile.lastNameAr) &&
+    hasNonBlankValue(profile.firstNameEn) &&
+    hasNonBlankValue(profile.lastNameEn) &&
+    (profile.gender === 'MALE' || profile.gender === 'FEMALE')
+  );
+}
+
+function classifyProfileSnapshot(teacherUsers, memberships, profiles) {
+  const profilesByUser = groupBy(profiles, (profile) => profile.userId);
+  const membershipsByUser = groupBy(
+    memberships,
+    (membership) => membership.userId,
+  );
+  const duplicatePairs = groupBy(
+    profiles,
+    (profile) =>
+      `${profile.schoolId ?? '<missing>'}\u0000${profile.userId ?? '<missing>'}`,
+  );
+
+  const result = {
+    totalTeacherProfiles: profiles.length,
+    liveTeacherProfiles: profiles.filter((profile) => profile.deletedAt == null)
+      .length,
+    archivedTeacherProfiles: profiles.filter(
+      (profile) => profile.deletedAt != null,
+    ).length,
+    teacherUsersMissingLiveMatchingProfile: [],
+    usersWithMoreThanOneLiveProfile: [],
+    duplicateSchoolIdUserIdProfileFootprints: [],
+    liveProfileLinkedToNonTeacherOrDeletedUser: [],
+    liveProfileWithoutMatchingOperationalTeacherMembership: [],
+    liveProfileSchoolDifferentFromActiveTeacherMembershipSchool: [],
+    transferredMembershipWhoseSourceProfileRemainsLive: [],
+    activeTeacherMembershipWithoutMatchingLiveDestinationProfile: [],
+    incompleteLiveProfile: [],
+    backfillEligible: [],
+    backfillAmbiguous: [],
+  };
+
+  for (const duplicateProfiles of duplicatePairs.values()) {
+    if (duplicateProfiles.length > 1) {
+      result.duplicateSchoolIdUserIdProfileFootprints.push(
+        duplicateProfiles[0].id,
+      );
+    }
+  }
+
+  for (const [userId, userProfiles] of profilesByUser.entries()) {
+    if (
+      userProfiles.filter((profile) => profile.deletedAt == null).length > 1
+    ) {
+      result.usersWithMoreThanOneLiveProfile.push(userId);
+    }
+  }
+
+  for (const profile of profiles.filter(
+    (candidate) => candidate.deletedAt == null,
+  )) {
+    const userMemberships = membershipsByUser.get(profile.userId) ?? [];
+    const exactMemberships = userMemberships.filter(
+      isExactOperationalTeacherMembership,
+    );
+    const hasMatchingMembership = exactMemberships.some(
+      (membership) => membership.schoolId === profile.schoolId,
+    );
+    if (
+      profile.user == null ||
+      profile.user.userType !== 'TEACHER' ||
+      profile.user.deletedAt != null
+    ) {
+      result.liveProfileLinkedToNonTeacherOrDeletedUser.push(profile.id);
+    }
+    if (!hasMatchingMembership) {
+      result.liveProfileWithoutMatchingOperationalTeacherMembership.push(
+        profile.id,
+      );
+      if (exactMemberships.length > 0) {
+        result.liveProfileSchoolDifferentFromActiveTeacherMembershipSchool.push(
+          profile.id,
+        );
+      }
+    }
+    if (!isTeacherProfileComplete(profile))
+      result.incompleteLiveProfile.push(profile.id);
+  }
+
+  for (const membership of memberships) {
+    const userProfiles = profilesByUser.get(membership.userId) ?? [];
+    const hasMatchingLiveProfile = userProfiles.some(
+      (profile) =>
+        profile.schoolId === membership.schoolId && profile.deletedAt == null,
+    );
+    if (membership.status === 'TRANSFERRED' && hasMatchingLiveProfile) {
+      result.transferredMembershipWhoseSourceProfileRemainsLive.push(
+        membership.id,
+      );
+    }
+    if (
+      isExactOperationalTeacherMembership(membership) &&
+      !hasMatchingLiveProfile
+    ) {
+      result.activeTeacherMembershipWithoutMatchingLiveDestinationProfile.push(
+        membership.id,
+      );
+    }
+  }
+
+  for (const user of teacherUsers) {
+    const userMemberships = membershipsByUser.get(user.id) ?? [];
+    const exactMemberships = userMemberships.filter(
+      isExactOperationalTeacherMembership,
+    );
+    const userProfiles = profilesByUser.get(user.id) ?? [];
+    const hasMatchingLiveProfile = exactMemberships.some((membership) =>
+      userProfiles.some(
+        (profile) =>
+          profile.schoolId === membership.schoolId && profile.deletedAt == null,
+      ),
+    );
+    if (hasMatchingLiveProfile) continue;
+
+    result.teacherUsersMissingLiveMatchingProfile.push(user.id);
+    const oneMembership = exactMemberships.length === 1;
+    const candidateSchoolId = oneMembership
+      ? exactMemberships[0].schoolId
+      : null;
+    const hasSameSchoolProfile = userProfiles.some(
+      (profile) => profile.schoolId === candidateSchoolId,
+    );
+    const hasOtherLiveProfile = userProfiles.some(
+      (profile) => profile.deletedAt == null,
+    );
+    if (oneMembership && !hasSameSchoolProfile && !hasOtherLiveProfile) {
+      result.backfillEligible.push(user.id);
+    } else {
+      result.backfillAmbiguous.push(user.id);
+    }
+  }
+
+  for (const key of Object.keys(result)) {
+    if (Array.isArray(result[key])) result[key] = uniqueSorted(result[key]);
+  }
+  return result;
 }
 
 function buildClassification(snapshot, options = {}) {
@@ -218,6 +403,7 @@ function buildClassification(snapshot, options = {}) {
   const teacherUsers = snapshot.teacherUsers ?? [];
   const memberships = snapshot.memberships ?? [];
   const allocations = snapshot.allocations ?? [];
+  const profiles = snapshot.teacherProfiles ?? snapshot.profiles ?? [];
   const membershipClassification = classifyMemberships(
     teacherUsers,
     memberships,
@@ -291,11 +477,11 @@ function buildClassification(snapshot, options = {}) {
   const teacherUsersWithoutAllocations = teacherUsers
     .filter((user) => !allocatedTeacherUserIds.has(user.id))
     .map((user) => user.id);
-  const backfillBlockedUserIds = uniqueSorted([
-    ...membershipClassification.withoutActiveTeacherMembership,
-    ...membershipClassification.withMultipleActiveTeacherMemberships,
-    ...mismatchClassification.mismatchUserIds,
-  ]);
+  const profileClassification = classifyProfileSnapshot(
+    teacherUsers,
+    memberships,
+    profiles,
+  );
 
   const counts = {
     totalTeacherUsers: teacherUsers.length,
@@ -327,9 +513,36 @@ function buildClassification(snapshot, options = {}) {
     teacherAllocationsWithInconsistentTermState:
       inconsistentTermAllocationIds.length,
     teacherAllocationsWithInvalidTermState: invalidTermAllocationIds.length,
-    teacherUsersRequiringFutureTeacherProfileBackfill: teacherUsers.length,
+    totalTeacherProfiles: profileClassification.totalTeacherProfiles,
+    liveTeacherProfiles: profileClassification.liveTeacherProfiles,
+    archivedTeacherProfiles: profileClassification.archivedTeacherProfiles,
+    teacherUsersMissingLiveMatchingProfile:
+      profileClassification.teacherUsersMissingLiveMatchingProfile.length,
+    usersWithMoreThanOneLiveProfile:
+      profileClassification.usersWithMoreThanOneLiveProfile.length,
+    duplicateSchoolIdUserIdProfileFootprints:
+      profileClassification.duplicateSchoolIdUserIdProfileFootprints.length,
+    liveProfileLinkedToNonTeacherOrDeletedUser:
+      profileClassification.liveProfileLinkedToNonTeacherOrDeletedUser.length,
+    liveProfileWithoutMatchingOperationalTeacherMembership:
+      profileClassification
+        .liveProfileWithoutMatchingOperationalTeacherMembership.length,
+    liveProfileSchoolDifferentFromActiveTeacherMembershipSchool:
+      profileClassification
+        .liveProfileSchoolDifferentFromActiveTeacherMembershipSchool.length,
+    transferredMembershipWhoseSourceProfileRemainsLive:
+      profileClassification.transferredMembershipWhoseSourceProfileRemainsLive
+        .length,
+    activeTeacherMembershipWithoutMatchingLiveDestinationProfile:
+      profileClassification
+        .activeTeacherMembershipWithoutMatchingLiveDestinationProfile.length,
+    incompleteLiveProfile: profileClassification.incompleteLiveProfile.length,
+    backfillEligible: profileClassification.backfillEligible.length,
+    backfillAmbiguous: profileClassification.backfillAmbiguous.length,
+    teacherUsersRequiringFutureTeacherProfileBackfill:
+      profileClassification.teacherUsersMissingLiveMatchingProfile.length,
     teacherUsersWhoseProfileBackfillRequiresRemediation:
-      backfillBlockedUserIds.length,
+      profileClassification.backfillAmbiguous.length,
   };
 
   return formatSafeReport(
@@ -362,11 +575,29 @@ function buildClassification(snapshot, options = {}) {
         teacherAllocationsWithInconsistentTermState:
           inconsistentTermAllocationIds,
         teacherAllocationsWithInvalidTermState: invalidTermAllocationIds,
-        teacherUsersRequiringFutureTeacherProfileBackfill: teacherUsers.map(
-          (user) => user.id,
-        ),
+        teacherUsersMissingLiveMatchingProfile:
+          profileClassification.teacherUsersMissingLiveMatchingProfile,
+        usersWithMoreThanOneLiveProfile:
+          profileClassification.usersWithMoreThanOneLiveProfile,
+        duplicateSchoolIdUserIdProfileFootprints:
+          profileClassification.duplicateSchoolIdUserIdProfileFootprints,
+        liveProfileLinkedToNonTeacherOrDeletedUser:
+          profileClassification.liveProfileLinkedToNonTeacherOrDeletedUser,
+        liveProfileWithoutMatchingOperationalTeacherMembership:
+          profileClassification.liveProfileWithoutMatchingOperationalTeacherMembership,
+        liveProfileSchoolDifferentFromActiveTeacherMembershipSchool:
+          profileClassification.liveProfileSchoolDifferentFromActiveTeacherMembershipSchool,
+        transferredMembershipWhoseSourceProfileRemainsLive:
+          profileClassification.transferredMembershipWhoseSourceProfileRemainsLive,
+        activeTeacherMembershipWithoutMatchingLiveDestinationProfile:
+          profileClassification.activeTeacherMembershipWithoutMatchingLiveDestinationProfile,
+        incompleteLiveProfile: profileClassification.incompleteLiveProfile,
+        backfillEligible: profileClassification.backfillEligible,
+        backfillAmbiguous: profileClassification.backfillAmbiguous,
+        teacherUsersRequiringFutureTeacherProfileBackfill:
+          profileClassification.teacherUsersMissingLiveMatchingProfile,
         teacherUsersWhoseProfileBackfillRequiresRemediation:
-          backfillBlockedUserIds,
+          profileClassification.backfillAmbiguous,
       },
     },
     { sampleLimit },
@@ -432,7 +663,21 @@ async function classifyReality(prisma, options = {}) {
     {
       select: membershipSelect(true),
     },
-    (rows) => processGlobalMembershipPage(state, normalizeMemberships(rows)),
+    async (rows) => {
+      const memberships = normalizeMemberships(rows);
+      processGlobalMembershipPage(state, memberships);
+      await processGlobalMembershipProfileRelationships(
+        prisma,
+        state,
+        memberships,
+      );
+    },
+  );
+
+  await iterateCursorPages(
+    prisma.teacherProfile,
+    { select: teacherProfileSelect() },
+    (profiles) => processTeacherProfilePage(prisma, state, profiles),
   );
 
   await iterateCursorPages(
@@ -459,11 +704,17 @@ async function classifyReality(prisma, options = {}) {
         prisma,
         userIds,
       );
+      const profileStats = await loadTeacherPageProfileStats(
+        prisma,
+        userIds,
+        membershipStats,
+      );
       processTeacherUserPage(
         state,
         teacherUsers,
         membershipStats,
         allocatedTeacherUserIds,
+        profileStats,
       );
     },
   );
@@ -490,6 +741,9 @@ async function iterateCursorPages(
   options = {},
 ) {
   const pageSize = options.pageSize ?? READ_PAGE_SIZE;
+  if (baseQuery?.select == null) {
+    throw new Error('explicit_select_required');
+  }
   if (
     !Number.isInteger(pageSize) ||
     pageSize < 1 ||
@@ -537,7 +791,12 @@ async function loadTeacherPageMembershipStats(prisma, userIds) {
   const stats = new Map(
     userIds.map((userId) => [
       userId,
-      { activeTeacherMembershipCount: 0, hasRoleOrTypeMismatch: false },
+      {
+        activeTeacherMembershipCount: 0,
+        operationalMembershipCount: 0,
+        exactMembershipSchoolIds: new Set(),
+        hasRoleOrTypeMismatch: false,
+      },
     ]),
   );
   if (userIds.length === 0) return stats;
@@ -554,18 +813,46 @@ async function loadTeacherPageMembershipStats(prisma, userIds) {
         if (!userStats || !isOperationallyActiveMembership(membership)) {
           continue;
         }
-        if (membership.userType === 'TEACHER') {
+        userStats.operationalMembershipCount += 1;
+        if (isExactOperationalTeacherMembership(membership)) {
           userStats.activeTeacherMembershipCount += 1;
+          userStats.exactMembershipSchoolIds.add(membership.schoolId);
         }
-        if (
-          membership.userType !== 'TEACHER' ||
-          membership.roleKey !== 'teacher'
-        ) {
+        if (!isExactOperationalTeacherMembership(membership)) {
           userStats.hasRoleOrTypeMismatch = true;
         }
       }
     },
   );
+
+  return stats;
+}
+
+async function loadTeacherPageProfileStats(prisma, userIds, membershipStats) {
+  const stats = new Map(
+    userIds.map((userId) => [userId, { profiles: [], overflow: false }]),
+  );
+  if (userIds.length === 0) return stats;
+
+  for (const userId of userIds) {
+    const exactSchoolIds = [
+      ...(membershipStats.get(userId)?.exactMembershipSchoolIds ?? []),
+    ];
+    const relevance = [{ deletedAt: null }];
+    if (exactSchoolIds.length > 0) {
+      relevance.push({ schoolId: { in: exactSchoolIds } });
+    }
+    const profiles = await prisma.teacherProfile.findMany({
+      where: { userId, OR: relevance },
+      orderBy: { id: 'asc' },
+      take: 4,
+      select: { id: true, userId: true, schoolId: true, deletedAt: true },
+    });
+    stats.set(userId, {
+      profiles: profiles.slice(0, 3),
+      overflow: profiles.length > 3,
+    });
+  }
 
   return stats;
 }
@@ -600,11 +887,7 @@ async function loadValidMembershipKeys(prisma, userIds) {
     },
     (rows) => {
       for (const membership of normalizeMemberships(rows)) {
-        if (
-          membership.userType === 'TEACHER' &&
-          membership.roleKey === 'teacher' &&
-          isOperationallyActiveMembership(membership)
-        ) {
+        if (isExactOperationalTeacherMembership(membership)) {
           validMembershipKeys.add(
             membershipSchoolKey(membership.userId, membership.schoolId),
           );
@@ -646,6 +929,20 @@ function createIncrementalState(options = {}) {
       teacherAllocationsWithInvalidSchoolRelationships: 0,
       teacherAllocationsWithInconsistentTermState: 0,
       teacherAllocationsWithInvalidTermState: 0,
+      totalTeacherProfiles: 0,
+      liveTeacherProfiles: 0,
+      archivedTeacherProfiles: 0,
+      teacherUsersMissingLiveMatchingProfile: 0,
+      usersWithMoreThanOneLiveProfile: 0,
+      duplicateSchoolIdUserIdProfileFootprints: 0,
+      liveProfileLinkedToNonTeacherOrDeletedUser: 0,
+      liveProfileWithoutMatchingOperationalTeacherMembership: 0,
+      liveProfileSchoolDifferentFromActiveTeacherMembershipSchool: 0,
+      transferredMembershipWhoseSourceProfileRemainsLive: 0,
+      activeTeacherMembershipWithoutMatchingLiveDestinationProfile: 0,
+      incompleteLiveProfile: 0,
+      backfillEligible: 0,
+      backfillAmbiguous: 0,
       teacherUsersRequiringFutureTeacherProfileBackfill: 0,
       teacherUsersWhoseProfileBackfillRequiresRemediation: 0,
     },
@@ -675,15 +972,9 @@ function processGlobalMembershipPage(state, memberships) {
       );
     }
 
-    const hasTeacherFootprint =
-      membership.userType === 'TEACHER' ||
-      membership.user?.userType === 'TEACHER' ||
-      membership.roleKey === 'teacher';
+    const hasTeacherFootprint = isTeacherFootprintMembership(membership);
     const isConsistentTeacher =
-      membership.userType === 'TEACHER' &&
-      membership.user?.userType === 'TEACHER' &&
-      membership.user?.deletedAt == null &&
-      membership.roleKey === 'teacher';
+      isConsistentTeacherFootprintMembership(membership);
 
     if (hasTeacherFootprint && !isConsistentTeacher) {
       recordAnomaly(
@@ -705,6 +996,7 @@ function processTeacherUserPage(
   teacherUsers,
   membershipStats,
   allocatedTeacherUserIds,
+  profileStats,
 ) {
   for (const user of teacherUsers) {
     state.counts.totalTeacherUsers += 1;
@@ -716,6 +1008,8 @@ function processTeacherUserPage(
 
     const userMembershipStats = membershipStats.get(user.id) ?? {
       activeTeacherMembershipCount: 0,
+      operationalMembershipCount: 0,
+      exactMembershipSchoolIds: new Set(),
       hasRoleOrTypeMismatch: false,
     };
     const hasActiveMembership =
@@ -769,23 +1063,191 @@ function processTeacherUserPage(
       recordAnomaly(state, category, user.id);
     }
 
-    state.counts.teacherUsersRequiringFutureTeacherProfileBackfill += 1;
-    recordAnomaly(
-      state,
-      'teacherUsersRequiringFutureTeacherProfileBackfill',
-      user.id,
+    const userProfileStats = profileStats.get(user.id) ?? {
+      profiles: [],
+      overflow: false,
+    };
+    const matchingLiveProfile = userProfileStats.profiles.some(
+      (profile) =>
+        profile.deletedAt == null &&
+        userMembershipStats.exactMembershipSchoolIds.has(profile.schoolId),
     );
-    if (
-      !hasActiveMembership ||
-      hasMultipleActiveMemberships ||
-      userMembershipStats.hasRoleOrTypeMismatch
-    ) {
-      state.counts.teacherUsersWhoseProfileBackfillRequiresRemediation += 1;
+    if (!matchingLiveProfile) {
+      state.counts.teacherUsersMissingLiveMatchingProfile += 1;
+      state.counts.teacherUsersRequiringFutureTeacherProfileBackfill += 1;
+      recordAnomaly(state, 'teacherUsersMissingLiveMatchingProfile', user.id);
       recordAnomaly(
         state,
-        'teacherUsersWhoseProfileBackfillRequiresRemediation',
+        'teacherUsersRequiringFutureTeacherProfileBackfill',
         user.id,
       );
+
+      const candidateSchoolId =
+        userMembershipStats.exactMembershipSchoolIds.size === 1
+          ? [...userMembershipStats.exactMembershipSchoolIds][0]
+          : null;
+      const hasSameSchoolProfile = userProfileStats.profiles.some(
+        (profile) => profile.schoolId === candidateSchoolId,
+      );
+      const hasAnyLiveProfile = userProfileStats.profiles.some(
+        (profile) => profile.deletedAt == null,
+      );
+      const isEligible =
+        userMembershipStats.operationalMembershipCount === 1 &&
+        candidateSchoolId != null &&
+        !hasSameSchoolProfile &&
+        !hasAnyLiveProfile &&
+        !userProfileStats.overflow;
+
+      if (isEligible) {
+        state.counts.backfillEligible += 1;
+        recordAnomaly(state, 'backfillEligible', user.id);
+      } else {
+        state.counts.backfillAmbiguous += 1;
+        state.counts.teacherUsersWhoseProfileBackfillRequiresRemediation += 1;
+        recordAnomaly(state, 'backfillAmbiguous', user.id);
+        recordAnomaly(
+          state,
+          'teacherUsersWhoseProfileBackfillRequiresRemediation',
+          user.id,
+        );
+      }
+    }
+  }
+}
+
+async function processGlobalMembershipProfileRelationships(
+  prisma,
+  state,
+  memberships,
+) {
+  for (const membership of memberships) {
+    if (membership.schoolId == null || membership.deletedAt != null) continue;
+    const isTransferred = membership.status === 'TRANSFERRED';
+    const isActiveTeacher = isExactOperationalTeacherMembership(membership);
+    if (!isTransferred && !isActiveTeacher) continue;
+
+    const matchingProfiles = await prisma.teacherProfile.findMany({
+      where: {
+        userId: membership.userId,
+        schoolId: membership.schoolId,
+        deletedAt: null,
+      },
+      orderBy: { id: 'asc' },
+      take: 1,
+      select: { id: true },
+    });
+    const matchingProfile = matchingProfiles[0] ?? null;
+
+    if (isTransferred && matchingProfile) {
+      state.counts.transferredMembershipWhoseSourceProfileRemainsLive += 1;
+      recordAnomaly(
+        state,
+        'transferredMembershipWhoseSourceProfileRemainsLive',
+        membership.id,
+      );
+    }
+    if (isActiveTeacher && !matchingProfile) {
+      state.counts.activeTeacherMembershipWithoutMatchingLiveDestinationProfile += 1;
+      recordAnomaly(
+        state,
+        'activeTeacherMembershipWithoutMatchingLiveDestinationProfile',
+        membership.id,
+      );
+    }
+  }
+}
+
+async function loadOperationalMembershipsForProfile(prisma, userId) {
+  const rows = await prisma.membership.findMany({
+    where: { userId, status: 'ACTIVE', endedAt: null, deletedAt: null },
+    orderBy: { id: 'asc' },
+    take: 3,
+    select: membershipSelect(false),
+  });
+  return normalizeMemberships(rows);
+}
+
+async function processTeacherProfilePage(prisma, state, profiles) {
+  for (const profile of profiles) {
+    state.counts.totalTeacherProfiles += 1;
+    if (profile.deletedAt != null) {
+      state.counts.archivedTeacherProfiles += 1;
+    } else {
+      state.counts.liveTeacherProfiles += 1;
+    }
+
+    const sameSchoolPair = await prisma.teacherProfile.findMany({
+      where: { schoolId: profile.schoolId, userId: profile.userId },
+      orderBy: { id: 'asc' },
+      take: 2,
+      select: { id: true },
+    });
+    if (sameSchoolPair.length > 1 && sameSchoolPair[0].id === profile.id) {
+      state.counts.duplicateSchoolIdUserIdProfileFootprints += 1;
+      recordAnomaly(
+        state,
+        'duplicateSchoolIdUserIdProfileFootprints',
+        profile.id,
+      );
+    }
+
+    if (profile.deletedAt != null) continue;
+
+    const liveProfiles = await prisma.teacherProfile.findMany({
+      where: { userId: profile.userId, deletedAt: null },
+      orderBy: { id: 'asc' },
+      take: 2,
+      select: { id: true },
+    });
+    if (liveProfiles.length > 1 && liveProfiles[0].id === profile.id) {
+      state.counts.usersWithMoreThanOneLiveProfile += 1;
+      recordAnomaly(state, 'usersWithMoreThanOneLiveProfile', profile.userId);
+    }
+
+    if (
+      profile.user == null ||
+      profile.user.userType !== 'TEACHER' ||
+      profile.user.deletedAt != null
+    ) {
+      state.counts.liveProfileLinkedToNonTeacherOrDeletedUser += 1;
+      recordAnomaly(
+        state,
+        'liveProfileLinkedToNonTeacherOrDeletedUser',
+        profile.id,
+      );
+    }
+
+    if (!isTeacherProfileComplete(profile)) {
+      state.counts.incompleteLiveProfile += 1;
+      recordAnomaly(state, 'incompleteLiveProfile', profile.id);
+    }
+
+    const operationalMemberships = await loadOperationalMembershipsForProfile(
+      prisma,
+      profile.userId,
+    );
+    const exactMemberships = operationalMemberships.filter(
+      isExactOperationalTeacherMembership,
+    );
+    const hasMatchingMembership = exactMemberships.some(
+      (membership) => membership.schoolId === profile.schoolId,
+    );
+    if (!hasMatchingMembership) {
+      state.counts.liveProfileWithoutMatchingOperationalTeacherMembership += 1;
+      recordAnomaly(
+        state,
+        'liveProfileWithoutMatchingOperationalTeacherMembership',
+        profile.id,
+      );
+      if (exactMemberships.length > 0) {
+        state.counts.liveProfileSchoolDifferentFromActiveTeacherMembershipSchool += 1;
+        recordAnomaly(
+          state,
+          'liveProfileSchoolDifferentFromActiveTeacherMembershipSchool',
+          profile.id,
+        );
+      }
     }
   }
 }
@@ -894,6 +1356,8 @@ function normalizeMemberships(rows) {
     endedAt: membership.endedAt,
     deletedAt: membership.deletedAt,
     roleKey: membership.role?.key ?? null,
+    roleSchoolId: membership.role?.schoolId ?? null,
+    roleDeletedAt: membership.role?.deletedAt ?? null,
     user: membership.user,
   }));
 }
@@ -907,10 +1371,28 @@ function membershipSelect(includeUser) {
     status: true,
     endedAt: true,
     deletedAt: true,
-    role: { select: { key: true } },
+    role: {
+      select: { key: true, schoolId: true, deletedAt: true },
+    },
     ...(includeUser
       ? { user: { select: { userType: true, deletedAt: true } } }
       : {}),
+  };
+}
+
+function teacherProfileSelect() {
+  return {
+    id: true,
+    schoolId: true,
+    userId: true,
+    teacherCode: true,
+    firstNameAr: true,
+    lastNameAr: true,
+    firstNameEn: true,
+    lastNameEn: true,
+    gender: true,
+    deletedAt: true,
+    user: { select: { userType: true, deletedAt: true } },
   };
 }
 
@@ -1088,11 +1570,14 @@ module.exports = {
   classifyAllocationTermState,
   classifyCredentialReadiness,
   classifyMemberships,
+  classifyProfileSnapshot,
   classifyRoleAndUserTypeMismatch,
   formatSafeReport,
   hasInvalidAllocationSchoolRelationships,
   hasValidTeacherMembershipForAllocation,
+  isExactOperationalTeacherMembership,
   isOperationallyActiveMembership,
+  isTeacherProfileComplete,
   iterateCursorPages,
   parseArguments,
   strictModeExitCode,

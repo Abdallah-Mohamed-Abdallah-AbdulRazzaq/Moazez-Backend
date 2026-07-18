@@ -1,6 +1,10 @@
 import { SCHOOL_SCOPED_MODELS } from '../school-scope.extension';
 
 describe('schoolScope communication registration', () => {
+  it('registers TeacherProfile for school scope enforcement', () => {
+    expect(SCHOOL_SCOPED_MODELS.has('TeacherProfile')).toBe(true);
+  });
+
   it('registers school login settings for school scope enforcement', () => {
     expect(SCHOOL_SCOPED_MODELS.has('SchoolLoginSettings')).toBe(true);
   });

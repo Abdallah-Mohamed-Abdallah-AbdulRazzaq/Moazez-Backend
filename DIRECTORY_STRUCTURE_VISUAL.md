@@ -129,6 +129,7 @@ moazez-backend/
 │   │   ├── files/              ← Uploads, attachments, file-links
 │   │   ├── admissions/         ← Leads, applications, docs, tests, interviews, decisions
 │   │   ├── academics/          ← Years, terms, structure, subjects, calendar, timetable
+│   │   ├── teachers/           ← Profiles, directory, lifecycle (core Teacher truth)
 │   │   ├── students/           ← Students, guardians, enrollments, transfers
 │   │   ├── attendance/         ← Policies, roll-call, absences, excuses, reports
 │   │   ├── grades/             ← Assessments, gradebook, analytics, rules
@@ -368,20 +369,20 @@ src/modules/teacher-app/
 
 ## 6. Where Things Go — Quick Reference
 
-| If you're adding...                  | Put it in...                                       |
-| ------------------------------------ | -------------------------------------------------- |
-| a new endpoint                       | `modules/<module>/<submodule>/controller/`         |
-| business logic for a workflow        | `modules/<module>/<submodule>/application/` (use-case) |
-| a domain rule / invariant            | `modules/<module>/<submodule>/domain/`             |
-| a Prisma query                       | `modules/<module>/<submodule>/infrastructure/*.repository.ts` |
-| a request or response DTO            | `modules/<module>/<submodule>/dto/`                |
-| a frontend-specific response shape   | `modules/<module>/<submodule>/presenters/`         |
-| a cross-module decorator             | `common/decorators/`                               |
-| a custom guard                       | `common/guards/` (global) or module folder (local) |
-| a reusable helper                    | `common/` (framework) or `shared/` (domain-ish)    |
-| a technical adapter (S3, email, etc.) | `infrastructure/<area>/`                          |
-| a cross-module event                 | `shared/events/`                                   |
-| a migration                          | `prisma/migrations/`                               |
-| a seed                               | `prisma/seeds/`                                    |
-| a tenancy isolation test             | `test/security/`                                   |
-| an ADR                               | `adr/ADR-NNNN-*.md`                                |
+| If you're adding...                   | Put it in...                                                  |
+| ------------------------------------- | ------------------------------------------------------------- |
+| a new endpoint                        | `modules/<module>/<submodule>/controller/`                    |
+| business logic for a workflow         | `modules/<module>/<submodule>/application/` (use-case)        |
+| a domain rule / invariant             | `modules/<module>/<submodule>/domain/`                        |
+| a Prisma query                        | `modules/<module>/<submodule>/infrastructure/*.repository.ts` |
+| a request or response DTO             | `modules/<module>/<submodule>/dto/`                           |
+| a frontend-specific response shape    | `modules/<module>/<submodule>/presenters/`                    |
+| a cross-module decorator              | `common/decorators/`                                          |
+| a custom guard                        | `common/guards/` (global) or module folder (local)            |
+| a reusable helper                     | `common/` (framework) or `shared/` (domain-ish)               |
+| a technical adapter (S3, email, etc.) | `infrastructure/<area>/`                                      |
+| a cross-module event                  | `shared/events/`                                              |
+| a migration                           | `prisma/migrations/`                                          |
+| a seed                                | `prisma/seeds/`                                               |
+| a tenancy isolation test              | `test/security/`                                              |
+| an ADR                                | `adr/ADR-NNNN-*.md`                                           |

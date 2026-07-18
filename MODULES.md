@@ -1,7 +1,7 @@
-
 # Approved Modules
 
 ## Platform
+
 - platform-admin
 - organizations
 - schools
@@ -11,6 +11,7 @@
 - platform-audit
 
 ## IAM
+
 - auth
 - users
 - roles
@@ -19,6 +20,7 @@
 - sessions
 
 ## Settings
+
 - branding
 - school-settings
 - templates
@@ -28,11 +30,13 @@
 - backup
 
 ## Files
+
 - uploads
 - attachments
 - file-links
 
 ## Admissions
+
 - leads
 - applications
 - documents
@@ -42,6 +46,7 @@
 - applicant-portal
 
 ## Academics
+
 - overview
 - structure
 - subjects
@@ -52,7 +57,18 @@
 - lesson-plans
 - timetable
 
+## Teachers
+
+- profiles
+- directory
+- lifecycle
+
+`profiles` owns school-specific Teacher identity and employment truth. Phase 1A
+implements only the profile data and repository foundation; directory and
+lifecycle behavior remain deferred.
+
 ## Students
+
 - students
 - guardians
 - enrollments
@@ -62,6 +78,7 @@
 - transfers-withdrawals
 
 ## Attendance
+
 - policies
 - roll-call
 - absences
@@ -69,6 +86,7 @@
 - reports
 
 ## Grades
+
 - assessments
 - gradebook
 - analytics
@@ -76,10 +94,12 @@
 - submissions
 
 ## Homework
+
 - assignments
 - targets
 
 ## Reinforcement
+
 - overview
 - tasks
 - templates
@@ -88,6 +108,7 @@
 - xp
 
 ## Behavior
+
 - categories
 - records
 - review-queue
@@ -95,6 +116,7 @@
 - overview
 
 ## Communication
+
 - conversations
 - messages
 - announcements
@@ -102,6 +124,7 @@
 - meetings
 
 ## Teacher App
+
 - home
 - schedule
 - my-classes
@@ -114,6 +137,7 @@
 - settings
 
 ## Student App
+
 - home
 - schedule
 - subjects
@@ -132,6 +156,7 @@
 - pickup
 
 ## Parent App
+
 - onboarding
 - auth
 - home
@@ -149,6 +174,7 @@
 - applicant-portal
 
 ## Dashboard
+
 - summary
 - alerts
 - activity-feed
@@ -156,8 +182,10 @@
 ## Module Boundary Rule
 
 Core business truth belongs to:
+
 - admissions
 - academics
+- teachers
 - students
 - attendance
 - grades
