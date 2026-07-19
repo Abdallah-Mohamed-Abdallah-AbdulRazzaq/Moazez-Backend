@@ -31,6 +31,10 @@ export type TeacherLifecycleAuditResourceType =
   (typeof TEACHER_LIFECYCLE_AUDIT_RESOURCE_TYPES)[number];
 
 export const TEACHER_LIFECYCLE_CHANGED_FIELDS = [
+  'loginEmail',
+  'username',
+  'contactEmail',
+  'phone',
   'firstName',
   'lastName',
   'status',

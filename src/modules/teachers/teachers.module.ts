@@ -1,9 +1,14 @@
 import { Module } from '@nestjs/common';
 import { TeacherLifecycleModule } from './lifecycle/teacher-lifecycle.module';
 import { TeacherProfileModule } from './profile/teacher-profile.module';
+import { TeacherDirectoryModule } from './directory/teacher-directory.module';
 
 @Module({
-  imports: [TeacherLifecycleModule, TeacherProfileModule],
+  imports: [
+    TeacherDirectoryModule,
+    TeacherLifecycleModule,
+    TeacherProfileModule,
+  ],
   exports: [TeacherLifecycleModule, TeacherProfileModule],
 })
 export class TeachersModule {}

@@ -19,9 +19,11 @@ import {
 } from '../../../settings/users/infrastructure/teacher-lifecycle-membership.operations';
 import {
   findTeacherLifecycleUserState,
+  findTeacherLifecycleIdentityConflicts,
   setTeacherLifecycleUserStatus,
   setTeacherLifecycleUserType,
   updateTeacherLifecycleDisplayNames,
+  updateTeacherLifecycleIdentityFields,
 } from '../../../settings/users/infrastructure/teacher-lifecycle-user.operations';
 import {
   archiveTeacherProfileInTransaction,
@@ -36,6 +38,7 @@ import {
   updateTeacherProfileInTransaction,
 } from '../../profile/infrastructure/teacher-profile-lifecycle.operations';
 import type {
+  TeacherLifecycleUserIdentityFields,
   TeacherLifecycleProfileManagedFields,
   TeacherLifecycleTransactionContext,
 } from '../application/teacher-lifecycle-unit-of-work';
@@ -48,6 +51,20 @@ export class PrismaTeacherLifecycleTransactionOperations {
 
   findUser(transaction: Prisma.TransactionClient, userId: string) {
     return findTeacherLifecycleUserState(transaction, userId);
+  }
+
+  findUserIdentityConflicts(
+    transaction: Prisma.TransactionClient,
+    input: { userId: string; fields: TeacherLifecycleUserIdentityFields },
+  ) {
+    return findTeacherLifecycleIdentityConflicts(transaction, input);
+  }
+
+  updateUserIdentityFields(
+    transaction: Prisma.TransactionClient,
+    input: { userId: string; fields: TeacherLifecycleUserIdentityFields },
+  ) {
+    return updateTeacherLifecycleIdentityFields(transaction, input);
   }
 
   updateUserDisplayNames(

@@ -86,6 +86,21 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `iam.credentials.user_not_manageable` | 409 | User credentials cannot be managed in the current state |
 | `iam.credentials.temporary_password_unavailable` | 409 | Temporary password is unavailable             |
 
+### Teacher Directory
+
+| Code                                        | HTTP | English catalog message                              | Arabic catalog message                  | Safe details                    |
+| ------------------------------------------- | ---: | ---------------------------------------------------- | --------------------------------------- | ------------------------------- |
+| `teachers.profile.not_found`                |  404 | Teacher profile not found.                           | ملف المعلم غير موجود.                   | None                            |
+| `teachers.profile.code_conflict`            |  409 | Teacher code conflicts with an existing profile.     | رمز المعلم مستخدم في ملف آخر.           | `field=teacherCode`             |
+| `teachers.profile.incomplete`               |  409 | Teacher profile is incomplete.                       | ملف المعلم غير مكتمل.                   | Fixed `missingFields` keys only |
+| `teachers.account.identity_conflict`        |  409 | Teacher login or contact identity conflicts.         | توجد هوية دخول أو اتصال متعارضة للمعلم. | Fixed `fields` keys only        |
+| `teachers.account.teacher_role_required`    |  422 | An exact live Teacher role is required.              | يلزم دور معلم فعّال ومتطابق.            | Stable `reasonCode` only        |
+| `teachers.account.role_transition_conflict` |  409 | Teacher identity state is unsafe for this operation. | حالة هوية المعلم لا تسمح بهذه العملية.  | Stable `reasonCode` only        |
+
+The stable codes are language-neutral. Runtime messages remain English because
+the current global exception filter does not load the EN/AR catalog; this phase
+does not change that global behavior.
+
 ### Platform Admin
 
 | Code                                             | HTTP | Message                                            |
