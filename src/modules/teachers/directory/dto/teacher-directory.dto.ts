@@ -71,6 +71,118 @@ export class ListTeachersQueryDto {
   limit = 20;
 }
 
+export class CreateTeacherDto {
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(320)
+  loginEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(40)
+  username?: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(320)
+  contactEmail?: string | null;
+
+  @IsOptional()
+  @IsPhoneNumber()
+  @MaxLength(40)
+  phone?: string | null;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(20)
+  teacherCode!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(50)
+  firstNameAr!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(50)
+  lastNameAr!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(50)
+  firstNameEn!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(50)
+  lastNameEn!: string;
+
+  @IsIn(['AR', 'EN'])
+  preferredDisplayLanguage!: PreferredDisplayLanguage;
+
+  @IsEnum(TeacherGender)
+  gender!: TeacherGender;
+
+  @IsIn([TeacherEmploymentStatus.ACTIVE, TeacherEmploymentStatus.INACTIVE])
+  employmentStatus!: Exclude<
+    TeacherEmploymentStatus,
+    typeof TeacherEmploymentStatus.TERMINATED
+  >;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  department?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  specialization?: string | null;
+
+  @IsOptional()
+  @IsEnum(TeacherEmploymentType)
+  employmentType?: TeacherEmploymentType | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  experienceYears?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/u)
+  hireDate?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(7)
+  @ArrayUnique()
+  @IsEnum(TeacherWorkDay, { each: true })
+  workingDays?: TeacherWorkDay[];
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{2}:\d{2}(?::\d{2})?$/u)
+  workStartTime?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{2}:\d{2}(?::\d{2})?$/u)
+  workEndTime?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notesAr?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notesEn?: string | null;
+}
+
 export class UpdateTeacherDto {
   @IsOptional()
   @IsEmail()

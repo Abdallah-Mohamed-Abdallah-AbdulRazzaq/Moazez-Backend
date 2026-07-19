@@ -10,6 +10,7 @@ import { UserResponseDto } from '../dto/user-response.dto';
 import { UsersRepository } from '../infrastructure/users.repository';
 import { presentUser } from '../presenters/users.presenter';
 import { UserLoginIdentityResolver } from './user-login-identity.resolver';
+import { TeacherSettingsBypassService } from './teacher-settings-bypass.service';
 
 @Injectable()
 export class CreateUserUseCase {
@@ -17,6 +18,7 @@ export class CreateUserUseCase {
     private readonly usersRepository: UsersRepository,
     private readonly authRepository: AuthRepository,
     private readonly loginIdentityResolver: UserLoginIdentityResolver,
+    private readonly teacherBypass: TeacherSettingsBypassService,
   ) {}
 
   async execute(command: CreateUserDto): Promise<UserResponseDto> {
@@ -30,6 +32,14 @@ export class CreateUserUseCase {
     if (!role) {
       throw new NotFoundDomainException('Role not found', {
         roleId: command.roleId,
+      });
+    }
+    if (role.key === 'teacher') {
+      await this.teacherBypass.reject({
+        scope,
+        reasonCode: 'teacher_directory_provisioning_required',
+        resourceType: 'user',
+        resourceId: scope.actorId,
       });
     }
 

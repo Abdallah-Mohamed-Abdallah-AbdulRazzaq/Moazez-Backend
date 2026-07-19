@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../iam/auth/auth.module';
+import { TeacherLifecycleModule } from '../../teachers/lifecycle/teacher-lifecycle.module';
 import { LoginIdentityModule } from '../login-identity/login-identity.module';
 import { BulkCredentialGenerateUseCase } from './credentials/application/bulk-credential-generate.use-case';
 import { BulkCredentialPreviewUseCase } from './credentials/application/bulk-credential-preview.use-case';
@@ -19,11 +20,12 @@ import { ResetPasswordUseCase } from './application/reset-password.use-case';
 import { UpdateUserStatusUseCase } from './application/update-user-status.use-case';
 import { UpdateUserUseCase } from './application/update-user.use-case';
 import { UserLoginIdentityResolver } from './application/user-login-identity.resolver';
+import { TeacherSettingsBypassService } from './application/teacher-settings-bypass.service';
 import { UsersController } from './controller/users.controller';
 import { UsersRepository } from './infrastructure/users.repository';
 
 @Module({
-  imports: [AuthModule, LoginIdentityModule],
+  imports: [AuthModule, LoginIdentityModule, TeacherLifecycleModule],
   controllers: [
     UsersController,
     UserCredentialsCollectionController,
@@ -40,6 +42,7 @@ import { UsersRepository } from './infrastructure/users.repository';
     ResendInviteUseCase,
     ResetPasswordUseCase,
     UserLoginIdentityResolver,
+    TeacherSettingsBypassService,
     ListCredentialStatusUseCase,
     GenerateUserCredentialUseCase,
     SetUserCredentialUseCase,

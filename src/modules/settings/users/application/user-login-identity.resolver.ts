@@ -38,11 +38,27 @@ export class UserLoginIdentityResolver {
   async resolve(
     command: UserLoginIdentityInput,
   ): Promise<ResolvedUserLoginIdentity> {
+    const identity = await this.normalize(command);
+    const existingUser = await this.usersRepository.findUserByEmail(
+      identity.email,
+    );
+    if (existingUser) {
+      if (identity.username) {
+        throw new UsernameTakenException(identity.username);
+      }
+      throw new UserEmailTakenException(identity.email);
+    }
+    return identity;
+  }
+
+  normalize(
+    command: UserLoginIdentityInput,
+  ): Promise<ResolvedUserLoginIdentity> {
     if (command.username) {
       return this.resolveGeneratedIdentity(command);
     }
 
-    return this.resolveLegacyEmailIdentity(command);
+    return Promise.resolve(this.resolveLegacyEmailIdentity(command));
   }
 
   private async resolveGeneratedIdentity(
@@ -76,11 +92,6 @@ export class UserLoginIdentityResolver {
       );
     }
 
-    const existingUser = await this.usersRepository.findUserByEmail(loginEmail);
-    if (existingUser) {
-      throw new UsernameTakenException(usernameResult.username);
-    }
-
     return {
       email: loginEmail,
       username: usernameResult.username,
@@ -91,9 +102,9 @@ export class UserLoginIdentityResolver {
     };
   }
 
-  private async resolveLegacyEmailIdentity(
+  private resolveLegacyEmailIdentity(
     command: UserLoginIdentityInput,
-  ): Promise<ResolvedUserLoginIdentity> {
+  ): ResolvedUserLoginIdentity {
     if (!command.email) {
       throw new ValidationDomainException(
         'Email is required when username is not provided',
@@ -102,11 +113,6 @@ export class UserLoginIdentityResolver {
     }
 
     const email = normalizeContactEmail(command.email);
-    const existingUser = await this.usersRepository.findUserByEmail(email);
-    if (existingUser) {
-      throw new UserEmailTakenException(email);
-    }
-
     return {
       email,
       username: null,

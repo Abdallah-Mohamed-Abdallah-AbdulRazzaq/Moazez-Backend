@@ -10,6 +10,7 @@ import {
   createExactTeacherLifecycleMembership,
   findTeacherLifecycleCurrentSchoolMembership,
   listTeacherLifecycleMembershipFootprints,
+  resolveExactTeacherLifecycleRole,
   setTeacherLifecycleMembershipActive,
   setTeacherLifecycleMembershipInactive,
   setTeacherLifecycleMembershipRoleAndType,
@@ -18,8 +19,10 @@ import {
   softDeleteTeacherLifecycleMembership,
 } from '../../../settings/users/infrastructure/teacher-lifecycle-membership.operations';
 import {
+  createTeacherLifecycleInvitedUser,
   findTeacherLifecycleUserState,
   findTeacherLifecycleIdentityConflicts,
+  findTeacherLifecycleProvisioningIdentityConflicts,
   setTeacherLifecycleUserStatus,
   setTeacherLifecycleUserType,
   updateTeacherLifecycleDisplayNames,
@@ -39,6 +42,7 @@ import {
 } from '../../profile/infrastructure/teacher-profile-lifecycle.operations';
 import type {
   TeacherLifecycleUserIdentityFields,
+  TeacherLifecycleInvitedUserInput,
   TeacherLifecycleProfileManagedFields,
   TeacherLifecycleTransactionContext,
 } from '../application/teacher-lifecycle-unit-of-work';
@@ -58,6 +62,23 @@ export class PrismaTeacherLifecycleTransactionOperations {
     input: { userId: string; fields: TeacherLifecycleUserIdentityFields },
   ) {
     return findTeacherLifecycleIdentityConflicts(transaction, input);
+  }
+
+  findProvisioningUserIdentityConflicts(
+    transaction: Prisma.TransactionClient,
+    fields: TeacherLifecycleUserIdentityFields,
+  ) {
+    return findTeacherLifecycleProvisioningIdentityConflicts(
+      transaction,
+      fields,
+    );
+  }
+
+  createInvitedTeacherUser(
+    transaction: Prisma.TransactionClient,
+    input: TeacherLifecycleInvitedUserInput,
+  ) {
+    return createTeacherLifecycleInvitedUser(transaction, input);
   }
 
   updateUserIdentityFields(
@@ -95,6 +116,10 @@ export class PrismaTeacherLifecycleTransactionOperations {
     input: { schoolId: string; userId: string },
   ) {
     return findTeacherLifecycleCurrentSchoolMembership(transaction, input);
+  }
+
+  resolveTeacherRole(transaction: Prisma.TransactionClient, schoolId: string) {
+    return resolveExactTeacherLifecycleRole(transaction, schoolId);
   }
 
   listMembershipFootprints(

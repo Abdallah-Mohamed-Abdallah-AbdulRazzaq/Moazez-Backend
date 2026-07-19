@@ -45,6 +45,12 @@ export interface TeacherLifecycleUserIdentityFields {
   phone?: string | null;
 }
 
+export interface TeacherLifecycleInvitedUserInput extends TeacherLifecycleUserIdentityFields {
+  loginEmail: string;
+  firstName: string;
+  lastName: string;
+}
+
 export type TeacherLifecycleIdentityConflictField =
   | 'loginEmail'
   | 'username'
@@ -152,6 +158,9 @@ export interface TeacherLifecycleProfileManagedFields {
 export interface TeacherLifecycleTransactionContext {
   user: {
     findState(userId: string): Promise<TeacherLifecycleUserState | null>;
+    findProvisioningIdentityConflicts(
+      fields: TeacherLifecycleUserIdentityFields,
+    ): Promise<TeacherLifecycleIdentityConflictField[]>;
     findIdentityConflicts(input: {
       userId: string;
       fields: TeacherLifecycleUserIdentityFields;
@@ -165,6 +174,9 @@ export interface TeacherLifecycleTransactionContext {
       firstName: string;
       lastName: string;
     }): Promise<TeacherLifecycleUserState>;
+    createInvitedTeacher(
+      input: TeacherLifecycleInvitedUserInput,
+    ): Promise<TeacherLifecycleUserState>;
     setStatus(
       userId: string,
       status: UserStatus,
@@ -175,6 +187,9 @@ export interface TeacherLifecycleTransactionContext {
     ): Promise<TeacherLifecycleUserState>;
   };
   membership: {
+    resolveExactTeacherRole(
+      schoolId: string,
+    ): Promise<TeacherLifecycleRoleState | null>;
     findCurrentSchoolState(input: {
       schoolId: string;
       userId: string;

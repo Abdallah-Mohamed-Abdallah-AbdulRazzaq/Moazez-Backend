@@ -30,12 +30,15 @@ function operations(overrides: Record<string, jest.Mock> = {}) {
   const defaults: Record<string, jest.Mock> = {};
   for (const name of [
     'findUser',
+    'findProvisioningUserIdentityConflicts',
     'findUserIdentityConflicts',
+    'createInvitedTeacherUser',
     'updateUserIdentityFields',
     'updateUserDisplayNames',
     'setUserStatus',
     'setUserType',
     'findMembership',
+    'resolveTeacherRole',
     'listMembershipFootprints',
     'createMembership',
     'setMembershipRoleAndType',
@@ -107,11 +110,21 @@ describe('PrismaTeacherLifecycleUnitOfWork', () => {
     await unitOfWork.execute(async (context) => {
       expect('transaction' in context).toBe(false);
       expect('prisma' in context).toBe(false);
+      await context.user.findProvisioningIdentityConflicts({
+        loginEmail: 'safe@example.test',
+      });
+      await context.user.createInvitedTeacher({
+        loginEmail: 'safe@example.test',
+        username: 'safe',
+        firstName: 'Safe',
+        lastName: 'Teacher',
+      });
       await context.user.updateIdentityFields({
         userId: IDS.user,
         fields: { contactEmail: 'safe@example.test' },
       });
       await context.user.setStatus(IDS.user, UserStatus.DISABLED);
+      await context.membership.resolveExactTeacherRole(IDS.school);
       await context.membership.setSuspended({
         membershipId: IDS.membership,
         schoolId: IDS.school,
@@ -130,7 +143,10 @@ describe('PrismaTeacherLifecycleUnitOfWork', () => {
 
     for (const method of [
       operationSet.setUserStatus,
+      operationSet.findProvisioningUserIdentityConflicts,
+      operationSet.createInvitedTeacherUser,
       operationSet.updateUserIdentityFields,
+      operationSet.resolveTeacherRole,
       operationSet.setMembershipSuspended,
       operationSet.archiveProfile,
       operationSet.writeSuccessfulAudit,
