@@ -26,12 +26,57 @@ export interface TeacherLifecycleCredentialProjection {
 
 export interface TeacherLifecycleUserState {
   id: string;
+  loginEmail: string;
+  username: string | null;
+  contactEmail: string | null;
+  phone: string | null;
   firstName: string;
   lastName: string;
   userType: UserType;
   status: UserStatus;
   deletedAt: Date | null;
   credential: TeacherLifecycleCredentialProjection;
+}
+
+export interface TeacherLifecycleUserIdentityFields {
+  loginEmail?: string;
+  username?: string | null;
+  contactEmail?: string | null;
+  phone?: string | null;
+}
+
+export type TeacherLifecycleIdentityConflictField =
+  | 'loginEmail'
+  | 'username'
+  | 'contactEmail'
+  | 'phone';
+
+export function projectTeacherCredentialSummary(input: {
+  passwordHash: string | null;
+  mustChangePassword: boolean;
+  passwordProvisionedAt: Date | null;
+  passwordChangedAt: Date | null;
+  credentialVersion: number;
+}): TeacherLifecycleCredentialProjection {
+  const hasPassword = Boolean(input.passwordHash);
+  let status: TeacherCredentialStatus = 'set';
+  if (!hasPassword) status = 'missing';
+  else if (
+    input.mustChangePassword &&
+    input.passwordProvisionedAt !== null &&
+    input.passwordChangedAt === null
+  ) {
+    status = 'temporary_or_must_change';
+  } else if (input.mustChangePassword) status = 'must_change';
+
+  return {
+    hasPassword,
+    status,
+    mustChangePassword: input.mustChangePassword,
+    passwordProvisionedAt: input.passwordProvisionedAt,
+    passwordChangedAt: input.passwordChangedAt,
+    credentialVersion: input.credentialVersion,
+  };
 }
 
 export interface TeacherLifecycleRoleState {
@@ -107,6 +152,14 @@ export interface TeacherLifecycleProfileManagedFields {
 export interface TeacherLifecycleTransactionContext {
   user: {
     findState(userId: string): Promise<TeacherLifecycleUserState | null>;
+    findIdentityConflicts(input: {
+      userId: string;
+      fields: TeacherLifecycleUserIdentityFields;
+    }): Promise<TeacherLifecycleIdentityConflictField[]>;
+    updateIdentityFields(input: {
+      userId: string;
+      fields: TeacherLifecycleUserIdentityFields;
+    }): Promise<TeacherLifecycleUserState>;
     updateDisplayNames(input: {
       userId: string;
       firstName: string;

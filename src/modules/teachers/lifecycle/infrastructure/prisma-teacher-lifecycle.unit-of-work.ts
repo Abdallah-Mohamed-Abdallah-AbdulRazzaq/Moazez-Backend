@@ -32,6 +32,10 @@ export class PrismaTeacherLifecycleUnitOfWork extends TeacherLifecycleUnitOfWork
       user: {
         findState: (userId: string) =>
           this.operations.findUser(transaction, userId),
+        findIdentityConflicts: (input) =>
+          this.operations.findUserIdentityConflicts(transaction, input),
+        updateIdentityFields: (input) =>
+          this.operations.updateUserIdentityFields(transaction, input),
         updateDisplayNames: (input) =>
           this.operations.updateUserDisplayNames(transaction, input),
         setStatus: (userId, status) =>

@@ -30,6 +30,8 @@ function operations(overrides: Record<string, jest.Mock> = {}) {
   const defaults: Record<string, jest.Mock> = {};
   for (const name of [
     'findUser',
+    'findUserIdentityConflicts',
+    'updateUserIdentityFields',
     'updateUserDisplayNames',
     'setUserStatus',
     'setUserType',
@@ -105,6 +107,10 @@ describe('PrismaTeacherLifecycleUnitOfWork', () => {
     await unitOfWork.execute(async (context) => {
       expect('transaction' in context).toBe(false);
       expect('prisma' in context).toBe(false);
+      await context.user.updateIdentityFields({
+        userId: IDS.user,
+        fields: { contactEmail: 'safe@example.test' },
+      });
       await context.user.setStatus(IDS.user, UserStatus.DISABLED);
       await context.membership.setSuspended({
         membershipId: IDS.membership,
@@ -124,6 +130,7 @@ describe('PrismaTeacherLifecycleUnitOfWork', () => {
 
     for (const method of [
       operationSet.setUserStatus,
+      operationSet.updateUserIdentityFields,
       operationSet.setMembershipSuspended,
       operationSet.archiveProfile,
       operationSet.writeSuccessfulAudit,

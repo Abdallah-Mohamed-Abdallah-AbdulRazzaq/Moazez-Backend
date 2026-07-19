@@ -1,0 +1,20 @@
+import { Module } from '@nestjs/common';
+import { LoginIdentityModule } from '../../settings/login-identity/login-identity.module';
+import { TeacherLifecycleModule } from '../lifecycle/teacher-lifecycle.module';
+import { GetTeacherUseCase } from './application/get-teacher.use-case';
+import { ListTeachersUseCase } from './application/list-teachers.use-case';
+import { UpdateTeacherUseCase } from './application/update-teacher.use-case';
+import { TeachersController } from './controller/teachers.controller';
+import { TeacherDirectoryRepository } from './infrastructure/teacher-directory.repository';
+
+@Module({
+  imports: [LoginIdentityModule, TeacherLifecycleModule],
+  controllers: [TeachersController],
+  providers: [
+    TeacherDirectoryRepository,
+    ListTeachersUseCase,
+    GetTeacherUseCase,
+    UpdateTeacherUseCase,
+  ],
+})
+export class TeacherDirectoryModule {}

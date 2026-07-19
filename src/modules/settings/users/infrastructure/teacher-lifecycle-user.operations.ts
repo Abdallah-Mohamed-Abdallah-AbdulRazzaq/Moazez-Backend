@@ -1,11 +1,17 @@
 import { Prisma, type UserStatus, type UserType } from '@prisma/client';
 import type {
-  TeacherCredentialStatus,
+  TeacherLifecycleIdentityConflictField,
+  TeacherLifecycleUserIdentityFields,
   TeacherLifecycleUserState,
 } from '../../../teachers/lifecycle/application/teacher-lifecycle-unit-of-work';
+import { projectTeacherCredentialSummary as projectCredentialSummary } from '../../../teachers/lifecycle/application/teacher-lifecycle-unit-of-work';
 
 const TEACHER_LIFECYCLE_USER_SELECT = Prisma.validator<Prisma.UserSelect>()({
   id: true,
+  email: true,
+  username: true,
+  contactEmail: true,
+  phone: true,
   firstName: true,
   lastName: true,
   userType: true,
@@ -45,6 +51,70 @@ export async function updateTeacherLifecycleDisplayNames(
   return projectTeacherLifecycleUserState(record);
 }
 
+export async function findTeacherLifecycleIdentityConflicts(
+  transaction: Prisma.TransactionClient,
+  input: { userId: string; fields: TeacherLifecycleUserIdentityFields },
+): Promise<TeacherLifecycleIdentityConflictField[]> {
+  const conditions: Prisma.UserWhereInput[] = [];
+  if (input.fields.loginEmail !== undefined) {
+    conditions.push({ email: input.fields.loginEmail });
+  }
+  if (input.fields.phone !== undefined && input.fields.phone !== null) {
+    conditions.push({ phone: input.fields.phone });
+  }
+  if (conditions.length === 0) return [];
+
+  const conflicts = await transaction.user.findMany({
+    where: { id: { not: input.userId }, OR: conditions },
+    orderBy: { id: 'asc' },
+    take: 2,
+    select: { email: true, phone: true },
+  });
+  const fields = new Set<TeacherLifecycleIdentityConflictField>();
+  for (const conflict of conflicts) {
+    if (
+      input.fields.loginEmail !== undefined &&
+      conflict.email === input.fields.loginEmail
+    ) {
+      fields.add(
+        input.fields.username !== undefined ? 'username' : 'loginEmail',
+      );
+    }
+    if (
+      input.fields.phone !== undefined &&
+      conflict.phone === input.fields.phone
+    ) {
+      fields.add('phone');
+    }
+  }
+  return [...fields].sort();
+}
+
+export async function updateTeacherLifecycleIdentityFields(
+  transaction: Prisma.TransactionClient,
+  input: { userId: string; fields: TeacherLifecycleUserIdentityFields },
+): Promise<TeacherLifecycleUserState> {
+  const record = await transaction.user.update({
+    where: { id: input.userId },
+    data: {
+      ...(input.fields.loginEmail !== undefined
+        ? { email: input.fields.loginEmail }
+        : {}),
+      ...(input.fields.username !== undefined
+        ? { username: input.fields.username }
+        : {}),
+      ...(input.fields.contactEmail !== undefined
+        ? { contactEmail: input.fields.contactEmail }
+        : {}),
+      ...(input.fields.phone !== undefined
+        ? { phone: input.fields.phone }
+        : {}),
+    },
+    select: TEACHER_LIFECYCLE_USER_SELECT,
+  });
+  return projectTeacherLifecycleUserState(record);
+}
+
 export async function setTeacherLifecycleUserStatus(
   transaction: Prisma.TransactionClient,
   userId: string,
@@ -74,43 +144,17 @@ export async function setTeacherLifecycleUserType(
 export function projectTeacherLifecycleUserState(
   record: TeacherLifecycleUserDatabaseRecord,
 ): TeacherLifecycleUserState {
-  const hasPassword = Boolean(record.passwordHash);
   return {
     id: record.id,
+    loginEmail: record.email,
+    username: record.username,
+    contactEmail: record.contactEmail,
+    phone: record.phone,
     firstName: record.firstName,
     lastName: record.lastName,
     userType: record.userType,
     status: record.status,
     deletedAt: record.deletedAt,
-    credential: {
-      hasPassword,
-      status: deriveCredentialStatus({
-        hasPassword,
-        mustChangePassword: record.mustChangePassword,
-        passwordProvisionedAt: record.passwordProvisionedAt,
-        passwordChangedAt: record.passwordChangedAt,
-      }),
-      mustChangePassword: record.mustChangePassword,
-      passwordProvisionedAt: record.passwordProvisionedAt,
-      passwordChangedAt: record.passwordChangedAt,
-      credentialVersion: record.credentialVersion,
-    },
+    credential: projectCredentialSummary(record),
   };
-}
-
-function deriveCredentialStatus(input: {
-  hasPassword: boolean;
-  mustChangePassword: boolean;
-  passwordProvisionedAt: Date | null;
-  passwordChangedAt: Date | null;
-}): TeacherCredentialStatus {
-  if (!input.hasPassword) return 'missing';
-  if (
-    input.mustChangePassword &&
-    input.passwordProvisionedAt !== null &&
-    input.passwordChangedAt === null
-  ) {
-    return 'temporary_or_must_change';
-  }
-  return input.mustChangePassword ? 'must_change' : 'set';
 }

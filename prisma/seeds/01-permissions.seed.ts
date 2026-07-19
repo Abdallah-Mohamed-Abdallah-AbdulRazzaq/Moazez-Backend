@@ -271,6 +271,10 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'students.notes.manage', module: 'students', resource: 'notes', action: 'manage', description: 'Manage student notes' },
   { code: 'students.lifecycle.manage', module: 'students', resource: 'lifecycle', action: 'manage', description: 'Manage student lifecycle actions such as transfers and withdrawals' },
 
+  // teacher directory
+  { code: 'teachers.records.view', module: 'teachers', resource: 'records', action: 'view', description: 'View current-school Teacher Directory records' },
+  { code: 'teachers.records.manage', module: 'teachers', resource: 'records', action: 'manage', description: 'Manage current-school Teacher Directory records' },
+
   // dashboard
   { code: 'dashboard.command_center.view', module: 'dashboard', resource: 'command_center', action: 'view', description: 'View Dashboard Command Center V2 overview' },
   { code: 'dashboard.light_mode_dropdown.view', module: 'dashboard', resource: 'light_mode_dropdown', action: 'view', description: 'View read-only Dashboard LightModeDropdown contract' },

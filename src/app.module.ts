@@ -32,6 +32,7 @@ import { SchoolSupportModule } from './modules/school-support/school-support.mod
 import { StudentAppModule } from './modules/student-app/student-app.module';
 import { StudentsModule } from './modules/students/students.module';
 import { TeacherAppModule } from './modules/teacher-app/teacher-app.module';
+import { TeachersModule } from './modules/teachers/teachers.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { TeacherAppModule } from './modules/teacher-app/teacher-app.module';
     SchoolSupportModule,
     DashboardModule,
     TeacherAppModule,
+    TeachersModule,
     StudentAppModule,
     ParentAppModule,
   ],

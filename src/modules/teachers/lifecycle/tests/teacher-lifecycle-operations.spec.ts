@@ -11,9 +11,11 @@ import {
   setTeacherLifecycleMembershipSuspended,
 } from '../../../settings/users/infrastructure/teacher-lifecycle-membership.operations';
 import {
+  findTeacherLifecycleIdentityConflicts,
   projectTeacherLifecycleUserState,
   setTeacherLifecycleUserStatus,
   updateTeacherLifecycleDisplayNames,
+  updateTeacherLifecycleIdentityFields,
 } from '../../../settings/users/infrastructure/teacher-lifecycle-user.operations';
 import {
   TeacherProfileLifecycleInvariantError,
@@ -67,6 +69,10 @@ function membership(
 function rawUser(passwordHash: string | null = 'private-hash') {
   return {
     id: IDS.user,
+    email: 'teacher@example.test',
+    username: 'teacher',
+    contactEmail: null,
+    phone: null,
     firstName: 'Display',
     lastName: 'Projection',
     userType: UserType.TEACHER,
@@ -116,6 +122,51 @@ describe('Teacher lifecycle User, Membership, Profile, and Session operations', 
     });
     expect(update.mock.calls[1][0].data).toEqual({
       status: UserStatus.DISABLED,
+    });
+  });
+
+  it('updates only managed IAM identity fields and returns no password hash', async () => {
+    const update = jest.fn().mockResolvedValue(rawUser());
+    const transaction = { user: { update } } as never;
+    const result = await updateTeacherLifecycleIdentityFields(transaction, {
+      userId: IDS.user,
+      fields: {
+        loginEmail: 'managed@example.test',
+        username: 'managed',
+        contactEmail: null,
+        phone: '+201001234567',
+      },
+    });
+    expect(update.mock.calls[0][0].data).toEqual({
+      email: 'managed@example.test',
+      username: 'managed',
+      contactEmail: null,
+      phone: '+201001234567',
+    });
+    expect(result).not.toHaveProperty('passwordHash');
+  });
+
+  it('reduces identity conflict reads to safe fixed field keys', async () => {
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([
+        { email: 'managed@example.test', phone: '+201001234567' },
+      ]);
+    const transaction = { user: { findMany } } as never;
+    await expect(
+      findTeacherLifecycleIdentityConflicts(transaction, {
+        userId: IDS.user,
+        fields: {
+          loginEmail: 'managed@example.test',
+          username: 'managed',
+          phone: '+201001234567',
+        },
+      }),
+    ).resolves.toEqual(['phone', 'username']);
+    expect(findMany.mock.calls[0][0]).toMatchObject({
+      orderBy: { id: 'asc' },
+      take: 2,
+      select: { email: true, phone: true },
     });
   });
 

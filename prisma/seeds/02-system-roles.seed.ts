@@ -23,7 +23,9 @@ const NON_PLATFORM = ALL.filter(
 
 const SCHOOL_LEVEL = NON_PLATFORM;
 
-const TEACHER_PERMISSIONS = [
+export const TEACHER_PERMISSIONS = [
+  // teachers.records.view/manage are intentionally excluded: this role gets
+  // self-service access, never Teacher Directory management.
   'app.device_tokens.manage',
   'academics.calendar.view',
   'academics.curriculum.view',
@@ -202,7 +204,7 @@ const DISMISSAL_STAFF_PERMISSIONS = [
   'dismissal.notifications.manage',
 ];
 
-const SYSTEM_ROLES: SystemRoleSeed[] = [
+export const SYSTEM_ROLES: SystemRoleSeed[] = [
   {
     key: 'platform_super_admin',
     name: 'Platform Super Admin',
