@@ -196,32 +196,66 @@ export async function setTeacherLifecycleMembershipRoleAndType(
 
 export function setTeacherLifecycleMembershipActive(
   transaction: Prisma.TransactionClient,
-  input: { membershipId: string; schoolId: string },
+  input: {
+    membershipId: string;
+    schoolId: string;
+    expectedStatus: MembershipStatus;
+    expectedEndedAt: Date | null;
+  },
 ): Promise<TeacherLifecycleMembershipState> {
-  return updateMembership(transaction, input.membershipId, input.schoolId, {
-    status: MembershipStatus.ACTIVE,
-    endedAt: null,
-  });
+  return updateMembership(
+    transaction,
+    input.membershipId,
+    input.schoolId,
+    {
+      status: MembershipStatus.ACTIVE,
+      endedAt: null,
+    },
+    input,
+  );
 }
 
 export function setTeacherLifecycleMembershipSuspended(
   transaction: Prisma.TransactionClient,
-  input: { membershipId: string; schoolId: string },
+  input: {
+    membershipId: string;
+    schoolId: string;
+    expectedStatus: MembershipStatus;
+    expectedEndedAt: Date | null;
+  },
 ): Promise<TeacherLifecycleMembershipState> {
-  return updateMembership(transaction, input.membershipId, input.schoolId, {
-    status: MembershipStatus.SUSPENDED,
-    endedAt: null,
-  });
+  return updateMembership(
+    transaction,
+    input.membershipId,
+    input.schoolId,
+    {
+      status: MembershipStatus.SUSPENDED,
+      endedAt: null,
+    },
+    input,
+  );
 }
 
 export function setTeacherLifecycleMembershipInactive(
   transaction: Prisma.TransactionClient,
-  input: { membershipId: string; schoolId: string; endedAt: Date },
+  input: {
+    membershipId: string;
+    schoolId: string;
+    expectedStatus: MembershipStatus;
+    expectedEndedAt: Date | null;
+    endedAt: Date;
+  },
 ): Promise<TeacherLifecycleMembershipState> {
-  return updateMembership(transaction, input.membershipId, input.schoolId, {
-    status: MembershipStatus.INACTIVE,
-    endedAt: input.endedAt,
-  });
+  return updateMembership(
+    transaction,
+    input.membershipId,
+    input.schoolId,
+    {
+      status: MembershipStatus.INACTIVE,
+      endedAt: input.endedAt,
+    },
+    input,
+  );
 }
 
 export function setTeacherLifecycleMembershipTransferred(
@@ -255,9 +289,23 @@ async function updateMembership(
   membershipId: string,
   schoolId: string,
   data: Prisma.MembershipUncheckedUpdateManyInput,
+  expected?: {
+    expectedStatus: MembershipStatus;
+    expectedEndedAt: Date | null;
+  },
 ): Promise<TeacherLifecycleMembershipState> {
   const result = await transaction.membership.updateMany({
-    where: { id: membershipId, schoolId, deletedAt: null },
+    where: {
+      id: membershipId,
+      schoolId,
+      deletedAt: null,
+      ...(expected
+        ? {
+            status: expected.expectedStatus,
+            endedAt: expected.expectedEndedAt,
+          }
+        : {}),
+    },
     data,
   });
   if (result.count !== 1) {

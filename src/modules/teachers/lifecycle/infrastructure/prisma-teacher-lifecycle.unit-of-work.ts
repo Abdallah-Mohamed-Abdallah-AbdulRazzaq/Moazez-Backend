@@ -45,8 +45,7 @@ export class PrismaTeacherLifecycleUnitOfWork extends TeacherLifecycleUnitOfWork
           this.operations.updateUserDisplayNames(transaction, input),
         createInvitedTeacher: (input) =>
           this.operations.createInvitedTeacherUser(transaction, input),
-        setStatus: (userId, status) =>
-          this.operations.setUserStatus(transaction, userId, status),
+        setStatus: (input) => this.operations.setUserStatus(transaction, input),
         setType: (userId, userType) =>
           this.operations.setUserType(transaction, userId, userType),
       },

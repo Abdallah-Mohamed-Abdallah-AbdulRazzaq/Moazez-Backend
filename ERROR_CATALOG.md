@@ -88,14 +88,16 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 
 ### Teacher Directory
 
-| Code                                        | HTTP | English catalog message                              | Arabic catalog message                  | Safe details                    |
-| ------------------------------------------- | ---: | ---------------------------------------------------- | --------------------------------------- | ------------------------------- |
-| `teachers.profile.not_found`                |  404 | Teacher profile not found.                           | ملف المعلم غير موجود.                   | None                            |
-| `teachers.profile.code_conflict`            |  409 | Teacher code conflicts with an existing profile.     | رمز المعلم مستخدم في ملف آخر.           | `field=teacherCode`             |
-| `teachers.profile.incomplete`               |  409 | Teacher profile is incomplete.                       | ملف المعلم غير مكتمل.                   | Fixed `missingFields` keys only |
-| `teachers.account.identity_conflict`        |  409 | Teacher login or contact identity conflicts.         | توجد هوية دخول أو اتصال متعارضة للمعلم. | Fixed `fields` keys only        |
-| `teachers.account.teacher_role_required`    |  422 | An exact live Teacher role is required.              | يلزم دور معلم فعّال ومتطابق.            | Stable `reasonCode` only        |
-| `teachers.account.role_transition_conflict` |  409 | Teacher identity state is unsafe for this operation. | حالة هوية المعلم لا تسمح بهذه العملية.  | Stable `reasonCode` only        |
+| Code                                        | HTTP | English catalog message                               | Arabic catalog message                  | Safe details                                     |
+| ------------------------------------------- | ---: | ----------------------------------------------------- | --------------------------------------- | ------------------------------------------------ |
+| `teachers.profile.not_found`                |  404 | Teacher profile not found.                            | ملف المعلم غير موجود.                   | None                                             |
+| `teachers.profile.code_conflict`            |  409 | Teacher code conflicts with an existing profile.      | رمز المعلم مستخدم في ملف آخر.           | `field=teacherCode`                              |
+| `teachers.profile.incomplete`               |  409 | Teacher profile is incomplete.                        | ملف المعلم غير مكتمل.                   | Fixed `missingFields` keys only                  |
+| `teachers.account.identity_conflict`        |  409 | Teacher login or contact identity conflicts.          | توجد هوية دخول أو اتصال متعارضة للمعلم. | Fixed `fields` keys only                         |
+| `teachers.account.teacher_role_required`    |  422 | An exact live Teacher role is required.               | يلزم دور معلم فعّال ومتطابق.            | Stable `reasonCode` only                         |
+| `teachers.account.role_transition_conflict` |  409 | Teacher identity state is unsafe for this operation.  | حالة هوية المعلم لا تسمح بهذه العملية.  | Stable `reasonCode` only                         |
+| `teachers.lifecycle.invalid_transition`     |  409 | Teacher lifecycle transition is not allowed.          | انتقال دورة حياة المعلم غير مسموح.      | Previous/next enums and stable `reasonCode` only |
+| `teachers.lifecycle.revocation_failed`      |  503 | Required Teacher session revocation did not complete. | لم يكتمل إلغاء جلسات المعلم المطلوب.    | `retryable=true` and stable `reasonCode` only    |
 
 The stable codes are language-neutral. Runtime messages remain English because
 the current global exception filter does not load the EN/AR catalog; this phase

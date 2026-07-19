@@ -11,6 +11,7 @@ import {
 import {
   CreateTeacherDto,
   ListTeachersQueryDto,
+  UpdateTeacherEmploymentStatusDto,
   UpdateTeacherDto,
 } from '../dto/teacher-directory.dto';
 
@@ -209,6 +210,60 @@ describe('Teacher Directory input integrity', () => {
         pipe.transform(
           { ...valid, [field]: 'forbidden' },
           { type: 'body', metatype: CreateTeacherDto },
+        ),
+      ).rejects.toThrow();
+    }
+  });
+
+  it('accepts only the three employment states and a syntactically exact ISO effectiveAt', async () => {
+    for (const employmentStatus of ['ACTIVE', 'INACTIVE', 'TERMINATED']) {
+      expect(
+        await validate(
+          plainToInstance(UpdateTeacherEmploymentStatusDto, {
+            employmentStatus,
+            effectiveAt: '2026-07-18T16:36:19.198Z',
+          }),
+        ),
+      ).toEqual([]);
+    }
+    expect(
+      (
+        await validate(
+          plainToInstance(UpdateTeacherEmploymentStatusDto, {
+            employmentStatus: 'UNKNOWN',
+          }),
+        )
+      ).some((error) => error.property === 'employmentStatus'),
+    ).toBe(true);
+  });
+
+  it('strict employment DTO rejects ownership, credential, assignment, and avatar fields', async () => {
+    const pipe = new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+    for (const field of [
+      'accountStatus',
+      'membershipStatus',
+      'roleId',
+      'userType',
+      'schoolId',
+      'organizationId',
+      'password',
+      'mustChangePassword',
+      'assignments',
+      'avatar',
+      'deletedAt',
+      'reason',
+    ]) {
+      await expect(
+        pipe.transform(
+          { employmentStatus: 'INACTIVE', [field]: 'forbidden' },
+          {
+            type: 'body',
+            metatype: UpdateTeacherEmploymentStatusDto,
+          },
         ),
       ).rejects.toThrow();
     }

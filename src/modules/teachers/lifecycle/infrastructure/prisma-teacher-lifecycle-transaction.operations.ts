@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type {
+  MembershipStatus,
   Prisma,
   TeacherEmploymentStatus,
   UserStatus,
@@ -97,10 +98,13 @@ export class PrismaTeacherLifecycleTransactionOperations {
 
   setUserStatus(
     transaction: Prisma.TransactionClient,
-    userId: string,
-    status: UserStatus,
+    input: {
+      userId: string;
+      expectedStatus: UserStatus;
+      status: UserStatus;
+    },
   ) {
-    return setTeacherLifecycleUserStatus(transaction, userId, status);
+    return setTeacherLifecycleUserStatus(transaction, input);
   }
 
   setUserType(
@@ -156,21 +160,37 @@ export class PrismaTeacherLifecycleTransactionOperations {
 
   setMembershipActive(
     transaction: Prisma.TransactionClient,
-    input: { membershipId: string; schoolId: string },
+    input: {
+      membershipId: string;
+      schoolId: string;
+      expectedStatus: MembershipStatus;
+      expectedEndedAt: Date | null;
+    },
   ) {
     return setTeacherLifecycleMembershipActive(transaction, input);
   }
 
   setMembershipSuspended(
     transaction: Prisma.TransactionClient,
-    input: { membershipId: string; schoolId: string },
+    input: {
+      membershipId: string;
+      schoolId: string;
+      expectedStatus: MembershipStatus;
+      expectedEndedAt: Date | null;
+    },
   ) {
     return setTeacherLifecycleMembershipSuspended(transaction, input);
   }
 
   setMembershipInactive(
     transaction: Prisma.TransactionClient,
-    input: { membershipId: string; schoolId: string; endedAt: Date },
+    input: {
+      membershipId: string;
+      schoolId: string;
+      expectedStatus: MembershipStatus;
+      expectedEndedAt: Date | null;
+      endedAt: Date;
+    },
   ) {
     return setTeacherLifecycleMembershipInactive(transaction, input);
   }
@@ -278,6 +298,7 @@ export class PrismaTeacherLifecycleTransactionOperations {
     input: {
       schoolId: string;
       profileId: string;
+      expectedEmploymentStatus: TeacherEmploymentStatus;
       employmentStatus: TeacherEmploymentStatus;
     },
   ) {

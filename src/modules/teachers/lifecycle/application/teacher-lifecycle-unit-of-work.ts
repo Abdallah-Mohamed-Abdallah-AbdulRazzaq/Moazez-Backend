@@ -177,10 +177,11 @@ export interface TeacherLifecycleTransactionContext {
     createInvitedTeacher(
       input: TeacherLifecycleInvitedUserInput,
     ): Promise<TeacherLifecycleUserState>;
-    setStatus(
-      userId: string,
-      status: UserStatus,
-    ): Promise<TeacherLifecycleUserState>;
+    setStatus(input: {
+      userId: string;
+      expectedStatus: UserStatus;
+      status: UserStatus;
+    }): Promise<TeacherLifecycleUserState>;
     setType(
       userId: string,
       userType: UserType,
@@ -213,14 +214,20 @@ export interface TeacherLifecycleTransactionContext {
     setActive(input: {
       membershipId: string;
       schoolId: string;
+      expectedStatus: MembershipStatus;
+      expectedEndedAt: Date | null;
     }): Promise<TeacherLifecycleMembershipState>;
     setSuspended(input: {
       membershipId: string;
       schoolId: string;
+      expectedStatus: MembershipStatus;
+      expectedEndedAt: Date | null;
     }): Promise<TeacherLifecycleMembershipState>;
     setInactive(input: {
       membershipId: string;
       schoolId: string;
+      expectedStatus: MembershipStatus;
+      expectedEndedAt: Date | null;
       endedAt: Date;
     }): Promise<TeacherLifecycleMembershipState>;
     setTransferred(input: {
@@ -275,6 +282,7 @@ export interface TeacherLifecycleTransactionContext {
     setEmploymentStatus(input: {
       schoolId: string;
       profileId: string;
+      expectedEmploymentStatus: TeacherEmploymentStatus;
       employmentStatus: TeacherEmploymentStatus;
     }): Promise<TeacherLifecycleProfileState>;
     archive(input: {

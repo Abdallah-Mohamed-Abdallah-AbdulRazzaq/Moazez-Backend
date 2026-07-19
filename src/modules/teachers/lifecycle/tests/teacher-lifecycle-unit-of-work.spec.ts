@@ -123,11 +123,17 @@ describe('PrismaTeacherLifecycleUnitOfWork', () => {
         userId: IDS.user,
         fields: { contactEmail: 'safe@example.test' },
       });
-      await context.user.setStatus(IDS.user, UserStatus.DISABLED);
+      await context.user.setStatus({
+        userId: IDS.user,
+        expectedStatus: UserStatus.ACTIVE,
+        status: UserStatus.DISABLED,
+      });
       await context.membership.resolveExactTeacherRole(IDS.school);
       await context.membership.setSuspended({
         membershipId: IDS.membership,
         schoolId: IDS.school,
+        expectedStatus: 'ACTIVE',
+        expectedEndedAt: null,
       });
       await context.profile.archive({
         profileId: IDS.profile,
@@ -202,10 +208,16 @@ describe('PrismaTeacherLifecycleUnitOfWork', () => {
 
       await expect(
         unitOfWork.execute(async (context) => {
-          await context.user.setStatus(IDS.user, UserStatus.DISABLED);
+          await context.user.setStatus({
+            userId: IDS.user,
+            expectedStatus: UserStatus.ACTIVE,
+            status: UserStatus.DISABLED,
+          });
           await context.membership.setSuspended({
             membershipId: IDS.membership,
             schoolId: IDS.school,
+            expectedStatus: 'ACTIVE',
+            expectedEndedAt: null,
           });
           await context.profile.archive({
             profileId: IDS.profile,
