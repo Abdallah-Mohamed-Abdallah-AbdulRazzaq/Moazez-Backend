@@ -5,12 +5,14 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiConflictResponse,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -19,10 +21,12 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { CreateTeacherUseCase } from '../application/create-teacher.use-case';
 import { GetTeacherUseCase } from '../application/get-teacher.use-case';
 import { ListTeachersUseCase } from '../application/list-teachers.use-case';
 import { UpdateTeacherUseCase } from '../application/update-teacher.use-case';
 import {
+  CreateTeacherDto,
   ListTeachersQueryDto,
   TeacherDirectoryDetailDto,
   TeachersListResponseDto,
@@ -36,8 +40,25 @@ export class TeachersController {
   constructor(
     private readonly listTeachersUseCase: ListTeachersUseCase,
     private readonly getTeacherUseCase: GetTeacherUseCase,
+    private readonly createTeacherUseCase: CreateTeacherUseCase,
     private readonly updateTeacherUseCase: UpdateTeacherUseCase,
   ) {}
+
+  @Post()
+  @RequiredPermissions('teachers.records.manage')
+  @ApiOperation({ summary: 'Provision a complete current-school Teacher' })
+  @ApiCreatedResponse({ type: TeacherDirectoryDetailDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiConflictResponse({
+    description:
+      'teachers.profile.code_conflict | teachers.profile.incomplete | teachers.account.identity_conflict | teachers.account.role_transition_conflict',
+  })
+  @ApiForbiddenResponse({ description: 'Requires teachers.records.manage.' })
+  create(
+    @Body() command: CreateTeacherDto,
+  ): Promise<TeacherDirectoryDetailDto> {
+    return this.createTeacherUseCase.execute(command);
+  }
 
   @Get()
   @RequiredPermissions('teachers.records.view')

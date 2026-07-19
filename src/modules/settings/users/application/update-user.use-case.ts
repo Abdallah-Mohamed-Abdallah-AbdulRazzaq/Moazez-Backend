@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AuditOutcome } from '@prisma/client';
+import { AuditOutcome, UserType } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireSettingsScope } from '../../settings-context';
@@ -9,23 +9,38 @@ import { UpdateUserDto } from '../dto/update-user.dto';
 import { UserResponseDto } from '../dto/user-response.dto';
 import { UsersRepository } from '../infrastructure/users.repository';
 import { presentUser } from '../presenters/users.presenter';
+import { TeacherSettingsBypassService } from './teacher-settings-bypass.service';
 
 @Injectable()
 export class UpdateUserUseCase {
   constructor(
     private readonly usersRepository: UsersRepository,
     private readonly authRepository: AuthRepository,
+    private readonly teacherBypass: TeacherSettingsBypassService,
   ) {}
 
-  async execute(userId: string, command: UpdateUserDto): Promise<UserResponseDto> {
+  async execute(
+    userId: string,
+    command: UpdateUserDto,
+  ): Promise<UserResponseDto> {
     const scope = requireSettingsScope();
-    const membership = await this.usersRepository.findScopedMembershipByUserId(userId);
+    const membership =
+      await this.usersRepository.findScopedMembershipByUserId(userId);
     if (!membership) {
       throw new NotFoundDomainException('User not found', { userId });
     }
 
+    if (command.fullName && membership.user.userType === UserType.TEACHER) {
+      await this.teacherBypass.reject({
+        scope,
+        reasonCode: 'teacher_display_projection_managed',
+        resourceType: 'membership',
+        resourceId: membership.id,
+      });
+    }
+
     let nextRoleId: string | undefined;
-    let nextUserType;
+    let nextUserType: UserType | undefined;
 
     if (command.roleId) {
       const role = await this.usersRepository.findAssignableRoleById(
@@ -33,7 +48,28 @@ export class UpdateUserUseCase {
         command.roleId,
       );
       if (!role) {
-        throw new NotFoundDomainException('Role not found', { roleId: command.roleId });
+        throw new NotFoundDomainException('Role not found', {
+          roleId: command.roleId,
+        });
+      }
+      if (role.key === 'teacher' && command.fullName) {
+        await this.teacherBypass.reject({
+          scope,
+          reasonCode: 'teacher_display_projection_managed',
+          resourceType: 'membership',
+          resourceId: membership.id,
+        });
+      }
+      if (
+        role.key === 'teacher' &&
+        membership.user.userType !== UserType.TEACHER
+      ) {
+        await this.teacherBypass.reject({
+          scope,
+          reasonCode: 'teacher_promotion_requires_profile',
+          resourceType: 'membership',
+          resourceId: membership.id,
+        });
       }
       nextRoleId = role.id;
       nextUserType = userTypeFromRoleKey(role.key);

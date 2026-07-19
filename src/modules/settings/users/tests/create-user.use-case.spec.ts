@@ -7,6 +7,7 @@ import {
 } from '../../../../common/context/request-context';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { CreateUserUseCase } from '../application/create-user.use-case';
+import { TeacherSettingsBypassService } from '../application/teacher-settings-bypass.service';
 import { UserLoginIdentityResolver } from '../application/user-login-identity.resolver';
 import { UsersRepository } from '../infrastructure/users.repository';
 
@@ -48,11 +49,15 @@ describe('CreateUserUseCase', () => {
         generatedLoginEmail: false,
       }),
     } as unknown as UserLoginIdentityResolver;
+    const teacherBypass = {
+      reject: jest.fn(),
+    } as unknown as TeacherSettingsBypassService;
 
     const useCase = new CreateUserUseCase(
       usersRepository,
       authRepository,
       loginIdentityResolver,
+      teacherBypass,
     );
 
     await runWithRequestContext(createRequestContext(), async () => {
@@ -128,8 +133,8 @@ describe('CreateUserUseCase', () => {
     const usersRepository = {
       findAssignableRoleById: jest.fn().mockResolvedValue({
         id: 'role-teacher',
-        key: 'teacher',
-        name: 'Teacher',
+        key: 'student',
+        name: 'Student',
       }),
       createUserWithMembership,
     } as unknown as UsersRepository;
@@ -145,11 +150,15 @@ describe('CreateUserUseCase', () => {
         generatedLoginEmail: true,
       }),
     } as unknown as UserLoginIdentityResolver;
+    const teacherBypass = {
+      reject: jest.fn(),
+    } as unknown as TeacherSettingsBypassService;
 
     const useCase = new CreateUserUseCase(
       usersRepository,
       authRepository,
       loginIdentityResolver,
+      teacherBypass,
     );
 
     await runWithRequestContext(createRequestContext(), async () => {
@@ -175,7 +184,7 @@ describe('CreateUserUseCase', () => {
           username: 'ahmed.ali',
           contactEmail: 'ahmed.personal@example.com',
           passwordHash: null,
-          userType: UserType.TEACHER,
+          userType: UserType.STUDENT,
         }),
       );
       expect(result.email).toBe('ahmed.ali@school.sa');

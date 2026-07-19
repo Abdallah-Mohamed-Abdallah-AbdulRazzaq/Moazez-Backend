@@ -7,6 +7,7 @@ import {
 } from '../../../../common/context/request-context';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { InviteUserUseCase } from '../application/invite-user.use-case';
+import { TeacherSettingsBypassService } from '../application/teacher-settings-bypass.service';
 import { UserLoginIdentityResolver } from '../application/user-login-identity.resolver';
 import { UsersRepository } from '../infrastructure/users.repository';
 
@@ -49,11 +50,15 @@ describe('InviteUserUseCase', () => {
         generatedLoginEmail: true,
       }),
     } as unknown as UserLoginIdentityResolver;
+    const teacherBypass = {
+      reject: jest.fn(),
+    } as unknown as TeacherSettingsBypassService;
 
     const useCase = new InviteUserUseCase(
       usersRepository,
       authRepository,
       loginIdentityResolver,
+      teacherBypass,
     );
 
     await runWithRequestContext(createRequestContext(), async () => {

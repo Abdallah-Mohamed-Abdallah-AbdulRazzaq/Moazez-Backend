@@ -14,13 +14,7 @@ import {
   type TeacherLifecycleUserIdentityFields,
 } from '../../lifecycle/application/teacher-lifecycle-unit-of-work';
 import { isExactTeacherMembership } from '../../lifecycle/domain/teacher-membership-state';
-import {
-  isExperienceYearsValid,
-  isValidNormalizedTeacherCode,
-  normalizeTeacherCode,
-  projectTeacherProfileCompleteness,
-  validateWorkTimePair,
-} from '../../profile/domain/teacher-profile.integrity';
+import { projectTeacherProfileCompleteness } from '../../profile/domain/teacher-profile.integrity';
 import {
   TeacherIdentityConflictException,
   TeacherProfileCodeConflictException,
@@ -28,11 +22,11 @@ import {
   type TeacherIdentityField,
 } from '../domain/teacher-directory.errors';
 import {
+  buildTeacherProfileManagedFields,
   normalizeLoginEmail,
   normalizeNullableText,
-  normalizeTeacherWorkingDays,
-  parseTeacherDateOnly,
-  parseTeacherTime,
+  selectTeacherDisplayNames,
+  TEACHER_MANAGED_NAME_FIELDS,
 } from '../domain/teacher-directory-input';
 import { composeTeacherDirectoryRecord } from '../domain/teacher-directory.types';
 import type {
@@ -41,13 +35,6 @@ import type {
 } from '../dto/teacher-directory.dto';
 import { presentTeacherDirectoryDetail } from '../presenters/teacher-directory.presenter';
 import { requireTeacherDirectoryScope } from '../teacher-directory.context';
-
-const MANAGED_NAME_FIELDS = [
-  'firstNameAr',
-  'lastNameAr',
-  'firstNameEn',
-  'lastNameEn',
-] as const;
 
 @Injectable()
 export class UpdateTeacherUseCase {
@@ -62,8 +49,8 @@ export class UpdateTeacherUseCase {
   ): Promise<TeacherDirectoryDetailDto> {
     const scope = requireTeacherDirectoryScope();
     const identityFields = await this.resolveIdentityFields(command);
-    const profileFields = buildProfileFields(command);
-    const namesChanged = MANAGED_NAME_FIELDS.some(
+    const profileFields = buildTeacherProfileManagedFields(command);
+    const namesChanged = TEACHER_MANAGED_NAME_FIELDS.some(
       (field) => command[field] !== undefined,
     );
     if (namesChanged && !command.preferredDisplayLanguage) {
@@ -124,7 +111,10 @@ export class UpdateTeacherUseCase {
               : profile.lastNameEn,
         };
         const displayNames = command.preferredDisplayLanguage
-          ? selectDisplayNames(finalNames, command.preferredDisplayLanguage)
+          ? selectTeacherDisplayNames(
+              finalNames,
+              command.preferredDisplayLanguage,
+            )
           : null;
 
         let updatedUser = user;
@@ -229,99 +219,6 @@ export class UpdateTeacherUseCase {
     }
     return fields;
   }
-}
-
-function buildProfileFields(
-  command: UpdateTeacherDto,
-): TeacherLifecycleProfileManagedFields {
-  const fields: TeacherLifecycleProfileManagedFields = {};
-  if (command.teacherCode !== undefined) {
-    const code = normalizeTeacherCode(command.teacherCode);
-    if (!code || !isValidNormalizedTeacherCode(code)) {
-      throw new ValidationDomainException('Invalid teacher code', {
-        field: 'teacherCode',
-      });
-    }
-    fields.teacherCode = code;
-  }
-  for (const name of MANAGED_NAME_FIELDS) {
-    if (command[name] !== undefined) {
-      fields[name] = normalizeNullableText(command[name]) ?? null;
-    }
-  }
-  for (const name of [
-    'department',
-    'specialization',
-    'notesAr',
-    'notesEn',
-  ] as const) {
-    if (command[name] !== undefined) {
-      fields[name] = normalizeNullableText(command[name]) ?? null;
-    }
-  }
-  if (command.gender !== undefined) fields.gender = command.gender;
-  if (command.employmentType !== undefined) {
-    fields.employmentType = command.employmentType;
-  }
-  if (command.experienceYears !== undefined) {
-    if (!isExperienceYearsValid(command.experienceYears)) {
-      throw new ValidationDomainException('Invalid experience years', {
-        field: 'experienceYears',
-      });
-    }
-    fields.experienceYears = command.experienceYears;
-  }
-  if (command.hireDate !== undefined) {
-    fields.hireDate = parseTeacherDateOnly(command.hireDate, 'hireDate');
-  }
-  if (command.workingDays !== undefined) {
-    fields.workingDays = normalizeTeacherWorkingDays(command.workingDays);
-  }
-  if (
-    command.workStartTime !== undefined ||
-    command.workEndTime !== undefined
-  ) {
-    if (
-      command.workStartTime === undefined ||
-      command.workEndTime === undefined
-    ) {
-      throw new ValidationDomainException(
-        'Work times must be supplied as a pair',
-        { field: 'workStartTime' },
-      );
-    }
-    const start = parseTeacherTime(command.workStartTime, 'workStartTime');
-    const end = parseTeacherTime(command.workEndTime, 'workEndTime');
-    const validation = validateWorkTimePair(start ?? null, end ?? null);
-    if (!validation.isValid) {
-      throw new ValidationDomainException('Invalid work-time pair', {
-        field: validation.isPairValid ? 'workEndTime' : 'workStartTime',
-      });
-    }
-    fields.workStartTime = start;
-    fields.workEndTime = end;
-  }
-  return fields;
-}
-
-function selectDisplayNames(
-  names: {
-    firstNameAr: string | null;
-    lastNameAr: string | null;
-    firstNameEn: string | null;
-    lastNameEn: string | null;
-  },
-  language: 'AR' | 'EN',
-): { firstName: string; lastName: string } {
-  const firstName = language === 'AR' ? names.firstNameAr : names.firstNameEn;
-  const lastName = language === 'AR' ? names.lastNameAr : names.lastNameEn;
-  if (!firstName || !lastName) {
-    throw new ValidationDomainException(
-      'Preferred display language requires both managed names',
-      { field: 'preferredDisplayLanguage' },
-    );
-  }
-  return { firstName, lastName };
 }
 
 function changedFieldKeys(

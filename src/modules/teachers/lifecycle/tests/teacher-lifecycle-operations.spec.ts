@@ -8,10 +8,13 @@ import { readFileSync } from 'node:fs';
 import { revokeTeacherLifecycleUserSessionsInTransaction } from '../../../iam/auth/infrastructure/teacher-lifecycle-session.operations';
 import {
   findTeacherLifecycleCurrentSchoolMembership,
+  resolveExactTeacherLifecycleRole,
   setTeacherLifecycleMembershipSuspended,
 } from '../../../settings/users/infrastructure/teacher-lifecycle-membership.operations';
 import {
+  createTeacherLifecycleInvitedUser,
   findTeacherLifecycleIdentityConflicts,
+  findTeacherLifecycleProvisioningIdentityConflicts,
   projectTeacherLifecycleUserState,
   setTeacherLifecycleUserStatus,
   updateTeacherLifecycleDisplayNames,
@@ -167,6 +170,126 @@ describe('Teacher lifecycle User, Membership, Profile, and Session operations', 
       orderBy: { id: 'asc' },
       take: 2,
       select: { email: true, phone: true },
+    });
+  });
+
+  it('checks provisioning identity conflicts without a pre-existing User id', async () => {
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([{ email: 'teacher@example.test', phone: null }]);
+    await expect(
+      findTeacherLifecycleProvisioningIdentityConflicts(
+        { user: { findMany } } as never,
+        { loginEmail: 'teacher@example.test', username: 'teacher' },
+      ),
+    ).resolves.toEqual(['username']);
+    expect(findMany.mock.calls[0][0].where).toEqual({
+      OR: [{ email: 'teacher@example.test' }],
+    });
+  });
+
+  it('creates only an INVITED Teacher User and leaves credential fields to stored defaults', async () => {
+    const create = jest.fn().mockResolvedValue({
+      ...rawUser(null),
+      status: UserStatus.INVITED,
+    });
+    const result = await createTeacherLifecycleInvitedUser(
+      { user: { create } } as never,
+      {
+        loginEmail: 'teacher@example.test',
+        username: 'teacher',
+        contactEmail: null,
+        phone: null,
+        firstName: 'Display',
+        lastName: 'Projection',
+      },
+    );
+    expect(create.mock.calls[0][0].data).toEqual({
+      email: 'teacher@example.test',
+      username: 'teacher',
+      contactEmail: null,
+      phone: null,
+      firstName: 'Display',
+      lastName: 'Projection',
+      userType: 'TEACHER',
+      status: 'INVITED',
+    });
+    expect(create.mock.calls[0][0].data).not.toHaveProperty('passwordHash');
+    expect(create.mock.calls[0][0].data).not.toHaveProperty(
+      'credentialVersion',
+    );
+    expect(result.credential).toMatchObject({
+      hasPassword: false,
+      status: 'missing',
+    });
+  });
+
+  it('resolves a live same-school Teacher Role before a global Role', async () => {
+    const sameSchool = {
+      id: IDS.role,
+      key: 'teacher',
+      schoolId: IDS.school,
+      deletedAt: null,
+    };
+    const findMany = jest.fn().mockResolvedValueOnce([sameSchool]);
+    await expect(
+      resolveExactTeacherLifecycleRole(
+        { role: { findMany } } as never,
+        IDS.school,
+      ),
+    ).resolves.toEqual(sameSchool);
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany.mock.calls[0][0]).toMatchObject({
+      where: { key: 'teacher', schoolId: IDS.school, deletedAt: null },
+      orderBy: { id: 'asc' },
+      take: 2,
+    });
+  });
+
+  it('accepts exactly one live global system Teacher Role when no school Role exists', async () => {
+    const globalRole = {
+      id: IDS.role,
+      key: 'teacher',
+      schoolId: null,
+      deletedAt: null,
+    };
+    const findMany = jest
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([globalRole]);
+    await expect(
+      resolveExactTeacherLifecycleRole(
+        { role: { findMany } } as never,
+        IDS.school,
+      ),
+    ).resolves.toEqual(globalRole);
+    expect(findMany.mock.calls[1][0].where).toEqual({
+      key: 'teacher',
+      schoolId: null,
+      isSystem: true,
+      deletedAt: null,
+    });
+  });
+
+  it('does not resolve deleted or foreign-school Teacher Roles', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    await expect(
+      resolveExactTeacherLifecycleRole(
+        { role: { findMany } } as never,
+        IDS.school,
+      ),
+    ).resolves.toBeNull();
+    expect(findMany.mock.calls).toHaveLength(2);
+    expect(findMany.mock.calls[0][0].where).toEqual({
+      key: 'teacher',
+      schoolId: IDS.school,
+      deletedAt: null,
+    });
+    expect(findMany.mock.calls[1][0].where).toEqual({
+      key: 'teacher',
+      schoolId: null,
+      isSystem: true,
+      deletedAt: null,
     });
   });
 

@@ -1,5 +1,8 @@
 import { MembershipStatus, Prisma, UserType, type Role } from '@prisma/client';
-import type { TeacherLifecycleMembershipState } from '../../../teachers/lifecycle/application/teacher-lifecycle-unit-of-work';
+import type {
+  TeacherLifecycleMembershipState,
+  TeacherLifecycleRoleState,
+} from '../../../teachers/lifecycle/application/teacher-lifecycle-unit-of-work';
 import { isExactTeacherRoleForSchool } from '../../../teachers/lifecycle/domain/teacher-membership-state';
 
 const TEACHER_LIFECYCLE_MEMBERSHIP_SELECT =
@@ -25,6 +28,51 @@ export class TeacherLifecycleMembershipInvariantError extends Error {
     super('Teacher lifecycle Membership invariant failed');
     this.name = 'TeacherLifecycleMembershipInvariantError';
   }
+}
+
+export async function resolveExactTeacherLifecycleRole(
+  transaction: Prisma.TransactionClient,
+  schoolId: string,
+): Promise<TeacherLifecycleRoleState | null> {
+  const select = {
+    id: true,
+    key: true,
+    schoolId: true,
+    deletedAt: true,
+  } as const;
+  const schoolRoles = await transaction.role.findMany({
+    where: { key: 'teacher', schoolId, deletedAt: null },
+    orderBy: { id: 'asc' },
+    take: 2,
+    select,
+  });
+  if (schoolRoles.length > 1) {
+    throw new TeacherLifecycleMembershipInvariantError(
+      'ambiguous_teacher_role',
+    );
+  }
+  if (schoolRoles[0]) return schoolRoles[0];
+
+  const globalRoles = await transaction.role.findMany({
+    where: {
+      key: 'teacher',
+      schoolId: null,
+      isSystem: true,
+      deletedAt: null,
+    },
+    orderBy: { id: 'asc' },
+    take: 2,
+    select,
+  });
+  if (globalRoles.length !== 1) {
+    if (globalRoles.length > 1) {
+      throw new TeacherLifecycleMembershipInvariantError(
+        'ambiguous_teacher_role',
+      );
+    }
+    return null;
+  }
+  return globalRoles[0];
 }
 
 export function findTeacherLifecycleCurrentSchoolMembership(

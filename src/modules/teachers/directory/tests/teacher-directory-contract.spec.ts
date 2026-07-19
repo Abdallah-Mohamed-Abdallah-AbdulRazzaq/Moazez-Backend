@@ -43,7 +43,7 @@ function inSchoolScope<T>(callback: () => T): T {
 }
 
 describe('Teacher Directory route and permission contract', () => {
-  it('registers exactly GET list, GET detail, and PATCH detail methods', () => {
+  it('registers exactly POST, GET list, GET detail, and PATCH detail methods', () => {
     expect(Reflect.getMetadata(PATH_METADATA, TeachersController)).toBe(
       'teachers',
     );
@@ -58,16 +58,20 @@ describe('Teacher Directory route and permission contract', () => {
       })
       .filter((route) => route.method !== undefined);
     expect(routes).toEqual([
+      { path: '/', method: RequestMethod.POST },
       { path: '/', method: RequestMethod.GET },
       { path: ':teacherId', method: RequestMethod.GET },
       { path: ':teacherId', method: RequestMethod.PATCH },
     ]);
-    expect(routes.some((route) => route.method === RequestMethod.POST)).toBe(
-      false,
-    );
   });
 
-  it('locks view permission on GET and manage permission on PATCH', () => {
+  it('locks view permission on GET and manage permission on POST/PATCH', () => {
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_METADATA,
+        TeachersController.prototype.create,
+      ),
+    ).toEqual(['teachers.records.manage']);
     expect(
       Reflect.getMetadata(
         REQUIRED_PERMISSIONS_METADATA,
@@ -205,7 +209,7 @@ describe('Teacher Directory route and permission contract', () => {
     logger.mockRestore();
   });
 
-  it('registers TeachersModule in AppModule without exposing another controller', () => {
+  it('registers TeachersModule in AppModule with only the authorized Directory controller', () => {
     const root = join(__dirname, '../../../../..');
     const appModule = readFileSync(join(root, 'src/app.module.ts'), 'utf8');
     const controller = readFileSync(
@@ -216,8 +220,9 @@ describe('Teacher Directory route and permission contract', () => {
       'utf8',
     );
     expect(appModule).toContain('TeachersModule');
-    expect(controller.match(/@(Get|Patch)\(/gu)).toHaveLength(3);
-    expect(controller).not.toMatch(/@(Post|Delete)\(/u);
+    expect(controller.match(/@(Get|Post|Patch)\(/gu)).toHaveLength(4);
+    expect(controller.match(/@Post\(/gu)).toHaveLength(1);
+    expect(controller).not.toMatch(/@Delete\(/u);
     expect(controller).not.toContain('employment-status');
     expect(controller).not.toContain('rehire');
     expect(controller).not.toContain('transfer');

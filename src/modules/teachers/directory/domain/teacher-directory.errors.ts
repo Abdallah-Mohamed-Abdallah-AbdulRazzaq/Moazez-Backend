@@ -69,7 +69,11 @@ export class TeacherRoleRequiredException extends DomainException {
 
 export class TeacherRoleTransitionConflictException extends DomainException {
   constructor(
-    reasonCode: 'teacher_identity_inconsistent' = 'teacher_identity_inconsistent',
+    reasonCode:
+      | 'teacher_identity_inconsistent'
+      | 'teacher_directory_provisioning_required'
+      | 'teacher_promotion_requires_profile'
+      | 'teacher_display_projection_managed' = 'teacher_identity_inconsistent',
   ) {
     super({
       code: 'teachers.account.role_transition_conflict',

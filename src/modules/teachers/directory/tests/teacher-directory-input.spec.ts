@@ -9,6 +9,7 @@ import {
   parseTeacherTime,
 } from '../domain/teacher-directory-input';
 import {
+  CreateTeacherDto,
   ListTeachersQueryDto,
   UpdateTeacherDto,
 } from '../dto/teacher-directory.dto';
@@ -117,6 +118,97 @@ describe('Teacher Directory input integrity', () => {
             type: 'body',
             metatype: UpdateTeacherDto,
           },
+        ),
+      ).rejects.toThrow();
+    }
+  });
+
+  it('requires a complete Profile, preferred language, and explicit supported employment state for POST', async () => {
+    const valid = {
+      loginEmail: 'teacher@example.test',
+      teacherCode: 'T001',
+      firstNameAr: 'نور',
+      lastNameAr: 'علي',
+      firstNameEn: 'Nour',
+      lastNameEn: 'Ali',
+      preferredDisplayLanguage: 'EN',
+      gender: 'FEMALE',
+      employmentStatus: 'ACTIVE',
+    };
+    expect(await validate(plainToInstance(CreateTeacherDto, valid))).toEqual(
+      [],
+    );
+    for (const field of [
+      'teacherCode',
+      'firstNameAr',
+      'lastNameAr',
+      'firstNameEn',
+      'lastNameEn',
+      'preferredDisplayLanguage',
+      'gender',
+      'employmentStatus',
+    ]) {
+      const missing = { ...valid } as Record<string, unknown>;
+      delete missing[field];
+      expect(
+        (await validate(plainToInstance(CreateTeacherDto, missing))).some(
+          (error) => error.property === field,
+        ),
+      ).toBe(true);
+    }
+    expect(
+      (
+        await validate(
+          plainToInstance(CreateTeacherDto, {
+            ...valid,
+            employmentStatus: 'TERMINATED',
+          }),
+        )
+      ).some((error) => error.property === 'employmentStatus'),
+    ).toBe(true);
+  });
+
+  it('strict POST DTO rejects password, status, role, tenant, assignment, and avatar ownership bypasses', async () => {
+    const pipe = new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+    const valid = {
+      loginEmail: 'teacher@example.test',
+      teacherCode: 'T001',
+      firstNameAr: 'نور',
+      lastNameAr: 'علي',
+      firstNameEn: 'Nour',
+      lastNameEn: 'Ali',
+      preferredDisplayLanguage: 'EN',
+      gender: 'FEMALE',
+      employmentStatus: 'ACTIVE',
+    };
+    for (const field of [
+      'password',
+      'passwordHash',
+      'temporaryPassword',
+      'mustChangePassword',
+      'credentialVersion',
+      'passwordProvisionedAt',
+      'passwordChangedAt',
+      'accountStatus',
+      'membershipStatus',
+      'roleId',
+      'userType',
+      'schoolId',
+      'organizationId',
+      'deletedAt',
+      'assignments',
+      'subjects',
+      'classes',
+      'avatar',
+    ]) {
+      await expect(
+        pipe.transform(
+          { ...valid, [field]: 'forbidden' },
+          { type: 'body', metatype: CreateTeacherDto },
         ),
       ).rejects.toThrow();
     }

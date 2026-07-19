@@ -1,6 +1,7 @@
 import { Prisma, type UserStatus, type UserType } from '@prisma/client';
 import type {
   TeacherLifecycleIdentityConflictField,
+  TeacherLifecycleInvitedUserInput,
   TeacherLifecycleUserIdentityFields,
   TeacherLifecycleUserState,
 } from '../../../teachers/lifecycle/application/teacher-lifecycle-unit-of-work';
@@ -55,17 +56,35 @@ export async function findTeacherLifecycleIdentityConflicts(
   transaction: Prisma.TransactionClient,
   input: { userId: string; fields: TeacherLifecycleUserIdentityFields },
 ): Promise<TeacherLifecycleIdentityConflictField[]> {
+  return findIdentityConflicts(transaction, input.fields, input.userId);
+}
+
+export async function findTeacherLifecycleProvisioningIdentityConflicts(
+  transaction: Prisma.TransactionClient,
+  fields: TeacherLifecycleUserIdentityFields,
+): Promise<TeacherLifecycleIdentityConflictField[]> {
+  return findIdentityConflicts(transaction, fields);
+}
+
+async function findIdentityConflicts(
+  transaction: Prisma.TransactionClient,
+  fieldsInput: TeacherLifecycleUserIdentityFields,
+  excludedUserId?: string,
+): Promise<TeacherLifecycleIdentityConflictField[]> {
   const conditions: Prisma.UserWhereInput[] = [];
-  if (input.fields.loginEmail !== undefined) {
-    conditions.push({ email: input.fields.loginEmail });
+  if (fieldsInput.loginEmail !== undefined) {
+    conditions.push({ email: fieldsInput.loginEmail });
   }
-  if (input.fields.phone !== undefined && input.fields.phone !== null) {
-    conditions.push({ phone: input.fields.phone });
+  if (fieldsInput.phone !== undefined && fieldsInput.phone !== null) {
+    conditions.push({ phone: fieldsInput.phone });
   }
   if (conditions.length === 0) return [];
 
   const conflicts = await transaction.user.findMany({
-    where: { id: { not: input.userId }, OR: conditions },
+    where: {
+      ...(excludedUserId ? { id: { not: excludedUserId } } : {}),
+      OR: conditions,
+    },
     orderBy: { id: 'asc' },
     take: 2,
     select: { email: true, phone: true },
@@ -73,21 +92,41 @@ export async function findTeacherLifecycleIdentityConflicts(
   const fields = new Set<TeacherLifecycleIdentityConflictField>();
   for (const conflict of conflicts) {
     if (
-      input.fields.loginEmail !== undefined &&
-      conflict.email === input.fields.loginEmail
+      fieldsInput.loginEmail !== undefined &&
+      conflict.email === fieldsInput.loginEmail
     ) {
       fields.add(
-        input.fields.username !== undefined ? 'username' : 'loginEmail',
+        fieldsInput.username !== undefined ? 'username' : 'loginEmail',
       );
     }
     if (
-      input.fields.phone !== undefined &&
-      conflict.phone === input.fields.phone
+      fieldsInput.phone !== undefined &&
+      conflict.phone === fieldsInput.phone
     ) {
       fields.add('phone');
     }
   }
   return [...fields].sort();
+}
+
+export async function createTeacherLifecycleInvitedUser(
+  transaction: Prisma.TransactionClient,
+  input: TeacherLifecycleInvitedUserInput,
+): Promise<TeacherLifecycleUserState> {
+  const record = await transaction.user.create({
+    data: {
+      email: input.loginEmail,
+      username: input.username ?? null,
+      contactEmail: input.contactEmail ?? null,
+      phone: input.phone ?? null,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      userType: 'TEACHER',
+      status: 'INVITED',
+    },
+    select: TEACHER_LIFECYCLE_USER_SELECT,
+  });
+  return projectTeacherLifecycleUserState(record);
 }
 
 export async function updateTeacherLifecycleIdentityFields(
