@@ -170,6 +170,7 @@ export async function restoreArchivedTeacherProfileInTransaction(
     schoolId: string;
     profileId: string;
     userId: string;
+    employmentStatus: TeacherEmploymentStatus;
     fields: TeacherLifecycleProfileManagedFields;
   },
 ): Promise<TeacherLifecycleProfileState> {
@@ -212,6 +213,7 @@ export async function restoreArchivedTeacherProfileInTransaction(
     where: { userId: input.userId, deletedAt: { not: null } },
     data: {
       ...profileManagedFieldsToData(input.fields),
+      employmentStatus: input.employmentStatus,
       deletedAt: null,
     },
   });

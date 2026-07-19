@@ -48,6 +48,8 @@ export class PrismaTeacherLifecycleUnitOfWork extends TeacherLifecycleUnitOfWork
         setStatus: (input) => this.operations.setUserStatus(transaction, input),
         setType: (userId, userType) =>
           this.operations.setUserType(transaction, userId, userType),
+        setTypeForReviewedTransition: (input) =>
+          this.operations.setUserTypeForReviewedTransition(transaction, input),
       },
       membership: {
         resolveExactTeacherRole: (schoolId) =>
@@ -56,8 +58,28 @@ export class PrismaTeacherLifecycleUnitOfWork extends TeacherLifecycleUnitOfWork
           this.operations.findMembership(transaction, input),
         listTeacherFootprints: (userId) =>
           this.operations.listMembershipFootprints(transaction, userId),
+        listOperationalFootprints: (userId) =>
+          this.operations.listOperationalMembershipFootprints(
+            transaction,
+            userId,
+          ),
+        listCurrentSchoolHistory: (input) =>
+          this.operations.listCurrentSchoolMembershipHistory(
+            transaction,
+            input,
+          ),
+        resolveAssignableNonTeacherRole: (input) =>
+          this.operations.resolveAssignableNonTeacherRole(transaction, input),
         createExactTeacher: (input) =>
           this.operations.createMembership(transaction, input),
+        createExactTeacherForRehire: (input) =>
+          this.operations.createMembershipForRehire(transaction, input),
+        restoreExactTeacher: (input) =>
+          this.operations.restoreTeacherMembership(transaction, input),
+        createReviewedNonTeacher: (input) =>
+          this.operations.createNonTeacherMembership(transaction, input),
+        restoreReviewedNonTeacher: (input) =>
+          this.operations.restoreNonTeacherMembership(transaction, input),
         setRoleAndTypeForReviewedTransition: (input) =>
           this.operations.setMembershipRoleAndType(transaction, input),
         setActive: (input) =>
@@ -100,6 +122,10 @@ export class PrismaTeacherLifecycleUnitOfWork extends TeacherLifecycleUnitOfWork
         revokeUserSessions: (userId, revokedAt) =>
           this.operations.revokeUserSessions(transaction, userId, revokedAt),
       },
+      allocation: {
+        classify: (input) =>
+          this.operations.classifyAllocations(transaction, input),
+      },
     };
 
     Object.freeze(context.user);
@@ -107,6 +133,7 @@ export class PrismaTeacherLifecycleUnitOfWork extends TeacherLifecycleUnitOfWork
     Object.freeze(context.profile);
     Object.freeze(context.audit);
     Object.freeze(context.sessions);
+    Object.freeze(context.allocation);
     return Object.freeze(context);
   }
 }

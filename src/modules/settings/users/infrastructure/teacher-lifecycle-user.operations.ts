@@ -23,6 +23,9 @@ const TEACHER_LIFECYCLE_USER_SELECT = Prisma.validator<Prisma.UserSelect>()({
   passwordChangedAt: true,
   credentialVersion: true,
   deletedAt: true,
+  lastLoginAt: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 type TeacherLifecycleUserDatabaseRecord = Prisma.UserGetPayload<{
@@ -200,6 +203,32 @@ export async function setTeacherLifecycleUserType(
   return projectTeacherLifecycleUserState(record);
 }
 
+export async function setTeacherLifecycleUserTypeForReviewedTransition(
+  transaction: Prisma.TransactionClient,
+  input: {
+    userId: string;
+    expectedUserType: UserType;
+    userType: UserType;
+  },
+): Promise<TeacherLifecycleUserState> {
+  const result = await transaction.user.updateMany({
+    where: {
+      id: input.userId,
+      userType: input.expectedUserType,
+      deletedAt: null,
+    },
+    data: { userType: input.userType },
+  });
+  if (result.count !== 1) {
+    throw new TeacherLifecycleUserInvariantError('lifecycle_state_moved');
+  }
+  const record = await transaction.user.findUniqueOrThrow({
+    where: { id: input.userId },
+    select: TEACHER_LIFECYCLE_USER_SELECT,
+  });
+  return projectTeacherLifecycleUserState(record);
+}
+
 export function projectTeacherLifecycleUserState(
   record: TeacherLifecycleUserDatabaseRecord,
 ): TeacherLifecycleUserState {
@@ -214,6 +243,9 @@ export function projectTeacherLifecycleUserState(
     userType: record.userType,
     status: record.status,
     deletedAt: record.deletedAt,
+    lastLoginAt: record.lastLoginAt,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
     credential: projectCredentialSummary(record),
   };
 }

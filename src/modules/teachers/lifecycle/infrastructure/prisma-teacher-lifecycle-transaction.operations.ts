@@ -7,11 +7,19 @@ import type {
   UserType,
 } from '@prisma/client';
 import { revokeTeacherLifecycleUserSessionsInTransaction } from '../../../iam/auth/infrastructure/teacher-lifecycle-session.operations';
+import { classifyTeacherAllocationLifecycleStateInTransaction } from '../../../academics/teacher-allocation/infrastructure/teacher-allocation-lifecycle-transaction.operations';
 import {
+  createExactTeacherLifecycleMembershipForRehire,
+  createReviewedNonTeacherLifecycleMembership,
   createExactTeacherLifecycleMembership,
   findTeacherLifecycleCurrentSchoolMembership,
+  listTeacherLifecycleCurrentSchoolHistory,
   listTeacherLifecycleMembershipFootprints,
+  listTeacherLifecycleOperationalMembershipFootprints,
+  resolveAssignableNonTeacherLifecycleRole,
   resolveExactTeacherLifecycleRole,
+  restoreExactTeacherLifecycleMembership,
+  restoreReviewedNonTeacherLifecycleMembership,
   setTeacherLifecycleMembershipActive,
   setTeacherLifecycleMembershipInactive,
   setTeacherLifecycleMembershipRoleAndType,
@@ -26,6 +34,7 @@ import {
   findTeacherLifecycleProvisioningIdentityConflicts,
   setTeacherLifecycleUserStatus,
   setTeacherLifecycleUserType,
+  setTeacherLifecycleUserTypeForReviewedTransition,
   updateTeacherLifecycleDisplayNames,
   updateTeacherLifecycleIdentityFields,
 } from '../../../settings/users/infrastructure/teacher-lifecycle-user.operations';
@@ -115,6 +124,17 @@ export class PrismaTeacherLifecycleTransactionOperations {
     return setTeacherLifecycleUserType(transaction, userId, userType);
   }
 
+  setUserTypeForReviewedTransition(
+    transaction: Prisma.TransactionClient,
+    input: {
+      userId: string;
+      expectedUserType: UserType;
+      userType: UserType;
+    },
+  ) {
+    return setTeacherLifecycleUserTypeForReviewedTransition(transaction, input);
+  }
+
   findMembership(
     transaction: Prisma.TransactionClient,
     input: { schoolId: string; userId: string },
@@ -133,6 +153,30 @@ export class PrismaTeacherLifecycleTransactionOperations {
     return listTeacherLifecycleMembershipFootprints(transaction, userId);
   }
 
+  listOperationalMembershipFootprints(
+    transaction: Prisma.TransactionClient,
+    userId: string,
+  ) {
+    return listTeacherLifecycleOperationalMembershipFootprints(
+      transaction,
+      userId,
+    );
+  }
+
+  listCurrentSchoolMembershipHistory(
+    transaction: Prisma.TransactionClient,
+    input: { schoolId: string; userId: string },
+  ) {
+    return listTeacherLifecycleCurrentSchoolHistory(transaction, input);
+  }
+
+  resolveAssignableNonTeacherRole(
+    transaction: Prisma.TransactionClient,
+    input: { schoolId: string; roleId: string },
+  ) {
+    return resolveAssignableNonTeacherLifecycleRole(transaction, input);
+  }
+
   createMembership(
     transaction: Prisma.TransactionClient,
     input: {
@@ -144,6 +188,60 @@ export class PrismaTeacherLifecycleTransactionOperations {
     },
   ) {
     return createExactTeacherLifecycleMembership(transaction, input);
+  }
+
+  createMembershipForRehire(
+    transaction: Prisma.TransactionClient,
+    input: {
+      userId: string;
+      organizationId: string;
+      schoolId: string;
+      roleId: string;
+    },
+  ) {
+    return createExactTeacherLifecycleMembershipForRehire(transaction, input);
+  }
+
+  restoreTeacherMembership(
+    transaction: Prisma.TransactionClient,
+    input: {
+      membershipId: string;
+      userId: string;
+      schoolId: string;
+      roleId: string;
+      expectedStatus: MembershipStatus;
+      expectedEndedAt: Date | null;
+    },
+  ) {
+    return restoreExactTeacherLifecycleMembership(transaction, input);
+  }
+
+  createNonTeacherMembership(
+    transaction: Prisma.TransactionClient,
+    input: {
+      userId: string;
+      organizationId: string;
+      schoolId: string;
+      roleId: string;
+      userType: UserType;
+    },
+  ) {
+    return createReviewedNonTeacherLifecycleMembership(transaction, input);
+  }
+
+  restoreNonTeacherMembership(
+    transaction: Prisma.TransactionClient,
+    input: {
+      membershipId: string;
+      userId: string;
+      schoolId: string;
+      roleId: string;
+      userType: UserType;
+      expectedStatus: MembershipStatus;
+      expectedEndedAt: Date | null;
+    },
+  ) {
+    return restoreReviewedNonTeacherLifecycleMembership(transaction, input);
   }
 
   setMembershipRoleAndType(
@@ -287,6 +385,7 @@ export class PrismaTeacherLifecycleTransactionOperations {
       schoolId: string;
       profileId: string;
       userId: string;
+      employmentStatus: TeacherEmploymentStatus;
       fields: TeacherLifecycleProfileManagedFields;
     },
   ) {
@@ -328,6 +427,16 @@ export class PrismaTeacherLifecycleTransactionOperations {
       transaction,
       userId,
       revokedAt,
+    );
+  }
+
+  classifyAllocations(
+    transaction: Prisma.TransactionClient,
+    input: { schoolId: string; teacherUserId: string; asOf: Date },
+  ) {
+    return classifyTeacherAllocationLifecycleStateInTransaction(
+      transaction,
+      input,
     );
   }
 }

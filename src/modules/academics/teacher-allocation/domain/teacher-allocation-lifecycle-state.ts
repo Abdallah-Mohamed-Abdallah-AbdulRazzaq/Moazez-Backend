@@ -119,6 +119,19 @@ export function summarizeTeacherAllocationLifecycleStates(
   };
   for (const state of states) counts[state] += 1;
 
+  return summarizeTeacherAllocationLifecycleCounts(counts, dependencyCounts);
+}
+
+export function summarizeTeacherAllocationLifecycleCounts(
+  countsInput: TeacherAllocationLifecycleCounts,
+  dependencyCounts: TeacherAllocationDependencyCounts = {
+    timetableEntries: 0,
+    lessonPlans: 0,
+    homeworkAssignments: 0,
+  },
+): TeacherAllocationLifecycleSummary {
+  const counts = { ...countsInput };
+
   const blockingCount = counts.current_active + counts.future;
   const integrityRiskCount =
     counts.current_inactive + counts.inconsistent + counts.invalid;
@@ -174,6 +187,30 @@ export function evaluateTeacherAllocationLifecycleGate(
     };
   }
   return { blocked: false, reassignmentRequired: false, reason: 'none' };
+}
+
+export function teacherAllocationStateLabels(
+  summary: TeacherAllocationLifecycleSummary,
+): TeacherAllocationLifecycleState[] {
+  return TEACHER_ALLOCATION_LIFECYCLE_STATES.filter(
+    (state) => summary.counts[state] > 0,
+  );
+}
+
+export function teacherAllocationAuditCounts(
+  summary: TeacherAllocationLifecycleSummary,
+) {
+  return {
+    currentActive: summary.currentActiveCount,
+    future: summary.futureCount,
+    currentInactive: summary.currentInactiveCount,
+    inconsistent: summary.inconsistentCount,
+    invalid: summary.invalidCount,
+    historical: summary.historicalCount,
+    timetableEntries: summary.dependencyCounts.timetableEntries,
+    lessonPlans: summary.dependencyCounts.lessonPlans,
+    homeworkAssignments: summary.dependencyCounts.homeworkAssignments,
+  };
 }
 
 function resolveIntegrityReason(

@@ -8,6 +8,7 @@ import type {
   UserType,
 } from '@prisma/client';
 import type { TeacherLifecycleSuccessfulAuditEntry } from '../domain/teacher-lifecycle-audit';
+import type { TeacherAllocationLifecycleSummary } from '../../../academics/teacher-allocation/domain/teacher-allocation-lifecycle-state';
 
 export type TeacherCredentialStatus =
   | 'missing'
@@ -35,6 +36,9 @@ export interface TeacherLifecycleUserState {
   userType: UserType;
   status: UserStatus;
   deletedAt: Date | null;
+  lastLoginAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
   credential: TeacherLifecycleCredentialProjection;
 }
 
@@ -88,6 +92,7 @@ export function projectTeacherCredentialSummary(input: {
 export interface TeacherLifecycleRoleState {
   id: string;
   key: string;
+  name?: string;
   schoolId: string | null;
   deletedAt: Date | null;
 }
@@ -186,6 +191,11 @@ export interface TeacherLifecycleTransactionContext {
       userId: string,
       userType: UserType,
     ): Promise<TeacherLifecycleUserState>;
+    setTypeForReviewedTransition(input: {
+      userId: string;
+      expectedUserType: UserType;
+      userType: UserType;
+    }): Promise<TeacherLifecycleUserState>;
   };
   membership: {
     resolveExactTeacherRole(
@@ -198,12 +208,53 @@ export interface TeacherLifecycleTransactionContext {
     listTeacherFootprints(
       userId: string,
     ): Promise<TeacherLifecycleMembershipState[]>;
+    listOperationalFootprints(
+      userId: string,
+    ): Promise<TeacherLifecycleMembershipState[]>;
+    listCurrentSchoolHistory(input: {
+      schoolId: string;
+      userId: string;
+    }): Promise<TeacherLifecycleMembershipState[]>;
+    resolveAssignableNonTeacherRole(input: {
+      schoolId: string;
+      roleId: string;
+    }): Promise<TeacherLifecycleRoleState | null>;
     createExactTeacher(input: {
       userId: string;
       organizationId: string;
       schoolId: string;
       roleId: string;
       status: 'ACTIVE' | 'SUSPENDED';
+    }): Promise<TeacherLifecycleMembershipState>;
+    createExactTeacherForRehire(input: {
+      userId: string;
+      organizationId: string;
+      schoolId: string;
+      roleId: string;
+    }): Promise<TeacherLifecycleMembershipState>;
+    restoreExactTeacher(input: {
+      membershipId: string;
+      userId: string;
+      schoolId: string;
+      roleId: string;
+      expectedStatus: MembershipStatus;
+      expectedEndedAt: Date | null;
+    }): Promise<TeacherLifecycleMembershipState>;
+    createReviewedNonTeacher(input: {
+      userId: string;
+      organizationId: string;
+      schoolId: string;
+      roleId: string;
+      userType: UserType;
+    }): Promise<TeacherLifecycleMembershipState>;
+    restoreReviewedNonTeacher(input: {
+      membershipId: string;
+      userId: string;
+      schoolId: string;
+      roleId: string;
+      userType: UserType;
+      expectedStatus: MembershipStatus;
+      expectedEndedAt: Date | null;
     }): Promise<TeacherLifecycleMembershipState>;
     setRoleAndTypeForReviewedTransition(input: {
       membershipId: string;
@@ -277,6 +328,7 @@ export interface TeacherLifecycleTransactionContext {
       schoolId: string;
       profileId: string;
       userId: string;
+      employmentStatus: TeacherEmploymentStatus;
       fields: TeacherLifecycleProfileManagedFields;
     }): Promise<TeacherLifecycleProfileState>;
     setEmploymentStatus(input: {
@@ -296,6 +348,13 @@ export interface TeacherLifecycleTransactionContext {
   };
   sessions: {
     revokeUserSessions(userId: string, revokedAt: Date): Promise<number>;
+  };
+  allocation: {
+    classify(input: {
+      schoolId: string;
+      teacherUserId: string;
+      asOf: Date;
+    }): Promise<TeacherAllocationLifecycleSummary>;
   };
 }
 

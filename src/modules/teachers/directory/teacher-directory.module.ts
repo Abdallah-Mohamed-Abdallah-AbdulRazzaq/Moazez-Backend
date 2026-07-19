@@ -8,6 +8,8 @@ import { ChangeTeacherEmploymentStatusUseCase } from './application/change-teach
 import { GetTeacherUseCase } from './application/get-teacher.use-case';
 import { ListTeachersUseCase } from './application/list-teachers.use-case';
 import { UpdateTeacherUseCase } from './application/update-teacher.use-case';
+import { ArchiveTeacherUseCase } from './application/archive-teacher.use-case';
+import { RehireTeacherUseCase } from './application/rehire-teacher.use-case';
 import { TeachersController } from './controller/teachers.controller';
 import { TeacherDirectoryRepository } from './infrastructure/teacher-directory.repository';
 
@@ -26,6 +28,8 @@ import { TeacherDirectoryRepository } from './infrastructure/teacher-directory.r
     ListTeachersUseCase,
     GetTeacherUseCase,
     UpdateTeacherUseCase,
+    ArchiveTeacherUseCase,
+    RehireTeacherUseCase,
   ],
 })
 export class TeacherDirectoryModule {}

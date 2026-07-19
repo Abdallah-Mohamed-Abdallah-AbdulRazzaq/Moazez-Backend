@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -15,6 +18,7 @@ import {
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
@@ -27,6 +31,8 @@ import { ChangeTeacherEmploymentStatusUseCase } from '../application/change-teac
 import { GetTeacherUseCase } from '../application/get-teacher.use-case';
 import { ListTeachersUseCase } from '../application/list-teachers.use-case';
 import { UpdateTeacherUseCase } from '../application/update-teacher.use-case';
+import { ArchiveTeacherUseCase } from '../application/archive-teacher.use-case';
+import { RehireTeacherUseCase } from '../application/rehire-teacher.use-case';
 import {
   CreateTeacherDto,
   ListTeachersQueryDto,
@@ -35,6 +41,7 @@ import {
   TeachersListResponseDto,
   UpdateTeacherEmploymentStatusDto,
   UpdateTeacherDto,
+  RehireTeacherDto,
 } from '../dto/teacher-directory.dto';
 
 @ApiTags('teachers-directory')
@@ -47,6 +54,8 @@ export class TeachersController {
     private readonly createTeacherUseCase: CreateTeacherUseCase,
     private readonly updateTeacherUseCase: UpdateTeacherUseCase,
     private readonly changeEmploymentStatusUseCase: ChangeTeacherEmploymentStatusUseCase,
+    private readonly archiveTeacherUseCase: ArchiveTeacherUseCase,
+    private readonly rehireTeacherUseCase: RehireTeacherUseCase,
   ) {}
 
   @Post()
@@ -106,6 +115,50 @@ export class TeachersController {
     @Body() command: UpdateTeacherEmploymentStatusDto,
   ): Promise<TeacherEmploymentStatusResponseDto> {
     return this.changeEmploymentStatusUseCase.execute(teacherId, command);
+  }
+
+  @Post(':teacherId/rehire')
+  @HttpCode(HttpStatus.OK)
+  @RequiredPermissions('teachers.records.manage')
+  @ApiOperation({ summary: 'Restore an archived same-school Teacher' })
+  @ApiParam({ name: 'teacherId', format: 'uuid' })
+  @ApiOkResponse({ type: TeacherDirectoryDetailDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiNotFoundResponse({ description: 'teachers.profile.not_found' })
+  @ApiConflictResponse({
+    description:
+      'teachers.profile.code_conflict | teachers.profile.incomplete | teachers.account.role_transition_conflict',
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'teachers.lifecycle.revocation_failed',
+  })
+  @ApiForbiddenResponse({ description: 'Requires teachers.records.manage.' })
+  rehire(
+    @Param('teacherId', new ParseUUIDPipe()) teacherId: string,
+    @Body() command: RehireTeacherDto,
+  ): Promise<TeacherDirectoryDetailDto> {
+    return this.rehireTeacherUseCase.execute(teacherId, command);
+  }
+
+  @Delete(':teacherId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequiredPermissions('teachers.records.manage')
+  @ApiOperation({ summary: 'Soft-archive a same-school Teacher' })
+  @ApiParam({ name: 'teacherId', format: 'uuid' })
+  @ApiNoContentResponse({ description: 'Teacher archived.' })
+  @ApiNotFoundResponse({ description: 'teachers.profile.not_found' })
+  @ApiConflictResponse({
+    description:
+      'teachers.lifecycle.active_assignments | teachers.lifecycle.archive_conflict | teachers.account.role_transition_conflict',
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'teachers.lifecycle.revocation_failed',
+  })
+  @ApiForbiddenResponse({ description: 'Requires teachers.records.manage.' })
+  archive(
+    @Param('teacherId', new ParseUUIDPipe()) teacherId: string,
+  ): Promise<void> {
+    return this.archiveTeacherUseCase.execute(teacherId);
   }
 
   @Patch(':teacherId')

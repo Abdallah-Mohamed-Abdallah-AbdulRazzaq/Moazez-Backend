@@ -8,7 +8,9 @@ import { readFileSync } from 'node:fs';
 import { revokeTeacherLifecycleUserSessionsInTransaction } from '../../../iam/auth/infrastructure/teacher-lifecycle-session.operations';
 import {
   findTeacherLifecycleCurrentSchoolMembership,
+  listTeacherLifecycleOperationalMembershipFootprints,
   resolveExactTeacherLifecycleRole,
+  restoreExactTeacherLifecycleMembership,
   setTeacherLifecycleMembershipSuspended,
 } from '../../../settings/users/infrastructure/teacher-lifecycle-membership.operations';
 import {
@@ -17,6 +19,7 @@ import {
   findTeacherLifecycleProvisioningIdentityConflicts,
   projectTeacherLifecycleUserState,
   setTeacherLifecycleUserStatus,
+  setTeacherLifecycleUserTypeForReviewedTransition,
   updateTeacherLifecycleDisplayNames,
   updateTeacherLifecycleIdentityFields,
 } from '../../../settings/users/infrastructure/teacher-lifecycle-user.operations';
@@ -122,6 +125,11 @@ describe('Teacher lifecycle User, Membership, Profile, and Session operations', 
       expectedStatus: UserStatus.ACTIVE,
       status: UserStatus.DISABLED,
     });
+    await setTeacherLifecycleUserTypeForReviewedTransition(transaction, {
+      userId: IDS.user,
+      expectedUserType: UserType.TEACHER,
+      userType: UserType.SCHOOL_USER,
+    });
 
     expect(update.mock.calls[0][0].data).toEqual({
       firstName: 'Approved',
@@ -134,6 +142,14 @@ describe('Teacher lifecycle User, Membership, Profile, and Session operations', 
       id: IDS.user,
       status: UserStatus.ACTIVE,
       deletedAt: null,
+    });
+    expect(updateMany.mock.calls[1][0]).toMatchObject({
+      where: {
+        id: IDS.user,
+        userType: UserType.TEACHER,
+        deletedAt: null,
+      },
+      data: { userType: UserType.SCHOOL_USER },
     });
   });
 
@@ -395,6 +411,76 @@ describe('Teacher lifecycle User, Membership, Profile, and Session operations', 
     });
   });
 
+  it('reads every operational Membership footprint globally with deterministic ordering', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    await listTeacherLifecycleOperationalMembershipFootprints(
+      { membership: { findMany } } as never,
+      IDS.user,
+    );
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId: IDS.user,
+          status: MembershipStatus.ACTIVE,
+          endedAt: null,
+          deletedAt: null,
+        },
+        orderBy: { id: 'asc' },
+      }),
+    );
+  });
+
+  it('restores one exact same-school Teacher Membership only without another operational footprint', async () => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const restored = membership({
+      status: MembershipStatus.SUSPENDED,
+      endedAt: null,
+    });
+    const transaction = {
+      user: { findUnique: jest.fn().mockResolvedValue({ deletedAt: null }) },
+      role: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: IDS.role,
+          key: 'teacher',
+          name: 'Teacher',
+          schoolId: null,
+          deletedAt: null,
+        }),
+      },
+      membership: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany,
+        findFirstOrThrow: jest.fn().mockResolvedValue(restored),
+      },
+    } as never;
+
+    await expect(
+      restoreExactTeacherLifecycleMembership(transaction, {
+        membershipId: IDS.membership,
+        userId: IDS.user,
+        schoolId: IDS.school,
+        roleId: IDS.role,
+        expectedStatus: MembershipStatus.INACTIVE,
+        expectedEndedAt: new Date('2026-07-01T00:00:00.000Z'),
+      }),
+    ).resolves.toEqual(restored);
+    expect(updateMany.mock.calls[0][0]).toMatchObject({
+      where: {
+        id: IDS.membership,
+        schoolId: IDS.school,
+        userId: IDS.user,
+        deletedAt: null,
+        status: MembershipStatus.INACTIVE,
+      },
+      data: {
+        roleId: IDS.role,
+        userType: UserType.TEACHER,
+        status: MembershipStatus.SUSPENDED,
+        endedAt: null,
+      },
+    });
+  });
+
   it('uses deterministic archived and uniqueness Profile footprints', async () => {
     const findFirst = jest.fn().mockResolvedValue(null);
     const findUnique = jest.fn().mockResolvedValue(null);
@@ -452,6 +538,7 @@ describe('Teacher lifecycle User, Membership, Profile, and Session operations', 
       schoolId: IDS.school,
       profileId: IDS.profile,
       userId: IDS.user,
+      employmentStatus: TeacherEmploymentStatus.INACTIVE,
       fields: { department: 'Managed' },
     });
 
@@ -463,6 +550,7 @@ describe('Teacher lifecycle User, Membership, Profile, and Session operations', 
     });
     expect(updateMany.mock.calls[0][0].data).toEqual({
       department: 'Managed',
+      employmentStatus: TeacherEmploymentStatus.INACTIVE,
       deletedAt: null,
     });
     expect(updateMany.mock.calls[0][0].data).not.toHaveProperty('schoolId');

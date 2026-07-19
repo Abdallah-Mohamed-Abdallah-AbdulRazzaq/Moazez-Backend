@@ -11,6 +11,7 @@ import {
 import {
   CreateTeacherDto,
   ListTeachersQueryDto,
+  RehireTeacherDto,
   UpdateTeacherEmploymentStatusDto,
   UpdateTeacherDto,
 } from '../dto/teacher-directory.dto';
@@ -264,6 +265,68 @@ describe('Teacher Directory input integrity', () => {
             type: 'body',
             metatype: UpdateTeacherEmploymentStatusDto,
           },
+        ),
+      ).rejects.toThrow();
+    }
+  });
+
+  it('requires complete managed input for rehire and rejects lifecycle, IAM, credential, and tenant ownership', async () => {
+    const pipe = new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+    const valid = {
+      teacherCode: 'T001',
+      firstNameAr: 'نور',
+      lastNameAr: 'علي',
+      firstNameEn: 'Nour',
+      lastNameEn: 'Ali',
+      preferredDisplayLanguage: 'AR',
+      gender: 'FEMALE',
+    };
+    expect(await validate(plainToInstance(RehireTeacherDto, valid))).toEqual(
+      [],
+    );
+    for (const field of [
+      'teacherCode',
+      'firstNameAr',
+      'lastNameAr',
+      'firstNameEn',
+      'lastNameEn',
+      'preferredDisplayLanguage',
+      'gender',
+    ]) {
+      const missing = { ...valid } as Record<string, unknown>;
+      delete missing[field];
+      expect(
+        (await validate(plainToInstance(RehireTeacherDto, missing))).some(
+          (error) => error.property === field,
+        ),
+      ).toBe(true);
+    }
+    for (const field of [
+      'employmentStatus',
+      'accountStatus',
+      'membershipStatus',
+      'loginEmail',
+      'username',
+      'contactEmail',
+      'phone',
+      'password',
+      'credentialVersion',
+      'roleId',
+      'userType',
+      'schoolId',
+      'organizationId',
+      'assignments',
+      'avatar',
+      'deletedAt',
+    ]) {
+      await expect(
+        pipe.transform(
+          { ...valid, [field]: 'forbidden' },
+          { type: 'body', metatype: RehireTeacherDto },
         ),
       ).rejects.toThrow();
     }

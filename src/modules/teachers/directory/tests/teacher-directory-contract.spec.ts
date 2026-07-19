@@ -1,5 +1,9 @@
 import { RequestMethod } from '@nestjs/common';
-import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
+import {
+  HTTP_CODE_METADATA,
+  METHOD_METADATA,
+  PATH_METADATA,
+} from '@nestjs/common/constants';
 import { ParseUUIDPipe } from '@nestjs/common';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -43,7 +47,7 @@ function inSchoolScope<T>(callback: () => T): T {
 }
 
 describe('Teacher Directory route and permission contract', () => {
-  it('registers exactly POST, GET list/detail, PATCH employment, and PATCH detail methods', () => {
+  it('registers the locked Directory, employment, archive, and rehire methods', () => {
     expect(Reflect.getMetadata(PATH_METADATA, TeachersController)).toBe(
       'teachers',
     );
@@ -65,6 +69,8 @@ describe('Teacher Directory route and permission contract', () => {
         path: ':teacherId/employment-status',
         method: RequestMethod.PATCH,
       },
+      { path: ':teacherId/rehire', method: RequestMethod.POST },
+      { path: ':teacherId', method: RequestMethod.DELETE },
       { path: ':teacherId', method: RequestMethod.PATCH },
     ]);
   });
@@ -74,6 +80,18 @@ describe('Teacher Directory route and permission contract', () => {
       Reflect.getMetadata(
         REQUIRED_PERMISSIONS_METADATA,
         TeachersController.prototype.create,
+      ),
+    ).toEqual(['teachers.records.manage']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_METADATA,
+        TeachersController.prototype.rehire,
+      ),
+    ).toEqual(['teachers.records.manage']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_METADATA,
+        TeachersController.prototype.archive,
       ),
     ).toEqual(['teachers.records.manage']);
     expect(
@@ -100,6 +118,21 @@ describe('Teacher Directory route and permission contract', () => {
         TeachersController.prototype.update,
       ),
     ).toEqual(['teachers.records.manage']);
+  });
+
+  it('locks archive to 204 and same-school rehire to 200', () => {
+    expect(
+      Reflect.getMetadata(
+        HTTP_CODE_METADATA,
+        TeachersController.prototype.archive,
+      ),
+    ).toBe(204);
+    expect(
+      Reflect.getMetadata(
+        HTTP_CODE_METADATA,
+        TeachersController.prototype.rehire,
+      ),
+    ).toBe(200);
   });
 
   it('rejects malformed TeacherProfile ids at the controller boundary', async () => {
@@ -230,11 +263,11 @@ describe('Teacher Directory route and permission contract', () => {
       'utf8',
     );
     expect(appModule).toContain('TeachersModule');
-    expect(controller.match(/@(Get|Post|Patch)\(/gu)).toHaveLength(5);
-    expect(controller.match(/@Post\(/gu)).toHaveLength(1);
-    expect(controller).not.toMatch(/@Delete\(/u);
+    expect(controller.match(/@(Get|Post|Patch|Delete)\(/gu)).toHaveLength(7);
+    expect(controller.match(/@Post\(/gu)).toHaveLength(2);
+    expect(controller.match(/@Delete\(/gu)).toHaveLength(1);
     expect(controller).toContain("@Patch(':teacherId/employment-status')");
-    expect(controller).not.toContain('rehire');
+    expect(controller).toContain("@Post(':teacherId/rehire')");
     expect(controller).not.toContain('transfer');
   });
 });

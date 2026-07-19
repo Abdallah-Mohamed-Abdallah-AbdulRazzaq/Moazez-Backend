@@ -73,11 +73,48 @@ export class TeacherRoleTransitionConflictException extends DomainException {
       | 'teacher_identity_inconsistent'
       | 'teacher_directory_provisioning_required'
       | 'teacher_promotion_requires_profile'
-      | 'teacher_display_projection_managed' = 'teacher_identity_inconsistent',
+      | 'teacher_display_projection_managed'
+      | 'teacher_live_identity_exists'
+      | 'teacher_operational_membership_exists'
+      | 'teacher_membership_history_ambiguous'
+      | 'teacher_rehire_state_conflict'
+      | 'teacher_allocation_state_unproven' = 'teacher_identity_inconsistent',
   ) {
     super({
       code: 'teachers.account.role_transition_conflict',
       message: 'Teacher identity state is not safe for this operation',
+      httpStatus: HttpStatus.CONFLICT,
+      details: { reasonCode },
+    });
+  }
+}
+
+export class TeacherActiveAssignmentsException extends DomainException {
+  constructor(input: {
+    currentActiveCount: number;
+    futureCount: number;
+    termStateLabels: string[];
+  }) {
+    super({
+      code: 'teachers.lifecycle.active_assignments',
+      message: 'Teacher lifecycle change is blocked by active assignments',
+      httpStatus: HttpStatus.CONFLICT,
+      details: {
+        currentActiveCount: input.currentActiveCount,
+        futureCount: input.futureCount,
+        termStateLabels: [...input.termStateLabels],
+      },
+    });
+  }
+}
+
+export class TeacherArchiveConflictException extends DomainException {
+  constructor(
+    reasonCode: 'allocation_state_unproven' | 'lifecycle_state_moved',
+  ) {
+    super({
+      code: 'teachers.lifecycle.archive_conflict',
+      message: 'Teacher profile cannot be archived in its current state',
       httpStatus: HttpStatus.CONFLICT,
       details: { reasonCode },
     });
