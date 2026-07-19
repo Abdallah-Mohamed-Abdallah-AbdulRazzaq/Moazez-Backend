@@ -292,6 +292,18 @@ export class UpdateTeacherDto {
   notesEn?: string | null;
 }
 
+export class UpdateTeacherEmploymentStatusDto {
+  @IsEnum(TeacherEmploymentStatus)
+  employmentStatus!: TeacherEmploymentStatus;
+
+  @IsOptional()
+  @IsString()
+  @Matches(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/u,
+  )
+  effectiveAt?: string;
+}
+
 export class TeacherCredentialSummaryDto {
   hasPassword!: boolean;
   status!: TeacherCredentialStatus;
@@ -346,4 +358,32 @@ export class TeacherDirectoryDetailDto extends TeacherDirectoryListItemDto {
 export class TeachersListResponseDto {
   items!: TeacherDirectoryListItemDto[];
   pagination!: { page: number; limit: number; total: number };
+}
+
+export class TeacherEmploymentAllocationSummaryDto {
+  currentActiveCount!: number;
+  futureCount!: number;
+  historicalCount!: number;
+  currentInactiveCount!: number;
+  inconsistentCount!: number;
+  invalidCount!: number;
+  integrityRiskCount!: number;
+  integrityReason!: string;
+}
+
+export class TeacherEmploymentTransitionResultDto {
+  previousEmploymentStatus!: TeacherEmploymentStatus;
+  employmentStatus!: TeacherEmploymentStatus;
+  accountStatus!: UserStatus;
+  membershipStatus!: MembershipStatus;
+  membershipEndedAt!: string | null;
+  effectiveAt!: string;
+  revokedSessionCount!: number;
+  reassignmentRequired!: boolean;
+  allocationSummary!: TeacherEmploymentAllocationSummaryDto;
+}
+
+export class TeacherEmploymentStatusResponseDto {
+  teacher!: TeacherDirectoryDetailDto;
+  transition!: TeacherEmploymentTransitionResultDto;
 }

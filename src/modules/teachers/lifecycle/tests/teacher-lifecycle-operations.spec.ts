@@ -106,25 +106,34 @@ describe('Teacher lifecycle User, Membership, Profile, and Session operations', 
 
   it('updates only owned display or account-state fields through explicit methods', async () => {
     const update = jest.fn().mockResolvedValue(rawUser());
-    const transaction = { user: { update } } as never;
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const findUniqueOrThrow = jest.fn().mockResolvedValue(rawUser());
+    const transaction = {
+      user: { update, updateMany, findUniqueOrThrow },
+    } as never;
 
     await updateTeacherLifecycleDisplayNames(transaction, {
       userId: IDS.user,
       firstName: 'Approved',
       lastName: 'Display',
     });
-    await setTeacherLifecycleUserStatus(
-      transaction,
-      IDS.user,
-      UserStatus.DISABLED,
-    );
+    await setTeacherLifecycleUserStatus(transaction, {
+      userId: IDS.user,
+      expectedStatus: UserStatus.ACTIVE,
+      status: UserStatus.DISABLED,
+    });
 
     expect(update.mock.calls[0][0].data).toEqual({
       firstName: 'Approved',
       lastName: 'Display',
     });
-    expect(update.mock.calls[1][0].data).toEqual({
+    expect(updateMany.mock.calls[0][0].data).toEqual({
       status: UserStatus.DISABLED,
+    });
+    expect(updateMany.mock.calls[0][0].where).toEqual({
+      id: IDS.user,
+      status: UserStatus.ACTIVE,
+      deletedAt: null,
     });
   });
 
@@ -372,6 +381,8 @@ describe('Teacher lifecycle User, Membership, Profile, and Session operations', 
     await setTeacherLifecycleMembershipSuspended(transaction, {
       membershipId: IDS.membership,
       schoolId: IDS.school,
+      expectedStatus: MembershipStatus.ACTIVE,
+      expectedEndedAt: null,
     });
 
     expect(findFirst.mock.calls[0][0]).toMatchObject({

@@ -18,10 +18,12 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiServiceUnavailableResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { CreateTeacherUseCase } from '../application/create-teacher.use-case';
+import { ChangeTeacherEmploymentStatusUseCase } from '../application/change-teacher-employment-status.use-case';
 import { GetTeacherUseCase } from '../application/get-teacher.use-case';
 import { ListTeachersUseCase } from '../application/list-teachers.use-case';
 import { UpdateTeacherUseCase } from '../application/update-teacher.use-case';
@@ -29,7 +31,9 @@ import {
   CreateTeacherDto,
   ListTeachersQueryDto,
   TeacherDirectoryDetailDto,
+  TeacherEmploymentStatusResponseDto,
   TeachersListResponseDto,
+  UpdateTeacherEmploymentStatusDto,
   UpdateTeacherDto,
 } from '../dto/teacher-directory.dto';
 
@@ -42,6 +46,7 @@ export class TeachersController {
     private readonly getTeacherUseCase: GetTeacherUseCase,
     private readonly createTeacherUseCase: CreateTeacherUseCase,
     private readonly updateTeacherUseCase: UpdateTeacherUseCase,
+    private readonly changeEmploymentStatusUseCase: ChangeTeacherEmploymentStatusUseCase,
   ) {}
 
   @Post()
@@ -79,6 +84,28 @@ export class TeachersController {
     @Param('teacherId', new ParseUUIDPipe()) teacherId: string,
   ): Promise<TeacherDirectoryDetailDto> {
     return this.getTeacherUseCase.execute(teacherId);
+  }
+
+  @Patch(':teacherId/employment-status')
+  @RequiredPermissions('teachers.records.manage')
+  @ApiOperation({ summary: 'Change a Teacher employment lifecycle state' })
+  @ApiParam({ name: 'teacherId', format: 'uuid' })
+  @ApiOkResponse({ type: TeacherEmploymentStatusResponseDto })
+  @ApiBadRequestResponse({ description: 'validation.failed' })
+  @ApiNotFoundResponse({ description: 'teachers.profile.not_found' })
+  @ApiConflictResponse({
+    description:
+      'teachers.profile.incomplete | teachers.account.role_transition_conflict | teachers.lifecycle.invalid_transition',
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'teachers.lifecycle.revocation_failed',
+  })
+  @ApiForbiddenResponse({ description: 'Requires teachers.records.manage.' })
+  changeEmploymentStatus(
+    @Param('teacherId', new ParseUUIDPipe()) teacherId: string,
+    @Body() command: UpdateTeacherEmploymentStatusDto,
+  ): Promise<TeacherEmploymentStatusResponseDto> {
+    return this.changeEmploymentStatusUseCase.execute(teacherId, command);
   }
 
   @Patch(':teacherId')

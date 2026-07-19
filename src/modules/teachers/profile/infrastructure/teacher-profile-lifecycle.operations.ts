@@ -222,13 +222,17 @@ export function setTeacherProfileEmploymentStatusInTransaction(
   input: {
     schoolId: string;
     profileId: string;
+    expectedEmploymentStatus: TeacherEmploymentStatus;
     employmentStatus: TeacherEmploymentStatus;
   },
 ): Promise<TeacherLifecycleProfileState> {
   return updateProfileAndRead(transaction, {
     schoolId: input.schoolId,
     profileId: input.profileId,
-    where: { deletedAt: null },
+    where: {
+      deletedAt: null,
+      employmentStatus: input.expectedEmploymentStatus,
+    },
     data: { employmentStatus: input.employmentStatus },
   });
 }

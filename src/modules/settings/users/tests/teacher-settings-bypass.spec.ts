@@ -181,6 +181,80 @@ describe('Teacher Settings bypass closure', () => {
     ).not.toContain('raw');
   });
 
+  it('builds the exact sanitized Teacher activation rejection', async () => {
+    const auditAndThrow = jest.fn(async ({ error }) => {
+      throw error;
+    });
+    const service = new TeacherSettingsBypassService({
+      auditAndThrow,
+    } as unknown as TeacherRejectedTransitionAuditService);
+
+    await expect(
+      inSettingsScope(() =>
+        service.rejectActivation({
+          scope: {
+            actorId: IDS.actor,
+            userType: UserType.SCHOOL_USER,
+            organizationId: IDS.organization,
+            schoolId: IDS.school,
+            roleId: IDS.role,
+          },
+          resourceId: IDS.user,
+          previousStatus: UserStatus.DISABLED,
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'teachers.lifecycle.invalid_transition',
+      httpStatus: HttpStatus.CONFLICT,
+      details: {
+        previousValue: UserStatus.DISABLED,
+        nextValue: UserStatus.ACTIVE,
+        reasonCode: 'teacher_activation_requires_lifecycle',
+      },
+    });
+    expect(auditAndThrow.mock.calls[0][0].audit).toMatchObject({
+      resourceType: 'user',
+      resourceId: IDS.user,
+      metadata: { reasonCode: 'teacher_activation_requires_lifecycle' },
+    });
+  });
+
+  it('preserves the activation DomainException when rejection audit delivery fails', async () => {
+    const writer = {
+      writeRejectedStandalone: jest.fn().mockRejectedValue(new Error('raw')),
+    } as unknown as TeacherLifecycleAuditWriter;
+    const logger: TeacherLifecycleOperationalLogger = { error: jest.fn() };
+    const service = new TeacherSettingsBypassService(
+      new TeacherRejectedTransitionAuditService(writer, logger),
+    );
+
+    await expect(
+      inSettingsScope(() =>
+        service.rejectActivation({
+          scope: {
+            actorId: IDS.actor,
+            userType: UserType.SCHOOL_USER,
+            organizationId: IDS.organization,
+            schoolId: IDS.school,
+            roleId: IDS.role,
+          },
+          resourceId: IDS.user,
+          previousStatus: UserStatus.DISABLED,
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'teachers.lifecycle.invalid_transition',
+      details: { reasonCode: 'teacher_activation_requires_lifecycle' },
+    });
+    expect(logger.error).toHaveBeenCalledWith({
+      event: 'teachers.role_transition.rejected.audit_delivery_failed',
+      traceId: 'settings-teacher-bypass-test',
+    });
+    expect(
+      JSON.stringify((logger.error as jest.Mock).mock.calls),
+    ).not.toContain('raw');
+  });
+
   it.each([
     ['active creation', CreateUserUseCase],
     ['invite', InviteUserUseCase],

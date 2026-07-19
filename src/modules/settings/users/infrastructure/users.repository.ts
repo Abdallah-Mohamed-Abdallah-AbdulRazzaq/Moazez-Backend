@@ -80,6 +80,26 @@ export class UsersRepository {
     });
   }
 
+  findScopedMembershipForStatusChangeByUserId(
+    userId: string,
+  ): Promise<ScopedMembershipRecord | null> {
+    return this.scopedPrisma.membership.findFirst({
+      where: {
+        userId,
+        deletedAt: null,
+        user: { deletedAt: null },
+        OR: [
+          { status: MembershipStatus.ACTIVE },
+          { userType: UserType.TEACHER },
+          { role: { key: 'teacher' } },
+          { user: { userType: UserType.TEACHER } },
+        ],
+      },
+      orderBy: [{ startedAt: 'desc' }, { id: 'asc' }],
+      ...SCOPED_MEMBERSHIP_ARGS,
+    });
+  }
+
   findUserByEmail(email: string): Promise<User | null> {
     return this.prisma.user.findFirst({
       where: { email, deletedAt: null },

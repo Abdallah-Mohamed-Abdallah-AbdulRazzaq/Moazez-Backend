@@ -4,6 +4,7 @@ import {
   TEACHER_LIFECYCLE_OPERATIONAL_LOGGER,
 } from './application/teacher-rejected-transition-audit.service';
 import { TeacherLifecycleUnitOfWork } from './application/teacher-lifecycle-unit-of-work';
+import { TeacherAccountDisableCoordinator } from './application/teacher-account-disable.coordinator';
 import { PrismaTeacherLifecycleTransactionOperations } from './infrastructure/prisma-teacher-lifecycle-transaction.operations';
 import { PrismaTeacherLifecycleUnitOfWork } from './infrastructure/prisma-teacher-lifecycle.unit-of-work';
 import { TeacherLifecycleAuditWriter } from './infrastructure/teacher-lifecycle-audit.writer';
@@ -28,7 +29,12 @@ import { TeacherLifecycleAuditWriter } from './infrastructure/teacher-lifecycle-
       },
     },
     TeacherRejectedTransitionAuditService,
+    TeacherAccountDisableCoordinator,
   ],
-  exports: [TeacherLifecycleUnitOfWork, TeacherRejectedTransitionAuditService],
+  exports: [
+    TeacherLifecycleUnitOfWork,
+    TeacherRejectedTransitionAuditService,
+    TeacherAccountDisableCoordinator,
+  ],
 })
 export class TeacherLifecycleModule {}

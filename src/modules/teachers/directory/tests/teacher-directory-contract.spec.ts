@@ -43,7 +43,7 @@ function inSchoolScope<T>(callback: () => T): T {
 }
 
 describe('Teacher Directory route and permission contract', () => {
-  it('registers exactly POST, GET list, GET detail, and PATCH detail methods', () => {
+  it('registers exactly POST, GET list/detail, PATCH employment, and PATCH detail methods', () => {
     expect(Reflect.getMetadata(PATH_METADATA, TeachersController)).toBe(
       'teachers',
     );
@@ -61,6 +61,10 @@ describe('Teacher Directory route and permission contract', () => {
       { path: '/', method: RequestMethod.POST },
       { path: '/', method: RequestMethod.GET },
       { path: ':teacherId', method: RequestMethod.GET },
+      {
+        path: ':teacherId/employment-status',
+        method: RequestMethod.PATCH,
+      },
       { path: ':teacherId', method: RequestMethod.PATCH },
     ]);
   });
@@ -84,6 +88,12 @@ describe('Teacher Directory route and permission contract', () => {
         TeachersController.prototype.get,
       ),
     ).toEqual(['teachers.records.view']);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PERMISSIONS_METADATA,
+        TeachersController.prototype.changeEmploymentStatus,
+      ),
+    ).toEqual(['teachers.records.manage']);
     expect(
       Reflect.getMetadata(
         REQUIRED_PERMISSIONS_METADATA,
@@ -220,10 +230,10 @@ describe('Teacher Directory route and permission contract', () => {
       'utf8',
     );
     expect(appModule).toContain('TeachersModule');
-    expect(controller.match(/@(Get|Post|Patch)\(/gu)).toHaveLength(4);
+    expect(controller.match(/@(Get|Post|Patch)\(/gu)).toHaveLength(5);
     expect(controller.match(/@Post\(/gu)).toHaveLength(1);
     expect(controller).not.toMatch(/@Delete\(/u);
-    expect(controller).not.toContain('employment-status');
+    expect(controller).toContain("@Patch(':teacherId/employment-status')");
     expect(controller).not.toContain('rehire');
     expect(controller).not.toContain('transfer');
   });

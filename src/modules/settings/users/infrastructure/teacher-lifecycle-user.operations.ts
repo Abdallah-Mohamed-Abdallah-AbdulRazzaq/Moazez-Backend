@@ -29,6 +29,13 @@ type TeacherLifecycleUserDatabaseRecord = Prisma.UserGetPayload<{
   select: typeof TEACHER_LIFECYCLE_USER_SELECT;
 }>;
 
+export class TeacherLifecycleUserInvariantError extends Error {
+  constructor(readonly reasonCode: string) {
+    super('Teacher lifecycle User invariant failed');
+    this.name = 'TeacherLifecycleUserInvariantError';
+  }
+}
+
 export async function findTeacherLifecycleUserState(
   transaction: Prisma.TransactionClient,
   userId: string,
@@ -156,12 +163,25 @@ export async function updateTeacherLifecycleIdentityFields(
 
 export async function setTeacherLifecycleUserStatus(
   transaction: Prisma.TransactionClient,
-  userId: string,
-  status: UserStatus,
+  input: {
+    userId: string;
+    expectedStatus: UserStatus;
+    status: UserStatus;
+  },
 ): Promise<TeacherLifecycleUserState> {
-  const record = await transaction.user.update({
-    where: { id: userId },
-    data: { status },
+  const result = await transaction.user.updateMany({
+    where: {
+      id: input.userId,
+      status: input.expectedStatus,
+      deletedAt: null,
+    },
+    data: { status: input.status },
+  });
+  if (result.count !== 1) {
+    throw new TeacherLifecycleUserInvariantError('lifecycle_state_moved');
+  }
+  const record = await transaction.user.findUniqueOrThrow({
+    where: { id: input.userId },
     select: TEACHER_LIFECYCLE_USER_SELECT,
   });
   return projectTeacherLifecycleUserState(record);
