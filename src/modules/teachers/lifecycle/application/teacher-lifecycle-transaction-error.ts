@@ -25,7 +25,7 @@ export function rethrowTeacherLifecycleTransactionError(
     error instanceof TeacherLifecycleMembershipInvariantError ||
     error instanceof TeacherLifecycleUserInvariantError ||
     error instanceof TeacherProfileLifecycleInvariantError ||
-    isSerializationConflict(error)
+    isTeacherLifecycleSerializationConflict(error)
   ) {
     throw new TeacherLifecycleInvalidTransitionException(
       previousValue as TeacherEmploymentStatus | UserStatus,
@@ -36,7 +36,9 @@ export function rethrowTeacherLifecycleTransactionError(
   throw error;
 }
 
-function isSerializationConflict(error: unknown): boolean {
+export function isTeacherLifecycleSerializationConflict(
+  error: unknown,
+): boolean {
   return (
     (error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === 'P2034') ||

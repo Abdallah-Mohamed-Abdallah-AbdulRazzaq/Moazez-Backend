@@ -11,6 +11,7 @@ import {
   type TeacherLifecycleOperationalLogger,
 } from '../../../teachers/lifecycle/application/teacher-rejected-transition-audit.service';
 import type { TeacherLifecycleAuditWriter } from '../../../teachers/lifecycle/infrastructure/teacher-lifecycle-audit.writer';
+import type { TeacherRoleDemotionCoordinator } from '../../../teachers/lifecycle/application/teacher-role-demotion.coordinator';
 import { CreateUserUseCase } from '../application/create-user.use-case';
 import { InviteUserUseCase } from '../application/invite-user.use-case';
 import { TeacherSettingsBypassService } from '../application/teacher-settings-bypass.service';
@@ -391,5 +392,163 @@ describe('Teacher Settings bypass closure', () => {
     );
     expect(bypass.reject).not.toHaveBeenCalled();
     expect(result.id).toBe(IDS.user);
+  });
+
+  it('delegates a current Teacher demotion to the lifecycle coordinator before generic writes', async () => {
+    const current = membership(UserType.TEACHER);
+    const updateUserAndMembership = jest.fn();
+    const demote = jest.fn().mockResolvedValue({
+      user: {
+        id: IDS.user,
+        loginEmail: current.user.email,
+        username: current.user.username,
+        contactEmail: current.user.contactEmail,
+        phone: current.user.phone,
+        firstName: current.user.firstName,
+        lastName: current.user.lastName,
+        userType: UserType.SCHOOL_USER,
+        status: current.user.status,
+        deletedAt: null,
+        lastLoginAt: null,
+        createdAt: current.user.createdAt,
+        updatedAt: current.user.updatedAt,
+        credential: {
+          hasPassword: false,
+          status: 'missing',
+          mustChangePassword: false,
+          passwordProvisionedAt: null,
+          passwordChangedAt: null,
+          credentialVersion: 0,
+        },
+      },
+      membership: current,
+      role: {
+        id: IDS.role,
+        key: 'school_admin',
+        name: 'School Admin',
+        schoolId: IDS.school,
+        deletedAt: null,
+      },
+      revokedSessionCount: 1,
+    });
+    const useCase = new UpdateUserUseCase(
+      {
+        findScopedMembershipByUserId: jest.fn().mockResolvedValue(current),
+        findAssignableRoleById: jest.fn().mockResolvedValue({
+          id: IDS.role,
+          key: 'school_admin',
+        }),
+        updateUserAndMembership,
+      } as unknown as UsersRepository,
+      { createAuditLog: jest.fn() } as unknown as AuthRepository,
+      rejectingBypass(),
+      { execute: demote } as unknown as TeacherRoleDemotionCoordinator,
+    );
+
+    const result = await inSettingsScope(() =>
+      useCase.execute(IDS.user, { roleId: IDS.role }),
+    );
+    expect(demote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schoolId: IDS.school,
+        userId: IDS.user,
+        teacherMembershipId: IDS.membership,
+        targetRoleId: IDS.role,
+        effectiveAt: expect.any(Date),
+      }),
+    );
+    expect(updateUserAndMembership).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      id: IDS.user,
+      roleId: IDS.role,
+      roleName: 'School Admin',
+      status: 'active',
+    });
+  });
+
+  it('resolves a non-operational Teacher footprint for lifecycle demotion without broadening non-Teacher updates', async () => {
+    const current = {
+      ...membership(UserType.TEACHER),
+      status: MembershipStatus.SUSPENDED,
+    };
+    const demote = jest.fn().mockResolvedValue({
+      user: {
+        id: IDS.user,
+        loginEmail: current.user.email,
+        username: current.user.username,
+        contactEmail: current.user.contactEmail,
+        phone: current.user.phone,
+        firstName: current.user.firstName,
+        lastName: current.user.lastName,
+        userType: UserType.SCHOOL_USER,
+        status: current.user.status,
+        deletedAt: null,
+        credential: {
+          hasPassword: false,
+          status: 'missing',
+          mustChangePassword: false,
+          passwordProvisionedAt: null,
+          passwordChangedAt: null,
+          credentialVersion: 0,
+        },
+      },
+      membership: current,
+      role: {
+        id: IDS.role,
+        key: 'school_admin',
+        name: 'School Admin',
+        schoolId: IDS.school,
+        deletedAt: null,
+      },
+      revokedSessionCount: 0,
+    });
+    const findLifecycleFootprint = jest.fn().mockResolvedValue(current);
+    const updateUserAndMembership = jest.fn();
+    const useCase = new UpdateUserUseCase(
+      {
+        findScopedMembershipByUserId: jest.fn().mockResolvedValue(null),
+        findScopedMembershipForStatusChangeByUserId: findLifecycleFootprint,
+        findAssignableRoleById: jest.fn().mockResolvedValue({
+          id: IDS.role,
+          key: 'school_admin',
+        }),
+        updateUserAndMembership,
+      } as unknown as UsersRepository,
+      { createAuditLog: jest.fn() } as unknown as AuthRepository,
+      rejectingBypass(),
+      { execute: demote } as unknown as TeacherRoleDemotionCoordinator,
+    );
+
+    await expect(
+      inSettingsScope(() => useCase.execute(IDS.user, { roleId: IDS.role })),
+    ).resolves.toMatchObject({ roleName: 'School Admin' });
+    expect(findLifecycleFootprint).toHaveBeenCalledWith(IDS.user);
+    expect(demote).toHaveBeenCalledTimes(1);
+    expect(updateUserAndMembership).not.toHaveBeenCalled();
+  });
+
+  it('keeps non-Teacher role transitions on the existing Settings path', async () => {
+    const current = membership(UserType.SCHOOL_USER);
+    const updated = membership(UserType.STUDENT);
+    const updateUserAndMembership = jest.fn().mockResolvedValue(updated);
+    const demote = jest.fn();
+    const useCase = new UpdateUserUseCase(
+      {
+        findScopedMembershipByUserId: jest.fn().mockResolvedValue(current),
+        findAssignableRoleById: jest.fn().mockResolvedValue({
+          id: IDS.role,
+          key: 'student',
+        }),
+        updateUserAndMembership,
+      } as unknown as UsersRepository,
+      { createAuditLog: jest.fn() } as unknown as AuthRepository,
+      rejectingBypass(),
+      { execute: demote } as unknown as TeacherRoleDemotionCoordinator,
+    );
+    await inSettingsScope(() =>
+      useCase.execute(IDS.user, { roleId: IDS.role }),
+    );
+    expect(demote).not.toHaveBeenCalled();
+    expect(updateUserAndMembership).toHaveBeenCalled();
   });
 });

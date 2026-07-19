@@ -37,10 +37,18 @@ function operations(overrides: Record<string, jest.Mock> = {}) {
     'updateUserDisplayNames',
     'setUserStatus',
     'setUserType',
+    'setUserTypeForReviewedTransition',
     'findMembership',
     'resolveTeacherRole',
     'listMembershipFootprints',
+    'listOperationalMembershipFootprints',
+    'listCurrentSchoolMembershipHistory',
+    'resolveAssignableNonTeacherRole',
     'createMembership',
+    'createExactTeacherForRehire',
+    'restoreExactTeacher',
+    'createReviewedNonTeacher',
+    'restoreReviewedNonTeacher',
     'setMembershipRoleAndType',
     'setMembershipActive',
     'setMembershipSuspended',
@@ -57,6 +65,7 @@ function operations(overrides: Record<string, jest.Mock> = {}) {
     'restoreProfile',
     'setProfileEmploymentStatus',
     'archiveProfile',
+    'classifyAllocations',
     'writeSuccessfulAudit',
     'revokeUserSessions',
   ]) {
@@ -129,6 +138,7 @@ describe('PrismaTeacherLifecycleUnitOfWork', () => {
         status: UserStatus.DISABLED,
       });
       await context.membership.resolveExactTeacherRole(IDS.school);
+      await context.membership.listOperationalFootprints(IDS.user);
       await context.membership.setSuspended({
         membershipId: IDS.membership,
         schoolId: IDS.school,
@@ -139,6 +149,11 @@ describe('PrismaTeacherLifecycleUnitOfWork', () => {
         profileId: IDS.profile,
         schoolId: IDS.school,
         deletedAt: new Date('2026-07-19T00:00:00.000Z'),
+      });
+      await context.allocation.classify({
+        schoolId: IDS.school,
+        teacherUserId: IDS.user,
+        asOf: new Date('2026-07-19T00:00:00.000Z'),
       });
       await context.audit.writeSuccessful(auditEntry());
       await context.sessions.revokeUserSessions(
@@ -153,8 +168,10 @@ describe('PrismaTeacherLifecycleUnitOfWork', () => {
       operationSet.createInvitedTeacherUser,
       operationSet.updateUserIdentityFields,
       operationSet.resolveTeacherRole,
+      operationSet.listOperationalMembershipFootprints,
       operationSet.setMembershipSuspended,
       operationSet.archiveProfile,
+      operationSet.classifyAllocations,
       operationSet.writeSuccessfulAudit,
       operationSet.revokeUserSessions,
     ]) {

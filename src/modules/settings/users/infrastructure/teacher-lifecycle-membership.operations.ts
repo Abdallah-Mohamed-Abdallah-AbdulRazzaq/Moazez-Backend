@@ -18,7 +18,13 @@ const TEACHER_LIFECYCLE_MEMBERSHIP_SELECT =
     endedAt: true,
     deletedAt: true,
     role: {
-      select: { id: true, key: true, schoolId: true, deletedAt: true },
+      select: {
+        id: true,
+        key: true,
+        name: true,
+        schoolId: true,
+        deletedAt: true,
+      },
     },
     user: { select: { userType: true, deletedAt: true } },
   });
@@ -104,6 +110,64 @@ export function listTeacherLifecycleMembershipFootprints(
   });
 }
 
+export function listTeacherLifecycleOperationalMembershipFootprints(
+  transaction: Prisma.TransactionClient,
+  userId: string,
+): Promise<TeacherLifecycleMembershipState[]> {
+  return transaction.membership.findMany({
+    where: {
+      userId,
+      status: MembershipStatus.ACTIVE,
+      endedAt: null,
+      deletedAt: null,
+    },
+    orderBy: { id: 'asc' },
+    select: TEACHER_LIFECYCLE_MEMBERSHIP_SELECT,
+  });
+}
+
+export function listTeacherLifecycleCurrentSchoolHistory(
+  transaction: Prisma.TransactionClient,
+  input: { schoolId: string; userId: string },
+): Promise<TeacherLifecycleMembershipState[]> {
+  return transaction.membership.findMany({
+    where: { schoolId: input.schoolId, userId: input.userId },
+    orderBy: [{ startedAt: 'asc' }, { id: 'asc' }],
+    select: TEACHER_LIFECYCLE_MEMBERSHIP_SELECT,
+  });
+}
+
+export async function resolveAssignableNonTeacherLifecycleRole(
+  transaction: Prisma.TransactionClient,
+  input: { schoolId: string; roleId: string },
+): Promise<TeacherLifecycleRoleState | null> {
+  const role = await transaction.role.findFirst({
+    where: {
+      id: input.roleId,
+      key: { not: 'teacher' },
+      deletedAt: null,
+      OR: [
+        { schoolId: input.schoolId },
+        {
+          schoolId: null,
+          isSystem: true,
+          key: {
+            in: ['school_admin', 'parent', 'student', 'dismissal_staff'],
+          },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      key: true,
+      name: true,
+      schoolId: true,
+      deletedAt: true,
+    },
+  });
+  return role;
+}
+
 export async function createExactTeacherLifecycleMembership(
   transaction: Prisma.TransactionClient,
   input: {
@@ -168,6 +232,200 @@ export async function createExactTeacherLifecycleMembership(
     },
     select: TEACHER_LIFECYCLE_MEMBERSHIP_SELECT,
   });
+}
+
+export async function createExactTeacherLifecycleMembershipForRehire(
+  transaction: Prisma.TransactionClient,
+  input: {
+    userId: string;
+    organizationId: string;
+    schoolId: string;
+    roleId: string;
+  },
+): Promise<TeacherLifecycleMembershipState> {
+  const [user, role, activeMembership, teacherHistory] = await Promise.all([
+    transaction.user.findUnique({
+      where: { id: input.userId },
+      select: { userType: true, deletedAt: true },
+    }),
+    findRole(transaction, input.roleId),
+    transaction.membership.findFirst({
+      where: {
+        userId: input.userId,
+        status: MembershipStatus.ACTIVE,
+        endedAt: null,
+        deletedAt: null,
+      },
+      select: { id: true },
+    }),
+    transaction.membership.findFirst({
+      where: {
+        userId: input.userId,
+        schoolId: input.schoolId,
+        OR: [{ userType: UserType.TEACHER }, { role: { key: 'teacher' } }],
+      },
+      select: { id: true },
+    }),
+  ]);
+  if (!user || user.deletedAt !== null || !isExactRole(role, input.schoolId)) {
+    throw new TeacherLifecycleMembershipInvariantError(
+      'exact_teacher_identity_required',
+    );
+  }
+  if (activeMembership || teacherHistory) {
+    throw new TeacherLifecycleMembershipInvariantError(
+      'teacher_membership_conflict',
+    );
+  }
+  return transaction.membership.create({
+    data: {
+      userId: input.userId,
+      organizationId: input.organizationId,
+      schoolId: input.schoolId,
+      roleId: input.roleId,
+      userType: UserType.TEACHER,
+      status: MembershipStatus.SUSPENDED,
+      endedAt: null,
+    },
+    select: TEACHER_LIFECYCLE_MEMBERSHIP_SELECT,
+  });
+}
+
+export async function restoreExactTeacherLifecycleMembership(
+  transaction: Prisma.TransactionClient,
+  input: {
+    membershipId: string;
+    userId: string;
+    schoolId: string;
+    roleId: string;
+    expectedStatus: MembershipStatus;
+    expectedEndedAt: Date | null;
+  },
+): Promise<TeacherLifecycleMembershipState> {
+  const [user, role, operationalConflict] = await Promise.all([
+    transaction.user.findUnique({
+      where: { id: input.userId },
+      select: { deletedAt: true },
+    }),
+    findRole(transaction, input.roleId),
+    transaction.membership.findFirst({
+      where: {
+        userId: input.userId,
+        id: { not: input.membershipId },
+        status: MembershipStatus.ACTIVE,
+        endedAt: null,
+        deletedAt: null,
+      },
+      select: { id: true },
+    }),
+  ]);
+  if (!user || user.deletedAt !== null || !isExactRole(role, input.schoolId)) {
+    throw new TeacherLifecycleMembershipInvariantError(
+      'exact_teacher_role_required',
+    );
+  }
+  if (operationalConflict) {
+    throw new TeacherLifecycleMembershipInvariantError(
+      'operational_membership_conflict',
+    );
+  }
+  return updateMembership(
+    transaction,
+    input.membershipId,
+    input.schoolId,
+    {
+      roleId: input.roleId,
+      userType: UserType.TEACHER,
+      status: MembershipStatus.SUSPENDED,
+      endedAt: null,
+    },
+    input,
+    { userId: input.userId },
+  );
+}
+
+export async function createReviewedNonTeacherLifecycleMembership(
+  transaction: Prisma.TransactionClient,
+  input: {
+    userId: string;
+    organizationId: string;
+    schoolId: string;
+    roleId: string;
+    userType: UserType;
+  },
+): Promise<TeacherLifecycleMembershipState> {
+  const role = await resolveAssignableNonTeacherLifecycleRole(transaction, {
+    schoolId: input.schoolId,
+    roleId: input.roleId,
+  });
+  if (!role || input.userType === UserType.TEACHER) {
+    throw new TeacherLifecycleMembershipInvariantError(
+      'assignable_non_teacher_role_required',
+    );
+  }
+  const activeMembership = await transaction.membership.findFirst({
+    where: {
+      userId: input.userId,
+      status: MembershipStatus.ACTIVE,
+      endedAt: null,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  if (activeMembership) {
+    throw new TeacherLifecycleMembershipInvariantError(
+      'operational_membership_conflict',
+    );
+  }
+  return transaction.membership.create({
+    data: {
+      userId: input.userId,
+      organizationId: input.organizationId,
+      schoolId: input.schoolId,
+      roleId: input.roleId,
+      userType: input.userType,
+      status: MembershipStatus.ACTIVE,
+      endedAt: null,
+    },
+    select: TEACHER_LIFECYCLE_MEMBERSHIP_SELECT,
+  });
+}
+
+export async function restoreReviewedNonTeacherLifecycleMembership(
+  transaction: Prisma.TransactionClient,
+  input: {
+    membershipId: string;
+    userId: string;
+    schoolId: string;
+    roleId: string;
+    userType: UserType;
+    expectedStatus: MembershipStatus;
+    expectedEndedAt: Date | null;
+  },
+): Promise<TeacherLifecycleMembershipState> {
+  const role = await resolveAssignableNonTeacherLifecycleRole(transaction, {
+    schoolId: input.schoolId,
+    roleId: input.roleId,
+  });
+  if (!role || input.userType === UserType.TEACHER) {
+    throw new TeacherLifecycleMembershipInvariantError(
+      'assignable_non_teacher_role_required',
+    );
+  }
+  return updateMembership(
+    transaction,
+    input.membershipId,
+    input.schoolId,
+    {
+      roleId: input.roleId,
+      userType: input.userType,
+      status: MembershipStatus.ACTIVE,
+      endedAt: null,
+      deletedAt: null,
+    },
+    input,
+    { userId: input.userId },
+  );
 }
 
 export async function setTeacherLifecycleMembershipRoleAndType(
@@ -293,6 +551,7 @@ async function updateMembership(
     expectedStatus: MembershipStatus;
     expectedEndedAt: Date | null;
   },
+  additionalWhere: Prisma.MembershipWhereInput = {},
 ): Promise<TeacherLifecycleMembershipState> {
   const result = await transaction.membership.updateMany({
     where: {
@@ -305,6 +564,7 @@ async function updateMembership(
             endedAt: expected.expectedEndedAt,
           }
         : {}),
+      ...additionalWhere,
     },
     data,
   });
@@ -322,10 +582,19 @@ async function updateMembership(
 function findRole(
   transaction: Prisma.TransactionClient,
   roleId: string,
-): Promise<Pick<Role, 'id' | 'key' | 'schoolId' | 'deletedAt'> | null> {
+): Promise<Pick<
+  Role,
+  'id' | 'key' | 'name' | 'schoolId' | 'deletedAt'
+> | null> {
   return transaction.role.findUnique({
     where: { id: roleId },
-    select: { id: true, key: true, schoolId: true, deletedAt: true },
+    select: {
+      id: true,
+      key: true,
+      name: true,
+      schoolId: true,
+      deletedAt: true,
+    },
   });
 }
 
