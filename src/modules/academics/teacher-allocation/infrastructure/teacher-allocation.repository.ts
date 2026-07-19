@@ -66,8 +66,8 @@ const TEACHER_ALLOCATION_ARGS =
     },
   });
 
-const ACTIVE_MEMBERSHIP_ARGS =
-  Prisma.validator<Prisma.MembershipDefaultArgs>()({
+const ACTIVE_MEMBERSHIP_ARGS = Prisma.validator<Prisma.MembershipDefaultArgs>()(
+  {
     select: {
       id: true,
       schoolId: true,
@@ -84,7 +84,8 @@ const ACTIVE_MEMBERSHIP_ARGS =
         },
       },
     },
-  });
+  },
+);
 
 const SUBJECT_REFERENCE_ARGS = Prisma.validator<Prisma.SubjectDefaultArgs>()({
   select: {
@@ -143,6 +144,24 @@ const TERM_REFERENCE_ARGS = Prisma.validator<Prisma.TermDefaultArgs>()({
   },
 });
 
+const TEACHER_ALLOCATION_LIFECYCLE_ARGS =
+  Prisma.validator<Prisma.TeacherSubjectAllocationDefaultArgs>()({
+    select: {
+      id: true,
+      term: {
+        select: {
+          startDate: true,
+          endDate: true,
+          isActive: true,
+          deletedAt: true,
+          academicYear: {
+            select: { isActive: true, deletedAt: true },
+          },
+        },
+      },
+    },
+  });
+
 const SUBJECT_ALLOCATION_MATRIX_ARGS =
   Prisma.validator<Prisma.SubjectAllocationDefaultArgs>()({
     select: {
@@ -196,8 +215,14 @@ export type TermReferenceRecord = Prisma.TermGetPayload<
   typeof TERM_REFERENCE_ARGS
 >;
 
-export type SubjectAllocationMatrixRecord =
-  Prisma.SubjectAllocationGetPayload<typeof SUBJECT_ALLOCATION_MATRIX_ARGS>;
+export type TeacherAllocationLifecycleRecord =
+  Prisma.TeacherSubjectAllocationGetPayload<
+    typeof TEACHER_ALLOCATION_LIFECYCLE_ARGS
+  >;
+
+export type SubjectAllocationMatrixRecord = Prisma.SubjectAllocationGetPayload<
+  typeof SUBJECT_ALLOCATION_MATRIX_ARGS
+>;
 
 export interface TeacherAllocationDependencyCounts {
   timetableEntries: number;
@@ -265,7 +290,9 @@ export class TeacherAllocationRepository {
         classroom: {
           is: {
             deletedAt: null,
-            section: { is: { deletedAt: null, grade: { is: { deletedAt: null } } } },
+            section: {
+              is: { deletedAt: null, grade: { is: { deletedAt: null } } },
+            },
           },
         },
         term: { is: { deletedAt: null } },
@@ -275,7 +302,9 @@ export class TeacherAllocationRepository {
     });
   }
 
-  findAllocationById(allocationId: string): Promise<TeacherAllocationRecord | null> {
+  findAllocationById(
+    allocationId: string,
+  ): Promise<TeacherAllocationRecord | null> {
     return this.scopedPrisma.teacherSubjectAllocation.findFirst({
       where: { id: allocationId },
       ...TEACHER_ALLOCATION_ARGS,
@@ -334,7 +363,9 @@ export class TeacherAllocationRepository {
     return this.scopedPrisma.classroom.findFirst({
       where: {
         id: classroomId,
-        section: { is: { deletedAt: null, grade: { is: { deletedAt: null } } } },
+        section: {
+          is: { deletedAt: null, grade: { is: { deletedAt: null } } },
+        },
       },
       ...CLASSROOM_REFERENCE_ARGS,
     });
@@ -348,7 +379,9 @@ export class TeacherAllocationRepository {
     return this.scopedPrisma.classroom.findMany({
       where: {
         id: { in: classroomIds },
-        section: { is: { deletedAt: null, grade: { is: { deletedAt: null } } } },
+        section: {
+          is: { deletedAt: null, grade: { is: { deletedAt: null } } },
+        },
       },
       orderBy: [{ nameEn: 'asc' }, { nameAr: 'asc' }],
       ...CLASSROOM_REFERENCE_ARGS,
@@ -544,8 +577,8 @@ export class TeacherAllocationRepository {
       return {
         allocations: affectedIds
           .map((id) => byId.get(id))
-          .filter(
-            (record): record is TeacherAllocationRecord => Boolean(record),
+          .filter((record): record is TeacherAllocationRecord =>
+            Boolean(record),
           ),
         createdCount,
         existingCount,
@@ -583,6 +616,16 @@ export class TeacherAllocationRepository {
     });
   }
 
+  listTeacherAllocationLifecycleRecords(
+    teacherUserId: string,
+  ): Promise<TeacherAllocationLifecycleRecord[]> {
+    return this.scopedPrisma.teacherSubjectAllocation.findMany({
+      where: { teacherUserId },
+      orderBy: { id: 'asc' },
+      ...TEACHER_ALLOCATION_LIFECYCLE_ARGS,
+    });
+  }
+
   listAllocationsForTeacherLoads(filters: {
     termId: string;
     teacherUserId?: string;
@@ -590,13 +633,17 @@ export class TeacherAllocationRepository {
     return this.scopedPrisma.teacherSubjectAllocation.findMany({
       where: {
         termId: filters.termId,
-        ...(filters.teacherUserId ? { teacherUserId: filters.teacherUserId } : {}),
+        ...(filters.teacherUserId
+          ? { teacherUserId: filters.teacherUserId }
+          : {}),
         teacherUser: { is: { deletedAt: null } },
         subject: { is: { deletedAt: null } },
         classroom: {
           is: {
             deletedAt: null,
-            section: { is: { deletedAt: null, grade: { is: { deletedAt: null } } } },
+            section: {
+              is: { deletedAt: null, grade: { is: { deletedAt: null } } },
+            },
           },
         },
         term: { is: { deletedAt: null } },
@@ -717,7 +764,9 @@ export class TeacherAllocationRepository {
   }
 }
 
-function hasDependencyCounts(counts: TeacherAllocationDependencyCounts): boolean {
+function hasDependencyCounts(
+  counts: TeacherAllocationDependencyCounts,
+): boolean {
   return (
     counts.timetableEntries > 0 ||
     counts.lessonPlans > 0 ||

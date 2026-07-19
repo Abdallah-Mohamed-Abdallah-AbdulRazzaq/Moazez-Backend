@@ -1,0 +1,230 @@
+import type {
+  MembershipStatus,
+  TeacherEmploymentStatus,
+  TeacherEmploymentType,
+  TeacherGender,
+  TeacherWorkDay,
+  UserStatus,
+  UserType,
+} from '@prisma/client';
+import type { TeacherLifecycleSuccessfulAuditEntry } from '../domain/teacher-lifecycle-audit';
+
+export type TeacherCredentialStatus =
+  | 'missing'
+  | 'temporary_or_must_change'
+  | 'must_change'
+  | 'set';
+
+export interface TeacherLifecycleCredentialProjection {
+  hasPassword: boolean;
+  status: TeacherCredentialStatus;
+  mustChangePassword: boolean;
+  passwordProvisionedAt: Date | null;
+  passwordChangedAt: Date | null;
+  credentialVersion: number;
+}
+
+export interface TeacherLifecycleUserState {
+  id: string;
+  firstName: string;
+  lastName: string;
+  userType: UserType;
+  status: UserStatus;
+  deletedAt: Date | null;
+  credential: TeacherLifecycleCredentialProjection;
+}
+
+export interface TeacherLifecycleRoleState {
+  id: string;
+  key: string;
+  schoolId: string | null;
+  deletedAt: Date | null;
+}
+
+export interface TeacherLifecycleMembershipState {
+  id: string;
+  userId: string;
+  organizationId: string;
+  schoolId: string | null;
+  roleId: string;
+  userType: UserType;
+  status: MembershipStatus;
+  startedAt: Date;
+  endedAt: Date | null;
+  deletedAt: Date | null;
+  role: TeacherLifecycleRoleState;
+  user: {
+    userType: UserType;
+    deletedAt: Date | null;
+  };
+}
+
+export interface TeacherLifecycleProfileState {
+  id: string;
+  schoolId: string;
+  userId: string;
+  teacherCode: string | null;
+  firstNameAr: string | null;
+  lastNameAr: string | null;
+  firstNameEn: string | null;
+  lastNameEn: string | null;
+  gender: TeacherGender | null;
+  employmentStatus: TeacherEmploymentStatus;
+  department: string | null;
+  specialization: string | null;
+  employmentType: TeacherEmploymentType | null;
+  experienceYears: number | null;
+  hireDate: Date | null;
+  workingDays: TeacherWorkDay[];
+  workStartTime: Date | null;
+  workEndTime: Date | null;
+  notesAr: string | null;
+  notesEn: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
+export interface TeacherLifecycleProfileManagedFields {
+  teacherCode?: string | null;
+  firstNameAr?: string | null;
+  lastNameAr?: string | null;
+  firstNameEn?: string | null;
+  lastNameEn?: string | null;
+  gender?: TeacherGender | null;
+  department?: string | null;
+  specialization?: string | null;
+  employmentType?: TeacherEmploymentType | null;
+  experienceYears?: number | null;
+  hireDate?: Date | null;
+  workingDays?: TeacherWorkDay[];
+  workStartTime?: Date | null;
+  workEndTime?: Date | null;
+  notesAr?: string | null;
+  notesEn?: string | null;
+}
+
+export interface TeacherLifecycleTransactionContext {
+  user: {
+    findState(userId: string): Promise<TeacherLifecycleUserState | null>;
+    updateDisplayNames(input: {
+      userId: string;
+      firstName: string;
+      lastName: string;
+    }): Promise<TeacherLifecycleUserState>;
+    setStatus(
+      userId: string,
+      status: UserStatus,
+    ): Promise<TeacherLifecycleUserState>;
+    setType(
+      userId: string,
+      userType: UserType,
+    ): Promise<TeacherLifecycleUserState>;
+  };
+  membership: {
+    findCurrentSchoolState(input: {
+      schoolId: string;
+      userId: string;
+    }): Promise<TeacherLifecycleMembershipState | null>;
+    listTeacherFootprints(
+      userId: string,
+    ): Promise<TeacherLifecycleMembershipState[]>;
+    createExactTeacher(input: {
+      userId: string;
+      organizationId: string;
+      schoolId: string;
+      roleId: string;
+      status: 'ACTIVE' | 'SUSPENDED';
+    }): Promise<TeacherLifecycleMembershipState>;
+    setRoleAndTypeForReviewedTransition(input: {
+      membershipId: string;
+      schoolId: string;
+      roleId: string;
+      userType: UserType;
+    }): Promise<TeacherLifecycleMembershipState>;
+    setActive(input: {
+      membershipId: string;
+      schoolId: string;
+    }): Promise<TeacherLifecycleMembershipState>;
+    setSuspended(input: {
+      membershipId: string;
+      schoolId: string;
+    }): Promise<TeacherLifecycleMembershipState>;
+    setInactive(input: {
+      membershipId: string;
+      schoolId: string;
+      endedAt: Date;
+    }): Promise<TeacherLifecycleMembershipState>;
+    setTransferred(input: {
+      membershipId: string;
+      schoolId: string;
+      endedAt: Date;
+    }): Promise<TeacherLifecycleMembershipState>;
+    softDelete(input: {
+      membershipId: string;
+      schoolId: string;
+      endedAt: Date;
+      deletedAt: Date;
+    }): Promise<TeacherLifecycleMembershipState>;
+  };
+  profile: {
+    findLiveById(input: {
+      schoolId: string;
+      profileId: string;
+    }): Promise<TeacherLifecycleProfileState | null>;
+    findArchivedById(input: {
+      schoolId: string;
+      profileId: string;
+    }): Promise<TeacherLifecycleProfileState | null>;
+    findTrustedByIdIncludingArchived(input: {
+      schoolId: string;
+      profileId: string;
+    }): Promise<TeacherLifecycleProfileState | null>;
+    listLiveFootprintsForUser(
+      userId: string,
+    ): Promise<Array<{ id: string; schoolId: string; userId: string }>>;
+    findExactSchoolUserFootprint(input: {
+      schoolId: string;
+      userId: string;
+    }): Promise<TeacherLifecycleProfileState | null>;
+    create(input: {
+      schoolId: string;
+      userId: string;
+      employmentStatus: TeacherEmploymentStatus;
+      fields: TeacherLifecycleProfileManagedFields;
+    }): Promise<TeacherLifecycleProfileState>;
+    update(input: {
+      schoolId: string;
+      profileId: string;
+      fields: TeacherLifecycleProfileManagedFields;
+    }): Promise<TeacherLifecycleProfileState>;
+    restore(input: {
+      schoolId: string;
+      profileId: string;
+      userId: string;
+      fields: TeacherLifecycleProfileManagedFields;
+    }): Promise<TeacherLifecycleProfileState>;
+    setEmploymentStatus(input: {
+      schoolId: string;
+      profileId: string;
+      employmentStatus: TeacherEmploymentStatus;
+    }): Promise<TeacherLifecycleProfileState>;
+    archive(input: {
+      schoolId: string;
+      profileId: string;
+      deletedAt: Date;
+    }): Promise<TeacherLifecycleProfileState>;
+  };
+  audit: {
+    writeSuccessful(entry: TeacherLifecycleSuccessfulAuditEntry): Promise<void>;
+  };
+  sessions: {
+    revokeUserSessions(userId: string, revokedAt: Date): Promise<number>;
+  };
+}
+
+export abstract class TeacherLifecycleUnitOfWork {
+  abstract execute<T>(
+    callback: (context: TeacherLifecycleTransactionContext) => Promise<T>,
+  ): Promise<T>;
+}

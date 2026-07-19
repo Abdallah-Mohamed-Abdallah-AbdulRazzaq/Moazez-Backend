@@ -6,6 +6,10 @@ import { CreateTeacherAllocationUseCase } from './application/create-teacher-all
 import { DeleteTeacherAllocationUseCase } from './application/delete-teacher-allocation.use-case';
 import { GetTeacherLoadsUseCase } from './application/get-teacher-loads.use-case';
 import { ListTeacherAllocationsUseCase } from './application/list-teacher-allocations.use-case';
+import {
+  TEACHER_ALLOCATION_LIFECYCLE_READER,
+  TeacherAllocationLifecycleReadService,
+} from './application/teacher-allocation-lifecycle-read.service';
 import { ValidateTeacherAllocationsUseCase } from './application/validate-teacher-allocations.use-case';
 import { TeacherAllocationController } from './controller/teacher-allocation.controller';
 import { TeacherAllocationRepository } from './infrastructure/teacher-allocation.repository';
@@ -22,6 +26,12 @@ import { TeacherAllocationRepository } from './infrastructure/teacher-allocation
     ClearTeacherAllocationsBySubjectUseCase,
     ValidateTeacherAllocationsUseCase,
     GetTeacherLoadsUseCase,
+    TeacherAllocationLifecycleReadService,
+    {
+      provide: TEACHER_ALLOCATION_LIFECYCLE_READER,
+      useExisting: TeacherAllocationLifecycleReadService,
+    },
   ],
+  exports: [TEACHER_ALLOCATION_LIFECYCLE_READER],
 })
 export class TeacherAllocationModule {}
