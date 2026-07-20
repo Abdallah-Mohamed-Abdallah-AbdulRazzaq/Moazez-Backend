@@ -518,12 +518,24 @@ export function setTeacherLifecycleMembershipInactive(
 
 export function setTeacherLifecycleMembershipTransferred(
   transaction: Prisma.TransactionClient,
-  input: { membershipId: string; schoolId: string; endedAt: Date },
+  input: {
+    membershipId: string;
+    schoolId: string;
+    expectedStatus: MembershipStatus;
+    expectedEndedAt: Date | null;
+    endedAt: Date;
+  },
 ): Promise<TeacherLifecycleMembershipState> {
-  return updateMembership(transaction, input.membershipId, input.schoolId, {
-    status: MembershipStatus.TRANSFERRED,
-    endedAt: input.endedAt,
-  });
+  return updateMembership(
+    transaction,
+    input.membershipId,
+    input.schoolId,
+    {
+      status: MembershipStatus.TRANSFERRED,
+      endedAt: input.endedAt,
+    },
+    input,
+  );
 }
 
 export function softDeleteTeacherLifecycleMembership(

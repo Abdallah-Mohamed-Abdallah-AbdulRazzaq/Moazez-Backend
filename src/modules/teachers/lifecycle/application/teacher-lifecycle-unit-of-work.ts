@@ -9,6 +9,7 @@ import type {
 } from '@prisma/client';
 import type { TeacherLifecycleSuccessfulAuditEntry } from '../domain/teacher-lifecycle-audit';
 import type { TeacherAllocationLifecycleSummary } from '../../../academics/teacher-allocation/domain/teacher-allocation-lifecycle-state';
+import type { OrganizationTeacherTransferTransactionOperations } from '../../../organization-admin/teacher-transfers/infrastructure/organization-teacher-transfer-transaction.operations';
 
 export type TeacherCredentialStatus =
   | 'missing'
@@ -284,6 +285,8 @@ export interface TeacherLifecycleTransactionContext {
     setTransferred(input: {
       membershipId: string;
       schoolId: string;
+      expectedStatus: MembershipStatus;
+      expectedEndedAt: Date | null;
       endedAt: Date;
     }): Promise<TeacherLifecycleMembershipState>;
     softDelete(input: {
@@ -356,6 +359,7 @@ export interface TeacherLifecycleTransactionContext {
       asOf: Date;
     }): Promise<TeacherAllocationLifecycleSummary>;
   };
+  organizationTransfer: OrganizationTeacherTransferTransactionOperations;
 }
 
 export abstract class TeacherLifecycleUnitOfWork {

@@ -111,6 +111,18 @@ export const TEACHER_LIFECYCLE_AUDIT_REASON_CODES = [
   'invalid_transition',
   'profile_incomplete',
   'revocation_failed',
+  'same_school_transfer',
+  'source_state_conflict',
+  'source_membership_conflict',
+  'destination_live_profile_exists',
+  'destination_profile_history_ambiguous',
+  'destination_membership_conflict',
+  'destination_membership_history_ambiguous',
+  'destination_teacher_role_required',
+  'destination_teacher_code_conflict',
+  'actor_scope_moved',
+  'school_state_moved',
+  'transfer_concurrency_conflict',
 ] as const;
 
 export type TeacherLifecycleAuditReasonCode =

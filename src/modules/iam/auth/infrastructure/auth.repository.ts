@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import {
   AuditOutcome,
   MembershipStatus,
+  OrganizationStatus,
   Prisma,
+  UserStatus,
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
@@ -27,6 +29,68 @@ export type UserWithActiveMembership = Prisma.UserGetPayload<
   typeof USER_WITH_ACTIVE_MEMBERSHIP
 >;
 
+const ORGANIZATION_MANAGEMENT_SCOPE_SELECT =
+  Prisma.validator<Prisma.UserSelect>()({
+    id: true,
+    userType: true,
+    status: true,
+    deletedAt: true,
+    memberships: {
+      where: {
+        userType: UserType.ORGANIZATION_USER,
+        status: MembershipStatus.ACTIVE,
+        endedAt: null,
+        deletedAt: null,
+        schoolId: null,
+        organization: {
+          status: OrganizationStatus.ACTIVE,
+          deletedAt: null,
+        },
+        role: {
+          key: 'organization_admin',
+          isSystem: true,
+          schoolId: null,
+          deletedAt: null,
+          rolePermissions: {
+            some: { permission: { code: 'teachers.records.manage' } },
+          },
+        },
+      },
+      orderBy: [{ startedAt: 'desc' }, { id: 'asc' }],
+      take: 2,
+      select: {
+        id: true,
+        userId: true,
+        organizationId: true,
+        schoolId: true,
+        roleId: true,
+        userType: true,
+        status: true,
+        endedAt: true,
+        deletedAt: true,
+        organization: {
+          select: { status: true, deletedAt: true },
+        },
+        role: {
+          select: {
+            key: true,
+            isSystem: true,
+            schoolId: true,
+            deletedAt: true,
+            rolePermissions: {
+              orderBy: { permissionId: 'asc' },
+              select: { permission: { select: { code: true } } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+export type OrganizationManagementScopeProjection = Prisma.UserGetPayload<{
+  select: typeof ORGANIZATION_MANAGEMENT_SCOPE_SELECT;
+}>;
+
 @Injectable()
 export class AuthRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -42,6 +106,20 @@ export class AuthRepository {
     return this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
       ...USER_WITH_ACTIVE_MEMBERSHIP,
+    });
+  }
+
+  findOrganizationManagementScope(
+    actorId: string,
+  ): Promise<OrganizationManagementScopeProjection | null> {
+    return this.prisma.user.findFirst({
+      where: {
+        id: actorId,
+        userType: UserType.ORGANIZATION_USER,
+        status: UserStatus.ACTIVE,
+        deletedAt: null,
+      },
+      select: ORGANIZATION_MANAGEMENT_SCOPE_SELECT,
     });
   }
 

@@ -7,6 +7,7 @@ import { RequestContextMiddleware } from './common/context/context.middleware';
 import { GlobalExceptionFilter } from './common/exceptions/global-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
+import { OrganizationScopeGuard } from './common/guards/organization-scope.guard';
 import { ScopeResolverGuard } from './common/guards/scope-resolver.guard';
 import { validateEnv } from './config/env.validation';
 import { PrismaModule } from './infrastructure/database/prisma.module';
@@ -33,6 +34,7 @@ import { StudentAppModule } from './modules/student-app/student-app.module';
 import { StudentsModule } from './modules/students/students.module';
 import { TeacherAppModule } from './modules/teacher-app/teacher-app.module';
 import { TeachersModule } from './modules/teachers/teachers.module';
+import { OrganizationAdminModule } from './modules/organization-admin/organization-admin.module';
 
 @Module({
   imports: [
@@ -47,6 +49,7 @@ import { TeachersModule } from './modules/teachers/teachers.module';
     IamModule,
     ApplicantPortalModule,
     PlatformAdminModule,
+    OrganizationAdminModule,
     SettingsModule,
     AcademicsModule,
     FilesModule,
@@ -73,11 +76,11 @@ import { TeachersModule } from './modules/teachers/teachers.module';
       provide: APP_FILTER,
       useClass: GlobalExceptionFilter,
     },
-    // Order matters: Jwt authenticates, Scope loads membership, Permissions
-    // enforces @RequiredPermissions. Guards run in the order they are
-    // registered here.
+    // Order matters: authenticate, resolve Membership, establish any exact
+    // Organization scope, then enforce route permissions.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: ScopeResolverGuard },
+    { provide: APP_GUARD, useClass: OrganizationScopeGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
 })

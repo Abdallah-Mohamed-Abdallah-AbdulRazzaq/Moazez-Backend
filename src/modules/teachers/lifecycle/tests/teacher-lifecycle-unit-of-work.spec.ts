@@ -4,6 +4,7 @@ import type { PrismaService } from '../../../../infrastructure/database/prisma.s
 import type { TeacherLifecycleSuccessfulAuditEntry } from '../domain/teacher-lifecycle-audit';
 import type { PrismaTeacherLifecycleTransactionOperations } from '../infrastructure/prisma-teacher-lifecycle-transaction.operations';
 import { PrismaTeacherLifecycleUnitOfWork } from '../infrastructure/prisma-teacher-lifecycle.unit-of-work';
+import type { PrismaOrganizationTeacherTransferTransactionOperations } from '../../../organization-admin/teacher-transfers/infrastructure/organization-teacher-transfer-transaction.operations';
 
 const IDS = {
   actor: '00000000-0000-4000-8000-000000000001',
@@ -77,6 +78,18 @@ function operations(overrides: Record<string, jest.Mock> = {}) {
   } as unknown as PrismaTeacherLifecycleTransactionOperations;
 }
 
+function organizationTransferOperations() {
+  const bound = {
+    revalidateActorScope: jest.fn().mockResolvedValue(true),
+  };
+  return {
+    bound,
+    provider: {
+      bind: jest.fn().mockReturnValue(bound),
+    } as unknown as PrismaOrganizationTeacherTransferTransactionOperations,
+  };
+}
+
 describe('PrismaTeacherLifecycleUnitOfWork', () => {
   it('opens one interactive transaction and commits one successful callback', async () => {
     const transaction = { marker: 'one-transaction' };
@@ -93,9 +106,11 @@ describe('PrismaTeacherLifecycleUnitOfWork', () => {
         return result;
       }),
     } as unknown as PrismaService;
+    const organizationTransfer = organizationTransferOperations();
     const unitOfWork = new PrismaTeacherLifecycleUnitOfWork(
       prisma,
       operations(),
+      organizationTransfer.provider,
     );
 
     await expect(unitOfWork.execute(async () => 'committed')).resolves.toBe(
@@ -108,12 +123,14 @@ describe('PrismaTeacherLifecycleUnitOfWork', () => {
   it('passes the exact same hidden transaction to every operation family', async () => {
     const transaction = { marker: 'shared' };
     const operationSet = operations();
+    const organizationTransfer = organizationTransferOperations();
     const prisma = {
       $transaction: (callback) => callback(transaction),
     } as unknown as PrismaService;
     const unitOfWork = new PrismaTeacherLifecycleUnitOfWork(
       prisma,
       operationSet,
+      organizationTransfer.provider,
     );
 
     await unitOfWork.execute(async (context) => {
@@ -160,7 +177,20 @@ describe('PrismaTeacherLifecycleUnitOfWork', () => {
         IDS.user,
         new Date('2026-07-19T00:00:00.000Z'),
       );
+      await context.organizationTransfer.revalidateActorScope({
+        actorId: IDS.actor,
+        membershipId: IDS.membership,
+        organizationId: IDS.organization,
+        roleId: IDS.profile,
+      } as never);
     });
+
+    expect(organizationTransfer.provider.bind).toHaveBeenCalledWith(
+      transaction,
+    );
+    expect(
+      organizationTransfer.bound.revalidateActorScope,
+    ).toHaveBeenCalledTimes(1);
 
     for (const method of [
       operationSet.setUserStatus,
@@ -221,6 +251,7 @@ describe('PrismaTeacherLifecycleUnitOfWork', () => {
       const unitOfWork = new PrismaTeacherLifecycleUnitOfWork(
         prisma,
         operationSet,
+        organizationTransferOperations().provider,
       );
 
       await expect(

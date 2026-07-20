@@ -9,11 +9,13 @@ import { TeacherRoleDemotionCoordinator } from './application/teacher-role-demot
 import { PrismaTeacherLifecycleTransactionOperations } from './infrastructure/prisma-teacher-lifecycle-transaction.operations';
 import { PrismaTeacherLifecycleUnitOfWork } from './infrastructure/prisma-teacher-lifecycle.unit-of-work';
 import { TeacherLifecycleAuditWriter } from './infrastructure/teacher-lifecycle-audit.writer';
+import { PrismaOrganizationTeacherTransferTransactionOperations } from '../../organization-admin/teacher-transfers/infrastructure/organization-teacher-transfer-transaction.operations';
 
 @Module({
   providers: [
     TeacherLifecycleAuditWriter,
     PrismaTeacherLifecycleTransactionOperations,
+    PrismaOrganizationTeacherTransferTransactionOperations,
     PrismaTeacherLifecycleUnitOfWork,
     {
       provide: TeacherLifecycleUnitOfWork,

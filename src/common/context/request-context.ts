@@ -20,6 +20,18 @@ export interface AcademicContext {
   termId?: string;
 }
 
+export interface OrganizationScope {
+  actorId: string;
+  membershipId: string;
+  organizationId: string;
+  roleId: string;
+}
+
+declare const trustedOrganizationScopeBrand: unique symbol;
+export type TrustedOrganizationScope = Readonly<OrganizationScope> & {
+  readonly [trustedOrganizationScopeBrand]: true;
+};
+
 export interface ScopeBypassFlags {
   bypassSchoolScope: boolean;
   includeSoftDeleted: boolean;
@@ -29,6 +41,7 @@ export interface RequestContext {
   requestId: string;
   actor?: RequestActor;
   activeMembership?: ActiveMembership;
+  organizationScope?: Readonly<OrganizationScope>;
   platformPermissions?: string[];
   academicContext?: AcademicContext;
   bypass: ScopeBypassFlags;
@@ -64,6 +77,19 @@ export function setActiveMembership(membership: ActiveMembership): void {
   if (ctx) ctx.activeMembership = membership;
 }
 
+export function setOrganizationScope(scope: OrganizationScope): void {
+  const ctx = storage.getStore();
+  if (ctx) ctx.organizationScope = Object.freeze({ ...scope });
+}
+
+export function getTrustedOrganizationScope():
+  | TrustedOrganizationScope
+  | undefined {
+  return storage.getStore()?.organizationScope as
+    | TrustedOrganizationScope
+    | undefined;
+}
+
 export function setPlatformPermissions(permissions: string[]): void {
   const ctx = storage.getStore();
   if (ctx) ctx.platformPermissions = permissions;
@@ -74,7 +100,9 @@ export function setAcademicContext(academic: AcademicContext): void {
   if (ctx) ctx.academicContext = academic;
 }
 
-export async function withBypassSchoolScope<T>(fn: () => Promise<T>): Promise<T> {
+export async function withBypassSchoolScope<T>(
+  fn: () => Promise<T>,
+): Promise<T> {
   const ctx = storage.getStore();
   if (!ctx) return fn();
   const previous = ctx.bypass.bypassSchoolScope;

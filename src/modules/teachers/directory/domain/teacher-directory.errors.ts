@@ -56,7 +56,9 @@ export class TeacherIdentityConflictException extends DomainException {
 
 export class TeacherRoleRequiredException extends DomainException {
   constructor(
-    reasonCode: 'exact_teacher_role_required' = 'exact_teacher_role_required',
+    reasonCode:
+      | 'exact_teacher_role_required'
+      | 'destination_teacher_role_required' = 'exact_teacher_role_required',
   ) {
     super({
       code: 'teachers.account.teacher_role_required',

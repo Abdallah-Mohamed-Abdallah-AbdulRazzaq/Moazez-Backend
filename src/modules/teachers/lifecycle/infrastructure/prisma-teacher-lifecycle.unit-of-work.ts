@@ -6,12 +6,14 @@ import {
   type TeacherLifecycleTransactionContext,
 } from '../application/teacher-lifecycle-unit-of-work';
 import { PrismaTeacherLifecycleTransactionOperations } from './prisma-teacher-lifecycle-transaction.operations';
+import { PrismaOrganizationTeacherTransferTransactionOperations } from '../../../organization-admin/teacher-transfers/infrastructure/organization-teacher-transfer-transaction.operations';
 
 @Injectable()
 export class PrismaTeacherLifecycleUnitOfWork extends TeacherLifecycleUnitOfWork {
   constructor(
     private readonly prisma: PrismaService,
     private readonly operations: PrismaTeacherLifecycleTransactionOperations,
+    private readonly organizationTransferOperations: PrismaOrganizationTeacherTransferTransactionOperations,
   ) {
     super();
   }
@@ -126,6 +128,8 @@ export class PrismaTeacherLifecycleUnitOfWork extends TeacherLifecycleUnitOfWork
         classify: (input) =>
           this.operations.classifyAllocations(transaction, input),
       },
+      organizationTransfer:
+        this.organizationTransferOperations.bind(transaction),
     };
 
     Object.freeze(context.user);
@@ -134,6 +138,7 @@ export class PrismaTeacherLifecycleUnitOfWork extends TeacherLifecycleUnitOfWork
     Object.freeze(context.audit);
     Object.freeze(context.sessions);
     Object.freeze(context.allocation);
+    Object.freeze(context.organizationTransfer);
     return Object.freeze(context);
   }
 }
