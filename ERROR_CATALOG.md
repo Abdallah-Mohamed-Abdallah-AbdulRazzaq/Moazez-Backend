@@ -98,6 +98,8 @@ Cross-cutting codes may omit the module segment (e.g., `validation.failed`, `rat
 | `teachers.account.role_transition_conflict` |  409 | Teacher identity state is unsafe for this operation.       | حالة هوية المعلم لا تسمح بهذه العملية.         | Stable `reasonCode` only                         |
 | `teachers.lifecycle.invalid_transition`     |  409 | Teacher lifecycle transition is not allowed.               | انتقال دورة حياة المعلم غير مسموح.             | Previous/next enums and stable `reasonCode` only |
 | `teachers.lifecycle.revocation_failed`      |  503 | Required Teacher session revocation did not complete.      | لم يكتمل إلغاء جلسات المعلم المطلوب.           | `retryable=true` and stable `reasonCode` only    |
+| `teachers.lifecycle.transfer_not_found`     |  404 | Teacher transfer resource not found.                       | مورد نقل المعلم غير موجود.                     | None                                             |
+| `teachers.lifecycle.transfer_conflict`      |  409 | Teacher transfer cannot be completed.                      | لا يمكن إكمال نقل المعلم.                      | Stable `reasonCode` only                         |
 | `teachers.lifecycle.active_assignments`     |  409 | Teacher lifecycle change is blocked by active assignments. | تمنع التكليفات الفعالة تغيير دورة حياة المعلم. | Aggregate counts and term-state labels only      |
 | `teachers.lifecycle.archive_conflict`       |  409 | Teacher profile cannot be archived in its current state.   | لا يمكن أرشفة ملف المعلم في حالته الحالية.     | Stable `reasonCode` only                         |
 

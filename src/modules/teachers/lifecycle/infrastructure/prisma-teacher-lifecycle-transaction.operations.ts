@@ -295,7 +295,13 @@ export class PrismaTeacherLifecycleTransactionOperations {
 
   setMembershipTransferred(
     transaction: Prisma.TransactionClient,
-    input: { membershipId: string; schoolId: string; endedAt: Date },
+    input: {
+      membershipId: string;
+      schoolId: string;
+      expectedStatus: MembershipStatus;
+      expectedEndedAt: Date | null;
+      endedAt: Date;
+    },
   ) {
     return setTeacherLifecycleMembershipTransferred(transaction, input);
   }
