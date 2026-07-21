@@ -27,17 +27,84 @@ const ARGON2_OPTIONS: argon2.Options = {
 };
 
 const SIH_PERMISSION_SEEDS = [
-  { code: 'settings.permissions.view', module: 'settings', resource: 'permissions', action: 'view', description: 'View the settings permission catalog' },
-  { code: 'settings.email.connection.view', module: 'settings', resource: 'email.connection', action: 'view', description: 'View school email provider connection settings' },
-  { code: 'settings.email.connection.manage', module: 'settings', resource: 'email.connection', action: 'manage', description: 'Create, test, activate, disable, and update school email provider connection settings' },
-  { code: 'settings.email.templates.view', module: 'settings', resource: 'email.templates', action: 'view', description: 'View school email templates and previews' },
-  { code: 'settings.email.templates.manage', module: 'settings', resource: 'email.templates', action: 'manage', description: 'Update and reset school email templates' },
-  { code: 'settings.email.deliveries.view', module: 'settings', resource: 'email.deliveries', action: 'view', description: 'View school email delivery batches and recipients' },
-  { code: 'settings.email.deliveries.manage', module: 'settings', resource: 'email.deliveries', action: 'manage', description: 'Cancel school email delivery batches' },
-  { code: 'settings.email.campaigns.view', module: 'settings', resource: 'email.campaigns', action: 'view', description: 'Preview and view school email campaigns' },
-  { code: 'settings.email.campaigns.manage', module: 'settings', resource: 'email.campaigns', action: 'manage', description: 'Create school email campaigns' },
-  { code: 'settings.email.credential_deliveries.view', module: 'settings', resource: 'email.credential_deliveries', action: 'view', description: 'Preview school credential delivery recipients' },
-  { code: 'settings.email.credential_deliveries.manage', module: 'settings', resource: 'email.credential_deliveries', action: 'manage', description: 'Create school credential delivery batches' },
+  {
+    code: 'settings.permissions.view',
+    module: 'settings',
+    resource: 'permissions',
+    action: 'view',
+    description: 'View the settings permission catalog',
+  },
+  {
+    code: 'settings.email.connection.view',
+    module: 'settings',
+    resource: 'email.connection',
+    action: 'view',
+    description: 'View school email provider connection settings',
+  },
+  {
+    code: 'settings.email.connection.manage',
+    module: 'settings',
+    resource: 'email.connection',
+    action: 'manage',
+    description:
+      'Create, test, activate, disable, and update school email provider connection settings',
+  },
+  {
+    code: 'settings.email.templates.view',
+    module: 'settings',
+    resource: 'email.templates',
+    action: 'view',
+    description: 'View school email templates and previews',
+  },
+  {
+    code: 'settings.email.templates.manage',
+    module: 'settings',
+    resource: 'email.templates',
+    action: 'manage',
+    description: 'Update and reset school email templates',
+  },
+  {
+    code: 'settings.email.deliveries.view',
+    module: 'settings',
+    resource: 'email.deliveries',
+    action: 'view',
+    description: 'View school email delivery batches and recipients',
+  },
+  {
+    code: 'settings.email.deliveries.manage',
+    module: 'settings',
+    resource: 'email.deliveries',
+    action: 'manage',
+    description: 'Cancel school email delivery batches',
+  },
+  {
+    code: 'settings.email.campaigns.view',
+    module: 'settings',
+    resource: 'email.campaigns',
+    action: 'view',
+    description: 'Preview and view school email campaigns',
+  },
+  {
+    code: 'settings.email.campaigns.manage',
+    module: 'settings',
+    resource: 'email.campaigns',
+    action: 'manage',
+    description: 'Create school email campaigns',
+  },
+  {
+    code: 'settings.email.credential_deliveries.view',
+    module: 'settings',
+    resource: 'email.credential_deliveries',
+    action: 'view',
+    description: 'Preview school credential delivery recipients',
+  },
+  {
+    code: 'settings.email.credential_deliveries.manage',
+    module: 'settings',
+    resource: 'email.credential_deliveries',
+    action: 'manage',
+    description: 'Create school credential delivery batches',
+  },
 ];
 
 const SIH_SCHOOL_ADMIN_PERMISSION_CODES = SIH_PERMISSION_SEEDS.map(
@@ -375,10 +442,7 @@ describe('Sprint 11F Identity/Credentials/Email final closeout (e2e)', () => {
       })
       .expect(403);
 
-    for (const route of [
-      '/parent/pickup',
-      '/applicant-portal/identity',
-    ]) {
+    for (const route of ['/parent/pickup', '/applicant-portal/identity']) {
       await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}${route}`)
         .set('Authorization', bearer(adminAuth))
@@ -441,7 +505,7 @@ describe('Sprint 11F Identity/Credentials/Email final closeout (e2e)', () => {
         fullName: 'Sprint Eleven Teacher',
         username,
         contactEmail,
-        roleId: teacherRoleId,
+        roleId: schoolAdminRoleId,
       })
       .expect(201);
 
@@ -553,7 +617,7 @@ describe('Sprint 11F Identity/Credentials/Email final closeout (e2e)', () => {
         fullName: 'Sprint Eleven Bulk',
         username: bulkUsername,
         contactEmail: `${testMarker}-bulk-contact@example.test`,
-        roleId: teacherRoleId,
+        roleId: schoolAdminRoleId,
       })
       .expect(201);
     bulkUserId = createdBulkUser.body.id;
@@ -620,7 +684,7 @@ describe('Sprint 11F Identity/Credentials/Email final closeout (e2e)', () => {
         fullName: 'Sprint Eleven Delivery',
         username: deliveryUsername,
         contactEmail: `${testMarker}-delivery-contact@example.test`,
-        roleId: teacherRoleId,
+        roleId: schoolAdminRoleId,
       })
       .expect(201);
     deliveryUserId = createdDeliveryUser.body.id;

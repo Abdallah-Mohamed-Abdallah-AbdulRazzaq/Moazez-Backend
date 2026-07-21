@@ -127,6 +127,56 @@ describe('BullmqService lifecycle', () => {
     expect(redis.disconnect).not.toHaveBeenCalled();
   });
 
+  it('treats a shared quit closed-connection race as completed shutdown', async () => {
+    const service = createService();
+    service.createWorker('test-queue', () => Promise.resolve());
+    service.getQueue('test-queue');
+    redis.quit.mockImplementation(() => {
+      redis.status = 'end';
+      return Promise.reject(new Error('Connection is closed.'));
+    });
+
+    const first = service.onModuleDestroy();
+    const second = service.onModuleDestroy();
+
+    expect(second).toBe(first);
+    await expect(first).resolves.toBeUndefined();
+    expect(workers[0].close).toHaveBeenCalledTimes(1);
+    expect(queues[0].close).toHaveBeenCalledTimes(1);
+    expect(redis.quit).toHaveBeenCalledTimes(1);
+    expect(redis.disconnect).not.toHaveBeenCalled();
+    expect(loggerError).not.toHaveBeenCalled();
+  });
+
+  it('treats a recognized shared quit socket closure as completed shutdown', async () => {
+    const service = createService();
+    service.createWorker('test-queue', () => Promise.resolve());
+    const error = Object.assign(new Error('socket closed during shutdown'), {
+      code: 'EPIPE',
+    });
+    redis.quit.mockRejectedValue(error);
+
+    await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+    expect(redis.quit).toHaveBeenCalledTimes(1);
+    expect(redis.disconnect).not.toHaveBeenCalled();
+    expect(loggerError).not.toHaveBeenCalled();
+  });
+
+  it('keeps unexpected shared quit failures observable and single-flight', async () => {
+    const service = createService();
+    service.createWorker('test-queue', () => Promise.resolve());
+    const error = new Error('shared redis shutdown failed');
+    redis.quit.mockRejectedValue(error);
+
+    const first = service.onModuleDestroy();
+
+    await expect(first).rejects.toBe(error);
+    expect(service.onModuleDestroy()).toBe(first);
+    await expect(service.onModuleDestroy()).rejects.toBe(error);
+    expect(redis.quit).toHaveBeenCalledTimes(1);
+    expect(redis.disconnect).not.toHaveBeenCalled();
+  });
+
   it('disconnects the shared connection once when it is not active', async () => {
     redis.status = 'wait';
     const service = createService();

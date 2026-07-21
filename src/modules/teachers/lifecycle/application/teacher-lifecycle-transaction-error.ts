@@ -39,12 +39,24 @@ export function rethrowTeacherLifecycleTransactionError(
 export function isTeacherLifecycleSerializationConflict(
   error: unknown,
 ): boolean {
+  const candidate =
+    typeof error === 'object' && error !== null
+      ? (error as { code?: unknown; meta?: unknown })
+      : null;
   return (
     (error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === 'P2034') ||
-    (typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 'P2034')
+    candidate?.code === 'P2034' ||
+    (candidate?.code === 'P2010' &&
+      isPostgreSqlSerializationFailure(candidate.meta))
+  );
+}
+
+function isPostgreSqlSerializationFailure(meta: unknown): boolean {
+  return (
+    typeof meta === 'object' &&
+    meta !== null &&
+    'code' in meta &&
+    meta.code === '40001'
   );
 }

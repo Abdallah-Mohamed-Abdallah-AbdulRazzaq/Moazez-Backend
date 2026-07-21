@@ -212,17 +212,32 @@ export class BullmqService implements OnModuleDestroy {
       [...this.queues.values()].map((queue) => this.closeQueue(queue)),
     );
 
-    if (
-      this.connection.status === 'ready' ||
-      this.connection.status === 'connect' ||
-      this.connection.status === 'reconnecting'
-    ) {
-      await this.connection.quit();
-    } else {
-      this.connection.disconnect();
-    }
-
+    await this.closeSharedConnection();
     await this.sharedStreamSettlement();
+  }
+
+  private async closeSharedConnection(): Promise<void> {
+    try {
+      if (
+        this.connection.status === 'ready' ||
+        this.connection.status === 'connect' ||
+        this.connection.status === 'reconnecting'
+      ) {
+        await this.connection.quit();
+        return;
+      }
+
+      this.connection.disconnect();
+    } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        this.isExpectedSharedConnectionShutdownError(error)
+      ) {
+        return;
+      }
+
+      throw error;
+    }
   }
 
   private async closeQueue(queue: Queue): Promise<void> {

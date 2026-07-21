@@ -440,19 +440,19 @@ describe('TeacherProfile data foundation and tenancy', () => {
     ]);
   });
 
-  it('does not register a runtime route or AppModule import', () => {
+  it('keeps the merged 1B Teacher Directory module registered', () => {
     const appModule = readFileSync(
       join(process.cwd(), 'src/app.module.ts'),
       'utf8',
     );
-    expect(appModule).not.toContain('TeachersModule');
-    expect(appModule).not.toContain("from './modules/teachers");
+    expect(appModule).toContain('TeachersModule');
+    expect(appModule).toContain("from './modules/teachers/teachers.module'");
     expect(
       readFileSync(
         join(process.cwd(), 'src/modules/teachers/teachers.module.ts'),
         'utf8',
       ),
-    ).not.toContain('controllers:');
+    ).toContain('TeacherProfileModule');
   });
 
   async function createTeacherUser(label: string) {
