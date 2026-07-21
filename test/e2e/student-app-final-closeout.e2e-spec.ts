@@ -57,6 +57,7 @@ import {
   setActor,
 } from '../../src/common/context/request-context';
 import { AppModule } from '../../src/app.module';
+import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import { StudentAppAccessService } from '../../src/modules/student-app/access/student-app-access.service';
 import { StudentAppStudentReadAdapter } from '../../src/modules/student-app/access/student-app-student-read.adapter';
 import type {
@@ -560,7 +561,20 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(BullmqService)
+      .useValue({
+        createWorker: jest.fn().mockReturnValue({ on: jest.fn() }),
+        addJob: jest.fn().mockResolvedValue(undefined),
+        getQueue: jest.fn(),
+        getQueueReadiness: jest.fn().mockResolvedValue({
+          name: 'test',
+          status: 'ok',
+          counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+        }),
+        ping: jest.fn().mockResolvedValue(undefined),
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -808,6 +822,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'GET /api/v1/student/schedule/week',
       'GET /api/v1/student/subjects',
       'GET /api/v1/student/subjects/:subjectId',
+      'GET /api/v1/student/subjects/:subjectId/lessons',
       'GET /api/v1/student/tasks',
       'GET /api/v1/student/tasks/:taskId',
       'GET /api/v1/student/tasks/:taskId/submissions',
