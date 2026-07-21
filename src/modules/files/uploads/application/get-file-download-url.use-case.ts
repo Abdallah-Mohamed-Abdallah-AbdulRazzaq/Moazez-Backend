@@ -16,7 +16,7 @@ export class GetFileDownloadUrlUseCase {
 
     const file = await this.filesRepository.findScopedFileById(fileId);
     if (!file) {
-      throw new FilesNotFoundException({ fileId });
+      throw new FilesNotFoundException();
     }
 
     return this.storageService.createDownloadUrl({

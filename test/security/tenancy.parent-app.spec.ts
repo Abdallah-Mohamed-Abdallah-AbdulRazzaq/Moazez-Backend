@@ -2911,9 +2911,14 @@ describe('Parent App Home/Children/Profile routes (security)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .redirects(0)
       .expect(403);
-    expect(genericDownload.body?.error?.code).toBe('auth.scope.missing');
-    expect(genericDownload.body?.error?.details?.missingPermissions).toEqual(
-      expect.arrayContaining(['files.downloads.view']),
+    const genericDownloadBody = genericDownload.body as {
+      error: { code: string; details?: Record<string, unknown> };
+    };
+
+    expect(genericDownloadBody.error.code).toBe('auth.scope.missing');
+    expect(genericDownloadBody.error.details).toBeUndefined();
+    expect(JSON.stringify(genericDownloadBody)).not.toContain(
+      ownedTaskProofFileAId,
     );
 
     const genericUpload = await request(app.getHttpServer())
