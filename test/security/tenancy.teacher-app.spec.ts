@@ -917,14 +917,14 @@ describe('Teacher App route permission metadata (security)', () => {
       );
     }
 
-    const discoveredRouteHandlers =
-      TEACHER_APP_CONTROLLER_CLASSES.flatMap((controller) =>
+    const discoveredRouteHandlers = TEACHER_APP_CONTROLLER_CLASSES.flatMap(
+      (controller) =>
         Object.getOwnPropertyNames(controller.prototype)
           .filter((method) => method !== 'constructor')
           .filter((method) => {
-            const handler = (
-              controller.prototype as Record<string, unknown>
-            )[method];
+            const handler = (controller.prototype as Record<string, unknown>)[
+              method
+            ];
 
             return (
               typeof handler === 'function' &&
@@ -932,7 +932,7 @@ describe('Teacher App route permission metadata (security)', () => {
             );
           })
           .map((method) => `${controller.name}.${method}`),
-      ).sort();
+    ).sort();
 
     expect(discoveredRouteHandlers).toHaveLength(111);
     expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(111);
@@ -941,14 +941,14 @@ describe('Teacher App route permission metadata (security)', () => {
       Array.from(expectedKnownHandlers).sort(),
     );
 
-    const undecoratedRouteHandlers =
-      TEACHER_APP_CONTROLLER_CLASSES.flatMap((controller) =>
+    const undecoratedRouteHandlers = TEACHER_APP_CONTROLLER_CLASSES.flatMap(
+      (controller) =>
         Object.getOwnPropertyNames(controller.prototype)
           .filter((method) => method !== 'constructor')
           .filter((method) => {
-            const handler = (
-              controller.prototype as Record<string, unknown>
-            )[method];
+            const handler = (controller.prototype as Record<string, unknown>)[
+              method
+            ];
 
             return (
               typeof handler === 'function' &&
@@ -957,7 +957,7 @@ describe('Teacher App route permission metadata (security)', () => {
             );
           })
           .map((method) => `${controller.name}.${method}`),
-      ).sort();
+    ).sort();
 
     expect(undecoratedRouteHandlers).toEqual([]);
   });
@@ -987,7 +987,7 @@ describe('Teacher App route permission metadata (security)', () => {
 });
 
 describe('Teacher role seed integrity (security)', () => {
-  it('keeps the TEACH-PERM-1A catalog and Teacher role target locked', () => {
+  it('keeps the post-1B catalog and Teacher role target locked', () => {
     const permissionsSeed = readFileSync(
       `${process.cwd()}/prisma/seeds/01-permissions.seed.ts`,
       'utf8',
@@ -1011,19 +1011,23 @@ describe('Teacher role seed integrity (security)', () => {
       'STUDENT_PERMISSIONS',
     );
 
-    expect(catalogCodes).toHaveLength(234);
+    expect(catalogCodes).toHaveLength(236);
     expect(catalogCodeSet.size).toBe(catalogCodes.length);
     expect(catalogCodes).toEqual(
       expect.arrayContaining(Array.from(TEACHER_PERM_1A_CATALOG_ADDITIONS)),
     );
     expect(catalogCodeSet.has('dashboard.todos.view')).toBe(true);
     expect(catalogCodeSet.has('dashboard.todos.manage')).toBe(true);
+    expect(catalogCodeSet.has('teachers.records.view')).toBe(true);
+    expect(catalogCodeSet.has('teachers.records.manage')).toBe(true);
 
     expect(teacherPermissions).toHaveLength(54);
     expect(new Set(teacherPermissions).size).toBe(teacherPermissions.length);
     expect(teacherPermissions).toEqual(Array.from(FINAL_TEACHER_PERMISSIONS));
     expect(teacherPermissions).not.toContain('dashboard.todos.view');
     expect(teacherPermissions).not.toContain('dashboard.todos.manage');
+    expect(teacherPermissions).not.toContain('teachers.records.view');
+    expect(teacherPermissions).not.toContain('teachers.records.manage');
 
     for (const forbiddenPermission of FORBIDDEN_TEACHER_PERMISSIONS) {
       expect(teacherPermissions).not.toContain(forbiddenPermission);
@@ -1031,12 +1035,12 @@ describe('Teacher role seed integrity (security)', () => {
     expect(
       teacherPermissions.some((code) => code.startsWith('dashboard.')),
     ).toBe(false);
-    expect(teacherPermissions.some((code) => code.startsWith('platform.'))).toBe(
-      false,
-    );
-    expect(teacherPermissions.some((code) => code.startsWith('settings.'))).toBe(
-      false,
-    );
+    expect(
+      teacherPermissions.some((code) => code.startsWith('platform.')),
+    ).toBe(false);
+    expect(
+      teacherPermissions.some((code) => code.startsWith('settings.')),
+    ).toBe(false);
     expect(
       teacherPermissions.some((code) => code.startsWith('admissions.')),
     ).toBe(false);

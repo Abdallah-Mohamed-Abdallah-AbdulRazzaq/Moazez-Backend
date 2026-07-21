@@ -442,11 +442,23 @@ function mapTransferError(error: unknown): never {
     error instanceof TeacherLifecycleMembershipInvariantError ||
     error instanceof TeacherLifecycleUserInvariantError ||
     error instanceof TeacherProfileLifecycleInvariantError ||
+    isPrismaUniqueConflict(error) ||
     isTeacherLifecycleSerializationConflict(error)
   ) {
     throw new TeacherTransferConflictException('transfer_concurrency_conflict');
   }
   throw error;
+}
+
+function isPrismaUniqueConflict(error: unknown): boolean {
+  return (
+    (error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002') ||
+    (typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2002')
+  );
 }
 
 function isTeacherCodeUniqueConflict(error: unknown): boolean {

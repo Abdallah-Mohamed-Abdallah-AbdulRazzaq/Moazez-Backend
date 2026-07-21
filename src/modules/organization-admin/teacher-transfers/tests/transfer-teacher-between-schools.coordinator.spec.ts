@@ -600,6 +600,44 @@ describe('TransferTeacherBetweenSchoolsCoordinator', () => {
     );
   });
 
+  it('maps raw-query PostgreSQL serialization failure without exposing database metadata', async () => {
+    const unitOfWork = {
+      execute: jest.fn().mockRejectedValue({
+        code: 'P2010',
+        meta: { code: '40001', message: 'not exposed' },
+      }),
+    } as unknown as TeacherLifecycleUnitOfWork;
+    const coordinator = new TransferTeacherBetweenSchoolsCoordinator(
+      unitOfWork,
+    );
+
+    await expect(executeWithScope(coordinator)).rejects.toEqual(
+      expect.objectContaining({
+        code: 'teachers.lifecycle.transfer_conflict',
+        details: { reasonCode: 'transfer_concurrency_conflict' },
+      }),
+    );
+  });
+
+  it('maps a concurrent destination uniqueness conflict to the stable concurrency reason', async () => {
+    const unitOfWork = {
+      execute: jest.fn().mockRejectedValue({
+        code: 'P2002',
+        meta: { target: ['school_id', 'user_id'] },
+      }),
+    } as unknown as TeacherLifecycleUnitOfWork;
+    const coordinator = new TransferTeacherBetweenSchoolsCoordinator(
+      unitOfWork,
+    );
+
+    await expect(executeWithScope(coordinator)).rejects.toEqual(
+      expect.objectContaining({
+        code: 'teachers.lifecycle.transfer_conflict',
+        details: { reasonCode: 'transfer_concurrency_conflict' },
+      }),
+    );
+  });
+
   it('returns no tenant, Membership, Role, Session, or allocation ids', async () => {
     const fixture = buildContext();
     const { coordinator } = coordinatorFor(fixture.context);

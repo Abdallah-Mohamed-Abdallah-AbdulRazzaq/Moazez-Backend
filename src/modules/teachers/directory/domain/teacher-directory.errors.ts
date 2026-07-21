@@ -76,6 +76,8 @@ export class TeacherRoleTransitionConflictException extends DomainException {
       | 'teacher_directory_provisioning_required'
       | 'teacher_promotion_requires_profile'
       | 'teacher_display_projection_managed'
+      | 'teacher_invite_managed_by_directory'
+      | 'legacy_reset_forbidden'
       | 'teacher_live_identity_exists'
       | 'teacher_operational_membership_exists'
       | 'teacher_membership_history_ambiguous'

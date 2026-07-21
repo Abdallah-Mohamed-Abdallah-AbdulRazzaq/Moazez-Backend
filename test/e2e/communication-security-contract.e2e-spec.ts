@@ -9,6 +9,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { JwtAuthGuard } from '../../src/common/guards/jwt-auth.guard';
+import { OrganizationScopeGuard } from '../../src/common/guards/organization-scope.guard';
 import { PermissionsGuard } from '../../src/common/guards/permissions.guard';
 import { ScopeResolverGuard } from '../../src/common/guards/scope-resolver.guard';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
@@ -216,6 +217,7 @@ describe('Communication security-contract route inventory (e2e)', () => {
     expect(globalGuardOrder).toEqual([
       JwtAuthGuard,
       ScopeResolverGuard,
+      OrganizationScopeGuard,
       PermissionsGuard,
     ]);
     expect(globalGuardOrder).not.toContain(CommunicationCoreAccessGuard);

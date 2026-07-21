@@ -640,34 +640,34 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
 
     expect(routes).toEqual(
       expect.arrayContaining([
-      'GET /api/v1/teacher/home',
-      'GET /api/v1/teacher/my-classes',
-      'GET /api/v1/teacher/classroom/:classId',
-      'GET /api/v1/teacher/classroom/:classId/roster',
-      'GET /api/v1/teacher/classroom/:classId/attendance/roster',
-      'GET /api/v1/teacher/classroom/:classId/attendance/today',
-      'POST /api/v1/teacher/classroom/:classId/attendance/session/resolve',
-      'GET /api/v1/teacher/classroom/:classId/grades/assessments',
-      'POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/review/finalize',
-      'GET /api/v1/teacher/homeworks/dashboard',
-      'POST /api/v1/teacher/homeworks/classes/:classId/assignments',
-      'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/grade-sync',
-      'GET /api/v1/teacher/tasks/dashboard',
-      'POST /api/v1/teacher/tasks',
-      'GET /api/v1/teacher/tasks/review-queue',
-      'GET /api/v1/teacher/xp/dashboard',
-      'GET /api/v1/teacher/messages/contacts',
-      'POST /api/v1/teacher/messages/conversations',
-      'POST /api/v1/teacher/messages/conversations/:conversationId/messages',
-      'GET /api/v1/teacher/notifications',
-      'POST /api/v1/teacher/notifications/read-all',
-      'GET /api/v1/teacher/announcements',
-      'POST /api/v1/teacher/announcements',
-      'GET /api/v1/teacher/profile',
-      'GET /api/v1/teacher/settings/about',
-      'GET /api/v1/teacher/schedule',
-      'GET /api/v1/teacher/calendar/events',
-      'GET /api/v1/teacher/lesson-preparation/today',
+        'GET /api/v1/teacher/home',
+        'GET /api/v1/teacher/my-classes',
+        'GET /api/v1/teacher/classroom/:classId',
+        'GET /api/v1/teacher/classroom/:classId/roster',
+        'GET /api/v1/teacher/classroom/:classId/attendance/roster',
+        'GET /api/v1/teacher/classroom/:classId/attendance/today',
+        'POST /api/v1/teacher/classroom/:classId/attendance/session/resolve',
+        'GET /api/v1/teacher/classroom/:classId/grades/assessments',
+        'POST /api/v1/teacher/classroom/:classId/assignments/:assignmentId/submissions/:submissionId/review/finalize',
+        'GET /api/v1/teacher/homeworks/dashboard',
+        'POST /api/v1/teacher/homeworks/classes/:classId/assignments',
+        'POST /api/v1/teacher/homeworks/classes/:classId/assignments/:homeworkId/grade-sync',
+        'GET /api/v1/teacher/tasks/dashboard',
+        'POST /api/v1/teacher/tasks',
+        'GET /api/v1/teacher/tasks/review-queue',
+        'GET /api/v1/teacher/xp/dashboard',
+        'GET /api/v1/teacher/messages/contacts',
+        'POST /api/v1/teacher/messages/conversations',
+        'POST /api/v1/teacher/messages/conversations/:conversationId/messages',
+        'GET /api/v1/teacher/notifications',
+        'POST /api/v1/teacher/notifications/read-all',
+        'GET /api/v1/teacher/announcements',
+        'POST /api/v1/teacher/announcements',
+        'GET /api/v1/teacher/profile',
+        'GET /api/v1/teacher/settings/about',
+        'GET /api/v1/teacher/schedule',
+        'GET /api/v1/teacher/calendar/events',
+        'GET /api/v1/teacher/lesson-preparation/today',
       ]),
     );
 
@@ -678,7 +678,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       decoratedPermissions.some((code) => code.startsWith('behavior.')),
     ).toBe(false);
     expect(
-      decoratedPermissions.some((code) => code.startsWith('reinforcement.hero.')),
+      decoratedPermissions.some((code) =>
+        code.startsWith('reinforcement.hero.'),
+      ),
     ).toBe(false);
     expect(
       decoratedPermissions.some((code) =>
@@ -698,7 +700,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
   });
 
   it('verifies the final Teacher role, catalog, Parent role, and Student role state', async () => {
-    expect(await prisma.permission.count()).toBe(234);
+    expect(await prisma.permission.count()).toBe(236);
     const dashboardTodoCatalogCodes = await prisma.permission.findMany({
       where: {
         code: {
@@ -727,18 +729,18 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     for (const forbiddenPermission of FORBIDDEN_TEACHER_PERMISSIONS) {
       expect(teacherPermissions).not.toContain(forbiddenPermission);
     }
-    expect(teacherPermissions.some((code) => code.startsWith('dashboard.'))).toBe(
-      false,
-    );
-    expect(teacherPermissions.some((code) => code.startsWith('platform.'))).toBe(
-      false,
-    );
-    expect(teacherPermissions.some((code) => code.startsWith('settings.'))).toBe(
-      false,
-    );
-    expect(teacherPermissions.some((code) => code.startsWith('admissions.'))).toBe(
-      false,
-    );
+    expect(
+      teacherPermissions.some((code) => code.startsWith('dashboard.')),
+    ).toBe(false);
+    expect(
+      teacherPermissions.some((code) => code.startsWith('platform.')),
+    ).toBe(false);
+    expect(
+      teacherPermissions.some((code) => code.startsWith('settings.')),
+    ).toBe(false);
+    expect(
+      teacherPermissions.some((code) => code.startsWith('admissions.')),
+    ).toBe(false);
 
     const parentPermissions = await getSystemRolePermissionCodes('parent');
     expect(parentPermissions).toHaveLength(46);
@@ -2234,7 +2236,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
 
     collectRoutes(stack, routes);
 
-    return routes.filter((route) => route.includes('/api/v1/teacher')).sort();
+    return routes
+      .filter((route) => / \/api\/v1\/teacher(?:\/|$)/u.test(route))
+      .sort();
   }
 
   function collectRoutes(layers: ExpressLayer[], routes: string[]): void {
