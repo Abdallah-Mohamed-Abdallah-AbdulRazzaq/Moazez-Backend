@@ -125,8 +125,11 @@ import { StudentScheduleReadAdapter } from './schedule/infrastructure/student-sc
 import { CompleteStudentHeroMissionUseCase } from './hero/application/complete-student-hero-mission.use-case';
 import { CompleteStudentHeroObjectiveUseCase } from './hero/application/complete-student-hero-objective.use-case';
 import { GetStudentSubjectUseCase } from './subjects/application/get-student-subject.use-case';
+import { ListStudentSubjectLessonsUseCase } from './subjects/application/list-student-subject-lessons.use-case';
 import { ListStudentSubjectsUseCase } from './subjects/application/list-student-subjects.use-case';
+import { StudentSubjectLessonsController } from './subjects/controller/student-subject-lessons.controller';
 import { StudentSubjectsController } from './subjects/controller/student-subjects.controller';
+import { StudentSubjectLessonsReadAdapter } from './subjects/infrastructure/student-subject-lessons-read.adapter';
 import { StudentSubjectsReadAdapter } from './subjects/infrastructure/student-subjects-read.adapter';
 import { StartStudentHeroMissionUseCase } from './hero/application/start-student-hero-mission.use-case';
 import { GetStudentTaskSubmissionUseCase } from './tasks/application/get-student-task-submission.use-case';
@@ -157,6 +160,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentHomeController,
     StudentProfileController,
     StudentSubjectsController,
+    StudentSubjectLessonsController,
     StudentGradesController,
     StudentExamsController,
     StudentBehaviorController,
@@ -191,6 +195,8 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentSubjectsReadAdapter,
     ListStudentSubjectsUseCase,
     GetStudentSubjectUseCase,
+    StudentSubjectLessonsReadAdapter,
+    ListStudentSubjectLessonsUseCase,
     StudentGradesReadAdapter,
     ListStudentGradesUseCase,
     GetStudentGradesSummaryUseCase,

@@ -8,6 +8,7 @@ import {
   LessonPlanStatus,
   MembershipStatus,
   OrganizationStatus,
+  type Prisma,
   PrismaClient,
   SchoolStatus,
   StudentEnrollmentStatus,
@@ -23,6 +24,7 @@ import {
 import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
+import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import { AppModule } from '../../src/app.module';
 
 const GLOBAL_PREFIX = '/api/v1';
@@ -81,6 +83,7 @@ describe('Student App lesson content workflows (e2e)', () => {
   let academic: AcademicContext;
   let fixture: LessonFixture;
   let otherClassroomFixture: LessonFixture;
+  let crossSchoolFixture: LessonFixture;
   let archivedPlanItemId = '';
   let archivedCurriculumItemId = '';
   let studentAuth: AuthTokens;
@@ -184,7 +187,7 @@ describe('Student App lesson content workflows (e2e)', () => {
       organizationId: crossOrganizationId,
       schoolId: crossSchoolId,
     });
-    await createLessonFixture({
+    crossSchoolFixture = await createLessonFixture({
       organizationId: crossOrganizationId,
       schoolId: crossSchoolId,
       academicYearId: crossAcademic.academicYearId,
@@ -196,7 +199,20 @@ describe('Student App lesson content workflows (e2e)', () => {
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(BullmqService)
+      .useValue({
+        createWorker: jest.fn().mockReturnValue({ on: jest.fn() }),
+        addJob: jest.fn().mockResolvedValue(undefined),
+        getQueue: jest.fn(),
+        getQueueReadiness: jest.fn().mockResolvedValue({
+          name: 'test',
+          status: 'ok',
+          counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+        }),
+        ping: jest.fn().mockResolvedValue(undefined),
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -231,6 +247,7 @@ describe('Student App lesson content workflows (e2e)', () => {
         'GET /api/v1/student/lessons/:lessonPlanItemId',
         'GET /api/v1/student/schedule',
         'GET /api/v1/student/subjects',
+        'GET /api/v1/student/subjects/:subjectId/lessons',
         'GET /api/v1/parent/children/:studentId/lessons/today',
         'GET /api/v1/parent/children/:studentId/lessons/week',
         'GET /api/v1/parent/children/:studentId/lessons/:lessonPlanItemId',
@@ -369,6 +386,790 @@ describe('Student App lesson content workflows (e2e)', () => {
     expect(JSON.stringify(subjects.body)).toContain(fixture.subjectId);
   });
 
+  /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Supertest exposes response bodies as any in these phase-1A HTTP contract assertions. */
+  it('discovers Subject lessons with the exact safe phase-1A response', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .set('Authorization', bearer(studentAuth))
+      .expect(200);
+
+    expect(response.body).toEqual({
+      items: [
+        {
+          lessonPlanItemId: fixture.lessonPlanItemId,
+          plannedDate: '2026-09-14',
+          status: 'planned',
+          title: expect.any(String),
+          unit: {
+            id: fixture.unitId,
+            title: expect.any(String),
+            sortOrder: 1,
+          },
+          lesson: {
+            id: fixture.lessonId,
+            title: expect.any(String),
+            sortOrder: 1,
+          },
+          period: {
+            id: expect.any(String),
+            label: 'Period 1',
+          },
+          contentSummary: {
+            totalCount: 2,
+            requiredCount: 1,
+            videoCount: 0,
+            fileCount: 1,
+            hasPlayableVideo: false,
+          },
+        },
+      ],
+      pageInfo: {
+        nextCursor: null,
+        hasNextPage: false,
+      },
+    });
+
+    for (const forbidden of [
+      'schoolId',
+      'organizationId',
+      'studentId',
+      'enrollmentId',
+      'academicYearId',
+      'termId',
+      'classroomId',
+      'lessonPlanId',
+      'curriculumId',
+      'teacherUserId',
+      'teacherSubjectAllocationId',
+      'bodyText',
+      'url',
+      'fileId',
+      'filename',
+      'mimeType',
+      'sizeBytes',
+      'bucket',
+      'objectKey',
+      'checksum',
+      'metadata',
+      'notes',
+      'createdBy',
+      'updatedBy',
+    ]) {
+      expectNoObjectKey(response.body, forbidden);
+    }
+  });
+
+  it('supports allocation-only eligibility and hides a Subject with neither branch', async () => {
+    const allocationOnlySubject = await prisma.subject.create({
+      data: {
+        schoolId,
+        nameAr: `${marker}-allocation-only-ar`,
+        nameEn: `${marker}-allocation-only`,
+        code: `${suffix}-AO`.toUpperCase(),
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    cleanup.subjectIds.add(allocationOnlySubject.id);
+    const allocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId,
+        teacherUserId,
+        subjectId: allocationOnlySubject.id,
+        classroomId: fixture.classroomId,
+        termId: academic.termId,
+      },
+      select: { id: true },
+    });
+    cleanup.allocationIds.add(allocation.id);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/student/subjects/${allocationOnlySubject.id}/lessons`,
+      )
+      .set('Authorization', bearer(studentAuth))
+      .expect(200)
+      .expect({
+        items: [],
+        pageInfo: { nextCursor: null, hasNextPage: false },
+      });
+
+    const ineligibleSubject = await prisma.subject.create({
+      data: {
+        schoolId,
+        nameAr: `${marker}-ineligible-ar`,
+        nameEn: `${marker}-ineligible`,
+        code: `${suffix}-NO`.toUpperCase(),
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    cleanup.subjectIds.add(ineligibleSubject.id);
+
+    const hidden = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${ineligibleSubject.id}/lessons`)
+      .set('Authorization', bearer(studentAuth))
+      .expect(404);
+    expect(hidden.body?.error).toMatchObject({
+      code: 'learning.subject_lessons.not_found',
+      message: 'Subject lessons not found or not accessible',
+    });
+    expect(hidden.body?.error?.details).toBeUndefined();
+    expect(JSON.stringify(hidden.body)).not.toContain(ineligibleSubject.id);
+  });
+
+  it('preserves visible-plan eligibility after its originating allocation is transferred', async () => {
+    const transferSubject = await prisma.subject.create({
+      data: {
+        schoolId,
+        nameAr: `${marker}-transferred-ar`,
+        nameEn: `${marker}-transferred`,
+        code: `${suffix}-TR`.toUpperCase(),
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    cleanup.subjectIds.add(transferSubject.id);
+    try {
+      await prisma.teacherSubjectAllocation.update({
+        where: { id: fixture.allocationId },
+        data: { subjectId: transferSubject.id },
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+        .set('Authorization', bearer(studentAuth))
+        .expect(200);
+
+      expect(response.body.items).toEqual([
+        expect.objectContaining({ lessonPlanItemId: fixture.lessonPlanItemId }),
+      ]);
+    } finally {
+      await prisma.teacherSubjectAllocation.update({
+        where: { id: fixture.allocationId },
+        data: { subjectId: fixture.subjectId },
+      });
+    }
+  });
+
+  it('lists plans from co-teachers without selecting one allocation or plan', async () => {
+    const teacherRole = await findSystemRole('teacher');
+    const secondTeacherId = await createUserWithMembership({
+      email: `${marker}-second-teacher@example.test`,
+      firstName: 'Second',
+      lastName: 'Teacher',
+      userType: UserType.TEACHER,
+      roleId: teacherRole.id,
+      organizationId,
+      schoolId,
+    });
+    const secondAllocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId,
+        teacherUserId: secondTeacherId,
+        subjectId: fixture.subjectId,
+        classroomId: fixture.classroomId,
+        termId: academic.termId,
+      },
+      select: { id: true },
+    });
+    cleanup.allocationIds.add(secondAllocation.id);
+    const secondPlan = await prisma.lessonPlan.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        teacherSubjectAllocationId: secondAllocation.id,
+        teacherUserId: secondTeacherId,
+        classroomId: fixture.classroomId,
+        subjectId: fixture.subjectId,
+        curriculumId: fixture.curriculumId,
+        title: `${marker}-co-teacher-plan`,
+        status: LessonPlanStatus.ACTIVE,
+        weekStartDate: new Date('2026-09-14T00:00:00.000Z'),
+        weekEndDate: new Date('2026-09-20T00:00:00.000Z'),
+        createdByUserId: secondTeacherId,
+      },
+      select: { id: true },
+    });
+    cleanup.lessonPlanIds.add(secondPlan.id);
+    const secondItem = await prisma.lessonPlanItem.create({
+      data: {
+        schoolId,
+        lessonPlanId: secondPlan.id,
+        curriculumId: fixture.curriculumId,
+        unitId: fixture.unitId,
+        lessonId: fixture.lessonId,
+        plannedDate: new Date('2026-09-15T00:00:00.000Z'),
+        title: `${marker}-co-teacher-item`,
+        status: LessonPlanItemStatus.IN_PROGRESS,
+        sortOrder: 2,
+        createdByUserId: secondTeacherId,
+      },
+      select: { id: true },
+    });
+    cleanup.lessonPlanItemIds.add(secondItem.id);
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .set('Authorization', bearer(studentAuth))
+      .expect(200);
+    expect(response.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          lessonPlanItemId: fixture.lessonPlanItemId,
+        }),
+        expect.objectContaining({ lessonPlanItemId: secondItem.id }),
+      ]),
+    );
+  });
+
+  it('enforces Term ranges and every status filter', async () => {
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .query({ from: '2026-09-14', to: '2026-09-14' })
+      .set('Authorization', bearer(studentAuth))
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.items).toEqual([
+          expect.objectContaining({
+            lessonPlanItemId: fixture.lessonPlanItemId,
+          }),
+        ]);
+      });
+
+    for (const query of [
+      { from: '2026-08-31' },
+      { to: '2027-01-01' },
+      { from: '2026-09-15', to: '2026-09-14' },
+      { from: '2026-02-31' },
+    ]) {
+      const response = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+        .query(query)
+        .set('Authorization', bearer(studentAuth))
+        .expect(400);
+      expect(response.body?.error?.code).toBe('validation.failed');
+    }
+
+    const statusCases = [
+      ['planned', LessonPlanItemStatus.PLANNED],
+      ['in_progress', LessonPlanItemStatus.IN_PROGRESS],
+      ['done', LessonPlanItemStatus.DONE],
+      ['skipped', LessonPlanItemStatus.SKIPPED],
+      ['rescheduled', LessonPlanItemStatus.RESCHEDULED],
+      ['cancelled', LessonPlanItemStatus.CANCELLED],
+    ] as const;
+    const additionalStatuses = await Promise.all(
+      statusCases.slice(2).map(async ([status, prismaStatus], index) => {
+        const item = await prisma.lessonPlanItem.create({
+          data: {
+            schoolId,
+            lessonPlanId: fixture.lessonPlanId,
+            curriculumId: fixture.curriculumId,
+            unitId: fixture.unitId,
+            lessonId: fixture.lessonId,
+            plannedDate: new Date('2026-09-20T00:00:00.000Z'),
+            title: `${marker}-status-${status}`,
+            status: prismaStatus,
+            sortOrder: 20 + index,
+            createdByUserId: teacherUserId,
+          },
+          select: { id: true },
+        });
+        cleanup.lessonPlanItemIds.add(item.id);
+        return item;
+      }),
+    );
+    expect(additionalStatuses).toHaveLength(4);
+
+    for (const [status] of statusCases) {
+      const response = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+        .query({ status })
+        .set('Authorization', bearer(studentAuth))
+        .expect(200);
+      expect(response.body.items.length).toBeGreaterThan(0);
+      expect(
+        response.body.items.every(
+          (item: { status: string }) => item.status === status,
+        ),
+      ).toBe(true);
+    }
+
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .query({ status: 'unknown' })
+      .set('Authorization', bearer(studentAuth))
+      .expect(400);
+    await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .query({ limit: 51 })
+      .set('Authorization', bearer(studentAuth))
+      .expect(400);
+  });
+
+  it('orders the complete PostgreSQL tuple and crosses numeric periods into null periods', async () => {
+    const periodTwoEntryId = await createAdditionalTimetableEntry({
+      sourceEntryId: fixture.timetableEntryId,
+      periodIndex: 2,
+      label: 'Period 2',
+    });
+    const ids = {
+      periodOne: '11000000-0000-4000-8000-000000000001',
+      periodTwo: '11000000-0000-4000-8000-000000000002',
+      periodTwoTieLow: '11000000-0000-4000-8000-000000000003',
+      periodTwoTieHigh: '11000000-0000-4000-8000-000000000004',
+      nullPeriod: '11000000-0000-4000-8000-000000000005',
+      laterDate: '11000000-0000-4000-8000-000000000006',
+    } as const;
+    const orderedIds = [
+      ids.periodOne,
+      ids.periodTwo,
+      ids.periodTwoTieLow,
+      ids.periodTwoTieHigh,
+      ids.nullPeriod,
+      ids.laterDate,
+    ];
+    await prisma.lessonPlanItem.createMany({
+      data: [
+        tupleItemData({
+          id: ids.periodOne,
+          title: `${marker}-tuple-period-1`,
+          plannedDate: '2026-10-05',
+          timetableEntryId: fixture.timetableEntryId,
+          sortOrder: 1,
+        }),
+        tupleItemData({
+          id: ids.periodTwo,
+          title: `${marker}-tuple-period-2`,
+          plannedDate: '2026-10-05',
+          timetableEntryId: periodTwoEntryId,
+          sortOrder: 1,
+        }),
+        tupleItemData({
+          id: ids.periodTwoTieLow,
+          title: `${marker}-tuple-period-2-tie-low`,
+          plannedDate: '2026-10-05',
+          timetableEntryId: periodTwoEntryId,
+          sortOrder: 2,
+        }),
+        tupleItemData({
+          id: ids.periodTwoTieHigh,
+          title: `${marker}-tuple-period-2-tie-high`,
+          plannedDate: '2026-10-05',
+          timetableEntryId: periodTwoEntryId,
+          sortOrder: 2,
+        }),
+        tupleItemData({
+          id: ids.nullPeriod,
+          title: `${marker}-tuple-null-period`,
+          plannedDate: '2026-10-05',
+          timetableEntryId: null,
+          sortOrder: 1,
+        }),
+        tupleItemData({
+          id: ids.laterDate,
+          title: `${marker}-tuple-later-date`,
+          plannedDate: '2026-10-06',
+          timetableEntryId: fixture.timetableEntryId,
+          sortOrder: 1,
+        }),
+      ],
+    });
+    for (const id of orderedIds) cleanup.lessonPlanItemIds.add(id);
+
+    const numericBoundaryPage = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .query({ from: '2026-10-05', to: '2026-10-06', limit: 4 })
+      .set('Authorization', bearer(studentAuth))
+      .expect(200);
+    expect(
+      numericBoundaryPage.body.items.map(
+        (item: { lessonPlanItemId: string }) => item.lessonPlanItemId,
+      ),
+    ).toEqual(orderedIds.slice(0, 4));
+    expect(numericBoundaryPage.body.items.at(-1)).toMatchObject({
+      lessonPlanItemId: ids.periodTwoTieHigh,
+      period: { id: expect.any(String), label: 'Period 2' },
+    });
+    const boundaryCursor = decodeOpaqueCursor(
+      numericBoundaryPage.body.pageInfo.nextCursor,
+    );
+    expect(boundaryCursor).toMatchObject({
+      plannedDate: '2026-10-05',
+      periodIndex: 2,
+      sortOrder: 2,
+      itemId: ids.periodTwoTieHigh,
+    });
+
+    const afterNumericBoundary = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .query({
+        from: '2026-10-05',
+        to: '2026-10-06',
+        limit: 4,
+        cursor: numericBoundaryPage.body.pageInfo.nextCursor,
+      })
+      .set('Authorization', bearer(studentAuth))
+      .expect(200);
+    expect(afterNumericBoundary.body.items[0]).toMatchObject({
+      lessonPlanItemId: ids.nullPeriod,
+      period: { id: null, label: null },
+    });
+    const boundaryIds = [
+      ...numericBoundaryPage.body.items,
+      ...afterNumericBoundary.body.items,
+    ].map((item: { lessonPlanItemId: string }) => item.lessonPlanItemId);
+    expect(boundaryIds).toEqual(orderedIds);
+    expect(new Set(boundaryIds).size).toBe(boundaryIds.length);
+
+    const pages: Array<{
+      body: {
+        items: Array<{ lessonPlanItemId: string }>;
+        pageInfo: { nextCursor: string | null; hasNextPage: boolean };
+      };
+    }> = [];
+    let cursor: string | undefined;
+    do {
+      const page = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+        .query({
+          from: '2026-10-05',
+          to: '2026-10-06',
+          limit: 2,
+          ...(cursor ? { cursor } : {}),
+        })
+        .set('Authorization', bearer(studentAuth))
+        .expect(200);
+      pages.push(page);
+      cursor = page.body.pageInfo.nextCursor ?? undefined;
+    } while (cursor);
+
+    expect(pages).toHaveLength(3);
+    const pagedIds = pages.flatMap((page) =>
+      page.body.items.map(
+        (item: { lessonPlanItemId: string }) => item.lessonPlanItemId,
+      ),
+    );
+    expect(pagedIds).toEqual(orderedIds);
+    expect(new Set(pagedIds).size).toBe(pagedIds.length);
+    const replay = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .query({
+        from: '2026-10-05',
+        to: '2026-10-06',
+        limit: 2,
+        cursor: pages[0].body.pageInfo.nextCursor,
+      })
+      .set('Authorization', bearer(studentAuth))
+      .expect(200);
+    expect(replay.body).toEqual(pages[1].body);
+  });
+
+  it('uses a mismatched timetable ordering period while keeping the response period context-safe', async () => {
+    const mismatchedId = '12000000-0000-4000-8000-000000000001';
+    const nullPeriodId = '12000000-0000-4000-8000-000000000002';
+    await prisma.lessonPlanItem.createMany({
+      data: [
+        tupleItemData({
+          id: mismatchedId,
+          title: `${marker}-mismatched-timetable`,
+          plannedDate: '2026-10-07',
+          timetableEntryId: otherClassroomFixture.timetableEntryId,
+          sortOrder: 1,
+        }),
+        tupleItemData({
+          id: nullPeriodId,
+          title: `${marker}-mismatched-following-null`,
+          plannedDate: '2026-10-07',
+          timetableEntryId: null,
+          sortOrder: 1,
+        }),
+      ],
+    });
+    cleanup.lessonPlanItemIds.add(mismatchedId);
+    cleanup.lessonPlanItemIds.add(nullPeriodId);
+
+    const first = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .query({ from: '2026-10-07', to: '2026-10-07', limit: 1 })
+      .set('Authorization', bearer(studentAuth))
+      .expect(200);
+    expect(first.body.items).toEqual([
+      expect.objectContaining({
+        lessonPlanItemId: mismatchedId,
+        period: { id: null, label: null },
+      }),
+    ]);
+    expect(decodeOpaqueCursor(first.body.pageInfo.nextCursor)).toMatchObject({
+      periodIndex: 1,
+      itemId: mismatchedId,
+    });
+
+    const second = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .query({
+        from: '2026-10-07',
+        to: '2026-10-07',
+        limit: 1,
+        cursor: first.body.pageInfo.nextCursor,
+      })
+      .set('Authorization', bearer(studentAuth))
+      .expect(200);
+    expect(second.body.items).toEqual([
+      expect.objectContaining({
+        lessonPlanItemId: nullPeriodId,
+        period: { id: null, label: null },
+      }),
+    ]);
+    const ids = [...first.body.items, ...second.body.items].map(
+      (item: { lessonPlanItemId: string }) => item.lessonPlanItemId,
+    );
+    expect(ids).toEqual([mismatchedId, nullPeriodId]);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('rejects every hidden Subject, plan, and Curriculum eligibility state through PostgreSQL', async () => {
+    const otherAcademic = await createAcademicContext(schoolId, 'matrix');
+    const cases = [
+      {
+        label: 'foreign School Subject',
+        subjectId: crossSchoolFixture.subjectId,
+      },
+      {
+        label: 'inactive Subject',
+        subjectId: await createEligibilityMatrixSubject({
+          label: 'inactive-subject',
+          subjectIsActive: false,
+          matchingAllocation: true,
+        }),
+      },
+      {
+        label: 'deleted Subject',
+        subjectId: await createEligibilityMatrixSubject({
+          label: 'deleted-subject',
+          subjectDeletedAt: new Date(),
+          matchingAllocation: true,
+        }),
+      },
+      {
+        label: 'plan for another classroom',
+        subjectId: await createEligibilityMatrixSubject({
+          label: 'other-classroom-plan',
+          planClassroomId: otherClassroomFixture.classroomId,
+        }),
+      },
+      {
+        label: 'plan for another Term',
+        subjectId: await createEligibilityMatrixSubject({
+          label: 'other-term-plan',
+          planTermId: otherAcademic.termId,
+        }),
+      },
+      {
+        label: 'plan for another academic year',
+        subjectId: await createEligibilityMatrixSubject({
+          label: 'other-year-plan',
+          planAcademicYearId: otherAcademic.academicYearId,
+        }),
+      },
+      {
+        label: 'DRAFT plan',
+        subjectId: await createEligibilityMatrixSubject({
+          label: 'draft-plan',
+          planStatus: LessonPlanStatus.DRAFT,
+        }),
+      },
+      {
+        label: 'ARCHIVED plan',
+        subjectId: await createEligibilityMatrixSubject({
+          label: 'archived-plan-matrix',
+          planStatus: LessonPlanStatus.ARCHIVED,
+        }),
+      },
+      {
+        label: 'deleted plan',
+        subjectId: await createEligibilityMatrixSubject({
+          label: 'deleted-plan',
+          planDeletedAt: new Date(),
+        }),
+      },
+      {
+        label: 'DRAFT Curriculum',
+        subjectId: await createEligibilityMatrixSubject({
+          label: 'draft-curriculum',
+          curriculumStatus: CurriculumStatus.DRAFT,
+        }),
+      },
+      {
+        label: 'ARCHIVED Curriculum',
+        subjectId: await createEligibilityMatrixSubject({
+          label: 'archived-curriculum-matrix',
+          curriculumStatus: CurriculumStatus.ARCHIVED,
+        }),
+      },
+      {
+        label: 'deleted Curriculum',
+        subjectId: await createEligibilityMatrixSubject({
+          label: 'deleted-curriculum',
+          curriculumDeletedAt: new Date(),
+        }),
+      },
+    ];
+
+    for (const matrixCase of cases) {
+      const response = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/student/subjects/${matrixCase.subjectId}/lessons`,
+        )
+        .set('Authorization', bearer(studentAuth))
+        .expect(404);
+      expect(response.body?.error?.code).toBe(
+        'learning.subject_lessons.not_found',
+      );
+      expect(response.body?.error?.details).toBeUndefined();
+      expect(JSON.stringify(response.body)).not.toContain(matrixCase.subjectId);
+    }
+    expect(cases.map((matrixCase) => matrixCase.label)).toHaveLength(12);
+  });
+
+  it('omits deleted unit, lesson, item, and null-date rows from an otherwise eligible Subject', async () => {
+    const omission = await createInvalidItemOmissionFixture();
+
+    const response = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${omission.subjectId}/lessons`)
+      .query({ from: '2026-11-10', to: '2026-11-10' })
+      .set('Authorization', bearer(studentAuth))
+      .expect(200);
+
+    expect(response.body).toEqual({
+      items: [],
+      pageInfo: { nextCursor: null, hasNextPage: false },
+    });
+    for (const itemId of omission.itemIds) {
+      expect(JSON.stringify(response.body)).not.toContain(itemId);
+    }
+    expect(omission.itemIds).toHaveLength(4);
+  });
+
+  it('orders and cursor-paginates more than 50 rows with no duplicate, skip, or null date', async () => {
+    const statuses = Object.values(LessonPlanItemStatus);
+    await prisma.lessonPlanItem.createMany({
+      data: Array.from({ length: 55 }, (_, index) => ({
+        schoolId,
+        lessonPlanId: fixture.lessonPlanId,
+        curriculumId: fixture.curriculumId,
+        unitId: fixture.unitId,
+        lessonId: fixture.lessonId,
+        plannedDate: new Date(
+          index < 30 ? '2026-09-14T00:00:00.000Z' : '2026-09-16T00:00:00.000Z',
+        ),
+        title: `${marker}-pagination-${index}`,
+        status: statuses[index % statuses.length],
+        sortOrder: 10,
+        createdByUserId: teacherUserId,
+      })),
+    });
+    const created = await prisma.lessonPlanItem.findMany({
+      where: {
+        lessonPlanId: fixture.lessonPlanId,
+        title: { startsWith: `${marker}-pagination-` },
+      },
+      select: { id: true, title: true, plannedDate: true },
+    });
+    for (const item of created) cleanup.lessonPlanItemIds.add(item.id);
+
+    const nullDate = await prisma.lessonPlanItem.create({
+      data: {
+        schoolId,
+        lessonPlanId: fixture.lessonPlanId,
+        curriculumId: fixture.curriculumId,
+        unitId: fixture.unitId,
+        lessonId: fixture.lessonId,
+        plannedDate: null,
+        title: `${marker}-null-date`,
+        status: LessonPlanItemStatus.PLANNED,
+        sortOrder: 0,
+        createdByUserId: teacherUserId,
+      },
+      select: { id: true },
+    });
+    cleanup.lessonPlanItemIds.add(nullDate.id);
+
+    const first = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .query({ limit: 50 })
+      .set('Authorization', bearer(studentAuth))
+      .expect(200);
+    expect(first.body.items).toHaveLength(50);
+    expect(first.body.items[0].lessonPlanItemId).toBe(fixture.lessonPlanItemId);
+    expect(first.body.pageInfo).toEqual({
+      nextCursor: expect.any(String),
+      hasNextPage: true,
+    });
+    const cursorPayload = JSON.parse(
+      Buffer.from(first.body.pageInfo.nextCursor, 'base64url').toString('utf8'),
+    ) as {
+      plannedDate: string;
+      periodIndex: number | null;
+      sortOrder: number;
+      itemId: string;
+    };
+    expect(cursorPayload.periodIndex).toBeNull();
+    const directContinuation = await prisma.lessonPlanItem.findMany({
+      where: {
+        lessonPlanId: fixture.lessonPlanId,
+        plannedDate: new Date(`${cursorPayload.plannedDate}T00:00:00.000Z`),
+        timetableEntryId: null,
+        sortOrder: cursorPayload.sortOrder,
+        id: { gt: cursorPayload.itemId },
+      },
+      orderBy: { id: 'asc' },
+      select: { id: true },
+    });
+    expect(directContinuation.length).toBeGreaterThan(0);
+
+    const second = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .query({ limit: 50, cursor: first.body.pageInfo.nextCursor })
+      .set('Authorization', bearer(studentAuth))
+      .expect(200);
+    const replay = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .query({ limit: 50, cursor: first.body.pageInfo.nextCursor })
+      .set('Authorization', bearer(studentAuth))
+      .expect(200);
+    expect(replay.body).toEqual(second.body);
+    expect(second.body.pageInfo).toEqual({
+      nextCursor: null,
+      hasNextPage: false,
+    });
+
+    const ids = [...first.body.items, ...second.body.items].map(
+      (item: { lessonPlanItemId: string }) => item.lessonPlanItemId,
+    );
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(
+      created
+        .filter((item) => !ids.includes(item.id))
+        .map((item) => ({ title: item.title, plannedDate: item.plannedDate })),
+    ).toEqual([]);
+    expect(ids).not.toContain(nullDate.id);
+
+    const mismatchedCursor = await request(app.getHttpServer())
+      .get(`${GLOBAL_PREFIX}/student/subjects/${fixture.subjectId}/lessons`)
+      .query({
+        from: '2026-09-14',
+        cursor: first.body.pageInfo.nextCursor,
+      })
+      .set('Authorization', bearer(studentAuth))
+      .expect(400);
+    expect(mismatchedCursor.body?.error?.code).toBe('validation.failed');
+    expect(mismatchedCursor.body?.error?.details).toEqual({ field: 'cursor' });
+  });
+  /* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
+
   async function findSystemRole(key: string) {
     const role = await prisma.role.findFirst({
       where: { key, schoolId: null, isSystem: true },
@@ -446,15 +1247,16 @@ describe('Student App lesson content workflows (e2e)', () => {
 
   async function createAcademicContext(
     schoolIdForContext: string,
+    contextLabel = 'primary',
   ): Promise<AcademicContext> {
     const academicYear = await prisma.academicYear.create({
       data: {
         schoolId: schoolIdForContext,
-        nameAr: `${marker}-${schoolIdForContext}-year-ar`,
-        nameEn: `${marker}-${schoolIdForContext}-year`,
+        nameAr: `${marker}-${schoolIdForContext}-${contextLabel}-year-ar`,
+        nameEn: `${marker}-${schoolIdForContext}-${contextLabel}-year`,
         startDate: new Date('2026-09-01T00:00:00.000Z'),
         endDate: new Date('2027-06-30T00:00:00.000Z'),
-        isActive: true,
+        isActive: contextLabel === 'primary',
       },
       select: { id: true },
     });
@@ -464,11 +1266,11 @@ describe('Student App lesson content workflows (e2e)', () => {
       data: {
         schoolId: schoolIdForContext,
         academicYearId: academicYear.id,
-        nameAr: `${marker}-${schoolIdForContext}-term-ar`,
-        nameEn: `${marker}-${schoolIdForContext}-term`,
+        nameAr: `${marker}-${schoolIdForContext}-${contextLabel}-term-ar`,
+        nameEn: `${marker}-${schoolIdForContext}-${contextLabel}-term`,
         startDate: new Date('2026-09-01T00:00:00.000Z'),
         endDate: new Date('2026-12-31T00:00:00.000Z'),
-        isActive: true,
+        isActive: contextLabel === 'primary',
       },
       select: { id: true },
     });
@@ -974,6 +1776,377 @@ describe('Student App lesson content workflows (e2e)', () => {
     });
     cleanup.lessonPlanItemIds.add(item.id);
     return item.id;
+  }
+
+  function tupleItemData(params: {
+    id: string;
+    title: string;
+    plannedDate: string;
+    timetableEntryId: string | null;
+    sortOrder: number;
+  }): Prisma.LessonPlanItemCreateManyInput {
+    return {
+      id: params.id,
+      schoolId,
+      lessonPlanId: fixture.lessonPlanId,
+      curriculumId: fixture.curriculumId,
+      unitId: fixture.unitId,
+      lessonId: fixture.lessonId,
+      timetableEntryId: params.timetableEntryId,
+      plannedDate: new Date(`${params.plannedDate}T00:00:00.000Z`),
+      title: params.title,
+      status: LessonPlanItemStatus.PLANNED,
+      sortOrder: params.sortOrder,
+      createdByUserId: teacherUserId,
+    };
+  }
+
+  async function createAdditionalTimetableEntry(params: {
+    sourceEntryId: string;
+    periodIndex: number;
+    label: string;
+  }): Promise<string> {
+    const source = await prisma.timetableEntry.findUniqueOrThrow({
+      where: { id: params.sourceEntryId },
+      select: {
+        schoolId: true,
+        academicYearId: true,
+        termId: true,
+        timetableConfigId: true,
+        dayOfWeek: true,
+        gradeId: true,
+        sectionId: true,
+        classroomId: true,
+        subjectId: true,
+        teacherUserId: true,
+        teacherSubjectAllocationId: true,
+        roomId: true,
+      },
+    });
+    const period = await prisma.timetablePeriod.create({
+      data: {
+        schoolId: source.schoolId,
+        timetableConfigId: source.timetableConfigId,
+        periodIndex: params.periodIndex,
+        label: params.label,
+        startTime: '09:00',
+        endTime: '09:45',
+        type: TimetablePeriodType.CLASS,
+        isInstructional: true,
+      },
+      select: { id: true },
+    });
+    cleanup.timetablePeriodIds.add(period.id);
+    const entry = await prisma.timetableEntry.create({
+      data: {
+        ...source,
+        periodId: period.id,
+        status: TimetableEntryStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    cleanup.timetableEntryIds.add(entry.id);
+    return entry.id;
+  }
+
+  async function createEligibilityMatrixSubject(params: {
+    label: string;
+    subjectIsActive?: boolean;
+    subjectDeletedAt?: Date;
+    matchingAllocation?: boolean;
+    planClassroomId?: string;
+    planAcademicYearId?: string;
+    planTermId?: string;
+    planStatus?: LessonPlanStatus;
+    planDeletedAt?: Date;
+    curriculumStatus?: CurriculumStatus;
+    curriculumDeletedAt?: Date;
+  }): Promise<string> {
+    const classroom = await prisma.classroom.findUniqueOrThrow({
+      where: { id: fixture.classroomId },
+      select: { section: { select: { gradeId: true } } },
+    });
+    const subject = await prisma.subject.create({
+      data: {
+        schoolId,
+        nameAr: `${marker}-${params.label}-subject-ar`,
+        nameEn: `${marker}-${params.label}-subject`,
+        code: `${suffix}-T-${params.label}`.slice(0, 30).toUpperCase(),
+        isActive: params.subjectIsActive ?? true,
+        deletedAt: params.subjectDeletedAt,
+      },
+      select: { id: true },
+    });
+    cleanup.subjectIds.add(subject.id);
+
+    let allocationSubjectId = subject.id;
+    if (!params.matchingAllocation) {
+      const placeholder = await prisma.subject.create({
+        data: {
+          schoolId,
+          nameAr: `${marker}-${params.label}-placeholder-ar`,
+          nameEn: `${marker}-${params.label}-placeholder`,
+          code: `${suffix}-P-${params.label}`.slice(0, 30).toUpperCase(),
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      cleanup.subjectIds.add(placeholder.id);
+      allocationSubjectId = placeholder.id;
+    }
+
+    const allocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId,
+        teacherUserId,
+        subjectId: allocationSubjectId,
+        classroomId: fixture.classroomId,
+        termId: academic.termId,
+      },
+      select: { id: true },
+    });
+    cleanup.allocationIds.add(allocation.id);
+
+    const planAcademicYearId =
+      params.planAcademicYearId ?? academic.academicYearId;
+    const planTermId = params.planTermId ?? academic.termId;
+    const curriculum = await prisma.curriculum.create({
+      data: {
+        schoolId,
+        academicYearId: planAcademicYearId,
+        termId: planTermId,
+        gradeId: classroom.section.gradeId,
+        subjectId: subject.id,
+        title: `${marker}-${params.label}-curriculum`,
+        status: params.curriculumStatus ?? CurriculumStatus.ACTIVE,
+        deletedAt: params.curriculumDeletedAt,
+        createdByUserId: teacherUserId,
+      },
+      select: { id: true },
+    });
+    cleanup.curriculumIds.add(curriculum.id);
+
+    const plan = await prisma.lessonPlan.create({
+      data: {
+        schoolId,
+        academicYearId: planAcademicYearId,
+        termId: planTermId,
+        teacherSubjectAllocationId: allocation.id,
+        teacherUserId,
+        classroomId: params.planClassroomId ?? fixture.classroomId,
+        subjectId: subject.id,
+        curriculumId: curriculum.id,
+        title: `${marker}-${params.label}-plan`,
+        status: params.planStatus ?? LessonPlanStatus.ACTIVE,
+        weekStartDate: new Date('2026-10-05T00:00:00.000Z'),
+        weekEndDate: new Date('2026-10-11T00:00:00.000Z'),
+        deletedAt: params.planDeletedAt,
+        createdByUserId: teacherUserId,
+      },
+      select: { id: true },
+    });
+    cleanup.lessonPlanIds.add(plan.id);
+    return subject.id;
+  }
+
+  async function createInvalidItemOmissionFixture(): Promise<{
+    subjectId: string;
+    itemIds: string[];
+  }> {
+    const classroom = await prisma.classroom.findUniqueOrThrow({
+      where: { id: fixture.classroomId },
+      select: { section: { select: { gradeId: true } } },
+    });
+    const subject = await prisma.subject.create({
+      data: {
+        schoolId,
+        nameAr: `${marker}-omission-subject-ar`,
+        nameEn: `${marker}-omission-subject`,
+        code: `${suffix}-OMISSION`.slice(0, 30).toUpperCase(),
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    cleanup.subjectIds.add(subject.id);
+    const allocationSubject = await prisma.subject.create({
+      data: {
+        schoolId,
+        nameAr: `${marker}-omission-allocation-subject-ar`,
+        nameEn: `${marker}-omission-allocation-subject`,
+        code: `${suffix}-OMISSION-ALLOCATION`.slice(0, 30).toUpperCase(),
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    cleanup.subjectIds.add(allocationSubject.id);
+    const allocation = await prisma.teacherSubjectAllocation.create({
+      data: {
+        schoolId,
+        teacherUserId,
+        subjectId: allocationSubject.id,
+        classroomId: fixture.classroomId,
+        termId: academic.termId,
+      },
+      select: { id: true },
+    });
+    cleanup.allocationIds.add(allocation.id);
+    const curriculum = await prisma.curriculum.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        gradeId: classroom.section.gradeId,
+        subjectId: subject.id,
+        title: `${marker}-omission-curriculum`,
+        status: CurriculumStatus.ACTIVE,
+        createdByUserId: teacherUserId,
+      },
+      select: { id: true },
+    });
+    cleanup.curriculumIds.add(curriculum.id);
+    const [deletedUnit, activeUnit] = await Promise.all([
+      prisma.curriculumUnit.create({
+        data: {
+          schoolId,
+          curriculumId: curriculum.id,
+          title: `${marker}-omission-deleted-unit`,
+          sortOrder: 1,
+          deletedAt: new Date(),
+        },
+        select: { id: true },
+      }),
+      prisma.curriculumUnit.create({
+        data: {
+          schoolId,
+          curriculumId: curriculum.id,
+          title: `${marker}-omission-active-unit`,
+          sortOrder: 2,
+        },
+        select: { id: true },
+      }),
+    ]);
+    cleanup.curriculumUnitIds.add(deletedUnit.id);
+    cleanup.curriculumUnitIds.add(activeUnit.id);
+    const [deletedUnitLesson, deletedLesson, activeLesson] = await Promise.all([
+      prisma.curriculumLesson.create({
+        data: {
+          schoolId,
+          curriculumId: curriculum.id,
+          unitId: deletedUnit.id,
+          title: `${marker}-omission-deleted-unit-lesson`,
+          sortOrder: 1,
+        },
+        select: { id: true },
+      }),
+      prisma.curriculumLesson.create({
+        data: {
+          schoolId,
+          curriculumId: curriculum.id,
+          unitId: activeUnit.id,
+          title: `${marker}-omission-deleted-lesson`,
+          sortOrder: 2,
+          deletedAt: new Date(),
+        },
+        select: { id: true },
+      }),
+      prisma.curriculumLesson.create({
+        data: {
+          schoolId,
+          curriculumId: curriculum.id,
+          unitId: activeUnit.id,
+          title: `${marker}-omission-active-lesson`,
+          sortOrder: 3,
+        },
+        select: { id: true },
+      }),
+    ]);
+    for (const lesson of [deletedUnitLesson, deletedLesson, activeLesson]) {
+      cleanup.curriculumLessonIds.add(lesson.id);
+    }
+    const plan = await prisma.lessonPlan.create({
+      data: {
+        schoolId,
+        academicYearId: academic.academicYearId,
+        termId: academic.termId,
+        teacherSubjectAllocationId: allocation.id,
+        teacherUserId,
+        classroomId: fixture.classroomId,
+        subjectId: subject.id,
+        curriculumId: curriculum.id,
+        title: `${marker}-omission-plan`,
+        status: LessonPlanStatus.ACTIVE,
+        weekStartDate: new Date('2026-11-09T00:00:00.000Z'),
+        weekEndDate: new Date('2026-11-15T00:00:00.000Z'),
+        createdByUserId: teacherUserId,
+      },
+      select: { id: true },
+    });
+    cleanup.lessonPlanIds.add(plan.id);
+    const itemIds = [
+      '13000000-0000-4000-8000-000000000001',
+      '13000000-0000-4000-8000-000000000002',
+      '13000000-0000-4000-8000-000000000003',
+      '13000000-0000-4000-8000-000000000004',
+    ];
+    const common = {
+      schoolId,
+      lessonPlanId: plan.id,
+      curriculumId: curriculum.id,
+      status: LessonPlanItemStatus.PLANNED,
+      createdByUserId: teacherUserId,
+    };
+    await prisma.lessonPlanItem.createMany({
+      data: [
+        {
+          ...common,
+          id: itemIds[0],
+          unitId: deletedUnit.id,
+          lessonId: deletedUnitLesson.id,
+          title: `${marker}-omission-deleted-unit-item`,
+          plannedDate: new Date('2026-11-10T00:00:00.000Z'),
+          sortOrder: 1,
+        },
+        {
+          ...common,
+          id: itemIds[1],
+          unitId: activeUnit.id,
+          lessonId: deletedLesson.id,
+          title: `${marker}-omission-deleted-lesson-item`,
+          plannedDate: new Date('2026-11-10T00:00:00.000Z'),
+          sortOrder: 2,
+        },
+        {
+          ...common,
+          id: itemIds[2],
+          unitId: activeUnit.id,
+          lessonId: activeLesson.id,
+          title: `${marker}-omission-deleted-item`,
+          plannedDate: new Date('2026-11-10T00:00:00.000Z'),
+          sortOrder: 3,
+          deletedAt: new Date(),
+        },
+        {
+          ...common,
+          id: itemIds[3],
+          unitId: activeUnit.id,
+          lessonId: activeLesson.id,
+          title: `${marker}-omission-null-date-item`,
+          plannedDate: null,
+          sortOrder: 4,
+        },
+      ],
+    });
+    for (const id of itemIds) cleanup.lessonPlanItemIds.add(id);
+    return { subjectId: subject.id, itemIds };
+  }
+
+  function decodeOpaqueCursor(cursor: unknown): Record<string, unknown> {
+    if (typeof cursor !== 'string') {
+      throw new Error('Expected an opaque cursor string');
+    }
+    return JSON.parse(
+      Buffer.from(cursor, 'base64url').toString('utf8'),
+    ) as Record<string, unknown>;
   }
 
   async function login(email: string): Promise<AuthTokens> {

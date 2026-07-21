@@ -87,6 +87,7 @@ import { StudentProfileController } from '../../src/modules/student-app/profile/
 import { StudentProgressController } from '../../src/modules/student-app/progress/controller/student-progress.controller';
 import { StudentRewardsController } from '../../src/modules/student-app/rewards/controller/student-rewards.controller';
 import { StudentScheduleController } from '../../src/modules/student-app/schedule/controller/student-schedule.controller';
+import { StudentSubjectLessonsController } from '../../src/modules/student-app/subjects/controller/student-subject-lessons.controller';
 import { StudentSubjectsController } from '../../src/modules/student-app/subjects/controller/student-subjects.controller';
 import { StudentTasksController } from '../../src/modules/student-app/tasks/controller/student-tasks.controller';
 import type {
@@ -164,6 +165,11 @@ const STUDENT_APP_READ_PERMISSION_CASES: StudentAppReadPermissionCase[] = [
     controller: StudentSubjectsController,
     method: 'getSubject',
     permissions: ['academics.subjects.view'],
+  },
+  {
+    controller: StudentSubjectLessonsController,
+    method: 'listLessons',
+    permissions: ['academics.subjects.view', 'academics.lesson_plans.view'],
   },
   {
     controller: StudentGradesController,
@@ -630,6 +636,7 @@ const STUDENT_APP_CONTROLLER_CLASSES = [
   StudentHomeController,
   StudentProfileController,
   StudentSubjectsController,
+  StudentSubjectLessonsController,
   StudentGradesController,
   StudentExamsController,
   StudentBehaviorController,
@@ -668,7 +675,7 @@ const STUDENT_APP_ROUTE_PERMISSION_CASES: StudentAppRoutePermissionCase[] = [
 
 describe('Student App read-only route permission metadata (security)', () => {
   it('declares the STU-PERM-1B read-only permission inventory', () => {
-    expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(63);
+    expect(STUDENT_APP_READ_PERMISSION_CASES).toHaveLength(64);
 
     for (const entry of STUDENT_APP_READ_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
@@ -742,7 +749,7 @@ describe('Student App read-only route permission metadata (security)', () => {
   });
 
   it('declares the final STU-PERM route permission inventory for every Student App handler', () => {
-    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(96);
+    expect(STUDENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(97);
 
     const expectedByHandler = new Map<string, StudentAppRoutePermissionCase>();
     for (const entry of STUDENT_APP_ROUTE_PERMISSION_CASES) {
@@ -1678,6 +1685,7 @@ describe('Student App Home/Profile routes (security)', () => {
         'student/profile',
         'student/profile/correction-requests',
         'student/subjects',
+        `student/subjects/${placeholderId}/lessons`,
         'student/grades',
         'student/exams',
         `student/exams/${ownAssessmentId}/submission`,
