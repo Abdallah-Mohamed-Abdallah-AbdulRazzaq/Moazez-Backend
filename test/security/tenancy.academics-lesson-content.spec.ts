@@ -16,6 +16,7 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'Sprint15CSecurity123!';
@@ -59,7 +60,6 @@ describe('Academics lesson content tenancy isolation (security)', () => {
   let schoolBId = '';
   let adminAUserId = '';
   let adminBUserId = '';
-  let viewerUserId = '';
   let adminAEmail = '';
   let adminBEmail = '';
   let viewerEmail = '';
@@ -73,6 +73,10 @@ describe('Academics lesson content tenancy isolation (security)', () => {
   let adminAAuth: AuthTokens;
   let adminBAuth: AuthTokens;
   let viewerAuth: AuthTokens;
+  let organizationManagerAuth: AuthTokens;
+  let customSchoolManagerAuth: AuthTokens;
+  let customOrganizationManagerAuth: AuthTokens;
+  let blockedActorAuths: AuthTokens[] = [];
 
   const suffix = randomUUID().split('-')[0];
   const marker = `s15c-sec-${suffix}`;
@@ -86,15 +90,23 @@ describe('Academics lesson content tenancy isolation (security)', () => {
     prisma = new PrismaClient();
     await prisma.$connect();
 
-    const [schoolAdminRole, curriculumViewPermission] = await Promise.all([
+    const [
+      schoolAdminRole,
+      curriculumViewPermission,
+      curriculumManagePermission,
+    ] = await Promise.all([
       findSystemRole('school_admin'),
       prisma.permission.findUnique({
         where: { code: 'academics.curriculum.view' },
         select: { id: true },
       }),
+      prisma.permission.findUnique({
+        where: { code: 'academics.curriculum.manage' },
+        select: { id: true },
+      }),
     ]);
-    if (!curriculumViewPermission) {
-      throw new Error('Missing academics.curriculum.view permission.');
+    if (!curriculumViewPermission || !curriculumManagePermission) {
+      throw new Error('Missing Curriculum permissions.');
     }
 
     organizationAId = await createOrganization('a');
@@ -105,6 +117,9 @@ describe('Academics lesson content tenancy isolation (security)', () => {
     academicB = await createAcademicBase(schoolBId, 'b');
 
     viewerRoleId = await createViewerRole(curriculumViewPermission.id);
+    const customManagementRoleId = await createManagementRole(
+      curriculumManagePermission.id,
+    );
 
     adminAEmail = `${marker}-admin-a@example.test`;
     adminBEmail = `${marker}-admin-b@example.test`;
@@ -127,7 +142,7 @@ describe('Academics lesson content tenancy isolation (security)', () => {
       organizationId: organizationBId,
       schoolId: schoolBId,
     });
-    viewerUserId = await createUserWithMembership({
+    await createUserWithMembership({
       email: viewerEmail,
       firstName: 'View',
       lastName: 'Only',
@@ -136,6 +151,71 @@ describe('Academics lesson content tenancy isolation (security)', () => {
       organizationId: organizationAId,
       schoolId: schoolAId,
     });
+    const actorEmails = {
+      organizationManager: `${marker}-organization-manager@example.test`,
+      customSchoolManager: `${marker}-custom-school-manager@example.test`,
+      customOrganizationManager: `${marker}-custom-organization-manager@example.test`,
+      teacher: `${marker}-teacher@example.test`,
+      student: `${marker}-student@example.test`,
+      parent: `${marker}-parent@example.test`,
+      applicant: `${marker}-applicant@example.test`,
+      platform: `${marker}-platform@example.test`,
+    };
+    await createUserWithMembership({
+      email: actorEmails.organizationManager,
+      firstName: 'Organization',
+      lastName: 'Manager',
+      userType: UserType.ORGANIZATION_USER,
+      roleId: schoolAdminRole.id,
+      organizationId: organizationAId,
+      schoolId: schoolAId,
+    });
+    await createUserWithMembership({
+      email: actorEmails.customSchoolManager,
+      firstName: 'Custom School',
+      lastName: 'Manager',
+      userType: UserType.SCHOOL_USER,
+      roleId: customManagementRoleId,
+      organizationId: organizationAId,
+      schoolId: schoolAId,
+    });
+    await createUserWithMembership({
+      email: actorEmails.customOrganizationManager,
+      firstName: 'Custom Organization',
+      lastName: 'Manager',
+      userType: UserType.ORGANIZATION_USER,
+      roleId: customManagementRoleId,
+      organizationId: organizationAId,
+      schoolId: schoolAId,
+    });
+    for (const [label, userType] of [
+      ['teacher', UserType.TEACHER],
+      ['student', UserType.STUDENT],
+      ['parent', UserType.PARENT],
+      ['applicant', UserType.APPLICANT],
+    ] as const) {
+      await createUserWithMembership({
+        email: actorEmails[label],
+        firstName: label,
+        lastName: 'Boundary',
+        userType,
+        roleId: customManagementRoleId,
+        organizationId: organizationAId,
+        schoolId: schoolAId,
+      });
+    }
+    const platformUser = await prisma.user.create({
+      data: {
+        email: actorEmails.platform,
+        firstName: 'Platform',
+        lastName: 'Boundary',
+        userType: UserType.PLATFORM_USER,
+        status: UserStatus.ACTIVE,
+        passwordHash: await argon2.hash(PASSWORD, ARGON2_OPTIONS),
+      },
+      select: { id: true },
+    });
+    createdUserIds.push(platformUser.id);
 
     fileAId = await createFile(schoolAId, organizationAId, adminAUserId, 'a');
     fileBId = await createFile(schoolBId, organizationBId, adminBUserId, 'b');
@@ -155,7 +235,20 @@ describe('Academics lesson content tenancy isolation (security)', () => {
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(BullmqService)
+      .useValue({
+        createWorker: jest.fn().mockReturnValue({ on: jest.fn() }),
+        addJob: jest.fn().mockResolvedValue(undefined),
+        getQueue: jest.fn(),
+        getQueueReadiness: jest.fn().mockResolvedValue({
+          name: 'test',
+          status: 'ok',
+          counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+        }),
+        ping: jest.fn().mockResolvedValue(undefined),
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -172,6 +265,16 @@ describe('Academics lesson content tenancy isolation (security)', () => {
     adminAAuth = await login(adminAEmail);
     adminBAuth = await login(adminBEmail);
     viewerAuth = await login(viewerEmail);
+    organizationManagerAuth = await login(actorEmails.organizationManager);
+    customSchoolManagerAuth = await login(actorEmails.customSchoolManager);
+    customOrganizationManagerAuth = await login(
+      actorEmails.customOrganizationManager,
+    );
+    blockedActorAuths = await Promise.all(
+      (['teacher', 'student', 'parent', 'applicant', 'platform'] as const).map(
+        (label) => login(actorEmails[label]),
+      ),
+    );
   });
 
   afterAll(async () => {
@@ -240,6 +343,27 @@ describe('Academics lesson content tenancy isolation (security)', () => {
       .delete(contentDetailUrl(treeB))
       .set('Authorization', bearer(adminAAuth))
       .expect(404);
+
+    for (const action of ['publish', 'unpublish', 'archive']) {
+      await request(app.getHttpServer())
+        .post(`${contentDetailUrl(treeB)}/${action}`)
+        .set('Authorization', bearer(adminAAuth))
+        .expect(404)
+        .expect((response) => {
+          const body = response.body as { error: { code: string } };
+          expect(body.error.code).toBe('academics.lesson_content.not_found');
+        });
+    }
+
+    const wrongPath = `${GLOBAL_PREFIX}/academics/curriculum/${treeA.curriculumId}/units/${treeB.unitId}/lessons/${treeA.lessonId}/content/${treeA.contentItemId}/publish`;
+    await request(app.getHttpServer())
+      .post(wrongPath)
+      .set('Authorization', bearer(adminAAuth))
+      .expect(404)
+      .expect((response) => {
+        const body = response.body as { error: { code: string } };
+        expect(body.error.code).toBe('academics.lesson_content.not_found');
+      });
   });
 
   it('prevents school A from attaching a school B file to lesson content', async () => {
@@ -317,6 +441,43 @@ describe('Academics lesson content tenancy isolation (security)', () => {
       .delete(contentDetailUrl(treeA))
       .set('Authorization', bearer(viewerAuth))
       .expect(403);
+
+    for (const action of ['publish', 'unpublish', 'archive']) {
+      await request(app.getHttpServer())
+        .post(`${contentDetailUrl(treeA)}/${action}`)
+        .set('Authorization', bearer(viewerAuth))
+        .expect(403);
+    }
+  });
+
+  it('enforces publication transitions at the management actor boundary', async () => {
+    await request(app.getHttpServer())
+      .post(`${contentDetailUrl(treeA)}/publish`)
+      .set('Authorization', bearer(adminAAuth))
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`${contentDetailUrl(treeA)}/unpublish`)
+      .set('Authorization', bearer(organizationManagerAuth))
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`${contentDetailUrl(treeA)}/publish`)
+      .set('Authorization', bearer(customSchoolManagerAuth))
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`${contentDetailUrl(treeA)}/unpublish`)
+      .set('Authorization', bearer(customOrganizationManagerAuth))
+      .expect(200);
+
+    for (const actorAuth of blockedActorAuths) {
+      await request(app.getHttpServer())
+        .post(`${contentDetailUrl(treeA)}/publish`)
+        .set('Authorization', bearer(actorAuth))
+        .expect(403)
+        .expect((response) => {
+          const body = response.body as { error: { code: string } };
+          expect(body.error.code).toBe('auth.scope.missing');
+        });
+    }
   });
 
   function contentListUrl(tree: CurriculumTree): string {
@@ -385,6 +546,24 @@ describe('Academics lesson content tenancy isolation (security)', () => {
       },
     });
 
+    return role.id;
+  }
+
+  async function createManagementRole(permissionId: string): Promise<string> {
+    const role = await prisma.role.create({
+      data: {
+        schoolId: schoolAId,
+        key: `${marker}-manager`,
+        name: `Lesson Content Manager ${suffix}`,
+        description: 'Custom publication management role',
+        isSystem: false,
+      },
+      select: { id: true },
+    });
+    createdRoleIds.push(role.id);
+    await prisma.rolePermission.create({
+      data: { roleId: role.id, permissionId },
+    });
     return role.id;
   }
 

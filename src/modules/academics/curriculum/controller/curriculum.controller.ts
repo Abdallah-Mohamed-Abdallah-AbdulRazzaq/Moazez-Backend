@@ -39,11 +39,14 @@ import {
   UpdateCurriculumUseCase,
 } from '../application/curriculum.use-cases';
 import {
+  ArchiveLessonContentUseCase,
   CreateLessonContentUseCase,
   DeleteLessonContentUseCase,
   GetLessonContentUseCase,
   ListLessonContentUseCase,
+  PublishLessonContentUseCase,
   ReorderLessonContentUseCase,
+  UnpublishLessonContentUseCase,
   UpdateLessonContentUseCase,
 } from '../application/lesson-content.use-cases';
 import {
@@ -102,6 +105,9 @@ export class CurriculumController {
     private readonly updateLessonContentUseCase: UpdateLessonContentUseCase,
     private readonly reorderLessonContentUseCase: ReorderLessonContentUseCase,
     private readonly deleteLessonContentUseCase: DeleteLessonContentUseCase,
+    private readonly publishLessonContentUseCase: PublishLessonContentUseCase,
+    private readonly unpublishLessonContentUseCase: UnpublishLessonContentUseCase,
+    private readonly archiveLessonContentUseCase: ArchiveLessonContentUseCase,
   ) {}
 
   @Get()
@@ -353,6 +359,81 @@ export class CurriculumController {
     @Param('contentItemId', new ParseUUIDPipe()) contentItemId: string,
   ): Promise<LessonContentItemResponseDto> {
     return this.getLessonContentUseCase.execute({
+      curriculumId,
+      unitId,
+      lessonId,
+      contentItemId,
+    });
+  }
+
+  @Post(
+    ':curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId/publish',
+  )
+  @HttpCode(HttpStatus.OK)
+  @RequiredPermissions('academics.curriculum.manage')
+  @ApiOperation({ summary: 'Publish a draft lesson content item' })
+  @ApiParam({ name: 'curriculumId', format: 'uuid' })
+  @ApiParam({ name: 'unitId', format: 'uuid' })
+  @ApiParam({ name: 'lessonId', format: 'uuid' })
+  @ApiParam({ name: 'contentItemId', format: 'uuid' })
+  @ApiOkResponse({ type: LessonContentItemResponseDto })
+  publishLessonContent(
+    @Param('curriculumId', new ParseUUIDPipe()) curriculumId: string,
+    @Param('unitId', new ParseUUIDPipe()) unitId: string,
+    @Param('lessonId', new ParseUUIDPipe()) lessonId: string,
+    @Param('contentItemId', new ParseUUIDPipe()) contentItemId: string,
+  ): Promise<LessonContentItemResponseDto> {
+    return this.publishLessonContentUseCase.execute({
+      curriculumId,
+      unitId,
+      lessonId,
+      contentItemId,
+    });
+  }
+
+  @Post(
+    ':curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId/unpublish',
+  )
+  @HttpCode(HttpStatus.OK)
+  @RequiredPermissions('academics.curriculum.manage')
+  @ApiOperation({ summary: 'Unpublish a published lesson content item' })
+  @ApiParam({ name: 'curriculumId', format: 'uuid' })
+  @ApiParam({ name: 'unitId', format: 'uuid' })
+  @ApiParam({ name: 'lessonId', format: 'uuid' })
+  @ApiParam({ name: 'contentItemId', format: 'uuid' })
+  @ApiOkResponse({ type: LessonContentItemResponseDto })
+  unpublishLessonContent(
+    @Param('curriculumId', new ParseUUIDPipe()) curriculumId: string,
+    @Param('unitId', new ParseUUIDPipe()) unitId: string,
+    @Param('lessonId', new ParseUUIDPipe()) lessonId: string,
+    @Param('contentItemId', new ParseUUIDPipe()) contentItemId: string,
+  ): Promise<LessonContentItemResponseDto> {
+    return this.unpublishLessonContentUseCase.execute({
+      curriculumId,
+      unitId,
+      lessonId,
+      contentItemId,
+    });
+  }
+
+  @Post(
+    ':curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId/archive',
+  )
+  @HttpCode(HttpStatus.OK)
+  @RequiredPermissions('academics.curriculum.manage')
+  @ApiOperation({ summary: 'Archive a published lesson content item' })
+  @ApiParam({ name: 'curriculumId', format: 'uuid' })
+  @ApiParam({ name: 'unitId', format: 'uuid' })
+  @ApiParam({ name: 'lessonId', format: 'uuid' })
+  @ApiParam({ name: 'contentItemId', format: 'uuid' })
+  @ApiOkResponse({ type: LessonContentItemResponseDto })
+  archiveLessonContentItem(
+    @Param('curriculumId', new ParseUUIDPipe()) curriculumId: string,
+    @Param('unitId', new ParseUUIDPipe()) unitId: string,
+    @Param('lessonId', new ParseUUIDPipe()) lessonId: string,
+    @Param('contentItemId', new ParseUUIDPipe()) contentItemId: string,
+  ): Promise<LessonContentItemResponseDto> {
+    return this.archiveLessonContentUseCase.execute({
       curriculumId,
       unitId,
       lessonId,

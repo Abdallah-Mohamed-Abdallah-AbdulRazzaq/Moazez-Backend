@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   CurriculumStatus,
   LessonContentItemType,
+  LessonContentPublicationStatus,
   LessonPlanItemStatus,
   LessonPlanStatus,
   MembershipStatus,
@@ -137,6 +138,37 @@ describe('Student App lesson content workflows (e2e)', () => {
       plannedDate: '2026-09-14',
       deletedContent: true,
       itemNotes: 'teacher-only note',
+    });
+    await prisma.lessonContentItem.createMany({
+      data: [
+        {
+          schoolId,
+          curriculumId: fixture.curriculumId,
+          unitId: fixture.unitId,
+          lessonId: fixture.lessonId,
+          type: LessonContentItemType.TEXT,
+          title: `${marker}-own-draft`,
+          bodyText: 'Student-hidden draft',
+          sortOrder: 3,
+          createdByUserId: teacherUserId,
+        },
+        {
+          schoolId,
+          curriculumId: fixture.curriculumId,
+          unitId: fixture.unitId,
+          lessonId: fixture.lessonId,
+          type: LessonContentItemType.TEXT,
+          title: `${marker}-own-archived`,
+          bodyText: 'Student-hidden archived',
+          sortOrder: 4,
+          createdByUserId: teacherUserId,
+          publicationStatus: LessonContentPublicationStatus.ARCHIVED,
+          publishedAt: new Date(),
+          publishedByUserId: teacherUserId,
+          archivedAt: new Date(),
+          archivedByUserId: teacherUserId,
+        },
+      ],
     });
     await createStudentEnrollment({
       organizationId,
@@ -339,6 +371,8 @@ describe('Student App lesson content workflows (e2e)', () => {
     const json = JSON.stringify(detail.body);
     expect(json).not.toContain('teacher-only note');
     expect(json).not.toContain('Should stay hidden');
+    expect(json).not.toContain(`${marker}-own-draft`);
+    expect(json).not.toContain(`${marker}-own-archived`);
     expectNoObjectKey(detail.body, 'schoolId');
     expectNoObjectKey(detail.body, 'organizationId');
     expectNoObjectKey(detail.body, 'deletedAt');
@@ -346,6 +380,79 @@ describe('Student App lesson content workflows (e2e)', () => {
     expectNoObjectKey(detail.body, 'bucket');
     expectNoObjectKey(detail.body, 'uploaderId');
     expectNoObjectKey(detail.body, 'notes');
+  });
+
+  it('requires republishing an edited ACTIVE-curriculum draft before Student visibility', async () => {
+    const controlled = await prisma.lessonContentItem.create({
+      data: {
+        schoolId,
+        curriculumId: fixture.curriculumId,
+        unitId: fixture.unitId,
+        lessonId: fixture.lessonId,
+        type: LessonContentItemType.TEXT,
+        title: `${marker}-controlled-draft`,
+        bodyText: 'Initial controlled body',
+        sortOrder: 5,
+        createdByUserId: teacherUserId,
+      },
+      select: { id: true },
+    });
+
+    const readContent = async (): Promise<string> => {
+      const response = await request(app.getHttpServer())
+        .get(`${GLOBAL_PREFIX}/student/lessons/${fixture.lessonPlanItemId}`)
+        .set('Authorization', bearer(studentAuth))
+        .expect(200);
+      const body = response.body as { content: unknown };
+      return JSON.stringify(body.content);
+    };
+
+    expect(await readContent()).not.toContain('Initial controlled body');
+
+    await prisma.lessonContentItem.update({
+      where: { id: controlled.id },
+      data: {
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: teacherUserId,
+      },
+    });
+    expect(await readContent()).toContain('Initial controlled body');
+
+    await prisma.lessonContentItem.update({
+      where: { id: controlled.id },
+      data: {
+        publicationStatus: LessonContentPublicationStatus.DRAFT,
+        publishedAt: null,
+        publishedByUserId: null,
+      },
+    });
+    expect(await readContent()).not.toContain('Initial controlled body');
+
+    await prisma.lessonContentItem.update({
+      where: { id: controlled.id },
+      data: { bodyText: 'Reviewed controlled body' },
+    });
+    expect(await readContent()).not.toContain('Reviewed controlled body');
+
+    await prisma.lessonContentItem.update({
+      where: { id: controlled.id },
+      data: {
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: teacherUserId,
+      },
+    });
+    expect(await readContent()).toContain('Reviewed controlled body');
+
+    await prisma.lessonContentItem.update({
+      where: { id: controlled.id },
+      data: {
+        publicationStatus: LessonContentPublicationStatus.DRAFT,
+        publishedAt: null,
+        publishedByUserId: null,
+      },
+    });
   });
 
   it('does not expose another classroom, archived plan, or archived curriculum lessons', async () => {
@@ -1535,6 +1642,9 @@ describe('Student App lesson content workflows (e2e)', () => {
         isRequired: true,
         estimatedMinutes: 10,
         createdByUserId: params.teacherUserId,
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: params.teacherUserId,
       },
     });
 
@@ -1564,10 +1674,14 @@ describe('Student App lesson content workflows (e2e)', () => {
         fileId: file.id,
         sortOrder: 2,
         createdByUserId: params.teacherUserId,
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: params.teacherUserId,
       },
     });
 
     if (params.deletedContent) {
+      const deletedAt = new Date();
       await prisma.lessonContentItem.create({
         data: {
           schoolId: params.schoolId,
@@ -1579,7 +1693,12 @@ describe('Student App lesson content workflows (e2e)', () => {
           bodyText: 'Should stay hidden',
           sortOrder: 3,
           createdByUserId: params.teacherUserId,
-          deletedAt: new Date(),
+          publicationStatus: LessonContentPublicationStatus.DRAFT,
+          publishedAt: null,
+          publishedByUserId: null,
+          archivedAt: null,
+          archivedByUserId: null,
+          deletedAt,
         },
       });
     }

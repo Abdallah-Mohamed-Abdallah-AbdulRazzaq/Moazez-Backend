@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   CurriculumStatus,
   LessonContentItemType,
+  LessonContentPublicationStatus,
   LessonPlanItemStatus,
   LessonPlanStatus,
   MembershipStatus,
@@ -22,6 +23,7 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'TeacherLessonPrep123!';
@@ -171,6 +173,37 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
       plannedDate: '2026-09-14',
       deletedContent: true,
     });
+    await prisma.lessonContentItem.createMany({
+      data: [
+        {
+          schoolId,
+          curriculumId: fixture.curriculumId,
+          unitId: fixture.unitId,
+          lessonId: fixture.lessonId,
+          type: LessonContentItemType.TEXT,
+          title: `${marker}-own-draft`,
+          bodyText: 'Teacher draft preview',
+          sortOrder: 3,
+          createdByUserId: teacherAId,
+        },
+        {
+          schoolId,
+          curriculumId: fixture.curriculumId,
+          unitId: fixture.unitId,
+          lessonId: fixture.lessonId,
+          type: LessonContentItemType.TEXT,
+          title: `${marker}-own-archived`,
+          bodyText: 'Teacher-hidden archived',
+          sortOrder: 4,
+          createdByUserId: teacherAId,
+          publicationStatus: LessonContentPublicationStatus.ARCHIVED,
+          publishedAt: new Date(),
+          publishedByUserId: teacherAId,
+          archivedAt: new Date(),
+          archivedByUserId: teacherAId,
+        },
+      ],
+    });
     otherTeacherFixture = await createLessonFixture({
       organizationId,
       schoolId,
@@ -179,6 +212,19 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
       teacherUserId: teacherBId,
       marker: 'other',
       plannedDate: '2026-09-14',
+    });
+    await prisma.lessonContentItem.create({
+      data: {
+        schoolId,
+        curriculumId: otherTeacherFixture.curriculumId,
+        unitId: otherTeacherFixture.unitId,
+        lessonId: otherTeacherFixture.lessonId,
+        type: LessonContentItemType.TEXT,
+        title: `${marker}-other-draft`,
+        bodyText: 'Other Teacher draft preview',
+        sortOrder: 3,
+        createdByUserId: teacherBId,
+      },
     });
     closedTermFixture = await createLessonFixture({
       organizationId,
@@ -211,7 +257,20 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(BullmqService)
+      .useValue({
+        createWorker: jest.fn().mockReturnValue({ on: jest.fn() }),
+        addJob: jest.fn().mockResolvedValue(undefined),
+        getQueue: jest.fn(),
+        getQueueReadiness: jest.fn().mockResolvedValue({
+          name: 'test',
+          status: 'ok',
+          counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+        }),
+        ping: jest.fn().mockResolvedValue(undefined),
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -343,10 +402,16 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
           sizeBytes: '2048',
         },
       }),
+      expect.objectContaining({
+        type: 'text',
+        title: `${marker}-own-draft`,
+        file: null,
+      }),
     ]);
     expect(JSON.stringify(detail.body)).not.toContain('object_key');
     expect(JSON.stringify(detail.body)).not.toContain('objectKey');
     expect(JSON.stringify(detail.body)).not.toContain(`${marker}-own-deleted`);
+    expect(JSON.stringify(detail.body)).not.toContain(`${marker}-own-archived`);
     expectNoObjectKey(detail.body, 'schoolId');
     expectNoObjectKey(detail.body, 'organizationId');
     expectNoObjectKey(detail.body, 'email');
@@ -767,6 +832,9 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
         sortOrder: 1,
         isRequired: true,
         createdByUserId: params.teacherUserId,
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: params.teacherUserId,
       },
     });
 
@@ -796,10 +864,14 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
         fileId: file.id,
         sortOrder: 2,
         createdByUserId: params.teacherUserId,
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: params.teacherUserId,
       },
     });
 
     if (params.deletedContent) {
+      const deletedAt = new Date();
       await prisma.lessonContentItem.create({
         data: {
           schoolId: params.schoolId,
@@ -811,7 +883,12 @@ describe('Teacher App lesson preparation workflows (e2e)', () => {
           bodyText: 'Should stay hidden',
           sortOrder: 3,
           createdByUserId: params.teacherUserId,
-          deletedAt: new Date(),
+          publicationStatus: LessonContentPublicationStatus.DRAFT,
+          publishedAt: null,
+          publishedByUserId: null,
+          archivedAt: null,
+          archivedByUserId: null,
+          deletedAt,
         },
       });
     }

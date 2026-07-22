@@ -34,6 +34,14 @@ export function presentLessonContentItem(
     isRequired: item.isRequired,
     estimatedMinutes: item.estimatedMinutes ?? null,
     metadata: metadataOrNull(item.metadata),
+    publicationStatus: item.publicationStatus.toLowerCase() as
+      | 'draft'
+      | 'published'
+      | 'archived',
+    publishedAt: item.publishedAt?.toISOString() ?? null,
+    publishedByUserId: item.publishedByUserId ?? null,
+    archivedAt: item.archivedAt?.toISOString() ?? null,
+    archivedByUserId: item.archivedByUserId ?? null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
   };

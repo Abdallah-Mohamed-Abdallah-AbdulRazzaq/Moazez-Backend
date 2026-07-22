@@ -3,6 +3,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   LessonContentItemType,
+  LessonContentPublicationStatus,
   MembershipStatus,
   OrganizationStatus,
   PrismaClient,
@@ -14,7 +15,7 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
-import { StorageService } from '../../src/infrastructure/storage/storage.service';
+import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'Sprint15C123!';
@@ -62,7 +63,6 @@ jest.setTimeout(180000);
 describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaClient;
-  let storageService: StorageService;
 
   let organizationId = '';
   let schoolId = '';
@@ -79,8 +79,6 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
   let videoContentId = '';
   let externalContentId = '';
   let uploadedFileId = '';
-  let uploadedBucket = '';
-  let uploadedObjectKey = '';
 
   const suffix = randomUUID().split('-')[0];
   const marker = `s15c-${suffix}`;
@@ -108,7 +106,20 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(BullmqService)
+      .useValue({
+        createWorker: jest.fn().mockReturnValue({ on: jest.fn() }),
+        addJob: jest.fn().mockResolvedValue(undefined),
+        getQueue: jest.fn(),
+        getQueueReadiness: jest.fn().mockResolvedValue({
+          name: 'test',
+          status: 'ok',
+          counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+        }),
+        ping: jest.fn().mockResolvedValue(undefined),
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -122,18 +133,11 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
     );
     await app.init();
 
-    storageService = app.get(StorageService);
     adminAuth = await login(adminEmail);
   });
 
   afterAll(async () => {
     try {
-      if (uploadedBucket && uploadedObjectKey && storageService) {
-        await storageService.deleteObject({
-          bucket: uploadedBucket,
-          objectKey: uploadedObjectKey,
-        });
-      }
       if (app) await app.close();
       await cleanupCloseoutData();
     } finally {
@@ -152,6 +156,9 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
         'PATCH /api/v1/academics/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId',
         'PATCH /api/v1/academics/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId/reorder',
         'DELETE /api/v1/academics/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId',
+        'POST /api/v1/academics/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId/publish',
+        'POST /api/v1/academics/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId/unpublish',
+        'POST /api/v1/academics/curriculum/:curriculumId/units/:unitId/lessons/:lessonId/content/:contentItemId/archive',
       ]),
     );
 
@@ -201,22 +208,21 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
         .expect(201)
     ).body.lessonId;
 
-    const uploadResponse = await request(app.getHttpServer())
-      .post(`${GLOBAL_PREFIX}/files`)
-      .set('Authorization', bearer(adminAuth))
-      .attach('file', Buffer.from('lesson resource body'), {
-        filename: `${marker}-resource.txt`,
-        contentType: 'text/plain',
+    uploadedFileId = (
+      await prisma.file.create({
+        data: {
+          organizationId,
+          schoolId,
+          uploaderId: adminUserId,
+          bucket: `${marker}-metadata-only-bucket`,
+          objectKey: `${marker}-metadata-only-object`,
+          originalName: `${marker}-resource.txt`,
+          mimeType: 'text/plain',
+          sizeBytes: BigInt(Buffer.byteLength('lesson resource body')),
+        },
+        select: { id: true },
       })
-      .expect(201);
-
-    uploadedFileId = uploadResponse.body.id;
-    const persistedFile = await prisma.file.findUniqueOrThrow({
-      where: { id: uploadedFileId },
-      select: { bucket: true, objectKey: true },
-    });
-    uploadedBucket = persistedFile.bucket;
-    uploadedObjectKey = persistedFile.objectKey;
+    ).id;
 
     textContentId = (
       await request(app.getHttpServer())
@@ -237,6 +243,11 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
             type: 'text',
             title: 'Guided Notes',
             bodyText: 'Compare fractions with common denominators.',
+            publicationStatus: 'draft',
+            publishedAt: null,
+            publishedByUserId: null,
+            archivedAt: null,
+            archivedByUserId: null,
             url: null,
             file: null,
             sortOrder: 2,
@@ -419,6 +430,274 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
       .send({})
       .expect(200);
 
+    /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument -- Supertest exposes lifecycle response bodies as any in these focused HTTP assertions. */
+    const textUrl = `${contentListUrl()}/${textContentId}`;
+    const published = await request(app.getHttpServer())
+      .post(`${textUrl}/publish`)
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+
+    expect(published.body).toMatchObject({
+      contentItemId: textContentId,
+      publicationStatus: 'published',
+      publishedByUserId: adminUserId,
+      archivedAt: null,
+      archivedByUserId: null,
+    });
+    expect(new Date(published.body.publishedAt).toISOString()).toBe(
+      published.body.publishedAt,
+    );
+
+    const assertPublicationConflictUnchanged = async (
+      mutation: () => request.Test,
+      contentItemId: string,
+      expectedDetails: {
+        from: LessonContentPublicationStatus;
+        to: LessonContentPublicationStatus;
+      },
+    ) => {
+      const before = await prisma.lessonContentItem.findUniqueOrThrow({
+        where: { id: contentItemId },
+      });
+      const successAuditsBefore = await countTransitionAudits(contentItemId);
+
+      await mutation()
+        .expect(409)
+        .expect((response) => {
+          expectPublicationConflictResponse(response, expectedDetails);
+        });
+
+      const after = await prisma.lessonContentItem.findUniqueOrThrow({
+        where: { id: contentItemId },
+      });
+      expect(after).toEqual(before);
+      expect(await countTransitionAudits(contentItemId)).toBe(
+        successAuditsBefore,
+      );
+    };
+
+    await assertPublicationConflictUnchanged(
+      () =>
+        request(app.getHttpServer())
+          .patch(textUrl)
+          .set('Authorization', bearer(adminAuth))
+          .send({ title: 'Rejected Published Edit' }),
+      textContentId,
+      {
+        from: LessonContentPublicationStatus.PUBLISHED,
+        to: LessonContentPublicationStatus.DRAFT,
+      },
+    );
+    await assertPublicationConflictUnchanged(
+      () =>
+        request(app.getHttpServer())
+          .patch(`${textUrl}/reorder`)
+          .set('Authorization', bearer(adminAuth))
+          .send({ sortOrder: 20 }),
+      textContentId,
+      {
+        from: LessonContentPublicationStatus.PUBLISHED,
+        to: LessonContentPublicationStatus.DRAFT,
+      },
+    );
+    await assertPublicationConflictUnchanged(
+      () =>
+        request(app.getHttpServer())
+          .delete(textUrl)
+          .set('Authorization', bearer(adminAuth)),
+      textContentId,
+      {
+        from: LessonContentPublicationStatus.PUBLISHED,
+        to: LessonContentPublicationStatus.DRAFT,
+      },
+    );
+    await assertPublicationConflictUnchanged(
+      () =>
+        request(app.getHttpServer())
+          .post(`${textUrl}/publish`)
+          .set('Authorization', bearer(adminAuth)),
+      textContentId,
+      {
+        from: LessonContentPublicationStatus.PUBLISHED,
+        to: LessonContentPublicationStatus.PUBLISHED,
+      },
+    );
+
+    const unpublished = await request(app.getHttpServer())
+      .post(`${textUrl}/unpublish`)
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+    expect(unpublished.body).toMatchObject({
+      publicationStatus: 'draft',
+      publishedAt: null,
+      publishedByUserId: null,
+      archivedAt: null,
+      archivedByUserId: null,
+    });
+
+    await request(app.getHttpServer())
+      .patch(textUrl)
+      .set('Authorization', bearer(adminAuth))
+      .send({ bodyText: 'Reviewed after unpublish' })
+      .expect(200);
+
+    const republished = await request(app.getHttpServer())
+      .post(`${textUrl}/publish`)
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+    expect(republished.body.publicationStatus).toBe('published');
+    expect(republished.body.publishedAt).not.toBe(published.body.publishedAt);
+
+    const archived = await request(app.getHttpServer())
+      .post(`${textUrl}/archive`)
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+    expect(archived.body).toMatchObject({
+      publicationStatus: 'archived',
+      publishedAt: republished.body.publishedAt,
+      publishedByUserId: adminUserId,
+      archivedByUserId: adminUserId,
+    });
+    expect(archived.body.archivedAt).not.toBeNull();
+
+    await request(app.getHttpServer())
+      .get(textUrl)
+      .set('Authorization', bearer(adminAuth))
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.publicationStatus).toBe('archived');
+      });
+    await request(app.getHttpServer())
+      .get(contentListUrl())
+      .set('Authorization', bearer(adminAuth))
+      .expect(200)
+      .expect((response) => {
+        expect(
+          response.body.items.find(
+            (item: { contentItemId: string }) =>
+              item.contentItemId === textContentId,
+          )?.publicationStatus,
+        ).toBe('archived');
+      });
+
+    for (const { mutation, expectedDetails } of [
+      {
+        mutation: () =>
+          request(app.getHttpServer())
+            .patch(textUrl)
+            .set('Authorization', bearer(adminAuth))
+            .send({ title: 'Terminal Edit' }),
+        expectedDetails: {
+          from: LessonContentPublicationStatus.ARCHIVED,
+          to: LessonContentPublicationStatus.DRAFT,
+        },
+      },
+      {
+        mutation: () =>
+          request(app.getHttpServer())
+            .patch(`${textUrl}/reorder`)
+            .set('Authorization', bearer(adminAuth))
+            .send({ sortOrder: 21 }),
+        expectedDetails: {
+          from: LessonContentPublicationStatus.ARCHIVED,
+          to: LessonContentPublicationStatus.DRAFT,
+        },
+      },
+      {
+        mutation: () =>
+          request(app.getHttpServer())
+            .delete(textUrl)
+            .set('Authorization', bearer(adminAuth)),
+        expectedDetails: {
+          from: LessonContentPublicationStatus.ARCHIVED,
+          to: LessonContentPublicationStatus.DRAFT,
+        },
+      },
+      {
+        mutation: () =>
+          request(app.getHttpServer())
+            .post(`${textUrl}/publish`)
+            .set('Authorization', bearer(adminAuth)),
+        expectedDetails: {
+          from: LessonContentPublicationStatus.ARCHIVED,
+          to: LessonContentPublicationStatus.PUBLISHED,
+        },
+      },
+      {
+        mutation: () =>
+          request(app.getHttpServer())
+            .post(`${textUrl}/unpublish`)
+            .set('Authorization', bearer(adminAuth)),
+        expectedDetails: {
+          from: LessonContentPublicationStatus.ARCHIVED,
+          to: LessonContentPublicationStatus.DRAFT,
+        },
+      },
+      {
+        mutation: () =>
+          request(app.getHttpServer())
+            .post(`${textUrl}/archive`)
+            .set('Authorization', bearer(adminAuth)),
+        expectedDetails: {
+          from: LessonContentPublicationStatus.ARCHIVED,
+          to: LessonContentPublicationStatus.ARCHIVED,
+        },
+      },
+    ]) {
+      await assertPublicationConflictUnchanged(
+        mutation,
+        textContentId,
+        expectedDetails,
+      );
+    }
+
+    await assertPublicationConflictUnchanged(
+      () =>
+        request(app.getHttpServer())
+          .post(`${contentListUrl()}/${videoContentId}/archive`)
+          .set('Authorization', bearer(adminAuth)),
+      videoContentId,
+      {
+        from: LessonContentPublicationStatus.DRAFT,
+        to: LessonContentPublicationStatus.ARCHIVED,
+      },
+    );
+
+    const transitionAudits = await prisma.auditLog.findMany({
+      where: {
+        resourceType: 'lesson_content_item',
+        resourceId: textContentId,
+        action: {
+          in: [
+            'academics.lesson_content.publish',
+            'academics.lesson_content.unpublish',
+            'academics.lesson_content.archive',
+          ],
+        },
+      },
+      select: { action: true, before: true, after: true },
+    });
+    expect(transitionAudits).toHaveLength(4);
+    expect(
+      transitionAudits.filter(
+        (audit) => audit.action === 'academics.lesson_content.publish',
+      ),
+    ).toHaveLength(2);
+    for (const audit of transitionAudits) {
+      expect(Object.keys((audit.before ?? {}) as object).sort()).toEqual(
+        ['archivedAt', 'publicationStatus', 'publishedAt'].sort(),
+      );
+      expect(Object.keys((audit.after ?? {}) as object).sort()).toEqual(
+        ['archivedAt', 'publicationStatus', 'publishedAt'].sort(),
+      );
+      expect(JSON.stringify(audit)).not.toMatch(
+        /title|bodyText|url|fileId|metadata|filename|schoolId|actorId/,
+      );
+    }
+
+    await provePublicationConcurrency();
+    /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
+
     await request(app.getHttpServer())
       .post(`${GLOBAL_PREFIX}/academics/curriculum/${curriculumId}/archive`)
       .set('Authorization', bearer(adminAuth))
@@ -468,6 +747,189 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
   function contentListUrl(): string {
     return `${GLOBAL_PREFIX}/academics/curriculum/${curriculumId}/units/${unitId}/lessons/${lessonId}/content`;
   }
+
+  /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return -- Supertest exposes focused concurrency response bodies as any. */
+  async function countTransitionAudits(contentItemId: string): Promise<number> {
+    return prisma.auditLog.count({
+      where: {
+        resourceType: 'lesson_content_item',
+        resourceId: contentItemId,
+        action: {
+          in: [
+            'academics.lesson_content.publish',
+            'academics.lesson_content.unpublish',
+            'academics.lesson_content.archive',
+          ],
+        },
+      },
+    });
+  }
+
+  async function createConcurrencyDraft(label: string): Promise<string> {
+    const response = await request(app.getHttpServer())
+      .post(contentListUrl())
+      .set('Authorization', bearer(adminAuth))
+      .send({
+        type: LessonContentItemType.TEXT,
+        title: `Concurrency ${label}`,
+        bodyText: `Initial ${label}`,
+      })
+      .expect(201);
+
+    expect(response.body.publicationStatus).toBe('draft');
+    return response.body.contentItemId;
+  }
+
+  function expectPublicationConflictResponse(
+    response: request.Response,
+    expectedDetails: {
+      from: LessonContentPublicationStatus;
+      to: LessonContentPublicationStatus;
+    },
+  ): void {
+    const body = response.body as {
+      error: {
+        code: string;
+        details: Record<string, unknown>;
+      };
+    };
+
+    expect(body.error.code).toBe('learning.content.publication_conflict');
+    expect(body.error.details).toEqual(expectedDetails);
+    expect(Object.keys(body.error.details).sort()).toEqual(['from', 'to']);
+    expect(JSON.stringify(body.error.details)).not.toMatch(
+      /contentItemId|curriculumId|unitId|lessonId|schoolId|actorId|title|bodyText|url|fileId|timestamp|updatedAt/iu,
+    );
+  }
+
+  function expectOneSuccessOneConflict(
+    responses: request.Response[],
+    expectedDetails: {
+      from: LessonContentPublicationStatus;
+      to: LessonContentPublicationStatus;
+    },
+  ): void {
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      200, 409,
+    ]);
+    const conflict = responses.find((response) => response.status === 409);
+    expect(conflict).toBeDefined();
+    expectPublicationConflictResponse(
+      conflict as request.Response,
+      expectedDetails,
+    );
+  }
+
+  async function countOperationAudits(
+    contentItemId: string,
+    actions: string[],
+  ): Promise<number> {
+    return prisma.auditLog.count({
+      where: {
+        resourceType: 'lesson_content_item',
+        resourceId: contentItemId,
+        action: { in: actions },
+      },
+    });
+  }
+
+  async function provePublicationConcurrency(): Promise<void> {
+    const publishId = await createConcurrencyDraft('publish-race');
+    const publishUrl = `${contentListUrl()}/${publishId}/publish`;
+    const publishResponses = await Promise.all([
+      request(app.getHttpServer())
+        .post(publishUrl)
+        .set('Authorization', bearer(adminAuth)),
+      request(app.getHttpServer())
+        .post(publishUrl)
+        .set('Authorization', bearer(adminAuth)),
+    ]);
+    expectOneSuccessOneConflict(publishResponses, {
+      from: LessonContentPublicationStatus.DRAFT,
+      to: LessonContentPublicationStatus.PUBLISHED,
+    });
+    await expect(
+      prisma.lessonContentItem.findUniqueOrThrow({
+        where: { id: publishId },
+        select: { publicationStatus: true },
+      }),
+    ).resolves.toEqual({
+      publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+    });
+    expect(
+      await countOperationAudits(publishId, [
+        'academics.lesson_content.publish',
+      ]),
+    ).toBe(1);
+
+    const archiveId = await createConcurrencyDraft('archive-race');
+    const archiveBaseUrl = `${contentListUrl()}/${archiveId}`;
+    await request(app.getHttpServer())
+      .post(`${archiveBaseUrl}/publish`)
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+    const archiveResponses = await Promise.all([
+      request(app.getHttpServer())
+        .post(`${archiveBaseUrl}/archive`)
+        .set('Authorization', bearer(adminAuth)),
+      request(app.getHttpServer())
+        .post(`${archiveBaseUrl}/archive`)
+        .set('Authorization', bearer(adminAuth)),
+    ]);
+    expectOneSuccessOneConflict(archiveResponses, {
+      from: LessonContentPublicationStatus.PUBLISHED,
+      to: LessonContentPublicationStatus.ARCHIVED,
+    });
+    await expect(
+      prisma.lessonContentItem.findUniqueOrThrow({
+        where: { id: archiveId },
+        select: { publicationStatus: true },
+      }),
+    ).resolves.toEqual({
+      publicationStatus: LessonContentPublicationStatus.ARCHIVED,
+    });
+    expect(
+      await countOperationAudits(archiveId, [
+        'academics.lesson_content.archive',
+      ]),
+    ).toBe(1);
+
+    const publishArchiveId = await createConcurrencyDraft('publish-archive');
+    const publishArchiveUrl = `${contentListUrl()}/${publishArchiveId}`;
+    await request(app.getHttpServer())
+      .post(`${publishArchiveUrl}/publish`)
+      .set('Authorization', bearer(adminAuth))
+      .expect(200);
+    const publishArchiveAuditsBefore =
+      await countTransitionAudits(publishArchiveId);
+    const [publishResponse, archiveResponse] = await Promise.all([
+      request(app.getHttpServer())
+        .post(`${publishArchiveUrl}/publish`)
+        .set('Authorization', bearer(adminAuth)),
+      request(app.getHttpServer())
+        .post(`${publishArchiveUrl}/archive`)
+        .set('Authorization', bearer(adminAuth)),
+    ]);
+    expect(publishResponse.status).toBe(409);
+    expectPublicationConflictResponse(publishResponse, {
+      from: LessonContentPublicationStatus.PUBLISHED,
+      to: LessonContentPublicationStatus.PUBLISHED,
+    });
+    expect(archiveResponse.status).toBe(200);
+    expect(
+      await prisma.lessonContentItem.findUniqueOrThrow({
+        where: { id: publishArchiveId },
+        select: { publicationStatus: true },
+      }),
+    ).toEqual({
+      publicationStatus: LessonContentPublicationStatus.ARCHIVED,
+    });
+    expect(
+      (await countTransitionAudits(publishArchiveId)) -
+        publishArchiveAuditsBefore,
+    ).toBe(1);
+  }
+  /* eslint-enable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
 
   async function findSystemRole(key: string): Promise<{ id: string }> {
     const role = await prisma.role.findFirst({

@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   CurriculumStatus,
   LessonContentItemType,
+  LessonContentPublicationStatus,
   LessonPlanItemStatus,
   LessonPlanStatus,
   MembershipStatus,
@@ -24,6 +25,7 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'ParentChildLessons123!';
@@ -147,6 +149,37 @@ describe('Parent App child lesson content workflows (e2e)', () => {
       deletedContent: true,
       itemNotes: 'teacher-only note',
     });
+    await prisma.lessonContentItem.createMany({
+      data: [
+        {
+          schoolId,
+          curriculumId: fixture.curriculumId,
+          unitId: fixture.unitId,
+          lessonId: fixture.lessonId,
+          type: LessonContentItemType.TEXT,
+          title: `${marker}-own-draft`,
+          bodyText: 'Parent-hidden draft',
+          sortOrder: 3,
+          createdByUserId: teacherUserId,
+        },
+        {
+          schoolId,
+          curriculumId: fixture.curriculumId,
+          unitId: fixture.unitId,
+          lessonId: fixture.lessonId,
+          type: LessonContentItemType.TEXT,
+          title: `${marker}-own-archived`,
+          bodyText: 'Parent-hidden archived',
+          sortOrder: 4,
+          createdByUserId: teacherUserId,
+          publicationStatus: LessonContentPublicationStatus.ARCHIVED,
+          publishedAt: new Date(),
+          publishedByUserId: teacherUserId,
+          archivedAt: new Date(),
+          archivedByUserId: teacherUserId,
+        },
+      ],
+    });
     const childEnrollment = await createStudentEnrollment({
       organizationId,
       schoolId,
@@ -220,7 +253,20 @@ describe('Parent App child lesson content workflows (e2e)', () => {
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(BullmqService)
+      .useValue({
+        createWorker: jest.fn().mockReturnValue({ on: jest.fn() }),
+        addJob: jest.fn().mockResolvedValue(undefined),
+        getQueue: jest.fn(),
+        getQueueReadiness: jest.fn().mockResolvedValue({
+          name: 'test',
+          status: 'ok',
+          counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+        }),
+        ping: jest.fn().mockResolvedValue(undefined),
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -349,6 +395,8 @@ describe('Parent App child lesson content workflows (e2e)', () => {
     const json = JSON.stringify(detail.body);
     expect(json).not.toContain('teacher-only note');
     expect(json).not.toContain('Should stay hidden');
+    expect(json).not.toContain(`${marker}-own-draft`);
+    expect(json).not.toContain(`${marker}-own-archived`);
     expectNoObjectKey(detail.body, 'schoolId');
     expectNoObjectKey(detail.body, 'organizationId');
     expectNoObjectKey(detail.body, 'deletedAt');
@@ -806,6 +854,9 @@ describe('Parent App child lesson content workflows (e2e)', () => {
         isRequired: true,
         estimatedMinutes: 10,
         createdByUserId: params.teacherUserId,
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: params.teacherUserId,
       },
     });
 
@@ -835,10 +886,14 @@ describe('Parent App child lesson content workflows (e2e)', () => {
         fileId: file.id,
         sortOrder: 2,
         createdByUserId: params.teacherUserId,
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: params.teacherUserId,
       },
     });
 
     if (params.deletedContent) {
+      const deletedAt = new Date();
       await prisma.lessonContentItem.create({
         data: {
           schoolId: params.schoolId,
@@ -850,7 +905,12 @@ describe('Parent App child lesson content workflows (e2e)', () => {
           bodyText: 'Should stay hidden',
           sortOrder: 3,
           createdByUserId: params.teacherUserId,
-          deletedAt: new Date(),
+          publicationStatus: LessonContentPublicationStatus.DRAFT,
+          publishedAt: null,
+          publishedByUserId: null,
+          archivedAt: null,
+          archivedByUserId: null,
+          deletedAt,
         },
       });
     }

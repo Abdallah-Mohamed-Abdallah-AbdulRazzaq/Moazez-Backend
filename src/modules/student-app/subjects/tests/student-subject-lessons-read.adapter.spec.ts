@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- Prisma mock call tuples intentionally expose untyped query arguments. */
 import {
   CurriculumStatus,
+  LessonContentPublicationStatus,
   LessonPlanItemStatus,
   LessonPlanStatus,
 } from '@prisma/client';
@@ -192,6 +193,7 @@ describe('StudentSubjectLessonsReadAdapter listing and cursor', () => {
     expect(query.select.lesson.select.contentItems).toMatchObject({
       where: {
         deletedAt: null,
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
         curriculum: {
           is: { deletedAt: null, status: CurriculumStatus.ACTIVE },
         },
