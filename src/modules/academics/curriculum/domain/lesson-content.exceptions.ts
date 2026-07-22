@@ -3,12 +3,11 @@ import { LessonContentPublicationStatus } from '@prisma/client';
 import { DomainException } from '../../../../common/exceptions/domain-exception';
 
 export class LessonContentNotFoundException extends DomainException {
-  constructor(details?: Record<string, unknown>) {
+  constructor() {
     super({
       code: 'academics.lesson_content.not_found',
       message: 'Lesson content item was not found or is outside scope',
       httpStatus: HttpStatus.NOT_FOUND,
-      details,
     });
   }
 }
@@ -47,12 +46,11 @@ export class LessonContentInvalidUrlException extends DomainException {
 }
 
 export class LessonContentFileNotFoundException extends DomainException {
-  constructor(details?: Record<string, unknown>) {
+  constructor() {
     super({
       code: 'academics.lesson_content.file_not_found',
       message: 'Lesson content file was not found or is outside scope',
       httpStatus: HttpStatus.NOT_FOUND,
-      details,
     });
   }
 }

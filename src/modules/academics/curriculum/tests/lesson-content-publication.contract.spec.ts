@@ -7,6 +7,11 @@ function read(relativePath: string): string {
   return readFileSync(join(ROOT, relativePath), 'utf8');
 }
 
+function readIfPresent(relativePath: string): string {
+  const path = join(ROOT, relativePath);
+  return existsSync(path) ? readFileSync(path, 'utf8') : '';
+}
+
 function extractPrismaBlock(
   schema: string,
   kind: 'enum' | 'model',
@@ -143,6 +148,123 @@ describe('Lesson content publication lifecycle contract', () => {
     expect(useCases).toContain('LessonContentPublicationStatus.DRAFT');
     expect(useCases).toContain('LessonContentPublicationStatus.PUBLISHED');
     expect(useCases).toContain('LessonContentPublicationStatus.ARCHIVED');
+  });
+
+  it('owns every mutation and success audit inside one narrow transaction boundary', () => {
+    const contract = readIfPresent(
+      'src/modules/academics/curriculum/application/lesson-content.unit-of-work.ts',
+    );
+    const implementation = readIfPresent(
+      'src/modules/academics/curriculum/infrastructure/prisma-lesson-content.unit-of-work.ts',
+    );
+    const repository = read(
+      'src/modules/academics/curriculum/infrastructure/lesson-content.repository.ts',
+    );
+    const useCases = read(
+      'src/modules/academics/curriculum/application/lesson-content.use-cases.ts',
+    );
+    const curriculumModule = read(
+      'src/modules/academics/curriculum/curriculum.module.ts',
+    );
+
+    expect(contract).toContain('abstract class LessonContentUnitOfWork');
+    expect(contract).toContain('LessonContentTransactionContext');
+    expect(implementation).toContain('this.prisma.$transaction');
+    expect(repository).toContain('writeSuccessfulAudit');
+    expect(useCases).toContain('lessonContentUnitOfWork.execute');
+    expect(useCases).not.toContain('AuthRepository');
+    expect(curriculumModule).toContain('PrismaLessonContentUnitOfWork');
+  });
+
+  it('locks the exact parent chain and live FILE dependency with parameterized SQL', () => {
+    const repository = read(
+      'src/modules/academics/curriculum/infrastructure/lesson-content.repository.ts',
+    );
+
+    expect(repository).toContain('Prisma.sql');
+    expect(
+      repository.match(/FOR UPDATE/gu)?.length ?? 0,
+    ).toBeGreaterThanOrEqual(4);
+    expect(repository).toContain('lockLessonContentScope');
+    expect(repository).toContain('lockLiveFile');
+    expect(repository).toContain('"school_id" = ${schoolId}::uuid');
+    expect(repository).not.toMatch(/\$queryRawUnsafe|\$executeRawUnsafe/u);
+  });
+
+  it('locks production parent cascades root-first and preserves publication state', () => {
+    const repository = read(
+      'src/modules/academics/curriculum/infrastructure/curriculum.repository.ts',
+    );
+
+    expect(repository).toContain('LessonContentPublicationStatus');
+    expect(repository).toContain("status: 'publication_conflict'");
+    expect(repository).toContain('Prisma.sql');
+    expect(repository).toContain('FOR UPDATE');
+    expect(repository).toContain('ORDER BY "id" ASC');
+    expect(repository).toContain(
+      'publicationStatus: LessonContentPublicationStatus.DRAFT',
+    );
+    expect(repository).not.toMatch(/\$queryRawUnsafe|\$executeRawUnsafe/u);
+
+    const curriculumDelete = repository.slice(
+      repository.indexOf('async softDeleteCurriculum'),
+      repository.indexOf('findUnitById'),
+    );
+    expect(curriculumDelete.indexOf('lockLiveCurriculum(')).toBeLessThan(
+      curriculumDelete.indexOf('lockLiveCurriculumUnits('),
+    );
+    expect(curriculumDelete.indexOf('lockLiveCurriculumUnits(')).toBeLessThan(
+      curriculumDelete.indexOf('lockLiveCurriculumLessons('),
+    );
+    expect(curriculumDelete.indexOf('lockLiveCurriculumLessons(')).toBeLessThan(
+      curriculumDelete.indexOf('lockLiveLessonContentItems('),
+    );
+    expect(repository).toContain('FROM "curricula"');
+    expect(repository).toContain('FROM "curriculum_units"');
+    expect(repository).toContain('FROM "curriculum_lessons"');
+    expect(repository).toContain('FROM "lesson_content_items"');
+  });
+
+  it('removes identifiers from not-found details and adds focused CI', () => {
+    const exceptions = read(
+      'src/modules/academics/curriculum/domain/lesson-content.exceptions.ts',
+    );
+    const workflow = readIfPresent(
+      '.github/workflows/learning-content-integrity.yml',
+    );
+
+    expect(exceptions).toContain(
+      'export class LessonContentNotFoundException extends DomainException',
+    );
+    expect(exceptions).toContain(
+      'export class LessonContentFileNotFoundException extends DomainException',
+    );
+    expect(exceptions).not.toMatch(
+      /LessonContent(NotFound|FileNotFound)Exception[\s\S]{0,120}constructor\(details/u,
+    );
+    expect(workflow).toContain('name: Learning Content Integrity');
+    expect(workflow).toContain('node-version: 20');
+    expect(workflow).toContain('postgres:16-alpine');
+    expect(workflow).toContain('name: Check migration governance');
+    expect(workflow).toContain('run: npm run db:migrations:check');
+    expect(workflow).toContain('name: Confirm migration status');
+    expect(workflow).toContain('run: npm run db:migrations:status');
+    expect(workflow.indexOf('name: Check migration governance')).toBeLessThan(
+      workflow.indexOf('name: Validate Prisma schema'),
+    );
+    expect(workflow.indexOf('name: Deploy existing migrations')).toBeLessThan(
+      workflow.indexOf('name: Confirm migration status'),
+    );
+    expect(workflow).toContain('fetch-depth: 0');
+    expect(workflow).toContain('github.event.pull_request.base.sha');
+    expect(workflow).toContain('github.event.before');
+    expect(workflow).toContain('github.event.repository.default_branch');
+    expect(workflow).toContain('git fetch --force --tags origin');
+    expect(workflow).toContain('MIGRATION_BASE_REF=$base_commit');
+    expect(workflow).toContain(
+      'src/modules/academics/curriculum/tests/curriculum.use-case.spec.ts',
+    );
+    expect(workflow).not.toContain('ffprobe');
   });
 
   it('gates Student/Parent to PUBLISHED and Teacher to DRAFT or PUBLISHED', () => {

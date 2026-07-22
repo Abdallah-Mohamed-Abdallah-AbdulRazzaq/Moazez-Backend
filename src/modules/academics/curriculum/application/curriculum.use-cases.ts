@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { AuditOutcome, CurriculumStatus, Prisma } from '@prisma/client';
+import {
+  AuditOutcome,
+  CurriculumStatus,
+  LessonContentPublicationStatus,
+  Prisma,
+} from '@prisma/client';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
 import { requireAcademicsScope, AcademicsScope } from '../../academics-context';
 import {
@@ -15,7 +20,6 @@ import {
 import {
   CurriculumDetailResponseDto,
   CurriculumLessonResponseDto,
-  CurriculumResponseDto,
   CurriculumUnitResponseDto,
   DeleteCurriculumNodeResponseDto,
 } from '../dto/curriculum-response.dto';
@@ -30,6 +34,7 @@ import {
   CurriculumUnitNotFoundException,
   isUniqueConstraintError,
 } from '../domain/curriculum.exceptions';
+import { LessonContentPublicationConflictException } from '../domain/lesson-content.exceptions';
 import {
   normalizeNullableText,
   normalizeOptionalObjectives,
@@ -47,7 +52,6 @@ import {
   presentCurricula,
   presentCurriculumDetail,
   presentCurriculumLesson,
-  presentCurriculum,
   presentCurriculumUnit,
 } from '../presenters/curriculum.presenter';
 
@@ -312,6 +316,9 @@ export class DeleteCurriculumUseCase {
     if (result.status === 'not_found') {
       throw new CurriculumNotFoundException({ curriculumId });
     }
+    if (result.status === 'publication_conflict') {
+      throwParentPublicationConflict();
+    }
 
     await recordCurriculumAudit(this.authRepository, {
       scope,
@@ -491,6 +498,15 @@ export class DeleteCurriculumUnitUseCase {
     });
     if (result.status === 'not_found') {
       throw new CurriculumUnitNotFoundException({ curriculumId, unitId });
+    }
+    if (result.status === 'read_only') {
+      throw new CurriculumReadOnlyException({
+        curriculumId,
+        status: result.curriculumStatus,
+      });
+    }
+    if (result.status === 'publication_conflict') {
+      throwParentPublicationConflict();
     }
 
     await recordCurriculumAudit(this.authRepository, {
@@ -702,6 +718,15 @@ export class DeleteCurriculumLessonUseCase {
         lessonId,
       });
     }
+    if (result.status === 'read_only') {
+      throw new CurriculumReadOnlyException({
+        curriculumId,
+        status: result.curriculumStatus,
+      });
+    }
+    if (result.status === 'publication_conflict') {
+      throwParentPublicationConflict();
+    }
 
     await recordCurriculumAudit(this.authRepository, {
       scope,
@@ -838,6 +863,13 @@ function assertCurriculumMutable(curriculum: CurriculumDetailRecord): void {
       status: curriculum.status,
     });
   }
+}
+
+function throwParentPublicationConflict(): never {
+  throw new LessonContentPublicationConflictException({
+    from: LessonContentPublicationStatus.PUBLISHED,
+    to: LessonContentPublicationStatus.DRAFT,
+  });
 }
 
 function resolveTitle(value: string): string {

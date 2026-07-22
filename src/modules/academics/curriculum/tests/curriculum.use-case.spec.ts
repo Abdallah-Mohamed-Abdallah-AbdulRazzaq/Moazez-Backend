@@ -1,4 +1,8 @@
-import { CurriculumStatus, UserType } from '@prisma/client';
+import {
+  CurriculumStatus,
+  LessonContentPublicationStatus,
+  UserType,
+} from '@prisma/client';
 import {
   createRequestContext,
   runWithRequestContext,
@@ -10,6 +14,9 @@ import {
   CreateCurriculumLessonUseCase,
   CreateCurriculumUnitUseCase,
   CreateCurriculumUseCase,
+  DeleteCurriculumLessonUseCase,
+  DeleteCurriculumUnitUseCase,
+  DeleteCurriculumUseCase,
   ReorderCurriculumLessonUseCase,
   ReorderCurriculumUnitUseCase,
   UpdateCurriculumLessonUseCase,
@@ -222,6 +229,86 @@ describe('Curriculum use cases', () => {
 
     expect(repository.updateCurriculum).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['curriculum', DeleteCurriculumUseCase, 'softDeleteCurriculum'],
+    ['unit', DeleteCurriculumUnitUseCase, 'softDeleteUnit'],
+    ['lesson', DeleteCurriculumLessonUseCase, 'softDeleteLesson'],
+  ] as const)(
+    'maps a %s cascade publication conflict to the bounded state-only error',
+    async (_scope, UseCase, repositoryMethod) => {
+      const repository = createRepository({
+        [repositoryMethod]: jest
+          .fn()
+          .mockResolvedValue({ status: 'publication_conflict' }),
+      });
+      const auth = createAuthRepository();
+      const useCase = new UseCase(repository, auth as never);
+
+      await withScope(async () => {
+        const execution =
+          repositoryMethod === 'softDeleteCurriculum'
+            ? (useCase as DeleteCurriculumUseCase).execute('curriculum-1')
+            : repositoryMethod === 'softDeleteUnit'
+              ? (useCase as DeleteCurriculumUnitUseCase).execute(
+                  'curriculum-1',
+                  'unit-1',
+                )
+              : (useCase as DeleteCurriculumLessonUseCase).execute(
+                  'curriculum-1',
+                  'unit-1',
+                  'lesson-1',
+                );
+
+        await expect(execution).rejects.toMatchObject({
+          code: 'learning.content.publication_conflict',
+          details: {
+            from: LessonContentPublicationStatus.PUBLISHED,
+            to: LessonContentPublicationStatus.DRAFT,
+          },
+        });
+      });
+
+      expect(auth.createAuditLog).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['unit', DeleteCurriculumUnitUseCase, 'softDeleteUnit'],
+    ['lesson', DeleteCurriculumLessonUseCase, 'softDeleteLesson'],
+  ] as const)(
+    'preserves the Curriculum read-only contract for final locked %s deletion state',
+    async (_scope, UseCase, repositoryMethod) => {
+      const repository = createRepository({
+        [repositoryMethod]: jest.fn().mockResolvedValue({
+          status: 'read_only',
+          curriculumStatus: CurriculumStatus.ARCHIVED,
+        }),
+      });
+      const auth = createAuthRepository();
+      const useCase = new UseCase(repository, auth as never);
+
+      await withScope(async () => {
+        const execution =
+          repositoryMethod === 'softDeleteUnit'
+            ? (useCase as DeleteCurriculumUnitUseCase).execute(
+                'curriculum-1',
+                'unit-1',
+              )
+            : (useCase as DeleteCurriculumLessonUseCase).execute(
+                'curriculum-1',
+                'unit-1',
+                'lesson-1',
+              );
+
+        await expect(execution).rejects.toMatchObject({
+          code: 'academics.curriculum.read_only',
+        });
+      });
+
+      expect(auth.createAuditLog).not.toHaveBeenCalled();
+    },
+  );
 
   it('creates, updates, and reorders units deterministically', async () => {
     const repository = createRepository();

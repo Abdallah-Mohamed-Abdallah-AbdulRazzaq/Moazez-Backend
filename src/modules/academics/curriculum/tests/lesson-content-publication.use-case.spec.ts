@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/unbound-method, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/require-await -- focused Jest mocks intentionally inspect generated Prisma call tuples and detached mock methods. */
 import {
+  AuditOutcome,
   CurriculumStatus,
   LessonContentItemType,
   LessonContentPublicationStatus,
@@ -20,6 +21,11 @@ import {
   UnpublishLessonContentUseCase,
   UpdateLessonContentUseCase,
 } from '../application/lesson-content.use-cases';
+import type {
+  LessonContentSuccessfulAuditEntry,
+  LessonContentTransactionContext,
+  LessonContentUnitOfWork,
+} from '../application/lesson-content.unit-of-work';
 import type { LessonContentPublicationConflictDetails } from '../domain/lesson-content.exceptions';
 import type {
   LessonContentItemRecord,
@@ -87,10 +93,7 @@ describe('Lesson content publication lifecycle use cases', () => {
     const harness = createHarness(contentItem(), {
       curriculumStatus: CurriculumStatus.ACTIVE,
     });
-    const useCase = new CreateLessonContentUseCase(
-      harness.repository,
-      harness.authRepository as never,
-    );
+    const useCase = new CreateLessonContentUseCase(harness.unitOfWork);
 
     await inScope(() =>
       useCase.execute(PATH, {
@@ -155,7 +158,7 @@ describe('Lesson content publication lifecycle use cases', () => {
     const harness = createHarness(existing);
     const useCase = new UpdateLessonContentUseCase(
       harness.repository,
-      harness.authRepository as never,
+      harness.unitOfWork,
     );
 
     await expect(
@@ -170,7 +173,7 @@ describe('Lesson content publication lifecycle use cases', () => {
     const reorderHarness = createHarness(contentItem());
     const reorder = new ReorderLessonContentUseCase(
       reorderHarness.repository,
-      reorderHarness.authRepository as never,
+      reorderHarness.unitOfWork,
     );
     await expect(
       inScope(() => reorder.execute(PATH, { sortOrder: 7 })),
@@ -179,7 +182,7 @@ describe('Lesson content publication lifecycle use cases', () => {
     const deleteHarness = createHarness(contentItem());
     const remove = new DeleteLessonContentUseCase(
       deleteHarness.repository,
-      deleteHarness.authRepository as never,
+      deleteHarness.unitOfWork,
     );
     await expect(inScope(() => remove.execute(PATH))).resolves.toEqual({
       ok: true,
@@ -209,7 +212,7 @@ describe('Lesson content publication lifecycle use cases', () => {
       const harness = createHarness(publishedItem());
       const useCase = new UpdateLessonContentUseCase(
         harness.repository,
-        harness.authRepository as never,
+        harness.unitOfWork,
       );
 
       await expectPublicationConflict(
@@ -223,7 +226,7 @@ describe('Lesson content publication lifecycle use cases', () => {
         harness.repository.updateContentItemConditionally,
       ).not.toHaveBeenCalled();
       expect(harness.repository.findFileById).not.toHaveBeenCalled();
-      expect(harness.authRepository.createAuditLog).not.toHaveBeenCalled();
+      expect(harness.auditMock).not.toHaveBeenCalled();
     },
   );
 
@@ -234,11 +237,11 @@ describe('Lesson content publication lifecycle use cases', () => {
         operation === 'reorder'
           ? new ReorderLessonContentUseCase(
               harness.repository,
-              harness.authRepository as never,
+              harness.unitOfWork,
             )
           : new DeleteLessonContentUseCase(
               harness.repository,
-              harness.authRepository as never,
+              harness.unitOfWork,
             );
       await expectPublicationConflict(
         inScope(() =>
@@ -256,7 +259,7 @@ describe('Lesson content publication lifecycle use cases', () => {
       expect(
         harness.repository.updateContentItemConditionally,
       ).not.toHaveBeenCalled();
-      expect(harness.authRepository.createAuditLog).not.toHaveBeenCalled();
+      expect(harness.auditMock).not.toHaveBeenCalled();
     }
   });
 
@@ -269,16 +272,16 @@ describe('Lesson content publication lifecycle use cases', () => {
           operation === 'update'
             ? new UpdateLessonContentUseCase(
                 harness.repository,
-                harness.authRepository as never,
+                harness.unitOfWork,
               ).execute(PATH, { title: 'Blocked' })
             : operation === 'reorder'
               ? new ReorderLessonContentUseCase(
                   harness.repository,
-                  harness.authRepository as never,
+                  harness.unitOfWork,
                 ).execute(PATH, { sortOrder: 2 })
               : new DeleteLessonContentUseCase(
                   harness.repository,
-                  harness.authRepository as never,
+                  harness.unitOfWork,
                 ).execute(PATH),
         ),
         {
@@ -289,7 +292,7 @@ describe('Lesson content publication lifecycle use cases', () => {
       expect(
         harness.repository.updateContentItemConditionally,
       ).not.toHaveBeenCalled();
-      expect(harness.authRepository.createAuditLog).not.toHaveBeenCalled();
+      expect(harness.auditMock).not.toHaveBeenCalled();
     },
   );
 
@@ -297,7 +300,7 @@ describe('Lesson content publication lifecycle use cases', () => {
     const harness = createHarness(contentItem());
     const useCase = new PublishLessonContentUseCase(
       harness.repository,
-      harness.authRepository as never,
+      harness.unitOfWork,
     );
 
     const result = await inScope(() => useCase.execute(PATH));
@@ -309,17 +312,43 @@ describe('Lesson content publication lifecycle use cases', () => {
       archivedAt: null,
       archivedByUserId: null,
     });
-    expect(harness.authRepository.createAuditLog).toHaveBeenCalledTimes(1);
-    expectTransitionAuditIsSafe(
-      harness.authRepository.createAuditLog.mock.calls[0]?.[0],
+    expect(harness.auditMock).toHaveBeenCalledTimes(1);
+    expectTransitionAuditIsSafe(harness.auditMock.mock.calls[0]?.[0]);
+    expect(harness.repository.findFileById).not.toHaveBeenCalled();
+  });
+
+  it('revalidates and locks a FILE dependency when publishing a DRAFT', async () => {
+    const fileId = 'file-deleted-before-publish';
+    const harness = createHarness(
+      contentItem({
+        type: LessonContentItemType.FILE,
+        bodyText: null,
+        fileId,
+        file: fileRecord(fileId),
+      }),
+      { fileAvailable: false },
     );
+    const useCase = new PublishLessonContentUseCase(
+      harness.repository,
+      harness.unitOfWork,
+    );
+
+    await expect(inScope(() => useCase.execute(PATH))).rejects.toMatchObject({
+      code: 'academics.lesson_content.file_not_found',
+      details: undefined,
+    });
+    expect(harness.repository.findFileById).toHaveBeenCalledWith(fileId);
+    expect(
+      harness.repository.updateContentItemConditionally,
+    ).not.toHaveBeenCalled();
+    expect(harness.auditMock).not.toHaveBeenCalled();
   });
 
   it('unpublishes PUBLISHED and clears the complete published pair', async () => {
     const harness = createHarness(publishedItem());
     const useCase = new UnpublishLessonContentUseCase(
       harness.repository,
-      harness.authRepository as never,
+      harness.unitOfWork,
     );
 
     await expect(inScope(() => useCase.execute(PATH))).resolves.toMatchObject({
@@ -329,7 +358,7 @@ describe('Lesson content publication lifecycle use cases', () => {
       archivedAt: null,
       archivedByUserId: null,
     });
-    expect(harness.authRepository.createAuditLog).toHaveBeenCalledTimes(1);
+    expect(harness.auditMock).toHaveBeenCalledTimes(1);
   });
 
   it('archives PUBLISHED while retaining its complete published pair', async () => {
@@ -337,7 +366,7 @@ describe('Lesson content publication lifecycle use cases', () => {
     const harness = createHarness(existing);
     const useCase = new ArchiveLessonContentUseCase(
       harness.repository,
-      harness.authRepository as never,
+      harness.unitOfWork,
     );
 
     await expect(inScope(() => useCase.execute(PATH))).resolves.toMatchObject({
@@ -347,7 +376,7 @@ describe('Lesson content publication lifecycle use cases', () => {
       archivedAt: expect.any(String),
       archivedByUserId: 'actor-1',
     });
-    expect(harness.authRepository.createAuditLog).toHaveBeenCalledTimes(1);
+    expect(harness.auditMock).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -397,10 +426,7 @@ describe('Lesson content publication lifecycle use cases', () => {
     'rejects invalid transition %s',
     async (_label, existing, UseCase, from, to) => {
       const harness = createHarness(existing);
-      const useCase = new UseCase(
-        harness.repository,
-        harness.authRepository as never,
-      );
+      const useCase = new UseCase(harness.repository, harness.unitOfWork);
 
       await expectPublicationConflict(
         inScope(() => useCase.execute(PATH)),
@@ -409,7 +435,7 @@ describe('Lesson content publication lifecycle use cases', () => {
       expect(
         harness.repository.updateContentItemConditionally,
       ).not.toHaveBeenCalled();
-      expect(harness.authRepository.createAuditLog).not.toHaveBeenCalled();
+      expect(harness.auditMock).not.toHaveBeenCalled();
     },
   );
 
@@ -417,7 +443,7 @@ describe('Lesson content publication lifecycle use cases', () => {
     const harness = createHarness(contentItem(), { conditionalConflict: true });
     const useCase = new PublishLessonContentUseCase(
       harness.repository,
-      harness.authRepository as never,
+      harness.unitOfWork,
     );
 
     await expectPublicationConflict(
@@ -427,7 +453,7 @@ describe('Lesson content publication lifecycle use cases', () => {
         to: LessonContentPublicationStatus.PUBLISHED,
       },
     );
-    expect(harness.authRepository.createAuditLog).not.toHaveBeenCalled();
+    expect(harness.auditMock).not.toHaveBeenCalled();
   });
 
   it('keeps ARCHIVED Curriculum on the existing read-only contract', async () => {
@@ -436,7 +462,7 @@ describe('Lesson content publication lifecycle use cases', () => {
     });
     const useCase = new PublishLessonContentUseCase(
       harness.repository,
-      harness.authRepository as never,
+      harness.unitOfWork,
     );
 
     await expect(inScope(() => useCase.execute(PATH))).rejects.toMatchObject({
@@ -453,8 +479,10 @@ function createHarness(
   options: {
     curriculumStatus?: CurriculumStatus;
     conditionalConflict?: boolean;
+    fileAvailable?: boolean;
   } = {},
 ) {
+  const auditMock = jest.fn().mockResolvedValue(undefined);
   const repository = {
     findLessonContentScope: jest.fn().mockResolvedValue({
       curriculum: {
@@ -471,7 +499,9 @@ function createHarness(
     findLessonContentItemById: jest.fn().mockResolvedValue(initial),
     findFileById: jest
       .fn()
-      .mockImplementation(async (fileId: string) => fileRecord(fileId)),
+      .mockImplementation(async (fileId: string) =>
+        options.fileAvailable === false ? null : fileRecord(fileId),
+      ),
     getNextSortOrder: jest.fn().mockResolvedValue(1),
     createContentItem: jest.fn().mockImplementation(async (data) =>
       contentItem({
@@ -499,11 +529,33 @@ function createHarness(
         };
       }),
   } as unknown as jest.Mocked<LessonContentRepository>;
-  const authRepository = {
-    createAuditLog: jest.fn().mockResolvedValue(undefined),
+  const unitOfWork: LessonContentUnitOfWork = {
+    execute<T>(
+      _schoolId: string,
+      callback: (context: LessonContentTransactionContext) => Promise<T>,
+    ): Promise<T> {
+      return callback({
+        lockLessonContentScope: repository.findLessonContentScope,
+        lockLiveFile: async (fileId: string) =>
+          Boolean(await repository.findFileById(fileId)),
+        getNextSortOrder: repository.getNextSortOrder,
+        createContentItem: repository.createContentItem,
+        updateContentItemConditionally:
+          repository.updateContentItemConditionally,
+        writeSuccessfulAudit: async (
+          entry: LessonContentSuccessfulAuditEntry,
+        ): Promise<void> => {
+          await auditMock({
+            ...entry,
+            module: 'academics',
+            resourceType: 'lesson_content_item',
+            outcome: AuditOutcome.SUCCESS,
+          });
+        },
+      });
+    },
   };
-
-  return { repository, authRepository };
+  return { repository, unitOfWork, auditMock };
 }
 
 function contentItem(

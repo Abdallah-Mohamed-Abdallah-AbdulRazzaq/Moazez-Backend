@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { CurriculumStatus, Prisma } from '@prisma/client';
+import {
+  CurriculumStatus,
+  LessonContentPublicationStatus,
+  Prisma,
+} from '@prisma/client';
 import { getRequestContext } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 
@@ -210,15 +214,30 @@ export interface ListCurriculaFilters {
 
 export type SoftDeleteCurriculumResult =
   | { status: 'deleted'; curriculum: CurriculumDetailRecord }
+  | { status: 'publication_conflict' }
   | { status: 'not_found' };
 
 export type SoftDeleteUnitResult =
   | { status: 'deleted'; unit: CurriculumUnitRecord }
+  | { status: 'publication_conflict' }
+  | { status: 'read_only'; curriculumStatus: CurriculumStatus }
   | { status: 'not_found' };
 
 export type SoftDeleteLessonResult =
   | { status: 'deleted'; lesson: CurriculumLessonRecord }
+  | { status: 'publication_conflict' }
+  | { status: 'read_only'; curriculumStatus: CurriculumStatus }
   | { status: 'not_found' };
+
+type LockedCurriculumRow = {
+  id: string;
+  status: CurriculumStatus;
+};
+
+type LockedLessonContentRow = {
+  id: string;
+  publicationStatus: LessonContentPublicationStatus;
+};
 
 @Injectable()
 export class CurriculumRepository {
@@ -361,16 +380,32 @@ export class CurriculumRepository {
     const deletedAt = new Date();
 
     return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.curriculum.findFirst({
-        where: { id: curriculumId, schoolId, deletedAt: null },
-        ...CURRICULUM_DETAIL_ARGS,
-      });
-      if (!existing) {
+      const curriculum = await this.lockLiveCurriculum(
+        tx,
+        schoolId,
+        curriculumId,
+      );
+      if (!curriculum) {
         return { status: 'not_found' };
       }
 
+      await this.lockLiveCurriculumUnits(tx, schoolId, curriculumId);
+      await this.lockLiveCurriculumLessons(tx, schoolId, curriculumId);
+      const contentItems = await this.lockLiveLessonContentItems(tx, {
+        schoolId,
+        curriculumId,
+      });
+      if (this.hasPublishedContent(contentItems)) {
+        return { status: 'publication_conflict' };
+      }
+
       await tx.lessonContentItem.updateMany({
-        where: { curriculumId, schoolId, deletedAt: null },
+        where: {
+          curriculumId,
+          schoolId,
+          deletedAt: null,
+          publicationStatus: LessonContentPublicationStatus.DRAFT,
+        },
         data: { deletedAt },
       });
       await tx.curriculumLesson.updateMany({
@@ -381,7 +416,7 @@ export class CurriculumRepository {
         where: { curriculumId, schoolId, deletedAt: null },
         data: { deletedAt },
       });
-      const curriculum = await tx.curriculum.update({
+      const deletedCurriculum = await tx.curriculum.update({
         where: {
           id_schoolId: {
             id: curriculumId,
@@ -392,7 +427,7 @@ export class CurriculumRepository {
         ...CURRICULUM_DETAIL_ARGS,
       });
 
-      return { status: 'deleted', curriculum };
+      return { status: 'deleted', curriculum: deletedCurriculum };
     });
   }
 
@@ -447,17 +482,34 @@ export class CurriculumRepository {
     const deletedAt = new Date();
 
     return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.curriculumUnit.findFirst({
-        where: {
-          id: input.unitId,
-          curriculumId: input.curriculumId,
-          schoolId,
-          deletedAt: null,
-        },
-        ...CURRICULUM_UNIT_ARGS,
-      });
-      if (!existing) {
+      const curriculum = await this.lockLiveCurriculum(
+        tx,
+        schoolId,
+        input.curriculumId,
+      );
+      if (!curriculum) {
         return { status: 'not_found' };
+      }
+      if (curriculum.status === CurriculumStatus.ARCHIVED) {
+        return {
+          status: 'read_only',
+          curriculumStatus: curriculum.status,
+        };
+      }
+
+      const unit = await this.lockLiveCurriculumUnit(tx, schoolId, input);
+      if (!unit) {
+        return { status: 'not_found' };
+      }
+
+      await this.lockLiveUnitLessons(tx, schoolId, input);
+      const contentItems = await this.lockLiveLessonContentItems(tx, {
+        schoolId,
+        curriculumId: input.curriculumId,
+        unitId: input.unitId,
+      });
+      if (this.hasPublishedContent(contentItems)) {
+        return { status: 'publication_conflict' };
       }
 
       await tx.lessonContentItem.updateMany({
@@ -466,6 +518,7 @@ export class CurriculumRepository {
           curriculumId: input.curriculumId,
           schoolId,
           deletedAt: null,
+          publicationStatus: LessonContentPublicationStatus.DRAFT,
         },
         data: { deletedAt },
       });
@@ -478,7 +531,7 @@ export class CurriculumRepository {
         },
         data: { deletedAt },
       });
-      const unit = await tx.curriculumUnit.update({
+      const deletedUnit = await tx.curriculumUnit.update({
         where: {
           id_schoolId: {
             id: input.unitId,
@@ -489,7 +542,7 @@ export class CurriculumRepository {
         ...CURRICULUM_UNIT_ARGS,
       });
 
-      return { status: 'deleted', unit };
+      return { status: 'deleted', unit: deletedUnit };
     });
   }
 
@@ -552,21 +605,42 @@ export class CurriculumRepository {
     const schoolId = this.getCurrentSchoolId();
 
     return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.curriculumLesson.findFirst({
-        where: {
-          id: input.lessonId,
-          curriculumId: input.curriculumId,
-          unitId: input.unitId,
-          schoolId,
-          deletedAt: null,
-        },
-        ...CURRICULUM_LESSON_ARGS,
-      });
-      if (!existing) {
+      const curriculum = await this.lockLiveCurriculum(
+        tx,
+        schoolId,
+        input.curriculumId,
+      );
+      if (!curriculum) {
+        return { status: 'not_found' };
+      }
+      if (curriculum.status === CurriculumStatus.ARCHIVED) {
+        return {
+          status: 'read_only',
+          curriculumStatus: curriculum.status,
+        };
+      }
+
+      const unit = await this.lockLiveCurriculumUnit(tx, schoolId, input);
+      if (!unit) {
+        return { status: 'not_found' };
+      }
+
+      const lesson = await this.lockLiveCurriculumLesson(tx, schoolId, input);
+      if (!lesson) {
         return { status: 'not_found' };
       }
 
       const deletedAt = new Date();
+      const contentItems = await this.lockLiveLessonContentItems(tx, {
+        schoolId,
+        curriculumId: input.curriculumId,
+        unitId: input.unitId,
+        lessonId: input.lessonId,
+      });
+      if (this.hasPublishedContent(contentItems)) {
+        return { status: 'publication_conflict' };
+      }
+
       await tx.lessonContentItem.updateMany({
         where: {
           lessonId: input.lessonId,
@@ -574,10 +648,11 @@ export class CurriculumRepository {
           curriculumId: input.curriculumId,
           schoolId,
           deletedAt: null,
+          publicationStatus: LessonContentPublicationStatus.DRAFT,
         },
         data: { deletedAt },
       });
-      const lesson = await tx.curriculumLesson.update({
+      const deletedLesson = await tx.curriculumLesson.update({
         where: {
           id_schoolId: {
             id: input.lessonId,
@@ -588,7 +663,147 @@ export class CurriculumRepository {
         ...CURRICULUM_LESSON_ARGS,
       });
 
-      return { status: 'deleted', lesson };
+      return { status: 'deleted', lesson: deletedLesson };
     });
+  }
+
+  private async lockLiveCurriculum(
+    transaction: Prisma.TransactionClient,
+    schoolId: string,
+    curriculumId: string,
+  ): Promise<LockedCurriculumRow | null> {
+    const curricula = await transaction.$queryRaw<LockedCurriculumRow[]>(
+      Prisma.sql`
+        SELECT "id", "status"
+        FROM "curricula"
+        WHERE "id" = ${curriculumId}::uuid
+          AND "school_id" = ${schoolId}::uuid
+          AND "deleted_at" IS NULL
+        LIMIT 1
+        FOR UPDATE
+      `,
+    );
+    return curricula[0] ?? null;
+  }
+
+  private async lockLiveCurriculumUnits(
+    transaction: Prisma.TransactionClient,
+    schoolId: string,
+    curriculumId: string,
+  ): Promise<void> {
+    await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "curriculum_units"
+      WHERE "school_id" = ${schoolId}::uuid
+        AND "curriculum_id" = ${curriculumId}::uuid
+        AND "deleted_at" IS NULL
+      ORDER BY "id" ASC
+      FOR UPDATE
+    `);
+  }
+
+  private async lockLiveCurriculumLessons(
+    transaction: Prisma.TransactionClient,
+    schoolId: string,
+    curriculumId: string,
+  ): Promise<void> {
+    await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "curriculum_lessons"
+      WHERE "school_id" = ${schoolId}::uuid
+        AND "curriculum_id" = ${curriculumId}::uuid
+        AND "deleted_at" IS NULL
+      ORDER BY "id" ASC
+      FOR UPDATE
+    `);
+  }
+
+  private async lockLiveCurriculumUnit(
+    transaction: Prisma.TransactionClient,
+    schoolId: string,
+    input: { curriculumId: string; unitId: string },
+  ): Promise<{ id: string } | null> {
+    const units = await transaction.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`
+        SELECT "id"
+        FROM "curriculum_units"
+        WHERE "id" = ${input.unitId}::uuid
+          AND "school_id" = ${schoolId}::uuid
+          AND "curriculum_id" = ${input.curriculumId}::uuid
+          AND "deleted_at" IS NULL
+        LIMIT 1
+        FOR UPDATE
+      `,
+    );
+    return units[0] ?? null;
+  }
+
+  private async lockLiveUnitLessons(
+    transaction: Prisma.TransactionClient,
+    schoolId: string,
+    input: { curriculumId: string; unitId: string },
+  ): Promise<void> {
+    await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id"
+      FROM "curriculum_lessons"
+      WHERE "school_id" = ${schoolId}::uuid
+        AND "curriculum_id" = ${input.curriculumId}::uuid
+        AND "unit_id" = ${input.unitId}::uuid
+        AND "deleted_at" IS NULL
+      ORDER BY "id" ASC
+      FOR UPDATE
+    `);
+  }
+
+  private async lockLiveCurriculumLesson(
+    transaction: Prisma.TransactionClient,
+    schoolId: string,
+    input: { curriculumId: string; unitId: string; lessonId: string },
+  ): Promise<{ id: string } | null> {
+    const lessons = await transaction.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`
+        SELECT "id"
+        FROM "curriculum_lessons"
+        WHERE "id" = ${input.lessonId}::uuid
+          AND "school_id" = ${schoolId}::uuid
+          AND "curriculum_id" = ${input.curriculumId}::uuid
+          AND "unit_id" = ${input.unitId}::uuid
+          AND "deleted_at" IS NULL
+        LIMIT 1
+        FOR UPDATE
+      `,
+    );
+    return lessons[0] ?? null;
+  }
+
+  private lockLiveLessonContentItems(
+    transaction: Prisma.TransactionClient,
+    input: {
+      schoolId: string;
+      curriculumId: string;
+      unitId?: string;
+      lessonId?: string;
+    },
+  ): Promise<LockedLessonContentRow[]> {
+    return transaction.$queryRaw<LockedLessonContentRow[]>(Prisma.sql`
+      SELECT
+        "id",
+        "publication_status" AS "publicationStatus"
+      FROM "lesson_content_items"
+      WHERE "school_id" = ${input.schoolId}::uuid
+        AND "curriculum_id" = ${input.curriculumId}::uuid
+        ${input.unitId ? Prisma.sql`AND "unit_id" = ${input.unitId}::uuid` : Prisma.empty}
+        ${input.lessonId ? Prisma.sql`AND "lesson_id" = ${input.lessonId}::uuid` : Prisma.empty}
+        AND "deleted_at" IS NULL
+      ORDER BY "id" ASC
+      FOR UPDATE
+    `);
+  }
+
+  private hasPublishedContent(items: LockedLessonContentRow[]): boolean {
+    return items.some(
+      (item) =>
+        item.publicationStatus === LessonContentPublicationStatus.PUBLISHED,
+    );
   }
 }
