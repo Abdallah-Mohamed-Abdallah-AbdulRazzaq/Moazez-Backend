@@ -18,11 +18,14 @@ import {
   UpdateCurriculumUseCase,
 } from './application/curriculum.use-cases';
 import {
+  ArchiveLessonContentUseCase,
   CreateLessonContentUseCase,
   DeleteLessonContentUseCase,
   GetLessonContentUseCase,
   ListLessonContentUseCase,
+  PublishLessonContentUseCase,
   ReorderLessonContentUseCase,
+  UnpublishLessonContentUseCase,
   UpdateLessonContentUseCase,
 } from './application/lesson-content.use-cases';
 import { CurriculumController } from './controller/curriculum.controller';
@@ -56,6 +59,9 @@ import { LessonContentRepository } from './infrastructure/lesson-content.reposit
     UpdateLessonContentUseCase,
     ReorderLessonContentUseCase,
     DeleteLessonContentUseCase,
+    PublishLessonContentUseCase,
+    UnpublishLessonContentUseCase,
+    ArchiveLessonContentUseCase,
   ],
   exports: [
     CurriculumRepository,

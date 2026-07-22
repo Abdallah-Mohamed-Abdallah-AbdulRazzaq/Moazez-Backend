@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   CurriculumStatus,
   LessonContentItemType,
+  LessonContentPublicationStatus,
   LessonPlanItemStatus,
   LessonPlanStatus,
   MembershipStatus,
@@ -19,6 +20,7 @@ import {
   expectNoObjectKey,
   GLOBAL_PREFIX,
 } from '../helpers/app-facing-calendar-test-utils';
+import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 
 type AuthTokens = {
   accessToken: string;
@@ -69,6 +71,9 @@ describe('Academics final completion tenancy/security sweep', () => {
   let fixture: AppFacingCalendarFixture;
   let prisma: PrismaClient;
   let extra: ExtraData;
+  let createWorkerSpy: jest.SpiedFunction<BullmqService['createWorker']>;
+  let addJobSpy: jest.SpiedFunction<BullmqService['addJob']>;
+  let queueReadinessSpy: jest.SpiedFunction<BullmqService['getQueueReadiness']>;
 
   const suffix = randomUUID().split('-')[0];
   const marker = `s22k-sec-${suffix}`;
@@ -86,6 +91,21 @@ describe('Academics final completion tenancy/security sweep', () => {
   };
 
   beforeAll(async () => {
+    createWorkerSpy = jest
+      .spyOn(BullmqService.prototype, 'createWorker')
+      .mockReturnValue({ on: jest.fn() } as never);
+    addJobSpy = jest
+      .spyOn(BullmqService.prototype, 'addJob')
+      .mockResolvedValue(undefined as never);
+    queueReadinessSpy = jest
+      .spyOn(BullmqService.prototype, 'getQueueReadiness')
+      .mockImplementation((name) =>
+        Promise.resolve({
+          name,
+          status: 'ok',
+          counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+        }),
+      );
     fixture = await createAppFacingCalendarFixture('academics-final-security');
     prisma = fixture.prisma;
     extra = await createExtraSecurityData();
@@ -94,6 +114,9 @@ describe('Academics final completion tenancy/security sweep', () => {
   afterAll(async () => {
     if (prisma) await cleanupExtraData();
     if (fixture) await fixture.close();
+    createWorkerSpy?.mockRestore();
+    addJobSpy?.mockRestore();
+    queueReadinessSpy?.mockRestore();
   });
 
   it('denies representative dashboard Academics routes to unauthenticated, app-role, and no-permission actors', async () => {
@@ -646,6 +669,9 @@ describe('Academics final completion tenancy/security sweep', () => {
         isRequired: true,
         estimatedMinutes: 10,
         createdByUserId: params.teacherUserId,
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: params.teacherUserId,
       },
       select: { id: true },
     });

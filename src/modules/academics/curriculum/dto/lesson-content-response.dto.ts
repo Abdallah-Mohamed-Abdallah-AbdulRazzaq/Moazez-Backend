@@ -20,6 +20,11 @@ export class LessonContentItemResponseDto {
   isRequired!: boolean;
   estimatedMinutes!: number | null;
   metadata!: unknown;
+  publicationStatus!: 'draft' | 'published' | 'archived';
+  publishedAt!: string | null;
+  publishedByUserId!: string | null;
+  archivedAt!: string | null;
+  archivedByUserId!: string | null;
   createdAt!: string;
   updatedAt!: string;
 }

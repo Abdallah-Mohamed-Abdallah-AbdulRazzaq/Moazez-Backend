@@ -3,6 +3,7 @@ import {
   AuditOutcome,
   CurriculumStatus,
   LessonContentItemType,
+  LessonContentPublicationStatus,
   Prisma,
 } from '@prisma/client';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
@@ -27,6 +28,7 @@ import {
   LessonContentInvalidScopeException,
   LessonContentInvalidTypePayloadException,
   LessonContentNotFoundException,
+  LessonContentPublicationConflictException,
   LessonContentReadOnlyException,
 } from '../domain/lesson-content.exceptions';
 import {
@@ -47,6 +49,31 @@ type LessonContentPath = {
 
 type LessonContentItemPath = LessonContentPath & {
   contentItemId: string;
+};
+
+type LessonContentPublicationOperation = {
+  expectedPublicationStatus: LessonContentPublicationStatus;
+  targetPublicationStatus: LessonContentPublicationStatus;
+};
+
+const DRAFT_MUTATION: LessonContentPublicationOperation = {
+  expectedPublicationStatus: LessonContentPublicationStatus.DRAFT,
+  targetPublicationStatus: LessonContentPublicationStatus.DRAFT,
+};
+
+const PUBLISH_TRANSITION: LessonContentPublicationOperation = {
+  expectedPublicationStatus: LessonContentPublicationStatus.DRAFT,
+  targetPublicationStatus: LessonContentPublicationStatus.PUBLISHED,
+};
+
+const UNPUBLISH_TRANSITION: LessonContentPublicationOperation = {
+  expectedPublicationStatus: LessonContentPublicationStatus.PUBLISHED,
+  targetPublicationStatus: LessonContentPublicationStatus.DRAFT,
+};
+
+const ARCHIVE_TRANSITION: LessonContentPublicationOperation = {
+  expectedPublicationStatus: LessonContentPublicationStatus.PUBLISHED,
+  targetPublicationStatus: LessonContentPublicationStatus.ARCHIVED,
 };
 
 @Injectable()
@@ -108,13 +135,18 @@ export class CreateLessonContentUseCase {
       metadata: normalized.metadata,
       createdByUserId: scope.actorId,
       updatedByUserId: scope.actorId,
+      publicationStatus: LessonContentPublicationStatus.DRAFT,
+      publishedAt: null,
+      publishedByUserId: null,
+      archivedAt: null,
+      archivedByUserId: null,
     });
 
     await recordLessonContentAudit(this.authRepository, {
       scope,
       action: 'academics.lesson_content.create',
       resourceId: contentItem.id,
-      after: summarizeLessonContentItem(contentItem),
+      after: summarizeLessonContentMutation(contentItem),
     });
 
     return presentLessonContentItem(contentItem);
@@ -161,12 +193,17 @@ export class UpdateLessonContentUseCase {
       this.lessonContentRepository,
       path,
     );
+    assertExpectedPublicationStatus(existing, DRAFT_MUTATION);
 
     const normalized = normalizeUpdateLessonContentInput(existing, command);
     await ensureFileAvailable(this.lessonContentRepository, normalized);
 
-    const updated = await this.lessonContentRepository.updateContentItem(
-      path.contentItemId,
+    const operationAt = nextMutationTimestamp(existing.updatedAt);
+    const updated = await updateContentItemConditionallyOrThrow(
+      this.lessonContentRepository,
+      path,
+      existing,
+      DRAFT_MUTATION,
       {
         type: normalized.type,
         title: normalized.title,
@@ -177,6 +214,7 @@ export class UpdateLessonContentUseCase {
         estimatedMinutes: normalized.estimatedMinutes,
         metadata: normalized.metadata,
         updatedByUserId: scope.actorId,
+        updatedAt: operationAt,
       },
     );
 
@@ -184,8 +222,8 @@ export class UpdateLessonContentUseCase {
       scope,
       action: 'academics.lesson_content.update',
       resourceId: updated.id,
-      before: summarizeLessonContentItem(existing),
-      after: summarizeLessonContentItem(updated),
+      before: summarizeLessonContentMutation(existing),
+      after: summarizeLessonContentMutation(updated),
     });
 
     return presentLessonContentItem(updated);
@@ -214,12 +252,18 @@ export class ReorderLessonContentUseCase {
       this.lessonContentRepository,
       path,
     );
+    assertExpectedPublicationStatus(existing, DRAFT_MUTATION);
 
-    const updated = await this.lessonContentRepository.updateContentItem(
-      path.contentItemId,
+    const operationAt = nextMutationTimestamp(existing.updatedAt);
+    const updated = await updateContentItemConditionallyOrThrow(
+      this.lessonContentRepository,
+      path,
+      existing,
+      DRAFT_MUTATION,
       {
         sortOrder: command.sortOrder,
         updatedByUserId: scope.actorId,
+        updatedAt: operationAt,
       },
     );
 
@@ -227,8 +271,8 @@ export class ReorderLessonContentUseCase {
       scope,
       action: 'academics.lesson_content.reorder',
       resourceId: updated.id,
-      before: summarizeLessonContentItem(existing),
-      after: summarizeLessonContentItem(updated),
+      before: summarizeLessonContentMutation(existing),
+      after: summarizeLessonContentMutation(updated),
     });
 
     return presentLessonContentItem(updated);
@@ -255,23 +299,174 @@ export class DeleteLessonContentUseCase {
       this.lessonContentRepository,
       path,
     );
+    assertExpectedPublicationStatus(existing, DRAFT_MUTATION);
 
-    const result =
-      await this.lessonContentRepository.softDeleteContentItem(path);
-    if (result.status === 'not_found') {
-      throw new LessonContentNotFoundException(path);
-    }
+    const operationAt = nextMutationTimestamp(existing.updatedAt);
+    const deleted = await updateContentItemConditionallyOrThrow(
+      this.lessonContentRepository,
+      path,
+      existing,
+      DRAFT_MUTATION,
+      {
+        deletedAt: operationAt,
+        updatedByUserId: scope.actorId,
+        updatedAt: operationAt,
+      },
+    );
 
     await recordLessonContentAudit(this.authRepository, {
       scope,
       action: 'academics.lesson_content.delete',
       resourceId: existing.id,
-      before: summarizeLessonContentItem(existing),
-      after: summarizeLessonContentItem(result.contentItem),
+      before: summarizeLessonContentMutation(existing),
+      after: summarizeLessonContentMutation(deleted),
     });
 
     return { ok: true };
   }
+}
+
+@Injectable()
+export class PublishLessonContentUseCase {
+  constructor(
+    private readonly lessonContentRepository: LessonContentRepository,
+    private readonly authRepository: AuthRepository,
+  ) {}
+
+  async execute(
+    path: LessonContentItemPath,
+  ): Promise<LessonContentItemResponseDto> {
+    const { scope, existing } = await prepareLessonContentTransition(
+      this.lessonContentRepository,
+      path,
+      PUBLISH_TRANSITION,
+    );
+    const transitionAt = nextMutationTimestamp(existing.updatedAt);
+    const published = await updateContentItemConditionallyOrThrow(
+      this.lessonContentRepository,
+      path,
+      existing,
+      PUBLISH_TRANSITION,
+      {
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: transitionAt,
+        publishedByUserId: scope.actorId,
+        archivedAt: null,
+        archivedByUserId: null,
+        updatedByUserId: scope.actorId,
+        updatedAt: transitionAt,
+      },
+    );
+
+    await recordLessonContentAudit(this.authRepository, {
+      scope,
+      action: 'academics.lesson_content.publish',
+      resourceId: published.id,
+      before: summarizeLessonContentLifecycle(existing),
+      after: summarizeLessonContentLifecycle(published),
+    });
+
+    return presentLessonContentItem(published);
+  }
+}
+
+@Injectable()
+export class UnpublishLessonContentUseCase {
+  constructor(
+    private readonly lessonContentRepository: LessonContentRepository,
+    private readonly authRepository: AuthRepository,
+  ) {}
+
+  async execute(
+    path: LessonContentItemPath,
+  ): Promise<LessonContentItemResponseDto> {
+    const { scope, existing } = await prepareLessonContentTransition(
+      this.lessonContentRepository,
+      path,
+      UNPUBLISH_TRANSITION,
+    );
+    const transitionAt = nextMutationTimestamp(existing.updatedAt);
+    const unpublished = await updateContentItemConditionallyOrThrow(
+      this.lessonContentRepository,
+      path,
+      existing,
+      UNPUBLISH_TRANSITION,
+      {
+        publicationStatus: LessonContentPublicationStatus.DRAFT,
+        publishedAt: null,
+        publishedByUserId: null,
+        archivedAt: null,
+        archivedByUserId: null,
+        updatedByUserId: scope.actorId,
+        updatedAt: transitionAt,
+      },
+    );
+
+    await recordLessonContentAudit(this.authRepository, {
+      scope,
+      action: 'academics.lesson_content.unpublish',
+      resourceId: unpublished.id,
+      before: summarizeLessonContentLifecycle(existing),
+      after: summarizeLessonContentLifecycle(unpublished),
+    });
+
+    return presentLessonContentItem(unpublished);
+  }
+}
+
+@Injectable()
+export class ArchiveLessonContentUseCase {
+  constructor(
+    private readonly lessonContentRepository: LessonContentRepository,
+    private readonly authRepository: AuthRepository,
+  ) {}
+
+  async execute(
+    path: LessonContentItemPath,
+  ): Promise<LessonContentItemResponseDto> {
+    const { scope, existing } = await prepareLessonContentTransition(
+      this.lessonContentRepository,
+      path,
+      ARCHIVE_TRANSITION,
+    );
+    const transitionAt = nextMutationTimestamp(existing.updatedAt);
+    const archived = await updateContentItemConditionallyOrThrow(
+      this.lessonContentRepository,
+      path,
+      existing,
+      ARCHIVE_TRANSITION,
+      {
+        publicationStatus: LessonContentPublicationStatus.ARCHIVED,
+        archivedAt: transitionAt,
+        archivedByUserId: scope.actorId,
+        updatedByUserId: scope.actorId,
+        updatedAt: transitionAt,
+      },
+    );
+
+    await recordLessonContentAudit(this.authRepository, {
+      scope,
+      action: 'academics.lesson_content.archive',
+      resourceId: archived.id,
+      before: summarizeLessonContentLifecycle(existing),
+      after: summarizeLessonContentLifecycle(archived),
+    });
+
+    return presentLessonContentItem(archived);
+  }
+}
+
+async function prepareLessonContentTransition(
+  repository: LessonContentRepository,
+  path: LessonContentItemPath,
+  operation: LessonContentPublicationOperation,
+): Promise<{ scope: AcademicsScope; existing: LessonContentItemRecord }> {
+  const scope = requireAcademicsScope();
+  const lessonScope = await resolveLessonContentScope(repository, path);
+  assertLessonContentMutable(lessonScope);
+  const existing = await findLessonContentItemOrThrow(repository, path);
+  assertExpectedPublicationStatus(existing, operation);
+  return { scope, existing };
 }
 
 async function resolveLessonContentScope(
@@ -331,6 +526,45 @@ async function findLessonContentItemOrThrow(
   return contentItem;
 }
 
+function assertExpectedPublicationStatus(
+  contentItem: LessonContentItemRecord,
+  operation: LessonContentPublicationOperation,
+): void {
+  if (contentItem.publicationStatus !== operation.expectedPublicationStatus) {
+    throw new LessonContentPublicationConflictException({
+      from: contentItem.publicationStatus,
+      to: operation.targetPublicationStatus,
+    });
+  }
+}
+
+async function updateContentItemConditionallyOrThrow(
+  repository: LessonContentRepository,
+  path: LessonContentItemPath,
+  existing: LessonContentItemRecord,
+  operation: LessonContentPublicationOperation,
+  data: Prisma.LessonContentItemUncheckedUpdateManyInput,
+): Promise<LessonContentItemRecord> {
+  const result = await repository.updateContentItemConditionally({
+    ...path,
+    expectedPublicationStatus: operation.expectedPublicationStatus,
+    expectedUpdatedAt: existing.updatedAt,
+    data,
+  });
+  if (result.status === 'conflict') {
+    throw new LessonContentPublicationConflictException({
+      from: existing.publicationStatus,
+      to: operation.targetPublicationStatus,
+    });
+  }
+
+  return result.contentItem;
+}
+
+function nextMutationTimestamp(previousUpdatedAt: Date): Date {
+  return new Date(Math.max(Date.now(), previousUpdatedAt.getTime() + 1));
+}
+
 async function ensureFileAvailable(
   repository: LessonContentRepository,
   payload: NormalizedLessonContentPayload,
@@ -388,20 +622,27 @@ function recordLessonContentAudit(
   });
 }
 
-function summarizeLessonContentItem(
+function summarizeLessonContentMutation(
   item: LessonContentItemRecord,
 ): Record<string, unknown> {
   return {
-    id: item.id,
-    curriculumId: item.curriculumId,
-    unitId: item.unitId,
-    lessonId: item.lessonId,
     type: item.type,
-    title: item.title,
-    fileId: item.fileId,
     sortOrder: item.sortOrder,
     isRequired: item.isRequired,
     estimatedMinutes: item.estimatedMinutes,
+    publicationStatus: item.publicationStatus,
+    publishedAt: item.publishedAt?.toISOString() ?? null,
+    archivedAt: item.archivedAt?.toISOString() ?? null,
     deletedAt: item.deletedAt?.toISOString() ?? null,
+  };
+}
+
+function summarizeLessonContentLifecycle(
+  item: LessonContentItemRecord,
+): Record<string, unknown> {
+  return {
+    publicationStatus: item.publicationStatus,
+    publishedAt: item.publishedAt?.toISOString() ?? null,
+    archivedAt: item.archivedAt?.toISOString() ?? null,
   };
 }

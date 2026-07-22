@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   CurriculumStatus,
+  LessonContentPublicationStatus,
   LessonPlanItemStatus,
   LessonPlanStatus,
   Prisma,
@@ -57,6 +58,12 @@ const TEACHER_LESSON_PREPARATION_ITEM_ARGS =
           contentItems: {
             where: {
               deletedAt: null,
+              publicationStatus: {
+                in: [
+                  LessonContentPublicationStatus.DRAFT,
+                  LessonContentPublicationStatus.PUBLISHED,
+                ],
+              },
               curriculum: {
                 is: {
                   deletedAt: null,

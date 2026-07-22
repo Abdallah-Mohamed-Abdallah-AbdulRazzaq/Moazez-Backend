@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/unbound-method, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/require-await -- focused Jest mocks intentionally inspect generated Prisma call tuples and detached mock methods. */
 import {
   CurriculumStatus,
   LessonContentItemType,
+  LessonContentPublicationStatus,
   UserType,
 } from '@prisma/client';
 import {
@@ -68,20 +70,16 @@ describe('Lesson content use cases', () => {
           file: data.fileId ? fileRecord() : null,
         }),
       ),
-      updateContentItem: jest.fn().mockImplementation(async (id, data) =>
-        contentItem({
-          id,
-          ...data,
-          file: data.fileId ? fileRecord() : null,
-        }),
-      ),
-      reorderContentItem: jest.fn(),
-      softDeleteContentItem: jest.fn().mockResolvedValue({
-        status: 'deleted',
-        contentItem: contentItem({
-          deletedAt: new Date('2026-05-26T12:00:00.000Z'),
-        }),
-      }),
+      updateContentItemConditionally: jest
+        .fn()
+        .mockImplementation(async (input) => ({
+          status: 'updated',
+          contentItem: contentItem({
+            id: input.contentItemId,
+            ...input.data,
+            file: input.data.fileId ? fileRecord() : null,
+          }),
+        })),
       ...overrides,
     };
 
@@ -121,6 +119,11 @@ describe('Lesson content use cases', () => {
         bodyText: 'Read pages 1-3.',
         url: null,
         fileId: null,
+        publicationStatus: LessonContentPublicationStatus.DRAFT,
+        publishedAt: null,
+        publishedByUserId: null,
+        archivedAt: null,
+        archivedByUserId: null,
       }),
     );
   });
@@ -294,13 +297,14 @@ describe('Lesson content use cases', () => {
           sortOrder: 4,
         }),
       ),
-      updateContentItem: jest.fn().mockResolvedValue(
-        contentItem({
+      updateContentItemConditionally: jest.fn().mockResolvedValue({
+        status: 'updated',
+        contentItem: contentItem({
           id: 'content-1',
           lessonId: 'lesson-1',
           sortOrder: 0,
         }),
-      ),
+      }),
     });
     const useCase = new ReorderLessonContentUseCase(
       repository,
@@ -324,10 +328,18 @@ describe('Lesson content use cases', () => {
       ...path,
       contentItemId: 'content-1',
     });
-    expect(repository.updateContentItem).toHaveBeenCalledWith('content-1', {
-      sortOrder: 0,
-      updatedByUserId: 'user-1',
-    });
+    expect(repository.updateContentItemConditionally).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ...path,
+        contentItemId: 'content-1',
+        expectedPublicationStatus: LessonContentPublicationStatus.DRAFT,
+        expectedUpdatedAt: new Date('2026-05-26T10:00:00.000Z'),
+        data: expect.objectContaining({
+          sortOrder: 0,
+          updatedByUserId: 'user-1',
+        }),
+      }),
+    );
   });
 
   it('presenter hides tenant fields', () => {
@@ -341,6 +353,11 @@ describe('Lesson content use cases', () => {
 
     expect(result).toMatchObject({
       contentItemId: 'content-1',
+      publicationStatus: 'draft',
+      publishedAt: null,
+      publishedByUserId: null,
+      archivedAt: null,
+      archivedByUserId: null,
       file: {
         fileId: 'file-1',
         filename: 'worksheet.pdf',
@@ -374,6 +391,11 @@ function contentItem(
     metadata: null,
     createdByUserId: 'user-1',
     updatedByUserId: 'user-1',
+    publicationStatus: LessonContentPublicationStatus.DRAFT,
+    publishedAt: null,
+    publishedByUserId: null,
+    archivedAt: null,
+    archivedByUserId: null,
     deletedAt: null,
     createdAt: now,
     updatedAt: now,

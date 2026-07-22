@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { CurriculumStatus, Prisma } from '@prisma/client';
+import {
+  CurriculumStatus,
+  LessonContentPublicationStatus,
+  Prisma,
+} from '@prisma/client';
 import { getRequestContext } from '../../../../common/context/request-context';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
 
@@ -31,6 +35,11 @@ const LESSON_CONTENT_ITEM_ARGS =
       metadata: true,
       createdByUserId: true,
       updatedByUserId: true,
+      publicationStatus: true,
+      publishedAt: true,
+      publishedByUserId: true,
+      archivedAt: true,
+      archivedByUserId: true,
       deletedAt: true,
       createdAt: true,
       updatedAt: true,
@@ -92,9 +101,9 @@ export type LessonContentScope = {
   curriculumStatus: CurriculumStatus;
 };
 
-export type SoftDeleteLessonContentItemResult =
-  | { status: 'deleted'; contentItem: LessonContentItemRecord }
-  | { status: 'not_found' };
+export type ConditionalLessonContentItemUpdateResult =
+  | { status: 'updated'; contentItem: LessonContentItemRecord }
+  | { status: 'conflict' };
 
 @Injectable()
 export class LessonContentRepository {
@@ -205,34 +214,19 @@ export class LessonContentRepository {
     });
   }
 
-  updateContentItem(
-    contentItemId: string,
-    data: Prisma.LessonContentItemUncheckedUpdateInput,
-  ): Promise<LessonContentItemRecord> {
-    return this.scopedPrisma.lessonContentItem.update({
-      where: { id: contentItemId },
-      data,
-      ...LESSON_CONTENT_ITEM_ARGS,
-    });
-  }
-
-  reorderContentItem(
-    contentItemId: string,
-    sortOrder: number,
-  ): Promise<LessonContentItemRecord> {
-    return this.updateContentItem(contentItemId, { sortOrder });
-  }
-
-  async softDeleteContentItem(input: {
+  async updateContentItemConditionally(input: {
     curriculumId: string;
     unitId: string;
     lessonId: string;
     contentItemId: string;
-  }): Promise<SoftDeleteLessonContentItemResult> {
+    expectedPublicationStatus: LessonContentPublicationStatus;
+    expectedUpdatedAt: Date;
+    data: Prisma.LessonContentItemUncheckedUpdateManyInput;
+  }): Promise<ConditionalLessonContentItemUpdateResult> {
     const schoolId = this.getCurrentSchoolId();
 
     return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.lessonContentItem.findFirst({
+      const updateResult = await tx.lessonContentItem.updateMany({
         where: {
           id: input.contentItemId,
           schoolId,
@@ -240,25 +234,30 @@ export class LessonContentRepository {
           unitId: input.unitId,
           lessonId: input.lessonId,
           deletedAt: null,
+          publicationStatus: input.expectedPublicationStatus,
+          updatedAt: input.expectedUpdatedAt,
         },
-        ...LESSON_CONTENT_ITEM_ARGS,
+        data: input.data,
       });
-      if (!existing) {
-        return { status: 'not_found' };
+      if (updateResult.count !== 1) {
+        return { status: 'conflict' };
       }
 
-      const contentItem = await tx.lessonContentItem.update({
+      const contentItem = await tx.lessonContentItem.findFirst({
         where: {
-          id_schoolId: {
-            id: input.contentItemId,
-            schoolId,
-          },
+          id: input.contentItemId,
+          schoolId,
+          curriculumId: input.curriculumId,
+          unitId: input.unitId,
+          lessonId: input.lessonId,
         },
-        data: { deletedAt: new Date() },
         ...LESSON_CONTENT_ITEM_ARGS,
       });
+      if (!contentItem) {
+        return { status: 'conflict' };
+      }
 
-      return { status: 'deleted', contentItem };
+      return { status: 'updated', contentItem };
     });
   }
 }

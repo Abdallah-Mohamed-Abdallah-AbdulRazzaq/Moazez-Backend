@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   CurriculumStatus,
+  LessonContentPublicationStatus,
   LessonPlanStatus,
   Prisma,
 } from '@prisma/client';
@@ -49,6 +50,7 @@ const STUDENT_LESSON_ITEM_ARGS =
           contentItems: {
             where: {
               deletedAt: null,
+              publicationStatus: LessonContentPublicationStatus.PUBLISHED,
               curriculum: {
                 is: {
                   deletedAt: null,
@@ -56,10 +58,7 @@ const STUDENT_LESSON_ITEM_ARGS =
                 },
               },
               unit: { is: { deletedAt: null } },
-              OR: [
-                { fileId: null },
-                { file: { is: { deletedAt: null } } },
-              ],
+              OR: [{ fileId: null }, { file: { is: { deletedAt: null } } }],
             },
             orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
             select: {

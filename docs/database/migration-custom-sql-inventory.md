@@ -32,6 +32,17 @@ The only still-required objects that a from-empty Prisma diff cannot reproduce
 are the 14 partial unique indexes and 13 `CHECK` constraints below. All 27 must
 be copied into the canonical baseline.
 
+## Current active-chain totals
+
+After `20260721224852_lesson_content_publication_lifecycle`, the six-migration
+active chain contains 34 PostgreSQL-specific integrity objects that Prisma
+cannot represent: 15 partial unique indexes and 19 `CHECK` constraints. The
+canonical baseline owns 27 of those objects; the incremental Teacher Directory
+migration owns one partial unique index and five checks; the publication
+lifecycle migration owns the one check documented below. The Membership
+open-state correction replaces its baseline check in place and therefore does
+not increase the object count.
+
 ## Partial unique indexes — copy into baseline
 
 All rows in this table have `Represented by schema.prisma = No` and
@@ -91,6 +102,19 @@ constraint name and corrects the active-chain predicate to
 - Owner: custom PostgreSQL `CHECK` constraint.
 - Direct database tests: present after this correction.
 
+### Active-chain addition: Lesson content publication lifecycle
+
+| Migration directory                                   | Object name                                    | Exact purpose and logical predicate                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Why Prisma cannot represent it                                                                                                                    | Direct tests that protect the invariant                                                                                                                    |
+| ----------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `20260721224852_lesson_content_publication_lifecycle` | `lesson_content_items_publication_state_check` | Enforces exactly one valid lifecycle shape: `DRAFT` requires every publication/archive timestamp and actor to be null; `PUBLISHED` requires `deleted_at IS NULL`, the complete `published_at`/`published_by_user_id` pair, and null archive fields; `ARCHIVED` requires `archived_at` and permits only a fully null or fully populated published pair. `archived_by_user_id` intentionally remains nullable for migrated/system history, while runtime archive actions write it. The predicate rejects partial actor/timestamp pairs and archive fields on DRAFT/PUBLISHED rows. | Prisma schema declarations cannot express a row-level boolean predicate whose allowed nullable-field combinations depend on an enum column value. | `test/integration/lesson-content-publication-constraint.integration.spec.ts` directly proves every valid and invalid matrix row plus the database default. |
+
+#### Authorized compatibility DML
+
+- Non-deleted legacy content becomes PUBLISHED using its original `created_at`
+  and `created_by_user_id` as the publication timestamp and actor.
+- Deleted legacy content becomes ARCHIVED using its original `deleted_at`, with
+  a null archive actor and a fully null publication pair.
+
 ## Reviewed PostgreSQL-specific SQL that must not be copied
 
 - The 16 raw enum additions are historical transition mechanics. The final
@@ -113,6 +137,9 @@ constraint name and corrects the active-chain predicate to
 
 ## Negative inventory
 
+Outside explicitly documented compatibility migrations, no committed
+incremental migration contains unreviewed data backfills or other DML.
+
 No committed migration or current schema contains:
 
 - extensions;
@@ -125,7 +152,6 @@ No committed migration or current schema contains:
 - row-level-security policies;
 - custom collations;
 - sequences outside Prisma-generated behavior;
-- data backfills or other DML;
 - `DashboardTodo`, Dashboard Todo tables, enums, indexes, permissions, or any
   equivalent persistence artifact.
 

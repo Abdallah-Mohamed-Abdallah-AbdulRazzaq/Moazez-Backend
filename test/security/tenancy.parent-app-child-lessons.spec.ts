@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   CurriculumStatus,
   LessonContentItemType,
+  LessonContentPublicationStatus,
   LessonPlanItemStatus,
   LessonPlanStatus,
   MembershipStatus,
@@ -24,6 +25,7 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'ParentChildLessonsSecurity123!';
@@ -99,12 +101,14 @@ describe('Parent App child lesson content tenancy/security (e2e)', () => {
     prisma = new PrismaClient();
     await prisma.$connect();
 
-    const [teacherRole, studentRole, parentRole, adminRole] = await Promise.all([
-      findSystemRole('teacher'),
-      findSystemRole('student'),
-      findSystemRole('parent'),
-      findSystemRole('school_admin'),
-    ]);
+    const [teacherRole, studentRole, parentRole, adminRole] = await Promise.all(
+      [
+        findSystemRole('teacher'),
+        findSystemRole('student'),
+        findSystemRole('parent'),
+        findSystemRole('school_admin'),
+      ],
+    );
 
     organizationId = await createOrganization('main');
     crossOrganizationId = await createOrganization('cross');
@@ -242,7 +246,20 @@ describe('Parent App child lesson content tenancy/security (e2e)', () => {
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(BullmqService)
+      .useValue({
+        createWorker: jest.fn().mockReturnValue({ on: jest.fn() }),
+        addJob: jest.fn().mockResolvedValue(undefined),
+        getQueue: jest.fn(),
+        getQueueReadiness: jest.fn().mockResolvedValue({
+          name: 'test',
+          status: 'ok',
+          counts: { waiting: 0, active: 0, delayed: 0, failed: 0 },
+        }),
+        ping: jest.fn().mockResolvedValue(undefined),
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -754,6 +771,7 @@ describe('Parent App child lesson content tenancy/security (e2e)', () => {
     });
     cleanup.curriculumLessonIds.add(lesson.id);
 
+    const deletedAt = new Date();
     await prisma.lessonContentItem.create({
       data: {
         schoolId: params.schoolId,
@@ -767,6 +785,9 @@ describe('Parent App child lesson content tenancy/security (e2e)', () => {
         isRequired: true,
         estimatedMinutes: 10,
         createdByUserId: params.teacherUserId,
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: params.teacherUserId,
       },
     });
 
@@ -796,6 +817,9 @@ describe('Parent App child lesson content tenancy/security (e2e)', () => {
         fileId: file.id,
         sortOrder: 2,
         createdByUserId: params.teacherUserId,
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: params.teacherUserId,
       },
     });
 
@@ -810,7 +834,12 @@ describe('Parent App child lesson content tenancy/security (e2e)', () => {
         bodyText: 'hidden deleted content',
         sortOrder: 3,
         createdByUserId: params.teacherUserId,
-        deletedAt: new Date(),
+        publicationStatus: LessonContentPublicationStatus.DRAFT,
+        publishedAt: null,
+        publishedByUserId: null,
+        archivedAt: null,
+        archivedByUserId: null,
+        deletedAt,
       },
     });
 

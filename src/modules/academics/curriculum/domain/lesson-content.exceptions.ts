@@ -1,4 +1,5 @@
 import { HttpStatus } from '@nestjs/common';
+import { LessonContentPublicationStatus } from '@prisma/client';
 import { DomainException } from '../../../../common/exceptions/domain-exception';
 
 export class LessonContentNotFoundException extends DomainException {
@@ -61,6 +62,23 @@ export class LessonContentReadOnlyException extends DomainException {
     super({
       code: 'academics.lesson_content.read_only',
       message: 'Lesson content cannot be changed for an archived curriculum',
+      httpStatus: HttpStatus.CONFLICT,
+      details,
+    });
+  }
+}
+
+export type LessonContentPublicationConflictDetails = {
+  from: LessonContentPublicationStatus;
+  to: LessonContentPublicationStatus;
+};
+
+export class LessonContentPublicationConflictException extends DomainException {
+  constructor(details: LessonContentPublicationConflictDetails) {
+    super({
+      code: 'learning.content.publication_conflict',
+      message:
+        'Lesson content publication state conflicts with the requested operation',
       httpStatus: HttpStatus.CONFLICT,
       details,
     });
