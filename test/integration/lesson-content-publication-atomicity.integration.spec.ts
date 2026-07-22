@@ -6,6 +6,7 @@ import {
   LessonContentPublicationStatus,
   OrganizationStatus,
   Prisma,
+  PrismaClient,
   SchoolStatus,
   UserStatus,
   UserType,
@@ -46,8 +47,31 @@ import { FilesRepository } from '../../src/modules/files/uploads/infrastructure/
 
 jest.setTimeout(120_000);
 
+function buildObserverDatabaseUrl(): string {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl?.trim()) {
+    throw new Error(
+      'DATABASE_URL is required for PostgreSQL lock observation tests',
+    );
+  }
+
+  try {
+    const url = new URL(databaseUrl);
+    url.searchParams.set('connection_limit', '1');
+    url.searchParams.set('pool_timeout', '10');
+    return url.toString();
+  } catch {
+    throw new Error(
+      'DATABASE_URL must be a valid URL for PostgreSQL lock observation tests',
+    );
+  }
+}
+
 describe('Lesson Content publication atomicity and parent-state locking', () => {
   const prisma = new PrismaService();
+  const observerPrisma = new PrismaClient({
+    datasourceUrl: buildObserverDatabaseUrl(),
+  });
   const curriculumRepository = new CurriculumRepository(prisma);
   const authRepository = new AuthRepository(prisma);
   const filesRepository = new FilesRepository(prisma);
@@ -122,6 +146,7 @@ describe('Lesson Content publication atomicity and parent-state locking', () => 
 
   beforeAll(async () => {
     await prisma.$connect();
+    await observerPrisma.$connect();
     const organization = await prisma.organization.create({
       data: {
         slug: `lc-h1-org-${suffix}`,
@@ -301,7 +326,11 @@ describe('Lesson Content publication atomicity and parent-state locking', () => 
       await prisma.user.delete({ where: { id: ids.userId } });
       await prisma.organization.delete({ where: { id: ids.organizationId } });
     } finally {
-      await prisma.$disconnect();
+      try {
+        await observerPrisma.$disconnect();
+      } finally {
+        await prisma.$disconnect();
+      }
     }
   });
 
@@ -1428,7 +1457,7 @@ describe('Lesson Content publication atomicity and parent-state locking', () => 
   ): Promise<void> {
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
-      const [{ blockedCount }] = await prisma.$queryRaw<
+      const [{ blockedCount }] = await observerPrisma.$queryRaw<
         Array<{ blockedCount: bigint }>
       >(Prisma.sql`
         SELECT COUNT(*)::bigint AS "blockedCount"
@@ -1454,16 +1483,16 @@ describe('Lesson Content publication atomicity and parent-state locking', () => 
   ): Promise<void> {
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
-      const [{ blocked }] = await prisma.$queryRaw<Array<{ blocked: boolean }>>(
-        Prisma.sql`
+      const [{ blocked }] = await observerPrisma.$queryRaw<
+        Array<{ blocked: boolean }>
+      >(Prisma.sql`
           SELECT EXISTS (
             SELECT 1
             FROM pg_stat_activity
             WHERE pid <> pg_backend_pid()
               AND cardinality(pg_blocking_pids(pid)) > 0
           ) AS "blocked"
-        `,
-      );
+      `);
       if (blocked) return;
       if (competingSettled()) {
         throw new Error(
@@ -1629,15 +1658,15 @@ describe('Lesson Content publication atomicity and parent-state locking', () => 
   ): Promise<void> {
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
-      const [{ blocked }] = await prisma.$queryRaw<Array<{ blocked: boolean }>>(
-        Prisma.sql`
+      const [{ blocked }] = await observerPrisma.$queryRaw<
+        Array<{ blocked: boolean }>
+      >(Prisma.sql`
           SELECT EXISTS (
             SELECT 1
             FROM pg_stat_activity
             WHERE ${blockerPid} = ANY(pg_blocking_pids(pid))
           ) AS "blocked"
-        `,
-      );
+      `);
       if (blocked) return;
       if (contentSettled()) {
         throw new Error(
