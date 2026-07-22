@@ -292,11 +292,11 @@ describe('Academics lesson content tenancy isolation (security)', () => {
       .set('Authorization', bearer(adminAAuth))
       .expect(404)
       .expect((response) => {
-        expect(response.body?.error?.code).toBe(
+        expectSafeLessonContentError(
+          response,
           'academics.lesson_content.not_found',
+          treeB,
         );
-        expectNoObjectKey(response.body, 'schoolId');
-        expectNoObjectKey(response.body, 'organizationId');
       });
 
     await request(app.getHttpServer())
@@ -304,11 +304,11 @@ describe('Academics lesson content tenancy isolation (security)', () => {
       .set('Authorization', bearer(adminAAuth))
       .expect(404)
       .expect((response) => {
-        expect(response.body?.error?.code).toBe(
+        expectSafeLessonContentError(
+          response,
           'academics.lesson_content.not_found',
+          treeB,
         );
-        expectNoObjectKey(response.body, 'schoolId');
-        expectNoObjectKey(response.body, 'organizationId');
       });
 
     await request(app.getHttpServer())
@@ -331,18 +331,39 @@ describe('Academics lesson content tenancy isolation (security)', () => {
         title: 'Cross School Create',
         bodyText: 'Nope',
       })
-      .expect(404);
+      .expect(404)
+      .expect((response) => {
+        expectSafeLessonContentError(
+          response,
+          'academics.lesson_content.not_found',
+          treeB,
+        );
+      });
 
     await request(app.getHttpServer())
       .patch(contentDetailUrl(treeB))
       .set('Authorization', bearer(adminAAuth))
       .send({ title: 'Cross School Update' })
-      .expect(404);
+      .expect(404)
+      .expect((response) => {
+        expectSafeLessonContentError(
+          response,
+          'academics.lesson_content.not_found',
+          treeB,
+        );
+      });
 
     await request(app.getHttpServer())
       .delete(contentDetailUrl(treeB))
       .set('Authorization', bearer(adminAAuth))
-      .expect(404);
+      .expect(404)
+      .expect((response) => {
+        expectSafeLessonContentError(
+          response,
+          'academics.lesson_content.not_found',
+          treeB,
+        );
+      });
 
     for (const action of ['publish', 'unpublish', 'archive']) {
       await request(app.getHttpServer())
@@ -350,8 +371,11 @@ describe('Academics lesson content tenancy isolation (security)', () => {
         .set('Authorization', bearer(adminAAuth))
         .expect(404)
         .expect((response) => {
-          const body = response.body as { error: { code: string } };
-          expect(body.error.code).toBe('academics.lesson_content.not_found');
+          expectSafeLessonContentError(
+            response,
+            'academics.lesson_content.not_found',
+            treeB,
+          );
         });
     }
 
@@ -361,8 +385,11 @@ describe('Academics lesson content tenancy isolation (security)', () => {
       .set('Authorization', bearer(adminAAuth))
       .expect(404)
       .expect((response) => {
-        const body = response.body as { error: { code: string } };
-        expect(body.error.code).toBe('academics.lesson_content.not_found');
+        expectSafeLessonContentError(
+          response,
+          'academics.lesson_content.not_found',
+          { ...treeA, unitId: treeB.unitId },
+        );
       });
   });
 
@@ -377,11 +404,11 @@ describe('Academics lesson content tenancy isolation (security)', () => {
       })
       .expect(404)
       .expect((response) => {
-        expect(response.body?.error?.code).toBe(
+        expectSafeLessonContentError(
+          response,
           'academics.lesson_content.file_not_found',
+          { ...treeA, fileId: fileBId },
         );
-        expectNoObjectKey(response.body, 'schoolId');
-        expectNoObjectKey(response.body, 'organizationId');
       });
 
     await request(app.getHttpServer())
@@ -794,6 +821,37 @@ describe('Academics lesson content tenancy isolation (security)', () => {
     for (const [key, nested] of Object.entries(value)) {
       expect(key).not.toBe(forbiddenKey);
       expectNoObjectKey(nested, forbiddenKey);
+    }
+  }
+
+  function expectSafeLessonContentError(
+    response: request.Response,
+    expectedCode:
+      | 'academics.lesson_content.not_found'
+      | 'academics.lesson_content.file_not_found',
+    forbiddenValues: CurriculumTree & { fileId?: string },
+  ): void {
+    const body = response.body as {
+      error: { code: string; details?: Record<string, unknown> };
+    };
+
+    expect(body.error.code).toBe(expectedCode);
+    expect(body.error.details).toBeUndefined();
+    const serializedError = JSON.stringify(body.error);
+    for (const forbiddenKey of [
+      'curriculumId',
+      'unitId',
+      'lessonId',
+      'contentItemId',
+      'fileId',
+      'schoolId',
+      'organizationId',
+      'actorId',
+    ]) {
+      expect(serializedError).not.toContain(`"${forbiddenKey}"`);
+    }
+    for (const forbiddenValue of Object.values(forbiddenValues)) {
+      expect(serializedError).not.toContain(forbiddenValue);
     }
   }
 

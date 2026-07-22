@@ -15,6 +15,10 @@ import {
   CreateLessonContentUseCase,
   ReorderLessonContentUseCase,
 } from '../application/lesson-content.use-cases';
+import type {
+  LessonContentTransactionContext,
+  LessonContentUnitOfWork,
+} from '../application/lesson-content.unit-of-work';
 import {
   LessonContentItemRecord,
   LessonContentRepository,
@@ -86,15 +90,35 @@ describe('Lesson content use cases', () => {
     return repo as unknown as LessonContentRepository;
   }
 
-  function createAuthRepository() {
-    return { createAuditLog: jest.fn().mockResolvedValue(undefined) };
+  function createUnitOfWork(
+    repository: LessonContentRepository,
+  ): LessonContentUnitOfWork {
+    const auditMock = jest.fn().mockResolvedValue(undefined);
+    return {
+      execute: jest.fn(
+        async <T>(
+          _schoolId: string,
+          callback: (context: LessonContentTransactionContext) => Promise<T>,
+        ): Promise<T> =>
+          callback({
+            lockLessonContentScope:
+              repository.findLessonContentScope.bind(repository),
+            getNextSortOrder: repository.getNextSortOrder.bind(repository),
+            lockLiveFile: async (fileId: string) =>
+              Boolean(await repository.findFileById(fileId)),
+            createContentItem: repository.createContentItem.bind(repository),
+            updateContentItemConditionally:
+              repository.updateContentItemConditionally.bind(repository),
+            writeSuccessfulAudit: auditMock,
+          }),
+      ),
+    };
   }
 
   it('creates TEXT content with body text', async () => {
     const repository = createRepository();
     const useCase = new CreateLessonContentUseCase(
-      repository,
-      createAuthRepository() as never,
+      createUnitOfWork(repository),
     );
 
     await withScope(async () => {
@@ -131,8 +155,7 @@ describe('Lesson content use cases', () => {
   it('rejects TEXT without body text', async () => {
     const repository = createRepository();
     const useCase = new CreateLessonContentUseCase(
-      repository,
-      createAuthRepository() as never,
+      createUnitOfWork(repository),
     );
 
     await withScope(async () => {
@@ -153,8 +176,7 @@ describe('Lesson content use cases', () => {
   it('creates FILE content only when the file belongs to the scoped school', async () => {
     const repository = createRepository();
     const useCase = new CreateLessonContentUseCase(
-      repository,
-      createAuthRepository() as never,
+      createUnitOfWork(repository),
     );
 
     await withScope(async () => {
@@ -182,8 +204,7 @@ describe('Lesson content use cases', () => {
       findFileById: jest.fn().mockResolvedValue(null),
     });
     const useCase = new CreateLessonContentUseCase(
-      repository,
-      createAuthRepository() as never,
+      createUnitOfWork(repository),
     );
 
     await withScope(async () => {
@@ -195,6 +216,33 @@ describe('Lesson content use cases', () => {
         }),
       ).rejects.toMatchObject({
         code: 'academics.lesson_content.file_not_found',
+        details: undefined,
+      });
+    });
+  });
+
+  it('omits nested path identifiers from lesson-content not-found details', async () => {
+    const repository = createRepository({
+      findLessonContentScope: jest.fn().mockResolvedValue({
+        curriculum: null,
+        unit: null,
+        lesson: null,
+      }),
+    });
+    const useCase = new CreateLessonContentUseCase(
+      createUnitOfWork(repository),
+    );
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute(path, {
+          type: LessonContentItemType.TEXT,
+          title: 'Hidden path',
+          bodyText: 'Hidden path body',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.lesson_content.not_found',
+        details: undefined,
       });
     });
   });
@@ -202,8 +250,7 @@ describe('Lesson content use cases', () => {
   it('creates VIDEO_LINK and EXTERNAL_LINK content with safe URLs', async () => {
     const repository = createRepository();
     const useCase = new CreateLessonContentUseCase(
-      repository,
-      createAuthRepository() as never,
+      createUnitOfWork(repository),
     );
 
     await withScope(async () => {
@@ -239,8 +286,7 @@ describe('Lesson content use cases', () => {
   ])('rejects unsafe URL scheme %s', async (url) => {
     const repository = createRepository();
     const useCase = new CreateLessonContentUseCase(
-      repository,
-      createAuthRepository() as never,
+      createUnitOfWork(repository),
     );
 
     await withScope(async () => {
@@ -252,6 +298,85 @@ describe('Lesson content use cases', () => {
         }),
       ).rejects.toMatchObject({
         code: 'academics.lesson_content.invalid_url',
+      });
+    });
+  });
+
+  it('resolves a missing path before validating an unsafe create URL', async () => {
+    const repository = createRepository({
+      findLessonContentScope: jest.fn().mockResolvedValue({
+        curriculum: null,
+        unit: null,
+        lesson: null,
+      }),
+    });
+    const useCase = new CreateLessonContentUseCase(
+      createUnitOfWork(repository),
+    );
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute(path, {
+          type: LessonContentItemType.EXTERNAL_LINK,
+          title: 'Hidden unsafe URL',
+          url: 'javascript:alert(1)',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.lesson_content.not_found',
+      });
+    });
+  });
+
+  it('resolves an archived Curriculum before validating an unsafe create URL', async () => {
+    const repository = createRepository({
+      findLessonContentScope: jest.fn().mockResolvedValue({
+        curriculum: { id: 'curriculum-1', status: CurriculumStatus.ARCHIVED },
+        unit: { id: 'unit-1', curriculumId: 'curriculum-1' },
+        lesson: {
+          id: 'lesson-1',
+          curriculumId: 'curriculum-1',
+          unitId: 'unit-1',
+        },
+      }),
+    });
+    const useCase = new CreateLessonContentUseCase(
+      createUnitOfWork(repository),
+    );
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute(path, {
+          type: LessonContentItemType.EXTERNAL_LINK,
+          title: 'Archived unsafe URL',
+          url: 'javascript:alert(1)',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.lesson_content.read_only',
+      });
+    });
+  });
+
+  it('resolves a missing path before validating an invalid create title/body', async () => {
+    const repository = createRepository({
+      findLessonContentScope: jest.fn().mockResolvedValue({
+        curriculum: null,
+        unit: null,
+        lesson: null,
+      }),
+    });
+    const useCase = new CreateLessonContentUseCase(
+      createUnitOfWork(repository),
+    );
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute(path, {
+          type: LessonContentItemType.TEXT,
+          title: '   ',
+          bodyText: '   ',
+        }),
+      ).rejects.toMatchObject({
+        code: 'academics.lesson_content.not_found',
       });
     });
   });
@@ -269,8 +394,7 @@ describe('Lesson content use cases', () => {
       }),
     });
     const useCase = new CreateLessonContentUseCase(
-      repository,
-      createAuthRepository() as never,
+      createUnitOfWork(repository),
     );
 
     await withScope(async () => {
@@ -308,7 +432,7 @@ describe('Lesson content use cases', () => {
     });
     const useCase = new ReorderLessonContentUseCase(
       repository,
-      createAuthRepository() as never,
+      createUnitOfWork(repository),
     );
 
     await withScope(async () => {
@@ -340,6 +464,60 @@ describe('Lesson content use cases', () => {
         }),
       }),
     );
+  });
+
+  it('resolves a missing path before validating an invalid reorder value', async () => {
+    const repository = createRepository({
+      findLessonContentScope: jest.fn().mockResolvedValue({
+        curriculum: null,
+        unit: null,
+        lesson: null,
+      }),
+    });
+    const useCase = new ReorderLessonContentUseCase(
+      repository,
+      createUnitOfWork(repository),
+    );
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute(
+          { ...path, contentItemId: 'missing-content' },
+          { sortOrder: -1 },
+        ),
+      ).rejects.toMatchObject({
+        code: 'academics.lesson_content.not_found',
+      });
+    });
+  });
+
+  it('resolves an archived Curriculum before validating an invalid reorder value', async () => {
+    const repository = createRepository({
+      findLessonContentScope: jest.fn().mockResolvedValue({
+        curriculum: { id: 'curriculum-1', status: CurriculumStatus.ARCHIVED },
+        unit: { id: 'unit-1', curriculumId: 'curriculum-1' },
+        lesson: {
+          id: 'lesson-1',
+          curriculumId: 'curriculum-1',
+          unitId: 'unit-1',
+        },
+      }),
+    });
+    const useCase = new ReorderLessonContentUseCase(
+      repository,
+      createUnitOfWork(repository),
+    );
+
+    await withScope(async () => {
+      await expect(
+        useCase.execute(
+          { ...path, contentItemId: 'content-1' },
+          { sortOrder: -1 },
+        ),
+      ).rejects.toMatchObject({
+        code: 'academics.lesson_content.read_only',
+      });
+    });
   });
 
   it('presenter hides tenant fields', () => {

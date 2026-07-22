@@ -342,6 +342,53 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
         );
       });
 
+    const missingContentItemId = randomUUID();
+    await request(app.getHttpServer())
+      .get(`${contentListUrl()}/${missingContentItemId}`)
+      .set('Authorization', bearer(adminAuth))
+      .expect(404)
+      .expect((response) => {
+        expectSafeLessonContentError(
+          response,
+          'academics.lesson_content.not_found',
+          [
+            curriculumId,
+            unitId,
+            lessonId,
+            missingContentItemId,
+            schoolId,
+            organizationId,
+            adminUserId,
+          ],
+        );
+      });
+
+    const missingFileId = randomUUID();
+    await request(app.getHttpServer())
+      .post(contentListUrl())
+      .set('Authorization', bearer(adminAuth))
+      .send({
+        type: LessonContentItemType.FILE,
+        title: 'Missing File',
+        fileId: missingFileId,
+      })
+      .expect(404)
+      .expect((response) => {
+        expectSafeLessonContentError(
+          response,
+          'academics.lesson_content.file_not_found',
+          [
+            curriculumId,
+            unitId,
+            lessonId,
+            missingFileId,
+            schoolId,
+            organizationId,
+            adminUserId,
+          ],
+        );
+      });
+
     await request(app.getHttpServer())
       .patch(`${contentListUrl()}/${textContentId}`)
       .set('Authorization', bearer(adminAuth))
@@ -800,6 +847,37 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
     expect(JSON.stringify(body.error.details)).not.toMatch(
       /contentItemId|curriculumId|unitId|lessonId|schoolId|actorId|title|bodyText|url|fileId|timestamp|updatedAt/iu,
     );
+  }
+
+  function expectSafeLessonContentError(
+    response: request.Response,
+    expectedCode:
+      | 'academics.lesson_content.not_found'
+      | 'academics.lesson_content.file_not_found',
+    forbiddenValues: string[],
+  ): void {
+    const body = response.body as {
+      error: { code: string; details?: Record<string, unknown> };
+    };
+
+    expect(body.error.code).toBe(expectedCode);
+    expect(body.error.details).toBeUndefined();
+    const serializedError = JSON.stringify(body.error);
+    for (const forbiddenKey of [
+      'curriculumId',
+      'unitId',
+      'lessonId',
+      'contentItemId',
+      'fileId',
+      'schoolId',
+      'organizationId',
+      'actorId',
+    ]) {
+      expect(serializedError).not.toContain(`"${forbiddenKey}"`);
+    }
+    for (const forbiddenValue of forbiddenValues) {
+      expect(serializedError).not.toContain(forbiddenValue);
+    }
   }
 
   function expectOneSuccessOneConflict(
