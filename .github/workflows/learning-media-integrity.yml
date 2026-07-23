@@ -102,10 +102,33 @@ jobs:
       - run: npm ci
       - name: Check migration governance
         run: npm run db:migrations:check
-      - run: npx prisma validate
-      - run: npm run verify:legacy-learning-media
-      - run: npm run db:migrations:deploy
-      - run: npm run db:migrations:status
+      - name: Validate current Prisma schema
+        run: npx prisma validate
+      - name: Deploy migration base for legacy classification
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          baseline_root="$RUNNER_TEMP/moazez-learning-media-migration-base"
+          rm -rf "$baseline_root"
+          mkdir -p "$baseline_root/prisma"
+
+          git archive "$MIGRATION_BASE_REF" prisma/migrations |
+            tar -x -C "$baseline_root"
+
+          cp prisma/schema.prisma "$baseline_root/prisma/schema.prisma"
+
+          (
+            cd "$baseline_root"
+            npx --prefix "$GITHUB_WORKSPACE" prisma migrate deploy \
+              --schema "$baseline_root/prisma/schema.prisma"
+          )
+      - name: Classify legacy learning media before 1C migration
+        run: npm run verify:legacy-learning-media
+      - name: Deploy current migrations
+        run: npm run db:migrations:deploy
+      - name: Confirm migration status
+        run: npm run db:migrations:status
       - run: npx prisma generate
       - run: npm run seed
       - run: npm run build

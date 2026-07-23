@@ -9,8 +9,13 @@ learning-media upload foundation on branch
 
 It does not implement playback, Student or Parent playback routes, generic
 media-library APIs, transcoding, thumbnails, resumable multipart upload, or
-deployment. The work remains unstaged and uncommitted. GitHub Actions has not
-run this unpushed workflow, so no CI-green claim is made.
+deployment. The implementation is committed as
+`9a91bb3ec8bbaf0960ab40068e06c515c0a06943` and published in PR #41.
+The first GitHub Actions run completed with Learning Content Integrity and
+Migration Integrity passing, while Learning Media Integrity failed because the
+legacy classifier ran before baseline migrations initialized the database.
+No overall CI-green claim is made until the workflow correction is committed,
+pushed, and the required checks rerun successfully.
 
 ## Independent-review correction evidence
 
@@ -245,10 +250,11 @@ A different normalized payload returns the bounded 409 conflict.
 
 ## Database lifecycle constraints
 
-The one uncommitted migration
-`20260722160000_learning_media_runtime_upload_foundation` was corrected in
-place; no second migration was added. It owns 19 FileUploadSession CHECK
-constraints and the immutable
+The single migration introduced by this PR,
+`20260722160000_learning_media_runtime_upload_foundation`,
+was finalized before its initial commit; no second corrective migration was
+added and no committed historical migration was edited. It owns 19
+FileUploadSession CHECK constraints and the immutable
 `normalize_learning_media_original_name` compatibility function. Active-chain
 totals are 15 partial unique indexes, 38 CHECK constraints, one inventoried
 function, and 54 PostgreSQL-specific integrity objects.
@@ -309,6 +315,16 @@ MinIO/CORS, per-candidate BullMQ cleanup, real HTTP/security, all five affected
 Curriculum/Lesson Content unit suites, all three Lesson Content PostgreSQL
 integration suites, and affected Academics/Student/Parent/Teacher unit,
 E2E, and security regressions. It publishes and deploys no image.
+
+PR #41 CI correction: `Learning Media Integrity / learning-media-integrity`
+failed because `verify:legacy-learning-media` ran against an empty PostgreSQL
+service before any baseline migration had created the `files` table. The
+workflow now materializes `prisma/migrations` from the resolved
+`MIGRATION_BASE_REF`, deploys that baseline into the disposable CI database,
+then runs the legacy classifier before deploying the current 1C migration.
+There is no production, schema, migration, package, or test-code change in
+this correction. GitHub Actions remains pending until this workflow-only
+correction is reviewed and pushed.
 
 ## Executed green evidence
 
