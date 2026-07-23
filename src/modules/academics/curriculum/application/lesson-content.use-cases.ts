@@ -27,6 +27,7 @@ import {
   LessonContentPublicationConflictException,
   LessonContentReadOnlyException,
 } from '../domain/lesson-content.exceptions';
+import { LearningMediaNotReadyException } from '../../../files/uploads/domain/learning-media.exceptions';
 import {
   LessonContentItemRecord,
   LessonContentRepository,
@@ -103,7 +104,7 @@ export class CreateLessonContentUseCase {
       const normalized = normalizeCreateLessonContentInput(command);
       if (command.sortOrder !== undefined)
         assertValidSortOrder(command.sortOrder);
-      await ensureFileAvailable(tx, normalized);
+      await ensureFileAvailable(tx, normalized, scope);
 
       const sortOrder = command.sortOrder ?? (await tx.getNextSortOrder(path));
       assertValidSortOrder(sortOrder);
@@ -188,7 +189,7 @@ export class UpdateLessonContentUseCase {
     return this.lessonContentUnitOfWork.execute(scope.schoolId, async (tx) => {
       const lessonScope = await resolveLockedLessonContentScope(tx, path);
       assertLessonContentMutable(lessonScope);
-      await ensureFileAvailable(tx, normalized);
+      await ensureFileAvailable(tx, normalized, scope);
       const operationAt = nextMutationTimestamp(existing.updatedAt);
       const updated = await updateContentItemConditionallyOrThrow(
         tx,
@@ -344,7 +345,7 @@ export class PublishLessonContentUseCase {
     return this.lessonContentUnitOfWork.execute(scope.schoolId, async (tx) => {
       const lessonScope = await resolveLockedLessonContentScope(tx, path);
       assertLessonContentMutable(lessonScope);
-      await ensureFileAvailable(tx, existing);
+      await ensureFileAvailable(tx, existing, scope);
       const transitionAt = nextMutationTimestamp(existing.updatedAt);
       const published = await updateContentItemConditionallyOrThrow(
         tx,
@@ -593,8 +594,12 @@ function nextMutationTimestamp(previousUpdatedAt: Date): Date {
 }
 
 async function ensureFileAvailable(
-  transaction: Pick<LessonContentTransactionContext, 'lockLiveFile'>,
+  transaction: Pick<
+    LessonContentTransactionContext,
+    'lockReadyLearningMediaFile'
+  >,
   payload: { type: LessonContentItemType; fileId: string | null },
+  scope: AcademicsScope,
 ): Promise<void> {
   if (payload.type !== LessonContentItemType.FILE) {
     return;
@@ -607,8 +612,15 @@ async function ensureFileAvailable(
     });
   }
 
-  const fileIsLive = await transaction.lockLiveFile(payload.fileId);
-  if (!fileIsLive) {
+  const result = await transaction.lockReadyLearningMediaFile({
+    fileId: payload.fileId,
+    organizationId: scope.organizationId,
+    actorId: scope.actorId,
+  });
+  if (result.status === 'not_ready') {
+    throw new LearningMediaNotReadyException(result.uploadStatus);
+  }
+  if (result.status === 'not_found') {
     throw new LessonContentFileNotFoundException();
   }
 }

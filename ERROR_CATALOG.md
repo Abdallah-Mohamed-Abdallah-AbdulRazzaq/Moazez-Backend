@@ -439,11 +439,22 @@ tenant, actor, content, File, or timestamp values are exposed.
 
 ### Files
 
-| Code                            | HTTP | Message                          |
-| ------------------------------- | ---- | -------------------------------- |
-| `files.upload.size_exceeded`    | 413  | File size exceeds allowed limit  |
-| `files.upload.mime_not_allowed` | 415  | File type is not allowed         |
-| `files.not_found`               | 404  | File not found or not accessible |
+| Code                                 | HTTP | Message                                                      |
+| ------------------------------------ | ---- | ------------------------------------------------------------ |
+| `files.upload.size_exceeded`         | 413  | File size exceeds allowed limit                              |
+| `files.upload.mime_not_allowed`      | 415  | File type is not allowed                                     |
+| `files.not_found`                    | 404  | File not found or not accessible                             |
+| `learning.media.not_ready`           | 409  | Learning media is not ready                                  |
+| `learning.media.unsupported_type`    | 415  | Learning media type is not supported                         |
+| `learning.media.upload_expired`      | 410  | Learning media upload has expired                            |
+| `learning.media.upload_conflict`     | 409  | Learning media upload conflicts with the requested operation |
+| `learning.media.size_exceeded`       | 413  | Learning media exceeds the allowed size                      |
+| `learning.media.verification_failed` | 422  | Learning media verification failed                           |
+
+Learning-media error details are bounded to lifecycle status, stable reason
+codes, retryability, allowed media categories, and decimal byte counts. They
+never expose filenames, storage coordinates, signed URLs, checksums, raw probe
+output, credentials, or foreign-tenant identifiers.
 
 ### Communication
 

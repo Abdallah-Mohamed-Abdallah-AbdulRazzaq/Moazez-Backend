@@ -536,8 +536,10 @@ function createHarness(
     ): Promise<T> {
       return callback({
         lockLessonContentScope: repository.findLessonContentScope,
-        lockLiveFile: async (fileId: string) =>
-          Boolean(await repository.findFileById(fileId)),
+        lockReadyLearningMediaFile: async (input: { fileId: string }) =>
+          (await repository.findFileById(input.fileId))
+            ? ({ status: 'ready' } as const)
+            : ({ status: 'not_found' } as const),
         getNextSortOrder: repository.getNextSortOrder,
         createContentItem: repository.createContentItem,
         updateContentItemConditionally:

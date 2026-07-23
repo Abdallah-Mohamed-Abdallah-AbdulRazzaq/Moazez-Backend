@@ -1,0 +1,246 @@
+name: Learning Media Integrity
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: learning-media-integrity-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  learning-media-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: moazez_ci
+          POSTGRES_PASSWORD: ci_only_not_a_secret
+          POSTGRES_DB: moazez_learning_media
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U moazez_ci -d moazez_learning_media"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      NODE_ENV: test
+      APP_PORT: '3000'
+      APP_URL: http://127.0.0.1:3000
+      DATABASE_URL: postgresql://moazez_ci:ci_only_not_a_secret@127.0.0.1:5432/moazez_learning_media?schema=public
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production
+      JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 7d
+      SETTINGS_SECRET_ENCRYPTION_KEY: >-
+        hex:0000000000000000000000000000000000000000000000000000000000000000
+      STORAGE_PROVIDER: minio
+      STORAGE_ENDPOINT: http://127.0.0.1:9000
+      STORAGE_ACCESS_KEY: minioadmin
+      STORAGE_SECRET_KEY: minioadmin
+      STORAGE_BUCKET: moazez-ci-private
+      STORAGE_PUBLIC_BUCKET: moazez-ci-public
+      STORAGE_CORS_ORIGINS: http://127.0.0.1:3001
+      FFPROBE_PATH: /usr/bin/ffprobe
+      FFPROBE_TIMEOUT_MS: '15000'
+      FFPROBE_MAX_OUTPUT_BYTES: '1048576'
+      MEDIA_VERIFICATION_VERSION: ffprobe-5.1.9-debian12-learning-media-v1
+      FCM_ENABLED: 'false'
+      FCM_DRY_RUN: 'true'
+      SEED_DEMO_DATA: 'true'
+      LOG_LEVEL: error
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve migration comparison base
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) base_ref="$PR_BASE_SHA" ;;
+            push)
+              if [[ -n "$PUSH_BEFORE_SHA" && ! "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+                base_ref="$PUSH_BEFORE_SHA"
+              else
+                base_ref="$(git rev-parse HEAD^)"
+              fi ;;
+            workflow_dispatch)
+              default_branch="${DEFAULT_BRANCH:-main}"
+              git fetch --no-tags --prune origin "+refs/heads/${default_branch}:refs/remotes/origin/${default_branch}"
+              base_ref="origin/${default_branch}" ;;
+            *) exit 1 ;;
+          esac
+          if ! git cat-file -e "${base_ref}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "$base_ref"
+          fi
+          git cat-file -e "${base_ref}^{commit}"
+          echo "MIGRATION_BASE_REF=$(git rev-parse "${base_ref}^{commit}")" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Check migration governance
+        run: npm run db:migrations:check
+      - run: npx prisma validate
+      - run: npm run verify:legacy-learning-media
+      - run: npm run db:migrations:deploy
+      - run: npm run db:migrations:status
+      - run: npx prisma generate
+      - run: npm run seed
+      - run: npm run build
+
+      - name: Start exact MinIO release
+        run: >-
+          docker run --detach --rm --name moazez-learning-media-minio
+          --publish 9000:9000
+          --env MINIO_ROOT_USER=minioadmin
+          --env MINIO_ROOT_PASSWORD=minioadmin
+          --env MINIO_API_CORS_ALLOW_ORIGIN=http://127.0.0.1:3001
+          minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+      - name: Wait for MinIO
+        shell: bash
+        run: |
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:9000/minio/health/ready && exit 0
+            sleep 1
+          done
+          exit 1
+
+      - name: Build canonical runtime image
+        run: DOCKER_BUILDKIT=1 docker build --tag moazez-learning-media:${{ github.sha }} .
+      - name: Build canonical media test target
+        run: >-
+          DOCKER_BUILDKIT=1 docker build --target media-test
+          --tag moazez-learning-media-test:${{ github.sha }} .
+      - name: Verify ffprobe runtime contract
+        run: >-
+          docker run --rm --entrypoint node
+          moazez-learning-media:${{ github.sha }}
+          scripts/verify-media-runtime.cjs
+      - name: Verify application startup with pinned ffprobe
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --rm --name moazez-learning-media-runtime \
+            --network host \
+            --env APP_PORT --env APP_URL --env DATABASE_URL --env REDIS_URL \
+            --env JWT_ACCESS_SECRET --env JWT_REFRESH_SECRET \
+            --env JWT_ACCESS_TTL --env JWT_REFRESH_TTL \
+            --env SETTINGS_SECRET_ENCRYPTION_KEY \
+            --env STORAGE_PROVIDER --env STORAGE_ENDPOINT \
+            --env STORAGE_ACCESS_KEY --env STORAGE_SECRET_KEY \
+            --env STORAGE_BUCKET --env STORAGE_PUBLIC_BUCKET \
+            --env STORAGE_CORS_ORIGINS --env FCM_ENABLED --env FCM_DRY_RUN \
+            --env LOG_LEVEL \
+            moazez-learning-media:${{ github.sha }}
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/api/v1/health >/dev/null; then
+              docker rm --force moazez-learning-media-runtime >/dev/null
+              exit 0
+            fi
+            if ! docker inspect moazez-learning-media-runtime >/dev/null 2>&1; then
+              echo 'The runtime container exited before becoming healthy.'
+              exit 1
+            fi
+            sleep 1
+          done
+          docker logs moazez-learning-media-runtime
+          exit 1
+      - name: Verify non-root runtime and Prisma Client
+        run: >-
+          docker run --rm --entrypoint sh
+          moazez-learning-media:${{ github.sha }}
+          -c 'test "$(id -u)" != 0 && node -e "require(\"@prisma/client\")"'
+      - name: Verify the complete MIME matrix through the production verifier
+        run: >-
+          docker run --rm --network host
+          --env STORAGE_ENDPOINT=http://127.0.0.1:9000
+          --env STORAGE_ACCESS_KEY=minioadmin
+          --env STORAGE_SECRET_KEY=minioadmin
+          --env STORAGE_BUCKET=moazez-ci-private
+          --env STORAGE_PUBLIC_BUCKET=moazez-ci-public
+          --entrypoint npx
+          moazez-learning-media-test:${{ github.sha }}
+          jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
+          test/integration/learning-media-verification.integration.spec.ts
+
+      - name: Focused unit and contracts
+        run: npm run test:learning-media
+      - name: PostgreSQL upload lifecycle and migration integration
+        run: >-
+          npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
+          test/integration/learning-media-upload.integration.spec.ts
+          test/integration/lesson-content-publication-constraint.integration.spec.ts
+      - name: Direct MinIO CORS and per-candidate cleanup integration
+        run: >-
+          npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
+          test/integration/learning-media-storage.integration.spec.ts
+          test/integration/learning-media-cleanup.integration.spec.ts
+      - name: Real learning-media HTTP and tenancy
+        run: >-
+          npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
+          test/e2e/academics-learning-media.e2e-spec.ts
+          test/security/tenancy.academics-learning-media.spec.ts
+      - name: Complete affected Curriculum and Lesson Content unit integrity
+        run: >-
+          npx jest --runInBand --runTestsByPath
+          src/modules/academics/curriculum/tests/curriculum.use-case.spec.ts
+          src/modules/academics/curriculum/tests/lesson-content.use-case.spec.ts
+          src/modules/academics/curriculum/tests/lesson-content-publication.use-case.spec.ts
+          src/modules/academics/curriculum/tests/lesson-content-publication.controller.spec.ts
+          src/modules/academics/curriculum/tests/lesson-content-publication.contract.spec.ts
+      - name: Lesson Content PostgreSQL integration
+        run: >-
+          npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
+          test/integration/lesson-content-publication-constraint.integration.spec.ts
+          test/integration/lesson-content-publication-atomicity.integration.spec.ts
+          test/integration/lesson-content-publication-read-adapters.spec.ts
+      - name: Affected app read-model unit regressions
+        run: >-
+          npx jest --runInBand --runTestsByPath
+          src/modules/student-app/lessons/tests/student-lessons.use-case.spec.ts
+          src/modules/student-app/subjects/tests/student-subject-lessons.contract.spec.ts
+          src/modules/student-app/subjects/tests/student-subject-lessons.use-case.spec.ts
+          src/modules/student-app/subjects/tests/student-subject-lessons-read.adapter.spec.ts
+          src/modules/student-app/subjects/tests/student-subject-lessons.presenter.spec.ts
+          src/modules/parent-app/lessons/tests/parent-child-lessons.use-case.spec.ts
+          src/modules/teacher-app/lesson-preparation/tests/teacher-lesson-preparation.use-case.spec.ts
+      - name: Affected Academics Student Parent and Teacher E2E
+        run: >-
+          npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
+          test/e2e/academics-lesson-content-foundation.e2e-spec.ts
+          test/e2e/student-app-lessons.e2e-spec.ts
+          test/e2e/parent-app-child-lessons.e2e-spec.ts
+          test/e2e/teacher-app-lesson-preparation.e2e-spec.ts
+      - name: Affected Academics Student Parent and Teacher security
+        run: >-
+          npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
+          test/security/tenancy.academics-lesson-content.spec.ts
+          test/security/tenancy.student-app-lessons.spec.ts
+          test/security/tenancy.parent-app-child-lessons.spec.ts
+          test/security/tenancy.teacher-app-lesson-preparation.spec.ts
+      - if: always()
+        run: >-
+          docker rm --force moazez-learning-media-runtime
+          moazez-learning-media-minio || true

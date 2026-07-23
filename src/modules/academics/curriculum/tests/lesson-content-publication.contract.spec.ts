@@ -186,7 +186,7 @@ describe('Lesson content publication lifecycle contract', () => {
       repository.match(/FOR UPDATE/gu)?.length ?? 0,
     ).toBeGreaterThanOrEqual(4);
     expect(repository).toContain('lockLessonContentScope');
-    expect(repository).toContain('lockLiveFile');
+    expect(repository).toContain('lockReadyLearningMediaFile');
     expect(repository).toContain('"school_id" = ${schoolId}::uuid');
     expect(repository).not.toMatch(/\$queryRawUnsafe|\$executeRawUnsafe/u);
   });

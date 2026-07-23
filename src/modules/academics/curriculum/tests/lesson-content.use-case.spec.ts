@@ -104,8 +104,10 @@ describe('Lesson content use cases', () => {
             lockLessonContentScope:
               repository.findLessonContentScope.bind(repository),
             getNextSortOrder: repository.getNextSortOrder.bind(repository),
-            lockLiveFile: async (fileId: string) =>
-              Boolean(await repository.findFileById(fileId)),
+            lockReadyLearningMediaFile: async (input: { fileId: string }) =>
+              (await repository.findFileById(input.fileId))
+                ? ({ status: 'ready' } as const)
+                : ({ status: 'not_found' } as const),
             createContentItem: repository.createContentItem.bind(repository),
             updateContentItemConditionally:
               repository.updateContentItemConditionally.bind(repository),

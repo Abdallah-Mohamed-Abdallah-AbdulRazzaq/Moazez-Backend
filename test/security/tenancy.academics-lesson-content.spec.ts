@@ -3,6 +3,8 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   CurriculumStatus,
+  FileUploadPurpose,
+  FileUploadSessionStatus,
   FileVisibility,
   LessonContentItemType,
   MembershipStatus,
@@ -423,7 +425,7 @@ describe('Academics lesson content tenancy isolation (security)', () => {
       .expect((response) => {
         expect(response.body.file).toMatchObject({
           fileId: fileAId,
-          filename: `${marker}-a-file.txt`,
+          filename: `${marker}-a-file.pdf`,
         });
         expectNoObjectKey(response.body, 'schoolId');
         expectNoObjectKey(response.body, 'organizationId');
@@ -719,13 +721,49 @@ describe('Academics lesson content tenancy isolation (security)', () => {
         schoolId: inputSchoolId,
         uploaderId,
         bucket: 'test-bucket',
-        objectKey: `${marker}/${label}/file.txt`,
-        originalName: `${marker}-${label}-file.txt`,
-        mimeType: 'text/plain',
+        objectKey: `${marker}/${label}/file.pdf`,
+        originalName: `${marker}-${label}-file.pdf`,
+        mimeType: 'application/pdf',
         sizeBytes: BigInt(12),
+        checksumSha256: 'c'.repeat(64),
         visibility: FileVisibility.PRIVATE,
       },
       select: { id: true },
+    });
+    const completedAt = new Date();
+    await prisma.fileUploadSession.create({
+      data: {
+        organizationId: inputOrganizationId,
+        schoolId: inputSchoolId,
+        createdByUserId: uploaderId,
+        clientRequestId: randomUUID(),
+        purpose: FileUploadPurpose.LESSON_CONTENT,
+        originalName: `${marker}-${label}-file.pdf`,
+        expectedMimeType: 'application/pdf',
+        expectedSizeBytes: 12n,
+        stagingBucket: 'test-bucket',
+        stagingObjectKey: `${marker}/${label}/staging.pdf`,
+        finalBucket: 'test-bucket',
+        finalObjectKey: `${marker}/${label}/file.pdf`,
+        status: FileUploadSessionStatus.READY,
+        expiresAt: new Date(completedAt.getTime() + 7_200_000),
+        latestUploadUrlExpiresAt: new Date(completedAt.getTime() + 3_600_000),
+        completedAt,
+        stagingCleanupEligibleAt: new Date(completedAt.getTime() + 3_600_000),
+        finalCleanupEligibleAt: new Date(
+          completedAt.getTime() + 7 * 24 * 60 * 60 * 1000,
+        ),
+        verifiedMimeType: 'application/pdf',
+        actualSizeBytes: 12n,
+        checksumSha256: 'c'.repeat(64),
+        durationSeconds: null,
+        width: null,
+        height: null,
+        verifiedAt: completedAt,
+        verificationVersion: 'ffprobe-5.1.9-debian12-learning-media-v1',
+        createdAt: completedAt,
+        fileId: file.id,
+      },
     });
     createdFileIds.push(file.id);
     return file.id;
@@ -881,6 +919,9 @@ describe('Academics lesson content tenancy isolation (security)', () => {
     });
     await prisma.curriculum.deleteMany({
       where: { schoolId: { in: createdSchoolIds } },
+    });
+    await prisma.fileUploadSession.deleteMany({
+      where: { fileId: { in: createdFileIds } },
     });
     await prisma.file.deleteMany({
       where: { id: { in: createdFileIds } },

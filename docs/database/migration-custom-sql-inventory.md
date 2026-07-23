@@ -34,9 +34,10 @@ be copied into the canonical baseline.
 
 ## Current active-chain totals
 
-After `20260721224852_lesson_content_publication_lifecycle`, the six-migration
-active chain contains 34 PostgreSQL-specific integrity objects that Prisma
-cannot represent: 15 partial unique indexes and 19 `CHECK` constraints. The
+After `20260722160000_learning_media_runtime_upload_foundation`, the
+seven-migration active chain contains 54 PostgreSQL-specific integrity objects
+that Prisma cannot represent: 15 partial unique indexes, 38 `CHECK`
+constraints, and one immutable normalization function. The
 canonical baseline owns 27 of those objects; the incremental Teacher Directory
 migration owns one partial unique index and five checks; the publication
 lifecycle migration owns the one check documented below. The Membership
@@ -115,6 +116,45 @@ constraint name and corrects the active-chain predicate to
 - Deleted legacy content becomes ARCHIVED using its original `deleted_at`, with
   a null archive actor and a fully null publication pair.
 
+### Active-chain addition: Learning media upload lifecycle
+
+Migration `20260722160000_learning_media_runtime_upload_foundation` owns 19
+`CHECK` constraints and one immutable SQL function Prisma cannot express. The
+`normalize_learning_media_original_name` function is the migration-owned
+filename specification used by both compatibility DML and the retained
+SQL/JavaScript parity rehearsal. It strips `/` and `\` path components, removes
+the PostgreSQL-storable Unicode `Cc` ranges, applies the exact ECMAScript
+surrounding-whitespace set, and never truncates a name.
+
+The 19 constraints are:
+
+| Object name                                      | Exact purpose                                                                                                                                    |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `file_upload_sessions_expected_metadata_check`   | Expected bytes are positive and expected MIME is one of the nine locked values.                                                                  |
+| `file_upload_sessions_actual_size_check`         | Authoritative bytes are null or positive.                                                                                                        |
+| `file_upload_sessions_checksum_check`            | A present SHA-256 checksum is exactly 64 lowercase hexadecimal characters.                                                                       |
+| `file_upload_sessions_duration_check`            | Authoritative duration is null or positive.                                                                                                      |
+| `file_upload_sessions_dimensions_check`          | Dimensions are both null or both positive.                                                                                                       |
+| `file_upload_sessions_original_name_check`       | The stored display name is trimmed and between 1 and 255 code points.                                                                            |
+| `file_upload_sessions_object_identity_check`     | Staging and final object identities are both complete or null, and client-writable staging can never equal the final identity.                   |
+| `file_upload_sessions_expiry_check`              | Session and latest PUT capability expiries are chronologically consistent.                                                                       |
+| `file_upload_sessions_cleanup_evidence_check`    | Staging/final deletion evidence requires its corresponding claim, with chronological eligibility and claim ordering.                             |
+| `file_upload_sessions_authoritative_facts_check` | Authoritative MIME-specific facts match the locked PDF/text/image/audio/video matrix.                                                            |
+| `file_upload_sessions_created_check`             | CREATED rejects upload capability, verification, File, failure, and cleanup facts.                                                               |
+| `file_upload_sessions_uploading_check`           | UPLOADING requires staging and a live PUT capability, but rejects final, verification, and terminal facts.                                       |
+| `file_upload_sessions_verifying_check`           | VERIFYING admits either a claimed new staging upload or a claimed LEGACY File, and rejects incompatible completion/failure/cleanup facts.        |
+| `file_upload_sessions_ready_check`               | READY requires distinct staging/final objects, a finalized File, MIME-applicable authoritative facts, and final eligibility at exactly +7 days.  |
+| `file_upload_sessions_legacy_check`              | LEGACY has a historical File/final object and `legacy_metadata_v1`, with no staging capability, authoritative facts, or cleanup eligibility.     |
+| `file_upload_sessions_failed_check`              | New-upload FAILED retains staging cleanup after PUT expiry; failed LEGACY verification retains File/final object and has no cleanup eligibility. |
+| `file_upload_sessions_cancelled_check`           | CANCELLED is a new-upload terminal state whose staging cleanup cannot precede PUT capability expiry.                                             |
+| `file_upload_sessions_expired_check`             | EXPIRED is a new-upload terminal state whose staging cleanup cannot precede PUT capability expiry.                                               |
+| `file_upload_sessions_purged_check`              | PURGED is terminal and requires its File/final object, final cleanup claim, and confirmed final-object deletion evidence.                        |
+
+The migration also performs explicitly authorized compatibility DML: it creates
+one `LEGACY` session for each existing File referenced by Lesson Content, after
+failing closed on missing ownership or an invalid normalized display name. It
+does not rewrite a File row or storage object.
+
 ## Reviewed PostgreSQL-specific SQL that must not be copied
 
 - The 16 raw enum additions are historical transition mechanics. The final
@@ -143,7 +183,8 @@ incremental migration contains unreviewed data backfills or other DML.
 No committed migration or current schema contains:
 
 - extensions;
-- functions or procedures;
+- functions or procedures other than the explicitly inventoried immutable
+  `normalize_learning_media_original_name` compatibility function;
 - triggers;
 - views or materialized views;
 - expression indexes;

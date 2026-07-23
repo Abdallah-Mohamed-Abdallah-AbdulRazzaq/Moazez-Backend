@@ -59,6 +59,8 @@ updatedAt DateTime @updatedAt @map("updated_at")
 - Cross-school organizational models include `organizationId String @db.Uuid`.
 - Platform-level models (`Organization`, `School`, `Plan`, `PlatformUser`, `GlobalPermission`) have neither.
 - The Prisma `schoolScope` extension automatically enforces `schoolId` on queries. See `SECURITY_MODEL.md`.
+- `FileUploadSession` is School-scoped and is intentionally not soft-deletable;
+  its explicit status and cleanup-evidence fields preserve lifecycle history.
 
 ## 7. Relations
 
@@ -107,6 +109,7 @@ model Membership {
 ```
 
 The enforcement logic is:
+
 - Partial unique index in PostgreSQL: `CREATE UNIQUE INDEX ... ON memberships (user_id) WHERE user_type = 'TEACHER' AND status = 'ACTIVE'`.
 - Application-level check at membership creation.
 

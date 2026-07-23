@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { FileVisibility } from '@prisma/client';
-import { MinioAdapter } from './minio.adapter';
+import { Readable } from 'node:stream';
+import { MinioAdapter, type PresignedPutCapability } from './minio.adapter';
 import { SignedUrlService } from './signed-url.service';
 
 @Injectable()
@@ -12,7 +13,8 @@ export class StorageService {
 
   async saveObject(input: {
     objectKey: string;
-    body: Buffer | string;
+    body: Buffer | string | Readable;
+    sizeBytes?: number;
     visibility?: FileVisibility;
     bucket?: string;
     contentType?: string;
@@ -28,6 +30,7 @@ export class StorageService {
       bucket,
       objectKey: input.objectKey,
       body: input.body,
+      sizeBytes: input.sizeBytes,
       contentType: input.contentType,
       metadata: input.metadata,
     });
@@ -52,12 +55,36 @@ export class StorageService {
     return this.signedUrlService.createDownloadUrl(input);
   }
 
+  createUploadUrl(input: {
+    bucket: string;
+    objectKey: string;
+    expiresInSeconds: number;
+  }): Promise<PresignedPutCapability> {
+    return this.minioAdapter.createPresignedPutUrl(input);
+  }
+
   statObject(input: { bucket: string; objectKey: string }) {
     return this.minioAdapter.statObject(input);
   }
 
   getObject(input: { bucket: string; objectKey: string }) {
     return this.minioAdapter.getObject(input);
+  }
+
+  objectExists(input: { bucket: string; objectKey: string }): Promise<boolean> {
+    return this.minioAdapter.objectExists(input);
+  }
+
+  async deleteObjectAndConfirmAbsent(input: {
+    bucket: string;
+    objectKey: string;
+  }): Promise<void> {
+    if (await this.objectExists(input)) {
+      await this.deleteObject(input);
+    }
+    if (await this.objectExists(input)) {
+      throw new Error('storage_object_still_present');
+    }
   }
 
   listObjectsPage(input: {
