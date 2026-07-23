@@ -522,14 +522,15 @@ output, credentials, or foreign-tenant identifiers.
 
 ### Student App
 
-| Code                                 | HTTP | Message                                           |
-| ------------------------------------ | ---- | ------------------------------------------------- |
-| `student_app.actor.required_student` | 403  | Student App requires an active student membership |
-| `student_app.student.not_found`      | 404  | Student App student was not found                 |
-| `student_app.enrollment.not_found`   | 404  | Student App active enrollment was not found       |
-| `student_app.classroom.not_found`    | 404  | Student App classroom was not found               |
-| `student_app.lessons.not_found`      | 404  | Student lesson was not found                      |
-| `learning.subject_lessons.not_found` | 404  | Subject lessons not found or not accessible       |
+| Code                                  | HTTP | Message                                           |
+| ------------------------------------- | ---- | ------------------------------------------------- |
+| `student_app.actor.required_student`  | 403  | Student App requires an active student membership |
+| `student_app.student.not_found`       | 404  | Student App student was not found                 |
+| `student_app.enrollment.not_found`    | 404  | Student App active enrollment was not found       |
+| `student_app.classroom.not_found`     | 404  | Student App classroom was not found               |
+| `student_app.lessons.not_found`       | 404  | Student lesson was not found                      |
+| `learning.content.playback_not_found` | 404  | Lesson content playback was not found             |
+| `learning.subject_lessons.not_found`  | 404  | Subject lessons not found or not accessible       |
 
 ### Parent App
 

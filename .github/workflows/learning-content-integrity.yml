@@ -165,6 +165,26 @@ jobs:
           test/integration/lesson-content-publication-atomicity.integration.spec.ts
           test/integration/lesson-content-publication-read-adapters.spec.ts
 
+      - name: Start exact MinIO release
+        run: >-
+          docker run --detach --rm --name moazez-learning-content-minio
+          --publish 9000:9000
+          --env MINIO_ROOT_USER=ci-only-storage-access
+          --env MINIO_ROOT_PASSWORD=ci-only-storage-secret
+          --env MINIO_API_CORS_ALLOW_ORIGIN=http://127.0.0.1:3001
+          minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+
+      - name: Wait for MinIO
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:9000/minio/health/ready && exit 0
+            sleep 1
+          done
+          docker logs moazez-learning-content-minio
+          exit 1
+
       - name: Run Lesson Content E2E visibility
         run: >-
           npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
@@ -181,3 +201,7 @@ jobs:
           test/security/tenancy.student-app-lessons.spec.ts
           test/security/tenancy.parent-app-child-lessons.spec.ts
           test/security/tenancy.teacher-app-lesson-preparation.spec.ts
+
+      - name: Stop MinIO
+        if: always()
+        run: docker rm --force moazez-learning-content-minio || true

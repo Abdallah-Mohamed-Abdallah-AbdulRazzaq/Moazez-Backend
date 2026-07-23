@@ -19,21 +19,24 @@ export class GetParentChildFileDownloadUrlUseCase {
     const child = await this.parentAppAccessService.assertParentOwnsStudent(
       params.studentId,
     );
-    const file =
-      await this.parentFilesReadAdapter.findTaskProofFileForDownload({
+    const file = await this.parentFilesReadAdapter.findTaskProofFileForDownload(
+      {
         child,
         fileId: params.fileId,
-      });
+      },
+    );
 
     if (!file) {
       throw new FilesNotFoundException({ fileId: params.fileId });
     }
 
-    return this.storageService.createDownloadUrl({
+    const capability = await this.storageService.createDownloadUrl({
       bucket: file.bucket,
       objectKey: file.objectKey,
       expiresInSeconds: 5 * 60,
+      disposition: 'attachment',
       downloadFileName: file.originalName,
     });
+    return capability.url;
   }
 }

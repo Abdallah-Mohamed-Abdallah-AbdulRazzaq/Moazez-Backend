@@ -30,6 +30,11 @@ export type PresignedPutCapability = {
   expiresAt: Date;
 };
 
+export type PresignedGetCapability = {
+  url: string;
+  expiresAt: Date;
+};
+
 @Injectable()
 export class MinioAdapter {
   private readonly client: Client;
@@ -167,13 +172,16 @@ export class MinioAdapter {
     });
   }
 
-  createPresignedGetUrl(input: PresignedGetUrlInput): Promise<string> {
-    return this.client.presignedGetObject(
+  async createPresignedGetUrl(
+    input: PresignedGetUrlInput,
+  ): Promise<PresignedGetCapability> {
+    const url = await this.client.presignedGetObject(
       input.bucket,
       input.objectKey,
       input.expiresInSeconds,
       input.responseHeaders,
     );
+    return { url, expiresAt: parsePresignedGetExpiry(url) };
   }
 
   async createPresignedPutUrl(
@@ -210,20 +218,28 @@ function isStorageError(error: unknown): error is { code: unknown } {
 }
 
 function parsePresignedPutExpiry(value: string): Date {
+  return parsePresignedExpiry(value, 'storage_presigned_put');
+}
+
+function parsePresignedGetExpiry(value: string): Date {
+  return parsePresignedExpiry(value, 'storage_presigned_get');
+}
+
+function parsePresignedExpiry(value: string, errorPrefix: string): Date {
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    throw new Error('storage_presigned_put_url_invalid');
+    throw new Error(`${errorPrefix}_url_invalid`);
   }
   const signedAt = url.searchParams.get('X-Amz-Date');
   const expiresText = url.searchParams.get('X-Amz-Expires');
   if (!signedAt || !/^\d{8}T\d{6}Z$/u.test(signedAt) || !expiresText) {
-    throw new Error('storage_presigned_put_expiry_missing');
+    throw new Error(`${errorPrefix}_expiry_missing`);
   }
   const expiresInSeconds = Number(expiresText);
   if (!Number.isSafeInteger(expiresInSeconds) || expiresInSeconds <= 0) {
-    throw new Error('storage_presigned_put_expiry_invalid');
+    throw new Error(`${errorPrefix}_expiry_invalid`);
   }
   const signedAtMilliseconds = Date.UTC(
     Number(signedAt.slice(0, 4)),
@@ -233,8 +249,19 @@ function parsePresignedPutExpiry(value: string): Date {
     Number(signedAt.slice(11, 13)),
     Number(signedAt.slice(13, 15)),
   );
-  if (!Number.isFinite(signedAtMilliseconds)) {
-    throw new Error('storage_presigned_put_expiry_invalid');
+  const parsedSignedAt = new Date(signedAtMilliseconds);
+  const normalizedSignedAt =
+    `${parsedSignedAt.getUTCFullYear().toString().padStart(4, '0')}` +
+    `${(parsedSignedAt.getUTCMonth() + 1).toString().padStart(2, '0')}` +
+    `${parsedSignedAt.getUTCDate().toString().padStart(2, '0')}T` +
+    `${parsedSignedAt.getUTCHours().toString().padStart(2, '0')}` +
+    `${parsedSignedAt.getUTCMinutes().toString().padStart(2, '0')}` +
+    `${parsedSignedAt.getUTCSeconds().toString().padStart(2, '0')}Z`;
+  if (
+    !Number.isFinite(signedAtMilliseconds) ||
+    normalizedSignedAt !== signedAt
+  ) {
+    throw new Error(`${errorPrefix}_expiry_invalid`);
   }
   return new Date(signedAtMilliseconds + expiresInSeconds * 1000);
 }

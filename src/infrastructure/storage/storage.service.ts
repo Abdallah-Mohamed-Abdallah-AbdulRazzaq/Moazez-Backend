@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { FileVisibility } from '@prisma/client';
 import { Readable } from 'node:stream';
-import { MinioAdapter, type PresignedPutCapability } from './minio.adapter';
+import {
+  MinioAdapter,
+  type PresignedGetCapability,
+  type PresignedPutCapability,
+} from './minio.adapter';
+import type { SignedGetDisposition } from './signed-url.service';
 import { SignedUrlService } from './signed-url.service';
 
 @Injectable()
@@ -50,8 +55,10 @@ export class StorageService {
     bucket?: string;
     visibility?: FileVisibility;
     expiresInSeconds?: number;
+    disposition?: SignedGetDisposition;
+    contentType?: string;
     downloadFileName?: string | null;
-  }): Promise<string> {
+  }): Promise<PresignedGetCapability> {
     return this.signedUrlService.createDownloadUrl(input);
   }
 

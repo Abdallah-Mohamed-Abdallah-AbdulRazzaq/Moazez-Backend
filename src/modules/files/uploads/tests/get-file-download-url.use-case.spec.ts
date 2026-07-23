@@ -72,9 +72,10 @@ describe('GetFileDownloadUrlUseCase', () => {
       updatedAt: new Date('2026-07-21T00:00:00.000Z'),
       deletedAt: null,
     });
-    storageService.createDownloadUrl.mockResolvedValue(
-      'https://storage.invalid/signed-download',
-    );
+    storageService.createDownloadUrl.mockResolvedValue({
+      url: 'https://storage.invalid/signed-download',
+      expiresAt: new Date('2026-07-21T00:05:00.000Z'),
+    });
 
     await expect(
       runInFilesScope(() => useCase.execute('file-1')),
@@ -83,6 +84,7 @@ describe('GetFileDownloadUrlUseCase', () => {
       bucket: 'private-bucket',
       objectKey: 'private-object-key',
       expiresInSeconds: 300,
+      disposition: 'attachment',
       downloadFileName: 'worksheet.pdf',
     });
   });

@@ -31,12 +31,14 @@ export class GetCommunicationMessageAttachmentDownloadUrlUseCase {
 
     assertAttachmentIsDownloadable(attachment, input);
 
-    return this.storageService.createDownloadUrl({
+    const capability = await this.storageService.createDownloadUrl({
       bucket: attachment.file.bucket,
       objectKey: attachment.file.objectKey,
       expiresInSeconds: 5 * 60,
+      disposition: 'attachment',
       downloadFileName: attachment.file.originalName,
     });
+    return capability.url;
   }
 }
 

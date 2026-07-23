@@ -100,6 +100,7 @@ describe('communication message attachment use cases', () => {
       bucket: 'private-bucket',
       objectKey: 'objects/file-1',
       expiresInSeconds: 300,
+      disposition: 'attachment',
       downloadFileName: 'worksheet.pdf',
     });
     expect(JSON.stringify({ result })).not.toContain('objectKey');
@@ -513,9 +514,10 @@ function repositoryMock(
 
 function storageMock() {
   return {
-    createDownloadUrl: jest
-      .fn()
-      .mockResolvedValue('https://storage.example/signed-download'),
+    createDownloadUrl: jest.fn().mockResolvedValue({
+      url: 'https://storage.example/signed-download',
+      expiresAt: new Date('2026-07-23T12:05:00.000Z'),
+    }),
   };
 }
 
