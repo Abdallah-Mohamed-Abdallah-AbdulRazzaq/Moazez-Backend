@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  FileUploadPurpose,
+  FileUploadSessionStatus,
   LessonContentItemType,
   LessonContentPublicationStatus,
   MembershipStatus,
@@ -208,21 +210,56 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
         .expect(201)
     ).body.lessonId;
 
-    uploadedFileId = (
-      await prisma.file.create({
-        data: {
-          organizationId,
-          schoolId,
-          uploaderId: adminUserId,
-          bucket: `${marker}-metadata-only-bucket`,
-          objectKey: `${marker}-metadata-only-object`,
-          originalName: `${marker}-resource.txt`,
-          mimeType: 'text/plain',
-          sizeBytes: BigInt(Buffer.byteLength('lesson resource body')),
-        },
-        select: { id: true },
-      })
-    ).id;
+    const uploadedFile = await prisma.file.create({
+      data: {
+        organizationId,
+        schoolId,
+        uploaderId: adminUserId,
+        bucket: `${marker}-metadata-only-bucket`,
+        objectKey: `${marker}-metadata-only-object`,
+        originalName: `${marker}-resource.pdf`,
+        mimeType: 'application/pdf',
+        sizeBytes: BigInt(Buffer.byteLength('lesson resource body')),
+        checksumSha256: 'a'.repeat(64),
+      },
+      select: { id: true },
+    });
+    uploadedFileId = uploadedFile.id;
+    const completedAt = new Date();
+    await prisma.fileUploadSession.create({
+      data: {
+        organizationId,
+        schoolId,
+        createdByUserId: adminUserId,
+        clientRequestId: randomUUID(),
+        purpose: FileUploadPurpose.LESSON_CONTENT,
+        originalName: `${marker}-resource.pdf`,
+        expectedMimeType: 'application/pdf',
+        expectedSizeBytes: BigInt(Buffer.byteLength('lesson resource body')),
+        stagingBucket: `${marker}-metadata-only-bucket`,
+        stagingObjectKey: `${marker}-metadata-only-staging`,
+        finalBucket: `${marker}-metadata-only-bucket`,
+        finalObjectKey: `${marker}-metadata-only-object`,
+        status: FileUploadSessionStatus.READY,
+        expiresAt: new Date(completedAt.getTime() + 7_200_000),
+        latestUploadUrlExpiresAt: new Date(completedAt.getTime() + 3_600_000),
+        completedAt,
+        stagingCleanupEligibleAt: new Date(completedAt.getTime() + 3_600_000),
+        finalCleanupEligibleAt: new Date(
+          completedAt.getTime() + 7 * 24 * 60 * 60 * 1000,
+        ),
+        verifiedMimeType: 'application/pdf',
+        actualSizeBytes: BigInt(Buffer.byteLength('lesson resource body')),
+        checksumSha256: 'a'.repeat(64),
+        durationSeconds: null,
+        width: null,
+        height: null,
+        verifiedAt: completedAt,
+        verificationVersion: 'ffprobe-5.1.9-debian12-learning-media-v1',
+        createdAt: completedAt,
+        fileId: uploadedFile.id,
+      },
+    });
 
     textContentId = (
       await request(app.getHttpServer())
@@ -291,8 +328,8 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
             title: 'Practice Worksheet',
             file: {
               fileId: uploadedFileId,
-              filename: `${marker}-resource.txt`,
-              mimeType: 'text/plain',
+              filename: `${marker}-resource.pdf`,
+              mimeType: 'application/pdf',
               sizeBytes: String(Buffer.byteLength('lesson resource body')),
             },
             url: null,
@@ -1278,6 +1315,9 @@ describe('Sprint 15C Academics Lesson Content Foundation (e2e)', () => {
       where: { schoolId: { in: createdSchoolIds } },
     });
     if (uploadedFileId) {
+      await prisma.fileUploadSession.deleteMany({
+        where: { fileId: uploadedFileId },
+      });
       await prisma.file.deleteMany({ where: { id: uploadedFileId } });
     }
     await prisma.subject.deleteMany({

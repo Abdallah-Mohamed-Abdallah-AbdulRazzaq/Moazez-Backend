@@ -285,6 +285,9 @@ describe('Lesson Content publication atomicity and parent-state locking', () => 
     await prisma.lessonContentItem.deleteMany({
       where: { schoolId: ids.schoolId },
     });
+    await prisma.fileUploadSession.deleteMany({
+      where: { schoolId: { in: [ids.schoolId, ids.foreignSchoolId] } },
+    });
     await prisma.file.deleteMany({
       where: { schoolId: { in: [ids.schoolId, ids.foreignSchoolId] } },
     });
@@ -307,6 +310,9 @@ describe('Lesson Content publication atomicity and parent-state locking', () => 
       await prisma.auditLog.deleteMany({ where: { schoolId: ids.schoolId } });
       await prisma.lessonContentItem.deleteMany({
         where: { schoolId: ids.schoolId },
+      });
+      await prisma.fileUploadSession.deleteMany({
+        where: { schoolId: { in: [ids.schoolId, ids.foreignSchoolId] } },
       });
       await prisma.file.deleteMany({
         where: { schoolId: { in: [ids.schoolId, ids.foreignSchoolId] } },
@@ -1286,8 +1292,9 @@ describe('Lesson Content publication atomicity and parent-state locking', () => 
                 if (holdAt === 'parent') await hold();
                 return scope;
               },
-              lockLiveFile: async (fileId) => {
-                const available = await context.lockLiveFile(fileId);
+              lockReadyLearningMediaFile: async (input) => {
+                const available =
+                  await context.lockReadyLearningMediaFile(input);
                 if (holdAt === 'file') await hold();
                 return available;
               },
@@ -1811,14 +1818,16 @@ describe('Lesson Content publication atomicity and parent-state locking', () => 
     });
   }
 
-  function createFile(schoolId: string, deleted: boolean) {
-    return prisma.file.create({
+  async function createFile(schoolId: string, deleted: boolean) {
+    const objectKey = `lesson-content/${randomUUID()}`;
+    const now = new Date();
+    const file = await prisma.file.create({
       data: {
         organizationId: ids.organizationId,
         schoolId,
         uploaderId: ids.userId,
         bucket: `lc-h1-${suffix}`,
-        objectKey: `lesson-content/${randomUUID()}`,
+        objectKey,
         originalName: 'atomicity-fixture.pdf',
         mimeType: 'application/pdf',
         sizeBytes: 1024n,
@@ -1826,6 +1835,41 @@ describe('Lesson Content publication atomicity and parent-state locking', () => 
         deletedAt: deleted ? new Date() : null,
       },
     });
+    await prisma.fileUploadSession.create({
+      data: {
+        organizationId: ids.organizationId,
+        schoolId,
+        createdByUserId: ids.userId,
+        clientRequestId: randomUUID(),
+        purpose: 'LESSON_CONTENT',
+        originalName: 'atomicity-fixture.pdf',
+        expectedMimeType: 'application/pdf',
+        expectedSizeBytes: 1024n,
+        stagingBucket: file.bucket,
+        stagingObjectKey: `${objectKey}-staging`,
+        finalBucket: file.bucket,
+        finalObjectKey: objectKey,
+        status: 'READY',
+        expiresAt: new Date(now.getTime() + 7_200_000),
+        latestUploadUrlExpiresAt: new Date(now.getTime() + 3_600_000),
+        completedAt: now,
+        stagingCleanupEligibleAt: new Date(now.getTime() + 3_600_000),
+        finalCleanupEligibleAt: new Date(
+          now.getTime() + 7 * 24 * 60 * 60 * 1000,
+        ),
+        verifiedMimeType: 'application/pdf',
+        actualSizeBytes: 1024n,
+        checksumSha256: 'a'.repeat(64),
+        durationSeconds: null,
+        width: null,
+        height: null,
+        verifiedAt: now,
+        verificationVersion: 'ffprobe-5.1.9-debian12-learning-media-v1',
+        fileId: file.id,
+        createdAt: now,
+      },
+    });
+    return file;
   }
 
   function pathFor(contentItemId?: string): LessonContentItemPath {

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../iam/auth/auth.module';
+import { UploadsModule } from '../../files/uploads/uploads.module';
 import {
   ActivateCurriculumUseCase,
   ArchiveCurriculumUseCase,
@@ -30,13 +31,14 @@ import {
 } from './application/lesson-content.use-cases';
 import { LessonContentUnitOfWork } from './application/lesson-content.unit-of-work';
 import { CurriculumController } from './controller/curriculum.controller';
+import { LearningMediaController } from './controller/learning-media.controller';
 import { CurriculumRepository } from './infrastructure/curriculum.repository';
 import { LessonContentRepository } from './infrastructure/lesson-content.repository';
 import { PrismaLessonContentUnitOfWork } from './infrastructure/prisma-lesson-content.unit-of-work';
 
 @Module({
-  imports: [AuthModule],
-  controllers: [CurriculumController],
+  imports: [AuthModule, UploadsModule],
+  controllers: [CurriculumController, LearningMediaController],
   providers: [
     CurriculumRepository,
     LessonContentRepository,

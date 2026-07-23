@@ -6,9 +6,7 @@ const booleanFromString = z
 
 const optionalNonEmptyString = z.preprocess(
   (value) =>
-    typeof value === 'string' && value.trim().length === 0
-      ? undefined
-      : value,
+    typeof value === 'string' && value.trim().length === 0 ? undefined : value,
   z.string().trim().min(1).optional(),
 );
 
@@ -34,6 +32,27 @@ export const envSchema = z
     STORAGE_SECRET_KEY: z.string().min(1),
     STORAGE_BUCKET: z.string().min(1),
     STORAGE_PUBLIC_BUCKET: z.string().min(1),
+    STORAGE_CORS_ORIGINS: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .transform((value) =>
+        value ? value.split(',').map((origin) => origin.trim()) : undefined,
+      )
+      .pipe(z.array(z.string().url()).min(1).optional()),
+
+    FFPROBE_PATH: z.string().startsWith('/').default('/usr/bin/ffprobe'),
+    FFPROBE_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+    FFPROBE_MAX_OUTPUT_BYTES: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(1_048_576),
+    MEDIA_VERIFICATION_VERSION: z
+      .literal('ffprobe-5.1.9-debian12-learning-media-v1')
+      .default('ffprobe-5.1.9-debian12-learning-media-v1'),
+    MEDIA_RUNTIME_ENFORCE_IN_TEST: booleanFromString.default('false'),
 
     // 32 decoded bytes. Supported formats: base64:<value> or hex:<value>.
     SETTINGS_SECRET_ENCRYPTION_KEY: z.string().optional(),
@@ -51,6 +70,17 @@ export const envSchema = z
       .default('info'),
   })
   .superRefine((env, ctx) => {
+    if (
+      (env.NODE_ENV === 'staging' || env.NODE_ENV === 'production') &&
+      !env.STORAGE_CORS_ORIGINS
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['STORAGE_CORS_ORIGINS'],
+        message: 'STORAGE_CORS_ORIGINS is required for staging and production',
+      });
+    }
+
     const hasCredentialsFile = Boolean(env.GOOGLE_APPLICATION_CREDENTIALS);
     const firebaseEnvFields = [
       'FIREBASE_PROJECT_ID',

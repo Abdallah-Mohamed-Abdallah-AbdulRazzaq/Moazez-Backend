@@ -249,6 +249,26 @@ enum FileVisibility {
   @@map("file_visibility")
 }
 
+enum FileUploadPurpose {
+  LESSON_CONTENT
+
+  @@map("file_upload_purpose")
+}
+
+enum FileUploadSessionStatus {
+  CREATED
+  UPLOADING
+  VERIFYING
+  READY
+  LEGACY
+  FAILED
+  CANCELLED
+  EXPIRED
+  PURGED
+
+  @@map("file_upload_session_status")
+}
+
 enum NotificationTemplateStatus {
   ACTIVE
   DRAFT
@@ -1243,6 +1263,7 @@ model Organization {
   memberships                        Membership[]
   auditLogs                          AuditLog[]
   files                              File[]
+  fileUploadSessions                 FileUploadSession[]
   leads                              Lead[]
   applications                       Application[]
   applicantAdmissionRequests         ApplicantAdmissionRequest[]
@@ -1318,6 +1339,7 @@ model School {
   importJobs                            ImportJob[]
   auditLogs                             AuditLog[]
   files                                 File[]
+  fileUploadSessions                    FileUploadSession[]
   leads                                 Lead[]
   applications                          Application[]
   applicantAdmissionRequests            ApplicantAdmissionRequest[]
@@ -1487,6 +1509,7 @@ model User {
   sessions                                       Session[]
   auditLogsActing                                AuditLog[]                             @relation("AuditLogActor")
   filesUploaded                                  File[]                                 @relation("FileUploader")
+  fileUploadSessionsCreated                      FileUploadSession[]                    @relation("FileUploadSessionCreator")
   schoolProfilesUpdated                          SchoolProfile[]                        @relation("SchoolProfileUpdatedBy")
   dismissalSettingsUpdated                       DismissalSettings[]                    @relation("DismissalSettingsUpdatedBy")
   dismissalStaffAssignments                      DismissalStaffAssignment[]             @relation("DismissalStaffAssignmentStaffUser")
@@ -6543,6 +6566,7 @@ model File {
   communicationAnnouncementImages      CommunicationAnnouncement[]           @relation("CommunicationAnnouncementImageFile")
   communicationAnnouncementAttachments CommunicationAnnouncementAttachment[]
   schoolProfileLogos                   SchoolProfile[]                       @relation("SchoolProfileLogoFile")
+  uploadSession                        FileUploadSession?
 
   @@unique([bucket, objectKey])
   @@unique([id, schoolId])
@@ -6552,6 +6576,61 @@ model File {
   @@index([visibility])
   @@index([deletedAt])
   @@map("files")
+}
+
+model FileUploadSession {
+  id                       String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId           String                  @map("organization_id") @db.Uuid
+  schoolId                 String                  @map("school_id") @db.Uuid
+  createdByUserId          String                  @map("created_by_user_id") @db.Uuid
+  clientRequestId          String                  @map("client_request_id") @db.Uuid
+  purpose                  FileUploadPurpose
+  originalName             String                  @map("original_name")
+  expectedMimeType         String                  @map("expected_mime_type")
+  expectedSizeBytes        BigInt                  @map("expected_size_bytes")
+  stagingBucket            String?                 @map("staging_bucket")
+  stagingObjectKey         String?                 @map("staging_object_key")
+  finalBucket              String                  @map("final_bucket")
+  finalObjectKey           String                  @map("final_object_key")
+  status                   FileUploadSessionStatus @default(CREATED)
+  expiresAt                DateTime                @map("expires_at")
+  latestUploadUrlExpiresAt DateTime?               @map("latest_upload_url_expires_at")
+  completedAt              DateTime?               @map("completed_at")
+  failedAt                 DateTime?               @map("failed_at")
+  cancelledAt              DateTime?               @map("cancelled_at")
+  stagingCleanupEligibleAt DateTime?               @map("staging_cleanup_eligible_at")
+  stagingCleanupClaimedAt  DateTime?               @map("staging_cleanup_claimed_at")
+  stagingObjectDeletedAt   DateTime?               @map("staging_object_deleted_at")
+  finalCleanupEligibleAt   DateTime?               @map("final_cleanup_eligible_at")
+  finalCleanupClaimedAt    DateTime?               @map("final_cleanup_claimed_at")
+  finalObjectDeletedAt     DateTime?               @map("final_object_deleted_at")
+  failureReason            String?                 @map("failure_reason")
+  verifiedMimeType         String?                 @map("verified_mime_type")
+  actualSizeBytes          BigInt?                 @map("actual_size_bytes")
+  checksumSha256           String?                 @map("checksum_sha256")
+  durationSeconds          Float?                  @map("duration_seconds")
+  width                    Int?
+  height                   Int?
+  verifiedAt               DateTime?               @map("verified_at")
+  verificationVersion      String?                 @map("verification_version")
+  fileId                   String?                 @unique(map: "file_upload_sessions_file_id_key") @map("file_id") @db.Uuid
+  createdAt                DateTime                @default(now()) @map("created_at")
+  updatedAt                DateTime                @updatedAt @map("updated_at")
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  school        School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  createdByUser User         @relation("FileUploadSessionCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  file          File?        @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@unique([stagingBucket, stagingObjectKey], map: "file_upload_sessions_staging_bucket_object_key_key")
+  @@unique([finalBucket, finalObjectKey], map: "file_upload_sessions_final_bucket_object_key_key")
+  @@unique([schoolId, createdByUserId, purpose, clientRequestId], map: "file_upload_sessions_school_creator_purpose_request_key")
+  @@index([schoolId, status, expiresAt], map: "file_upload_sessions_school_status_expiry_idx")
+  @@index([schoolId, purpose, status], map: "file_upload_sessions_school_purpose_status_idx")
+  @@index([createdByUserId], map: "file_upload_sessions_creator_idx")
+  @@index([schoolId, status, stagingCleanupEligibleAt, stagingCleanupClaimedAt], map: "file_upload_sessions_staging_cleanup_discovery_idx")
+  @@index([schoolId, status, finalCleanupEligibleAt, finalCleanupClaimedAt], map: "file_upload_sessions_final_cleanup_discovery_idx")
+  @@map("file_upload_sessions")
 }
 
 model Attachment {

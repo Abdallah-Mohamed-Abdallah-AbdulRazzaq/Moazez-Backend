@@ -6,7 +6,8 @@ import { BucketItem, BucketItemStat, Client } from 'minio';
 type PutObjectInput = {
   bucket: string;
   objectKey: string;
-  body: Buffer | string;
+  body: Buffer | string | Readable;
+  sizeBytes?: number;
   contentType?: string;
   metadata?: Record<string, string>;
 };
@@ -16,6 +17,17 @@ type PresignedGetUrlInput = {
   objectKey: string;
   expiresInSeconds: number;
   responseHeaders?: Record<string, string>;
+};
+
+type PresignedPutUrlInput = {
+  bucket: string;
+  objectKey: string;
+  expiresInSeconds: number;
+};
+
+export type PresignedPutCapability = {
+  url: string;
+  expiresAt: Date;
 };
 
 @Injectable()
@@ -61,9 +73,15 @@ export class MinioAdapter {
       ...(input.metadata ?? {}),
     };
 
-    const size = Buffer.isBuffer(input.body)
-      ? input.body.byteLength
-      : Buffer.byteLength(input.body);
+    const size =
+      input.body instanceof Readable
+        ? input.sizeBytes
+        : Buffer.isBuffer(input.body)
+          ? input.body.byteLength
+          : Buffer.byteLength(input.body);
+    if (size === undefined || !Number.isSafeInteger(size) || size < 0) {
+      throw new Error('storage_object_size_required');
+    }
 
     const uploaded = await this.client.putObject(
       input.bucket,
@@ -157,4 +175,66 @@ export class MinioAdapter {
       input.responseHeaders,
     );
   }
+
+  async createPresignedPutUrl(
+    input: PresignedPutUrlInput,
+  ): Promise<PresignedPutCapability> {
+    await this.ensureBucketExists(input.bucket);
+    const url = await this.client.presignedPutObject(
+      input.bucket,
+      input.objectKey,
+      input.expiresInSeconds,
+    );
+    return { url, expiresAt: parsePresignedPutExpiry(url) };
+  }
+
+  async objectExists(input: {
+    bucket: string;
+    objectKey: string;
+  }): Promise<boolean> {
+    try {
+      await this.client.statObject(input.bucket, input.objectKey);
+      return true;
+    } catch (error) {
+      const code = isStorageError(error) ? String(error.code) : '';
+      if (['NoSuchKey', 'NoSuchObject', 'NotFound'].includes(code)) {
+        return false;
+      }
+      throw error;
+    }
+  }
+}
+
+function isStorageError(error: unknown): error is { code: unknown } {
+  return typeof error === 'object' && error !== null && 'code' in error;
+}
+
+function parsePresignedPutExpiry(value: string): Date {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('storage_presigned_put_url_invalid');
+  }
+  const signedAt = url.searchParams.get('X-Amz-Date');
+  const expiresText = url.searchParams.get('X-Amz-Expires');
+  if (!signedAt || !/^\d{8}T\d{6}Z$/u.test(signedAt) || !expiresText) {
+    throw new Error('storage_presigned_put_expiry_missing');
+  }
+  const expiresInSeconds = Number(expiresText);
+  if (!Number.isSafeInteger(expiresInSeconds) || expiresInSeconds <= 0) {
+    throw new Error('storage_presigned_put_expiry_invalid');
+  }
+  const signedAtMilliseconds = Date.UTC(
+    Number(signedAt.slice(0, 4)),
+    Number(signedAt.slice(4, 6)) - 1,
+    Number(signedAt.slice(6, 8)),
+    Number(signedAt.slice(9, 11)),
+    Number(signedAt.slice(11, 13)),
+    Number(signedAt.slice(13, 15)),
+  );
+  if (!Number.isFinite(signedAtMilliseconds)) {
+    throw new Error('storage_presigned_put_expiry_invalid');
+  }
+  return new Date(signedAtMilliseconds + expiresInSeconds * 1000);
 }

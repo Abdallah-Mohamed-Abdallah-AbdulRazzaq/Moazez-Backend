@@ -1,4 +1,5 @@
 import type {
+  FileUploadSessionStatus,
   LessonContentPublicationStatus,
   Prisma,
   UserType,
@@ -35,7 +36,15 @@ export interface LessonContentTransactionContext {
     path: LessonContentPath,
   ): Promise<LessonContentScopeRecord>;
   getNextSortOrder(path: LessonContentPath): Promise<number>;
-  lockLiveFile(fileId: string): Promise<boolean>;
+  lockReadyLearningMediaFile(input: {
+    fileId: string;
+    organizationId: string;
+    actorId: string;
+  }): Promise<
+    | { status: 'ready' }
+    | { status: 'not_found' }
+    | { status: 'not_ready'; uploadStatus: FileUploadSessionStatus }
+  >;
   createContentItem(
     data: Prisma.LessonContentItemUncheckedCreateInput,
   ): Promise<LessonContentItemRecord>;

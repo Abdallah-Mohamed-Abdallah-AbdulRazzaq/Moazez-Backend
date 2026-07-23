@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   AuditOutcome,
   CurriculumStatus,
+  FileUploadSessionStatus,
   LessonContentPublicationStatus,
   Prisma,
 } from '@prisma/client';
@@ -139,8 +140,8 @@ export class LessonContentRepository {
         this.lockLessonContentScope(transaction, schoolId, path),
       getNextSortOrder: (path) =>
         this.getNextSortOrderInTransaction(transaction, schoolId, path),
-      lockLiveFile: (fileId) =>
-        this.lockLiveFile(transaction, schoolId, fileId),
+      lockReadyLearningMediaFile: (input) =>
+        this.lockReadyLearningMediaFile(transaction, schoolId, input),
       createContentItem: (data) =>
         this.createContentItemInTransaction(transaction, schoolId, data),
       updateContentItemConditionally: (input) =>
@@ -324,23 +325,66 @@ export class LessonContentRepository {
     return { curriculum, unit, lesson: lessons[0] ?? null };
   }
 
-  private async lockLiveFile(
+  private async lockReadyLearningMediaFile(
     transaction: Prisma.TransactionClient,
     schoolId: string,
-    fileId: string,
-  ): Promise<boolean> {
+    input: { fileId: string; organizationId: string; actorId: string },
+  ): Promise<
+    | { status: 'ready' }
+    | { status: 'not_found' }
+    | { status: 'not_ready'; uploadStatus: FileUploadSessionStatus }
+  > {
+    const sessions = await transaction.$queryRaw<
+      Array<{
+        status: FileUploadSessionStatus;
+        finalCleanupClaimedAt: Date | null;
+      }>
+    >(Prisma.sql`
+      SELECT
+        "status",
+        "final_cleanup_claimed_at" AS "finalCleanupClaimedAt"
+      FROM "file_upload_sessions"
+      WHERE "file_id" = ${input.fileId}::uuid
+        AND "school_id" = ${schoolId}::uuid
+        AND "organization_id" = ${input.organizationId}::uuid
+        AND "created_by_user_id" = ${input.actorId}::uuid
+        AND "purpose" = 'LESSON_CONTENT'
+      LIMIT 1
+      FOR UPDATE
+    `);
+    const session = sessions[0];
+    if (!session) return { status: 'not_found' };
+    if (
+      session.status !== FileUploadSessionStatus.READY ||
+      session.finalCleanupClaimedAt !== null
+    ) {
+      return { status: 'not_ready', uploadStatus: session.status };
+    }
     const files = await transaction.$queryRaw<Array<{ id: string }>>(
       Prisma.sql`
         SELECT "id"
         FROM "files"
-        WHERE "id" = ${fileId}::uuid
+        WHERE "id" = ${input.fileId}::uuid
           AND "school_id" = ${schoolId}::uuid
+          AND "organization_id" = ${input.organizationId}::uuid
+          AND "uploader_id" = ${input.actorId}::uuid
+          AND "mime_type" IN (
+            'application/pdf',
+            'text/plain',
+            'image/jpeg',
+            'image/png',
+            'audio/mpeg',
+            'audio/mp4',
+            'audio/webm',
+            'video/mp4',
+            'video/webm'
+          )
           AND "deleted_at" IS NULL
         LIMIT 1
         FOR UPDATE
       `,
     );
-    return files.length === 1;
+    return files.length === 1 ? { status: 'ready' } : { status: 'not_found' };
   }
 
   private async getNextSortOrderInTransaction(
