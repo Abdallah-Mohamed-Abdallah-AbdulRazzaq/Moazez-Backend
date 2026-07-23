@@ -19,11 +19,13 @@ export class GetFileDownloadUrlUseCase {
       throw new FilesNotFoundException();
     }
 
-    return this.storageService.createDownloadUrl({
+    const capability = await this.storageService.createDownloadUrl({
       bucket: file.bucket,
       objectKey: file.objectKey,
       expiresInSeconds: 5 * 60,
+      disposition: 'attachment',
       downloadFileName: file.originalName,
     });
+    return capability.url;
   }
 }

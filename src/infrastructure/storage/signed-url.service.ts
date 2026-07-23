@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileVisibility } from '@prisma/client';
-import { MinioAdapter } from './minio.adapter';
+import { MinioAdapter, type PresignedGetCapability } from './minio.adapter';
 
 const DEFAULT_SIGNED_URL_TTL_SECONDS = 15 * 60;
+
+export type SignedGetDisposition = 'attachment' | 'inline' | 'none';
 
 @Injectable()
 export class SignedUrlService {
@@ -17,17 +19,24 @@ export class SignedUrlService {
     bucket?: string;
     visibility?: FileVisibility;
     expiresInSeconds?: number;
+    disposition?: SignedGetDisposition;
+    contentType?: string;
     downloadFileName?: string | null;
-  }): Promise<string> {
+  }): Promise<PresignedGetCapability> {
     const bucket =
-      input.bucket ?? this.resolveBucket(input.visibility ?? FileVisibility.PRIVATE);
+      input.bucket ??
+      this.resolveBucket(input.visibility ?? FileVisibility.PRIVATE);
 
     return this.minioAdapter.createPresignedGetUrl({
       bucket,
       objectKey: input.objectKey,
       expiresInSeconds:
         input.expiresInSeconds ?? DEFAULT_SIGNED_URL_TTL_SECONDS,
-      responseHeaders: this.buildResponseHeaders(input.downloadFileName),
+      responseHeaders: this.buildResponseHeaders({
+        disposition: input.disposition ?? 'attachment',
+        contentType: input.contentType,
+        downloadFileName: input.downloadFileName,
+      }),
     });
   }
 
@@ -37,20 +46,32 @@ export class SignedUrlService {
       : this.configService.getOrThrow<string>('STORAGE_BUCKET');
   }
 
-  private buildResponseHeaders(
-    downloadFileName?: string | null,
-  ): Record<string, string> | undefined {
-    if (!downloadFileName) {
-      return undefined;
+  private buildResponseHeaders(input: {
+    disposition: SignedGetDisposition;
+    contentType?: string;
+    downloadFileName?: string | null;
+  }): Record<string, string> | undefined {
+    const headers: Record<string, string> = {};
+
+    if (input.contentType) {
+      headers['response-content-type'] = input.contentType;
     }
 
-    const sanitized = downloadFileName.replace(/["\r\n]/g, '').trim();
-    if (sanitized.length === 0) {
-      return undefined;
+    if (input.disposition === 'inline') {
+      headers['response-content-disposition'] = 'inline';
     }
 
-    return {
-      'response-content-disposition': `attachment; filename="${sanitized}"`,
-    };
+    if (input.disposition === 'attachment') {
+      headers['response-content-disposition'] = 'attachment';
+      if (input.downloadFileName) {
+        const sanitized = input.downloadFileName.replace(/["\r\n]/g, '').trim();
+        if (sanitized.length > 0) {
+          headers['response-content-disposition'] =
+            `attachment; filename="${sanitized}"`;
+        }
+      }
+    }
+
+    return Object.keys(headers).length === 0 ? undefined : headers;
   }
 }

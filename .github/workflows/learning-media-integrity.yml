@@ -210,15 +210,31 @@ jobs:
 
       - name: Focused unit and contracts
         run: npm run test:learning-media
+      - name: Student playback and download compatibility unit contracts
+        run: >-
+          npx jest --runInBand --runTestsByPath
+          src/modules/student-app/lessons/tests/student-lesson-playback.use-case.spec.ts
+          src/modules/student-app/lessons/tests/student-lesson-playback.controller.spec.ts
+          src/infrastructure/storage/tests/signed-url.service.spec.ts
+          src/modules/files/uploads/tests/get-file-download-url.use-case.spec.ts
+          src/modules/communication/tests/communication-message-attachment.use-case.spec.ts
+          src/modules/parent-app/files/tests/parent-files.use-case.spec.ts
+          src/modules/applicant-portal/tests/applicant-portal-documents.spec.ts
+      - name: Generic download actor-boundary compatibility
+        run: >-
+          npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
+          test/security/tenancy.files-generic-download-boundary.spec.ts
       - name: PostgreSQL upload lifecycle and migration integration
         run: >-
           npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
           test/integration/learning-media-upload.integration.spec.ts
           test/integration/lesson-content-publication-constraint.integration.spec.ts
+          test/integration/student-lesson-playback.integration.spec.ts
       - name: Direct MinIO CORS and per-candidate cleanup integration
         run: >-
           npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
           test/integration/learning-media-storage.integration.spec.ts
+          test/integration/learning-media-playback-range.integration.spec.ts
           test/integration/learning-media-cleanup.integration.spec.ts
       - name: Real learning-media HTTP and tenancy
         run: >-

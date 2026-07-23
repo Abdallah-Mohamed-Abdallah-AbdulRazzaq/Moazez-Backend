@@ -59,8 +59,10 @@ import { GetStudentHomeUseCase } from './home/application/get-student-home.use-c
 import { StudentHomeController } from './home/controller/student-home.controller';
 import { StudentHomeReadAdapter } from './home/infrastructure/student-home-read.adapter';
 import { GetStudentLessonDetailUseCase } from './lessons/application/get-student-lesson-detail.use-case';
+import { GetStudentLessonPlaybackUseCase } from './lessons/application/get-student-lesson-playback.use-case';
 import { GetStudentLessonsTodayUseCase } from './lessons/application/get-student-lessons-today.use-case';
 import { GetStudentLessonsWeekUseCase } from './lessons/application/get-student-lessons-week.use-case';
+import { StudentLessonPlaybackController } from './lessons/controller/student-lesson-playback.controller';
 import { StudentLessonsController } from './lessons/controller/student-lessons.controller';
 import { StudentLessonsReadAdapter } from './lessons/infrastructure/student-lessons-read.adapter';
 import {
@@ -174,6 +176,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     StudentAnnouncementsController,
     StudentCalendarController,
     StudentLessonsController,
+    StudentLessonPlaybackController,
     StudentRewardsController,
   ],
   providers: [
@@ -280,6 +283,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
     GetStudentLessonsTodayUseCase,
     GetStudentLessonsWeekUseCase,
     GetStudentLessonDetailUseCase,
+    GetStudentLessonPlaybackUseCase,
   ],
   exports: [StudentAppAccessService],
 })

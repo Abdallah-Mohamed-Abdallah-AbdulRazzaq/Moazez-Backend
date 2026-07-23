@@ -43,6 +43,9 @@ describe('Generic Files download actor boundary (security)', () => {
   let prisma: PrismaClient;
   let filesRepository: FilesRepository;
   let findScopedFileByIdSpy: jest.SpyInstance;
+  let createDownloadUrlMock: jest.MockedFunction<
+    StorageService['createDownloadUrl']
+  >;
 
   const marker = `files-0b-${randomUUID().slice(0, 8)}`;
   const userIds: string[] = [];
@@ -229,10 +232,12 @@ describe('Generic Files download actor boundary (security)', () => {
       deletedAt: new Date(),
     });
 
+    createDownloadUrlMock = jest.fn().mockResolvedValue({
+      url: 'https://storage.invalid/signed-download',
+      expiresAt: new Date('2026-07-23T12:05:00.000Z'),
+    });
     const storageService = {
-      createDownloadUrl: jest
-        .fn()
-        .mockResolvedValue('https://storage.invalid/signed-download'),
+      createDownloadUrl: createDownloadUrlMock,
     };
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -295,6 +300,7 @@ describe('Generic Files download actor boundary (security)', () => {
     'organization-admin',
     'custom-management',
   ])('allows %s with a selected school and permission', async (label) => {
+    createDownloadUrlMock.mockClear();
     const response = await request(app.getHttpServer())
       .get(`${GLOBAL_PREFIX}/files/${liveSchoolAFileId}/download`)
       .set('Authorization', bearer(label))
@@ -304,6 +310,14 @@ describe('Generic Files download actor boundary (security)', () => {
     expect(response.headers.location).toBe(
       'https://storage.invalid/signed-download',
     );
+    expect(createDownloadUrlMock).toHaveBeenCalledTimes(1);
+    expect(createDownloadUrlMock).toHaveBeenCalledWith({
+      bucket: `${marker}-private`,
+      objectKey: `${marker}/school-a/live`,
+      expiresInSeconds: 300,
+      disposition: 'attachment',
+      downloadFileName: 'synthetic.txt',
+    });
   });
 
   it('denies every app actor and platform actor before File lookup', async () => {

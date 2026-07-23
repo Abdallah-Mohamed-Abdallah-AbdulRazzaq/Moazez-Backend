@@ -367,9 +367,10 @@ describe('Applicant Portal documents', () => {
     repository.findApplicantAdmissionRequestDocumentForDownload.mockResolvedValue(
       documentDownloadRecordFixture(),
     );
-    storageService.createDownloadUrl.mockResolvedValue(
-      'https://storage.example.test/private-files/signed?X-Amz-Expires=300',
-    );
+    storageService.createDownloadUrl.mockResolvedValue({
+      url: 'https://storage.example.test/private-files/signed?X-Amz-Expires=300',
+      expiresAt: new Date('2026-07-23T12:05:00.000Z'),
+    });
     const useCase = new GetApplicantDocumentDownloadUrlUseCase(
       mockAccessService(),
       repository,
@@ -402,6 +403,7 @@ describe('Applicant Portal documents', () => {
       objectKey:
         'schools/00000000-0000-0000-0000-000000000101/applicant-requests/00000000-0000-0000-0000-000000000201/documents/birth-certificate.pdf',
       expiresInSeconds: 5 * 60,
+      disposition: 'attachment',
       downloadFileName: 'birth-certificate.pdf',
     });
     expect(authRepository.createAuditLog).toHaveBeenCalledWith(
@@ -446,9 +448,10 @@ describe('Applicant Portal documents', () => {
         status: ApplicantAdmissionRequestDocumentStatus.ACCEPTED,
       }),
     );
-    storageService.createDownloadUrl.mockResolvedValue(
-      'https://storage.example.test/private-files/accepted?X-Amz-Expires=300',
-    );
+    storageService.createDownloadUrl.mockResolvedValue({
+      url: 'https://storage.example.test/private-files/accepted?X-Amz-Expires=300',
+      expiresAt: new Date('2026-07-23T12:05:00.000Z'),
+    });
     const useCase = new GetApplicantDocumentDownloadUrlUseCase(
       mockAccessService(),
       repository,

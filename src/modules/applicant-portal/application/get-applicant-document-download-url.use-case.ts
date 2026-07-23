@@ -53,10 +53,11 @@ export class GetApplicantDocumentDownloadUrlUseCase {
       throw new FilesNotFoundException({ fileId: document.file.id });
     }
 
-    const url = await this.storageService.createDownloadUrl({
+    const capability = await this.storageService.createDownloadUrl({
       bucket: document.file.bucket,
       objectKey: document.file.objectKey,
       expiresInSeconds: 5 * 60,
+      disposition: 'attachment',
       downloadFileName: document.file.originalName,
     });
 
@@ -79,7 +80,7 @@ export class GetApplicantDocumentDownloadUrlUseCase {
       },
     });
 
-    return url;
+    return capability.url;
   }
 
   private isDownloadableStatus(

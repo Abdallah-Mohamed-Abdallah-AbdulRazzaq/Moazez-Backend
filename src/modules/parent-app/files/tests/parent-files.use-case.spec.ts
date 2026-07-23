@@ -16,9 +16,10 @@ describe('GetParentChildFileDownloadUrlUseCase', () => {
       createUseCase();
     accessService.assertParentOwnsStudent.mockResolvedValue(childFixture());
     readAdapter.findTaskProofFileForDownload.mockResolvedValue(fileFixture());
-    storageService.createDownloadUrl.mockResolvedValue(
-      'https://storage.local/signed-download',
-    );
+    storageService.createDownloadUrl.mockResolvedValue({
+      url: 'https://storage.local/signed-download',
+      expiresAt: new Date('2026-07-23T12:05:00.000Z'),
+    });
 
     const result = await useCase.execute({
       studentId: 'student-1',
@@ -36,6 +37,7 @@ describe('GetParentChildFileDownloadUrlUseCase', () => {
       bucket: 'private-bucket',
       objectKey: 'schools/school-1/files/proof.pdf',
       expiresInSeconds: 300,
+      disposition: 'attachment',
       downloadFileName: 'proof.pdf',
     });
     expect(result).toBe('https://storage.local/signed-download');

@@ -1,8 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   CurriculumStatus,
+  FileUploadPurpose,
+  FileUploadSessionStatus,
+  FileVisibility,
   LessonContentItemType,
   LessonContentPublicationStatus,
   LessonPlanItemStatus,
@@ -26,6 +30,7 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
+import { MinioAdapter } from '../../src/infrastructure/storage/minio.adapter';
 import { AppModule } from '../../src/app.module';
 
 const GLOBAL_PREFIX = '/api/v1';
@@ -66,6 +71,7 @@ type LessonFixture = {
   lessonPlanId: string;
   lessonPlanItemId: string;
   timetableEntryId: string;
+  fileContentItemId: string;
 };
 
 jest.setTimeout(120000);
@@ -87,6 +93,8 @@ describe('Student App lesson content workflows (e2e)', () => {
   let crossSchoolFixture: LessonFixture;
   let archivedPlanItemId = '';
   let archivedCurriculumItemId = '';
+  let playbackContentItemId = '';
+  let playbackSessionId = '';
   let studentAuth: AuthTokens;
 
   const suffix = randomUUID().split('-')[0];
@@ -96,6 +104,7 @@ describe('Student App lesson content workflows (e2e)', () => {
   beforeAll(async () => {
     prisma = new PrismaClient();
     await prisma.$connect();
+    await ensurePlaybackBucket();
 
     const [teacherRole, studentRole] = await Promise.all([
       findSystemRole('teacher'),
@@ -139,6 +148,9 @@ describe('Student App lesson content workflows (e2e)', () => {
       deletedContent: true,
       itemNotes: 'teacher-only note',
     });
+    const playback = await createPlaybackMedia(fixture);
+    playbackContentItemId = playback.contentItemId;
+    playbackSessionId = playback.uploadSessionId;
     await prisma.lessonContentItem.createMany({
       data: [
         {
@@ -277,6 +289,7 @@ describe('Student App lesson content workflows (e2e)', () => {
         'GET /api/v1/student/lessons/today',
         'GET /api/v1/student/lessons/week',
         'GET /api/v1/student/lessons/:lessonPlanItemId',
+        'GET /api/v1/student/lessons/:lessonPlanItemId/content/:contentItemId/playback',
         'GET /api/v1/student/schedule',
         'GET /api/v1/student/subjects',
         'GET /api/v1/student/subjects/:subjectId/lessons',
@@ -288,6 +301,144 @@ describe('Student App lesson content workflows (e2e)', () => {
       ]),
     );
   });
+
+  /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access -- Supertest response bodies are untyped at the HTTP boundary. */
+  it('returns the exact renewable 300-second inline video playback capability', async () => {
+    await prisma.lessonContentItem.update({
+      where: { id: playbackContentItemId },
+      data: {
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: teacherUserId,
+      },
+    });
+    const auditBefore = await prisma.auditLog.count({ where: { schoolId } });
+    const sessionBefore = await prisma.fileUploadSession.findUniqueOrThrow({
+      where: { id: playbackSessionId },
+      select: { updatedAt: true },
+    });
+    try {
+      const response = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/student/lessons/${fixture.lessonPlanItemId}/content/${playbackContentItemId}/playback`,
+        )
+        .set('Authorization', bearer(studentAuth))
+        .expect(200);
+
+      expect(Object.keys(response.body).sort()).toEqual([
+        'disposition',
+        'expiresAt',
+        'mimeType',
+        'renewable',
+        'sizeBytes',
+        'url',
+      ]);
+      expect(response.body).toMatchObject({
+        mimeType: 'video/mp4',
+        sizeBytes: '4096',
+        disposition: 'inline',
+        renewable: true,
+      });
+      const signedUrl = new URL(response.body.url as string);
+      expect(signedUrl.searchParams.get('X-Amz-Expires')).toBe('300');
+      expect(signedUrl.searchParams.get('response-content-disposition')).toBe(
+        'inline',
+      );
+      expect(signedUrl.searchParams.get('response-content-type')).toBe(
+        'video/mp4',
+      );
+      expect(response.body.expiresAt).toBe(
+        signedExpiry(signedUrl).toISOString(),
+      );
+
+      const renewed = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/student/lessons/${fixture.lessonPlanItemId}/content/${playbackContentItemId}/playback`,
+        )
+        .set('Authorization', bearer(studentAuth))
+        .expect(200);
+      expect(
+        new URL(renewed.body.url as string).searchParams.get('X-Amz-Expires'),
+      ).toBe('300');
+      expect(await prisma.auditLog.count({ where: { schoolId } })).toBe(
+        auditBefore,
+      );
+      await expect(
+        prisma.fileUploadSession.findUniqueOrThrow({
+          where: { id: playbackSessionId },
+          select: { updatedAt: true },
+        }),
+      ).resolves.toEqual(sessionBefore);
+    } finally {
+      await prisma.lessonContentItem.update({
+        where: { id: playbackContentItemId },
+        data: {
+          publicationStatus: LessonContentPublicationStatus.DRAFT,
+          publishedAt: null,
+          publishedByUserId: null,
+        },
+      });
+    }
+  });
+
+  it('collapses hidden playback resources to one safe 404 without attempted IDs', async () => {
+    const cases = [
+      {
+        itemId: fixture.lessonPlanItemId,
+        contentId: playbackContentItemId,
+      },
+      {
+        itemId: fixture.lessonPlanItemId,
+        contentId: fixture.fileContentItemId,
+      },
+      {
+        itemId: otherClassroomFixture.lessonPlanItemId,
+        contentId: playbackContentItemId,
+      },
+      {
+        itemId: crossSchoolFixture.lessonPlanItemId,
+        contentId: playbackContentItemId,
+      },
+      {
+        itemId: randomUUID(),
+        contentId: randomUUID(),
+      },
+    ];
+
+    for (const hidden of cases) {
+      const response = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/student/lessons/${hidden.itemId}/content/${hidden.contentId}/playback`,
+        )
+        .set('Authorization', bearer(studentAuth))
+        .expect(404);
+      expect(response.body?.error).toMatchObject({
+        code: 'learning.content.playback_not_found',
+        message: 'Lesson content playback was not found',
+      });
+      expect(response.body?.error?.details).toBeUndefined();
+      const json = JSON.stringify(response.body);
+      expect(json).not.toContain(hidden.itemId);
+      expect(json).not.toContain(hidden.contentId);
+    }
+  });
+
+  it('uses the established validation 400 for malformed playback UUIDs', async () => {
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/student/lessons/not-a-uuid/content/${playbackContentItemId}/playback`,
+      )
+      .set('Authorization', bearer(studentAuth))
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/student/lessons/${fixture.lessonPlanItemId}/content/not-a-uuid/playback`,
+      )
+      .set('Authorization', bearer(studentAuth))
+      .expect(400);
+  });
+  /* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access */
 
   it('lists today and week visible lessons for the current student classroom', async () => {
     const today = await request(app.getHttpServer())
@@ -1629,7 +1780,7 @@ describe('Student App lesson content workflows (e2e)', () => {
     });
     cleanup.curriculumLessonIds.add(lesson.id);
 
-    await prisma.lessonContentItem.create({
+    const fileContent = await prisma.lessonContentItem.create({
       data: {
         schoolId: params.schoolId,
         curriculumId: curriculum.id,
@@ -1646,6 +1797,7 @@ describe('Student App lesson content workflows (e2e)', () => {
         publishedAt: new Date(),
         publishedByUserId: params.teacherUserId,
       },
+      select: { id: true },
     });
 
     const file = await prisma.file.create({
@@ -1755,7 +1907,112 @@ describe('Student App lesson content workflows (e2e)', () => {
       lessonPlanId: lessonPlan.id,
       lessonPlanItemId: item.id,
       timetableEntryId: entry.id,
+      fileContentItemId: fileContent.id,
     };
+  }
+
+  async function createPlaybackMedia(source: LessonFixture): Promise<{
+    contentItemId: string;
+    fileId: string;
+    uploadSessionId: string;
+  }> {
+    const finalBucket = process.env.STORAGE_BUCKET;
+    if (!finalBucket) {
+      throw new Error('STORAGE_BUCKET is required for playback E2E tests');
+    }
+    const file = await prisma.file.create({
+      data: {
+        organizationId,
+        schoolId,
+        uploaderId: teacherUserId,
+        bucket: finalBucket,
+        objectKey: `${marker}/playback/final.mp4`,
+        originalName: 'student-playback.mp4',
+        mimeType: 'video/mp4',
+        sizeBytes: BigInt(4096),
+        checksumSha256: 'a'.repeat(64),
+        visibility: FileVisibility.PRIVATE,
+      },
+      select: { id: true, bucket: true, objectKey: true },
+    });
+    cleanup.fileIds.add(file.id);
+    const createdAt = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000);
+    const latestUploadUrlExpiresAt = new Date(
+      createdAt.getTime() + 60 * 60 * 1000,
+    );
+    const completedAt = new Date(createdAt.getTime() + 5 * 60 * 1000);
+    const session = await prisma.fileUploadSession.create({
+      data: {
+        organizationId,
+        schoolId,
+        createdByUserId: teacherUserId,
+        clientRequestId: randomUUID(),
+        purpose: FileUploadPurpose.LESSON_CONTENT,
+        originalName: 'student-playback.mp4',
+        expectedMimeType: 'video/mp4',
+        expectedSizeBytes: BigInt(4096),
+        stagingBucket: `${marker}-playback-staging`,
+        stagingObjectKey: `${marker}/playback/staging.mp4`,
+        finalBucket: file.bucket,
+        finalObjectKey: file.objectKey,
+        status: FileUploadSessionStatus.READY,
+        createdAt,
+        expiresAt: new Date(createdAt.getTime() + 2 * 60 * 60 * 1000),
+        latestUploadUrlExpiresAt,
+        completedAt,
+        stagingCleanupEligibleAt: latestUploadUrlExpiresAt,
+        finalCleanupEligibleAt: new Date(
+          completedAt.getTime() + 7 * 24 * 60 * 60 * 1000,
+        ),
+        verifiedMimeType: 'video/mp4',
+        actualSizeBytes: BigInt(4096),
+        checksumSha256: 'a'.repeat(64),
+        durationSeconds: 10,
+        width: 640,
+        height: 360,
+        verifiedAt: completedAt,
+        verificationVersion: 'ffprobe-5.1.9-debian12-learning-media-v1',
+        fileId: file.id,
+      },
+      select: { id: true },
+    });
+    cleanup.fileUploadSessionIds.add(session.id);
+    const content = await prisma.lessonContentItem.create({
+      data: {
+        schoolId,
+        curriculumId: source.curriculumId,
+        unitId: source.unitId,
+        lessonId: source.lessonId,
+        type: LessonContentItemType.FILE,
+        title: `${marker}-playback-video`,
+        fileId: file.id,
+        sortOrder: 99,
+        createdByUserId: teacherUserId,
+      },
+      select: { id: true },
+    });
+    return {
+      contentItemId: content.id,
+      fileId: file.id,
+      uploadSessionId: session.id,
+    };
+  }
+
+  function signedExpiry(url: URL): Date {
+    const signedAt = url.searchParams.get('X-Amz-Date');
+    const expires = Number(url.searchParams.get('X-Amz-Expires'));
+    if (!signedAt || !Number.isSafeInteger(expires)) {
+      throw new Error('Expected signed playback expiry fields');
+    }
+    const signedAtMs = Date.UTC(
+      Number(signedAt.slice(0, 4)),
+      Number(signedAt.slice(4, 6)) - 1,
+      Number(signedAt.slice(6, 8)),
+      Number(signedAt.slice(9, 11)),
+      Number(signedAt.slice(11, 13)),
+      Number(signedAt.slice(13, 15)),
+    );
+    return new Date(signedAtMs + expires * 1000);
   }
 
   async function createExistingScopeLessonPlanItem(params: {
@@ -2367,6 +2624,9 @@ describe('Student App lesson content workflows (e2e)', () => {
     await prisma.timetableConfig.deleteMany({
       where: { id: { in: [...cleanup.timetableConfigIds] } },
     });
+    await prisma.fileUploadSession.deleteMany({
+      where: { id: { in: [...cleanup.fileUploadSessionIds] } },
+    });
     await prisma.file.deleteMany({
       where: { id: { in: [...cleanup.fileIds] } },
     });
@@ -2418,6 +2678,16 @@ describe('Student App lesson content workflows (e2e)', () => {
   }
 });
 
+async function ensurePlaybackBucket(): Promise<void> {
+  const bucket = process.env.STORAGE_BUCKET;
+  if (!bucket) {
+    throw new Error('STORAGE_BUCKET is required for playback E2E tests');
+  }
+  await new MinioAdapter(new ConfigService(process.env)).ensureBucketExists(
+    bucket,
+  );
+}
+
 function createCleanupState() {
   return {
     organizationIds: new Set<string>(),
@@ -2441,6 +2711,7 @@ function createCleanupState() {
     curriculumLessonIds: new Set<string>(),
     lessonPlanIds: new Set<string>(),
     lessonPlanItemIds: new Set<string>(),
+    fileUploadSessionIds: new Set<string>(),
     fileIds: new Set<string>(),
     studentIds: new Set<string>(),
     enrollmentIds: new Set<string>(),

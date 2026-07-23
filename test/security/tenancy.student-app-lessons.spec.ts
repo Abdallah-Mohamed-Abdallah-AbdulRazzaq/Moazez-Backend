@@ -1,8 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   CurriculumStatus,
+  FileUploadPurpose,
+  FileUploadSessionStatus,
+  FileVisibility,
   LessonContentItemType,
   LessonContentPublicationStatus,
   LessonPlanItemStatus,
@@ -26,6 +30,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
+import { MinioAdapter } from '../../src/infrastructure/storage/minio.adapter';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'StudentLessonsSecurity123!';
@@ -59,6 +64,9 @@ type LessonFixture = {
   allocationId: string;
   classroomId: string;
   subjectId: string;
+  curriculumId: string;
+  unitId: string;
+  lessonId: string;
   lessonPlanItemId: string;
   timetableEntryId: string;
 };
@@ -80,16 +88,23 @@ describe('Student App lesson content tenancy/security (e2e)', () => {
   let teacherEmail = '';
   let parentEmail = '';
   let adminEmail = '';
+  let organizationAdminEmail = '';
+  let applicantEmail = '';
+  let platformEmail = '';
   let academic: AcademicContext;
   let ownFixture: LessonFixture;
   let otherClassroomFixture: LessonFixture;
   let crossSchoolFixture: LessonFixture;
   let archivedPlanItemId = '';
+  let playbackContentItemId = '';
 
   let studentAAuth: AuthTokens;
   let teacherAuth: AuthTokens;
   let parentAuth: AuthTokens;
   let adminAuth: AuthTokens;
+  let organizationAdminAuth: AuthTokens;
+  let applicantAuth: AuthTokens;
+  let platformAuth: AuthTokens;
 
   const suffix = randomUUID().split('-')[0];
   const marker = `s22h-sec-${suffix}`;
@@ -98,15 +113,23 @@ describe('Student App lesson content tenancy/security (e2e)', () => {
   beforeAll(async () => {
     prisma = new PrismaClient();
     await prisma.$connect();
+    await ensurePlaybackBucket();
 
-    const [teacherRole, studentRole, parentRole, adminRole] = await Promise.all(
-      [
-        findSystemRole('teacher'),
-        findSystemRole('student'),
-        findSystemRole('parent'),
-        findSystemRole('school_admin'),
-      ],
-    );
+    const [
+      teacherRole,
+      studentRole,
+      parentRole,
+      adminRole,
+      organizationAdminRole,
+      platformRole,
+    ] = await Promise.all([
+      findSystemRole('teacher'),
+      findSystemRole('student'),
+      findSystemRole('parent'),
+      findSystemRole('school_admin'),
+      findSystemRole('organization_admin'),
+      findSystemRole('platform_super_admin'),
+    ]);
 
     organizationId = await createOrganization('main');
     crossOrganizationId = await createOrganization('cross');
@@ -164,6 +187,31 @@ describe('Student App lesson content tenancy/security (e2e)', () => {
       organizationId,
       schoolId,
     });
+    organizationAdminEmail = `${marker}-organization-admin@example.test`;
+    await createUserWithMembership({
+      email: organizationAdminEmail,
+      firstName: 'Organization',
+      lastName: 'Admin',
+      userType: UserType.ORGANIZATION_USER,
+      roleId: organizationAdminRole.id,
+      organizationId,
+      schoolId,
+    });
+    applicantEmail = `${marker}-applicant@example.test`;
+    await createActorWithoutMembership({
+      email: applicantEmail,
+      userType: UserType.APPLICANT,
+    });
+    platformEmail = `${marker}-platform@example.test`;
+    await createUserWithMembership({
+      email: platformEmail,
+      firstName: 'Platform',
+      lastName: 'Admin',
+      userType: UserType.PLATFORM_USER,
+      roleId: platformRole.id,
+      organizationId,
+      schoolId,
+    });
 
     ownFixture = await createLessonFixture({
       organizationId,
@@ -174,6 +222,8 @@ describe('Student App lesson content tenancy/security (e2e)', () => {
       marker: 'own',
       itemNotes: 'teacher private note',
     });
+    const playback = await createPlaybackMedia(ownFixture);
+    playbackContentItemId = playback.contentItemId;
     await createStudentEnrollment({
       organizationId,
       schoolId,
@@ -262,6 +312,9 @@ describe('Student App lesson content tenancy/security (e2e)', () => {
     teacherAuth = await login(teacherEmail);
     parentAuth = await login(parentEmail);
     adminAuth = await login(adminEmail);
+    organizationAdminAuth = await login(organizationAdminEmail);
+    applicantAuth = await login(applicantEmail);
+    platformAuth = await login(platformEmail);
   });
 
   afterAll(async () => {
@@ -274,7 +327,14 @@ describe('Student App lesson content tenancy/security (e2e)', () => {
   });
 
   it('denies non-student actors from Student App lesson routes', async () => {
-    for (const auth of [teacherAuth, parentAuth, adminAuth]) {
+    for (const auth of [
+      teacherAuth,
+      parentAuth,
+      adminAuth,
+      organizationAdminAuth,
+      applicantAuth,
+      platformAuth,
+    ]) {
       await request(app.getHttpServer())
         .get(`${GLOBAL_PREFIX}/student/lessons/today`)
         .query({ date: '2026-09-14' })
@@ -285,8 +345,125 @@ describe('Student App lesson content tenancy/security (e2e)', () => {
         .get(`${GLOBAL_PREFIX}/student/lessons/${ownFixture.lessonPlanItemId}`)
         .set('Authorization', bearer(auth))
         .expect(403);
+
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/student/lessons/${ownFixture.lessonPlanItemId}/content/${playbackContentItemId}/playback`,
+        )
+        .set('Authorization', bearer(auth))
+        .expect(403);
     }
   });
+
+  /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access -- Supertest response bodies are untyped at the HTTP boundary. */
+  it('allows only the exact Student relation and returns a bounded playback response', async () => {
+    await prisma.lessonContentItem.update({
+      where: { id: playbackContentItemId },
+      data: {
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: teacherUserId,
+      },
+    });
+    try {
+      const response = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/student/lessons/${ownFixture.lessonPlanItemId}/content/${playbackContentItemId}/playback`,
+        )
+        .set('Authorization', bearer(studentAAuth))
+        .expect(200);
+      expect(Object.keys(response.body).sort()).toEqual([
+        'disposition',
+        'expiresAt',
+        'mimeType',
+        'renewable',
+        'sizeBytes',
+        'url',
+      ]);
+      const json = JSON.stringify(response.body);
+      for (const forbidden of [
+        'fileId',
+        'uploadId',
+        'sessionId',
+        'bucket',
+        'objectKey',
+        'checksum',
+        'schoolId',
+        'organizationId',
+        'actorId',
+        'uploaderId',
+        'verificationVersion',
+      ]) {
+        expect(json).not.toContain(forbidden);
+      }
+
+      for (const hiddenItemId of [
+        otherClassroomFixture.lessonPlanItemId,
+        crossSchoolFixture.lessonPlanItemId,
+        archivedPlanItemId,
+      ]) {
+        const hidden = await request(app.getHttpServer())
+          .get(
+            `${GLOBAL_PREFIX}/student/lessons/${hiddenItemId}/content/${playbackContentItemId}/playback`,
+          )
+          .set('Authorization', bearer(studentAAuth))
+          .expect(404);
+        expect(hidden.body?.error).toMatchObject({
+          code: 'learning.content.playback_not_found',
+          message: 'Lesson content playback was not found',
+        });
+        expect(hidden.body?.error?.details).toBeUndefined();
+        expect(JSON.stringify(hidden.body)).not.toContain(hiddenItemId);
+      }
+    } finally {
+      await prisma.lessonContentItem.update({
+        where: { id: playbackContentItemId },
+        data: {
+          publicationStatus: LessonContentPublicationStatus.DRAFT,
+          publishedAt: null,
+          publishedByUserId: null,
+        },
+      });
+    }
+  });
+
+  it('rejects a Student missing lesson-plan view permission before playback lookup', async () => {
+    const membership = await prisma.membership.findFirstOrThrow({
+      where: { userId: studentAUserId, schoolId },
+      select: { id: true, roleId: true },
+    });
+    const role = await prisma.role.create({
+      data: {
+        schoolId,
+        key: `${marker}-no-playback`,
+        name: `${marker} no playback`,
+        isSystem: false,
+      },
+      select: { id: true },
+    });
+    cleanup.roleIds.add(role.id);
+    await prisma.membership.update({
+      where: { id: membership.id },
+      data: { roleId: role.id },
+    });
+    try {
+      const deniedAuth = await login(studentAEmail);
+      const denied = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/student/lessons/${ownFixture.lessonPlanItemId}/content/${playbackContentItemId}/playback`,
+        )
+        .set('Authorization', bearer(deniedAuth))
+        .expect(403);
+      expect(denied.body?.error?.code).toBe('auth.scope.missing');
+      expect(JSON.stringify(denied.body)).not.toContain(playbackContentItemId);
+    } finally {
+      await prisma.membership.update({
+        where: { id: membership.id },
+        data: { roleId: membership.roleId },
+      });
+    }
+  });
+  /* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access */
 
   it('hides another classroom, cross-school, and archived lesson items', async () => {
     for (const hiddenItemId of [
@@ -427,6 +604,25 @@ describe('Student App lesson content tenancy/security (e2e)', () => {
       },
     });
 
+    return user.id;
+  }
+
+  async function createActorWithoutMembership(params: {
+    email: string;
+    userType: UserType;
+  }): Promise<string> {
+    const user = await prisma.user.create({
+      data: {
+        email: params.email,
+        firstName: 'Playback',
+        lastName: 'Actor',
+        userType: params.userType,
+        status: UserStatus.ACTIVE,
+        passwordHash: await argon2.hash(PASSWORD, ARGON2_OPTIONS),
+      },
+      select: { id: true },
+    });
+    cleanup.userIds.add(user.id);
     return user.id;
   }
 
@@ -822,9 +1018,94 @@ describe('Student App lesson content tenancy/security (e2e)', () => {
       allocationId: allocation.id,
       classroomId: classroom.id,
       subjectId: subject.id,
+      curriculumId: curriculum.id,
+      unitId: unit.id,
+      lessonId: lesson.id,
       lessonPlanItemId: item.id,
       timetableEntryId: entry.id,
     };
+  }
+
+  async function createPlaybackMedia(source: LessonFixture): Promise<{
+    contentItemId: string;
+    uploadSessionId: string;
+  }> {
+    const finalBucket = process.env.STORAGE_BUCKET;
+    if (!finalBucket) {
+      throw new Error('STORAGE_BUCKET is required for playback security tests');
+    }
+    const file = await prisma.file.create({
+      data: {
+        organizationId,
+        schoolId,
+        uploaderId: teacherUserId,
+        bucket: finalBucket,
+        objectKey: `${marker}/playback/final.webm`,
+        originalName: 'student-playback.webm',
+        mimeType: 'video/webm',
+        sizeBytes: BigInt(8192),
+        checksumSha256: 'b'.repeat(64),
+        visibility: FileVisibility.PRIVATE,
+      },
+      select: { id: true, bucket: true, objectKey: true },
+    });
+    cleanup.fileIds.add(file.id);
+    const createdAt = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000);
+    const latestUploadUrlExpiresAt = new Date(
+      createdAt.getTime() + 60 * 60 * 1000,
+    );
+    const completedAt = new Date(createdAt.getTime() + 5 * 60 * 1000);
+    const session = await prisma.fileUploadSession.create({
+      data: {
+        organizationId,
+        schoolId,
+        createdByUserId: teacherUserId,
+        clientRequestId: randomUUID(),
+        purpose: FileUploadPurpose.LESSON_CONTENT,
+        originalName: 'student-playback.webm',
+        expectedMimeType: 'video/webm',
+        expectedSizeBytes: BigInt(8192),
+        stagingBucket: `${marker}-playback-staging`,
+        stagingObjectKey: `${marker}/playback/staging.webm`,
+        finalBucket: file.bucket,
+        finalObjectKey: file.objectKey,
+        status: FileUploadSessionStatus.READY,
+        createdAt,
+        expiresAt: new Date(createdAt.getTime() + 2 * 60 * 60 * 1000),
+        latestUploadUrlExpiresAt,
+        completedAt,
+        stagingCleanupEligibleAt: latestUploadUrlExpiresAt,
+        finalCleanupEligibleAt: new Date(
+          completedAt.getTime() + 7 * 24 * 60 * 60 * 1000,
+        ),
+        verifiedMimeType: 'video/webm',
+        actualSizeBytes: BigInt(8192),
+        checksumSha256: 'b'.repeat(64),
+        durationSeconds: 10,
+        width: 640,
+        height: 360,
+        verifiedAt: completedAt,
+        verificationVersion: 'ffprobe-5.1.9-debian12-learning-media-v1',
+        fileId: file.id,
+      },
+      select: { id: true },
+    });
+    cleanup.fileUploadSessionIds.add(session.id);
+    const content = await prisma.lessonContentItem.create({
+      data: {
+        schoolId,
+        curriculumId: source.curriculumId,
+        unitId: source.unitId,
+        lessonId: source.lessonId,
+        type: LessonContentItemType.FILE,
+        title: `${marker}-playback-video`,
+        fileId: file.id,
+        sortOrder: 99,
+        createdByUserId: teacherUserId,
+      },
+      select: { id: true },
+    });
+    return { contentItemId: content.id, uploadSessionId: session.id };
   }
 
   async function createArchivedPlanItem(params: {
@@ -1048,6 +1329,9 @@ describe('Student App lesson content tenancy/security (e2e)', () => {
     await prisma.timetableConfig.deleteMany({
       where: { id: { in: [...cleanup.timetableConfigIds] } },
     });
+    await prisma.fileUploadSession.deleteMany({
+      where: { id: { in: [...cleanup.fileUploadSessionIds] } },
+    });
     await prisma.file.deleteMany({
       where: { id: { in: [...cleanup.fileIds] } },
     });
@@ -1087,6 +1371,9 @@ describe('Student App lesson content tenancy/security (e2e)', () => {
     await prisma.membership.deleteMany({
       where: { userId: { in: [...cleanup.userIds] } },
     });
+    await prisma.role.deleteMany({
+      where: { id: { in: [...cleanup.roleIds] } },
+    });
     await prisma.user.deleteMany({
       where: { id: { in: [...cleanup.userIds] } },
     });
@@ -1098,6 +1385,16 @@ describe('Student App lesson content tenancy/security (e2e)', () => {
     });
   }
 });
+
+async function ensurePlaybackBucket(): Promise<void> {
+  const bucket = process.env.STORAGE_BUCKET;
+  if (!bucket) {
+    throw new Error('STORAGE_BUCKET is required for playback security tests');
+  }
+  await new MinioAdapter(new ConfigService(process.env)).ensureBucketExists(
+    bucket,
+  );
+}
 
 function createCleanupState() {
   return {
@@ -1122,7 +1419,9 @@ function createCleanupState() {
     curriculumLessonIds: new Set<string>(),
     lessonPlanIds: new Set<string>(),
     lessonPlanItemIds: new Set<string>(),
+    fileUploadSessionIds: new Set<string>(),
     fileIds: new Set<string>(),
+    roleIds: new Set<string>(),
     studentIds: new Set<string>(),
     enrollmentIds: new Set<string>(),
   };
