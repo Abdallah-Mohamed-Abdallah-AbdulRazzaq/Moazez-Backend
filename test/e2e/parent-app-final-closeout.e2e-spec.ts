@@ -606,8 +606,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
     ownedTaskStageAId = sprint9EFixture.ownedTaskStageId;
     ownedTaskSubmissionAId = sprint9EFixture.ownedTaskSubmissionId;
     ownedTaskProofFileAId = sprint9EFixture.ownedTaskProofFileId;
-    secondOwnedTaskProofFileAId =
-      sprint9EFixture.secondOwnedTaskProofFileId;
+    secondOwnedTaskProofFileAId = sprint9EFixture.secondOwnedTaskProofFileId;
     sameSchoolUnlinkedTaskAId = sprint9EFixture.sameSchoolUnlinkedTaskId;
     sameSchoolUnlinkedTaskSubmissionAId =
       sprint9EFixture.sameSchoolUnlinkedTaskSubmissionId;
@@ -848,10 +847,8 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
   it('registers the final Parent App route set and keeps unsupported routes absent', async () => {
     const routes = listRegisteredParentRoutes();
 
-    expect(routes).toHaveLength(72);
-    expect(routes.filter((route) => route.startsWith('GET '))).toHaveLength(
-      60,
-    );
+    expect(routes).toHaveLength(73);
+    expect(routes.filter((route) => route.startsWith('GET '))).toHaveLength(61);
     expect(routes.filter((route) => !route.startsWith('GET '))).toHaveLength(
       12,
     );
@@ -881,6 +878,7 @@ describe('Sprint 9F Parent App final closeout flow (e2e)', () => {
       'GET /api/v1/parent/children/:studentId/homeworks',
       'GET /api/v1/parent/children/:studentId/homeworks/:homeworkId',
       'GET /api/v1/parent/children/:studentId/lessons/:lessonPlanItemId',
+      'GET /api/v1/parent/children/:studentId/lessons/:lessonPlanItemId/content/:contentItemId/playback',
       'GET /api/v1/parent/children/:studentId/lessons/today',
       'GET /api/v1/parent/children/:studentId/lessons/week',
       'GET /api/v1/parent/children/:studentId/progress',

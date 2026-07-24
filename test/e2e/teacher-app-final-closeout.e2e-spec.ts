@@ -633,9 +633,9 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
       (entry) => entry.permissions,
     );
 
-    expect(routes).toHaveLength(111);
-    expect(inventory).toHaveLength(111);
-    expect(decorated).toHaveLength(111);
+    expect(routes).toHaveLength(112);
+    expect(inventory).toHaveLength(112);
+    expect(decorated).toHaveLength(112);
     expect(undecorated).toEqual([]);
 
     expect(routes).toEqual(
@@ -668,6 +668,7 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
         'GET /api/v1/teacher/schedule',
         'GET /api/v1/teacher/calendar/events',
         'GET /api/v1/teacher/lesson-preparation/today',
+        'GET /api/v1/teacher/lesson-preparation/:lessonPlanItemId/content/:contentItemId/playback',
       ]),
     );
 
@@ -697,6 +698,13 @@ describe('Sprint 7D Teacher App final closeout flow (e2e)', () => {
     expect(
       getHandlerPermissions(TeacherHomeworksController, 'createAttachment'),
     ).toEqual(['homework.attachments.manage', 'files.uploads.manage']);
+    expect(
+      getHandlerPermissions(TeacherLessonPreparationController, 'getPlayback'),
+    ).toEqual([
+      'teacher.lesson_preparation.view',
+      'academics.lesson_plans.view',
+      'academics.curriculum.view',
+    ]);
   });
 
   it('verifies the final Teacher role, catalog, Parent role, and Student role state', async () => {
