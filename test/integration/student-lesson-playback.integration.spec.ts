@@ -25,6 +25,7 @@ import {
 } from '../../src/common/context/request-context';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 import { StorageService } from '../../src/infrastructure/storage/storage.service';
+import { LessonContentPlaybackCoordinator } from '../../src/modules/academics/curriculum/app-facing/lesson-content-playback/lesson-content-playback.coordinator';
 import { StudentAppAccessService } from '../../src/modules/student-app/access/student-app-access.service';
 import { GetStudentLessonPlaybackUseCase } from '../../src/modules/student-app/lessons/application/get-student-lesson-playback.use-case';
 import {
@@ -81,7 +82,17 @@ describe('Student lesson secure playback PostgreSQL boundary', () => {
   const observer = new PrismaClient({
     datasourceUrl: buildObserverDatabaseUrl(),
   });
-  const adapter = new StudentLessonsReadAdapter(prisma);
+  const storage = {
+    createDownloadUrl: jest.fn().mockResolvedValue({
+      url: 'https://storage.invalid/playback',
+      expiresAt: new Date('2026-07-23T12:05:00.000Z'),
+    }),
+  };
+  const playbackCoordinator = new LessonContentPlaybackCoordinator(
+    prisma,
+    storage as unknown as StorageService,
+  );
+  const adapter = new StudentLessonsReadAdapter(prisma, playbackCoordinator);
   const marker = `student-playback-${randomUUID().split('-')[0]}`;
   const mediaFixtures: MediaFixture[] = [];
   const extraLessonIds: string[] = [];
@@ -234,12 +245,6 @@ describe('Student lesson secure playback PostgreSQL boundary', () => {
   );
 
   it('returns the exact public use-case contract without an AuditLog write', async () => {
-    const storage = {
-      createDownloadUrl: jest.fn().mockResolvedValue({
-        url: 'https://storage.invalid/playback',
-        expiresAt: new Date('2026-07-23T12:05:00.000Z'),
-      }),
-    };
     const access = {
       getCurrentStudentWithEnrollment: jest
         .fn()
@@ -248,7 +253,6 @@ describe('Student lesson secure playback PostgreSQL boundary', () => {
     const useCase = new GetStudentLessonPlaybackUseCase(
       access as unknown as StudentAppAccessService,
       adapter,
-      storage as unknown as StorageService,
     );
     const before = await prisma.auditLog.count({
       where: { schoolId: fixture.schoolId },

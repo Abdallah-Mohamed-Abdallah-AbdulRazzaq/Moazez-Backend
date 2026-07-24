@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -7,10 +15,12 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { GetTeacherLessonPreparationDetailUseCase } from '../application/get-teacher-lesson-preparation-detail.use-case';
+import { GetTeacherLessonPlaybackUseCase } from '../application/get-teacher-lesson-playback.use-case';
 import { GetTeacherLessonPreparationTodayUseCase } from '../application/get-teacher-lesson-preparation-today.use-case';
 import { GetTeacherLessonPreparationWeekUseCase } from '../application/get-teacher-lesson-preparation-week.use-case';
 import { UpdateTeacherLessonPreparationStatusUseCase } from '../application/update-teacher-lesson-preparation-status.use-case';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
+import { LessonContentPlaybackResponseDto } from '../../../academics/curriculum/app-facing/lesson-content-playback/lesson-content-playback-response.dto';
 import {
   TeacherLessonPreparationDateQueryDto,
   UpdateTeacherLessonPreparationStatusDto,
@@ -30,6 +40,7 @@ export class TeacherLessonPreparationController {
     private readonly getWeekUseCase: GetTeacherLessonPreparationWeekUseCase,
     private readonly getDetailUseCase: GetTeacherLessonPreparationDetailUseCase,
     private readonly updateStatusUseCase: UpdateTeacherLessonPreparationStatusUseCase,
+    private readonly getPlaybackUseCase: GetTeacherLessonPlaybackUseCase,
   ) {}
 
   @Get('today')
@@ -81,6 +92,24 @@ export class TeacherLessonPreparationController {
     @Param('lessonPlanItemId', new ParseUUIDPipe()) lessonPlanItemId: string,
   ): Promise<TeacherLessonPreparationItemDto> {
     return this.getDetailUseCase.execute(lessonPlanItemId);
+  }
+
+  @Get(':lessonPlanItemId/content/:contentItemId/playback')
+  @RequiredPermissions(
+    'teacher.lesson_preparation.view',
+    'academics.lesson_plans.view',
+    'academics.curriculum.view',
+  )
+  @ApiOperation({ summary: 'Get secure teacher lesson-content preview' })
+  @ApiOkResponse({ type: LessonContentPlaybackResponseDto })
+  getPlayback(
+    @Param('lessonPlanItemId', new ParseUUIDPipe()) lessonPlanItemId: string,
+    @Param('contentItemId', new ParseUUIDPipe()) contentItemId: string,
+  ): Promise<LessonContentPlaybackResponseDto> {
+    return this.getPlaybackUseCase.execute({
+      lessonPlanItemId,
+      contentItemId,
+    });
   }
 
   @Patch(':lessonPlanItemId/status')

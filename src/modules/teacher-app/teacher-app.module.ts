@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
+import { LessonContentPlaybackModule } from '../academics/curriculum/app-facing/lesson-content-playback/lesson-content-playback.module';
 import { AppDeviceTokensModule } from '../app-device-tokens/app-device-tokens.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { RollCallModule } from '../attendance/roll-call/roll-call.module';
@@ -53,6 +54,7 @@ import { GetTeacherHomeUseCase } from './home/application/get-teacher-home.use-c
 import { TeacherHomeController } from './home/controller/teacher-home.controller';
 import { TeacherHomeworksModule } from './homeworks/teacher-homeworks.module';
 import { GetTeacherLessonPreparationDetailUseCase } from './lesson-preparation/application/get-teacher-lesson-preparation-detail.use-case';
+import { GetTeacherLessonPlaybackUseCase } from './lesson-preparation/application/get-teacher-lesson-playback.use-case';
 import { GetTeacherLessonPreparationTodayUseCase } from './lesson-preparation/application/get-teacher-lesson-preparation-today.use-case';
 import { GetTeacherLessonPreparationWeekUseCase } from './lesson-preparation/application/get-teacher-lesson-preparation-week.use-case';
 import { UpdateTeacherLessonPreparationStatusUseCase } from './lesson-preparation/application/update-teacher-lesson-preparation-status.use-case';
@@ -127,6 +129,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
 @Module({
   imports: [
     AppCalendarReadModelModule,
+    LessonContentPlaybackModule,
     AppDeviceTokensModule,
     RollCallModule,
     AssessmentsModule,
@@ -245,6 +248,7 @@ import { TeacherXpReadAdapter } from './xp/infrastructure/teacher-xp-read.adapte
     GetTeacherLessonPreparationTodayUseCase,
     GetTeacherLessonPreparationWeekUseCase,
     GetTeacherLessonPreparationDetailUseCase,
+    GetTeacherLessonPlaybackUseCase,
     UpdateTeacherLessonPreparationStatusUseCase,
   ],
   exports: [TeacherAppAccessService],

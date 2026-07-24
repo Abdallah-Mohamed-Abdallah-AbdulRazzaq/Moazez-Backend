@@ -3,6 +3,9 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   CurriculumStatus,
+  FileUploadPurpose,
+  FileUploadSessionStatus,
+  FileVisibility,
   LessonContentItemType,
   LessonContentPublicationStatus,
   LessonPlanItemStatus,
@@ -26,6 +29,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
+import { StorageService } from '../../src/infrastructure/storage/storage.service';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'ParentChildLessons123!';
@@ -48,6 +52,14 @@ type ExpressLayer = {
 
 type AuthTokens = {
   accessToken: string;
+};
+
+type ErrorResponseBody = {
+  error?: {
+    code?: string;
+    message?: string;
+    details?: unknown;
+  };
 };
 
 type AcademicContext = {
@@ -82,6 +94,11 @@ describe('Parent App child lesson content workflows (e2e)', () => {
   let parentUserId = '';
   let parentEmail = '';
   let childStudentId = '';
+  let childEnrollmentId = '';
+  let guardianLinkId = '';
+  let playbackContentItemId = '';
+  let draftPlaybackContentItemId = '';
+  let playbackFileId = '';
   let academic: AcademicContext;
   let fixture: LessonFixture;
   let otherClassroomFixture: LessonFixture;
@@ -92,6 +109,12 @@ describe('Parent App child lesson content workflows (e2e)', () => {
   const suffix = randomUUID().split('-')[0];
   const marker = `s22i-e2e-${suffix}`;
   const cleanup = createCleanupState();
+  const createDownloadUrl: jest.MockedFunction<
+    StorageService['createDownloadUrl']
+  > = jest.fn().mockResolvedValue({
+    url: 'https://storage.invalid/parent-playback',
+    expiresAt: new Date('2026-07-24T12:05:00.000Z'),
+  });
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -190,17 +213,22 @@ describe('Parent App child lesson content workflows (e2e)', () => {
       marker: 'own',
     });
     childStudentId = childEnrollment.studentId;
+    childEnrollmentId = childEnrollment.enrollmentId;
     const guardianId = await createGuardian({
       organizationId,
       schoolId,
       userId: parentUserId,
       marker: 'own',
     });
-    await linkGuardianToStudent({
+    guardianLinkId = await linkGuardianToStudent({
       schoolId,
       studentId: childStudentId,
       guardianId,
     });
+    const playback = await createReadyPlaybackMedia(fixture, 'own-playback');
+    playbackContentItemId = playback.publishedContentItemId;
+    draftPlaybackContentItemId = playback.draftContentItemId;
+    playbackFileId = playback.fileId;
 
     otherClassroomFixture = await createLessonFixture({
       organizationId,
@@ -266,6 +294,8 @@ describe('Parent App child lesson content workflows (e2e)', () => {
         }),
         ping: jest.fn().mockResolvedValue(undefined),
       })
+      .overrideProvider(StorageService)
+      .useValue({ createDownloadUrl })
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -302,6 +332,7 @@ describe('Parent App child lesson content workflows (e2e)', () => {
         'GET /api/v1/parent/children/:studentId/lessons/today',
         'GET /api/v1/parent/children/:studentId/lessons/week',
         'GET /api/v1/parent/children/:studentId/lessons/:lessonPlanItemId',
+        'GET /api/v1/parent/children/:studentId/lessons/:lessonPlanItemId/content/:contentItemId/playback',
         'GET /api/v1/parent/children/:studentId/schedule/today',
         'GET /api/v1/teacher/lesson-preparation/today',
         'GET /api/v1/academics/lesson-plans',
@@ -404,6 +435,155 @@ describe('Parent App child lesson content workflows (e2e)', () => {
     expectNoObjectKey(detail.body, 'bucket');
     expectNoObjectKey(detail.body, 'uploaderId');
     expectNoObjectKey(detail.body, 'notes');
+  });
+
+  it('issues renewable owned-child PUBLISHED playback with the exact safe contract and no writes', async () => {
+    const auditBefore = await prisma.auditLog.count({ where: { schoolId } });
+    const sessionBefore = await prisma.fileUploadSession.findUniqueOrThrow({
+      where: { fileId: playbackFileId },
+      select: { updatedAt: true },
+    });
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/parent/children/${childStudentId}/lessons/${fixture.lessonPlanItemId}/content/${playbackContentItemId}/playback`,
+        )
+        .set('Authorization', bearer(parentAuth))
+        .expect(200);
+
+      expect(response.body).toEqual({
+        url: 'https://storage.invalid/parent-playback',
+        expiresAt: '2026-07-24T12:05:00.000Z',
+        mimeType: 'video/mp4',
+        sizeBytes: '4096',
+        disposition: 'inline',
+        renewable: true,
+      });
+    }
+
+    const signingInput = createDownloadUrl.mock.calls.at(-1)?.[0];
+    expect(signingInput?.bucket).toContain(marker);
+    expect(signingInput?.objectKey).toContain('/final');
+    expect(signingInput).toMatchObject({
+      expiresInSeconds: 300,
+      disposition: 'inline',
+      contentType: 'video/mp4',
+    });
+    expect(await prisma.auditLog.count({ where: { schoolId } })).toBe(
+      auditBefore,
+    );
+    await expect(
+      prisma.fileUploadSession.findUniqueOrThrow({
+        where: { fileId: playbackFileId },
+        select: { updatedAt: true },
+      }),
+    ).resolves.toEqual(sessionBefore);
+  });
+
+  it('collapses Parent ownership, publication, hierarchy, and UUID failures safely before signing', async () => {
+    createDownloadUrl.mockClear();
+    const route = (
+      studentId: string,
+      itemId: string,
+      contentId: string,
+    ): string =>
+      `${GLOBAL_PREFIX}/parent/children/${studentId}/lessons/${itemId}/content/${contentId}/playback`;
+
+    await expectPlaybackNotFound(
+      route(randomUUID(), fixture.lessonPlanItemId, playbackContentItemId),
+    );
+    await expectPlaybackNotFound(
+      route(
+        childStudentId,
+        fixture.lessonPlanItemId,
+        draftPlaybackContentItemId,
+      ),
+    );
+    await expectPlaybackNotFound(
+      route(
+        childStudentId,
+        otherClassroomFixture.lessonPlanItemId,
+        playbackContentItemId,
+      ),
+    );
+    await expectPlaybackNotFound(
+      route(childStudentId, fixture.lessonPlanItemId, randomUUID()),
+    );
+
+    await prisma.studentGuardian.delete({ where: { id: guardianLinkId } });
+    try {
+      await expectPlaybackNotFound(
+        route(childStudentId, fixture.lessonPlanItemId, playbackContentItemId),
+      );
+    } finally {
+      guardianLinkId = await linkGuardianToStudent({
+        schoolId,
+        studentId: childStudentId,
+        guardianId: (
+          await prisma.guardian.findFirstOrThrow({
+            where: { userId: parentUserId, schoolId },
+            select: { id: true },
+          })
+        ).id,
+      });
+    }
+
+    await prisma.enrollment.update({
+      where: { id: childEnrollmentId },
+      data: {
+        status: StudentEnrollmentStatus.WITHDRAWN,
+        endedAt: new Date(),
+      },
+    });
+    try {
+      await expectPlaybackNotFound(
+        route(childStudentId, fixture.lessonPlanItemId, playbackContentItemId),
+      );
+    } finally {
+      await prisma.enrollment.update({
+        where: { id: childEnrollmentId },
+        data: { status: StudentEnrollmentStatus.ACTIVE, endedAt: null },
+      });
+    }
+
+    await prisma.lessonPlan.update({
+      where: { id: fixture.lessonPlanId },
+      data: { status: LessonPlanStatus.ARCHIVED, archivedAt: new Date() },
+    });
+    try {
+      await expectPlaybackNotFound(
+        route(childStudentId, fixture.lessonPlanItemId, playbackContentItemId),
+      );
+    } finally {
+      await prisma.lessonPlan.update({
+        where: { id: fixture.lessonPlanId },
+        data: { status: LessonPlanStatus.ACTIVE, archivedAt: null },
+      });
+    }
+
+    await prisma.curriculum.update({
+      where: { id: fixture.curriculumId },
+      data: { status: CurriculumStatus.ARCHIVED, archivedAt: new Date() },
+    });
+    try {
+      await expectPlaybackNotFound(
+        route(childStudentId, fixture.lessonPlanItemId, playbackContentItemId),
+      );
+    } finally {
+      await prisma.curriculum.update({
+        where: { id: fixture.curriculumId },
+        data: { status: CurriculumStatus.ACTIVE, archivedAt: null },
+      });
+    }
+
+    const malformed = await request(app.getHttpServer())
+      .get(route('not-a-uuid', fixture.lessonPlanItemId, playbackContentItemId))
+      .set('Authorization', bearer(parentAuth))
+      .expect(400);
+    const malformedBody = malformed.body as ErrorResponseBody;
+    expect(malformedBody.error?.code).toBe('validation.failed');
+    expect(createDownloadUrl).not.toHaveBeenCalled();
   });
 
   it('does not expose unlinked classroom, archived plan, or archived curriculum lessons', async () => {
@@ -625,7 +805,7 @@ describe('Parent App child lesson content workflows (e2e)', () => {
     schoolId: string;
     studentId: string;
     guardianId: string;
-  }): Promise<void> {
+  }): Promise<string> {
     const link = await prisma.studentGuardian.create({
       data: {
         schoolId: params.schoolId,
@@ -636,6 +816,124 @@ describe('Parent App child lesson content workflows (e2e)', () => {
       select: { id: true },
     });
     cleanup.studentGuardianIds.add(link.id);
+    return link.id;
+  }
+
+  async function createReadyPlaybackMedia(
+    source: LessonFixture,
+    label: string,
+  ): Promise<{
+    fileId: string;
+    publishedContentItemId: string;
+    draftContentItemId: string;
+  }> {
+    const sizeBytes = BigInt(4096);
+    const bucket = `${marker}-${label}-final`;
+    const objectKey = `${marker}/${label}/final`;
+    const file = await prisma.file.create({
+      data: {
+        organizationId,
+        schoolId,
+        uploaderId: teacherUserId,
+        bucket,
+        objectKey,
+        originalName: `${label}.mp4`,
+        mimeType: 'video/mp4',
+        sizeBytes,
+        checksumSha256: 'a'.repeat(64),
+        visibility: FileVisibility.PRIVATE,
+      },
+    });
+    cleanup.fileIds.add(file.id);
+    const createdAt = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000);
+    const latestUploadUrlExpiresAt = new Date(
+      createdAt.getTime() + 60 * 60 * 1000,
+    );
+    const completedAt = new Date(createdAt.getTime() + 5 * 60 * 1000);
+    const session = await prisma.fileUploadSession.create({
+      data: {
+        organizationId,
+        schoolId,
+        createdByUserId: teacherUserId,
+        clientRequestId: randomUUID(),
+        purpose: FileUploadPurpose.LESSON_CONTENT,
+        originalName: `${label}.mp4`,
+        expectedMimeType: 'video/mp4',
+        expectedSizeBytes: sizeBytes,
+        stagingBucket: `${marker}-${label}-staging`,
+        stagingObjectKey: `${marker}/${label}/staging`,
+        finalBucket: bucket,
+        finalObjectKey: objectKey,
+        status: FileUploadSessionStatus.READY,
+        createdAt,
+        expiresAt: new Date(createdAt.getTime() + 2 * 60 * 60 * 1000),
+        latestUploadUrlExpiresAt,
+        completedAt,
+        stagingCleanupEligibleAt: latestUploadUrlExpiresAt,
+        finalCleanupEligibleAt: new Date(
+          completedAt.getTime() + 7 * 24 * 60 * 60 * 1000,
+        ),
+        verifiedMimeType: 'video/mp4',
+        actualSizeBytes: sizeBytes,
+        checksumSha256: 'a'.repeat(64),
+        durationSeconds: 10,
+        width: 640,
+        height: 360,
+        verifiedAt: completedAt,
+        verificationVersion: 'ffprobe-5.1.9-debian12-learning-media-v1',
+        fileId: file.id,
+      },
+    });
+    cleanup.uploadSessionIds.add(session.id);
+    const [published, draft] = await Promise.all([
+      prisma.lessonContentItem.create({
+        data: {
+          schoolId,
+          curriculumId: source.curriculumId,
+          unitId: source.unitId,
+          lessonId: source.lessonId,
+          type: LessonContentItemType.FILE,
+          title: `${marker}-${label}-published`,
+          fileId: file.id,
+          sortOrder: 10,
+          createdByUserId: teacherUserId,
+          publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+          publishedAt: new Date(),
+          publishedByUserId: teacherUserId,
+        },
+      }),
+      prisma.lessonContentItem.create({
+        data: {
+          schoolId,
+          curriculumId: source.curriculumId,
+          unitId: source.unitId,
+          lessonId: source.lessonId,
+          type: LessonContentItemType.FILE,
+          title: `${marker}-${label}-draft`,
+          fileId: file.id,
+          sortOrder: 11,
+          createdByUserId: teacherUserId,
+        },
+      }),
+    ]);
+    return {
+      fileId: file.id,
+      publishedContentItemId: published.id,
+      draftContentItemId: draft.id,
+    };
+  }
+
+  async function expectPlaybackNotFound(path: string): Promise<void> {
+    const response = await request(app.getHttpServer())
+      .get(path)
+      .set('Authorization', bearer(parentAuth))
+      .expect(404);
+    const responseBody = response.body as ErrorResponseBody;
+    expect(responseBody.error).toMatchObject({
+      code: 'learning.content.playback_not_found',
+      message: 'Lesson content playback was not found',
+    });
+    expect(responseBody.error?.details).toBeUndefined();
   }
 
   async function createLessonFixture(params: {
@@ -1187,6 +1485,9 @@ describe('Parent App child lesson content workflows (e2e)', () => {
     await prisma.lessonContentItem.deleteMany({
       where: { schoolId: { in: [...cleanup.schoolIds] } },
     });
+    await prisma.fileUploadSession.deleteMany({
+      where: { id: { in: [...cleanup.uploadSessionIds] } },
+    });
     await prisma.curriculumLesson.deleteMany({
       where: { id: { in: [...cleanup.curriculumLessonIds] } },
     });
@@ -1288,6 +1589,7 @@ function createCleanupState() {
     curriculumLessonIds: new Set<string>(),
     lessonPlanIds: new Set<string>(),
     lessonPlanItemIds: new Set<string>(),
+    uploadSessionIds: new Set<string>(),
     fileIds: new Set<string>(),
     studentIds: new Set<string>(),
     enrollmentIds: new Set<string>(),

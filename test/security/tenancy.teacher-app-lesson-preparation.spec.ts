@@ -3,6 +3,9 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   CurriculumStatus,
+  FileUploadPurpose,
+  FileUploadSessionStatus,
+  FileVisibility,
   LessonContentItemType,
   LessonContentPublicationStatus,
   LessonPlanItemStatus,
@@ -19,6 +22,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
+import { StorageService } from '../../src/infrastructure/storage/storage.service';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'TeacherLessonPrepSecurity123!';
@@ -33,8 +37,19 @@ type AuthTokens = {
   accessToken: string;
 };
 
+type ErrorResponseBody = {
+  error?: {
+    code?: string;
+    message?: string;
+    details?: unknown;
+  };
+};
+
 type LessonSecurityFixture = {
   allocationId: string;
+  curriculumId: string;
+  unitId: string;
+  lessonId: string;
   lessonPlanItemId: string;
 };
 
@@ -64,10 +79,15 @@ describe('Teacher App lesson preparation tenancy and security', () => {
   let crossSchoolFixture: LessonSecurityFixture;
   let closedTermFixture: LessonSecurityFixture;
   let archivedFixture: LessonSecurityFixture;
+  let playbackContentItemId = '';
 
   const suffix = randomUUID().split('-')[0];
   const marker = `s22g-security-${suffix}`;
   const cleanup = createCleanupState();
+  const createDownloadUrl = jest.fn().mockResolvedValue({
+    url: 'https://storage.invalid/teacher-security-playback',
+    expiresAt: new Date('2026-07-24T12:05:00.000Z'),
+  });
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -151,6 +171,10 @@ describe('Teacher App lesson preparation tenancy and security', () => {
       marker: 'own',
       includeDeletedContent: true,
     });
+    playbackContentItemId = await createReadyPlaybackMedia(
+      ownFixture,
+      'own-playback',
+    );
     otherTeacherFixture = await createLessonFixture({
       organizationId,
       schoolId,
@@ -211,6 +235,8 @@ describe('Teacher App lesson preparation tenancy and security', () => {
         }),
         ping: jest.fn().mockResolvedValue(undefined),
       })
+      .overrideProvider(StorageService)
+      .useValue({ createDownloadUrl })
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -260,7 +286,78 @@ describe('Teacher App lesson preparation tenancy and security', () => {
         .set('Authorization', bearer(actor))
         .send({ status: 'in_progress' })
         .expect(403);
+
+      await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/lesson-preparation/${ownFixture.lessonPlanItemId}/content/${playbackContentItemId}/playback`,
+        )
+        .set('Authorization', bearer(actor))
+        .expect(403);
     }
+  });
+
+  it('enforces Teacher playback ownership/tenant IDOR boundaries and a strict response denylist', async () => {
+    const success = await request(app.getHttpServer())
+      .get(
+        `${GLOBAL_PREFIX}/teacher/lesson-preparation/${ownFixture.lessonPlanItemId}/content/${playbackContentItemId}/playback`,
+      )
+      .set('Authorization', bearer(teacherAuth))
+      .expect(200);
+    const successBody = success.body as Record<string, unknown>;
+    expect(Object.keys(successBody).sort()).toEqual(
+      [
+        'disposition',
+        'expiresAt',
+        'mimeType',
+        'renewable',
+        'sizeBytes',
+        'url',
+      ].sort(),
+    );
+    for (const key of [
+      'fileId',
+      'uploadSessionId',
+      'schoolId',
+      'organizationId',
+      'teacherUserId',
+      'teacherSubjectAllocationId',
+      'bucket',
+      'objectKey',
+      'checksumSha256',
+      'originalName',
+    ]) {
+      expectNoObjectKey(successBody, key);
+    }
+
+    createDownloadUrl.mockClear();
+    const teacherBAuth = await login(teacherBEmail);
+    for (const [itemId, contentId, auth] of [
+      [
+        otherTeacherFixture.lessonPlanItemId,
+        playbackContentItemId,
+        teacherAuth,
+      ],
+      [crossSchoolFixture.lessonPlanItemId, playbackContentItemId, teacherAuth],
+      [ownFixture.lessonPlanItemId, playbackContentItemId, teacherBAuth],
+      [ownFixture.lessonPlanItemId, randomUUID(), teacherAuth],
+    ] as const) {
+      const response = await request(app.getHttpServer())
+        .get(
+          `${GLOBAL_PREFIX}/teacher/lesson-preparation/${itemId}/content/${contentId}/playback`,
+        )
+        .set('Authorization', bearer(auth))
+        .expect(404);
+      const responseBody = response.body as ErrorResponseBody;
+      expect(responseBody.error).toMatchObject({
+        code: 'learning.content.playback_not_found',
+        message: 'Lesson content playback was not found',
+      });
+      expect(responseBody.error?.details).toBeUndefined();
+      const json = JSON.stringify(responseBody.error);
+      expect(json).not.toContain(contentId);
+      expect(json).not.toContain(itemId);
+    }
+    expect(createDownloadUrl).not.toHaveBeenCalled();
   });
 
   it('does not let a teacher read or update another teacher item', async () => {
@@ -723,8 +820,92 @@ describe('Teacher App lesson preparation tenancy and security', () => {
 
     return {
       allocationId: allocation.id,
+      curriculumId: curriculum.id,
+      unitId: unit.id,
+      lessonId: lesson.id,
       lessonPlanItemId: item.id,
     };
+  }
+
+  async function createReadyPlaybackMedia(
+    source: LessonSecurityFixture,
+    label: string,
+  ): Promise<string> {
+    const sizeBytes = BigInt(4096);
+    const bucket = `${marker}-${label}-final`;
+    const objectKey = `${marker}/${label}/final`;
+    const file = await prisma.file.create({
+      data: {
+        organizationId,
+        schoolId,
+        uploaderId: teacherAId,
+        bucket,
+        objectKey,
+        originalName: `${label}.mp4`,
+        mimeType: 'video/mp4',
+        sizeBytes,
+        checksumSha256: 'd'.repeat(64),
+        visibility: FileVisibility.PRIVATE,
+      },
+    });
+    cleanup.fileIds.add(file.id);
+    const createdAt = new Date(Date.now() - 9 * 24 * 60 * 60 * 1000);
+    const latestUploadUrlExpiresAt = new Date(
+      createdAt.getTime() + 60 * 60 * 1000,
+    );
+    const completedAt = new Date(createdAt.getTime() + 5 * 60 * 1000);
+    const session = await prisma.fileUploadSession.create({
+      data: {
+        organizationId,
+        schoolId,
+        createdByUserId: teacherAId,
+        clientRequestId: randomUUID(),
+        purpose: FileUploadPurpose.LESSON_CONTENT,
+        originalName: `${label}.mp4`,
+        expectedMimeType: 'video/mp4',
+        expectedSizeBytes: sizeBytes,
+        stagingBucket: `${marker}-${label}-staging`,
+        stagingObjectKey: `${marker}/${label}/staging`,
+        finalBucket: bucket,
+        finalObjectKey: objectKey,
+        status: FileUploadSessionStatus.READY,
+        createdAt,
+        expiresAt: new Date(createdAt.getTime() + 2 * 60 * 60 * 1000),
+        latestUploadUrlExpiresAt,
+        completedAt,
+        stagingCleanupEligibleAt: latestUploadUrlExpiresAt,
+        finalCleanupEligibleAt: new Date(
+          completedAt.getTime() + 7 * 24 * 60 * 60 * 1000,
+        ),
+        verifiedMimeType: 'video/mp4',
+        actualSizeBytes: sizeBytes,
+        checksumSha256: 'd'.repeat(64),
+        durationSeconds: 10,
+        width: 640,
+        height: 360,
+        verifiedAt: completedAt,
+        verificationVersion: 'ffprobe-5.1.9-debian12-learning-media-v1',
+        fileId: file.id,
+      },
+    });
+    cleanup.uploadSessionIds.add(session.id);
+    const content = await prisma.lessonContentItem.create({
+      data: {
+        schoolId,
+        curriculumId: source.curriculumId,
+        unitId: source.unitId,
+        lessonId: source.lessonId,
+        type: LessonContentItemType.FILE,
+        title: `${marker}-${label}`,
+        fileId: file.id,
+        sortOrder: 10,
+        createdByUserId: teacherAId,
+        publicationStatus: LessonContentPublicationStatus.PUBLISHED,
+        publishedAt: new Date(),
+        publishedByUserId: teacherAId,
+      },
+    });
+    return content.id;
   }
 
   async function login(email: string): Promise<AuthTokens> {
@@ -764,6 +945,9 @@ describe('Teacher App lesson preparation tenancy and security', () => {
     });
     await prisma.lessonContentItem.deleteMany({
       where: { schoolId: { in: [...cleanup.schoolIds] } },
+    });
+    await prisma.fileUploadSession.deleteMany({
+      where: { id: { in: [...cleanup.uploadSessionIds] } },
     });
     await prisma.curriculumLesson.deleteMany({
       where: { id: { in: [...cleanup.curriculumLessonIds] } },
@@ -834,6 +1018,7 @@ function createCleanupState() {
     curriculumLessonIds: new Set<string>(),
     lessonPlanIds: new Set<string>(),
     lessonPlanItemIds: new Set<string>(),
+    uploadSessionIds: new Set<string>(),
     fileIds: new Set<string>(),
   };
 }

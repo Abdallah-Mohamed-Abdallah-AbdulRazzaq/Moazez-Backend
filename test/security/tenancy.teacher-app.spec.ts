@@ -567,6 +567,15 @@ const TEACHER_APP_READ_PERMISSION_CASES: TeacherAppPermissionCase[] = [
       'academics.curriculum.view',
     ],
   },
+  {
+    controller: TeacherLessonPreparationController,
+    method: 'getPlayback',
+    permissions: [
+      'teacher.lesson_preparation.view',
+      'academics.lesson_plans.view',
+      'academics.curriculum.view',
+    ],
+  },
 ];
 
 const TEACHER_APP_1C_ACTION_PERMISSION_CASES: TeacherAppPermissionCase[] = [
@@ -849,7 +858,7 @@ jest.setTimeout(45000);
 
 describe('Teacher App route permission metadata (security)', () => {
   it('preserves the TEACH-PERM-1B read-only permission inventory', () => {
-    expect(TEACHER_APP_READ_PERMISSION_CASES).toHaveLength(63);
+    expect(TEACHER_APP_READ_PERMISSION_CASES).toHaveLength(64);
 
     for (const entry of TEACHER_APP_READ_PERMISSION_CASES) {
       const handler = getControllerHandler(entry.controller, entry.method);
@@ -934,8 +943,8 @@ describe('Teacher App route permission metadata (security)', () => {
           .map((method) => `${controller.name}.${method}`),
     ).sort();
 
-    expect(discoveredRouteHandlers).toHaveLength(111);
-    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(111);
+    expect(discoveredRouteHandlers).toHaveLength(112);
+    expect(TEACHER_APP_DECORATED_PERMISSION_CASES).toHaveLength(112);
     expect(TEACHER_APP_DEFERRED_ACTION_CASES).toHaveLength(0);
     expect(discoveredRouteHandlers).toEqual(
       Array.from(expectedKnownHandlers).sort(),

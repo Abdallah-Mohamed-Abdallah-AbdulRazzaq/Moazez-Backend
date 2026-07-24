@@ -1,12 +1,3 @@
-import { HttpStatus } from '@nestjs/common';
-import { DomainException } from '../../../../common/exceptions/domain-exception';
+import { LessonContentPlaybackNotFoundException } from '../../../academics/curriculum/app-facing/lesson-content-playback/lesson-content-playback.errors';
 
-export class StudentLessonPlaybackNotFoundException extends DomainException {
-  constructor() {
-    super({
-      code: 'learning.content.playback_not_found',
-      message: 'Lesson content playback was not found',
-      httpStatus: HttpStatus.NOT_FOUND,
-    });
-  }
-}
+export class StudentLessonPlaybackNotFoundException extends LessonContentPlaybackNotFoundException {}
