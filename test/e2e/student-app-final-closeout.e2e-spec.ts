@@ -792,6 +792,7 @@ describe('Sprint 8F Student App final closeout flow (e2e)', () => {
       'GET /api/v1/student/homeworks/:homeworkId/submission/answers',
       'GET /api/v1/student/homeworks/:homeworkId/submission/attachments',
       'GET /api/v1/student/lessons/:lessonPlanItemId',
+      'GET /api/v1/student/lessons/:lessonPlanItemId/content/:contentItemId/playback',
       'GET /api/v1/student/lessons/today',
       'GET /api/v1/student/lessons/week',
       'GET /api/v1/student/messages/contacts',
