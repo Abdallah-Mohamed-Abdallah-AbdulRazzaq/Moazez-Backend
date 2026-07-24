@@ -186,13 +186,16 @@ describe('ParentChildLessonsPresenter', () => {
 describe('ParentChildLessonsReadAdapter', () => {
   it('queries scoped Prisma for active lesson-plan items in the owned child enrollment scope', async () => {
     const findMany = jest.fn().mockResolvedValue([lessonItemFixture()]);
-    const adapter = new ParentChildLessonsReadAdapter({
-      scoped: {
-        lessonPlanItem: {
-          findMany,
+    const adapter = new ParentChildLessonsReadAdapter(
+      {
+        scoped: {
+          lessonPlanItem: {
+            findMany,
+          },
         },
-      },
-    } as never);
+      } as never,
+      {} as never,
+    );
 
     await adapter.listItemsForChildOnDate({
       child: accessibleChild(),
@@ -226,13 +229,16 @@ describe('ParentChildLessonsReadAdapter', () => {
 
   it('does not query lesson-plan items when the child enrollment has no term context', async () => {
     const findMany = jest.fn();
-    const adapter = new ParentChildLessonsReadAdapter({
-      scoped: {
-        lessonPlanItem: {
-          findMany,
+    const adapter = new ParentChildLessonsReadAdapter(
+      {
+        scoped: {
+          lessonPlanItem: {
+            findMany,
+          },
         },
-      },
-    } as never);
+      } as never,
+      {} as never,
+    );
 
     await expect(
       adapter.listItemsForChildOnDate({

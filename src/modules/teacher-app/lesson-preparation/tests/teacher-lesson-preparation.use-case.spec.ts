@@ -229,13 +229,16 @@ describe('Teacher lesson preparation use cases', () => {
 describe('TeacherLessonPreparationReadAdapter', () => {
   it('queries scoped Prisma for teacher-owned visible lesson-plan items', async () => {
     const findMany = jest.fn().mockResolvedValue([itemFixture()]);
-    const adapter = new TeacherLessonPreparationReadAdapter({
-      scoped: {
-        lessonPlanItem: {
-          findMany,
+    const adapter = new TeacherLessonPreparationReadAdapter(
+      {
+        scoped: {
+          lessonPlanItem: {
+            findMany,
+          },
         },
-      },
-    } as never);
+      } as never,
+      {} as never,
+    );
 
     await adapter.listItemsForTeacherOnDate({
       teacherUserId: TEACHER_ID,
@@ -264,13 +267,16 @@ describe('TeacherLessonPreparationReadAdapter', () => {
 
   it('does not query when the teacher has no owned allocations', async () => {
     const findMany = jest.fn();
-    const adapter = new TeacherLessonPreparationReadAdapter({
-      scoped: {
-        lessonPlanItem: {
-          findMany,
+    const adapter = new TeacherLessonPreparationReadAdapter(
+      {
+        scoped: {
+          lessonPlanItem: {
+            findMany,
+          },
         },
-      },
-    } as never);
+      } as never,
+      {} as never,
+    );
 
     await expect(
       adapter.listItemsForTeacherOnDate({

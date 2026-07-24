@@ -173,13 +173,16 @@ describe('StudentLessonsPresenter', () => {
 describe('StudentLessonsReadAdapter', () => {
   it('queries scoped Prisma for active lesson-plan items in the student enrollment scope', async () => {
     const findMany = jest.fn().mockResolvedValue([lessonItemFixture()]);
-    const adapter = new StudentLessonsReadAdapter({
-      scoped: {
-        lessonPlanItem: {
-          findMany,
+    const adapter = new StudentLessonsReadAdapter(
+      {
+        scoped: {
+          lessonPlanItem: {
+            findMany,
+          },
         },
-      },
-    } as never);
+      } as never,
+      {} as never,
+    );
 
     await adapter.listItemsForStudentOnDate({
       context: currentStudent().context,
@@ -215,13 +218,16 @@ describe('StudentLessonsReadAdapter', () => {
 
   it('does not query lesson-plan items when the current enrollment has no term context', async () => {
     const findMany = jest.fn();
-    const adapter = new StudentLessonsReadAdapter({
-      scoped: {
-        lessonPlanItem: {
-          findMany,
+    const adapter = new StudentLessonsReadAdapter(
+      {
+        scoped: {
+          lessonPlanItem: {
+            findMany,
+          },
         },
-      },
-    } as never);
+      } as never,
+      {} as never,
+    );
 
     await expect(
       adapter.listItemsForStudentOnDate({

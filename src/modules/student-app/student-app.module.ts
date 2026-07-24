@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
+import { LessonContentPlaybackModule } from '../academics/curriculum/app-facing/lesson-content-playback/lesson-content-playback.module';
 import { AppDeviceTokensModule } from '../app-device-tokens/app-device-tokens.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { DisciplineModule } from '../discipline/discipline.module';
@@ -146,6 +147,7 @@ import { StudentTasksReadAdapter } from './tasks/infrastructure/student-tasks-re
 @Module({
   imports: [
     AppCalendarReadModelModule,
+    LessonContentPlaybackModule,
     AppDeviceTokensModule,
     AuthModule,
     CommunicationModule,

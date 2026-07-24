@@ -349,6 +349,12 @@ const PARENT_APP_READ_PERMISSION_CASES: ParentAppReadPermissionCase[] = [
     sprint: '1B',
   },
   {
+    controller: ParentChildLessonsController,
+    method: 'getPlayback',
+    permissions: ['academics.lesson_plans.view', 'academics.curriculum.view'],
+    sprint: '1E',
+  },
+  {
     controller: ParentTasksController,
     method: 'listTasks',
     permissions: ['reinforcement.tasks.view'],
@@ -713,7 +719,7 @@ const FORBIDDEN_PARENT_PERMISSIONS = [
 
 describe('Parent App route permission metadata (security)', () => {
   it('declares the PARENT-PERM-1B read-only permission inventory', () => {
-    expect(PARENT_APP_READ_PERMISSION_CASES).toHaveLength(60);
+    expect(PARENT_APP_READ_PERMISSION_CASES).toHaveLength(61);
 
     for (const entry of PARENT_APP_READ_PERMISSION_CASES) {
       const handler = (entry.controller.prototype as Record<string, unknown>)[
@@ -749,7 +755,7 @@ describe('Parent App route permission metadata (security)', () => {
   });
 
   it('keeps the complete Parent App RBAC route inventory explicit', () => {
-    expect(PARENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(72);
+    expect(PARENT_APP_ROUTE_PERMISSION_CASES).toHaveLength(73);
 
     const expectedKnownHandlers = new Set<string>();
 

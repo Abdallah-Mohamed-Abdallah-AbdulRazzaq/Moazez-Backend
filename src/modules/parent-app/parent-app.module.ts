@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { AppCalendarReadModelModule } from '../academics/calendar/app-facing/app-calendar-read-model.module';
+import { LessonContentPlaybackModule } from '../academics/curriculum/app-facing/lesson-content-playback/lesson-content-playback.module';
 import { AppDeviceTokensModule } from '../app-device-tokens/app-device-tokens.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { DisciplineModule } from '../discipline/discipline.module';
@@ -50,6 +51,7 @@ import { ListParentChildHeroMissionsUseCase } from './hero/application/list-pare
 import { ParentHeroController } from './hero/controller/parent-hero.controller';
 import { ParentHeroReadAdapter } from './hero/infrastructure/parent-hero-read.adapter';
 import { GetParentChildLessonDetailUseCase } from './lessons/application/get-parent-child-lesson-detail.use-case';
+import { GetParentChildLessonPlaybackUseCase } from './lessons/application/get-parent-child-lesson-playback.use-case';
 import { GetParentChildLessonsTodayUseCase } from './lessons/application/get-parent-child-lessons-today.use-case';
 import { GetParentChildLessonsWeekUseCase } from './lessons/application/get-parent-child-lessons-week.use-case';
 import { ParentChildLessonsController } from './lessons/controller/parent-child-lessons.controller';
@@ -128,6 +130,7 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
 @Module({
   imports: [
     AppCalendarReadModelModule,
+    LessonContentPlaybackModule,
     AppDeviceTokensModule,
     CommunicationModule,
     BrandingModule,
@@ -242,6 +245,7 @@ import { ParentSmartPickupRecentCallsRepository } from './smart-pickup/infrastru
     GetParentChildLessonsTodayUseCase,
     GetParentChildLessonsWeekUseCase,
     GetParentChildLessonDetailUseCase,
+    GetParentChildLessonPlaybackUseCase,
     ParentSmartPickupClock,
     ParentSmartPickupReadAdapter,
     ParentSmartPickupRequestRepository,

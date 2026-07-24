@@ -210,11 +210,15 @@ jobs:
 
       - name: Focused unit and contracts
         run: npm run test:learning-media
-      - name: Student playback and download compatibility unit contracts
+      - name: Shared Student Parent Teacher playback and download compatibility contracts
         run: >-
           npx jest --runInBand --runTestsByPath
+          src/modules/academics/curriculum/app-facing/lesson-content-playback/tests/lesson-content-playback.coordinator.spec.ts
+          src/modules/academics/curriculum/app-facing/lesson-content-playback/tests/lesson-content-playback.contract.spec.ts
           src/modules/student-app/lessons/tests/student-lesson-playback.use-case.spec.ts
           src/modules/student-app/lessons/tests/student-lesson-playback.controller.spec.ts
+          src/modules/parent-app/lessons/tests/parent-child-lesson-playback.use-case.spec.ts
+          src/modules/teacher-app/lesson-preparation/tests/teacher-lesson-playback.use-case.spec.ts
           src/infrastructure/storage/tests/signed-url.service.spec.ts
           src/modules/files/uploads/tests/get-file-download-url.use-case.spec.ts
           src/modules/communication/tests/communication-message-attachment.use-case.spec.ts
@@ -230,6 +234,8 @@ jobs:
           test/integration/learning-media-upload.integration.spec.ts
           test/integration/lesson-content-publication-constraint.integration.spec.ts
           test/integration/student-lesson-playback.integration.spec.ts
+          test/integration/parent-child-lesson-playback.integration.spec.ts
+          test/integration/teacher-lesson-playback.integration.spec.ts
       - name: Direct MinIO CORS and per-candidate cleanup integration
         run: >-
           npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath

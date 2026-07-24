@@ -4,10 +4,16 @@ import {
   LessonContentPublicationStatus,
   LessonPlanItemStatus,
   LessonPlanStatus,
+  MembershipStatus,
   Prisma,
+  UserStatus,
   UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../../infrastructure/database/prisma.service';
+import { LessonContentPlaybackCoordinator } from '../../../academics/curriculum/app-facing/lesson-content-playback/lesson-content-playback.coordinator';
+import type { LessonContentPlaybackResponseDto } from '../../../academics/curriculum/app-facing/lesson-content-playback/lesson-content-playback-response.dto';
+import type { LessonContentPlaybackCandidate } from '../../../academics/curriculum/app-facing/lesson-content-playback/lesson-content-playback.types';
+import type { TeacherAppContext } from '../../shared/teacher-app-context';
 
 const TEACHER_LESSON_PREPARATION_ITEM_ARGS =
   Prisma.validator<Prisma.LessonPlanItemDefaultArgs>()({
@@ -177,7 +183,10 @@ export type TeacherLessonPreparationItemRecord =
 
 @Injectable()
 export class TeacherLessonPreparationReadAdapter {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly playbackCoordinator: LessonContentPlaybackCoordinator,
+  ) {}
 
   private get scopedPrisma(): PrismaService {
     return this.prisma.scoped as unknown as PrismaService;
@@ -286,6 +295,30 @@ export class TeacherLessonPreparationReadAdapter {
       where: { id: params.itemId },
       data,
       ...TEACHER_LESSON_PREPARATION_ITEM_ARGS,
+    });
+  }
+
+  getLessonContentPlayback(params: {
+    context: TeacherAppContext;
+    lessonPlanItemId: string;
+    contentItemId: string;
+  }): Promise<LessonContentPlaybackResponseDto | null> {
+    return this.playbackCoordinator.execute({
+      schoolId: params.context.schoolId,
+      organizationId: params.context.organizationId,
+      lessonPlanItemId: params.lessonPlanItemId,
+      contentItemId: params.contentItemId,
+      visibilityWhere: teacherPlaybackWhere(params.context),
+      policy: {
+        curriculum: 'NOT_ARCHIVED',
+        content: 'DRAFT_OR_PUBLISHED',
+      },
+      lockAuthorization: (transaction, candidate) =>
+        lockTeacherPlaybackAuthorization(
+          transaction,
+          params.context,
+          candidate,
+        ),
     });
   }
 }
@@ -402,4 +435,245 @@ function normalizeNullableText(value: string | null): string | null {
   if (value === null) return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function teacherPlaybackWhere(
+  context: TeacherAppContext,
+): Prisma.LessonPlanItemWhereInput {
+  return {
+    schoolId: context.schoolId,
+    deletedAt: null,
+    lessonPlan: {
+      is: {
+        schoolId: context.schoolId,
+        teacherUserId: context.teacherUserId,
+        status: { not: LessonPlanStatus.ARCHIVED },
+        deletedAt: null,
+        term: {
+          is: { schoolId: context.schoolId, deletedAt: null },
+        },
+        subject: {
+          is: {
+            schoolId: context.schoolId,
+            deletedAt: null,
+            isActive: true,
+          },
+        },
+        classroom: {
+          is: {
+            schoolId: context.schoolId,
+            deletedAt: null,
+            section: {
+              is: {
+                schoolId: context.schoolId,
+                deletedAt: null,
+                grade: {
+                  is: {
+                    schoolId: context.schoolId,
+                    deletedAt: null,
+                    stage: {
+                      is: { schoolId: context.schoolId, deletedAt: null },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        curriculum: {
+          is: {
+            schoolId: context.schoolId,
+            status: { not: CurriculumStatus.ARCHIVED },
+            deletedAt: null,
+          },
+        },
+        teacherSubjectAllocation: {
+          is: {
+            schoolId: context.schoolId,
+            teacherUserId: context.teacherUserId,
+            teacherUser: {
+              is: {
+                id: context.teacherUserId,
+                userType: UserType.TEACHER,
+                status: UserStatus.ACTIVE,
+                deletedAt: null,
+              },
+            },
+            subject: {
+              is: {
+                schoolId: context.schoolId,
+                deletedAt: null,
+                isActive: true,
+              },
+            },
+            classroom: {
+              is: { schoolId: context.schoolId, deletedAt: null },
+            },
+            term: {
+              is: { schoolId: context.schoolId, deletedAt: null },
+            },
+          },
+        },
+      },
+    },
+    curriculum: {
+      is: {
+        schoolId: context.schoolId,
+        status: { not: CurriculumStatus.ARCHIVED },
+        deletedAt: null,
+      },
+    },
+    unit: { is: { schoolId: context.schoolId, deletedAt: null } },
+    lesson: { is: { schoolId: context.schoolId, deletedAt: null } },
+  };
+}
+
+async function lockTeacherPlaybackAuthorization(
+  transaction: Prisma.TransactionClient,
+  context: TeacherAppContext,
+  candidate: LessonContentPlaybackCandidate,
+): Promise<boolean> {
+  const users = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT "id"
+    FROM "users"
+    WHERE "id" = ${context.teacherUserId}::uuid
+      AND "user_type" = ${UserType.TEACHER}::user_type
+      AND "status" = ${UserStatus.ACTIVE}::user_status
+      AND "deleted_at" IS NULL
+    FOR SHARE
+  `);
+  if (users.length !== 1) return false;
+
+  const memberships = await transaction.$queryRaw<Array<{ id: string }>>(
+    Prisma.sql`
+      SELECT "id"
+      FROM "memberships"
+      WHERE "id" = ${context.membershipId}::uuid
+        AND "user_id" = ${context.teacherUserId}::uuid
+        AND "organization_id" = ${context.organizationId}::uuid
+        AND "school_id" = ${context.schoolId}::uuid
+        AND "role_id" = ${context.roleId}::uuid
+        AND "user_type" = ${UserType.TEACHER}::user_type
+        AND "status" = ${MembershipStatus.ACTIVE}::membership_status
+        AND "ended_at" IS NULL
+        AND "deleted_at" IS NULL
+      FOR SHARE
+    `,
+  );
+  if (memberships.length !== 1) return false;
+
+  const allocations = await transaction.$queryRaw<Array<{ id: string }>>(
+    Prisma.sql`
+      SELECT "id"
+      FROM "teacher_subject_allocations"
+      WHERE "id" = ${candidate.teacherSubjectAllocationId}::uuid
+        AND "teacher_user_id" = ${context.teacherUserId}::uuid
+        AND "school_id" = ${context.schoolId}::uuid
+        AND "subject_id" = ${candidate.subjectId}::uuid
+        AND "classroom_id" = ${candidate.classroomId}::uuid
+        AND "term_id" = ${candidate.termId}::uuid
+      FOR SHARE
+    `,
+  );
+  if (allocations.length !== 1) return false;
+
+  const terms = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT "id"
+    FROM "terms"
+    WHERE "id" = ${candidate.termId}::uuid
+      AND "school_id" = ${context.schoolId}::uuid
+      AND "academic_year_id" = ${candidate.academicYearId}::uuid
+      AND "deleted_at" IS NULL
+    FOR SHARE
+  `);
+  if (terms.length !== 1) return false;
+
+  const stages = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT "id" FROM "stages"
+    WHERE "id" = ${candidate.stageId}::uuid
+      AND "school_id" = ${context.schoolId}::uuid
+      AND "deleted_at" IS NULL
+    FOR SHARE
+  `);
+  if (stages.length !== 1) return false;
+
+  const grades = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT "id" FROM "grades"
+    WHERE "id" = ${candidate.gradeId}::uuid
+      AND "school_id" = ${context.schoolId}::uuid
+      AND "stage_id" = ${candidate.stageId}::uuid
+      AND "deleted_at" IS NULL
+    FOR SHARE
+  `);
+  if (grades.length !== 1) return false;
+
+  const sections = await transaction.$queryRaw<Array<{ id: string }>>(
+    Prisma.sql`
+      SELECT "id" FROM "sections"
+      WHERE "id" = ${candidate.sectionId}::uuid
+        AND "school_id" = ${context.schoolId}::uuid
+        AND "grade_id" = ${candidate.gradeId}::uuid
+        AND "deleted_at" IS NULL
+      FOR SHARE
+    `,
+  );
+  if (sections.length !== 1) return false;
+
+  const classrooms = await transaction.$queryRaw<Array<{ id: string }>>(
+    Prisma.sql`
+      SELECT "id" FROM "classrooms"
+      WHERE "id" = ${candidate.classroomId}::uuid
+        AND "school_id" = ${context.schoolId}::uuid
+        AND "section_id" = ${candidate.sectionId}::uuid
+        AND "deleted_at" IS NULL
+      FOR SHARE
+    `,
+  );
+  if (classrooms.length !== 1) return false;
+
+  const subjects = await transaction.$queryRaw<Array<{ id: string }>>(
+    Prisma.sql`
+      SELECT "id" FROM "subjects"
+      WHERE "id" = ${candidate.subjectId}::uuid
+        AND "school_id" = ${context.schoolId}::uuid
+        AND "is_active" = true
+        AND "deleted_at" IS NULL
+      FOR SHARE
+    `,
+  );
+  if (subjects.length !== 1) return false;
+
+  const items = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT "id" FROM "lesson_plan_items"
+    WHERE "id" = ${candidate.lessonPlanItemId}::uuid
+      AND "lesson_plan_id" = ${candidate.lessonPlanId}::uuid
+      AND "school_id" = ${context.schoolId}::uuid
+      AND "curriculum_id" = ${candidate.curriculumId}::uuid
+      AND "unit_id" = ${candidate.unitId}::uuid
+      AND "lesson_id" = ${candidate.lessonId}::uuid
+      AND "deleted_at" IS NULL
+    FOR SHARE
+  `);
+  if (items.length !== 1) return false;
+
+  const plans = await transaction.$queryRaw<Array<{ id: string }>>(
+    Prisma.sql`
+      SELECT "id" FROM "lesson_plans"
+      WHERE "id" = ${candidate.lessonPlanId}::uuid
+        AND "school_id" = ${context.schoolId}::uuid
+        AND "academic_year_id" = ${candidate.academicYearId}::uuid
+        AND "term_id" = ${candidate.termId}::uuid
+        AND "teacher_subject_allocation_id" =
+          ${candidate.teacherSubjectAllocationId}::uuid
+        AND "teacher_user_id" = ${context.teacherUserId}::uuid
+        AND "classroom_id" = ${candidate.classroomId}::uuid
+        AND "subject_id" = ${candidate.subjectId}::uuid
+        AND "curriculum_id" = ${candidate.curriculumId}::uuid
+        AND "status" <> ${LessonPlanStatus.ARCHIVED}::lesson_plan_status
+        AND "deleted_at" IS NULL
+      FOR SHARE
+    `,
+  );
+
+  return plans.length === 1;
 }

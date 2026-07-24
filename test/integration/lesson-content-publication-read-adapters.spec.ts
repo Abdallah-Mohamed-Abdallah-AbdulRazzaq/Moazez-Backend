@@ -9,7 +9,7 @@ import { TeacherLessonPreparationReadAdapter } from '../../src/modules/teacher-a
 describe('Lesson content publication read-adapter predicates', () => {
   it('selects PUBLISHED content only for Student lesson detail', async () => {
     const { prisma, findMany } = prismaMock();
-    const adapter = new StudentLessonsReadAdapter(prisma);
+    const adapter = new StudentLessonsReadAdapter(prisma, {} as never);
 
     await adapter.listItemsForStudentOnDate({
       context: studentContext(),
@@ -24,7 +24,7 @@ describe('Lesson content publication read-adapter predicates', () => {
 
   it('selects PUBLISHED content only for Parent child lesson detail', async () => {
     const { prisma, findMany } = prismaMock();
-    const adapter = new ParentChildLessonsReadAdapter(prisma);
+    const adapter = new ParentChildLessonsReadAdapter(prisma, {} as never);
 
     await adapter.listItemsForChildOnDate({
       child: {
@@ -45,7 +45,10 @@ describe('Lesson content publication read-adapter predicates', () => {
 
   it('selects DRAFT and PUBLISHED content for the exact-owned Teacher view', async () => {
     const { prisma, findMany } = prismaMock();
-    const adapter = new TeacherLessonPreparationReadAdapter(prisma);
+    const adapter = new TeacherLessonPreparationReadAdapter(
+      prisma,
+      {} as never,
+    );
 
     await adapter.listItemsForTeacherOnDate({
       teacherUserId: 'teacher-1',

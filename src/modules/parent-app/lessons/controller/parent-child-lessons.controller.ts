@@ -9,8 +9,10 @@ import {
 } from '@nestjs/swagger';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { GetParentChildLessonDetailUseCase } from '../application/get-parent-child-lesson-detail.use-case';
+import { GetParentChildLessonPlaybackUseCase } from '../application/get-parent-child-lesson-playback.use-case';
 import { GetParentChildLessonsTodayUseCase } from '../application/get-parent-child-lessons-today.use-case';
 import { GetParentChildLessonsWeekUseCase } from '../application/get-parent-child-lessons-week.use-case';
+import { LessonContentPlaybackResponseDto } from '../../../academics/curriculum/app-facing/lesson-content-playback/lesson-content-playback-response.dto';
 import { ParentChildLessonsDateQueryDto } from '../dto/parent-child-lessons.dto';
 import {
   ParentChildLessonItemDto,
@@ -26,6 +28,7 @@ export class ParentChildLessonsController {
     private readonly getTodayUseCase: GetParentChildLessonsTodayUseCase,
     private readonly getWeekUseCase: GetParentChildLessonsWeekUseCase,
     private readonly getDetailUseCase: GetParentChildLessonDetailUseCase,
+    private readonly getPlaybackUseCase: GetParentChildLessonPlaybackUseCase,
   ) {}
 
   @Get('today')
@@ -83,5 +86,25 @@ export class ParentChildLessonsController {
     @Param('lessonPlanItemId', new ParseUUIDPipe()) lessonPlanItemId: string,
   ): Promise<ParentChildLessonItemDto> {
     return this.getDetailUseCase.execute({ studentId, lessonPlanItemId });
+  }
+
+  @Get(':lessonPlanItemId/content/:contentItemId/playback')
+  @ApiOperation({ summary: 'Get secure playback for an owned child lesson' })
+  @ApiParam({ name: 'studentId', description: 'Owned child student id.' })
+  @ApiOkResponse({ type: LessonContentPlaybackResponseDto })
+  @RequiredPermissions(
+    'academics.lesson_plans.view',
+    'academics.curriculum.view',
+  )
+  getPlayback(
+    @Param('studentId', new ParseUUIDPipe()) studentId: string,
+    @Param('lessonPlanItemId', new ParseUUIDPipe()) lessonPlanItemId: string,
+    @Param('contentItemId', new ParseUUIDPipe()) contentItemId: string,
+  ): Promise<LessonContentPlaybackResponseDto> {
+    return this.getPlaybackUseCase.execute({
+      studentId,
+      lessonPlanItemId,
+      contentItemId,
+    });
   }
 }
