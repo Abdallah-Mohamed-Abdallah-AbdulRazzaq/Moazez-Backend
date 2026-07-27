@@ -22,10 +22,10 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D001 | Preserve modular monolith | LOCKED_FROM_APPROVED_CONTEXT | — | One codebase and domain ownership model |
 | PRD0-D002 | Preserve public API/adapter contracts | LOCKED_FROM_APPROVED_CONTEXT | D001 | `/api/v1`; additive change first |
 | PRD0-D003 | Immutable governed migrations | LOCKED_FROM_APPROVED_CONTEXT | D001 | migrations only; drift/failure hard stop |
-| PRD0-D004 | Multi-runtime deployment from one repository | OWNER_DECISION_REQUIRED | D001 | approve separate deployable roles from one artifact/source |
-| PRD0-D005 | API/Core/Media/Migration boundaries | OWNER_DECISION_REQUIRED | D004 | four explicit composition roots/commands |
-| PRD0-D006 | BullMQ consumers prohibited in target API | OWNER_DECISION_REQUIRED | D005 | producers only in API |
-| PRD0-D007 | Repeatable/scheduled ownership | OWNER_DECISION_REQUIRED | D005 | singular scheduler ownership |
+| PRD0-D004 | Multi-runtime deployment from one repository | LOCKED_FROM_APPROVED_CONTEXT | D001 | approved separate API/Core Worker/Media Worker/Migration Job/Maintenance Scheduler roles from one repository through Q001 |
+| PRD0-D005 | API/Core/Media/Migration boundaries | LOCKED_FROM_APPROVED_CONTEXT | D004 | approved responsibility mapping through Q002; implementation remains gated |
+| PRD0-D006 | BullMQ consumers prohibited in target API | LOCKED_FROM_APPROVED_CONTEXT | D005 | approved zero-consumer target API through Q010 |
+| PRD0-D007 | Repeatable/scheduled ownership | LOCKED_FROM_APPROVED_CONTEXT | D005 | approved singular Maintenance Scheduler invocation and assigned consumers through Q011 |
 | PRD0-D008 | Learning Media completion transition | OWNER_DECISION_REQUIRED | D002, D005 | keep synchronous through Phase 5A/5B; approve Learning Media-only submit/status transition in Phase 6 |
 | PRD0-D009 | GCS production and MinIO local/test | OWNER_DECISION_REQUIRED | D004 | GCS in production; MinIO retained locally/CI |
 | PRD0-D010 | Storage abstraction boundary | PROPOSED_RECOMMENDATION | D009 | incremental `ObjectStoragePort` with MinIO/GCS adapters and normalized errors/types; no giant catalog rewrite prerequisite |
@@ -40,9 +40,9 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D019 | GCS signed-URL identity | OWNER_DECISION_REQUIRED | D009, D018 | dedicated signing identity with bucket-limited access |
 | PRD0-D020 | Secret Manager pinning/rotation | OWNER_DECISION_REQUIRED | D017, D018 | explicit versions for release, staged rotation |
 | PRD0-D021 | Encryption key separation/key-ID envelope | OWNER_DECISION_REQUIRED | D020 | separate key families and key ID with multi-key decrypt |
-| PRD0-D022 | Frontend origins and production CORS | OWNER_DECISION_REQUIRED | D002, D009, D017 | explicit per-environment allowlists |
+| PRD0-D022 | Frontend origins and production CORS | LOCKED_FROM_APPROVED_CONTEXT | D002, D009, D017 | approved exact production/staging HTTPS origins and credential/WebSocket/direct-storage requirements through Q022 |
 | PRD0-D023 | Ingress/domain/LB/Cloud Armor | OWNER_DECISION_REQUIRED | D017, D022 | authenticated/private where possible; edge controls by threat model |
-| PRD0-D024 | Liveness/startup/readiness semantics | OWNER_DECISION_REQUIRED | D005, D013 | distinct private probes; current `/health` retained compatibly |
+| PRD0-D024 | Liveness/startup/readiness semantics | LOCKED_FROM_APPROVED_CONTEXT | D005, D013 | approved protected role-specific probes and minimum dependency semantics through Q024 |
 | PRD0-D025 | Logs, metrics, SLOs, alerts | OWNER_DECISION_REQUIRED | D005, D024 | structured/redacted telemetry and service/queue/media SLOs |
 | PRD0-D026 | Migration job and deploy ordering | OWNER_DECISION_REQUIRED | D003, D005, D011, D018 | migration job before compatible runtime promotion |
 | PRD0-D027 | Backward-compatible rollback constraints | LOCKED_FROM_APPROVED_CONTEXT | D003, D026 | immutable migrations and compatible rollback are locked; expand/contract is the recommended technique, not a separately locked mandate |
@@ -51,11 +51,11 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D030 | Initial max instances/concurrency | OWNER_DECISION_REQUIRED | D012–D016 | conservative caps proven by load/failure tests |
 | PRD0-D031 | Workload/file-size assumptions | OWNER_DECISION_REQUIRED | D008, D016, D030 | owner supplies launch and growth envelopes |
 | PRD0-D032 | Staging equivalence/release promotion | OWNER_DECISION_REQUIRED | D017–D031 | same artifact/config shape, immutable digest promotion |
-| PRD0-D033 | Node runtime version | OWNER_DECISION_REQUIRED | D032 | align image/CI with supported dependency engine before release |
-| PRD0-D034 | Production Swagger exposure | OWNER_DECISION_REQUIRED | D022, D023 | disable or access-restrict in production |
-| PRD0-D035 | Public root/health diagnostics | OWNER_DECISION_REQUIRED | D023–D025 | minimal public response; private operational details |
+| PRD0-D033 | Node runtime version | LOCKED_FROM_APPROVED_CONTEXT | D032 | approved Node 22 LTS policy and locked Firebase Admin 14.x line through Q028 |
+| PRD0-D034 | Production Swagger exposure | LOCKED_FROM_APPROVED_CONTEXT | D022, D023 | approved disabled production Swagger with no audience/risk acceptor through Q029 |
+| PRD0-D035 | Public root/health diagnostics | LOCKED_FROM_APPROVED_CONTEXT | D023–D025 | approved minimal root and public health fields with one-release-cycle compatibility through Q030 |
 | PRD0-D036 | Parent messaging upload contract | OWNER_DECISION_REQUIRED | D002 | bounded Parent endpoint, narrowly scoped shared permission, text-only/no-new-upload, or explicit alternative |
-| PRD0-D037 | Reinforcement proof-type MIME policy | OWNER_DECISION_REQUIRED | D002 | IMAGE/VIDEO/DOCUMENT allowed and detected-content matrix with compatibility |
+| PRD0-D037 | Reinforcement proof-type MIME policy | LOCKED_FROM_APPROVED_CONTEXT | D002 | approved narrow declared/detected IMAGE/VIDEO/DOCUMENT matrix and compatibility controls through Q032 |
 | PRD0-D038 | Generic File detected-content validation | OWNER_DECISION_REQUIRED | D002 | purpose-aware declared/detected mismatch and rejection policy |
 | PRD0-D039 | Malware scanning and failure policy | OWNER_DECISION_REQUIRED | D038 | provider, synchronous/asynchronous placement, fail-open/closed, quarantine, retention |
 | PRD0-D040 | File-purpose classification | OWNER_DECISION_REQUIRED | D038 | derive purpose where safe or store approved typed classification; no schema field is pre-approved |
@@ -73,7 +73,7 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D052 | Storage bucket/privacy topology | OWNER_DECISION_REQUIRED | D009, D017–D019 | staging/final/private/public buckets, region, IAM, CORS, signer limits |
 | PRD0-D053 | GCS versioning/lifecycle/deletion protection | OWNER_DECISION_REQUIRED | D042, D044, D052 | versioning, lifecycle rules, retention locks, deletion protection, recovery cost |
 
-Status totals: 4 `LOCKED_FROM_APPROVED_CONTEXT`, 48
+Status totals: 14 `LOCKED_FROM_APPROVED_CONTEXT`, 38
 `OWNER_DECISION_REQUIRED`, 1 `PROPOSED_RECOMMENDATION`, 0
 `DEFERRED_WITH_CONSTRAINT`, and 0 `REJECTED`.
 
@@ -130,11 +130,14 @@ Status totals: 4 `LOCKED_FROM_APPROVED_CONTEXT`, 48
 
 ### PRD0-D004 — Deploy multiple runtime roles from one repository
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; EVD-011–EVD-026 show current
-  coupling; D001 constrains the form.
-- **Options / recommendation:** one coupled service; separate API/Core
-  Worker/Media Worker/jobs from the same source; microservices. Approve the
-  middle option.
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; EVD-011–EVD-026 show
+  current coupling; D001 constrains the form.
+- **Approval authority:** owning question PRD0-Q001; approved by Abdallah on
+  2026-07-27 in product, architecture, operations, and release capacities;
+  owning ADR ADR-0004.
+- **Approved decision:** separate API, Core Worker, Media Worker, Migration Job,
+  and Maintenance Scheduler roles from one repository. This is an approved
+  architecture constraint, not implemented behavior.
 - **Reasoning / alternatives:** one service couples scaling and failure domains;
   microservices violate D001.
 - **Impacts:** no intended API/schema/data change; build and dependency
@@ -142,17 +145,25 @@ Status totals: 4 `LOCKED_FROM_APPROVED_CONTEXT`, 48
 - **Operations / rollback:** independent scaling/drain improves containment;
   rollback to the coupled image is unsafe after role-specific schedules unless
   duplicate-consumer proof exists.
-- **Phase / approval / reopen:** Phase 2; owner approval missing. Reopen if the
-  platform cannot run non-HTTP workers or cost evidence rejects separation.
+- **Phase / approval / reopen:** Phase 2 implementation remains gated. Reopen
+  if the platform cannot run non-HTTP workers or cost evidence rejects
+  separation.
 
 ### PRD0-D005 — Define API/Core Worker/Media Worker/Migration Job boundaries
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; EVD-012, EVD-017–EVD-025,
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; EVD-012,
+  EVD-017–EVD-025,
   EVD-030.
-- **Options / recommendation:** arbitrary feature splits or responsibility
-  splits. Use API producers; Core Worker for communication/email/import and
-  selected maintenance consumers; reserve a future Media Worker for the
-  Phase 6 Learning Media contract; Migration Job for deploy-only DDL.
+- **Approval authority:** owning question PRD0-Q002; approved by Abdallah on
+  2026-07-27 in product, architecture, security, operations, and release
+  capacities; owning ADR ADR-0004.
+- **Approved decision:** API owns HTTP/WebSocket, auth, realtime, producers, and
+  synchronous Learning Media completion until Phase 6 approval. Core owns the
+  approved communication, push, email, import, dismissal, and branding
+  consumers. Media owns Learning Media cleanup and may own asynchronous
+  verification only after Phase 6 approval. Migration runs governed
+  `prisma migrate deploy`; Maintenance singularly invokes approved schedules.
+  These boundaries are not yet implemented.
 - **Reasoning / alternatives:** domain microservice splits are rejected.
   Dismissal/branding repeat registration may move to a scheduler while consumers
   remain Core.
@@ -163,15 +174,19 @@ Status totals: 4 `LOCKED_FROM_APPROVED_CONTEXT`, 48
   requires it. Separate least-privilege identities.
 - **Operations / rollback:** queue payload compatibility is mandatory; rollback
   role by role without two schedulers.
-- **Phase / approval / reopen:** Phase 2; missing approval. Reopen based on
-  measured resource isolation or provider execution limits.
+- **Phase / approval / reopen:** Phase 2 implementation remains gated. Reopen
+  based on measured resource isolation or provider execution limits.
 
 ### PRD0-D006 — Prohibit BullMQ consumers in the target API
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; seven consumers currently
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; seven consumers currently
   initialize in the API graph (EVD-017–EVD-025).
-- **Options / recommendation:** consumers everywhere, environment toggle, or
-  role-specific graph. Use a role-specific graph with no API consumers.
+- **Approval authority:** owning question PRD0-Q010; approved by Abdallah on
+  2026-07-27 in architecture, security, operations, and release capacities;
+  owning ADR ADR-0004.
+- **Approved decision:** the target role-specific API graph has no BullMQ
+  consumers and no exceptions. Producers remain. The current coupled graph is
+  an implementation gap.
 - **Reasoning / alternatives:** toggles in the full graph are weaker than
   construction-time exclusion; consumers-everywhere creates uncontrolled
   scaling and shutdown risk.
@@ -179,23 +194,30 @@ Status totals: 4 `LOCKED_FROM_APPROVED_CONTEXT`, 48
   should not receive provider/delete permissions needed only by workers.
 - **Operations / rollback:** deploy workers healthy before disabling API
   consumers; rollback must avoid double processing/scheduling.
-- **Phase / approval / reopen:** Phase 2; missing approval. Reopen only if a
-  queue is proven to require request-local consumption, with ADR.
+- **Phase / approval / reopen:** Phase 2 implementation remains gated. Reopen
+  only if a queue is proven to require request-local consumption through a
+  superseding ADR.
 
 ### PRD0-D007 — Own repeatable and scheduled jobs explicitly
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; EVD-023–EVD-026.
-- **Options / recommendation:** each API registers; one worker registers;
-  external scheduler invokes idempotent commands. Prefer explicit singular
-  scheduler/maintenance ownership, exact service chosen in implementation.
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; EVD-023–EVD-026.
+- **Approval authority:** owning question PRD0-Q011; approved by Abdallah on
+  2026-07-27 in architecture, security, operations, and release capacities;
+  owning ADR ADR-0004.
+- **Approved decision:** the Maintenance Scheduler singularly invokes
+  idempotent dismissal expiry for Core consumption, Learning Media discovery
+  for Media cleanup consumption, and branding reconciliation for Core cleanup
+  consumption. This ownership is not yet implemented and does not authorize
+  destructive cleanup.
 - **Reasoning / alternatives:** implicit every-instance registration obscures
   failure and delete ownership. Presence refresh remains per WebSocket process.
 - **Impacts:** no public/schema impact unless an execution ledger is added.
   Maintenance identity needs only necessary DB/storage permissions.
 - **Operations / rollback:** deterministic schedule IDs, distributed exclusion,
   missed-run alerts, and manual replay; disable old owner before enabling new.
-- **Phase / approval / reopen:** Phase 2; missing approval. Reopen after
-  scheduler cost/reliability comparison.
+- **Phase / approval / reopen:** Phase 2 implementation remains gated. Reopen
+  after scheduler cost/reliability evidence or a material responsibility
+  change.
 
 ### PRD0-D008 — Transition media completion safely
 
@@ -426,19 +448,29 @@ Status totals: 4 `LOCKED_FROM_APPROVED_CONTEXT`, 48
 
 ### PRD0-D022 — Approve frontend origins and CORS
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; production HTTP/WebSocket
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; production HTTP/WebSocket
   CORS is `false`; storage CORS is externally configured (EVD-011, EVD-014,
   EVD-051).
-- **Options / recommendation:** wildcard; disable; explicit web/admin origins
-  per environment. Recommend exact HTTPS allowlists and tested storage origins.
+- **Approval authority:** owning question PRD0-Q022; approved by Abdallah on
+  2026-07-27 in product, architecture, security, operations, and release
+  capacities; owning ADR ADR-0006.
+- **Approved decision:** production origins are
+  `https://schools.moazez.cloud` and `https://admin.moazez.cloud`; staging
+  origins are `https://staging-schools.moazez.cloud` and
+  `https://staging-admin.moazez.cloud`. Credentials, WebSockets, and future
+  approved direct-storage access are required. Wildcards are prohibited and
+  paths/trailing slashes are not origins. Application and storage
+  configuration remain implementation gaps; this does not approve GCS, IAM,
+  buckets, signing, or provisioning.
 - **Reasoning / alternatives:** wildcard with credentials is rejected; disabled
   production browser access is not a viable launch policy if web clients exist.
 - **Impacts:** no route/schema change; browser behavior changes operationally.
   Include preflight, signed PUT headers, GET/Range, and WebSocket tests.
 - **Operations / rollback:** version allowlists; emergency remove an origin
   without broad wildcard.
-- **Phase / approval / reopen:** Phase 1 minimum boundary, Phase 5A storage, and Phase 7 full controls; exact domains missing. Reopen
-  when clients/domains change.
+- **Phase / approval / reopen:** Phase 1 minimum boundary, Phase 5A storage, and
+  Phase 7 full controls remain gated. Reopen when approved clients or domains
+  change.
 
 ### PRD0-D023 — Select ingress, domain, load balancer, and Cloud Armor
 
@@ -458,11 +490,19 @@ Status totals: 4 `LOCKED_FROM_APPROVED_CONTEXT`, 48
 
 ### PRD0-D024 — Separate liveness, startup, and readiness
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; public health returns 200 and
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; public health returns 200 and
   incomplete aggregate details (EVD-046–EVD-047).
-- **Options / recommendation:** retain one endpoint; change it in place; add
-  private role-specific probes while retaining compatible public health.
-  Recommend the last.
+- **Approval authority:** owning question PRD0-Q024; approved by Abdallah on
+  2026-07-27 in product, architecture, security, operations, and release
+  capacities; owning ADR ADR-0010.
+- **Approved decision:** add protected role-specific startup, liveness, and
+  readiness probes. API requires validated configuration, HTTP startup,
+  Prisma, queue-producer Redis, object storage for enabled file contracts, and
+  realtime Redis when enabled. Core requires validated configuration, Prisma,
+  queue Redis, and assigned consumers. Media requires validated configuration,
+  Prisma, queue Redis, object storage, temporary disk, and verified `ffprobe`.
+  Public health is limited to status, version, and timestamp. Current code does
+  not yet implement this contract.
 - **Reasoning / alternatives:** liveness must not depend on every external
   service; readiness must fail routing when critical dependencies/role startup
   fail. In-place semantic break is deferred.
@@ -470,8 +510,9 @@ Status totals: 4 `LOCKED_FROM_APPROVED_CONTEXT`, 48
   diagnostic data.
 - **Operations / rollback:** probe thresholds avoid restart storms; previous
   endpoint remains during rollout.
-- **Phase / approval / reopen:** Phase 1 minimum probes and Phase 7 full semantics; product/operations semantics missing.
-  Reopen if platform requires exact probe paths.
+- **Phase / approval / reopen:** Phase 1 minimum probes and Phase 7 full
+  semantics remain gated. Reopen if the platform requires different probe
+  mechanics or the approved dependency contract changes.
 
 ### PRD0-D025 — Define logs, metrics, SLOs, and alerts
 
@@ -610,62 +651,98 @@ Status totals: 4 `LOCKED_FROM_APPROVED_CONTEXT`, 48
 
 ### PRD0-D033 — Align Node runtime support
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; Docker/CI use Node 20 while
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; Docker/CI use Node 20 while
   locked Firebase Admin 14 requires Node 22+ (EVD-056).
-- **Options / recommendation:** downgrade dependency; upgrade image/CI to a
-  supported Node 22 line; ignore engine. Recommend align on supported Node 22
-  and run complete affected tests/image checks, unless dependency downgrade is
-  deliberately selected.
+- **Approval authority:** owning question PRD0-Q028; approved by Abdallah on
+  2026-07-27 in architecture, security, operations, and release capacities;
+  owning ADR ADR-0011.
+- **Approved decision:** use Node 22 LTS with the latest approved security patch
+  selected at the Phase 1 implementation baseline and an immutable image
+  digest in Docker and CI. Keep Firebase Admin on the package-lock-controlled
+  14.x line and verify startup and push-provider smoke tests. The exact patch
+  and digest are evidence-time selections; current Docker/CI remain an
+  implementation gap.
 - **Reasoning / alternatives:** ignoring declared engine is rejected for
   production.
 - **Impacts:** no intended API/schema; native dependencies/runtime behavior need
   regression/security verification.
 - **Operations / rollback:** retain prior artifact only if dependency/runtime
   pair is supported; promote by digest.
-- **Phase / approval / reopen:** Phase 1, release blocking; owner/platform
-  approval missing. Reopen on upstream support/security policy.
+- **Phase / approval / reopen:** Phase 1 implementation and evidence remain
+  release-blocking. Reopen on upstream support or security-policy change.
 
 ### PRD0-D034 — Control production Swagger exposure
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; Swagger is always public at
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; Swagger is always public at
   `/api/v1/docs` (EVD-011).
-- **Options / recommendation:** public; disabled; identity/access-restricted.
-  Recommend disabled or restricted in production, enabled in controlled
-  environments.
+- **Approval authority:** owning question PRD0-Q029; approved by Abdallah on
+  2026-07-27 in architecture, security, operations, and release capacities;
+  owning ADR ADR-0011.
+- **Approved decision:** production Swagger is disabled; approved audience is
+  none and risk acceptor is none. Non-production exposure remains explicitly
+  configurable. Current always-mounted behavior is an implementation gap.
 - **Reasoning / alternatives:** public schema increases reconnaissance surface;
   disabling may hinder integrators without another access path.
 - **Impacts:** DTO/runtime APIs unchanged; documentation availability changes.
   No DB impact.
 - **Operations / rollback:** configuration-only exposure with audit; never
   expose secrets/examples.
-- **Phase / approval / reopen:** Phase 1 boundary and Phase 8 external exposure; consumer/security approval missing.
-  Reopen for approved developer portal requirements.
+- **Phase / approval / reopen:** Phase 1 boundary and Phase 8 external exposure
+  evidence remain gated. Reopen for an explicitly approved production
+  developer-portal or restricted-audience requirement.
 
 ### PRD0-D035 — Limit public root and health diagnostics
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; root says “Hello World” and
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; root says “Hello World” and
   health returns queue/email/push details publicly (EVD-046–EVD-047, EVD-060).
-- **Options / recommendation:** retain; remove; minimal public status plus
-  protected operational detail. Recommend the last while preserving compatible
-  public shape until clients/monitors are inventoried.
+- **Approval authority:** owning question PRD0-Q030; approved by Abdallah on
+  2026-07-27 in product, architecture, security, operations, and release
+  capacities; owning ADR ADR-0010.
+- **Approved decision:** public root becomes a minimal service identity and
+  version response with no development greeting or internal topology. Public
+  health exposes only status, version, and timestamp; protected operational
+  probes carry role-specific detail. Compatibility window is one release
+  cycle. Current responses remain an implementation gap.
 - **Reasoning / alternatives:** sensitive topology detail is unnecessary
   publicly; abrupt route removal is deferred under D002.
 - **Impacts:** additive protected endpoint; possible coordinated response
   reduction; no schema. Apply rate limit and no credential/error leakage.
 - **Operations / rollback:** keep monitor compatibility and version dashboards/
   probes before response changes.
-- **Phase / approval / reopen:** Phase 1 minimum boundary and Phase 7 full diagnostics; monitor consumers/security approval
-  missing. Reopen after monitoring inventory.
+- **Phase / approval / reopen:** Phase 1 minimum boundary and Phase 7 full
+  diagnostics remain gated. Reopen after monitor inventory or an approved
+  public-contract change.
 
 ## R1 storage and lifecycle decision records
 
-The following records are all `OWNER_DECISION_REQUIRED`. The recommendation
-column in the summary is advice only; silence selects nothing.
+### PRD0-D037 — Enforce Reinforcement proof-type MIME policy
+
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; EVD-078 proves the
+  current ownership/private checks and the missing proof-type/content match.
+- **Approval authority:** owning question PRD0-Q032; approved by Abdallah on
+  2026-07-27 in product, architecture, and security capacities; owning ADR ADR-0013.
+- **Approved decision:** IMAGE allows `image/jpeg` and `image/png`; VIDEO allows
+  `video/mp4` and `video/webm`; DOCUMENT allows `application/pdf`. Declared MIME
+  and detected content must both match the selected proof type. Missing,
+  ambiguous, malformed, or cross-type content is rejected before submission,
+  with no silent remapping.
+- **Compatibility and security:** preserve the current non-`NONE`
+  `proofFileId` requirement and organization, school, student-uploader,
+  private-visibility, authorization, and download controls. Negative
+  cross-type tests are mandatory.
+- **Implementation distinction:** the policy is approved but not implemented;
+  PRD1-G06 and PRD5B-G03 remain `NOT_STARTED`.
+- **Phase / reopen:** earliest safe Phase 1 focused gate, with Phase 5B
+  regression ownership. Reopen for a new proof type, supported MIME, detector
+  policy, or approved client-compatibility change.
+
+All other records in the following table remain
+`OWNER_DECISION_REQUIRED`. The recommendation column in the summary is advice
+only; silence selects nothing.
 
 | Decisions | Evidence and decision boundary | Required by / reopen condition |
 |---|---|---|
 | PRD0-D036 Parent messaging upload | EVD-079 proves send permission without default upload permission or Parent multipart. Choose Q031 A/B/C/D; preserve current API unless explicitly changed. | Phase 1 safety/compatibility review and Phase 5B policy implementation; reopen on Parent contract change |
-| PRD0-D037 Reinforcement MIME policy | EVD-078 proves ownership/private checks but no proof-type/content match. Approve allowed declared/detected MIME and compatibility. | earliest safe Phase 1 focused gate; reopen for new proof type/client |
 | PRD0-D038 Generic detected validation | EVD-068 proves declared-only current upload. Decide purpose-aware detection, mismatch, active-content, and rejection behavior. | Phase 5B; reopen for new type/purpose |
 | PRD0-D039 Malware scanning | No universal scanner exists. Name provider, placement, quarantine, timeouts, availability failure policy, privacy/residency, and cost owner. | Phase 5B or defer with binding launch constraint; reopen on provider/threat change |
 | PRD0-D040 File-purpose classification | Purpose may be derived or explicitly represented. A file may serve multiple relations. No `originPurpose` schema field is approved here. | Phase 5B design; reopen if schema/backfill becomes necessary |
@@ -698,23 +775,25 @@ complete.
 | Phase 8 — Terraform, CI/CD, and Production-Equivalent Staging | IaC, artifact, deploy order, staging, release-candidate full gate | PRD0-D026–PRD0-D032 |
 | Phase 9 — Failure Drills, Progressive Launch, and Final Closeout | failure/migration drills, launch, rollback/forward-fix, final evidence | approved objectives and all prior blocking gates |
 
-## Proposed ADR sequence
+## ADR ownership sequence
 
-The next available number after current ADR-0003 is ADR-0004. These are titles
-only; Phase 0A does **not** create ADR files.
+The Phase 0A ownership map remains authoritative. Phase 0B creates only the
+ADRs required to record approved answers; missing numbers stay reserved for
+their pending decision groups. An ADR that contains approved and pending
+decisions uses decision-level status and does not accept a pending decision.
 
-| Proposed number | Proposed title | Decisions covered | Creation condition |
+| Number | Title | Decisions covered | Phase 0B disposition |
 |---|---|---|---|
-| ADR-0004 | Production Runtime Roles in the Modular Monolith | owns D004–D007 | Q001, Q002, Q010, Q011, and Q028 where command/image behavior is included; Q003 is not a logical-boundary prerequisite |
-| ADR-0005 | Learning Media Asynchronous Completion Compatibility | owns D008 | Q009 contract approval; capacity evidence is referenced, not defined here |
-| ADR-0006 | Production Data Source, Object Storage, and Signed Capability Boundary | owns D009–D010, D019, D022, D029, D049–D053 | storage/data/identity/direct-URL inventory answers |
-| ADR-0007 | Cloud SQL Topology, Connection Budgets, and Migration Job | owns D011–D012, D026–D027 | region and migration answers; references ADR-0012 objectives and ADR-0006 data-source branch |
-| ADR-0008 | Redis Workload Isolation and Failure Policy | owns D013–D015 | Redis/fallback/recovery answers; references, but does not own, ADR-0012 capacity |
-| ADR-0009 | GCP Environment, Workload Identity, Secrets, and Crypto | owns D017–D021, D023 | project/IAM/secret/key answers |
-| ADR-0010 | Production Health and Observability Contract | owns D024–D025, D035 | probe/SLO/diagnostic answers; SLO values reference ADR-0012 capacity |
-| ADR-0011 | Artifact, Runtime Version, Staging, and Promotion | owns D032–D034 | runtime/release decisions |
-| ADR-0012 | Capacity, Backup, RTO/RPO, and Recovery Objectives | owns D016, D028, D030–D031 | Q003/Q007/Q014/Q015/Q016/Q025; this is the sole authoritative owner of capacity and backup/RTO/RPO policy |
-| ADR-0013 | File Security, Retention, and Reference-Aware Lifecycle | owns D036–D048 | file policy/retention/legal-hold answers; references ADR-0006 provider/data decisions without redefining them |
+| ADR-0004 | Production Runtime Roles in the Modular Monolith | owns D004–D007 | created and accepted through Q001, Q002, Q010, and Q011; Q003 is not a logical-boundary prerequisite |
+| ADR-0005 | Learning Media Asynchronous Completion Compatibility | owns D008 | reserved; Q009 remains pending |
+| ADR-0006 | Production Data Source, Object Storage, and Signed Capability Boundary | owns D009–D010, D019, D022, D029, D049–D053 | created; accepts D022/Q022 only; all other owned decisions remain pending or proposed |
+| ADR-0007 | Cloud SQL Topology, Connection Budgets, and Migration Job | owns D011–D012, D026–D027 | reserved; region and migration answers remain pending |
+| ADR-0008 | Redis Workload Isolation and Failure Policy | owns D013–D015 | reserved; Redis/fallback/recovery answers remain pending |
+| ADR-0009 | GCP Environment, Workload Identity, Secrets, and Crypto | owns D017–D021, D023 | reserved; project/IAM/secret/key answers remain pending |
+| ADR-0010 | Production Health and Observability Contract | owns D024–D025, D035 | created; accepts D024/Q024 and D035/Q030; D025/Q025 remains pending |
+| ADR-0011 | Artifact, Runtime Version, Staging, and Promotion | owns D032–D034 | created; accepts D033/Q028 and D034/Q029; D032/Q027 remains pending |
+| ADR-0012 | Capacity, Backup, RTO/RPO, and Recovery Objectives | owns D016, D028, D030–D031 | reserved; capacity and backup/RTO/RPO answers remain pending |
+| ADR-0013 | File Security, Retention, and Reference-Aware Lifecycle | owns D036–D048 | created; accepts D037/Q032 only; all other owned decisions remain pending |
 
 Each listed major decision has exactly one owning ADR. Other ADRs may cite the
 owning record but must not redefine it, especially for capacity and
@@ -722,7 +801,8 @@ backup/RTO/RPO policy.
 
 ## Decision closure rule
 
-This register is a draft. `OWNER_DECISION_REQUIRED` entries remain open until
-the owner supplies the exact questionnaire answers, impacts are reconciled,
-ADRs are approved, and Phase 0B records the final state. Absence of an answer
-does not select the recommended default.
+This register records the ten approved decision changes above while all
+`OWNER_DECISION_REQUIRED` entries remain open until the owner supplies the
+exact questionnaire answers, impacts are reconciled, and their owning ADRs are
+approved. Absence of an answer does not select the recommended default or
+authorize implementation.
