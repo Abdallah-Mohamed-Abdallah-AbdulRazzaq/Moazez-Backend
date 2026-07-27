@@ -113,11 +113,11 @@ risk mode.
 
 ## Bootstrap failure and public root
 
-Bootstrap failures emit only `Application bootstrap failed` and set exit status
+Bootstrap failures emit only `Application bootstrap failed` and set exit status `1`.
 
-1. The helper never logs or serializes the thrown value, message, stack,
-   multiline payload, URL, credential, token, key, or arbitrary object. This does
-   not introduce shutdown or drain behavior assigned to PRD1-G02.
+The helper never logs or serializes the thrown value, message, stack,
+multiline payload, URL, credential, token, key, or arbitrary object. This does
+not introduce shutdown or drain behavior assigned to PRD1-G02.
 
 `GET /api/v1` now returns exactly:
 
