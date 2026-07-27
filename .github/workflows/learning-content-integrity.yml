@@ -122,11 +122,14 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22.23.1'
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Verify supported runtime policy
+        run: npm run verify:runtime-policy
 
       - name: Check migration governance
         run: npm run db:migrations:check

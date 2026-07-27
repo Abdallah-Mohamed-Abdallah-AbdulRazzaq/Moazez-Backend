@@ -97,9 +97,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22.23.1'
           cache: npm
       - run: npm ci
+      - name: Verify supported runtime policy
+        run: npm run verify:runtime-policy
       - name: Check migration governance
         run: npm run db:migrations:check
       - name: Validate current Prisma schema
@@ -152,6 +154,16 @@ jobs:
 
       - name: Build canonical runtime image
         run: DOCKER_BUILDKIT=1 docker build --tag moazez-learning-media:${{ github.sha }} .
+      - name: Verify exact Node runtime
+        run: >-
+          docker run --rm --entrypoint sh
+          moazez-learning-media:${{ github.sha }}
+          -c 'test "$(node --version)" = "v22.23.1"'
+      - name: Verify Firebase Admin runtime imports
+        run: >-
+          docker run --rm --entrypoint node
+          moazez-learning-media:${{ github.sha }}
+          -e 'require("firebase-admin/app"); require("firebase-admin/messaging")'
       - name: Build canonical media test target
         run: >-
           DOCKER_BUILDKIT=1 docker build --target media-test

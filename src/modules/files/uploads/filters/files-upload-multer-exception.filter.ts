@@ -8,9 +8,9 @@ import {
   NestInterceptor,
   PayloadTooLargeException,
 } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import { catchError, Observable, throwError } from 'rxjs';
+import { getCurrentRequestId } from '../../../../common/context/request-context';
 import { FILES_UPLOAD_MAX_SIZE_BYTES } from '../domain/file-upload.constraints';
 import { FilesUploadSizeExceededException } from '../domain/file-upload.exceptions';
 
@@ -39,7 +39,6 @@ export class FilesUploadMulterExceptionFilter implements ExceptionFilter {
     }
 
     const http = host.switchToHttp();
-    const request = http.getRequest<Request>();
     const response = http.getResponse<Response>();
     const error = new FilesUploadSizeExceededException({
       maxSizeBytes: FILES_UPLOAD_MAX_SIZE_BYTES,
@@ -50,7 +49,7 @@ export class FilesUploadMulterExceptionFilter implements ExceptionFilter {
         code: error.code,
         message: error.message,
         details: error.details,
-        traceId: request.header('x-trace-id') || randomUUID(),
+        traceId: getCurrentRequestId(),
       },
     });
   }

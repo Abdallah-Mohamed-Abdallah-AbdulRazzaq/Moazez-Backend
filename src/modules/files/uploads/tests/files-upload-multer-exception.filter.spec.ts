@@ -5,6 +5,10 @@ import {
   PayloadTooLargeException,
 } from '@nestjs/common';
 import { lastValueFrom, throwError } from 'rxjs';
+import {
+  createRequestContext,
+  runWithRequestContext,
+} from '../../../../common/context/request-context';
 import { FilesUploadSizeExceededException } from '../domain/file-upload.exceptions';
 import { FILES_UPLOAD_MAX_SIZE_BYTES } from '../domain/file-upload.constraints';
 import {
@@ -64,7 +68,7 @@ describe('FilesUploadMulterExceptionFilter', () => {
   const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-  function createHttpHost(traceId?: string): {
+  function createHttpHost(headers: Record<string, string> = {}): {
     host: ArgumentsHost;
     response: {
       status: jest.Mock<unknown, [number]>;
@@ -77,7 +81,7 @@ describe('FilesUploadMulterExceptionFilter', () => {
     };
     response.status.mockReturnValue(response);
     const request = {
-      header: jest.fn().mockReturnValue(traceId),
+      header: jest.fn((name: string) => headers[name.toLowerCase()]),
     };
     const host = {
       switchToHttp: () => ({
@@ -90,16 +94,18 @@ describe('FilesUploadMulterExceptionFilter', () => {
   }
 
   it('maps only LIMIT_FILE_SIZE to the stable 413 envelope', () => {
-    const { host, response } = createHttpHost('stable-trace-id');
+    const { host, response } = createHttpHost();
     const filter = new FilesUploadMulterExceptionFilter();
 
-    filter.catch(
-      {
-        code: 'LIMIT_FILE_SIZE',
-        field: 'file',
-        storageErrors: ['must-not-leak'],
-      },
-      host,
+    runWithRequestContext(createRequestContext('stable-request-id'), () =>
+      filter.catch(
+        {
+          code: 'LIMIT_FILE_SIZE',
+          field: 'file',
+          storageErrors: ['must-not-leak'],
+        },
+        host,
+      ),
     );
 
     const authoritativeError = new FilesUploadSizeExceededException({
@@ -111,7 +117,7 @@ describe('FilesUploadMulterExceptionFilter', () => {
         code: authoritativeError.code,
         message: authoritativeError.message,
         details: { maxSizeBytes: FILES_UPLOAD_MAX_SIZE_BYTES },
-        traceId: 'stable-trace-id',
+        traceId: 'stable-request-id',
       },
     });
   });
@@ -128,7 +134,7 @@ describe('FilesUploadMulterExceptionFilter', () => {
     expect(response.json).not.toHaveBeenCalled();
   });
 
-  it('generates a non-empty UUID when x-trace-id is absent', () => {
+  it('generates a non-empty UUID when request context is absent', () => {
     const { host, response } = createHttpHost();
     const filter = new FilesUploadMulterExceptionFilter();
 
@@ -140,15 +146,19 @@ describe('FilesUploadMulterExceptionFilter', () => {
     expect(envelope.error.traceId).toMatch(uuidPattern);
   });
 
-  it('preserves an existing x-trace-id', () => {
-    const { host, response } = createHttpHost('caller-trace-id');
+  it('ignores x-trace-id and uses the canonical request context', () => {
+    const { host, response } = createHttpHost({
+      'x-trace-id': 'caller-trace-id',
+    });
     const filter = new FilesUploadMulterExceptionFilter();
 
-    filter.catch({ code: 'LIMIT_FILE_SIZE' }, host);
+    runWithRequestContext(createRequestContext('canonical-request-id'), () =>
+      filter.catch({ code: 'LIMIT_FILE_SIZE' }, host),
+    );
 
     const envelope = response.json.mock.calls[0][0] as {
       error: { traceId: string };
     };
-    expect(envelope.error.traceId).toBe('caller-trace-id');
+    expect(envelope.error.traceId).toBe('canonical-request-id');
   });
 });

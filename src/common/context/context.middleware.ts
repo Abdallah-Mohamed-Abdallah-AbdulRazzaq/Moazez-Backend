@@ -1,19 +1,12 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
-import {
-  createRequestContext,
-  runWithRequestContext,
-} from './request-context';
-
-const REQUEST_ID_HEADER = 'x-request-id';
+import { REQUEST_ID_HEADER } from './correlation-id';
+import { createRequestContext, runWithRequestContext } from './request-context';
 
 @Injectable()
 export class RequestContextMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction): void {
-    const inboundId = req.header(REQUEST_ID_HEADER);
-    const context = createRequestContext(
-      inboundId && inboundId.length > 0 ? inboundId : undefined,
-    );
+    const context = createRequestContext(req.headers[REQUEST_ID_HEADER]);
 
     res.setHeader(REQUEST_ID_HEADER, context.requestId);
 

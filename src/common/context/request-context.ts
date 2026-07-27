@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomUUID } from 'node:crypto';
 import type { UserType } from '@prisma/client';
+import { resolveCorrelationId } from './correlation-id';
 
 export interface RequestActor {
   id: string;
@@ -60,11 +60,15 @@ export function runWithRequestContext<T>(
   return storage.run(context, fn);
 }
 
-export function createRequestContext(requestId?: string): RequestContext {
+export function createRequestContext(requestId?: unknown): RequestContext {
   return {
-    requestId: requestId ?? randomUUID(),
+    requestId: resolveCorrelationId(requestId),
     bypass: { bypassSchoolScope: false, includeSoftDeleted: false },
   };
+}
+
+export function getCurrentRequestId(): string {
+  return resolveCorrelationId(storage.getStore()?.requestId);
 }
 
 export function setActor(actor: RequestActor): void {

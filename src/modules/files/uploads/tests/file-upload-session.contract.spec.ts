@@ -63,7 +63,7 @@ describe('learning media upload foundation contract', () => {
     );
 
     expect(dockerfile).toContain(
-      'node:20.19.4-bookworm-slim@sha256:6db5e436948af8f0244488a1f658c2c8e55a3ae51ca2e1686ed042be8f25f70a',
+      'node:22.23.1-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3',
     );
     expect(dockerfile).toContain('FFMPEG_PACKAGE_VERSION=7:5.1.9-0+deb12u1');
     expect(dockerfile).toContain('USER node');
@@ -129,13 +129,20 @@ describe('learning media upload foundation contract', () => {
       STORAGE_PUBLIC_BUCKET: 'public',
     };
 
-    expect(() => validateEnv({ ...base, NODE_ENV: 'production' })).toThrow(
-      /STORAGE_CORS_ORIGINS is required/u,
-    );
+    expect(() =>
+      validateEnv({
+        ...base,
+        NODE_ENV: 'production',
+        APP_CORS_ORIGINS:
+          'https://schools.moazez.cloud,https://admin.moazez.cloud',
+      }),
+    ).toThrow(/STORAGE_CORS_ORIGINS is required/u);
     expect(() =>
       validateEnv({
         ...base,
         NODE_ENV: 'staging',
+        APP_CORS_ORIGINS:
+          'https://staging-schools.moazez.cloud,https://staging-admin.moazez.cloud',
         STORAGE_CORS_ORIGINS: '*',
       }),
     ).toThrow(/Invalid url/u);
@@ -143,6 +150,8 @@ describe('learning media upload foundation contract', () => {
       validateEnv({
         ...base,
         NODE_ENV: 'production',
+        APP_CORS_ORIGINS:
+          'https://schools.moazez.cloud,https://admin.moazez.cloud',
         STORAGE_CORS_ORIGINS: 'https://app.example.test',
       }).STORAGE_CORS_ORIGINS,
     ).toEqual(['https://app.example.test']);

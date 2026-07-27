@@ -24,8 +24,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { randomUUID } from 'node:crypto';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
+import { getCurrentRequestId } from '../../../../common/context/request-context';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
 import { DeleteBrandingLogoUseCase } from '../application/delete-branding-logo.use-case';
@@ -47,7 +47,6 @@ class BrandingLogoMultipartExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
     const response = http.getResponse<Response>();
-    const request = http.getRequest<Request>();
 
     if (
       isMulterFileSizeError(exception) ||
@@ -62,7 +61,7 @@ class BrandingLogoMultipartExceptionFilter implements ExceptionFilter {
           code: error.code,
           message: error.message,
           details: error.details,
-          traceId: request.header('x-trace-id') || randomUUID(),
+          traceId: getCurrentRequestId(),
         },
       });
       return;

@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
+import { configureHttpApplication } from './../src/bootstrap/http-application';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
@@ -13,14 +14,23 @@ describe('AppController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    configureHttpApplication(app, {
+      environment: 'test',
+      corsOrigins: 'http://localhost:3001',
+      swaggerEnabled: false,
+    });
     await app.init();
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('Hello World!');
+  it('/api/v1 (GET)', () => {
+    return request(app.getHttpServer()).get('/api/v1').expect(200).expect({
+      service: 'moazez-backend',
+      version: '0.0.1',
+    });
+  });
+
+  it('/ is not the public identity endpoint', () => {
+    return request(app.getHttpServer()).get('/').expect(404);
   });
 
   afterEach(async () => {

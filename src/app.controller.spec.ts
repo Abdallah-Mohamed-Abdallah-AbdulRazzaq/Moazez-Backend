@@ -15,8 +15,11 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('returns only the public service identity', () => {
+      expect(appController.getIdentity()).toEqual({
+        service: 'moazez-backend',
+        version: '0.0.1',
+      });
     });
   });
 });

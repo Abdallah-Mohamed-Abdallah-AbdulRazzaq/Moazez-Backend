@@ -6,8 +6,8 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
 import { Request, Response } from 'express';
+import { getCurrentRequestId } from '../context/request-context';
 import { DomainException } from './domain-exception';
 
 interface ErrorEnvelope {
@@ -28,7 +28,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    const traceId = this.resolveTraceId(request);
+    const traceId = getCurrentRequestId();
 
     const { status, envelope } = this.toEnvelope(exception, traceId);
 
@@ -122,7 +122,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   } {
     switch (status) {
       case HttpStatus.BAD_REQUEST:
-        return { code: 'validation.failed', message: 'Request validation failed' };
+        return {
+          code: 'validation.failed',
+          message: 'Request validation failed',
+        };
       case HttpStatus.UNAUTHORIZED:
         return { code: 'auth.token.invalid', message: 'Unauthorized' };
       case HttpStatus.FORBIDDEN:
@@ -134,14 +137,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       case HttpStatus.TOO_MANY_REQUESTS:
         return { code: 'rate_limit.exceeded', message: 'Too many requests' };
       default:
-        return { code: 'internal_error', message: 'An unexpected error occurred' };
+        return {
+          code: 'internal_error',
+          message: 'An unexpected error occurred',
+        };
     }
-  }
-
-  private resolveTraceId(request: Request): string {
-    const headerTraceId = request.header('x-trace-id');
-    return headerTraceId && headerTraceId.length > 0
-      ? headerTraceId
-      : randomUUID();
   }
 }
