@@ -12,7 +12,7 @@
 | Timezone | Africa/Cairo |
 | Approval capacities | product, architecture, security, operations, release |
 | Scope | Owner dispositions and architecture-governance lock only; no implementation or cloud provisioning |
-| Current status | `PARTIAL_OWNER_APPROVAL_RECORDED_ARCHITECTURE_REVIEW_PENDING` |
+| Current status | `PHASE_0B_OWNER_DISPOSITIONS_RECORDED` |
 
 ## Authority statement
 
@@ -24,6 +24,13 @@ not evidence of current implementation.
 Every other owner question remains explicitly pending. A pending disposition
 does not select its recommended default, cannot unblock its dependent phase,
 and authorizes no implementation or cloud provisioning through silence.
+
+## Post-merge closeout note
+
+PR #46 merged the ten approved answers, and those answers remain binding. The
+other 38 answers remain pending and block only their dependent later phases.
+Silence selects no recommendation. Authoritative post-merge evidence is in
+`07-phase-0b-post-merge-closeout.md`.
 
 ## All-question disposition register
 

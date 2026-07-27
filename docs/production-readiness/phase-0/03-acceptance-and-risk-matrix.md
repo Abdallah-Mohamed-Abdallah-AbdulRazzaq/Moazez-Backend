@@ -29,9 +29,10 @@ production-shaped release-candidate gate.
 
 ### Phase 0B — Owner Decisions, ADR Lock, and Phase 0 Closeout
 
-The Phase 0B decision package is ready for architecture review. Documentation
-gates PRD0B-G01 through PRD0B-G06 are complete; review/merge and post-merge
-baseline gates PRD0B-G07 and PRD0B-G08 remain open. Phase 0B is not complete.
+PRD0B-G01 through PRD0B-G08 now have completion evidence, and this post-merge
+closeout record is ready for review. Phase 0B is technically closed by the
+recorded evidence. Phase 1 becomes authorized only after this closeout package
+is reviewed and merged into `main`.
 
 | Gate | Blocking acceptance criterion | Verification method | Blocking | Owner | Current status | Fully qualified prerequisites | Rollback / recovery evidence | Exact completion evidence |
 |---|---|---|---|---|---|---|---|---|
@@ -41,8 +42,8 @@ baseline gates PRD0B-G07 and PRD0B-G08 remain open. Phase 0B is not complete.
 | PRD0B-G04 | No ambiguous gate reference remains; all prerequisites are fully qualified. | validator fails prerequisite cells containing bare `Gnn` | Yes | Architecture reviewer | COMPLETE | none | correct draft before merge | 74 unique gate rows validated with the PRD0B/PRD1–PRD4/PRD5A/PRD5B/PRD6–PRD9 grammar and zero bare, malformed, or unresolved prerequisites |
 | PRD0B-G05 | Decision register, acceptance matrix, risk register, and questionnaire agree on IDs, phases, conditions, ownership, and deadlines. | cross-document consistency validator and review | Yes | Architecture owner | COMPLETE | PRD0B-G01–PRD0B-G04 | reopen inconsistent record | reconciliation and approved D/Q/ADR authority map in `06-phase-0b-decision-and-adr-review.md`; validators confirm 53 decisions, 48 question dispositions, 74 gates, and 38 risks |
 | PRD0B-G06 | LIM-001 is governed: create/approve canonical `DIRECTORY_STRUCTURE.md` or update authoritative reading references to the actual canonical visual path. | governance diff and approval | Yes | Governance owner | COMPLETE | PRD0B-G05 | revert/supersede governance change | owner-authorized `DIRECTORY_STRUCTURE.md` canonical entrypoint names `DIRECTORY_STRUCTURE_VISUAL.md`, defines placement boundaries, and passes the non-duplication/canonical-path validator |
-| PRD0B-G07 | Documentation PR is independently reviewed and merged. | GitHub review/merge evidence | Yes | Documentation + architecture reviewers | NOT_STARTED | PRD0B-G01–PRD0B-G06 | revert documentation PR if unsafe | merged documentation commit |
-| PRD0B-G08 | Implementation baseline is reverified after merge; moved `main` is reconciled before Phase 1. | branch/HEAD/main/worktree and evidence-drift check | Yes | Release + architecture | NOT_STARTED | PRD0B-G07 | stop Phase 1 and rebaseline documentation | signed post-merge baseline record |
+| PRD0B-G07 | Documentation PR is independently reviewed and merged. | GitHub review/merge evidence | Yes | Documentation + architecture reviewers | COMPLETE | PRD0B-G01–PRD0B-G06 | revert documentation PR if unsafe | the governing architecture/documentation review accepted the package before publication; PR #46 merged head commit `a3c86b8f6a97cbecebdf52534862eddddd40d554` into `main` as merge commit `a855392cf094fcf151b2b02277189031bd3bac7b`; Learning Content Integrity / Lesson Content atomicity and visibility, Learning Media Integrity / learning-media-integrity, and Migration Integrity / Fresh PostgreSQL replay succeeded; GitHub and Git inspection prove the exact ten-path documentation-only scope |
+| PRD0B-G08 | Implementation baseline is reverified after merge; moved `main` is reconciled before Phase 1. | branch/HEAD/main/worktree and evidence-drift check | Yes | Release + architecture | COMPLETE | PRD0B-G07 | stop Phase 1 and rebaseline documentation | `07-phase-0b-post-merge-closeout.md`; local `HEAD`, `origin/main`, and inspected live remote `main` all equal `a855392cf094fcf151b2b02277189031bd3bac7b`; preflight worktree and index were clean with zero ahead/behind; D/Q/G/RSK totals, ADR ownership/reservations, and prerequisites validated; comparison with `52b27e5025659be162350c6ad846554f74ceec6c` proves exactly the ten approved documentation paths and zero implementation drift |
 
 ### Phase 1 — Supported Runtime and Bootstrap Hardening
 

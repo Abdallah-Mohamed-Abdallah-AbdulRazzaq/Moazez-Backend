@@ -12,11 +12,13 @@
 | Approval date | 2026-07-27 |
 | Timezone | Africa/Cairo |
 | Scope | Owner-decision, ADR, acceptance-gate, and directory-governance documentation only |
-| Document status | `PHASE_0B_DECISION_PACKAGE_READY_FOR_ARCHITECTURE_REVIEW` |
+| Document status | `PHASE_0B_DECISION_PACKAGE_MERGED_AND_POST_MERGE_VERIFIED` |
 
-This package is ready for architecture review. Phase 0B is not complete:
-PRD0B-G07 independent documentation review/merge and PRD0B-G08 post-merge
-baseline verification remain open. Phase 1 is not approved to start.
+PR #46 merged this decision package. PRD0B-G07 and PRD0B-G08 now have
+completion evidence, with authoritative closeout evidence in
+`07-phase-0b-post-merge-closeout.md`. This closeout task remains
+documentation-only. Phase 1 begins only after the closeout package is reviewed
+and merged into `main`.
 
 ## Owner approval record
 
@@ -126,31 +128,27 @@ All reads and document validators use strict UTF-8 decoding.
 | PRD0B-G04 | COMPLETE | 74-gate prerequisite grammar and reference validator |
 | PRD0B-G05 | COMPLETE | this reconciliation report and cross-document count/status validation |
 | PRD0B-G06 | COMPLETE | canonical directory entrypoint and non-duplication validation |
-| PRD0B-G07 | NOT_STARTED | independent review and merge evidence do not exist |
-| PRD0B-G08 | NOT_STARTED | post-merge implementation-baseline verification cannot occur before G07 |
+| PRD0B-G07 | COMPLETE | governing architecture/documentation review; PR #46; decision-package commit `a3c86b8f6a97cbecebdf52534862eddddd40d554`; merge commit `a855392cf094fcf151b2b02277189031bd3bac7b`; successful Learning Content Integrity / Lesson Content atomicity and visibility, Learning Media Integrity / learning-media-integrity, and Migration Integrity / Fresh PostgreSQL replay checks; exact ten-path documentation-only scope |
+| PRD0B-G08 | COMPLETE | `07-phase-0b-post-merge-closeout.md`; verified baseline `a855392cf094fcf151b2b02277189031bd3bac7b`; clean and synchronized local/`origin/main`/live-remote evidence; zero implementation drift |
 
-PRD0B-G07 and PRD0B-G08 remain open. No Phase 1, Phase 2, or Phase 5B
-implementation gate is complete.
+PRD0B-G01 through PRD0B-G08 have completion evidence. No Phase 1, Phase 2, or
+Phase 5B implementation gate is complete.
 
-## Exact next steps after architecture review
+## Exact next steps
 
-1. Resolve any architecture-review findings only within an explicitly approved
-   documentation scope.
-2. Obtain independent documentation and architecture approval.
-3. Have an authorized owner commit, push, open, review, and merge the
-   documentation change through the repository workflow; this task performs
-   none of those actions.
-4. Record PRD0B-G07 merge evidence.
-5. Reverify `main`, the implementation baseline, committed evidence paths,
-   decisions, ADR ownership, and source drift after merge. Reconcile any moved
-   baseline before recording PRD0B-G08.
-6. Start Phase 1 only through a separate authorized implementation task after
-   both PRD0B-G07 and PRD0B-G08 close.
+1. Review this closeout package.
+2. Owner stages and commits the exact closeout scope.
+3. Owner pushes and opens the documentation-only PR.
+4. Owner reviews and merges it.
+5. Synchronize local `main`.
+6. Verify no non-documentation drift.
+7. Begin Phase 1 through a separate implementation branch and task.
 
 ## Scope and safety attestation
 
-This package records decisions and governance only. It does not claim Phase 0B
-completion, Phase 1 authorization, implementation, GCS approval, file
+This package records decisions, governance, and post-merge verification. It
+records the technical Phase 0B closure evidence but does not authorize Phase 1
+before this closeout is merged, or claim implementation, GCS approval, file
 lifecycle approval, asynchronous Learning Media approval, destructive cleanup
 approval, cloud provisioning, or production readiness.
 
