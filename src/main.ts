@@ -1,65 +1,29 @@
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { Express } from 'express';
 import { AppModule } from './app.module';
-
-const GLOBAL_PREFIX = 'api/v1';
+import { handleBootstrapFailure } from './bootstrap/bootstrap-failure';
+import {
+  configureHttpApplication,
+  logHttpApplicationStarted,
+} from './bootstrap/http-application';
+import type { Env } from './config/env.validation';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
-
-  app.setGlobalPrefix(GLOBAL_PREFIX);
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: { enableImplicitConversion: false },
-    }),
-  );
-
-  app.enableCors({
-    origin: process.env.NODE_ENV === 'production' ? false : true,
-    credentials: true,
+  const config = app.get<ConfigService<Env, true>>(ConfigService);
+  const configured = configureHttpApplication(app, {
+    environment: config.get('NODE_ENV', { infer: true }),
+    corsOrigins: config.get('APP_CORS_ORIGINS', { infer: true }),
+    swaggerEnabled: config.get('SWAGGER_ENABLED', { infer: true }),
   });
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Moazez API')
-    .setDescription(
-      'Moazez backend HTTP API. All routes are served under /api/v1.',
-    )
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .addTag('auth', 'Authentication, sessions, and current actor identity')
-    .addTag('settings-users', 'School user identity management')
-    .addTag(
-      'settings-login-identity',
-      'School login domains, username policy, and generated login emails',
-    )
-    .addTag('settings-user-credentials', 'Password credential provisioning')
-    .addTag(
-      'settings-email-connection',
-      'School outbound email provider connection',
-    )
-    .addTag('settings-email-templates', 'School email templates and previews')
-    .addTag(
-      'settings-email-credential-deliveries',
-      'Queue-backed credential email delivery',
-    )
-    .addTag('settings-email-deliveries', 'Email delivery batch monitoring')
-    .addTag('settings-email-campaigns', 'General school email campaigns')
-    .build();
-  const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup(`${GLOBAL_PREFIX}/docs`, app, swaggerDocument);
-
-  const port = Number(process.env.APP_PORT ?? process.env.PORT ?? 3000);
+  const port = config.get('APP_PORT', { infer: true });
   await app.listen(port);
 
-  logger.log(`Listening on http://localhost:${port}/${GLOBAL_PREFIX}`);
-  logger.log(`Swagger UI: http://localhost:${port}/${GLOBAL_PREFIX}/docs`);
+  logHttpApplicationStarted(logger, port, configured);
   logRegisteredRoutes(app.getHttpAdapter().getInstance() as Express, logger);
 }
 
@@ -89,8 +53,4 @@ function logRegisteredRoutes(server: Express, logger: Logger): void {
   }
 }
 
-bootstrap().catch((error) => {
-  // eslint-disable-next-line no-console
-  console.error('Fatal bootstrap error:', error);
-  process.exit(1);
-});
+bootstrap().catch(handleBootstrapFailure);

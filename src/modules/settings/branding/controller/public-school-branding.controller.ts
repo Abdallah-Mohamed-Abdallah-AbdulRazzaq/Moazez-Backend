@@ -13,8 +13,8 @@ import {
   ApiServiceUnavailableResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
+import { getCurrentRequestId } from '../../../../common/context/request-context';
 import { PublicRoute } from '../../../../common/decorators/public-route.decorator';
 import { GetPublicSchoolBrandingLogoUseCase } from '../application/get-public-school-branding-logo.use-case';
 import { BRANDING_LOGO_CACHE_CONTROL } from '../domain/branding-logo.constants';
@@ -38,7 +38,7 @@ export class PublicSchoolBrandingController {
   @ApiServiceUnavailableResponse({ description: 'service_unavailable' })
   async getLogo(
     @Param('schoolId', new ParseUUIDPipe()) schoolId: string,
-    @Req() request: Request,
+    @Req() _request: Request,
     @Res() response: Response,
   ): Promise<void> {
     let result;
@@ -51,7 +51,7 @@ export class PublicSchoolBrandingController {
           error: {
             code: error.code,
             message: error.message,
-            traceId: request.header('x-trace-id') || randomUUID(),
+            traceId: getCurrentRequestId(),
           },
         });
         return;

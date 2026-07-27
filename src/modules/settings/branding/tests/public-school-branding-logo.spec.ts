@@ -2,6 +2,10 @@ import { PassThrough, Readable } from 'node:stream';
 import { ConfigService } from '@nestjs/config';
 import { FileVisibility } from '@prisma/client';
 import type { Request, Response } from 'express';
+import {
+  createRequestContext,
+  runWithRequestContext,
+} from '../../../../common/context/request-context';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import { GetPublicSchoolBrandingLogoUseCase } from '../application/get-public-school-branding-logo.use-case';
 import { ResolveSchoolLogoUrlService } from '../application/resolve-school-logo-url.service';
@@ -283,12 +287,12 @@ describe('public school branding logo delivery', () => {
       status: jest.fn().mockReturnThis(),
       json: jest.fn(),
     } as unknown as Response;
-    const request = {
-      header: jest.fn().mockReturnValue('trace-1'),
-    } as unknown as Request;
+    const request = {} as Request;
 
     await expect(
-      controller.getLogo(SCHOOL_ID, request, response),
+      runWithRequestContext(createRequestContext('request-1'), () =>
+        controller.getLogo(SCHOOL_ID, request, response),
+      ),
     ).resolves.toBeUndefined();
     expect(response.setHeader).toHaveBeenCalledWith(
       'Cache-Control',
@@ -299,7 +303,7 @@ describe('public school branding logo delivery', () => {
       error: {
         code: 'service_unavailable',
         message: 'Service temporarily unavailable',
-        traceId: 'trace-1',
+        traceId: 'request-1',
       },
     });
   });

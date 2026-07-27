@@ -1,6 +1,12 @@
 import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { UserType } from '@prisma/client';
+import { GATEWAY_OPTIONS } from '@nestjs/websockets/constants';
+import {
+  applicationCorsOriginDelegate,
+  configureApplicationCorsOrigins,
+} from '../../../bootstrap/application-cors.policy';
+import { getRequestContext } from '../../../common/context/request-context';
 import { TokenInvalidException } from '../../../modules/iam/auth/domain/auth.exceptions';
 import { RealtimeAuthService } from '../realtime-auth.service';
 import { RealtimeCommunicationAccessService } from '../realtime-communication-access.service';
@@ -19,6 +25,18 @@ describe('RealtimeGateway', () => {
 
   afterEach(() => {
     warnSpy.mockRestore();
+    configureApplicationCorsOrigins([]);
+  });
+
+  it('uses the shared HTTP and Socket.IO CORS decision helper', () => {
+    const options = Reflect.getMetadata(GATEWAY_OPTIONS, RealtimeGateway) as {
+      cors: { origin: unknown; credentials: boolean };
+    };
+
+    expect(options.cors).toEqual({
+      origin: applicationCorsOriginDelegate,
+      credentials: true,
+    });
   });
 
   it('disconnects unauthenticated sockets without joining tenant rooms', async () => {
@@ -75,6 +93,46 @@ describe('RealtimeGateway', () => {
       'school:school-1:user:user-1',
     ]);
     expect(client.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('stores one canonical request ID from the WebSocket handshake', async () => {
+    const gateway = new RealtimeGateway(
+      authServiceMock({
+        authenticate: jest.fn().mockResolvedValue(authenticatedContext()),
+      }),
+      accessServiceMock(),
+      publisherMock(),
+      configServiceMock(),
+      presenceServiceMock(),
+      typingServiceMock(),
+    );
+    const client = socketMock({}, { 'x-request-id': 'socket-request-1' });
+
+    await gateway.handleConnection(client);
+
+    expect(client.data.requestId).toBe('socket-request-1');
+  });
+
+  it('replaces an invalid WebSocket handshake request ID', async () => {
+    const gateway = new RealtimeGateway(
+      authServiceMock({
+        authenticate: jest.fn().mockResolvedValue(authenticatedContext()),
+      }),
+      accessServiceMock(),
+      publisherMock(),
+      configServiceMock(),
+      presenceServiceMock(),
+      typingServiceMock(),
+    );
+    const invalid = 'x'.repeat(129);
+    const client = socketMock({}, { 'x-request-id': invalid });
+
+    await gateway.handleConnection(client);
+
+    expect(client.data.requestId).not.toBe(invalid);
+    expect(client.data.requestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
+    );
   });
 
   it('registers authenticated socket presence when presence is enabled', async () => {
@@ -306,6 +364,34 @@ describe('RealtimeGateway', () => {
     });
   });
 
+  it('uses the canonical handshake ID for subsequent command contexts', async () => {
+    const typingService = typingServiceMock();
+    typingService.startTyping.mockImplementation(async () => {
+      expect(getRequestContext()?.requestId).toBe('socket-request-1');
+    });
+    const gateway = new RealtimeGateway(
+      authServiceMock(),
+      accessServiceMock(),
+      publisherMock(),
+      configServiceMock(),
+      presenceServiceMock(),
+      typingService,
+    );
+    const client = socketMock(
+      {
+        ...authenticatedSocketData(),
+        requestId: 'socket-request-1',
+      },
+      { 'x-request-id': 'later-header-must-not-replace-context' },
+    );
+
+    await gateway.handleTypingStart(client, {
+      conversationId: 'conversation-1',
+    });
+
+    expect(typingService.startTyping).toHaveBeenCalledTimes(1);
+  });
+
   it('passes authenticated typing stop commands to the typing service', async () => {
     const typingService = typingServiceMock();
     const gateway = new RealtimeGateway(
@@ -332,13 +418,16 @@ describe('RealtimeGateway', () => {
   });
 });
 
-function socketMock(data: RealtimeSocket['data'] = {}): RealtimeSocket {
+function socketMock(
+  data: RealtimeSocket['data'] = {},
+  headers: Record<string, string | string[]> = {},
+): RealtimeSocket {
   return {
     id: 'socket-1',
     data,
     handshake: {
       auth: {},
-      headers: {},
+      headers,
     },
     join: jest.fn().mockResolvedValue(undefined),
     leave: jest.fn().mockResolvedValue(undefined),

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseApplicationCorsOrigins } from '../bootstrap/application-cors.policy';
 
 const booleanFromString = z
   .enum(['true', 'false'])
@@ -17,6 +18,8 @@ export const envSchema = z
       .enum(['development', 'test', 'staging', 'production'])
       .default('development'),
     APP_URL: z.string().url(),
+    APP_CORS_ORIGINS: optionalNonEmptyString,
+    SWAGGER_ENABLED: booleanFromString.default('false'),
 
     DATABASE_URL: z.string().url(),
     REDIS_URL: z.string().url(),
@@ -70,6 +73,27 @@ export const envSchema = z
       .default('info'),
   })
   .superRefine((env, ctx) => {
+    try {
+      parseApplicationCorsOrigins(env.NODE_ENV, env.APP_CORS_ORIGINS);
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['APP_CORS_ORIGINS'],
+        message:
+          error instanceof Error
+            ? error.message
+            : 'APP_CORS_ORIGINS is invalid',
+      });
+    }
+
+    if (env.NODE_ENV === 'production' && env.SWAGGER_ENABLED) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SWAGGER_ENABLED'],
+        message: 'SWAGGER_ENABLED=true is forbidden in production',
+      });
+    }
+
     if (
       (env.NODE_ENV === 'staging' || env.NODE_ENV === 'production') &&
       !env.STORAGE_CORS_ORIGINS

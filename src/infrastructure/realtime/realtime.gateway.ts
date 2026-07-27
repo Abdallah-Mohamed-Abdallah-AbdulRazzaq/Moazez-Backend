@@ -14,6 +14,8 @@ import {
 import { createAdapter } from '@socket.io/redis-adapter';
 import IORedis from 'ioredis';
 import type { Server } from 'socket.io';
+import { applicationCorsOriginDelegate } from '../../bootstrap/application-cors.policy';
+import { REQUEST_ID_HEADER } from '../../common/context/correlation-id';
 import {
   createRequestContext,
   runWithRequestContext,
@@ -39,7 +41,7 @@ const REDIS_ADAPTER_CONNECT_TIMEOUT_MS = 1000;
 @WebSocketGateway({
   namespace: REALTIME_NAMESPACE,
   cors: {
-    origin: process.env.NODE_ENV === 'production' ? false : true,
+    origin: applicationCorsOriginDelegate,
     credentials: true,
   },
 })
@@ -73,12 +75,16 @@ export class RealtimeGateway
   }
 
   async handleConnection(client: RealtimeSocket): Promise<void> {
-    const context = createRequestContext(this.extractRequestId(client));
+    const context = createRequestContext(
+      client.handshake.headers[REQUEST_ID_HEADER],
+    );
 
     try {
       await runWithRequestContext(context, async () => {
         const authenticated = await this.authService.authenticate(client);
-        Object.assign(client.data, authenticated);
+        Object.assign(client.data, authenticated, {
+          requestId: context.requestId,
+        });
 
         await client.join([
           schoolRoom(authenticated.schoolId),
@@ -298,19 +304,12 @@ export class RealtimeGateway
     client.disconnect();
   }
 
-  private extractRequestId(client: RealtimeSocket): string | undefined {
-    const requestId = client.handshake.headers['x-request-id'];
-    const value = Array.isArray(requestId) ? requestId[0] : requestId;
-
-    return value && value.trim().length > 0 ? value : undefined;
-  }
-
   private runWithSocketContext<T>(
     client: RealtimeSocket,
     fn: (context: RealtimeAuthenticatedContext) => Promise<T>,
   ): Promise<T> {
     const context = this.requireAuthenticatedSocket(client);
-    const requestContext = createRequestContext(this.extractRequestId(client));
+    const requestContext = createRequestContext(client.data.requestId);
 
     return runWithRequestContext(requestContext, async () => {
       setActor({

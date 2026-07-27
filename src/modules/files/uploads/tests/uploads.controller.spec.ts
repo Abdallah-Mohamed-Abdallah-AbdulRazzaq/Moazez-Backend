@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { FileVisibility } from '@prisma/client';
 import request from 'supertest';
 import type { App } from 'supertest/types';
+import { RequestContextMiddleware } from '../../../../common/context/context.middleware';
 import { REQUIRED_PERMISSIONS_METADATA } from '../../../../common/decorators/required-permissions.decorator';
 import { SCHOOL_MANAGEMENT_ONLY_METADATA } from '../../../../common/decorators/school-management-only.decorator';
 import { GetFileDownloadUrlUseCase } from '../application/get-file-download-url.use-case';
@@ -86,6 +87,10 @@ describe('UploadsController contract', () => {
       }).compile();
 
       app = moduleRef.createNestApplication();
+      const requestContextMiddleware = new RequestContextMiddleware();
+      app.use((request, response, next) =>
+        requestContextMiddleware.use(request, response, next),
+      );
       await app.init();
     });
 
@@ -127,12 +132,13 @@ describe('UploadsController contract', () => {
       expect(uploadFileUseCase.execute).not.toHaveBeenCalled();
     });
 
-    it('preserves a supplied trace ID for an oversized request', async () => {
-      const traceId = 'files-0b-multipart-trace';
+    it('preserves a supplied request ID for an oversized request', async () => {
+      const requestId = 'files-1a-multipart-request';
 
       const response = await request(app.getHttpServer())
         .post('/files')
-        .set('x-trace-id', traceId)
+        .set('x-request-id', requestId)
+        .set('x-trace-id', 'must-not-be-authoritative')
         .attach('file', Buffer.alloc(FILES_UPLOAD_MAX_SIZE_BYTES + 1, 65), {
           filename: 'oversized.txt',
           contentType: 'text/plain',
@@ -140,7 +146,8 @@ describe('UploadsController contract', () => {
         .expect(413);
 
       const body = response.body as { error: { traceId: string } };
-      expect(body.error.traceId).toBe(traceId);
+      expect(body.error.traceId).toBe(requestId);
+      expect(response.headers['x-request-id']).toBe(requestId);
       expect(uploadFileUseCase.execute).not.toHaveBeenCalled();
     });
 

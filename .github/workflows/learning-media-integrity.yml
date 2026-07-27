@@ -97,9 +97,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22.23.1'
           cache: npm
       - run: npm ci
+      - name: Verify supported runtime policy
+        run: npm run verify:runtime-policy
       - name: Check migration governance
         run: npm run db:migrations:check
       - name: Validate current Prisma schema
@@ -152,6 +154,16 @@ jobs:
 
       - name: Build canonical runtime image
         run: DOCKER_BUILDKIT=1 docker build --tag moazez-learning-media:${{ github.sha }} .
+      - name: Verify exact Node runtime
+        run: >-
+          docker run --rm --entrypoint sh
+          moazez-learning-media:${{ github.sha }}
+          -c 'test "$(node --version)" = "v22.23.1"'
+      - name: Verify Firebase Admin runtime imports
+        run: >-
+          docker run --rm --entrypoint node
+          moazez-learning-media:${{ github.sha }}
+          -e 'require("firebase-admin/app"); require("firebase-admin/messaging")'
       - name: Build canonical media test target
         run: >-
           DOCKER_BUILDKIT=1 docker build --target media-test
@@ -165,9 +177,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --detach --rm --name moazez-learning-media-runtime \
+          docker run --detach --name moazez-learning-media-runtime \
             --network host \
             --env APP_PORT --env APP_URL --env DATABASE_URL --env REDIS_URL \
+            --env APP_CORS_ORIGINS=https://schools.moazez.cloud,https://admin.moazez.cloud \
+            --env SWAGGER_ENABLED=false \
             --env JWT_ACCESS_SECRET --env JWT_REFRESH_SECRET \
             --env JWT_ACCESS_TTL --env JWT_REFRESH_TTL \
             --env SETTINGS_SECRET_ENCRYPTION_KEY \
@@ -182,13 +196,16 @@ jobs:
               docker rm --force moazez-learning-media-runtime >/dev/null
               exit 0
             fi
-            if ! docker inspect moazez-learning-media-runtime >/dev/null 2>&1; then
+            if ! docker inspect --format '{{.State.Running}}' \
+              moazez-learning-media-runtime 2>/dev/null | grep --quiet '^true$'; then
               echo 'The runtime container exited before becoming healthy.'
+              docker logs moazez-learning-media-runtime || true
               exit 1
             fi
             sleep 1
           done
-          docker logs moazez-learning-media-runtime
+          echo 'The runtime container did not become healthy before the timeout.'
+          docker logs moazez-learning-media-runtime || true
           exit 1
       - name: Verify non-root runtime and Prisma Client
         run: >-

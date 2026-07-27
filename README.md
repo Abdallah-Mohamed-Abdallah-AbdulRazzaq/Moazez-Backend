@@ -93,7 +93,7 @@ Read these files before implementing anything:
 
 | Tool                    | Version               |
 | ----------------------- | --------------------- |
-| Node.js                 | 20+                   |
+| Node.js                 | 22.23.1               |
 | Docker + Docker Compose | latest                |
 | `jq`                    | for `scripts/demo.sh` |
 
@@ -131,7 +131,7 @@ npm run seed                # load permissions, system roles, and demo data
 ```bash
 npm run start:dev
 # API:     http://localhost:3000/api/v1
-# Swagger: http://localhost:3000/api/v1/docs
+# Swagger: http://localhost:3000/api/v1/docs (only when SWAGGER_ENABLED=true outside production)
 ```
 
 ### 6. Run the demo script

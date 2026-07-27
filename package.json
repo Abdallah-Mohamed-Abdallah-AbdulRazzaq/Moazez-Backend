@@ -78,6 +78,7 @@
     "seed": "prisma db seed",
     "verify:database": "npm run db:migrations:check && npx prisma validate && npx prisma migrate status",
     "verify:media-runtime": "node scripts/verify-media-runtime.cjs",
+    "verify:runtime-policy": "node scripts/verify-runtime-policy.cjs && node --test scripts/tests/verify-runtime-policy.test.cjs",
     "verify:legacy-learning-media": "node scripts/classify-legacy-learning-media.cjs",
     "test:learning-media": "jest --runInBand --runTestsByPath src/modules/files/uploads/tests/file-upload-session.contract.spec.ts src/modules/files/uploads/tests/learning-media-upload.use-case.spec.ts",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",
@@ -137,6 +138,9 @@
     "demo:sprint2a": "node scripts/demo-sprint2a.cjs",
     "demo:sprint2b": "node scripts/demo-sprint2b.cjs"
   },
+  "engines": {
+    "node": ">=22.23.1 <23"
+  },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
@@ -170,7 +174,7 @@
     "@nestjs/testing": "^11.0.1",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
-    "@types/node": "^24.0.0",
+    "@types/node": "^22.20.1",
     "@types/nodemailer": "^8.0.0",
     "@types/supertest": "^7.0.0",
     "eslint": "^9.18.0",

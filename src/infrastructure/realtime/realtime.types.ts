@@ -14,7 +14,9 @@ export interface RealtimeAuthenticatedContext {
   actor: RealtimeActorCard;
 }
 
-export type RealtimeSocketData = Partial<RealtimeAuthenticatedContext>;
+export type RealtimeSocketData = Partial<RealtimeAuthenticatedContext> & {
+  requestId?: string;
+};
 
 export type RealtimeSocket = Socket & {
   data: RealtimeSocketData;

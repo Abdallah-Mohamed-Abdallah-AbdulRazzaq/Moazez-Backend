@@ -243,7 +243,7 @@ describe('Lesson content publication lifecycle contract', () => {
       /LessonContent(NotFound|FileNotFound)Exception[\s\S]{0,120}constructor\(details/u,
     );
     expect(workflow).toContain('name: Learning Content Integrity');
-    expect(workflow).toContain('node-version: 20');
+    expect(workflow).toContain("node-version: '22.23.1'");
     expect(workflow).toContain('postgres:16-alpine');
     expect(workflow).toContain('name: Check migration governance');
     expect(workflow).toContain('run: npm run db:migrations:check');

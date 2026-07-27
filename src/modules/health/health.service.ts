@@ -11,6 +11,7 @@ import {
   COMMUNICATION_NOTIFICATION_PUSH_QUEUE_NAME,
   COMMUNICATION_NOTIFICATION_QUEUE_NAME,
 } from '../communication/domain/communication-notification-generation-domain';
+import { APPLICATION_VERSION } from '../../bootstrap/application-metadata';
 import { EmailSecretCrypto } from '../settings/email/domain/email-secret-crypto';
 import { SCHOOL_EMAIL_DELIVERY_QUEUE_NAME } from '../settings/email/delivery/domain/email-delivery.constants';
 
@@ -37,7 +38,6 @@ export interface HealthReport {
   };
 }
 
-const VERSION = '0.1.0';
 const HEALTH_CHECK_TIMEOUT_MS = 1_000;
 const QUEUE_NAMES = [
   SCHOOL_EMAIL_DELIVERY_QUEUE_NAME,
@@ -71,17 +71,16 @@ export class HealthService {
 
     const required = [db, redis, storage, queues];
     const optional = [email, push];
-    const overall: 'ok' | 'degraded' =
-      [...required, ...optional].some(
-        (check) => check.status === 'error' || check.status === 'degraded',
-      )
-        ? 'degraded'
-        : 'ok';
+    const overall: 'ok' | 'degraded' = [...required, ...optional].some(
+      (check) => check.status === 'error' || check.status === 'degraded',
+    )
+      ? 'degraded'
+      : 'ok';
 
     return {
       status: overall,
       timestamp: new Date().toISOString(),
-      version: VERSION,
+      version: APPLICATION_VERSION,
       checks: { db, redis, storage, queues, email, push },
     };
   }
@@ -176,7 +175,10 @@ export class HealthService {
 
   private async timed(
     name: string,
-    fn: () => Promise<void | DependencyCheckResult> | void | DependencyCheckResult,
+    fn: () =>
+      | Promise<void | DependencyCheckResult>
+      | void
+      | DependencyCheckResult,
   ): Promise<DependencyCheck> {
     const start = Date.now();
     try {
