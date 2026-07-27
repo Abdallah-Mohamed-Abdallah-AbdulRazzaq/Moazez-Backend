@@ -1,0 +1,259 @@
+# Production Readiness Phase 0A — Acceptance and Risk Matrix
+
+## Acceptance matrix
+
+The phase sequence below is a proposed production-readiness delivery sequence,
+not evidence that phases have started. Status values are:
+
+- `BASELINE_ONLY`: useful current evidence exists, but the production gate is
+  not met.
+- `NOT_STARTED`: required implementation/evidence is absent.
+- `BLOCKED_BY_OWNER`: work cannot be accepted until a Phase 0 owner decision is
+  approved.
+- `N/A_WITH_EVIDENCE`: a conditional migration/re-encryption/retention gate is
+  inapplicable only because signed clean-start evidence proves zero source
+  records, objects, provider URLs, or legacy ciphertext rows as applicable.
+- `COMPLETE`: all exact completion evidence exists. No gate is currently
+  `COMPLETE`.
+
+Every blocking gate must be complete before promotion beyond its phase. An
+explicitly non-blocking gate can be carried only with named owner, date, and
+constraint in the release record.
+
+Every implementation phase closes with its own universal regression gate:
+affected unit, integration, security/tenancy, and E2E/contract tests; migration
+governance and Prisma validate/generate when applicable; build;
+`git diff --check`; scope integrity; and the canonical regression required by
+that phase's blast radius. Phase 8 additionally runs the full
+production-shaped release-candidate gate.
+
+### Phase 0B — Owner Decisions, ADR Lock, and Phase 0 Closeout
+
+Phase 0B has not started and is not completed by this R1 draft.
+
+| Gate | Blocking acceptance criterion | Verification method | Blocking | Owner | Current status | Fully qualified prerequisites | Rollback / recovery evidence | Exact completion evidence |
+|---|---|---|---|---|---|---|---|---|
+| PRD0B-G01 | Every PRD0-Q001–PRD0-Q048 has an explicit approved answer or an explicit `PENDING(owner, deadline, constraint)` disposition; every answer required to start Phase 1 or Phase 2 is approved rather than pending; silence selects no recommendation. | all-question disposition validation, Batch A approval review, and named-capacity signatures | Yes | Product + architecture + security | BLOCKED_BY_OWNER | none | reopen answer or disposition with versioned rationale | signed all-question disposition register and approved Batch A answers |
+| PRD0B-G02 | ADRs required for approved decisions are approved with one authoritative owner per major decision; a decision explicitly marked `PENDING` cannot unblock its dependent phase, and no silent recommendation becomes an ADR decision. | ADR-to-decision dependency, disposition, authority, and approval review | Yes | Architecture owner | NOT_STARTED | PRD0B-G01 | superseding ADR procedure; dependent phase remains blocked while its decision is pending | approved required ADR set and authority map with no pending dependency used as an unblocker |
+| PRD0B-G03 | Every evidence path exists at the approved baseline and every EVD/D/Q reference resolves. | repository path and ID validators | Yes | Architecture reviewer | BASELINE_ONLY | none | correct draft before merge | zero invalid paths or unresolved IDs |
+| PRD0B-G04 | No ambiguous gate reference remains; all prerequisites are fully qualified. | validator fails prerequisite cells containing bare `Gnn` | Yes | Architecture reviewer | BASELINE_ONLY | none | correct draft before merge | zero ambiguous gate references |
+| PRD0B-G05 | Decision register, acceptance matrix, risk register, and questionnaire agree on IDs, phases, conditions, ownership, and deadlines. | cross-document consistency validator and review | Yes | Architecture owner | NOT_STARTED | PRD0B-G01–PRD0B-G04 | reopen inconsistent record | signed reconciliation report |
+| PRD0B-G06 | LIM-001 is governed: create/approve canonical `DIRECTORY_STRUCTURE.md` or update authoritative reading references to the actual canonical visual path. | governance diff and approval | Yes | Governance owner | NOT_STARTED | PRD0B-G05 | revert/supersede governance change | approved canonical path decision |
+| PRD0B-G07 | Documentation PR is independently reviewed and merged. | GitHub review/merge evidence | Yes | Documentation + architecture reviewers | NOT_STARTED | PRD0B-G01–PRD0B-G06 | revert documentation PR if unsafe | merged documentation commit |
+| PRD0B-G08 | Implementation baseline is reverified after merge; moved `main` is reconciled before Phase 1. | branch/HEAD/main/worktree and evidence-drift check | Yes | Release + architecture | NOT_STARTED | PRD0B-G07 | stop Phase 1 and rebaseline documentation | signed post-merge baseline record |
+
+### Phase 1 — Supported Runtime and Bootstrap Hardening
+
+| Gate | Requirement | Evidence/test required | Block | Owner | Current | Prerequisites | Rollback proof | Exact completion evidence |
+|---|---|---|---|---|---|---|---|---|
+| PRD1-G01 | Node image, CI, and locked packages use a mutually supported version. | clean install/build, engine check, native/provider smoke | Yes | Platform lead | BLOCKED_BY_OWNER | PRD0B-G08 | prior supported pair and digest | supported policy, digest, and affected CI evidence |
+| PRD1-G02 | Nest shutdown hooks and bounded SIGTERM behavior stop intake and prove lifecycle callbacks/drain/recovery. | termination during HTTP, WebSocket, queue work, Prisma, Redis | Yes | Backend + SRE | NOT_STARTED | PRD1-G01 | prior compatible digest; replay/reconcile abandoned work | timestamped termination suite and zero unexplained side effects |
+| PRD1-G03 | requestId/traceId are bounded/consistent; bootstrap fatal logs are sanitized; Swagger/CORS are configurable. | malicious header, log-redaction, origin/docs configuration tests | Yes | Backend + security | NOT_STARTED | PRD1-G01 | versioned config rollback | contract snapshots and zero secret/PII leakage |
+| PRD1-G04 | Minimum startup/liveness/readiness semantics prevent bad routing and restart loops; full telemetry remains Phase 7. | startup delay, dependency timeout, partial outage, public compatibility | Yes | Backend + SRE | BLOCKED_BY_OWNER | PRD0B-G01, PRD1-G02–PRD1-G03 | probe threshold/path rollback | Cloud Run-shaped minimum probe report |
+| PRD1-G05 | School email builder output `school-email-delivery:<batchId>:<recipientId>` is tested by direct queue add against locked BullMQ and real disposable Redis, including duplicate/dedup and exact stored job ID. | real Redis integration using locked package; no Phase 0A source fix | Yes | Email + queue owner | NOT_STARTED | PRD1-G01 | stop rollout; if incompatible, focused implementation PR with regression before Phase 2 | direct queue-add transcript and exact-ID/duplicate assertions |
+| PRD1-G06 | Reinforcement IMAGE/VIDEO/DOCUMENT policy enforces allowed and detected MIME, tenant/uploader/private ownership, negative cross-type tests, and existing-client compatibility. | focused unit/integration/security/compatibility tests | Yes | Reinforcement + security | BLOCKED_BY_OWNER | PRD0B-G01, PRD1-G01 | compatibility flag or focused revert | approved Q032 matrix and green negative tests |
+| PRD1-G07 | Phase 1 universal regression gate passes. | affected unit/integration/security/tenancy/E2E; applicable migration/Prisma; build/diff/scope/canonical runtime regression | Yes | QA + backend | NOT_STARTED | PRD1-G01–PRD1-G06 | prior supported digest/config | phase-bound evidence bundle |
+
+### Phase 2 — API / Core Worker Runtime Separation
+
+| Gate | Requirement | Evidence/test required | Block | Owner | Current | Prerequisites | Rollback proof | Exact completion evidence |
+|---|---|---|---|---|---|---|---|---|
+| PRD2-G01 | Approved ADR-0004 assigns API and Core consumers/schedulers without requiring Q003 capacity values. | Q001/Q002/Q010/Q011 and Q028 where command/image behavior applies | Yes | Architecture owner | BLOCKED_BY_OWNER | PRD0B-G02, PRD1-G07 | old-graph drain and exclusivity plan | approved ADR and exact responsibility matrix |
+| PRD2-G02 | API composition root exposes HTTP/WebSocket/producers but zero BullMQ consumers or repeat registrations. | construction/startup manifest and process inspection | Yes | Backend lead | NOT_STARTED | PRD2-G01 | drain Core then restore compatible prior graph without overlap | zero-consumer/repeat API proof |
+| PRD2-G03 | Core Worker starts exactly assigned consumers/schedulers, exposes no public business listener, and current Learning Media HTTP completion remains synchronous. | role startup tests, queue ownership, duplicate/missed scheduler tests, existing Learning Media contract suite | Yes | Backend + media | NOT_STARTED | PRD2-G01 | role-by-role digest rollback after drain | exact provider manifest and unchanged Learning Media 200 contract |
+| PRD2-G04 | Phase 2 universal regression gate passes. | affected unit/integration/security/tenancy/E2E; applicable migration/Prisma; build/diff/scope; queue and current Learning Media canonical regressions | Yes | QA + backend | NOT_STARTED | PRD2-G02–PRD2-G03 | prior compatible role digest | phase-bound evidence bundle |
+
+### Phase 3 — Cloud SQL and Redis Runtime Behavior
+
+| Gate | Requirement | Evidence/test required | Block | Owner | Current | Prerequisites | Rollback proof | Exact completion evidence |
+|---|---|---|---|---|---|---|---|---|
+| PRD3-G01 | Cloud SQL region/HA/private connectivity/DB roles and provisional per-role pool budgets are approved and failover-tested. | IaC design, connection math, pool saturation/failover; Q003 before final sizing | Yes | Platform + DBA | BLOCKED_BY_OWNER | PRD2-G04 | conservative caps and cutback topology | approved topology and measured failover budget |
+| PRD3-G02 | Queue and realtime Redis topology has explicit budgets and no silent multi-instance in-memory production fallback. | outage/reconnect and multi-API Socket.IO/presence tests | Yes | Platform + realtime | BLOCKED_BY_OWNER | PRD2-G04, PRD3-G01 | controlled drain/cutback; rebuild ephemeral state | approved ADR-0008 and recovery report |
+| PRD3-G03 | Each queue has retry/idempotency/terminal/reconcile policy and one scheduler owner; Redis queues drain/reconcile/re-enqueue from persisted truth rather than being copied. | poison/duplicate/provider outage/restart/missed schedule tests | Yes | Backend owners | NOT_STARTED | PRD3-G02 | replay/disable procedure and persisted-truth reconciliation | signed per-queue policies and exclusivity evidence |
+| PRD3-G04 | Migration Job uses immutable artifact and only governed `migrate deploy`; runtime identities cannot DDL. | IAM negative, fresh replay, drift/P3009 hard-stop, second no-op | Yes | DBA + security | BASELINE_ONLY | PRD3-G01 | forward-fix/schema-compatible runtime rollback | job execution and intentional-failure evidence |
+| PRD3-G05 | Q004/D029 branch is explicit for persisted PostgreSQL: clean start is `N/A_WITH_EVIDENCE` with signed zero-source/zero-legacy-row proof and approved seeds, otherwise dry runs/manifests/freeze-delta/reconciliation/source retention/cutback are complete. | signed inventory or rehearsed migration | Yes | Data + DBA | BLOCKED_BY_OWNER | PRD0B-G01, PRD3-G04 | retained source and rehearsed abort/cutback | clean-start attestation or signed migration reconciliation |
+| PRD3-G06 | Phase 3 universal regression gate passes. | affected unit/integration/security/tenancy/E2E; migration governance/Prisma; build/diff/scope; SQL/Redis/queue canonical regression | Yes | QA + data/platform | NOT_STARTED | PRD3-G01–PRD3-G05 | prior configs/artifact and restore/cutback record | phase-bound evidence bundle |
+
+### Phase 4 — Service Identities, Secret Manager, and Crypto Foundation
+
+| Gate | Requirement | Evidence/test required | Block | Owner | Current | Prerequisites | Rollback proof | Exact completion evidence |
+|---|---|---|---|---|---|---|---|---|
+| PRD4-G01 | Separate projects and least-privilege identities exist for API/Core/Media/Migration/Maintenance/deployer/signer. | policy review and automated allow/deny tests | Yes | Security + platform | BLOCKED_BY_OWNER | PRD3-G06 | IAM revision rollback without shared broad key | approved identity matrix and negative-access evidence |
+| PRD4-G02 | Secrets are explicitly versioned per release; JWT/provider/signer rotation and rollback are rehearsed with redacted logs. | promotion/overlap/rollback drill and access-log scan | Yes | Security owner | BLOCKED_BY_OWNER | PRD4-G01 | retained prior versions through rollback TTL | signed rotation drill |
+| PRD4-G03 | Device-token and SMTP envelopes have separate key families/key IDs/multi-key read; under clean start require signed zero legacy ciphertext rows, otherwise complete governed re-encryption and retain old decrypt-only keys through audit. | old/new/invalid envelope tests plus Q004/D029-conditional DB audit | Yes | Security + data | BLOCKED_BY_OWNER | PRD3-G05, PRD4-G02 | old decrypt-only keys and stop-writer plan | `N/A_WITH_EVIDENCE` zero-row proof or signed re-encryption completeness |
+| PRD4-G04 | Phase 4 universal regression gate passes. | affected unit/integration/security/tenancy/E2E; applicable migration/Prisma; build/diff/scope; IAM/secret/crypto canonical regression | Yes | QA + security | NOT_STARTED | PRD4-G01–PRD4-G03 | prior IAM/secret/key version | phase-bound evidence bundle |
+
+### Phase 5A — Provider-Neutral Storage and GCS
+
+| Gate | Requirement | Evidence/test required | Block | Owner | Current | Prerequisites | Rollback proof | Exact completion evidence |
+|---|---|---|---|---|---|---|---|---|
+| PRD5A-G01 | Exact six multipart entries and exact twenty direct `StorageService` consumers are re-inventoried at implementation baseline. | path/symbol inventory and architecture review | Yes | Storage lead | BASELINE_ONLY | PRD0B-G08 | stop on drift and reconcile baseline | signed inventories with Learning Media excluded from multipart |
+| PRD5A-G02 | Provider-neutral port/capabilities normalize response types/errors and pass the same MinIO/GCS contract. | put/get/stat/list/delete/presign/not-found/generation/provider error tests | Yes | Storage lead | NOT_STARTED | PRD4-G04, PRD5A-G01 | adapter/config switch and manifest | parity suite green for both adapters |
+| PRD5A-G03 | Real isolated GCS proves signed PUT/GET, IAM, CORS, Range, generation behavior, and provider errors; emulator evidence alone is insufficient. | isolated GCS integration and negative IAM/browser tests | Yes | Storage + security | NOT_STARTED | PRD5A-G02 | retained MinIO staging adapter and config rollback | real-GCS evidence bundle with semantic gaps list for any emulator use |
+| PRD5A-G04 | Production buckets are IaC-provisioned; runtime write/signed-PUT paths cannot create buckets and runtime IAM lacks bucket-create. | code/config check and IAM denial test | Yes | Platform + security | NOT_STARTED | PRD5A-G03 | IaC rollback without runtime permission grant | provisioned bucket plan and negative runtime test |
+| PRD5A-G05 | `File.id` is preserved and, when migration applies, `FileUploadSession` staging/final coordinates migrate coherently. | DB/object manifest, relational/authorization tests | Yes | Data + storage | BLOCKED_BY_OWNER | PRD5A-G02, PRD3-G05 | source read-only cutback | zero changed File IDs and coordinate reconciliation |
+| PRD5A-G06 | Q004/D029/Q044 object branch closes: clean start uses `N/A_WITH_EVIDENCE` with signed zero records/objects/provider URLs/legacy ciphertext to preserve and governed migrations/seeds; migration uses dry runs, manifests, checksums or approved missing-hash policy, freeze/delta, reconciliation, source retention, and cutback. | signed inventories or two rehearsals | Yes | Data + storage | BLOCKED_BY_OWNER | PRD5A-G03–PRD5A-G05 | read-only source and rehearsed cutback; none for proven clean start | branch-specific signed evidence |
+| PRD5A-G07 | Grade MEDIA and legacy branding direct URLs are inventoried/classified; no provider-URL population claim is made without data. | DB inventory classified by approved policy | Yes | Data + feature owners | BLOCKED_BY_OWNER | PRD3-G05, PRD5A-G06 | retained legacy reads during approved window | counts for managed/external/provider/unsafe/null with zero unexplained values |
+| PRD5A-G08 | Reconciliation reports zero unexplained missing managed objects; retained historical/operational objects are not mislabeled orphaned. | File/object/session/reference manifests | Yes | Storage + data | NOT_STARTED | PRD5A-G05–PRD5A-G07 | halt cutover and read source | signed zero-unexplained-missing report |
+| PRD5A-G09 | Provider cutover changes no business lifecycle behavior, performs no destructive orphan cleanup, and keeps Learning Media HTTP completion synchronous. | contract snapshots, cleanup disablement proof, Learning Media 200 tests | Yes | Architecture + media | NOT_STARTED | PRD5A-G02–PRD5A-G08 | adapter cutback | explicit no-lifecycle/no-contract-change attestation |
+| PRD5A-G10 | All storage consumers pass affected upload/download/playback/security/E2E regressions, including authorized Range. | per-feature contract/security suite | Yes | QA + feature owners | NOT_STARTED | PRD5A-G09 | source/adapter rollback | consumer-by-consumer evidence matrix |
+| PRD5A-G11 | Phase 5A universal regression gate passes. | affected unit/integration/security/tenancy/E2E; applicable migration/Prisma; build/diff/scope; real-GCS and all-consumer canonical regression | Yes | QA + storage | NOT_STARTED | PRD5A-G01–PRD5A-G10 | prior provider config and source cutback | phase-bound evidence bundle |
+
+### Phase 5B — File Security, Policy, and Lifecycle Foundation
+
+| Gate | Requirement | Evidence/test required | Block | Owner | Current | Prerequisites | Rollback proof | Exact completion evidence |
+|---|---|---|---|---|---|---|---|---|
+| PRD5B-G01 | Parent messaging upload contract is owner-approved and implemented or text-only/no-new-upload is explicitly accepted. | Q031 contract/security/client tests | Yes | Product + security | BLOCKED_BY_OWNER | PRD5A-G11 | compatibility endpoint/flag or text-only contract | signed contract and affected Parent/Communication E2E |
+| PRD5B-G02 | Generic and feature upload policies define declared/detected MIME, image/PDF/media validation, active-content behavior, and malware provider/failure policy. | policy matrix plus positive/negative/quarantine tests | Yes | Security + feature owners | BLOCKED_BY_OWNER | PRD5A-G11 | versioned policy rollback without widening | approved Q033/Q034 and green policy suite |
+| PRD5B-G03 | Reinforcement proof-type policy retains tenant/uploader/private checks and all cross-type negatives. | Q032 compatibility/security suite | Yes | Reinforcement + security | BLOCKED_BY_OWNER | PRD1-G06 | focused compatibility rollback | signed MIME matrix and feature regression |
+| PRD5B-G04 | Grade MEDIA and legacy branding remediation follows approved policies and Q004 branch, preserving legacy reads only within the approved window. | inventory, migration or `N/A_WITH_EVIDENCE`, contract tests | Yes | Grades + branding + data | BLOCKED_BY_OWNER | PRD5A-G07, PRD5B-G02 | retained compatible reads/source | zero unclassified values and signed remediation |
+| PRD5B-G05 | Complete reference graph and retention classes cover active/historical references, upload sessions, holds, tenants, replacement, claims, existence, deletion attempts/retries. | schema/code relation inventory and owner review | Yes | Architecture + data/legal | BLOCKED_BY_OWNER | PRD5B-G02–PRD5B-G04 | report-only; no deletion to roll back | approved reference/retention matrix |
+| PRD5B-G06 | Reconciliation is report-only, names owner/reviewer, distinguishes retention categories, and reports orphan candidates without deleting. | production-shaped dry-run and false-positive review | Yes | Storage + data | NOT_STARTED | PRD5B-G05 | rerun corrected report | signed report and reviewed candidate dispositions |
+| PRD5B-G07 | No new generalized/reference-aware destructive cleanup, or expansion of physical deletion beyond an already bounded feature-specific contract, is enabled before reference/retention/legal-hold approval, false-positive review, recovery proof, and separate enablement. Existing Branding cleanup is not the future universal lifecycle implementation and remains separately governed by RSK-014 before production use. | generalized-cleanup IAM/config/feature-flag negative tests and approval audit; for existing Branding cleanup, exact prefix and metadata ownership proof, dry-run or diff evidence, canary limits, audit evidence, anomaly thresholds, named pause/kill-switch ownership, and object/version recovery evidence | Yes | Security + legal/data | BLOCKED_BY_OWNER | PRD5B-G05–PRD5B-G06 | generalized-cleanup kill switch and version/object recovery; separately bounded Branding pause and object/version recovery | generalized cleanup and any unapproved deletion expansion remain disabled; separately signed RSK-014 Branding production-safety evidence does not authorize universal cleanup |
+| PRD5B-G08 | Multipart production controls cover edge/app route limits, instance memory/concurrency, simultaneous-upload load, rates, rejection, and direct PUT for large files. | six-route memory/load/abuse suite | Yes | Platform + backend | BLOCKED_BY_OWNER | PRD5A-G01, PRD5B-G02 | conservative caps | Q043 values plus load report and no unbounded limit |
+| PRD5B-G09 | Learning Media remains synchronous and `FileUploadSession` is not generalized to all files absent separate approval. | contract/schema diff and canonical media tests | Yes | Architecture + media | NOT_STARTED | PRD5B-G01–PRD5B-G08 | preserve current contract/schema | unchanged HTTP 200 and no generalized session fields |
+| PRD5B-G10 | Phase 5B universal regression gate passes. | affected per-feature unit/integration/security/tenancy/E2E; applicable migration/Prisma; build/diff/scope; complete file/download regression | Yes | QA + security/storage | NOT_STARTED | PRD5B-G01–PRD5B-G09 | prior policy/config and report-only state | phase-bound evidence bundle |
+
+### Phase 6 — Async Media Processing and Media Worker
+
+| Gate | Requirement | Evidence/test required | Block | Owner | Current | Prerequisites | Rollback proof | Exact completion evidence |
+|---|---|---|---|---|---|---|---|---|
+| PRD6-G01 | Owner-approved Learning Media transition defines HTTP 202 submission, status/read contract, compatibility window, and retirement criteria. | ADR-0005 and frontend/client contract review | Yes | Product + media/frontend | BLOCKED_BY_OWNER | PRD5B-G10 | preserve current synchronous HTTP 200 | signed contract and rollout/rollback plan |
+| PRD6-G02 | Media Worker queue job is tenant-safe, idempotent, bounded, and handles duplicate submit/job behavior. | controller/DB/queue integration with real Redis and duplicate tests | Yes | Media lead | NOT_STARTED | PRD6-G01 | dual-compatible sync route and queue pause/drain | green submission/status/idempotency suite |
+| PRD6-G03 | Stale VERIFYING, worker kill/retry, poison media, temp disk, final-object write, and DB finalization recovery reconcile without unexplained state/object loss. | kill injection, lease expiry, cleanup/recovery, storage outage tests | Yes | Media + storage | NOT_STARTED | PRD6-G02 | replay/reconcile from session/DB truth | dated failure matrix and reconciliation |
+| PRD6-G04 | Frontend compatibility proves old/new clients across transition and authorized inline playback/Range remains unchanged. | client matrix, contract/E2E/playback tests | Yes | Frontend + QA | NOT_STARTED | PRD6-G01–PRD6-G03 | rollback flag/window | signed client matrix and playback evidence |
+| PRD6-G05 | No async-media behavior is assumed for Chat, Homework, Reinforcement, Applicant, Avatar, generic uploads, or other files. | feature contract and route inventory | Yes | Architecture + feature owners | NOT_STARTED | PRD6-G04 | remove accidental cross-feature wiring | zero unrelated contract changes |
+| PRD6-G06 | Phase 6 universal regression gate passes. | affected unit/integration/security/tenancy/E2E; applicable migration/Prisma; build/diff/scope; Learning Media canonical runtime/playback regression | Yes | QA + media | NOT_STARTED | PRD6-G01–PRD6-G05 | synchronous compatible path and prior worker digest | phase-bound evidence bundle |
+
+### Phase 7 — Health, Observability, and Rate Limiting
+
+| Gate | Requirement | Evidence/test required | Block | Owner | Current | Prerequisites | Rollback proof | Exact completion evidence |
+|---|---|---|---|---|---|---|---|---|
+| PRD7-G01 | Full role-specific startup/liveness/readiness covers complete dependency matrix and retains public compatibility. | timeout/partial outage/routing/restart-loop tests | Yes | SRE + backend | NOT_STARTED | PRD6-G06 | minimum Phase 1 probes and versioned thresholds | orchestration-safe probe report |
+| PRD7-G02 | Structured redacted logs correlate request/trace/job/tenant/deployment without trusting unbounded inbound IDs or exposing PII/secrets. | schema/cardinality/error/provider/worker log scans | Yes | SRE + security | NOT_STARTED | PRD7-G01 | Phase 1 minimum logging format | ingestion queries and redaction artifact |
+| PRD7-G03 | Metrics/heartbeats/dashboards cover HTTP, DB pools, Redis, queues, workers, media, storage, and external providers. | synthetic failure/backlog/dashboard verification | Yes | SRE + backend | NOT_STARTED | PRD7-G01–PRD7-G02 | minimum health alerts | exercised catalog/dashboard/alerts |
+| PRD7-G04 | SLOs, alert thresholds, paging, retention, runbooks, and cost acceptance use approved Q003/Q025 capacity envelope. | alert game day and SLO/cost calculations | Yes | Product + SRE | BLOCKED_BY_OWNER | PRD7-G03 | suppress noisy alert without losing critical coverage | approved objectives and dated game day |
+| PRD7-G05 | Edge and application rate limits cover auth/public/upload/media/queue-expensive operations with tenant/identity/IP policy and rejection contracts. | abuse/burst/fairness/cost tests | Yes | Security + product | BLOCKED_BY_OWNER | PRD5B-G08, PRD7-G03–PRD7-G04 | versioned policy and emergency owner | green external abuse/compatibility suite |
+| PRD7-G06 | Phase 7 universal regression gate passes. | affected unit/integration/security/tenancy/E2E; applicable migration/Prisma; build/diff/scope; observability/rate canonical regression | Yes | QA + SRE/security | NOT_STARTED | PRD7-G01–PRD7-G05 | prior dashboards/policies/config | phase-bound evidence bundle |
+
+### Phase 8 — Terraform, CI/CD, and Production-Equivalent Staging
+
+| Gate | Requirement | Evidence/test required | Block | Owner | Current | Prerequisites | Rollback proof | Exact completion evidence |
+|---|---|---|---|---|---|---|---|---|
+| PRD8-G01 | All production resources/policies are reproducible Terraform/IaC with reviewed state boundaries and zero unexplained drift. | isolated plan/apply, policy/security scan, drift test | Yes | Platform | NOT_STARTED | PRD7-G06 | prior IaC revision and non-destructive recovery | reviewed applied plan |
+| PRD8-G02 | CI builds once, creates SBOM/provenance, scans/signs, stores, and promotes one immutable digest. | tamper/unsigned/vulnerability policy tests | Yes | Platform + security | NOT_STARTED | PRD8-G01 | prior signed digest | registry digest/attestation/scan/promotion record |
+| PRD8-G03 | Deployment orders backup/preflight, governed Migration Job, role rollout, health/smoke, and traffic; injected failure stops safely. | staging pipeline and migration/health failure injection | Yes | Release + DBA | NOT_STARTED | PRD3-G04, PRD8-G01–PRD8-G02 | schema-compatible traffic rollback/forward-fix | immutable deployment transcript |
+| PRD8-G04 | Staging is production-topology/config-schema equivalent within approved differences and uses the same digest. | environment/IAM/config diff and all-role smoke | Yes | Release + QA | BLOCKED_BY_OWNER | PRD8-G01–PRD8-G03 | staging rollback rehearsal | signed equivalence report |
+| PRD8-G05 | Full security, tenancy, contract, migration, image, load, provider, and canonical regression passes on the release candidate. | production-shaped RC suite including real GCS and simultaneous upload/media/queue load | Yes | QA + security/performance | BLOCKED_BY_OWNER | PRD3-G05, PRD4-G04, PRD5A-G11, PRD5B-G10, PRD6-G06, PRD7-G06, PRD8-G04 | prior signed candidate and compatible schema | RC evidence bundle bound to commit/digest |
+| PRD8-G06 | Phase 8 universal regression/scope gate passes in addition to PRD8-G05. | affected plus full repository/release checks; applicable migration/Prisma; build/diff/scope | Yes | QA + release | NOT_STARTED | PRD8-G05 | prior signed candidate | phase-bound evidence bundle |
+
+### Phase 9 — Failure Drills, Progressive Launch, and Final Closeout
+
+| Gate | Requirement | Evidence/test required | Block | Owner | Current | Prerequisites | Rollback proof | Exact completion evidence |
+|---|---|---|---|---|---|---|---|---|
+| PRD9-G01 | Zone/service/provider/termination drills meet degraded-mode and recovery objectives across Cloud SQL, Redis, GCS, workers, and external providers. | dated game days with queue/data/object reconciliation | Yes | SRE + feature owners | NOT_STARTED | PRD8-G06 | executed recovery/cutback runbooks | zero unexplained data/side-effect loss |
+| PRD9-G02 | Data/object/source-retention/cutback rehearsal follows Q004: migration runs full dry-run/manifests/checksums/freeze-delta/reconcile/cutback; verified clean start is `N/A_WITH_EVIDENCE` with signed zero sources/objects/provider URLs/legacy rows and governed seeds. | two migration rehearsals or signed clean-start audit | Yes | Data + security | BLOCKED_BY_OWNER | PRD3-G05, PRD5A-G06, PRD8-G06 | retained source/cutback or proven no source | branch-specific signed evidence |
+| PRD9-G03 | Go/no-go packet has approved decisions/ADRs/risks, on-call, change window, capacity/SLO/cost, and rollback authority. | independent checklist and signatures | Yes | Executive/product/release | BLOCKED_BY_OWNER | PRD9-G01–PRD9-G02 | named no-go/rollback criteria | zero unowned release-blocking risks |
+| PRD9-G04 | Canary/progressive traffic meets live SLO and DB/queue/object invariants at each hold point. | smoke/metrics/lag/reconciliation and approval log | Yes | Release + SRE | NOT_STARTED | PRD9-G03 | tested traffic rollback to compatible digest | timestamped promotion evidence |
+| PRD9-G05 | Prior-digest rollback or governed forward-fix drill succeeds within RTO without migration/data corruption. | rollback/forward migration fix and reconciliation | Yes | Release + DBA | NOT_STARTED | PRD9-G04 | this gate is the recovery proof | drill transcript/timings/reconciliation |
+| PRD9-G06 | Phase 9 universal regression and final evidence closeout record residual risk/ownership; this does not retroactively claim Phase 0B complete in Phase 0A-R1. | final canonical regression, build/diff/scope, independent evidence audit | Yes | Architecture + SRE/QA | NOT_STARTED | PRD9-G01–PRD9-G05 | reopen procedure with owner/date | approved production-readiness closeout when actually executed |
+
+## Risk register
+
+Rating does not decrease merely because baseline functional CI passed. IDs are
+stable review identifiers, not a claim that newly added file/storage risks are
+less important than earlier records.
+
+### Assessment and blast radius
+
+| Risk | Source evidence | Likelihood | Impact | Blast radius / affected contracts or data | Phase | Release blocking | Residual risk after controls |
+|---|---|---|---|---|---|---|---|
+| RSK-001 Coupled API/consumer/scheduler graph scales and fails as one unit | EVD-011–EVD-025 | High | Critical | all HTTP/WebSocket traffic, seven queues, three repeats, DB/Redis/storage/provider load | 2 | Yes | Medium: shared code/dependencies still create correlated artifact defects |
+| RSK-002 Health returns 200 while critical or unobserved dependencies are degraded | EVD-046–EVD-047 | High | Critical | traffic routing, all API contracts, omitted queues/realtime clients | 1, 7 | Yes | Low/Medium: dependency flaps and probe tuning can still misroute briefly |
+| RSK-003 SIGTERM does not have proven Nest shutdown-hook/drain execution | EVD-015–EVD-018, EVD-026 | High | Critical | in-flight HTTP/WebSocket, active jobs, DB/Redis connections, partial side effects | 1, 2, 3, 6 | Yes | Medium: hard platform kill remains possible; idempotent recovery required |
+| RSK-004 Synchronous media completion performs network/CPU/temp-disk work in HTTP | EVD-040–EVD-043 | High | Critical | media completion response, object integrity, upload sessions, instance disk/memory | 6 | Yes for stated production topology | Medium: async workers still face poison media/resource exhaustion |
+| RSK-005 Realtime Redis failure silently creates divergent per-instance state/fan-out | EVD-032–EVD-035 | High | High | `/api/v1/realtime`, presence, typing, school/user/conversation events | 3 | Yes for multi-instance API | Low/Medium: brief reconnect gaps remain |
+| RSK-006 Node 20 runtime violates Firebase Admin 14 `>=22` engine | EVD-056 | High | High | push initialization/delivery and unsupported runtime behavior | 1 | Yes | Low: future dependency upgrades can reintroduce mismatch |
+| RSK-007 No structured metrics/traces/heartbeats/full queue lag | EVD-048–EVD-050 | High | High | incident detection across every runtime/dependency; MTTR and SLO proof | 7 | Yes | Medium: telemetry backend outage/cost sampling |
+| RSK-008 One Redis URL couples queues, repeats, locks, Socket.IO, presence, typing | EVD-031–EVD-035 | Medium/High | High | all background and realtime workloads | 3 | Yes until topology accepted | Medium: regional/cache service remains shared failure domain within each purpose |
+| RSK-009 No role-specific Prisma pool/Cloud SQL connection budgets | EVD-015, EVD-027–EVD-029 | High | High | all DB-backed contracts, migrations, workers; connection exhaustion | 3 | Yes | Medium: traffic spikes/failover reduce available connections |
+| RSK-010 Concrete MinIO/static-key behavior leaks and runtime creates buckets | EVD-036–EVD-039, EVD-051 | High | High | all 20 storage consumers, every `File` relation, bucket/IAM boundary | 5A | Yes | Medium: provider semantic differences and signer outages |
+| RSK-011 No production deployment pipeline or IaC | EVD-058–EVD-059 | High | High | every GCP resource/release, auditability, rollback, environment drift | 8 | Yes | Low/Medium: IaC/provider drift and human emergency changes |
+| RSK-012 Critical job recovery is inconsistent | EVD-019–EVD-025 | High | High | notifications, push, email, imports, dismissal, media, branding cleanup | 3 | Yes | Medium: external providers can deliver ambiguously |
+| RSK-013 School email deterministic ID uses colons without direct real-BullMQ outcome proof | EVD-021, EVD-084 | Medium | High | email campaigns/credential delivery; acceptance/rejection/dedup outcome is unverified | 1 | Yes until direct queue-add proof | Low after locked-version real-Redis contract test |
+| RSK-014 Branding reconciliation has broad delete/list scope | EVD-025, EVD-072 | Medium | Critical | private `schools/` objects and branding metadata | 1, 5B | Yes | Medium: bad metadata/rule can still target valid objects; retention required |
+| RSK-015 Encryption envelope lacks key ID and shares one key family | EVD-054–EVD-055 | High | High | device tokens and SMTP secrets; compromise/rotation can affect all rows | 4 | Yes | Low/Medium: key migration operational risk remains |
+| RSK-016 Production CORS is disabled while public origins are undecided | EVD-011, EVD-014, EVD-051 | High | High | browser HTTP, WebSocket, signed upload/download/playback | 1, 5A, 7 | Yes for browser launch | Low: origin changes and CDN behavior need ongoing tests |
+| RSK-017 Public diagnostics/Swagger expose unnecessary topology/schema detail | EVD-011, EVD-046–EVD-047 | High | Medium | `/api/v1/docs`, root, health; reconnaissance and information disclosure | 1, 7, 8 | Yes unless explicitly accepted | Low after restriction; authorized users still need controlled access |
+| RSK-018 No approved backup/PITR/RTO/RPO or production data-source plan | LIM-003–LIM-004, EVD-039 | Medium/High | Critical | all relational data, object metadata/content, encrypted secrets | 3, 5A, 8, 9 | Yes | Medium: disasters can exceed tested envelope |
+| RSK-019 External signed-URL call occurs inside playback DB transaction | EVD-029, EVD-044 | Medium/High | High | student/parent/teacher playback, DB pool under storage latency | 3, 5A | Yes at load gate | Low/Medium: authorization snapshot consistency must remain |
+| RSK-020 No implemented runtime rate limiter/abuse budget | EVD-049–EVD-050, EVD-064 | High | High | auth/public routes, media intent/complete, health/docs, DB/Redis/provider cost | 7 | Yes | Medium: distributed attacks and false positives require tuning |
+| RSK-021 Request/trace IDs trust unbounded inbound values and are disconnected | EVD-048 | Medium | Medium | log integrity/correlation and potential high-cardinality cost | 1, 7 | No if bounded before launch telemetry | Low |
+| RSK-022 Local compose uses mutable PostgreSQL/Redis tags and no production-equivalent topology | EVD-057 | Medium | Medium | developer/CI reproducibility; not production data directly | 8 | No if production artifacts are digest-pinned and tested | Low |
+| RSK-023 Relation removal can retain a physical object | EVD-070–EVD-077 | High | Medium/High | communication, homework, student/applicant/avatar relations and storage cost | 5B | Yes for lifecycle close | Medium: retention may be intentional |
+| RSK-024 Soft-deleted `File` can retain its object | EVD-066, EVD-071–EVD-073 | High | Medium/High | managed metadata/object reconciliation and privacy retention | 5B | Yes for lifecycle close | Medium after governed retention |
+| RSK-025 Incomplete reference discovery can delete still-needed data | EVD-039, EVD-076–EVD-082 | Medium | Critical | all managed files, historical/audit evidence, tenant data | 1, 5B | Yes | Low/Medium only after reference/hold proof |
+| RSK-026 Admissions evidence could be removed before retention expiry | EVD-071, EVD-082 | Medium | Critical | applicant/admissions history, legal/audit obligations | 5B | Yes | Low after hold/retention enforcement |
+| RSK-027 Direct provider URL can be stranded by GCS cutover | EVD-080–EVD-081 | Unknown | High | Grade MEDIA and legacy branding rows/clients | 5A, 5B | Yes until inventory | Low/Medium after managed/approved external policy |
+| RSK-028 Declared MIME can mismatch content | EVD-068–EVD-071, EVD-073, EVD-076, EVD-078 | High | High | generic/applicant/avatar/related File consumers | 1, 5B | Yes | Medium: detectors have limits |
+| RSK-029 Malware or active content lacks universal prevention/detection | EVD-068–EVD-078 | Medium | Critical | uploads, downloads, users, downstream processors | 5B | Yes unless explicitly constrained | Medium after scanning/policy |
+| RSK-030 Parent may be unable to complete intended media-message flow | EVD-079 | High if media is intended | High product impact | default Parent messaging contract | 5B | Yes until contract decision | Low after explicit product contract |
+| RSK-031 Reinforcement proof type can mismatch file content | EVD-078 | High | High | Student proof integrity and reviewers | 1 | Yes | Low after negative cross-type tests |
+| RSK-032 In-memory multipart concurrency amplifies instance memory | EVD-067–EVD-073 | High | High | six upload families, API availability, cost | 5B | Yes | Medium under bounded concurrency |
+| RSK-033 Runtime bucket creation requires overbroad permissions or fails in production | EVD-036–EVD-037 | High | High | all writes/signed PUTs and bucket governance | 5A | Yes | Low after IaC and IAM denial |
+| RSK-034 Provider errors and signed-URL semantics differ across MinIO/GCS | EVD-036–EVD-038 | High | High | all storage consumers, authorization, expiry, CORS/Range | 5A | Yes | Medium after real-GCS parity |
+| RSK-035 Stale Learning Media staging/final objects can diverge from session state | EVD-024, EVD-074 | Medium | High | media storage cost/integrity and playback readiness | 6 | Yes | Medium after idempotent recovery |
+| RSK-036 Source and target can diverge during object migration | EVD-039, EVD-080–EVD-081 | Medium | Critical | every migrated object/File/direct URL | 5A, 9 | Conditional on migration | Low after freeze/delta/reconcile/cutback |
+| RSK-037 Legacy objects can lack trustworthy checksum | EVD-039, LIM-004 | Unknown | High | migration integrity and missing/corrupt detection | 5A, 9 | Conditional on migration | Medium under approved hash policy |
+| RSK-038 Destructive cleanup has no simple rollback | EVD-025, EVD-066, EVD-071–EVD-073 | Medium | Critical | managed and historical objects across tenants | 5B | Yes | Medium even with versioning/recovery |
+
+### Detection, prevention, mitigation, and recovery controls
+
+| Risk | Detection method | Prevention | Mitigation | Rollback / recovery |
+|---|---|---|---|---|
+| RSK-001 | role startup manifest, worker/queue heartbeat, instance-to-connection dashboards | role-specific composition roots and instance caps | pause/scale affected role independently | prior compatible digest only after queue drain and schedule exclusivity |
+| RSK-002 | synthetic probe matrix and routed-instance tests | distinct startup/liveness/readiness with complete role dependencies | remove unhealthy instances; degrade noncritical features explicitly | restore prior probe config/endpoint while retaining critical routing signal |
+| RSK-003 | termination injection during active HTTP/jobs | enable shutdown hooks, stop intake, bounded drain, idempotency/leases | retry/reconcile abandoned work | replay idempotent jobs and reconcile DB/provider state |
+| RSK-004 | completion latency/temp disk/CPU/error metrics; worker crash tests | asynchronous bounded media worker and admission limits | quarantine/retry poison uploads; cleanup leases | dual-compatible synchronous route during transition; object/session reconciliation |
+| RSK-005 | multi-instance socket/presence tests and adapter/state readiness | no production memory fallback; reconnect/fail-closed policy | report realtime unavailable and client retry | reconnect shared Redis and rebuild TTL state; do not merge divergent memory |
+| RSK-006 | lockfile engine check in CI and runtime startup/push test | supported Node/dependency policy | disable send mode only if product-approved while correcting artifact | promote prior supported pair, not unsupported Node 20/Firebase 14 pair |
+| RSK-007 | telemetry completeness canary and alert game day | mandatory schema/metrics/trace/heartbeat gates | minimum error/readiness alerts and incident sampling | revert faulty instrumentation while preserving minimum signals |
+| RSK-008 | per-purpose latency/memory/eviction/connection metrics | isolate queue/realtime and set budgets | shed realtime or pause producers without losing persisted truth | controlled drain/cutover; never dual-consume same queues |
+| RSK-009 | pool wait, active connections, transaction duration, Cloud SQL max alerts | explicit role pool/instance/concurrency budgets | cap autoscaling/concurrency, shed load | revert pool config and traffic; preserve emergency DB connections |
+| RSK-010 | dual-adapter contract tests, bucket/IAM audit, object reconciliation | provider-neutral port; provision buckets with IaC; workload identity | dual-read/copy and bounded retry | retained source objects, checksum manifest, switch adapter back |
+| RSK-011 | IaC drift and deployment-record audit | reviewed IaC and build-once promotion pipeline | freeze changes and restore declared state | prior IaC revision/digest with D027 compatibility |
+| RSK-012 | terminal outcome dashboard, oldest-job age, reconciliation counts | per-domain idempotency/outbox/retry policy | authorized replay and poison isolation | reconstruct from DB truth; compensate ambiguous external effects |
+| RSK-013 | direct queue add/duplicate/integration test with produced ID | BullMQ-valid deterministic ID encoding | reject campaign before false success; reconcile unsent rows | enqueue corrected IDs idempotently from persisted recipients |
+| RSK-014 | deletion audit, dry-run diff, anomaly thresholds | prefix/metadata ownership proof, age/retention, canary | immediately pause worker/schedule | restore retained/versioned objects and reconcile `File` rows |
+| RSK-015 | envelope/key distribution audit and decrypt canary | separate key IDs, multi-key read, write-new | retain old decrypt keys and batch re-encrypt | stop writer; restore prior key set; never delete old key before zero-row proof |
+| RSK-016 | external browser/WebSocket/upload/Range origin matrix | explicit HTTPS allowlists in app and bucket | emergency remove origin or temporarily approved client path | versioned allowlist/IaC rollback |
+| RSK-017 | unauthenticated endpoint scan and response snapshot | restrict docs/details; minimal public status | edge rule/rate control | restore compatible minimal response while monitors update |
+| RSK-018 | scheduled backup/restore audit and reconciliation | approved PITR/retention and rehearsals | invoke incident data-recovery plan | isolated restore, validate, controlled cutover/cutback |
+| RSK-019 | transaction/pool tracing during signer latency injection | authorize/read in transaction, sign after commit with validated snapshot | timeout signing and avoid exhausting pool | restore old coordinator only under conservative concurrency |
+| RSK-020 | WAF/app rate metrics, cost/anomaly and abuse tests | layered identity/IP/tenant/operation quotas | shed/rate-limit abusive traffic; protect critical queues/DB | tune policy with recorded exceptions; no global disable without incident owner |
+| RSK-021 | log schema/cardinality tests and malicious header input | validate length/charset; generate/normalize correlated IDs | drop invalid values and cap labels | revert correlation format while retaining generated IDs |
+| RSK-022 | image digest and local/CI reproducibility check | digest-pin production and critical CI images | rebuild from approved digest | restore previous tested local/CI image set; no production compose use |
+| RSK-023 | object/DB/reference reconciliation after relation changes | approved retention/reference graph | classify retained state; report candidates | restore relation or retained/versioned object under owner policy |
+| RSK-024 | soft-delete/object-existence report | explicit metadata/object lifecycle states | quarantine candidate from deletion | undelete metadata or restore object only under authorized policy |
+| RSK-025 | complete reference-graph and false-positive review | report-only first; holds and historical refs | disable all destructive jobs | object version/source restore plus relation reconciliation |
+| RSK-026 | admissions retention/hold audit | relation-owned retention and hold precedence | freeze candidate deletion | restore evidence and escalate legal/data incident |
+| RSK-027 | classified URL inventory and post-cutover link checks | managed File or approved HTTPS policy; block new provider URLs as chosen | compatibility reads/redirects | retained source/provider read window and row rollback |
+| RSK-028 | declared-versus-detected negative matrix | purpose-aware content validation | reject/quarantine mismatch | policy rollback only if it does not broaden unapproved risk |
+| RSK-029 | scanner telemetry, active-content tests, quarantine audit | approved scanner/format policy and bounded processing | quarantine/disable affected upload purpose | release false positive through audited review; purge only by policy |
+| RSK-030 | Parent end-to-end send-with-media contract test | explicit Q031 product contract | return deterministic unsupported/text-only behavior | compatible bounded endpoint/permission rollback |
+| RSK-031 | negative cross-type and ownership tests | Q032 MIME matrices plus existing tenant/uploader/private checks | reject mismatch before submission | focused compatibility fix with regression |
+| RSK-032 | per-route memory/load/rate telemetry | edge/app limits, direct PUT threshold, bounded concurrency | shed/reject uploads predictably | lower concurrency/limits; never unbounded increase |
+| RSK-033 | bucket-create IAM denial and code path test | IaC-provisioned buckets; no runtime create capability | fail readiness/write clearly | provision through reviewed IaC, not request-path privilege |
+| RSK-034 | dual-adapter and real-GCS signed/CORS/Range/error suite | normalized port/errors/types and explicit TTL semantics | adapter-specific circuit/retry within policy | switch to retained compatible adapter/source |
+| RSK-035 | session/object age/state reconciliation and cleanup claims | idempotent Media Worker and lease recovery | retry/quarantine stale sessions | rebuild from session/DB truth; restore retained final object |
+| RSK-036 | manifest counts/generations/checksums and freeze/delta audit | rehearsed copy/coordinate update | halt cutover and keep source read-only | cut back to source and replay approved delta |
+| RSK-037 | missing-hash inventory and re-hash report | approved full/sample hash policy | quarantine mismatch/unverifiable object | recopy from retained source or owner-approved exception |
+| RSK-038 | deletion dry run, canary, audit, version/recovery check | separate enablement after reference/retention/hold approval | kill switch immediately | restore version/source where possible; incident reconciliation |
+
+## Current risk posture
+
+Baseline CI supplies strong functional, migration, and media-runtime evidence,
+but none of the release-blocking risks above is closed by those runs. Owner
+answers establish constraints; later phases must supply production-shaped
+implementation and operational proof. Risk acceptance, where allowed, must name
+the accepting owner, expiry date, compensating control, and reopen condition.
