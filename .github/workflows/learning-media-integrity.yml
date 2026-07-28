@@ -133,7 +133,10 @@ jobs:
         run: npm run db:migrations:status
       - run: npx prisma generate
       - run: npm run seed
-      - run: npm run build
+      - name: Build application
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        run: npm run build
 
       - name: Start exact MinIO release
         run: >-
@@ -168,6 +171,23 @@ jobs:
         run: >-
           DOCKER_BUILDKIT=1 docker build --target media-test
           --tag moazez-learning-media-test:${{ github.sha }} .
+      - name: Graceful shutdown lifecycle contracts
+        run: >-
+          docker run --rm --user root --env DATABASE_URL --entrypoint sh
+          moazez-learning-media-test:${{ github.sha }}
+          -c 'npx prisma generate &&
+          npx jest --runInBand --detectOpenHandles --runTestsByPath
+          src/bootstrap/application-lifecycle.state.spec.ts
+          src/bootstrap/graceful-shutdown.spec.ts
+          src/bootstrap/graceful-shutdown.process.spec.ts
+          src/bootstrap/http-drain.middleware.spec.ts
+          src/bootstrap/route-scoped-filter-lifecycle.integration.spec.ts
+          src/bootstrap/shutdown-http.integration.spec.ts
+          src/common/exceptions/global-exception.filter.spec.ts
+          src/modules/files/uploads/tests/files-upload-multer-exception.filter.spec.ts
+          src/modules/settings/branding/tests/branding-logo-multipart-exception.filter.spec.ts
+          src/modules/settings/branding/tests/public-school-branding-logo.spec.ts
+          src/modules/settings/branding/tests/public-school-branding-lifecycle.integration.spec.ts'
       - name: Verify ffprobe runtime contract
         run: >-
           docker run --rm --entrypoint node
@@ -182,6 +202,7 @@ jobs:
             --env APP_PORT --env APP_URL --env DATABASE_URL --env REDIS_URL \
             --env APP_CORS_ORIGINS=https://schools.moazez.cloud,https://admin.moazez.cloud \
             --env SWAGGER_ENABLED=false \
+            --env APP_SHUTDOWN_TIMEOUT_MS=15000 \
             --env JWT_ACCESS_SECRET --env JWT_REFRESH_SECRET \
             --env JWT_ACCESS_TTL --env JWT_REFRESH_TTL \
             --env SETTINGS_SECRET_ENCRYPTION_KEY \
@@ -193,8 +214,7 @@ jobs:
             moazez-learning-media:${{ github.sha }}
           for attempt in {1..30}; do
             if curl --fail --silent http://127.0.0.1:3000/api/v1/health >/dev/null; then
-              docker rm --force moazez-learning-media-runtime >/dev/null
-              exit 0
+              break
             fi
             if ! docker inspect --format '{{.State.Running}}' \
               moazez-learning-media-runtime 2>/dev/null | grep --quiet '^true$'; then
@@ -203,10 +223,124 @@ jobs:
               exit 1
             fi
             sleep 1
+            if [[ "$attempt" -eq 30 ]]; then
+              echo 'The runtime container did not become healthy before the timeout.'
+              docker logs moazez-learning-media-runtime || true
+              exit 1
+            fi
           done
-          echo 'The runtime container did not become healthy before the timeout.'
+
+          shutdown_started_ms="$(date +%s%3N)"
+          docker kill --signal SIGTERM moazez-learning-media-runtime >/dev/null
+          intake_stopped=false
+          for attempt in {1..100}; do
+            docker logs moazez-learning-media-runtime \
+              >runtime-shutdown.log 2>&1 || true
+            if grep --quiet 'lifecycle.shutdown.intake_stopped' \
+              runtime-shutdown.log; then
+              intake_stopped=true
+              break
+            fi
+            sleep 0.1
+          done
+          if [[ "$intake_stopped" != 'true' ]]; then
+            echo 'The runtime did not record stopped intake after SIGTERM.'
+            cat runtime-shutdown.log
+            exit 1
+          fi
+
+          set +e
+          post_stop_http_code="$(
+            curl --silent --output /dev/null --write-out '%{http_code}' \
+              --max-time 2 http://127.0.0.1:3000/api/v1/health
+          )"
+          post_stop_curl_exit="$?"
+          set -e
+          if [[ "$post_stop_curl_exit" -eq 0 ]] &&
+            [[ "$post_stop_http_code" =~ ^2[0-9][0-9]$ ]]; then
+            echo 'The runtime admitted a successful HTTP response after intake stopped.'
+            cat runtime-shutdown.log
+            exit 1
+          fi
+
+          for attempt in {1..25}; do
+            runtime_status="$(docker inspect --format '{{.State.Status}}' \
+              moazez-learning-media-runtime 2>/dev/null || true)"
+            if [[ "$runtime_status" == 'exited' ]]; then
+              shutdown_elapsed_ms="$(( $(date +%s%3N) - shutdown_started_ms ))"
+              runtime_exit_code="$(docker inspect --format '{{.State.ExitCode}}' \
+                moazez-learning-media-runtime)"
+              docker logs moazez-learning-media-runtime >runtime-shutdown.log 2>&1 || true
+              cat runtime-shutdown.log
+              test "$runtime_exit_code" -eq 0
+              test "$shutdown_elapsed_ms" -le 20000
+              grep --quiet 'lifecycle.shutdown.started' runtime-shutdown.log
+              grep --quiet 'lifecycle.shutdown.intake_stopped' runtime-shutdown.log
+              grep --quiet 'lifecycle.shutdown.completed' runtime-shutdown.log
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo 'The runtime container exceeded the graceful shutdown bound.'
           docker logs moazez-learning-media-runtime || true
           exit 1
+      - name: Verify bounded forced-timeout lifecycle path
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout_log="$RUNNER_TEMP/moazez-shutdown-timeout.log"
+          timeout_started_ms="$(date +%s%3N)"
+          docker run --detach --name moazez-shutdown-timeout-fixture \
+            --entrypoint node \
+            moazez-learning-media:${{ github.sha }} \
+            -e '
+              const { ApplicationLifecycleState } =
+                require("./dist/src/bootstrap/application-lifecycle.state");
+              const { GracefulShutdownCoordinator } =
+                require("./dist/src/bootstrap/graceful-shutdown");
+              const lifecycle = new ApplicationLifecycleState();
+              const coordinator = new GracefulShutdownCoordinator({
+                app: { close: () => new Promise(() => undefined) },
+                httpServer: { close: (callback) => callback() },
+                lifecycle,
+                queue: { beginWorkerDrain: () => Promise.resolve() },
+                realtime: {
+                  disconnectSocketsForShutdown: () => Promise.resolve()
+                },
+                timeoutMs: 1000,
+                logger: {
+                  log: (event) => console.log(JSON.stringify(event)),
+                  error: (event) => console.error(JSON.stringify(event))
+                }
+              });
+              coordinator.handleSignal("SIGTERM");
+            ' >/dev/null
+          set +e
+          timeout_exit_code="$(
+            timeout 10s docker wait moazez-shutdown-timeout-fixture
+          )"
+          timeout_wait_status="$?"
+          set -e
+          timeout_elapsed_ms="$(( $(date +%s%3N) - timeout_started_ms ))"
+          docker logs moazez-shutdown-timeout-fixture \
+            >"$timeout_log" 2>&1 || true
+          cat "$timeout_log"
+          test "$timeout_wait_status" -eq 0
+          test "$timeout_exit_code" -eq 1
+          test "$timeout_elapsed_ms" -ge 1000
+          test "$timeout_elapsed_ms" -le 10000
+          timeout_event_elapsed_ms="$(
+            grep 'lifecycle.shutdown.timed_out' "$timeout_log" |
+              grep --only-matching '"elapsedMs":[0-9]*' |
+              tail --lines 1 |
+              cut --delimiter : --fields 2
+          )"
+          test "$timeout_event_elapsed_ms" -ge 1000
+          test "$timeout_event_elapsed_ms" -le 1500
+          grep --quiet 'lifecycle.shutdown.timed_out' "$timeout_log"
+          ! grep --quiet 'lifecycle.shutdown.completed' "$timeout_log"
+          docker rm moazez-shutdown-timeout-fixture >/dev/null
       - name: Verify non-root runtime and Prisma Client
         run: >-
           docker run --rm --entrypoint sh
@@ -227,6 +361,13 @@ jobs:
 
       - name: Focused unit and contracts
         run: npm run test:learning-media
+      - name: BullMQ graceful shutdown and stalled-job recovery
+        env:
+          TEST_REDIS_URL: redis://127.0.0.1:6379
+        run: >-
+          npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
+          test/integration/bullmq-shutdown-lifecycle.integration.spec.ts
+          test/integration/prisma-shutdown-lifecycle.integration.spec.ts
       - name: Shared Student Parent Teacher playback and download compatibility contracts
         run: >-
           npx jest --runInBand --runTestsByPath
@@ -305,4 +446,5 @@ jobs:
       - if: always()
         run: >-
           docker rm --force moazez-learning-media-runtime
-          moazez-learning-media-minio || true
+          moazez-learning-media-minio
+          moazez-shutdown-timeout-fixture || true

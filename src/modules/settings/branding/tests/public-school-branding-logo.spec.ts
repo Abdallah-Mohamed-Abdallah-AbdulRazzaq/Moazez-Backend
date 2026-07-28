@@ -1,3 +1,4 @@
+import { once } from 'node:events';
 import { PassThrough, Readable } from 'node:stream';
 import { ConfigService } from '@nestjs/config';
 import { FileVisibility } from '@prisma/client';
@@ -255,24 +256,46 @@ describe('public school branding logo delivery', () => {
     const responseStream = new PassThrough() as PassThrough & {
       status: jest.Mock;
       setHeader: jest.Mock;
-      destroy: jest.Mock;
       json: jest.Mock;
     };
     responseStream.status = jest.fn().mockReturnValue(responseStream);
     responseStream.setHeader = jest.fn();
-    responseStream.destroy = jest.fn();
     responseStream.json = jest.fn();
+    const responseDestroy = jest.spyOn(responseStream, 'destroy');
 
-    await controller.getLogo(
+    const delivery = controller.getLogo(
       SCHOOL_ID,
       {} as Request,
       responseStream as unknown as Response,
     );
+    await Promise.resolve();
     stream.emit('error', new Error('mid-stream'));
+    await delivery;
 
-    expect(responseStream.destroy).toHaveBeenCalledTimes(1);
+    expect(responseDestroy).toHaveBeenCalled();
     expect(responseStream.status).toHaveBeenCalledTimes(1);
     expect(responseStream.json).not.toHaveBeenCalled();
+  });
+
+  it('cancels the underlying storage iterator when delivery is abandoned', async () => {
+    const source = new PassThrough();
+    const iterator = source[Symbol.asyncIterator]();
+    const iteratorReturn = jest.spyOn(iterator, 'return');
+    jest.spyOn(source, Symbol.asyncIterator).mockReturnValue(iterator);
+    source.write(Buffer.from('image'));
+    const { useCase } = createPublicUseCase({
+      stream: source,
+      storedSize: 11,
+      fileSize: 11,
+    });
+
+    const result = await useCase.execute(SCHOOL_ID);
+    const closed = once(result.stream, 'close');
+    result.stream.destroy();
+    await closed;
+
+    await eventually(() => expect(iteratorReturn).toHaveBeenCalledTimes(1));
+    expect(source.destroyed).toBe(true);
   });
 
   it('marks operational 503 responses non-cacheable', async () => {
@@ -407,4 +430,16 @@ async function consume(stream: Readable): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of stream) chunks.push(Buffer.from(chunk));
   return Buffer.concat(chunks);
+}
+
+async function eventually(assertion: () => void): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    try {
+      assertion();
+      return;
+    } catch {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  }
+  assertion();
 }

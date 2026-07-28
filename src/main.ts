@@ -3,25 +3,45 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import type { Express } from 'express';
 import { AppModule } from './app.module';
+import { ApplicationLifecycleState } from './bootstrap/application-lifecycle.state';
 import { handleBootstrapFailure } from './bootstrap/bootstrap-failure';
+import { GracefulShutdownCoordinator } from './bootstrap/graceful-shutdown';
 import {
   configureHttpApplication,
   logHttpApplicationStarted,
 } from './bootstrap/http-application';
 import type { Env } from './config/env.validation';
+import { BullmqService } from './infrastructure/queue/bullmq.service';
+import { RealtimeGateway } from './infrastructure/realtime/realtime.gateway';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
   const config = app.get<ConfigService<Env, true>>(ConfigService);
-  const configured = configureHttpApplication(app, {
-    environment: config.get('NODE_ENV', { infer: true }),
-    corsOrigins: config.get('APP_CORS_ORIGINS', { infer: true }),
-    swaggerEnabled: config.get('SWAGGER_ENABLED', { infer: true }),
-  });
+  const lifecycle = app.get(ApplicationLifecycleState);
+  const configured = configureHttpApplication(
+    app,
+    {
+      environment: config.get('NODE_ENV', { infer: true }),
+      corsOrigins: config.get('APP_CORS_ORIGINS', { infer: true }),
+      swaggerEnabled: config.get('SWAGGER_ENABLED', { infer: true }),
+    },
+    lifecycle,
+  );
 
   const port = config.get('APP_PORT', { infer: true });
   await app.listen(port);
+
+  const shutdown = new GracefulShutdownCoordinator({
+    app,
+    httpServer: app.getHttpServer(),
+    lifecycle,
+    queue: app.get(BullmqService),
+    realtime: app.get(RealtimeGateway),
+    timeoutMs: config.get('APP_SHUTDOWN_TIMEOUT_MS', { infer: true }),
+    logger,
+  });
+  shutdown.install();
 
   logHttpApplicationStarted(logger, port, configured);
   logRegisteredRoutes(app.getHttpAdapter().getInstance() as Express, logger);

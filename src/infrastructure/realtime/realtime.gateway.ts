@@ -1,4 +1,4 @@
-import { Logger, OnModuleDestroy } from '@nestjs/common';
+import { Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   ConnectedSocket,
@@ -15,6 +15,7 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import IORedis from 'ioredis';
 import type { Server } from 'socket.io';
 import { applicationCorsOriginDelegate } from '../../bootstrap/application-cors.policy';
+import { ApplicationLifecycleState } from '../../bootstrap/application-lifecycle.state';
 import { REQUEST_ID_HEADER } from '../../common/context/correlation-id';
 import {
   createRequestContext,
@@ -58,6 +59,9 @@ export class RealtimeGateway
   private readonly logger = new Logger(RealtimeGateway.name);
   private redisPublisher?: IORedis;
   private redisSubscriber?: IORedis;
+  private destroyPromise: Promise<void> | null = null;
+  private socketDisconnectPromise: Promise<void> | null = null;
+  private readonly presenceCleanup = new Set<Promise<void>>();
 
   constructor(
     private readonly authService: RealtimeAuthService,
@@ -66,15 +70,29 @@ export class RealtimeGateway
     private readonly configService: ConfigService<Env, true>,
     private readonly presenceService: RealtimePresenceService,
     private readonly typingService: RealtimeTypingService,
+    @Optional()
+    private readonly lifecycle: ApplicationLifecycleState = new ApplicationLifecycleState(),
   ) {}
 
   async afterInit(server: Server): Promise<void> {
     this.server = server;
     this.publisher.bindServer(server);
+    server.use((_socket, next) => {
+      if (this.lifecycle.isDraining()) {
+        next(new Error('realtime.shutdown'));
+        return;
+      }
+      next();
+    });
     await this.configureRedisAdapter(server);
   }
 
   async handleConnection(client: RealtimeSocket): Promise<void> {
+    const lease = this.lifecycle.tryAdmit('websocket');
+    if (!lease) {
+      client.disconnect(true);
+      return;
+    }
     const context = createRequestContext(
       client.handshake.headers[REQUEST_ID_HEADER],
     );
@@ -105,16 +123,42 @@ export class RealtimeGateway
         `Rejected realtime socket connection: ${this.getErrorCode(error)}`,
       );
       client.disconnect(true);
+    } finally {
+      lease.release();
     }
   }
 
   async handleDisconnect(client: RealtimeSocket): Promise<void> {
+    const cleanup = this.cleanupDisconnectedSocket(client);
+    this.presenceCleanup.add(cleanup);
+    try {
+      await cleanup;
+    } finally {
+      this.presenceCleanup.delete(cleanup);
+    }
+  }
+
+  disconnectSocketsForShutdown(): Promise<void> {
+    if (!this.socketDisconnectPromise) {
+      this.socketDisconnectPromise = this.disconnectSockets();
+    }
+    return this.socketDisconnectPromise;
+  }
+
+  onModuleDestroy(): Promise<void> {
+    if (!this.destroyPromise) {
+      this.destroyPromise = this.destroy();
+    }
+    return this.destroyPromise;
+  }
+
+  private async cleanupDisconnectedSocket(
+    client: RealtimeSocket,
+  ): Promise<void> {
     const presenceInput = this.extractPresenceInput(client);
     if (!presenceInput) return;
 
-    this.logger.debug(
-      `Realtime socket disconnected for actor ${presenceInput.userId}`,
-    );
+    this.logger.debug('Realtime socket disconnected');
 
     try {
       await this.presenceService.unregisterSocket(presenceInput);
@@ -125,6 +169,12 @@ export class RealtimeGateway
         )}`,
       );
     }
+  }
+
+  private async disconnectSockets(): Promise<void> {
+    this.server?.disconnectSockets(true);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await Promise.all([...this.presenceCleanup]);
   }
 
   @SubscribeMessage(
@@ -209,7 +259,8 @@ export class RealtimeGateway
     });
   }
 
-  async onModuleDestroy(): Promise<void> {
+  private async destroy(): Promise<void> {
+    await this.disconnectSocketsForShutdown();
     await Promise.all([
       this.closeRedisClient(this.redisPublisher),
       this.closeRedisClient(this.redisSubscriber),
@@ -308,24 +359,34 @@ export class RealtimeGateway
     client: RealtimeSocket,
     fn: (context: RealtimeAuthenticatedContext) => Promise<T>,
   ): Promise<T> {
-    const context = this.requireAuthenticatedSocket(client);
-    const requestContext = createRequestContext(client.data.requestId);
+    const lease = this.lifecycle.tryAdmit('websocket');
+    if (!lease) {
+      throw new WsException({ code: 'service.unavailable' });
+    }
 
-    return runWithRequestContext(requestContext, async () => {
-      setActor({
-        id: context.actorId,
-        userType: context.userType,
-      });
-      setActiveMembership({
-        membershipId: context.membershipId,
-        schoolId: context.schoolId,
-        organizationId: context.organizationId,
-        roleId: context.roleId,
-        permissions: context.permissions,
-      });
+    try {
+      const context = this.requireAuthenticatedSocket(client);
+      const requestContext = createRequestContext(client.data.requestId);
 
-      return fn(context);
-    });
+      return runWithRequestContext(requestContext, async () => {
+        setActor({
+          id: context.actorId,
+          userType: context.userType,
+        });
+        setActiveMembership({
+          membershipId: context.membershipId,
+          schoolId: context.schoolId,
+          organizationId: context.organizationId,
+          roleId: context.roleId,
+          permissions: context.permissions,
+        });
+
+        return fn(context);
+      }).finally(() => lease.release());
+    } catch (error) {
+      lease.release();
+      throw error;
+    }
   }
 
   private requireAuthenticatedSocket(

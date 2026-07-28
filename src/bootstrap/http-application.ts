@@ -5,6 +5,8 @@ import {
   type ApplicationEnvironment,
 } from './application-cors.policy';
 import { GLOBAL_PREFIX, SWAGGER_PATH } from './application-metadata';
+import { ApplicationLifecycleState } from './application-lifecycle.state';
+import { createHttpDrainMiddleware } from './http-drain.middleware';
 import { configureSwagger } from './swagger';
 
 export interface HttpApplicationPolicy {
@@ -21,6 +23,7 @@ export interface ConfiguredHttpApplication {
 export function configureHttpApplication(
   app: INestApplication,
   policy: HttpApplicationPolicy,
+  lifecycle?: ApplicationLifecycleState,
 ): ConfiguredHttpApplication {
   if (policy.environment === 'production' && policy.swaggerEnabled) {
     throw new Error('SWAGGER_ENABLED=true is forbidden in production');
@@ -32,6 +35,10 @@ export function configureHttpApplication(
   );
 
   app.setGlobalPrefix(GLOBAL_PREFIX);
+  app.enableCors(createApplicationCorsOptions(allowedOrigins));
+  if (lifecycle) {
+    app.use(createHttpDrainMiddleware(lifecycle));
+  }
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -40,7 +47,6 @@ export function configureHttpApplication(
       transformOptions: { enableImplicitConversion: false },
     }),
   );
-  app.enableCors(createApplicationCorsOptions(allowedOrigins));
 
   return {
     allowedOrigins,

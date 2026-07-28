@@ -71,6 +71,7 @@ export class BullmqService implements OnModuleDestroy {
   >();
   private readonly workerRuns = new WeakMap<Worker, Promise<void>>();
   private isShuttingDown = false;
+  private workerDrainPromise: Promise<void> | null = null;
   private shutdownPromise: Promise<void> | null = null;
 
   constructor(private readonly configService: ConfigService) {
@@ -177,6 +178,15 @@ export class BullmqService implements OnModuleDestroy {
         return;
       }
 
+      if (this.isShuttingDown) {
+        this.logger.error({
+          event: 'lifecycle.resource.failed',
+          resource: 'bullmq_worker',
+          stage: 'drain',
+        });
+        return;
+      }
+
       this.logger.error(
         `BullMQ worker ${queueName} failed: ${error.message}`,
         error.stack,
@@ -203,10 +213,19 @@ export class BullmqService implements OnModuleDestroy {
     return this.shutdownPromise;
   }
 
-  private async shutdown(): Promise<void> {
-    this.isShuttingDown = true;
+  beginWorkerDrain(): Promise<void> {
+    if (!this.workerDrainPromise) {
+      this.isShuttingDown = true;
+      this.workerDrainPromise = Promise.all(
+        this.workers.map((worker) => this.closeWorker(worker)),
+      ).then(() => undefined);
+    }
 
-    await Promise.all(this.workers.map((worker) => this.closeWorker(worker)));
+    return this.workerDrainPromise;
+  }
+
+  private async shutdown(): Promise<void> {
+    await this.beginWorkerDrain();
 
     await Promise.all(
       [...this.queues.values()].map((queue) => this.closeQueue(queue)),

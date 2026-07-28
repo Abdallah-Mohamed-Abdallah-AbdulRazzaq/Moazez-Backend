@@ -9,6 +9,7 @@ import {
   createRequestContext,
   runWithRequestContext,
 } from '../../../../common/context/request-context';
+import { attachHttpRequestWorkLease } from '../../../../common/lifecycle/http-request-lifecycle';
 import { FilesUploadSizeExceededException } from '../domain/file-upload.exceptions';
 import { FILES_UPLOAD_MAX_SIZE_BYTES } from '../domain/file-upload.constraints';
 import {
@@ -70,6 +71,7 @@ describe('FilesUploadMulterExceptionFilter', () => {
 
   function createHttpHost(headers: Record<string, string> = {}): {
     host: ArgumentsHost;
+    release: jest.Mock;
     response: {
       status: jest.Mock<unknown, [number]>;
       json: jest.Mock<void, [unknown]>;
@@ -83,6 +85,8 @@ describe('FilesUploadMulterExceptionFilter', () => {
     const request = {
       header: jest.fn((name: string) => headers[name.toLowerCase()]),
     };
+    const release = jest.fn();
+    attachHttpRequestWorkLease(request as never, { release });
     const host = {
       switchToHttp: () => ({
         getRequest: () => request,
@@ -90,11 +94,11 @@ describe('FilesUploadMulterExceptionFilter', () => {
       }),
     } as unknown as ArgumentsHost;
 
-    return { host, response };
+    return { host, release, response };
   }
 
   it('maps only LIMIT_FILE_SIZE to the stable 413 envelope', () => {
-    const { host, response } = createHttpHost();
+    const { host, release, response } = createHttpHost();
     const filter = new FilesUploadMulterExceptionFilter();
 
     runWithRequestContext(createRequestContext('stable-request-id'), () =>
@@ -120,16 +124,18 @@ describe('FilesUploadMulterExceptionFilter', () => {
         traceId: 'stable-request-id',
       },
     });
+    expect(release).toHaveBeenCalledTimes(1);
   });
 
   it('rethrows an unrelated exception unchanged', () => {
-    const { host, response } = createHttpHost();
+    const { host, release, response } = createHttpHost();
     const filter = new FilesUploadMulterExceptionFilter();
     const unrelated = Object.assign(new Error('unrelated'), {
       code: 'LIMIT_UNEXPECTED_FILE',
     });
 
     expect(() => filter.catch(unrelated, host)).toThrow(unrelated);
+    expect(release).toHaveBeenCalledTimes(1);
     expect(response.status).not.toHaveBeenCalled();
     expect(response.json).not.toHaveBeenCalled();
   });
