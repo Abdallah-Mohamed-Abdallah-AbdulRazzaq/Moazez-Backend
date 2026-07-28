@@ -2,20 +2,21 @@
 
 ## Document control
 
-| Field                              | Value                                                                                                                    |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Task ID                            | `PRODUCTION-READINESS-1B-R3`                                                                                             |
-| Repository                         | `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend`                                                                   |
-| Branch                             | `feat/production-readiness-1b-shutdown-lifecycle`                                                                        |
-
-| Starting baseline                  | `107545829bf24146110579b8293f23f80cee91ea` |
-| Final pull-request head            | `0524672d62a48a34c2b0177593b577399cf01394` |
-| Pull request                       | `#49`                                      |
-| Date                               | 2026-07-28                                                                                                               |
-| Timezone                           | Africa/Cairo                                                                                                             |
-| Scope                              | Graceful application shutdown, bounded termination, intake stop, active-work drain, resource cleanup, and recoverability |
-| Gate                               | `PRD1-G02`                                                                                                               |
-| Status | `PHASE_1B_REMOTE_CI_PASSED_READY_FOR_MERGE` |
+| Field                   | Value                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Task ID                 | `PRODUCTION-READINESS-1B-R3`                                                                                             |
+| Repository              | `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend`                                                                   |
+| Source branch           | `feat/production-readiness-1b-shutdown-lifecycle`                                                                        |
+| Starting baseline       | `107545829bf24146110579b8293f23f80cee91ea`                                                                               |
+| Final pull-request head | `35c491d03dc15b501c46dffd0bbdced60057c43c`                                                                               |
+| Merge commit            | `fe2969e3bb901b757f84423c83cfc559b931afb9`                                                                               |
+| Pull request            | `#49`                                                                                                                    |
+| Merged at               | `2026-07-28 17:10:24 UTC`                                                                                                |
+| Date                    | `2026-07-28`                                                                                                             |
+| Timezone                | `Africa/Cairo`                                                                                                           |
+| Scope                   | Graceful application shutdown, bounded termination, intake stop, active-work drain, resource cleanup, and recoverability |
+| Gate                    | `PRD1-G02`                                                                                                               |
+| Status                  | `PHASE_1B_MERGED_COMPLETE`                                                                                               |
 
 This package implements PRD1-G02 only. It does not implement readiness,
 liveness, startup probes, runtime-role separation, or any product workflow
@@ -287,7 +288,7 @@ only to their `npm run build` steps. This does not affect application runtime
 memory or production container memory limits.
 
 On final pull-request head
-`0524672d62a48a34c2b0177593b577399cf01394`, all required remote workflows
+`35c491d03dc15b501c46dffd0bbdced60057c43c`, all required remote workflows
 completed successfully:
 
 - `Learning Content Integrity / Lesson Content atomicity and visibility`
@@ -299,30 +300,27 @@ execution and is not relabeled as a pass.
 
 ## Validation evidence
 
-| Command / evidence                                                    | Outcome                                                                                          |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| hard Git preflight                                                    | PASS — exact branch/baseline/origin, zero staged paths/commits, exact 34-path R2 input package    |
-| runtime policy validator and drift tests                              | PASS — 10 tests                                                                                  |
-| two filter units plus real decorated-route precedence                 | PASS — 3 suites, 17 tests with open-handle detection                                             |
-| retained lifecycle/HTTP/Swagger/branding/filter regression            | PASS — 14 suites, 113 tests with open-handle detection                                           |
-
-| canonical Node 22 R3 lifecycle/open-handle group                       | PASS — 11 suites, 77 tests; Prisma Client generated inside the disposable image                  |
-| direct Nest build and exact canonical-image `npm run build`           | PASS                                                                                             |
-| full unit suite with repository contract inputs                       | PASS — 533 suites, 3,803 tests                                                                   |
-| real disposable Redis BullMQ drain/recovery                           | PASS — 2 tests with open-handle detection                                                        |
-| real disposable PostgreSQL query/disconnect ordering                  | PASS — 1 test with the production completion interceptor and open-handle detection               |
-| fresh disposable PostgreSQL migration replay                          | PASS — all 7 committed migrations                                                                |
-| migration governance / Prisma validation                              | PASS — immutable baseline and 7 active migrations; schema valid                                  |
-| exact security suite (`npm run test:security`)                        | PASS — 89 suites, 1,154 tests                                                                    |
-| real-`AppModule` root E2E                                             | PASS — 1 suite, 2 tests; `/api/v1` exact identity and `/` non-identity                           |
-| canonical final-image build / runtime smokes                          | PASS — Node `22.23.1`, Firebase, Prisma, non-root UID 1000, ffprobe/media contract               |
-| production final-image `SIGTERM`                                      | PASS — healthy first; waited for intake event; post-stop connection failed; exit `0` in 518 ms   |
-| no-extra-handle canonical-image forced-timeout fixture                | PASS — exit `1`; internal elapsed 1,006 ms; container elapsed 1,741 ms; no `completed`           |
-
-| workflow YAML structural validation                                   | PASS — parsed through `js-yaml`; R3 tests, shutdown proofs, logs, and cleanup present             |
-| `git diff --check` / scope / changed-file secret scan                 | PASS — informational line-ending warnings; 39 authorized paths; no secret match                  |
-
-| final PR remote CI on `0524672d62a48a34c2b0177593b577399cf01394` | PASS — Learning Content, Learning Media, and Migration Integrity all completed successfully; build-only Node heap bound applied consistently |
+| Command / evidence                                                      | Outcome                                                                                                                                      |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| R2 input-package Git preflight                                          | PASS — branch, baseline, and origin matched before R2; zero staged paths or commits; exact 34-path R2 input package                          |
+| runtime policy validator and drift tests                                | PASS — 10 tests                                                                                                                              |
+| two filter units plus real decorated-route precedence                   | PASS — 3 suites, 17 tests with open-handle detection                                                                                         |
+| retained lifecycle/HTTP/Swagger/branding/filter regression              | PASS — 14 suites, 113 tests with open-handle detection                                                                                       |
+| canonical Node 22 R3 lifecycle/open-handle group                        | PASS — 11 suites, 77 tests; Prisma Client generated inside the disposable image                                                              |
+| direct Nest build and exact canonical-image `npm run build`             | PASS                                                                                                                                         |
+| full unit suite with repository contract inputs                         | PASS — 533 suites, 3,803 tests                                                                                                               |
+| real disposable Redis BullMQ drain/recovery                             | PASS — 2 tests with open-handle detection                                                                                                    |
+| real disposable PostgreSQL query/disconnect ordering                    | PASS — 1 test with the production completion interceptor and open-handle detection                                                           |
+| fresh disposable PostgreSQL migration replay                            | PASS — all 7 committed migrations                                                                                                            |
+| migration governance / Prisma validation                                | PASS — immutable baseline and 7 active migrations; schema valid                                                                              |
+| exact security suite (`npm run test:security`)                          | PASS — 89 suites, 1,154 tests                                                                                                                |
+| real-`AppModule` root E2E                                               | PASS — 1 suite, 2 tests; `/api/v1` exact identity and `/` non-identity                                                                       |
+| canonical final-image build / runtime smokes                            | PASS — Node `22.23.1`, Firebase, Prisma, non-root UID 1000, ffprobe/media contract                                                           |
+| production final-image `SIGTERM`                                        | PASS — healthy first; waited for intake event; post-stop connection failed; exit `0` in 518 ms                                               |
+| no-extra-handle canonical-image forced-timeout fixture                  | PASS — exit `1`; internal elapsed 1,006 ms; container elapsed 1,741 ms; no `completed`                                                       |
+| workflow YAML structural validation                                     | PASS — parsed through `js-yaml`; R3 tests, shutdown proofs, logs, and cleanup present                                                        |
+| `git diff --check` / scope / changed-file secret scan                   | PASS — informational line-ending warnings; 41 authorized paths; no secret match                                                              |
+| final PR remote CI on `35c491d03dc15b501c46dffd0bbdced60057c43c`        | PASS — Learning Content, Learning Media, and Migration Integrity all completed successfully; build-only Node heap bound applied consistently |
 
 The first combined Redis/PostgreSQL test invocation correctly reported the
 PostgreSQL test as failed because the `media-test` dev-dependency overlay had
@@ -464,12 +462,20 @@ Residual boundaries:
 
 ## Safety attestation
 
-Two commits were created and pushed to
-`feat/production-readiness-1b-shutdown-lifecycle`, and Draft Pull Request #49
-was opened against `main`. No tag, merge, deployment, staging-resource,
-production-resource, or cloud action occurred. No source behavior outside lifecycle adjacency changed. No
-schema, migration, seed, product queue contract, storage contract, Learning
-Media contract, Reinforcement contract, or health route changed.
+Three commits were created and pushed to
+`feat/production-readiness-1b-shutdown-lifecycle`. Pull Request #49 was opened,
+validated by all required remote checks, and merged into `main` on
+2026-07-28 at 17:10:24 UTC through merge commit
+`fe2969e3bb901b757f84423c83cfc559b931afb9`.
+
+No tag or deployment occurred. Apart from the GitHub source-control operations
+required to publish and merge Pull Request #49, no staging, production, shared
+runtime service, persistent data, or cloud-infrastructure resource was read or
+mutated.
+
+No source behavior outside lifecycle adjacency changed. No schema, migration,
+seed, product queue contract, storage contract, Learning Media contract,
+Reinforcement contract, or health route changed.
 
 Only uniquely named disposable PostgreSQL, Redis, and MinIO containers on
 isolated Docker networks with tmpfs data and synthetic credentials were used.
