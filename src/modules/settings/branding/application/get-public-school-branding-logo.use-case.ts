@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import {
   PublicBrandingLogoNotFoundException,
   PublicBrandingLogoServiceUnavailableException,
   isStorageObjectNotFound,
 } from '../domain/branding-logo.errors';
-import { PublicBrandingLogoStream } from '../domain/branding-logo.types';
+import type { PublicBrandingLogoStream } from '../domain/branding-logo.types';
 import { ResolveSchoolLogoUrlService } from './resolve-school-logo-url.service';
 
 const STREAM_INITIALIZATION_TIMEOUT_MS = 10_000;
@@ -24,7 +24,7 @@ export class GetPublicSchoolBrandingLogoUseCase {
     const file = await this.resolver.findEligibleManagedFile(schoolId);
     if (!file) throw new PublicBrandingLogoNotFoundException();
 
-    let stat;
+    let stat: Awaited<ReturnType<StorageService['statObject']>>;
     try {
       stat = await this.storageService.statObject({
         bucket: file.bucket,
@@ -95,9 +95,18 @@ export class GetPublicSchoolBrandingLogoUseCase {
       throw new Error('storage_stream_byte_count_exceeded');
     }
 
-    return Readable.from(
+    const validatedSource = Readable.from(
       this.iterateValidatedBytes(iterator, first, expectedBytes),
     );
+    const output = new PassThrough();
+    validatedSource.once('error', (error) => output.destroy(error));
+    output.once('close', () => {
+      if (output.readableEnded) return;
+      if (!source.destroyed) source.destroy();
+      if (!validatedSource.destroyed) validatedSource.destroy();
+    });
+    validatedSource.pipe(output);
+    return output;
   }
 
   private async readFirstChunk(
@@ -133,22 +142,27 @@ export class GetPublicSchoolBrandingLogoUseCase {
     expectedBytes: number,
   ): AsyncGenerator<Buffer> {
     let streamedBytes = first.byteLength;
-    yield first;
+    let completed = false;
+    try {
+      yield first;
 
-    while (true) {
-      const result = await iterator.next();
-      if (result.done) break;
-      const chunk = Buffer.from(result.value as Uint8Array);
-      if (streamedBytes + chunk.byteLength > expectedBytes) {
-        await iterator.return?.();
-        throw new Error('storage_stream_byte_count_exceeded');
+      while (true) {
+        const result = await iterator.next();
+        if (result.done) break;
+        const chunk = Buffer.from(result.value as Uint8Array);
+        if (streamedBytes + chunk.byteLength > expectedBytes) {
+          throw new Error('storage_stream_byte_count_exceeded');
+        }
+        streamedBytes += chunk.byteLength;
+        if (chunk.byteLength > 0) yield chunk;
       }
-      streamedBytes += chunk.byteLength;
-      if (chunk.byteLength > 0) yield chunk;
-    }
 
-    if (streamedBytes !== expectedBytes) {
-      throw new Error('storage_stream_byte_count_short');
+      if (streamedBytes !== expectedBytes) {
+        throw new Error('storage_stream_byte_count_short');
+      }
+      completed = true;
+    } finally {
+      if (!completed) await iterator.return?.();
     }
   }
 }

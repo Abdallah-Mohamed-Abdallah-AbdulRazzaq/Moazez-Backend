@@ -24,10 +24,11 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { getCurrentRequestId } from '../../../../common/context/request-context';
 import { RequiredPermissions } from '../../../../common/decorators/required-permissions.decorator';
 import { SchoolManagementOnly } from '../../../../common/decorators/school-management-only.decorator';
+import { releaseHttpRequestWorkLease } from '../../../../common/lifecycle/http-request-lifecycle';
 import { DeleteBrandingLogoUseCase } from '../application/delete-branding-logo.use-case';
 import { GetBrandingUseCase } from '../application/get-branding.use-case';
 import { UpdateBrandingUseCase } from '../application/update-branding.use-case';
@@ -43,9 +44,11 @@ import {
 } from '../dto/upload-branding-logo.dto';
 
 @Catch()
-class BrandingLogoMultipartExceptionFilter implements ExceptionFilter {
+export class BrandingLogoMultipartExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
+    const request = http.getRequest<Request>();
+    releaseHttpRequestWorkLease(request);
     const response = http.getResponse<Response>();
 
     if (

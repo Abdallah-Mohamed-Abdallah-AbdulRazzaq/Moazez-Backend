@@ -1,9 +1,14 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RequestContextMiddleware } from './common/context/context.middleware';
+import { ApplicationLifecycleModule } from './bootstrap/application-lifecycle.module';
+import {
+  HttpLifecycleAdmissionGuard,
+  HttpLifecycleCompletionInterceptor,
+} from './bootstrap/http-drain.middleware';
 import { GlobalExceptionFilter } from './common/exceptions/global-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
@@ -43,6 +48,7 @@ import { OrganizationAdminModule } from './modules/organization-admin/organizati
       cache: true,
       validate: validateEnv,
     }),
+    ApplicationLifecycleModule,
     PrismaModule,
     RealtimeModule,
     HealthModule,
@@ -76,6 +82,13 @@ import { OrganizationAdminModule } from './modules/organization-admin/organizati
       provide: APP_FILTER,
       useClass: GlobalExceptionFilter,
     },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: HttpLifecycleCompletionInterceptor,
+    },
+    // Lifecycle admission must precede authentication and every other
+    // resource-using guard.
+    { provide: APP_GUARD, useClass: HttpLifecycleAdmissionGuard },
     // Order matters: authenticate, resolve Membership, establish any exact
     // Organization scope, then enforce route permissions.
     { provide: APP_GUARD, useClass: JwtAuthGuard },

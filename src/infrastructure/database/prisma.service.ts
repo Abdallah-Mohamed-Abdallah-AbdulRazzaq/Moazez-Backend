@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { schoolScopeExtension } from './school-scope.extension';
 
@@ -11,6 +16,7 @@ export class PrismaService
 {
   private readonly logger = new Logger(PrismaService.name);
   private _scoped?: ExtendedClient;
+  private disconnectPromise: Promise<void> | null = null;
 
   /**
    * Scoped client with the schoolScope extension applied. Use this for all
@@ -29,7 +35,10 @@ export class PrismaService
     this.logger.log('Prisma connected');
   }
 
-  async onModuleDestroy(): Promise<void> {
-    await this.$disconnect();
+  onModuleDestroy(): Promise<void> {
+    if (!this.disconnectPromise) {
+      this.disconnectPromise = this.$disconnect();
+    }
+    return this.disconnectPromise;
   }
 }

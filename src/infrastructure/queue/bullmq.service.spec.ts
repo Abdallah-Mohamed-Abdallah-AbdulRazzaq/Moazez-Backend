@@ -127,6 +127,33 @@ describe('BullmqService lifecycle', () => {
     expect(redis.disconnect).not.toHaveBeenCalled();
   });
 
+  it('stops worker intake before final queue and shared Redis cleanup', async () => {
+    let resolveWorkerClose: (() => void) | undefined;
+    const workerClose = new Promise<void>((resolve) => {
+      resolveWorkerClose = resolve;
+    });
+    const service = createService();
+    service.createWorker('test-queue', () => Promise.resolve());
+    service.getQueue('test-queue');
+    workers[0].close.mockReturnValue(workerClose);
+
+    const firstDrain = service.beginWorkerDrain();
+    const secondDrain = service.beginWorkerDrain();
+
+    expect(secondDrain).toBe(firstDrain);
+    expect(workers[0].close).toHaveBeenCalledTimes(1);
+    expect(queues[0].close).not.toHaveBeenCalled();
+    expect(redis.quit).not.toHaveBeenCalled();
+
+    resolveWorkerClose?.();
+    await firstDrain;
+    await service.onModuleDestroy();
+
+    expect(workers[0].close).toHaveBeenCalledTimes(1);
+    expect(queues[0].close).toHaveBeenCalledTimes(1);
+    expect(redis.quit).toHaveBeenCalledTimes(1);
+  });
+
   it('treats a shared quit closed-connection race as completed shutdown', async () => {
     const service = createService();
     service.createWorker('test-queue', () => Promise.resolve());
@@ -225,7 +252,7 @@ describe('BullmqService lifecycle', () => {
     await shutdown;
   });
 
-  it('logs non-connection worker failures during shutdown', async () => {
+  it('sanitizes non-connection worker failures during shutdown', async () => {
     let resolveClose: (() => void) | undefined;
     const closePromise = new Promise<void>((resolve) => {
       resolveClose = resolve;
@@ -241,10 +268,12 @@ describe('BullmqService lifecycle', () => {
     const shutdown = service.onModuleDestroy();
     workers[0].emitError(error);
 
-    expect(loggerError).toHaveBeenCalledWith(
-      'BullMQ worker test-queue failed: job cleanup failed',
-      error.stack,
-    );
+    expect(loggerError).toHaveBeenCalledWith({
+      event: 'lifecycle.resource.failed',
+      resource: 'bullmq_worker',
+      stage: 'drain',
+    });
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(error.message);
     resolveClose?.();
     await shutdown;
   });

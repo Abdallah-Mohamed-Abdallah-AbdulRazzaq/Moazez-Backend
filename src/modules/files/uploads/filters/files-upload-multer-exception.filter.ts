@@ -8,9 +8,10 @@ import {
   NestInterceptor,
   PayloadTooLargeException,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { catchError, Observable, throwError } from 'rxjs';
 import { getCurrentRequestId } from '../../../../common/context/request-context';
+import { releaseHttpRequestWorkLease } from '../../../../common/lifecycle/http-request-lifecycle';
 import { FILES_UPLOAD_MAX_SIZE_BYTES } from '../domain/file-upload.constraints';
 import { FilesUploadSizeExceededException } from '../domain/file-upload.exceptions';
 
@@ -34,11 +35,14 @@ export class FilesUploadMulterCodeRestorationInterceptor implements NestIntercep
 @Catch()
 export class FilesUploadMulterExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
+    const http = host.switchToHttp();
+    const request = http.getRequest<Request>();
+    releaseHttpRequestWorkLease(request);
+
     if (!isMulterFileSizeError(exception)) {
       throw exception;
     }
 
-    const http = host.switchToHttp();
     const response = http.getResponse<Response>();
     const error = new FilesUploadSizeExceededException({
       maxSizeBytes: FILES_UPLOAD_MAX_SIZE_BYTES,

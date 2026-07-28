@@ -8,6 +8,11 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { getCurrentRequestId } from '../context/request-context';
+import {
+  HttpShutdownAdmissionRejectedError,
+  releaseHttpRequestWorkLease,
+  sendHttpShutdownResponse,
+} from '../lifecycle/http-request-lifecycle';
 import { DomainException } from './domain-exception';
 
 interface ErrorEnvelope {
@@ -27,6 +32,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
+
+    releaseHttpRequestWorkLease(request);
+    if (exception instanceof HttpShutdownAdmissionRejectedError) {
+      sendHttpShutdownResponse(response);
+      return;
+    }
 
     const traceId = getCurrentRequestId();
 

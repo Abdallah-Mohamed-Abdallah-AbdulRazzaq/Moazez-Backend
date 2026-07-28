@@ -20,6 +20,12 @@ export const envSchema = z
     APP_URL: z.string().url(),
     APP_CORS_ORIGINS: optionalNonEmptyString,
     SWAGGER_ENABLED: booleanFromString.default('false'),
+    APP_SHUTDOWN_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(1000)
+      .max(60_000)
+      .default(15_000),
 
     DATABASE_URL: z.string().url(),
     REDIS_URL: z.string().url(),

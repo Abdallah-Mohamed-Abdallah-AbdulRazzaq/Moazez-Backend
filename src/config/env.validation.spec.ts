@@ -5,6 +5,29 @@ import {
 import { validateEnv } from './env.validation';
 
 describe('bootstrap environment validation', () => {
+  it('defaults the graceful shutdown timeout to 15000 milliseconds', () => {
+    expect(validateEnv(baseEnv()).APP_SHUTDOWN_TIMEOUT_MS).toBe(15_000);
+  });
+
+  it.each(['1000', '15000', '60000'])(
+    'accepts a bounded shutdown timeout of %s milliseconds',
+    (value) => {
+      expect(
+        validateEnv(baseEnv({ APP_SHUTDOWN_TIMEOUT_MS: value }))
+          .APP_SHUTDOWN_TIMEOUT_MS,
+      ).toBe(Number(value));
+    },
+  );
+
+  it.each(['not-a-number', '1.5', '0', '-1', '999', '60001'])(
+    'rejects an invalid shutdown timeout: %s',
+    (value) => {
+      expect(() =>
+        validateEnv(baseEnv({ APP_SHUTDOWN_TIMEOUT_MS: value })),
+      ).toThrow(/APP_SHUTDOWN_TIMEOUT_MS/u);
+    },
+  );
+
   it('defaults Swagger to disabled', () => {
     expect(validateEnv(baseEnv()).SWAGGER_ENABLED).toBe(false);
   });

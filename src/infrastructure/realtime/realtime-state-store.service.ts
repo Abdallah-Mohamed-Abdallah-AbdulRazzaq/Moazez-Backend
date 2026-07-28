@@ -99,6 +99,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
   >();
   private redis?: IORedis;
   private redisConnectPromise?: Promise<IORedis | null>;
+  private destroyPromise: Promise<void> | null = null;
   private redisUnavailable = false;
   private redisWarningLogged = false;
 
@@ -288,8 +289,11 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
     return redisResult ?? this.getMemoryTypingUsers(schoolId, conversationId);
   }
 
-  async onModuleDestroy(): Promise<void> {
-    await this.closeRedis();
+  onModuleDestroy(): Promise<void> {
+    if (!this.destroyPromise) {
+      this.destroyPromise = this.closeRedis();
+    }
+    return this.destroyPromise;
   }
 
   private incrementMemoryPresence(

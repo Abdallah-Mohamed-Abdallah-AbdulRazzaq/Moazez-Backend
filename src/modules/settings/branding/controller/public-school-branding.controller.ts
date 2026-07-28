@@ -14,11 +14,13 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
+import { pipeline } from 'node:stream/promises';
 import { getCurrentRequestId } from '../../../../common/context/request-context';
 import { PublicRoute } from '../../../../common/decorators/public-route.decorator';
 import { GetPublicSchoolBrandingLogoUseCase } from '../application/get-public-school-branding-logo.use-case';
 import { BRANDING_LOGO_CACHE_CONTROL } from '../domain/branding-logo.constants';
 import { PublicBrandingLogoServiceUnavailableException } from '../domain/branding-logo.errors';
+import type { PublicBrandingLogoStream } from '../domain/branding-logo.types';
 
 @ApiTags('public-school-branding')
 @Controller('public/schools/:schoolId/branding')
@@ -41,7 +43,7 @@ export class PublicSchoolBrandingController {
     @Req() _request: Request,
     @Res() response: Response,
   ): Promise<void> {
-    let result;
+    let result: PublicBrandingLogoStream;
     try {
       result = await this.getPublicLogo.execute(schoolId);
     } catch (error: unknown) {
@@ -65,10 +67,12 @@ export class PublicSchoolBrandingController {
     response.setHeader('Cache-Control', BRANDING_LOGO_CACHE_CONTROL);
     response.setHeader('X-Content-Type-Options', 'nosniff');
 
-    result.stream.once('error', () => {
+    try {
+      await pipeline(result.stream, response);
+    } catch {
       this.logger.error({ event: 'branding.logo.public.stream_failed' });
-      response.destroy();
-    });
-    result.stream.pipe(response);
+      if (!result.stream.destroyed) result.stream.destroy();
+      if (!response.destroyed) response.destroy();
+    }
   }
 }

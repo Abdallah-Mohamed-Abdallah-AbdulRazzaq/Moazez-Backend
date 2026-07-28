@@ -6,6 +6,7 @@ import {
   applicationCorsOriginDelegate,
   configureApplicationCorsOrigins,
 } from '../../../bootstrap/application-cors.policy';
+import { ApplicationLifecycleState } from '../../../bootstrap/application-lifecycle.state';
 import { getRequestContext } from '../../../common/context/request-context';
 import { TokenInvalidException } from '../../../modules/iam/auth/domain/auth.exceptions';
 import { RealtimeAuthService } from '../realtime-auth.service';
@@ -416,6 +417,138 @@ describe('RealtimeGateway', () => {
       actor: actorCard(),
     });
   });
+
+  it('rejects new socket connections after draining begins', async () => {
+    const lifecycle = new ApplicationLifecycleState();
+    lifecycle.beginDraining();
+    const authService = authServiceMock({
+      authenticate: jest.fn().mockResolvedValue(authenticatedContext()),
+    });
+    const gateway = new RealtimeGateway(
+      authService,
+      accessServiceMock(),
+      publisherMock(),
+      configServiceMock(),
+      presenceServiceMock(),
+      typingServiceMock(),
+      lifecycle,
+    );
+    const client = socketMock();
+
+    await gateway.handleConnection(client);
+
+    expect(client.disconnect).toHaveBeenCalledWith(true);
+    expect(authService.authenticate).not.toHaveBeenCalled();
+  });
+
+  it('rejects handshakes at the Socket.IO namespace after draining begins', async () => {
+    const lifecycle = new ApplicationLifecycleState();
+    const server = {
+      use: jest.fn(),
+      adapter: jest.fn(),
+      disconnectSockets: jest.fn(),
+    };
+    const gateway = new RealtimeGateway(
+      authServiceMock(),
+      accessServiceMock(),
+      publisherMock(),
+      configServiceMock(),
+      presenceServiceMock(),
+      typingServiceMock(),
+      lifecycle,
+    );
+    await gateway.afterInit(server as never);
+    const handshakeGuard = server.use.mock.calls[0][0] as (
+      socket: unknown,
+      next: (error?: Error) => void,
+    ) => void;
+    const next = jest.fn();
+
+    lifecycle.beginDraining();
+    handshakeGuard({}, next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
+    expect((next.mock.calls[0][0] as Error).message).toBe('realtime.shutdown');
+  });
+
+  it('rejects new commands while allowing an admitted command to finish', async () => {
+    const lifecycle = new ApplicationLifecycleState();
+    const completion = deferred<void>();
+    const typingService = typingServiceMock();
+    typingService.startTyping.mockReturnValue(completion.promise);
+    const gateway = new RealtimeGateway(
+      authServiceMock(),
+      accessServiceMock(),
+      publisherMock(),
+      configServiceMock(),
+      presenceServiceMock(),
+      typingService,
+      lifecycle,
+    );
+    const client = socketMock(authenticatedSocketData());
+
+    const admitted = gateway.handleTypingStart(client, {
+      conversationId: 'conversation-1',
+    });
+    await Promise.resolve();
+    expect(lifecycle.getActiveWorkCount()).toBe(1);
+
+    lifecycle.beginDraining();
+    await expect(
+      gateway.handleTypingStop(client, {
+        conversationId: 'conversation-1',
+      }),
+    ).rejects.toThrow();
+
+    let idle = false;
+    const drain = lifecycle.waitForIdle().then(() => {
+      idle = true;
+    });
+    await Promise.resolve();
+    expect(idle).toBe(false);
+
+    completion.resolve();
+    await admitted;
+    await drain;
+    expect(idle).toBe(true);
+  });
+
+  it('disconnects sockets once and awaits presence cleanup during shutdown', async () => {
+    const lifecycle = new ApplicationLifecycleState();
+    const presenceCompletion = deferred<null>();
+    const presenceService = presenceServiceMock();
+    presenceService.unregisterSocket.mockReturnValue(
+      presenceCompletion.promise,
+    );
+    const gateway = new RealtimeGateway(
+      authServiceMock(),
+      accessServiceMock(),
+      publisherMock(),
+      configServiceMock(),
+      presenceService,
+      typingServiceMock(),
+      lifecycle,
+    );
+    const server = {
+      use: jest.fn(),
+      adapter: jest.fn(),
+      disconnectSockets: jest.fn(),
+    };
+    await gateway.afterInit(server as never);
+
+    const disconnectCleanup = gateway.handleDisconnect(
+      socketMock(authenticatedSocketData()),
+    );
+    const first = gateway.disconnectSocketsForShutdown();
+    const second = gateway.disconnectSocketsForShutdown();
+
+    expect(second).toBe(first);
+    expect(server.disconnectSockets).toHaveBeenCalledWith(true);
+
+    presenceCompletion.resolve(null);
+    await Promise.all([disconnectCleanup, first, second]);
+    expect(presenceService.unregisterSocket).toHaveBeenCalledTimes(1);
+  });
 });
 
 function socketMock(
@@ -510,4 +643,12 @@ function actorCard() {
     userType: 'admin' as const,
     avatarUrl: null,
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
