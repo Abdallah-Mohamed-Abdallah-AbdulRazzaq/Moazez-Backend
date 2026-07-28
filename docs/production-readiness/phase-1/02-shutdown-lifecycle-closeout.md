@@ -7,12 +7,15 @@
 | Task ID                            | `PRODUCTION-READINESS-1B-R3`                                                                                             |
 | Repository                         | `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend`                                                                   |
 | Branch                             | `feat/production-readiness-1b-shutdown-lifecycle`                                                                        |
-| Starting baseline / unchanged HEAD | `107545829bf24146110579b8293f23f80cee91ea`                                                                               |
+
+| Starting baseline                  | `107545829bf24146110579b8293f23f80cee91ea` |
+| Final pull-request head            | `0524672d62a48a34c2b0177593b577399cf01394` |
+| Pull request                       | `#49`                                      |
 | Date                               | 2026-07-28                                                                                                               |
 | Timezone                           | Africa/Cairo                                                                                                             |
 | Scope                              | Graceful application shutdown, bounded termination, intake stop, active-work drain, resource cleanup, and recoverability |
 | Gate                               | `PRD1-G02`                                                                                                               |
-| Status                             | `PHASE_1B_R3_CORRECTIONS_READY_FOR_FINAL_ARCHITECTURE_REVIEW`                                                            |
+| Status | `PHASE_1B_REMOTE_CI_PASSED_READY_FOR_MERGE` |
 
 This package implements PRD1-G02 only. It does not implement readiness,
 liveness, startup probes, runtime-role separation, or any product workflow
@@ -268,6 +271,32 @@ processor behavior did not change.
 The workflow's final unconditional cleanup remains responsible for the runtime
 and MinIO containers. No duplicate production-image build was added.
 
+### Remote pull-request validation and build-memory stabilization
+
+The first remote `Learning Content Integrity` execution failed before its
+Lesson Content tests began because `nest build` reached the default V8 heap
+limit at approximately 2 GiB. The same application revision built successfully
+in the other integrity workflows, identifying insufficient and non-deterministic
+build-memory headroom rather than an application or Lesson Content failure.
+
+The three integrity workflows now apply the build-only limit:
+
+`NODE_OPTIONS=--max-old-space-size=4096`
+
+only to their `npm run build` steps. This does not affect application runtime
+memory or production container memory limits.
+
+On final pull-request head
+`0524672d62a48a34c2b0177593b577399cf01394`, all required remote workflows
+completed successfully:
+
+- `Learning Content Integrity / Lesson Content atomicity and visibility`
+- `Learning Media Integrity / learning-media-integrity`
+- `Migration Integrity / Fresh PostgreSQL replay`
+
+The original out-of-memory run remains recorded as a failed preliminary
+execution and is not relabeled as a pass.
+
 ## Validation evidence
 
 | Command / evidence                                                    | Outcome                                                                                          |
@@ -276,6 +305,7 @@ and MinIO containers. No duplicate production-image build was added.
 | runtime policy validator and drift tests                              | PASS — 10 tests                                                                                  |
 | two filter units plus real decorated-route precedence                 | PASS — 3 suites, 17 tests with open-handle detection                                             |
 | retained lifecycle/HTTP/Swagger/branding/filter regression            | PASS — 14 suites, 113 tests with open-handle detection                                           |
+
 | canonical Node 22 R3 lifecycle/open-handle group                       | PASS — 11 suites, 77 tests; Prisma Client generated inside the disposable image                  |
 | direct Nest build and exact canonical-image `npm run build`           | PASS                                                                                             |
 | full unit suite with repository contract inputs                       | PASS — 533 suites, 3,803 tests                                                                   |
@@ -288,8 +318,11 @@ and MinIO containers. No duplicate production-image build was added.
 | canonical final-image build / runtime smokes                          | PASS — Node `22.23.1`, Firebase, Prisma, non-root UID 1000, ffprobe/media contract               |
 | production final-image `SIGTERM`                                      | PASS — healthy first; waited for intake event; post-stop connection failed; exit `0` in 518 ms   |
 | no-extra-handle canonical-image forced-timeout fixture                | PASS — exit `1`; internal elapsed 1,006 ms; container elapsed 1,741 ms; no `completed`           |
+
 | workflow YAML structural validation                                   | PASS — parsed through `js-yaml`; R3 tests, shutdown proofs, logs, and cleanup present             |
 | `git diff --check` / scope / changed-file secret scan                 | PASS — informational line-ending warnings; 39 authorized paths; no secret match                  |
+
+| final PR remote CI on `0524672d62a48a34c2b0177593b577399cf01394` | PASS — Learning Content, Learning Media, and Migration Integrity all completed successfully; build-only Node heap bound applied consistently |
 
 The first combined Redis/PostgreSQL test invocation correctly reported the
 PostgreSQL test as failed because the `media-test` dev-dependency overlay had
@@ -360,47 +393,49 @@ preliminary wrapper outcomes is labeled a pass.
 
 ## Changed-file inventory
 
-Exactly these lifecycle-adjacent paths comprise the package:
+Exactly 41 lifecycle-adjacent paths comprise the final pull-request package:
 
 1. `.env.example`
-2. `.github/workflows/learning-media-integrity.yml`
-3. `docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md`
-4. `docs/production-readiness/phase-1/02-shutdown-lifecycle-closeout.md`
-5. `src/app.module.ts`
-6. `src/bootstrap/application-lifecycle.module.ts`
-7. `src/bootstrap/application-lifecycle.state.spec.ts`
-8. `src/bootstrap/application-lifecycle.state.ts`
-9. `src/bootstrap/graceful-shutdown.process.spec.ts`
-10. `src/bootstrap/graceful-shutdown.spec.ts`
-11. `src/bootstrap/graceful-shutdown.ts`
-12. `src/bootstrap/http-application.ts`
-13. `src/bootstrap/http-drain.middleware.spec.ts`
-14. `src/bootstrap/http-drain.middleware.ts`
-15. `src/bootstrap/route-scoped-filter-lifecycle.integration.spec.ts`
-16. `src/bootstrap/shutdown-http.integration.spec.ts`
-17. `src/common/exceptions/global-exception.filter.spec.ts`
-18. `src/common/exceptions/global-exception.filter.ts`
-19. `src/common/lifecycle/http-request-lifecycle.ts`
-20. `src/config/env.validation.spec.ts`
-21. `src/config/env.validation.ts`
-22. `src/infrastructure/database/prisma.service.spec.ts`
-23. `src/infrastructure/database/prisma.service.ts`
-24. `src/infrastructure/queue/bullmq.service.spec.ts`
-25. `src/infrastructure/queue/bullmq.service.ts`
-26. `src/infrastructure/realtime/realtime-state-store.service.ts`
-27. `src/infrastructure/realtime/realtime.gateway.ts`
-28. `src/infrastructure/realtime/tests/realtime.gateway.spec.ts`
-29. `src/main.ts`
-30. `src/modules/files/uploads/filters/files-upload-multer-exception.filter.ts`
-31. `src/modules/files/uploads/tests/files-upload-multer-exception.filter.spec.ts`
-32. `src/modules/settings/branding/application/get-public-school-branding-logo.use-case.ts`
-33. `src/modules/settings/branding/controller/branding.controller.ts`
-34. `src/modules/settings/branding/controller/public-school-branding.controller.ts`
-35. `src/modules/settings/branding/tests/branding-logo-multipart-exception.filter.spec.ts`
-36. `src/modules/settings/branding/tests/public-school-branding-lifecycle.integration.spec.ts`
-37. `src/modules/settings/branding/tests/public-school-branding-logo.spec.ts`
-38. `test/integration/bullmq-shutdown-lifecycle.integration.spec.ts`
-39. `test/integration/prisma-shutdown-lifecycle.integration.spec.ts`
+2. `.github/workflows/learning-content-integrity.yml`
+3. `.github/workflows/learning-media-integrity.yml`
+4. `.github/workflows/migration-integrity.yml`
+5. `docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md`
+6. `docs/production-readiness/phase-1/02-shutdown-lifecycle-closeout.md`
+7. `src/app.module.ts`
+8. `src/bootstrap/application-lifecycle.module.ts`
+9. `src/bootstrap/application-lifecycle.state.spec.ts`
+10. `src/bootstrap/application-lifecycle.state.ts`
+11. `src/bootstrap/graceful-shutdown.process.spec.ts`
+12. `src/bootstrap/graceful-shutdown.spec.ts`
+13. `src/bootstrap/graceful-shutdown.ts`
+14. `src/bootstrap/http-application.ts`
+15. `src/bootstrap/http-drain.middleware.spec.ts`
+16. `src/bootstrap/http-drain.middleware.ts`
+17. `src/bootstrap/route-scoped-filter-lifecycle.integration.spec.ts`
+18. `src/bootstrap/shutdown-http.integration.spec.ts`
+19. `src/common/exceptions/global-exception.filter.spec.ts`
+20. `src/common/exceptions/global-exception.filter.ts`
+21. `src/common/lifecycle/http-request-lifecycle.ts`
+22. `src/config/env.validation.spec.ts`
+23. `src/config/env.validation.ts`
+24. `src/infrastructure/database/prisma.service.spec.ts`
+25. `src/infrastructure/database/prisma.service.ts`
+26. `src/infrastructure/queue/bullmq.service.spec.ts`
+27. `src/infrastructure/queue/bullmq.service.ts`
+28. `src/infrastructure/realtime/realtime-state-store.service.ts`
+29. `src/infrastructure/realtime/realtime.gateway.ts`
+30. `src/infrastructure/realtime/tests/realtime.gateway.spec.ts`
+31. `src/main.ts`
+32. `src/modules/files/uploads/filters/files-upload-multer-exception.filter.ts`
+33. `src/modules/files/uploads/tests/files-upload-multer-exception.filter.spec.ts`
+34. `src/modules/settings/branding/application/get-public-school-branding-logo.use-case.ts`
+35. `src/modules/settings/branding/controller/branding.controller.ts`
+36. `src/modules/settings/branding/controller/public-school-branding.controller.ts`
+37. `src/modules/settings/branding/tests/branding-logo-multipart-exception.filter.spec.ts`
+38. `src/modules/settings/branding/tests/public-school-branding-lifecycle.integration.spec.ts`
+39. `src/modules/settings/branding/tests/public-school-branding-logo.spec.ts`
+40. `test/integration/bullmq-shutdown-lifecycle.integration.spec.ts`
+41. `test/integration/prisma-shutdown-lifecycle.integration.spec.ts`
 
 ## Compatibility, rollback, and limitations
 
@@ -408,7 +443,7 @@ Normal HTTP, WebSocket, queue, health, storage, media, email, import,
 communication, branding, and reinforcement contracts are unchanged. The only
 new runtime configuration has a backward-compatible default.
 
-Rollback is a focused reversion of the 39-path package to baseline
+Rollback is a focused reversion of the 41-path package to baseline
 `107545829bf24146110579b8293f23f80cee91ea`. Operational rollback must restore
 the prior image, then reconcile BullMQ active/waiting jobs from persisted
 truth. No schema or data rollback is required.
@@ -429,8 +464,10 @@ Residual boundaries:
 
 ## Safety attestation
 
-No branch, stage, commit, push, tag, pull request, merge, deployment, or cloud
-action occurred. No source behavior outside lifecycle adjacency changed. No
+Two commits were created and pushed to
+`feat/production-readiness-1b-shutdown-lifecycle`, and Draft Pull Request #49
+was opened against `main`. No tag, merge, deployment, staging-resource,
+production-resource, or cloud action occurred. No source behavior outside lifecycle adjacency changed. No
 schema, migration, seed, product queue contract, storage contract, Learning
 Media contract, Reinforcement contract, or health route changed.
 
