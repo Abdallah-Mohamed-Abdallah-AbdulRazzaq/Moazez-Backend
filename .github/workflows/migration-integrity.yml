@@ -156,6 +156,8 @@ jobs:
         run: npm run seed
 
       - name: Build application
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
         run: npm run build
 
       - name: Run database and security smoke tests

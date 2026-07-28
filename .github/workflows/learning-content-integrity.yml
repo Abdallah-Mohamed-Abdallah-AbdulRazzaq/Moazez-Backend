@@ -150,6 +150,8 @@ jobs:
         run: npm run seed
 
       - name: Build application
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
         run: npm run build
 
       - name: Run focused Curriculum and Lesson Content unit contracts
