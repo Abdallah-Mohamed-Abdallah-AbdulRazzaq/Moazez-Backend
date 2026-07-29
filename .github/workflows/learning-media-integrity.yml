@@ -174,32 +174,32 @@ jobs:
           DOCKER_BUILDKIT=1 docker build --target media-test
           --tag moazez-learning-media-test:${{ github.sha }} .
       - name: Graceful shutdown lifecycle contracts
-        run: >-
-          docker run --rm --user root --env DATABASE_URL --entrypoint sh
-          moazez-learning-media-test:${{ github.sha }}
-          -c 'npx prisma generate &&
-          npx jest --runInBand --detectOpenHandles --runTestsByPath
-          src/bootstrap/application-lifecycle.state.spec.ts
-          src/bootstrap/application-startup.spec.ts
-          src/bootstrap/graceful-shutdown.spec.ts
-          src/bootstrap/graceful-shutdown.process.spec.ts
-          src/bootstrap/management-probe.server.spec.ts
-          src/bootstrap/management-probe.integration.spec.ts
-          src/bootstrap/management-probe.process.spec.ts
-          src/bootstrap/http-drain.middleware.spec.ts
-          src/bootstrap/route-scoped-filter-lifecycle.integration.spec.ts
-          src/bootstrap/shutdown-http.integration.spec.ts
-          src/common/exceptions/global-exception.filter.spec.ts
-          src/modules/health/bounded-probe-executor.spec.ts
-           src/modules/health/operational-probe.manifests.spec.ts
-           src/modules/health/operational-probe.service.spec.ts
-           src/infrastructure/realtime/tests/realtime-presence.service.spec.ts
-           src/infrastructure/realtime/tests/realtime-publisher.service.spec.ts
-           src/infrastructure/realtime/tests/realtime-state-store.service.spec.ts
-          src/modules/files/uploads/tests/files-upload-multer-exception.filter.spec.ts
-          src/modules/settings/branding/tests/branding-logo-multipart-exception.filter.spec.ts
-          src/modules/settings/branding/tests/public-school-branding-logo.spec.ts
-          src/modules/settings/branding/tests/public-school-branding-lifecycle.integration.spec.ts'
+        run: |
+          docker run --rm --user root --env DATABASE_URL --entrypoint sh \
+            moazez-learning-media-test:${{ github.sha }} \
+            -c 'npx prisma generate && npx jest --runInBand --detectOpenHandles --runTestsByPath "$@"' \
+            sh \
+            src/bootstrap/application-lifecycle.state.spec.ts \
+            src/bootstrap/application-startup.spec.ts \
+            src/bootstrap/graceful-shutdown.spec.ts \
+            src/bootstrap/graceful-shutdown.process.spec.ts \
+            src/bootstrap/management-probe.server.spec.ts \
+            src/bootstrap/management-probe.integration.spec.ts \
+            src/bootstrap/management-probe.process.spec.ts \
+            src/bootstrap/http-drain.middleware.spec.ts \
+            src/bootstrap/route-scoped-filter-lifecycle.integration.spec.ts \
+            src/bootstrap/shutdown-http.integration.spec.ts \
+            src/common/exceptions/global-exception.filter.spec.ts \
+            src/modules/health/bounded-probe-executor.spec.ts \
+            src/modules/health/operational-probe.manifests.spec.ts \
+            src/modules/health/operational-probe.service.spec.ts \
+            src/infrastructure/realtime/tests/realtime-presence.service.spec.ts \
+            src/infrastructure/realtime/tests/realtime-publisher.service.spec.ts \
+            src/infrastructure/realtime/tests/realtime-state-store.service.spec.ts \
+            src/modules/files/uploads/tests/files-upload-multer-exception.filter.spec.ts \
+            src/modules/settings/branding/tests/branding-logo-multipart-exception.filter.spec.ts \
+            src/modules/settings/branding/tests/public-school-branding-logo.spec.ts \
+            src/modules/settings/branding/tests/public-school-branding-lifecycle.integration.spec.ts
       - name: Verify ffprobe runtime contract
         run: >-
           docker run --rm --entrypoint node
