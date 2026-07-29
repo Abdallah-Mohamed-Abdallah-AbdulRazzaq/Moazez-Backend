@@ -380,7 +380,17 @@ jobs:
             docker inspect --format '{{.Id}}' \
               moazez-learning-media-probe-redis
           )"
-          docker stop moazez-learning-media-probe-redis >/dev/null
+          redis_started_at="$(
+            docker inspect --format '{{.State.StartedAt}}' \
+              moazez-learning-media-probe-redis
+          )"
+
+          docker pause moazez-learning-media-probe-redis >/dev/null
+
+          test "$(
+            docker inspect --format '{{.State.Paused}}' \
+              moazez-learning-media-probe-redis
+          )" = 'true'
           for attempt in {1..30}; do
             set +e
             docker exec moazez-learning-media-runtime \
@@ -411,7 +421,7 @@ jobs:
             assert_internal_probe "/internal/probes/${role}/liveness" 200 ok
           done
 
-          docker start moazez-learning-media-probe-redis >/dev/null
+          docker unpause moazez-learning-media-probe-redis >/dev/null
           for attempt in {1..40}; do
             if docker exec moazez-learning-media-probe-redis \
               redis-cli ping | grep --quiet PONG; then
@@ -442,6 +452,16 @@ jobs:
             docker inspect --format '{{.Id}}' \
               moazez-learning-media-probe-redis
           )"
+
+          test "$redis_started_at" = "$(
+            docker inspect --format '{{.State.StartedAt}}' \
+              moazez-learning-media-probe-redis
+          )"
+
+          test "$(
+            docker inspect --format '{{.State.Paused}}' \
+              moazez-learning-media-probe-redis
+          )" = 'false'
           for attempt in {1..60}; do
             set +e
             docker exec moazez-learning-media-runtime \
@@ -468,6 +488,10 @@ jobs:
               )"
               echo "Redis container status: $(
                 docker inspect --format '{{.State.Status}}' \
+                  moazez-learning-media-probe-redis 2>/dev/null || true
+              )"
+              echo "Redis container paused: $(
+                docker inspect --format '{{.State.Paused}}' \
                   moazez-learning-media-probe-redis 2>/dev/null || true
               )"
               timeout 2s docker exec \

@@ -24,9 +24,9 @@ or a Phase 2 runtime selector.
 The final PR check failure was traced to state-store recovery waiting
 indefinitely for `QUIT` on the retired reconnecting Redis client after a
 candidate client had already connected and reconciled. Retired-client closure
-is now bounded, exact-once, and observed through late settlement. The same
-canonical application process recovers after the same Redis container is
-stopped and restarted.
+is now bounded, exact-once, and observed through late settlement. The same canonical application process recovers after the same Redis
+container and Redis process are paused and resumed while the configured
+Redis endpoint remains stable.
 
 The process now owns two HTTP listeners:
 
@@ -433,9 +433,11 @@ The experiment proved:
   `405` with `Allow: GET`; both retained the exact safe three-field schema and
   exposed no raw error, dependency, URL, path, secret, credential, queue, or
   topology detail;
-- stopping disposable Redis made API, Core, and Media readiness return `503`;
+- pausing disposable Redis made API, Core, and Media readiness return `503`
+  without removing or changing the configured Redis DNS endpoint;
 - API liveness remained `200`;
-- restarting Redis allowed readiness to recover to `200`; focused real-Redis
+- resuming the same Redis container and process allowed readiness to recover
+  to `200`; focused real-Redis
   proofs independently exercised both the Socket.IO adapter and state-store
   clients, including state-store fallback and same-process recovery;
 - an additional final-image reconciliation process inspected actual Redis
@@ -457,8 +459,9 @@ The experiment proved:
 - SIGTERM after realtime Redis recovery exited `0`; its lifecycle completion
   logs contained exactly one started, intake-stopped, and completed event;
 - the same application container and process recovered from readiness `503`
-  to `200` after the same Redis container was stopped, restarted, and reached
-  `PONG`; liveness remained `200` throughout;
+  to `200` after the same Redis container and Redis process were paused,
+  resumed, and reached `PONG`; application and Redis container identities and
+  start times remained unchanged, and liveness remained `200` throughout;
 - both listeners were closed;
 - the final forced-timeout fixture exited `1` after 1,458 ms container wall
   time against a 1,000 ms coordinator deadline; it emitted the bounded
@@ -488,7 +491,7 @@ The experiment proved:
 | isolated `npx prisma validate && npx prisma generate` | PASS — Prisma `6.19.3`; no host Prisma/config command and no workspace `.env` read |
 | fresh disposable `npx prisma migrate deploy` and corrected `npm run seed` | PASS — all 7 committed migrations plus synthetic seed |
 | R6 final-image fallback reconciliation process before the final candidate-revalidation delta | PASS — actual Redis keys for one user, two-socket membership, indexes, exact expected latest `updatedAt`, bounded TTLs, remaining typing TTL, and expired-entry absence |
-| canonical public/internal-port, outage/recovery, and shutdown proof | PASS — probe port unpublished; API readiness `200` → `503` → `200`; liveness stayed `200`; application container ID/start time and Redis container ID remained identical; post-intake public code `000`; SIGTERM exit `0`; no unhandled rejection or post-close Redis command |
+| canonical public/internal-port, stable-endpoint outage/recovery, and shutdown proof | PASS — probe port unpublished; pausing Redis produced API readiness `200` → `503`; liveness stayed `200`; resuming the same Redis container and process restored readiness to `200`; application and Redis container IDs/start times remained identical; post-intake public code `000`; SIGTERM exit `0`; no unhandled rejection or post-close Redis command |
 | no-extra-handle forced-timeout process | PASS — exit `1`, 1,458 ms container wall time, bounded timed-out event, no completion event |
 | exact Node/Firebase/Prisma/non-root/media runtime smokes | PASS — Node `v22.23.1`, Firebase app/messaging, Prisma Client, UID `1000`, and ffprobe/media contract |
 | `js-yaml` workflow structural parse | PASS — 40 steps, exit `0` |
@@ -498,6 +501,15 @@ The experiment proved:
 ### Preliminary failures retained
 
 No failed or interrupted attempt is relabeled as a pass:
+
+- GitHub Actions run `30497819229` used `docker stop/start` for the
+  disposable Redis outage. Stopping the container removed its Docker DNS
+  endpoint and produced repeated `ENOTFOUND` failures inside BullMQ, combining
+  dependency unavailability with service-discovery/topology churn. That
+  behavior belongs to Phase 3 Redis topology/failover validation, not the G04
+  stable-endpoint readiness contract. The canonical G04 proof now pauses and
+  resumes the same Redis container and process, preserving the configured DNS
+  endpoint while proving `200` → `503` → `200` recovery.
 
 - GitHub Actions run `30481344419`, job `90675924537`, passed runtime policy,
   Docker build, Node/Firebase imports, media-test build, graceful-shutdown
