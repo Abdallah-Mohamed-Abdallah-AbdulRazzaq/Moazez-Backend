@@ -129,18 +129,87 @@ These are added incrementally; no need to ship all on Day 1.
 ```json
 {
   "status": "ok",
-  "timestamp": "2026-04-16T14:22:00.000Z",
-  "version": "0.1.0",
-  "checks": {
-    "database": { "status": "ok", "durationMs": 3 },
-    "redis":    { "status": "ok", "durationMs": 1 },
-    "storage":  { "status": "ok", "durationMs": 12 }
-  }
+  "version": "0.0.1",
+  "timestamp": "2026-07-28T14:22:00.000Z"
 }
 ```
 
-- Any failing check → overall status `degraded` (still 200 OK).
-- Any failing critical check (database) → 503 Service Unavailable.
+This is a public compatibility endpoint. It does not query or expose database,
+Redis, storage, queue, email, push, provider, tenant, exception, or topology
+state.
+
+ADR-0010 requires separate protected role-specific startup, liveness, and
+readiness probes. The application serves them from a same-process Node HTTP
+management listener on `APP_PROBE_PORT`; the Nest application remains the only
+application graph and continues to serve public traffic on `APP_PORT`.
+
+The management listener exposes only these internal route families:
+
+- `/internal/probes/api/{startup|liveness|readiness}`
+- `/internal/probes/core-worker/{startup|liveness|readiness}`
+- `/internal/probes/media-worker/{startup|liveness|readiness}`
+
+`APP_PROBE_PORT` is bound inside the container so a future Cloud Run v2
+container probe can select it explicitly. The application/container contract
+keeps it separate from `APP_PORT`, and the canonical Docker proof publishes
+only `APP_PORT`. Both the exact management paths and their `/api/v1`-prefixed
+forms return `404` through the normal Nest listener. This port boundary
+supplies probe protection without a static token, JWT, spoofable header, or
+path-obscurity claim.
+
+No live Cloud Run service was configured or validated by Phase 1C. Phase 8
+deployment/IaC must configure `APP_PORT` as the sole Cloud Run service ingress
+port and explicitly target `APP_PROBE_PORT` from the container startup,
+liveness, and readiness probes. It must not expose `APP_PROBE_PORT` as another
+service ingress port.
+
+Operational responses contain only `status`, `version`, and `timestamp`.
+Startup remains unavailable until validated configuration, Nest
+initialization, both listeners, installed signal/shutdown ownership, and
+current local role capabilities are ready. Liveness is process-local and
+performs no external I/O. Readiness uses bounded, non-destructive role
+dependency checks and becomes unavailable while the application is draining.
+Each dependency keeps at most one underlying readiness operation registered
+until that operation actually settles, even after an individual caller times
+out.
+
+API realtime readiness covers both the Socket.IO adapter Redis clients and the
+presence/typing state-store Redis client. Process-local presence/typing
+fallback remains a product-compatibility behavior, but it is not production
+readiness: readiness stays unavailable until the state store reconnects and
+reconciles all locally owned presence and unexpired typing state. Adapter and
+state-store checks use independent dependency flights, so a timeout or failure
+on one cannot release or duplicate an operation owned by the other. Presence
+replay preserves every locally connected socket and restores the newest user
+timestamp with bounded TTLs. Typing replay preserves original expiry times,
+omits expired entries, and orders shared-index TTL updates so the longest
+remaining active entry governs the index.
+
+The local typing shadow is bounded by one service-owned, unreferenced sweep
+timer. The sweep runs through the state store's serialized mutation lane,
+removes expired owners and empty conversation/school containers, cannot
+overlap reconciliation, and is cleared and awaited before Redis teardown.
+
+Socket.IO adapter publisher/subscriber clients use fixed connect and command
+deadlines. Adapter readiness retains one shared underlying dual-client ping
+flight, observes both child commands rather than failing fast, and returns a
+fixed unavailable outcome when either child fails or the caller deadline
+expires. Graceful client close is bounded; a hung `QUIT` is followed by one
+owned forced disconnect.
+
+Socket.IO adapter recovery moves synchronously to a non-admitting state,
+disconnects existing sockets, awaits presence cleanup, and only then replaces
+the adapter. Handshakes are blocked before authentication and checked again
+after authentication through an adapter generation boundary. Clients
+reauthenticate and rejoin baseline and conversation rooms after recovery; the
+implementation does not silently hot-swap an adapter beneath connected
+sockets. Realtime readiness remains unavailable if either reconciliation or
+adapter recovery is incomplete or fails.
+
+Core and Media assigned-consumer readiness requires each locked BullMQ worker
+to have a running, unpaused processing loop; registration alone is
+insufficient. The Core and Media paths remain reusable dependency manifests;
+they do not claim that Phase 2 runtime separation already exists.
 
 ## 7. Audit Logs vs Application Logs
 

@@ -16,6 +16,7 @@ describe('GracefulShutdownCoordinator', () => {
       const shutdown = harness.coordinator.handleSignal(signal);
 
       expect(harness.httpServer.close).toHaveBeenCalledTimes(1);
+      expect(harness.managementServer.close).toHaveBeenCalledTimes(1);
       expect(harness.queue.beginWorkerDrain).toHaveBeenCalledTimes(1);
       expect(harness.app.close).not.toHaveBeenCalled();
 
@@ -58,6 +59,7 @@ describe('GracefulShutdownCoordinator', () => {
     void harness.coordinator.handleSignal('SIGINT');
 
     expect(harness.httpServer.close).toHaveBeenCalledTimes(1);
+    expect(harness.managementServer.close).toHaveBeenCalledTimes(1);
     expect(harness.queue.beginWorkerDrain).toHaveBeenCalledTimes(1);
     expect(harness.processTarget.exit).toHaveBeenCalledWith(1);
     expect(harness.events()).toContain(LIFECYCLE_EVENTS.forceExit);
@@ -147,6 +149,7 @@ describe('GracefulShutdownCoordinator', () => {
   it.each([
     ['worker drain', 'worker'],
     ['HTTP close', 'http'],
+    ['management HTTP close', 'management'],
   ] as const)(
     'observes an immediate %s rejection while HTTP work is active',
     async (_label, failureSource) => {
@@ -154,6 +157,8 @@ describe('GracefulShutdownCoordinator', () => {
       const harness = createHarness({
         closeHttpErrorImmediately:
           failureSource === 'http' ? new Error(secret) : undefined,
+        closeManagementErrorImmediately:
+          failureSource === 'management' ? new Error(secret) : undefined,
       });
       harness.lifecycle.tryAdmit('http');
       if (failureSource === 'worker') {
@@ -185,6 +190,7 @@ function createHarness(
   options: {
     closeHttpImmediately?: boolean;
     closeHttpErrorImmediately?: Error;
+    closeManagementErrorImmediately?: Error;
     clock?: NonNullable<GracefulShutdownDependencies['clock']>;
   } = {},
 ) {
@@ -199,6 +205,11 @@ function createHarness(
     }),
   };
   const app = { close: jest.fn().mockResolvedValue(undefined) };
+  const managementServer = {
+    close: jest.fn((callback: (error?: Error) => void) => {
+      callback(options.closeManagementErrorImmediately);
+    }),
+  };
   const queue = {
     beginWorkerDrain: jest.fn().mockResolvedValue(undefined),
   };
@@ -214,6 +225,7 @@ function createHarness(
     app,
     httpServer:
       httpServer as unknown as GracefulShutdownDependencies['httpServer'],
+    managementServer,
     lifecycle,
     queue,
     realtime,
@@ -234,6 +246,7 @@ function createHarness(
     httpServer,
     lifecycle,
     logger,
+    managementServer,
     processTarget,
     queue,
     realtime,

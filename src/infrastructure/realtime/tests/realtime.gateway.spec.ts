@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { UserType } from '@prisma/client';
 import { GATEWAY_OPTIONS } from '@nestjs/websockets/constants';
+import { Adapter } from 'socket.io-adapter';
 import {
   applicationCorsOriginDelegate,
   configureApplicationCorsOrigins,
@@ -471,6 +472,71 @@ describe('RealtimeGateway', () => {
     expect((next.mock.calls[0][0] as Error).message).toBe('realtime.shutdown');
   });
 
+  it('rejects handshakes while the adapter is initializing', async () => {
+    const server = {
+      use: jest.fn(),
+      adapter: jest.fn(),
+      disconnectSockets: jest.fn(),
+      sockets: new Map(),
+    };
+    const gateway = new RealtimeGateway(
+      authServiceMock(),
+      accessServiceMock(),
+      publisherMock(),
+      configServiceMock(),
+      presenceServiceMock(),
+      typingServiceMock(),
+    );
+
+    const initialization = gateway.afterInit(server as never);
+    const handshakeGuard = server.use.mock.calls[0][0] as (
+      socket: unknown,
+      next: (error?: Error) => void,
+    ) => void;
+    const next = jest.fn();
+    handshakeGuard({}, next);
+
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
+    expect((next.mock.calls[0][0] as Error).message).toBe(
+      'realtime.unavailable',
+    );
+    await initialization;
+  });
+
+  it('rechecks adapter generation after authentication before joining rooms', async () => {
+    const authentication = deferred<ReturnType<typeof authenticatedContext>>();
+    const presence = presenceServiceMock();
+    const gateway = new RealtimeGateway(
+      authServiceMock({
+        authenticate: jest.fn().mockReturnValue(authentication.promise),
+      }),
+      accessServiceMock(),
+      publisherMock(),
+      configServiceMock(),
+      presence,
+      typingServiceMock(),
+    );
+    const client = socketMock();
+    Object.assign(gateway, {
+      server: { sockets: new Map() },
+      adapterLifecycleState: 'ready',
+      adapterGeneration: 1,
+    });
+
+    const connection = gateway.handleConnection(client);
+    await Promise.resolve();
+    Object.assign(gateway, {
+      adapterLifecycleState: 'recovering',
+      adapterGeneration: 2,
+    });
+    authentication.resolve(authenticatedContext());
+    await connection;
+
+    expect(client.join).not.toHaveBeenCalled();
+    expect(presence.registerSocket).not.toHaveBeenCalled();
+    expect(client.disconnect).toHaveBeenCalledWith(true);
+  });
+
   it('rejects new commands while allowing an admitted command to finish', async () => {
     const lifecycle = new ApplicationLifecycleState();
     const completion = deferred<void>();
@@ -548,6 +614,77 @@ describe('RealtimeGateway', () => {
     presenceCompletion.resolve(null);
     await Promise.all([disconnectCleanup, first, second]);
     expect(presenceService.unregisterSocket).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks new admission and waits for owned adapter recovery during shutdown', async () => {
+    const recovery = deferred<boolean>();
+    const server = {
+      use: jest.fn(),
+      adapter: jest.fn(),
+      disconnectSockets: jest.fn(),
+    };
+    const gateway = new RealtimeGateway(
+      authServiceMock(),
+      accessServiceMock(),
+      publisherMock(),
+      configServiceMock(),
+      presenceServiceMock(),
+      typingServiceMock(),
+    );
+    Object.assign(gateway, {
+      server,
+      adapterLifecycleState: 'recovering',
+      redisAdapterReadinessPromise: recovery.promise,
+    });
+
+    const shutdown = gateway.disconnectSocketsForShutdown();
+    await Promise.resolve();
+    expect(server.disconnectSockets).not.toHaveBeenCalled();
+    await gateway.handleConnection(socketMock());
+    expect(server.disconnectSockets).not.toHaveBeenCalled();
+
+    recovery.resolve(false);
+    await shutdown;
+    expect(server.disconnectSockets).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores the in-memory adapter before closing owned Redis clients', async () => {
+    const gateway = new RealtimeGateway(
+      authServiceMock(),
+      accessServiceMock(),
+      publisherMock(),
+      configServiceMock(),
+      presenceServiceMock(),
+      typingServiceMock(),
+    );
+    const socketServer = { adapter: jest.fn() };
+    const namespace = {
+      server: socketServer,
+      use: jest.fn(),
+      disconnectSockets: jest.fn(),
+    };
+    await gateway.afterInit(namespace as never);
+    const publisher = {
+      status: 'end',
+      disconnect: jest.fn(),
+    };
+    const subscriber = {
+      status: 'end',
+      disconnect: jest.fn(),
+    };
+    Object.assign(gateway, {
+      redisPublisher: publisher,
+      redisSubscriber: subscriber,
+    });
+
+    await gateway.onModuleDestroy();
+
+    expect(socketServer.adapter).toHaveBeenCalledWith(Adapter);
+    expect(socketServer.adapter.mock.invocationCallOrder[0]).toBeLessThan(
+      publisher.disconnect.mock.invocationCallOrder[0],
+    );
+    expect(publisher.disconnect).toHaveBeenCalledTimes(1);
+    expect(subscriber.disconnect).toHaveBeenCalledTimes(1);
   });
 });
 

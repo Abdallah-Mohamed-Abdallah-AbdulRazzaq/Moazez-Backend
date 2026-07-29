@@ -5,9 +5,9 @@ import { conversationRoom, schoolRoom, userRoom } from './realtime-room-names';
 @Injectable()
 export class RealtimePublisherService {
   private readonly logger = new Logger(RealtimePublisherService.name);
-  private server?: Server;
+  private server?: Pick<Server, 'to'>;
 
-  bindServer(server: Server): void {
+  bindServer(server: Pick<Server, 'to'>): void {
     this.server = server;
   }
 
@@ -56,18 +56,12 @@ export class RealtimePublisherService {
     try {
       this.server.to(roomName).emit(normalizedEventName, payload);
       return true;
-    } catch (error) {
-      this.logger.warn(
-        `Realtime publish failed for event ${normalizedEventName}: ${this.getErrorMessage(
-          error,
-        )}`,
-      );
+    } catch {
+      this.logger.warn({
+        event: 'realtime.publish.failed',
+        stage: 'emit',
+      });
       return false;
     }
-  }
-
-  private getErrorMessage(error: unknown): string {
-    if (error instanceof Error) return error.message;
-    return 'unknown_error';
   }
 }

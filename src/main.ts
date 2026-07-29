@@ -4,15 +4,22 @@ import { NestFactory } from '@nestjs/core';
 import type { Express } from 'express';
 import { AppModule } from './app.module';
 import { ApplicationLifecycleState } from './bootstrap/application-lifecycle.state';
+import { startApplicationRuntime } from './bootstrap/application-startup';
 import { handleBootstrapFailure } from './bootstrap/bootstrap-failure';
 import { GracefulShutdownCoordinator } from './bootstrap/graceful-shutdown';
 import {
   configureHttpApplication,
   logHttpApplicationStarted,
 } from './bootstrap/http-application';
+import {
+  closeManagementProbeServer,
+  createManagementProbeServer,
+  listenManagementProbeServer,
+} from './bootstrap/management-probe.server';
 import type { Env } from './config/env.validation';
 import { BullmqService } from './infrastructure/queue/bullmq.service';
 import { RealtimeGateway } from './infrastructure/realtime/realtime.gateway';
+import { OperationalProbeService } from './modules/health/operational-probe.service';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -30,20 +37,33 @@ async function bootstrap(): Promise<void> {
   );
 
   const port = config.get('APP_PORT', { infer: true });
-  await app.listen(port);
+  const probePort = config.get('APP_PROBE_PORT', { infer: true });
+  const probes = app.get(OperationalProbeService);
+  const managementServer = createManagementProbeServer(probes);
 
-  const shutdown = new GracefulShutdownCoordinator({
-    app,
-    httpServer: app.getHttpServer(),
-    lifecycle,
-    queue: app.get(BullmqService),
-    realtime: app.get(RealtimeGateway),
-    timeoutMs: config.get('APP_SHUTDOWN_TIMEOUT_MS', { infer: true }),
-    logger,
+  await startApplicationRuntime({
+    listenManagement: () =>
+      listenManagementProbeServer(managementServer, probePort),
+    listenPublic: () => app.listen(port).then(() => undefined),
+    createShutdownOwnership: () =>
+      new GracefulShutdownCoordinator({
+        app,
+        httpServer: app.getHttpServer(),
+        managementServer,
+        lifecycle,
+        queue: app.get(BullmqService),
+        realtime: app.get(RealtimeGateway),
+        timeoutMs: config.get('APP_SHUTDOWN_TIMEOUT_MS', { infer: true }),
+        logger,
+      }),
+    markInitializationComplete: () => probes.markInitializationComplete(),
+    markInitializationFailed: () => probes.markInitializationFailed(),
+    closeManagement: () => closeManagementProbeServer(managementServer),
+    closeApplication: () => app.close(),
   });
-  shutdown.install();
 
   logHttpApplicationStarted(logger, port, configured);
+  logger.log({ event: 'management.probe.started' });
   logRegisteredRoutes(app.getHttpAdapter().getInstance() as Express, logger);
 }
 

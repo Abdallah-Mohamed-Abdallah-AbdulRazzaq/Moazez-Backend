@@ -70,6 +70,7 @@ export class BullmqService implements OnModuleDestroy {
     () => Promise<void>
   >();
   private readonly workerRuns = new WeakMap<Worker, Promise<void>>();
+  private readonly workerRunAvailable = new WeakMap<Worker, boolean>();
   private isShuttingDown = false;
   private workerDrainPromise: Promise<void> | null = null;
   private shutdownPromise: Promise<void> | null = null;
@@ -90,10 +91,10 @@ export class BullmqService implements OnModuleDestroy {
         return;
       }
 
-      this.logger.error(
-        `BullMQ Redis connection failed: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error({
+        event: 'bullmq.redis.unavailable',
+        stage: 'connection',
+      });
     });
   }
 
@@ -130,6 +131,19 @@ export class BullmqService implements OnModuleDestroy {
 
   async ping(): Promise<void> {
     await this.connection.ping();
+  }
+
+  hasAvailableWorkers(queueNames: readonly string[]): boolean {
+    return queueNames.every((queueName) =>
+      this.workers.some(
+        (worker) =>
+          worker.name === queueName &&
+          this.workerRunAvailable.get(worker) === true &&
+          worker.closing === undefined &&
+          worker.isRunning() &&
+          !worker.isPaused(),
+      ),
+    );
   }
 
   async getQueueReadiness(name: string): Promise<{
@@ -187,10 +201,10 @@ export class BullmqService implements OnModuleDestroy {
         return;
       }
 
-      this.logger.error(
-        `BullMQ worker ${queueName} failed: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error({
+        event: 'bullmq.worker.failed',
+        stage: 'runtime',
+      });
     });
 
     this.retainBlockingConnectionErrorSafety(worker);
@@ -198,9 +212,22 @@ export class BullmqService implements OnModuleDestroy {
     this.stopLateStalledCheckOnShutdown(worker);
 
     this.workers.push(worker as unknown as Worker);
-    const run = worker.run().catch((error: Error) => {
-      worker.emit('error', error);
-    });
+    this.workerRunAvailable.set(worker as unknown as Worker, true);
+    const run = worker.run().then(
+      () => {
+        this.workerRunAvailable.set(worker as unknown as Worker, false);
+        if (!this.isShuttingDown) {
+          this.logger.error({
+            event: 'bullmq.worker.run_stopped',
+            stage: 'unexpected_settlement',
+          });
+        }
+      },
+      (error: Error) => {
+        this.workerRunAvailable.set(worker as unknown as Worker, false);
+        worker.emit('error', error);
+      },
+    );
     this.workerRuns.set(worker as unknown as Worker, run);
     return worker;
   }

@@ -48,7 +48,9 @@ describe('BullMQ graceful shutdown and recovery', () => {
       );
 
       await firstStarted.promise;
+      expect(firstService.hasAvailableWorkers([queueName])).toBe(true);
       const drain = firstService.beginWorkerDrain();
+      expect(firstService.hasAvailableWorkers([queueName])).toBe(false);
       releaseFirst.resolve();
       await drain;
 
@@ -63,6 +65,7 @@ describe('BullMQ graceful shutdown and recovery', () => {
           replacementCompleted.resolve();
         },
       );
+      expect(secondService.hasAvailableWorkers([queueName])).toBe(true);
       await replacementCompleted.promise;
       await eventually(async () => {
         expect(await second.getState()).toBe('completed');

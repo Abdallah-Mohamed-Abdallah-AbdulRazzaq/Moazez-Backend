@@ -19,6 +19,11 @@ import { RealtimeTypingService } from './realtime-typing.service';
     RealtimeStateStoreService,
     RealtimeTypingService,
   ],
-  exports: [RealtimeAuthService, RealtimePublisherService],
+  exports: [
+    RealtimeAuthService,
+    RealtimeGateway,
+    RealtimePublisherService,
+    RealtimeStateStoreService,
+  ],
 })
 export class RealtimeModule {}

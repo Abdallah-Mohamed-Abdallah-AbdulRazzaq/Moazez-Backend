@@ -5,6 +5,34 @@ import {
 import { validateEnv } from './env.validation';
 
 describe('bootstrap environment validation', () => {
+  it('defaults the internal management probe port to 9090', () => {
+    expect(validateEnv(baseEnv()).APP_PROBE_PORT).toBe(9090);
+  });
+
+  it.each(['1', '9090', '65535'])(
+    'accepts a bounded management probe port of %s',
+    (value) => {
+      expect(
+        validateEnv(baseEnv({ APP_PROBE_PORT: value })).APP_PROBE_PORT,
+      ).toBe(Number(value));
+    },
+  );
+
+  it.each(['not-a-number', '1.5', '0', '-1', '65536'])(
+    'rejects an invalid management probe port: %s',
+    (value) => {
+      expect(() => validateEnv(baseEnv({ APP_PROBE_PORT: value }))).toThrow(
+        /APP_PROBE_PORT/u,
+      );
+    },
+  );
+
+  it('rejects a management probe port equal to the public application port', () => {
+    expect(() =>
+      validateEnv(baseEnv({ APP_PORT: '9090', APP_PROBE_PORT: '9090' })),
+    ).toThrow(/APP_PROBE_PORT must differ from APP_PORT/u);
+  });
+
   it('defaults the graceful shutdown timeout to 15000 milliseconds', () => {
     expect(validateEnv(baseEnv()).APP_SHUTDOWN_TIMEOUT_MS).toBe(15_000);
   });

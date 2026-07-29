@@ -8,7 +8,9 @@ import type {
 } from './realtime-presence.types';
 
 const REDIS_STATE_CONNECT_TIMEOUT_MS = 1000;
+const REDIS_STATE_COMMAND_TIMEOUT_MS = 1000;
 const PRESENCE_USERS_SET_TTL_BUFFER_SECONDS = 60;
+const LOCAL_TYPING_SWEEP_INTERVAL_MS = 4000;
 
 const INCREMENT_PRESENCE_SCRIPT = `
 local socketKey = KEYS[1]
@@ -76,34 +78,89 @@ redis.call('EXPIRE', usersKey, usersTtlSeconds)
 return 1
 `;
 
+export type RealtimeStateStoreLifecycleState =
+  | 'initializing'
+  | 'ready'
+  | 'fallback'
+  | 'recovering'
+  | 'reconciling'
+  | 'unavailable'
+  | 'destroying';
+
 export interface RealtimeTypingUser {
   userId: string;
   startedAt: string;
   expiresAt: string;
 }
 
+interface LocalPresenceOwner {
+  schoolId: string;
+  userId: string;
+  socketId: string;
+  updatedAt: string;
+  ttlSeconds: number;
+}
+
+interface LocalTypingOwner {
+  schoolId: string;
+  conversationId: string;
+  userId: string;
+  startedAt: string;
+  expiresAtMs: number;
+}
+
 @Injectable()
 export class RealtimeStateStoreService implements OnModuleDestroy {
   private readonly logger = new Logger(RealtimeStateStoreService.name);
-  private readonly memoryPresenceSockets = new Map<
+  private readonly localPresence = new Map<
     string,
-    Map<string, Set<string>>
+    Map<string, Map<string, LocalPresenceOwner>>
   >();
-  private readonly memoryPresenceUpdatedAt = new Map<
+  private readonly localTyping = new Map<
     string,
-    Map<string, string>
+    Map<string, Map<string, LocalTypingOwner>>
   >();
-  private readonly memoryTypingUsers = new Map<
-    string,
-    Map<string, Map<string, { startedAt: string; expiresAtMs: number }>>
-  >();
+  private lifecycleState: RealtimeStateStoreLifecycleState = 'initializing';
   private redis?: IORedis;
-  private redisConnectPromise?: Promise<IORedis | null>;
+  private recoveryPromise: Promise<IORedis | null> | null = null;
+  private mutationTail: Promise<void> = Promise.resolve();
+  private readonly localTypingSweepTimer: NodeJS.Timeout;
+  private localTypingSweepPromise: Promise<void> | null = null;
+  private localTypingSweepTimerCleared = false;
   private destroyPromise: Promise<void> | null = null;
-  private redisUnavailable = false;
   private redisWarningLogged = false;
 
-  constructor(private readonly configService: ConfigService<Env, true>) {}
+  constructor(private readonly configService: ConfigService<Env, true>) {
+    this.localTypingSweepTimer = setInterval(() => {
+      void this.runLocalTypingSweep();
+    }, LOCAL_TYPING_SWEEP_INTERVAL_MS);
+    this.localTypingSweepTimer.unref();
+  }
+
+  async checkReadiness(): Promise<void> {
+    if (this.lifecycleState === 'destroying') {
+      throw new Error('realtime_state_redis_unavailable');
+    }
+
+    if (
+      this.lifecycleState !== 'ready' ||
+      this.redis?.status !== 'ready'
+    ) {
+      const recovered = await this.ensureRedisReady();
+      if (!recovered || this.lifecycleState !== 'ready') {
+        throw new Error('realtime_state_redis_unavailable');
+      }
+      return;
+    }
+
+    try {
+      await this.redis.ping();
+      this.redisWarningLogged = false;
+    } catch {
+      this.markRedisUnavailable(this.redis);
+      throw new Error('realtime_state_redis_unavailable');
+    }
+  }
 
   async incrementPresence(
     schoolId: string,
@@ -111,12 +168,115 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
     socketId: string,
     ttlSeconds: number,
   ): Promise<RealtimePresenceStoreResult> {
-    const updatedAt = new Date().toISOString();
-    const redisResult = await this.withRedis(async (redis) => {
-      const keys = presenceKeys(schoolId, userId);
-      const [socketCount, added] = parseRedisPair(
-        await redis.eval(
-          INCREMENT_PRESENCE_SCRIPT,
+    const redis = await this.getRedisForOperation();
+
+    return this.runSerialized(async () => {
+      const updatedAt = new Date().toISOString();
+      const localResult = this.incrementLocalPresence(
+        schoolId,
+        userId,
+        socketId,
+        ttlSeconds,
+        updatedAt,
+      );
+      if (!this.canUseRedis(redis)) {
+        this.setFallbackState();
+        return localResult;
+      }
+
+      try {
+        return await this.incrementRedisPresence(
+          redis,
+          schoolId,
+          userId,
+          socketId,
+          ttlSeconds,
+          updatedAt,
+        );
+      } catch {
+        this.markRedisUnavailable(redis);
+        return localResult;
+      }
+    });
+  }
+
+  async decrementPresence(
+    schoolId: string,
+    userId: string,
+    socketId: string,
+    ttlSeconds: number,
+  ): Promise<RealtimePresenceStoreResult> {
+    const redis = await this.getRedisForOperation();
+
+    return this.runSerialized(async () => {
+      const updatedAt = new Date().toISOString();
+      const localResult = this.decrementLocalPresence(
+        schoolId,
+        userId,
+        socketId,
+        updatedAt,
+      );
+      if (!this.canUseRedis(redis)) {
+        this.setFallbackState();
+        return localResult;
+      }
+
+      try {
+        const keys = presenceKeys(schoolId, userId);
+        const [socketCount, removed] = parseRedisPair(
+          await redis.eval(
+            DECREMENT_PRESENCE_SCRIPT,
+            3,
+            keys.socketSet,
+            keys.user,
+            keys.users,
+            normalizeStateId(socketId, 'socketId'),
+            String(ttlSeconds),
+            String(presenceUsersSetTtl(ttlSeconds)),
+            normalizeStateId(userId, 'userId'),
+          ),
+        );
+
+        return {
+          socketCount,
+          updatedAt,
+          transitionedOnline: false,
+          transitionedOffline: socketCount === 0 && removed === 1,
+        };
+      } catch {
+        this.markRedisUnavailable(redis);
+        return localResult;
+      }
+    });
+  }
+
+  async refreshPresence(
+    schoolId: string,
+    userId: string,
+    socketId: string,
+    ttlSeconds: number,
+  ): Promise<boolean> {
+    const redis = await this.getRedisForOperation();
+
+    return this.runSerialized(async () => {
+      const updatedAt = new Date().toISOString();
+      const localOwner = this.refreshLocalPresence(
+        schoolId,
+        userId,
+        socketId,
+        ttlSeconds,
+        updatedAt,
+      );
+      if (!localOwner) return false;
+      if (!this.canUseRedis(redis)) {
+        this.setFallbackState();
+        return true;
+      }
+
+      try {
+        const keys = presenceKeys(schoolId, userId);
+        const refreshed = await redis.eval(
+          REFRESH_PRESENCE_SCRIPT,
           3,
           keys.socketSet,
           keys.user,
@@ -126,71 +286,307 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
           String(ttlSeconds),
           String(presenceUsersSetTtl(ttlSeconds)),
           normalizeStateId(userId, 'userId'),
-        ),
-      );
-
-      return {
-        socketCount,
-        updatedAt,
-        transitionedOnline: socketCount === 1 && added === 1,
-        transitionedOffline: false,
-      };
+        );
+        return Number(refreshed) === 1;
+      } catch {
+        this.markRedisUnavailable(redis);
+        return true;
+      }
     });
-
-    return (
-      redisResult ??
-      this.incrementMemoryPresence(schoolId, userId, socketId, updatedAt)
-    );
   }
 
-  async decrementPresence(
-    schoolId: string,
-    userId: string,
-    socketId: string,
-    ttlSeconds: number,
-  ): Promise<RealtimePresenceStoreResult> {
-    const updatedAt = new Date().toISOString();
-    const redisResult = await this.withRedis(async (redis) => {
-      const keys = presenceKeys(schoolId, userId);
-      const [socketCount, removed] = parseRedisPair(
-        await redis.eval(
-          DECREMENT_PRESENCE_SCRIPT,
-          3,
-          keys.socketSet,
-          keys.user,
-          keys.users,
-          normalizeStateId(socketId, 'socketId'),
-          String(ttlSeconds),
-          String(presenceUsersSetTtl(ttlSeconds)),
-          normalizeStateId(userId, 'userId'),
-        ),
-      );
-
-      return {
-        socketCount,
-        updatedAt,
-        transitionedOnline: false,
-        transitionedOffline: socketCount === 0 && removed === 1,
-      };
-    });
-
-    return (
-      redisResult ??
-      this.decrementMemoryPresence(schoolId, userId, socketId, updatedAt)
-    );
-  }
-
-  async refreshPresence(
+  async restorePresence(
     schoolId: string,
     userId: string,
     socketId: string,
     ttlSeconds: number,
   ): Promise<boolean> {
-    const updatedAt = new Date().toISOString();
-    const redisResult = await this.withRedis(async (redis) => {
-      const keys = presenceKeys(schoolId, userId);
-      const refreshed = await redis.eval(
-        REFRESH_PRESENCE_SCRIPT,
+    const redis = await this.getRedisForOperation();
+
+    return this.runSerialized(async () => {
+      const owner = this.findLocalPresenceOwner(schoolId, userId, socketId);
+      if (!owner) return false;
+      owner.ttlSeconds = ttlSeconds;
+      owner.updatedAt = new Date().toISOString();
+      if (!this.canUseRedis(redis)) {
+        this.setFallbackState();
+        return false;
+      }
+
+      try {
+        await this.incrementRedisPresence(
+          redis,
+          owner.schoolId,
+          owner.userId,
+          owner.socketId,
+          owner.ttlSeconds,
+          owner.updatedAt,
+        );
+        return true;
+      } catch {
+        this.markRedisUnavailable(redis);
+        return false;
+      }
+    });
+  }
+
+  async getPresenceSnapshot(
+    schoolId: string,
+  ): Promise<RealtimePresenceSnapshotItem[]> {
+    const redis = await this.getRedisForOperation();
+    if (this.canUseRedis(redis)) {
+      try {
+        return await this.getRedisPresenceSnapshot(redis, schoolId);
+      } catch {
+        this.markRedisUnavailable(redis);
+      }
+    }
+
+    return this.getLocalPresenceSnapshot(schoolId);
+  }
+
+  async setTyping(
+    schoolId: string,
+    conversationId: string,
+    userId: string,
+    ttlSeconds: number,
+  ): Promise<RealtimeTypingUser> {
+    const redis = await this.getRedisForOperation();
+
+    return this.runSerialized(async () => {
+      const nowMs = Date.now();
+      const owner = this.setLocalTyping(
+        schoolId,
+        conversationId,
+        userId,
+        new Date(nowMs).toISOString(),
+        nowMs + ttlSeconds * 1000,
+      );
+      if (this.canUseRedis(redis)) {
+        try {
+          await this.writeRedisTyping(redis, owner, ttlSeconds);
+        } catch {
+          this.markRedisUnavailable(redis);
+        }
+      } else {
+        this.setFallbackState();
+      }
+
+      return typingUser(owner);
+    });
+  }
+
+  async clearTyping(
+    schoolId: string,
+    conversationId: string,
+    userId: string,
+  ): Promise<void> {
+    const redis = await this.getRedisForOperation();
+
+    await this.runSerialized(async () => {
+      this.clearLocalTyping(schoolId, conversationId, userId);
+      if (!this.canUseRedis(redis)) {
+        this.setFallbackState();
+        return;
+      }
+
+      try {
+        const keys = typingKeys(schoolId, conversationId, userId);
+        const result = await redis
+          .multi()
+          .del(keys.user)
+          .srem(keys.users, normalizeStateId(userId, 'userId'))
+          .exec();
+        assertRedisTransaction(result);
+      } catch {
+        this.markRedisUnavailable(redis);
+      }
+    });
+  }
+
+  async getTypingUsers(
+    schoolId: string,
+    conversationId: string,
+  ): Promise<RealtimeTypingUser[]> {
+    const redis = await this.getRedisForOperation();
+    if (this.canUseRedis(redis)) {
+      try {
+        return await this.getRedisTypingUsers(redis, schoolId, conversationId);
+      } catch {
+        this.markRedisUnavailable(redis);
+      }
+    }
+
+    return this.getLocalTypingUsers(schoolId, conversationId);
+  }
+
+  onModuleDestroy(): Promise<void> {
+    this.lifecycleState = 'destroying';
+    this.clearLocalTypingSweepTimer();
+    if (!this.destroyPromise) {
+      this.destroyPromise = this.destroy();
+    }
+    return this.destroyPromise;
+  }
+
+  private async getRedisForOperation(): Promise<IORedis | null> {
+    if (
+      this.lifecycleState === 'ready' &&
+      this.redis?.status === 'ready'
+    ) {
+      return this.redis;
+    }
+    return this.ensureRedisReady();
+  }
+
+  private ensureRedisReady(): Promise<IORedis | null> {
+    if (this.lifecycleState === 'destroying') return Promise.resolve(null);
+    if (
+      this.lifecycleState === 'ready' &&
+      this.redis?.status === 'ready'
+    ) {
+      return Promise.resolve(this.redis);
+    }
+    if (this.recoveryPromise) return this.recoveryPromise;
+
+    this.lifecycleState = 'recovering';
+    const execution = this.connectAndReconcile().finally(() => {
+      if (this.recoveryPromise === execution) {
+        this.recoveryPromise = null;
+      }
+    });
+    this.recoveryPromise = execution;
+    return execution;
+  }
+
+  private async connectAndReconcile(): Promise<IORedis | null> {
+    const redisUrl = this.configService.get('REDIS_URL', { infer: true });
+    if (!redisUrl) {
+      this.setFallbackState();
+      this.logRedisFallbackWarning();
+      return null;
+    }
+
+    const candidate = new IORedis(redisUrl, {
+      lazyConnect: true,
+      maxRetriesPerRequest: null,
+      enableOfflineQueue: false,
+      connectTimeout: REDIS_STATE_CONNECT_TIMEOUT_MS,
+      commandTimeout: REDIS_STATE_COMMAND_TIMEOUT_MS,
+      retryStrategy: () => null,
+    });
+    candidate.on('error', () => this.logRedisFallbackWarning());
+
+    try {
+      await this.connectRedisClient(candidate);
+      await candidate.ping();
+      if (this.isDestroying()) {
+        await this.closeRedisClient(candidate);
+        return null;
+      }
+
+      this.lifecycleState = 'reconciling';
+      await this.runSerialized(() => this.reconcileLocalState(candidate));
+      if (this.isDestroying()) {
+        await this.closeRedisClient(candidate);
+        return null;
+      }
+
+      const previous = this.redis;
+      this.redis = candidate;
+      this.lifecycleState = 'ready';
+      this.redisWarningLogged = false;
+      if (previous && previous !== candidate) {
+        await this.closeRedisClient(previous);
+      }
+      return candidate;
+    } catch {
+      await this.closeRedisClient(candidate);
+      this.setFallbackState();
+      this.logRedisFallbackWarning();
+      return null;
+    }
+  }
+
+  private async connectRedisClient(redis: IORedis): Promise<void> {
+    let timeout: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        redis.connect(),
+        new Promise<void>((_, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error('realtime_state_connect_timeout')),
+            REDIS_STATE_CONNECT_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+
+  private async reconcileLocalState(redis: IORedis): Promise<void> {
+    this.removeExpiredLocalTyping();
+
+    for (const school of this.localPresence.values()) {
+      for (const user of school.values()) {
+        const owners = [...user.values()].sort((left, right) =>
+          left.updatedAt.localeCompare(right.updatedAt),
+        );
+        for (const owner of owners) {
+          await this.incrementRedisPresence(
+            redis,
+            owner.schoolId,
+            owner.userId,
+            owner.socketId,
+            owner.ttlSeconds,
+            owner.updatedAt,
+          );
+        }
+      }
+    }
+
+    const nowMs = Date.now();
+    const activeTyping: Array<{
+      owner: LocalTypingOwner;
+      remainingTtlSeconds: number;
+    }> = [];
+    for (const school of this.localTyping.values()) {
+      for (const conversation of school.values()) {
+        for (const owner of conversation.values()) {
+          const remainingTtlSeconds = Math.ceil(
+            (owner.expiresAtMs - nowMs) / 1000,
+          );
+          if (remainingTtlSeconds <= 0) continue;
+          activeTyping.push({ owner, remainingTtlSeconds });
+        }
+      }
+    }
+    activeTyping.sort(
+      (left, right) =>
+        left.remainingTtlSeconds - right.remainingTtlSeconds,
+    );
+    for (const entry of activeTyping) {
+      await this.writeRedisTyping(
+        redis,
+        entry.owner,
+        entry.remainingTtlSeconds,
+      );
+    }
+  }
+
+  private async incrementRedisPresence(
+    redis: IORedis,
+    schoolId: string,
+    userId: string,
+    socketId: string,
+    ttlSeconds: number,
+    updatedAt: string,
+  ): Promise<RealtimePresenceStoreResult> {
+    const keys = presenceKeys(schoolId, userId);
+    const [socketCount, added] = parseRedisPair(
+      await redis.eval(
+        INCREMENT_PRESENCE_SCRIPT,
         3,
         keys.socketSet,
         keys.user,
@@ -200,130 +596,130 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
         String(ttlSeconds),
         String(presenceUsersSetTtl(ttlSeconds)),
         normalizeStateId(userId, 'userId'),
-      );
-
-      return Number(refreshed) === 1;
-    });
-
-    if (redisResult !== null) return redisResult;
-
-    return this.refreshMemoryPresence(schoolId, userId, socketId, updatedAt);
-  }
-
-  async getPresenceSnapshot(
-    schoolId: string,
-  ): Promise<RealtimePresenceSnapshotItem[]> {
-    const redisResult = await this.withRedis((redis) =>
-      this.getRedisPresenceSnapshot(redis, schoolId),
+      ),
     );
 
-    return redisResult ?? this.getMemoryPresenceSnapshot(schoolId);
+    return {
+      socketCount,
+      updatedAt,
+      transitionedOnline: socketCount === 1 && added === 1,
+      transitionedOffline: false,
+    };
   }
 
-  async setTyping(
-    schoolId: string,
-    conversationId: string,
-    userId: string,
+  private async writeRedisTyping(
+    redis: IORedis,
+    owner: LocalTypingOwner,
     ttlSeconds: number,
-  ): Promise<RealtimeTypingUser> {
-    const nowMs = Date.now();
-    const startedAt = new Date(nowMs).toISOString();
-    const expiresAtMs = nowMs + ttlSeconds * 1000;
-    const expiresAt = new Date(expiresAtMs).toISOString();
-
-    const redisResult = await this.withRedis(async (redis) => {
-      const keys = typingKeys(schoolId, conversationId, userId);
-      await redis
-        .multi()
-        .set(keys.user, startedAt, 'EX', ttlSeconds)
-        .sadd(keys.users, normalizeStateId(userId, 'userId'))
-        .expire(keys.users, ttlSeconds)
-        .exec();
-
-      return {
-        userId: normalizeStateId(userId, 'userId'),
-        startedAt,
-        expiresAt,
-      };
-    });
-
-    if (redisResult) return redisResult;
-
-    return this.setMemoryTyping(
-      schoolId,
-      conversationId,
-      userId,
-      startedAt,
-      expiresAtMs,
-    );
-  }
-
-  async clearTyping(
-    schoolId: string,
-    conversationId: string,
-    userId: string,
   ): Promise<void> {
-    const redisCleared = await this.withRedis(async (redis) => {
-      const keys = typingKeys(schoolId, conversationId, userId);
-      await redis
-        .multi()
-        .del(keys.user)
-        .srem(keys.users, normalizeStateId(userId, 'userId'))
-        .exec();
-      return true;
-    });
-
-    if (redisCleared) return;
-
-    this.clearMemoryTyping(schoolId, conversationId, userId);
-  }
-
-  async getTypingUsers(
-    schoolId: string,
-    conversationId: string,
-  ): Promise<RealtimeTypingUser[]> {
-    const redisResult = await this.withRedis((redis) =>
-      this.getRedisTypingUsers(redis, schoolId, conversationId),
+    const keys = typingKeys(
+      owner.schoolId,
+      owner.conversationId,
+      owner.userId,
     );
-
-    return redisResult ?? this.getMemoryTypingUsers(schoolId, conversationId);
+    const result = await redis
+      .multi()
+      .set(keys.user, owner.startedAt, 'EX', ttlSeconds)
+      .sadd(keys.users, owner.userId)
+      .expire(keys.users, ttlSeconds)
+      .exec();
+    assertRedisTransaction(result);
   }
 
-  onModuleDestroy(): Promise<void> {
-    if (!this.destroyPromise) {
-      this.destroyPromise = this.closeRedis();
-    }
-    return this.destroyPromise;
+  private markRedisUnavailable(redis: IORedis): void {
+    if (this.redis === redis) this.redis = undefined;
+    redis.disconnect();
+    this.setFallbackState();
+    this.logRedisFallbackWarning();
   }
 
-  private incrementMemoryPresence(
+  private setFallbackState(): void {
+    if (this.lifecycleState === 'destroying') return;
+    this.removeExpiredLocalTyping();
+    this.lifecycleState = this.hasLocalState() ? 'fallback' : 'unavailable';
+  }
+
+  private canUseRedis(redis: IORedis | null): redis is IORedis {
+    return (
+      Boolean(redis) &&
+      this.lifecycleState === 'ready' &&
+      this.redis === redis &&
+      redis?.status === 'ready'
+    );
+  }
+
+  private runSerialized<T>(operation: () => Promise<T>): Promise<T> {
+    const execution = this.mutationTail.then(operation, operation);
+    this.mutationTail = execution.then(
+      () => undefined,
+      () => undefined,
+    );
+    return execution;
+  }
+
+  private runLocalTypingSweep(): Promise<void> {
+    if (this.lifecycleState === 'destroying') return Promise.resolve();
+    if (this.localTypingSweepPromise) return this.localTypingSweepPromise;
+
+    const execution = this.runSerialized(async () => {
+      this.removeExpiredLocalTyping();
+      if (
+        this.lifecycleState === 'fallback' ||
+        this.lifecycleState === 'unavailable'
+      ) {
+        this.setFallbackState();
+      }
+    });
+    const observed = execution.then(
+      () => undefined,
+      () => undefined,
+    );
+    const tracked = observed.finally(() => {
+      if (this.localTypingSweepPromise === tracked) {
+        this.localTypingSweepPromise = null;
+      }
+    });
+    this.localTypingSweepPromise = tracked;
+    return tracked;
+  }
+
+  private clearLocalTypingSweepTimer(): void {
+    if (this.localTypingSweepTimerCleared) return;
+    clearInterval(this.localTypingSweepTimer);
+    this.localTypingSweepTimerCleared = true;
+  }
+
+  private incrementLocalPresence(
     schoolId: string,
     userId: string,
     socketId: string,
+    ttlSeconds: number,
     updatedAt: string,
   ): RealtimePresenceStoreResult {
-    const schoolPresence = getOrCreateMap(
-      this.memoryPresenceSockets,
-      normalizeStateId(schoolId, 'schoolId'),
-    );
-    const userSockets = getOrCreateSet(
-      schoolPresence,
-      normalizeStateId(userId, 'userId'),
-    );
-    const hadSockets = userSockets.size > 0;
-    const added = !userSockets.has(socketId);
-    userSockets.add(normalizeStateId(socketId, 'socketId'));
-    this.setMemoryPresenceUpdatedAt(schoolId, userId, updatedAt);
+    const normalizedSchoolId = normalizeStateId(schoolId, 'schoolId');
+    const normalizedUserId = normalizeStateId(userId, 'userId');
+    const normalizedSocketId = normalizeStateId(socketId, 'socketId');
+    const school = getOrCreateMap(this.localPresence, normalizedSchoolId);
+    const user = getOrCreateMap(school, normalizedUserId);
+    const hadSockets = user.size > 0;
+    const added = !user.has(normalizedSocketId);
+    user.set(normalizedSocketId, {
+      schoolId: normalizedSchoolId,
+      userId: normalizedUserId,
+      socketId: normalizedSocketId,
+      updatedAt,
+      ttlSeconds,
+    });
 
     return {
-      socketCount: userSockets.size,
+      socketCount: user.size,
       updatedAt,
       transitionedOnline: !hadSockets && added,
       transitionedOffline: false,
     };
   }
 
-  private decrementMemoryPresence(
+  private decrementLocalPresence(
     schoolId: string,
     userId: string,
     socketId: string,
@@ -331,156 +727,139 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
   ): RealtimePresenceStoreResult {
     const normalizedSchoolId = normalizeStateId(schoolId, 'schoolId');
     const normalizedUserId = normalizeStateId(userId, 'userId');
-    const schoolPresence = this.memoryPresenceSockets.get(normalizedSchoolId);
-    const userSockets = schoolPresence?.get(normalizedUserId);
-    const removed = userSockets?.delete(normalizeStateId(socketId, 'socketId'));
+    const school = this.localPresence.get(normalizedSchoolId);
+    const user = school?.get(normalizedUserId);
+    const removed = user?.delete(normalizeStateId(socketId, 'socketId'));
 
-    if (!userSockets || userSockets.size === 0) {
-      schoolPresence?.delete(normalizedUserId);
-      if (schoolPresence?.size === 0) {
-        this.memoryPresenceSockets.delete(normalizedSchoolId);
-      }
-      this.memoryPresenceUpdatedAt
-        .get(normalizedSchoolId)
-        ?.delete(normalizedUserId);
-    }
+    if (user?.size === 0) school?.delete(normalizedUserId);
+    if (school?.size === 0) this.localPresence.delete(normalizedSchoolId);
 
     return {
-      socketCount: userSockets?.size ?? 0,
+      socketCount: user?.size ?? 0,
       updatedAt,
       transitionedOnline: false,
-      transitionedOffline: Boolean(removed) && (userSockets?.size ?? 0) === 0,
+      transitionedOffline: Boolean(removed) && (user?.size ?? 0) === 0,
     };
   }
 
-  private refreshMemoryPresence(
+  private refreshLocalPresence(
     schoolId: string,
     userId: string,
     socketId: string,
+    ttlSeconds: number,
     updatedAt: string,
-  ): boolean {
-    const userSockets = this.memoryPresenceSockets
-      .get(normalizeStateId(schoolId, 'schoolId'))
-      ?.get(normalizeStateId(userId, 'userId'));
-
-    if (!userSockets?.has(normalizeStateId(socketId, 'socketId'))) return false;
-
-    this.setMemoryPresenceUpdatedAt(schoolId, userId, updatedAt);
-    return true;
+  ): LocalPresenceOwner | null {
+    const owner = this.findLocalPresenceOwner(schoolId, userId, socketId);
+    if (!owner) return null;
+    owner.updatedAt = updatedAt;
+    owner.ttlSeconds = ttlSeconds;
+    return owner;
   }
 
-  private setMemoryPresenceUpdatedAt(
+  private findLocalPresenceOwner(
     schoolId: string,
     userId: string,
-    updatedAt: string,
-  ): void {
-    const schoolUpdatedAt = getOrCreateMap(
-      this.memoryPresenceUpdatedAt,
-      normalizeStateId(schoolId, 'schoolId'),
+    socketId: string,
+  ): LocalPresenceOwner | null {
+    return (
+      this.localPresence
+        .get(normalizeStateId(schoolId, 'schoolId'))
+        ?.get(normalizeStateId(userId, 'userId'))
+        ?.get(normalizeStateId(socketId, 'socketId')) ?? null
     );
-    schoolUpdatedAt.set(normalizeStateId(userId, 'userId'), updatedAt);
   }
 
-  private getMemoryPresenceSnapshot(
+  private getLocalPresenceSnapshot(
     schoolId: string,
   ): RealtimePresenceSnapshotItem[] {
-    const normalizedSchoolId = normalizeStateId(schoolId, 'schoolId');
-    const schoolPresence = this.memoryPresenceSockets.get(normalizedSchoolId);
-    const schoolUpdatedAt =
-      this.memoryPresenceUpdatedAt.get(normalizedSchoolId);
-    if (!schoolPresence) return [];
+    const school = this.localPresence.get(
+      normalizeStateId(schoolId, 'schoolId'),
+    );
+    if (!school) return [];
 
-    return [...schoolPresence.entries()]
+    return [...school.entries()]
       .filter(([, sockets]) => sockets.size > 0)
-      .map(([userId]) => ({
+      .map(([userId, sockets]) => ({
         userId,
         online: true as const,
-        updatedAt: schoolUpdatedAt?.get(userId) ?? new Date(0).toISOString(),
+        updatedAt: latestPresenceTimestamp(sockets.values()),
       }))
       .sort(compareByUserId);
   }
 
-  private setMemoryTyping(
+  private setLocalTyping(
     schoolId: string,
     conversationId: string,
     userId: string,
     startedAt: string,
     expiresAtMs: number,
-  ): RealtimeTypingUser {
-    const conversationUsers = getOrCreateMap(
-      getOrCreateMap(
-        this.memoryTypingUsers,
-        normalizeStateId(schoolId, 'schoolId'),
-      ),
-      normalizeStateId(conversationId, 'conversationId'),
-    );
-    const normalizedUserId = normalizeStateId(userId, 'userId');
-
-    conversationUsers.set(normalizedUserId, { startedAt, expiresAtMs });
-
-    return {
-      userId: normalizedUserId,
-      startedAt,
-      expiresAt: new Date(expiresAtMs).toISOString(),
-    };
-  }
-
-  private clearMemoryTyping(
-    schoolId: string,
-    conversationId: string,
-    userId: string,
-  ): void {
-    const schoolTyping = this.memoryTypingUsers.get(
-      normalizeStateId(schoolId, 'schoolId'),
-    );
-    const conversationTyping = schoolTyping?.get(
-      normalizeStateId(conversationId, 'conversationId'),
-    );
-    conversationTyping?.delete(normalizeStateId(userId, 'userId'));
-
-    if (conversationTyping?.size === 0) {
-      schoolTyping?.delete(normalizeStateId(conversationId, 'conversationId'));
-    }
-    if (schoolTyping?.size === 0) {
-      this.memoryTypingUsers.delete(normalizeStateId(schoolId, 'schoolId'));
-    }
-  }
-
-  private getMemoryTypingUsers(
-    schoolId: string,
-    conversationId: string,
-  ): RealtimeTypingUser[] {
+  ): LocalTypingOwner {
     const normalizedSchoolId = normalizeStateId(schoolId, 'schoolId');
     const normalizedConversationId = normalizeStateId(
       conversationId,
       'conversationId',
     );
-    const schoolTyping = this.memoryTypingUsers.get(normalizedSchoolId);
-    const conversationTyping = schoolTyping?.get(normalizedConversationId);
-    if (!conversationTyping) return [];
+    const normalizedUserId = normalizeStateId(userId, 'userId');
+    const conversation = getOrCreateMap(
+      getOrCreateMap(this.localTyping, normalizedSchoolId),
+      normalizedConversationId,
+    );
+    const owner = {
+      schoolId: normalizedSchoolId,
+      conversationId: normalizedConversationId,
+      userId: normalizedUserId,
+      startedAt,
+      expiresAtMs,
+    };
+    conversation.set(normalizedUserId, owner);
+    return owner;
+  }
 
+  private clearLocalTyping(
+    schoolId: string,
+    conversationId: string,
+    userId: string,
+  ): void {
+    const normalizedSchoolId = normalizeStateId(schoolId, 'schoolId');
+    const normalizedConversationId = normalizeStateId(
+      conversationId,
+      'conversationId',
+    );
+    const school = this.localTyping.get(normalizedSchoolId);
+    const conversation = school?.get(normalizedConversationId);
+    conversation?.delete(normalizeStateId(userId, 'userId'));
+    if (conversation?.size === 0) school?.delete(normalizedConversationId);
+    if (school?.size === 0) this.localTyping.delete(normalizedSchoolId);
+  }
+
+  private getLocalTypingUsers(
+    schoolId: string,
+    conversationId: string,
+  ): RealtimeTypingUser[] {
+    this.removeExpiredLocalTyping();
+    const conversation = this.localTyping
+      .get(normalizeStateId(schoolId, 'schoolId'))
+      ?.get(normalizeStateId(conversationId, 'conversationId'));
+    if (!conversation) return [];
+
+    return [...conversation.values()].map(typingUser).sort(compareByUserId);
+  }
+
+  private removeExpiredLocalTyping(): void {
     const nowMs = Date.now();
-    for (const [userId, state] of conversationTyping.entries()) {
-      if (state.expiresAtMs <= nowMs) {
-        conversationTyping.delete(userId);
+    for (const [schoolId, school] of this.localTyping.entries()) {
+      for (const [conversationId, conversation] of school.entries()) {
+        for (const [userId, owner] of conversation.entries()) {
+          if (owner.expiresAtMs <= nowMs) conversation.delete(userId);
+        }
+        if (conversation.size === 0) school.delete(conversationId);
       }
+      if (school.size === 0) this.localTyping.delete(schoolId);
     }
+  }
 
-    if (conversationTyping.size === 0) {
-      schoolTyping?.delete(normalizedConversationId);
-      if (schoolTyping?.size === 0) {
-        this.memoryTypingUsers.delete(normalizedSchoolId);
-      }
-      return [];
-    }
-
-    return [...conversationTyping.entries()]
-      .map(([userId, state]) => ({
-        userId,
-        startedAt: state.startedAt,
-        expiresAt: new Date(state.expiresAtMs).toISOString(),
-      }))
-      .sort(compareByUserId);
+  private hasLocalState(): boolean {
+    return this.localPresence.size > 0 || this.localTyping.size > 0;
   }
 
   private async getRedisPresenceSnapshot(
@@ -505,14 +884,12 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
         staleUserIds.push(userId);
         return;
       }
-
       snapshot.push({ userId, online: true, updatedAt });
     });
 
     if (staleUserIds.length > 0) {
       await redis.srem(usersKey, ...staleUserIds);
     }
-
     return snapshot;
   }
 
@@ -535,18 +912,14 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
     const results = await pipeline.exec();
     const staleUserIds: string[] = [];
     const typingUsers: RealtimeTypingUser[] = [];
-
     userIds.forEach((userId, index) => {
       const valueIndex = index * 2;
-      const ttlIndex = valueIndex + 1;
       const startedAt = results?.[valueIndex]?.[1];
-      const ttlSeconds = Number(results?.[ttlIndex]?.[1]);
-
+      const ttlSeconds = Number(results?.[valueIndex + 1]?.[1]);
       if (typeof startedAt !== 'string' || ttlSeconds <= 0) {
         staleUserIds.push(userId);
         return;
       }
-
       typingUsers.push({
         userId,
         startedAt,
@@ -557,96 +930,21 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
     if (staleUserIds.length > 0) {
       await redis.srem(usersKey, ...staleUserIds);
     }
-
     return typingUsers;
   }
 
-  private async withRedis<T>(
-    fn: (redis: IORedis) => Promise<T>,
-  ): Promise<T | null> {
-    const redis = await this.getRedisClient();
-    if (!redis) return null;
-
-    try {
-      return await fn(redis);
-    } catch {
-      this.markRedisUnavailable();
-      return null;
-    }
-  }
-
-  private async getRedisClient(): Promise<IORedis | null> {
-    if (this.redisUnavailable) return null;
-    if (this.redis?.status === 'ready') return this.redis;
-
-    if (!this.redisConnectPromise) {
-      this.redisConnectPromise = this.connectRedisClient();
-    }
-
-    try {
-      return await this.redisConnectPromise;
-    } finally {
-      this.redisConnectPromise = undefined;
-    }
-  }
-
-  private async connectRedisClient(): Promise<IORedis | null> {
-    const redisUrl = this.configService.get('REDIS_URL', { infer: true });
-    if (!redisUrl) {
-      this.markRedisUnavailable();
-      return null;
-    }
-
-    if (!this.redis) {
-      this.redis = new IORedis(redisUrl, {
-        lazyConnect: true,
-        maxRetriesPerRequest: null,
-        enableOfflineQueue: false,
-        connectTimeout: REDIS_STATE_CONNECT_TIMEOUT_MS,
-        retryStrategy: () => null,
-      });
-      this.redis.on('error', () => this.logRedisFallbackWarning());
-    }
-
-    let timeout: NodeJS.Timeout | undefined;
-    try {
-      await Promise.race([
-        this.redis.connect(),
-        new Promise<void>((_, reject) => {
-          timeout = setTimeout(
-            () =>
-              reject(new Error('Realtime state Redis connection timed out')),
-            REDIS_STATE_CONNECT_TIMEOUT_MS,
-          );
-        }),
-      ]);
-      return this.redis;
-    } catch {
-      this.markRedisUnavailable();
-      return null;
-    } finally {
-      if (timeout) clearTimeout(timeout);
-    }
-  }
-
-  private markRedisUnavailable(): void {
-    this.redisUnavailable = true;
-    this.logRedisFallbackWarning();
-    this.redis?.disconnect();
-  }
-
-  private logRedisFallbackWarning(): void {
-    if (this.redisWarningLogged) return;
-    this.redisWarningLogged = true;
-    this.logger.warn(
-      'Realtime state Redis unavailable; using in-memory presence and typing state.',
-    );
-  }
-
-  private async closeRedis(): Promise<void> {
+  private async destroy(): Promise<void> {
+    const activeSweep = this.localTypingSweepPromise;
+    if (activeSweep) await activeSweep;
+    const recovery = this.recoveryPromise;
+    if (recovery) await recovery;
+    await this.mutationTail;
     const redis = this.redis;
-    if (!redis) return;
+    this.redis = undefined;
+    if (redis) await this.closeRedisClient(redis);
+  }
 
+  private async closeRedisClient(redis: IORedis): Promise<void> {
     if (
       redis.status === 'ready' ||
       redis.status === 'connect' ||
@@ -661,8 +959,20 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
         return;
       }
     }
-
     redis.disconnect();
+  }
+
+  private logRedisFallbackWarning(): void {
+    if (this.redisWarningLogged) return;
+    this.redisWarningLogged = true;
+    this.logger.warn({
+      event: 'realtime.state_store.unavailable',
+      stage: 'fallback',
+    });
+  }
+
+  private isDestroying(): boolean {
+    return this.lifecycleState === 'destroying';
   }
 }
 
@@ -720,7 +1030,6 @@ function normalizeStateId(value: string, label: string): string {
   if (!normalized) {
     throw new Error(`${label} is required for realtime state`);
   }
-
   return normalized;
 }
 
@@ -733,28 +1042,41 @@ function parseRedisPair(value: unknown): [number, number] {
   return [Number(value[0] ?? 0), Number(value[1] ?? 0)];
 }
 
+function assertRedisTransaction(
+  result: Array<[Error | null, unknown]> | null,
+): void {
+  if (!result || result.some(([error]) => error)) {
+    throw new Error('realtime_state_transaction_failed');
+  }
+}
+
 function getOrCreateMap<TKey, TValue>(
   root: Map<TKey, Map<string, TValue>>,
   key: TKey,
 ): Map<string, TValue> {
   const existing = root.get(key);
   if (existing) return existing;
-
   const created = new Map<string, TValue>();
   root.set(key, created);
   return created;
 }
 
-function getOrCreateSet(
-  root: Map<string, Set<string>>,
-  key: string,
-): Set<string> {
-  const existing = root.get(key);
-  if (existing) return existing;
+function latestPresenceTimestamp(
+  owners: IterableIterator<LocalPresenceOwner>,
+): string {
+  let latest = new Date(0).toISOString();
+  for (const owner of owners) {
+    if (owner.updatedAt > latest) latest = owner.updatedAt;
+  }
+  return latest;
+}
 
-  const created = new Set<string>();
-  root.set(key, created);
-  return created;
+function typingUser(owner: LocalTypingOwner): RealtimeTypingUser {
+  return {
+    userId: owner.userId,
+    startedAt: owner.startedAt,
+    expiresAt: new Date(owner.expiresAtMs).toISOString(),
+  };
 }
 
 function compareByUserId<T extends { userId: string }>(

@@ -10,15 +10,21 @@ jest.mock('ioredis');
 type ErrorListener = (error: Error) => void;
 
 type WorkerDouble = {
+  name: string;
   blockingConnection: RedisConnectionDouble;
   connection: RedisConnectionDouble;
   closing: Promise<void> | undefined;
   stalledCheckStopper?: () => void;
   close: jest.Mock<Promise<void>, []>;
   run: jest.Mock<Promise<void>, []>;
+  isPaused: jest.Mock<boolean, []>;
+  isRunning: jest.Mock<boolean, []>;
   waitUntilReady: jest.Mock<Promise<unknown>, []>;
   on: jest.Mock<WorkerDouble, [string, ErrorListener]>;
   emitError: (error: Error) => void;
+  emit: jest.Mock<boolean, [string, Error]>;
+  rejectRun: (error: Error) => void;
+  resolveRun: () => void;
 };
 
 type QueueDouble = {
@@ -71,8 +77,9 @@ describe('BullmqService lifecycle', () => {
     });
 
     MockedIORedis.mockImplementation(() => redis as unknown as IORedis);
-    MockedWorker.mockImplementation(() => {
+    MockedWorker.mockImplementation((queueName) => {
       const worker = createWorkerDouble();
+      worker.name = String(queueName);
       workers.push(worker);
       return worker as unknown as Worker;
     });
@@ -111,6 +118,73 @@ describe('BullmqService lifecycle', () => {
     expect(worker).toBe(workerDouble);
   });
 
+  it('requires every assigned worker processing loop to be running', () => {
+    const service = createService();
+    service.createWorker('first-queue', () => Promise.resolve());
+    service.createWorker('second-queue', () => Promise.resolve());
+
+    expect(
+      service.hasAvailableWorkers(['first-queue', 'second-queue']),
+    ).toBe(true);
+    expect(service.hasAvailableWorkers(['missing-queue'])).toBe(false);
+
+    workers[1].isPaused.mockReturnValue(true);
+    expect(
+      service.hasAvailableWorkers(['first-queue', 'second-queue']),
+    ).toBe(false);
+    workers[1].isPaused.mockReturnValue(false);
+    workers[1].isRunning.mockReturnValue(false);
+    expect(service.hasAvailableWorkers(['second-queue'])).toBe(false);
+  });
+
+  it('makes an unexpectedly settled worker run unavailable', async () => {
+    const service = createService();
+    service.createWorker('settled-queue', () => Promise.resolve());
+
+    expect(service.hasAvailableWorkers(['settled-queue'])).toBe(true);
+    workers[0].resolveRun();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(service.hasAvailableWorkers(['settled-queue'])).toBe(false);
+    expect(loggerError).toHaveBeenCalledWith({
+      event: 'bullmq.worker.run_stopped',
+      stage: 'unexpected_settlement',
+    });
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(
+      'settled-queue',
+    );
+  });
+
+  it('makes a rejected worker run unavailable without an unhandled rejection', async () => {
+    const service = createService();
+    service.createWorker('failed-queue', () => Promise.resolve());
+
+    workers[0].rejectRun(new Error('worker run failed'));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(service.hasAvailableWorkers(['failed-queue'])).toBe(false);
+    expect(loggerError).toHaveBeenCalledWith({
+      event: 'bullmq.worker.failed',
+      stage: 'runtime',
+    });
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(
+      'failed-queue',
+    );
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(
+      'worker run failed',
+    );
+  });
+
+  it('reports workers unavailable during normal drain', async () => {
+    const service = createService();
+    service.createWorker('draining-queue', () => Promise.resolve());
+
+    const drain = service.beginWorkerDrain();
+
+    expect(service.hasAvailableWorkers(['draining-queue'])).toBe(false);
+    await drain;
+  });
+
   it('shares one shutdown operation across concurrent destroy calls', async () => {
     const service = createService();
     service.createWorker('test-queue', () => Promise.resolve());
@@ -146,6 +220,7 @@ describe('BullmqService lifecycle', () => {
     expect(redis.quit).not.toHaveBeenCalled();
 
     resolveWorkerClose?.();
+    workers[0].resolveRun();
     await firstDrain;
     await service.onModuleDestroy();
 
@@ -225,9 +300,15 @@ describe('BullmqService lifecycle', () => {
 
     workers[0].emitError(error);
 
-    expect(loggerError).toHaveBeenCalledWith(
-      'BullMQ worker test-queue failed: runtime redis failure',
-      error.stack,
+    expect(loggerError).toHaveBeenCalledWith({
+      event: 'bullmq.worker.failed',
+      stage: 'runtime',
+    });
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(
+      'test-queue',
+    );
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(
+      'runtime redis failure',
     );
   });
 
@@ -249,6 +330,7 @@ describe('BullmqService lifecycle', () => {
 
     expect(loggerError).not.toHaveBeenCalled();
     resolveClose?.();
+    workers[0].resolveRun();
     await shutdown;
   });
 
@@ -275,6 +357,7 @@ describe('BullmqService lifecycle', () => {
     });
     expect(JSON.stringify(loggerError.mock.calls)).not.toContain(error.message);
     resolveClose?.();
+    workers[0].resolveRun();
     await shutdown;
   });
 
@@ -284,6 +367,7 @@ describe('BullmqService lifecycle', () => {
     const blockingConnection = workers[0].blockingConnection;
     workers[0].close.mockImplementation(() => {
       workers[0].closing = Promise.resolve();
+      workers[0].resolveRun();
       blockingConnection.status = 'closed';
       blockingConnection.removeAllListeners();
       return workers[0].closing;
@@ -334,6 +418,7 @@ describe('BullmqService lifecycle', () => {
 
   function createWorkerDouble(): WorkerDouble {
     const listeners: ErrorListener[] = [];
+    const runState = deferred<void>();
     const blockingConnectionListeners: ErrorListener[] = [];
     const blockingConnection: RedisConnectionDouble = {
       initializing: Promise.resolve(),
@@ -366,20 +451,32 @@ describe('BullmqService lifecycle', () => {
       emitError: () => undefined,
     };
     const worker: WorkerDouble = {
+      name: '',
       blockingConnection,
       connection,
       closing: undefined,
       stalledCheckStopper: jest.fn<void, []>(),
       close: jest.fn<Promise<void>, []>(),
-      run: jest.fn(() => Promise.resolve()),
+      run: jest.fn(() => runState.promise),
+      isPaused: jest.fn(() => false),
+      isRunning: jest.fn(() => true),
       waitUntilReady: jest.fn(() => Promise.resolve(undefined)),
       on: jest.fn<WorkerDouble, [string, ErrorListener]>(),
       emitError: (error: Error) => {
         for (const listener of listeners) listener(error);
       },
+      emit: jest.fn((event: string, error: Error) => {
+        if (event === 'error') {
+          for (const listener of listeners) listener(error);
+        }
+        return true;
+      }),
+      rejectRun: runState.reject,
+      resolveRun: () => runState.resolve(),
     };
     worker.close.mockImplementation(() => {
       worker.closing = Promise.resolve();
+      worker.resolveRun();
       return worker.closing;
     });
     worker.on.mockImplementation((event: string, listener: ErrorListener) => {
@@ -397,5 +494,15 @@ describe('BullmqService lifecycle', () => {
       removeAllListeners: jest.fn<RedisConnectionDouble, [string?]>(),
       emitError: () => undefined,
     };
+  }
+
+  function deferred<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    return { promise, reject, resolve };
   }
 });

@@ -37,6 +37,7 @@ jobs:
     env:
       NODE_ENV: test
       APP_PORT: '3000'
+      APP_PROBE_PORT: '9090'
       APP_URL: http://127.0.0.1:3000
       DATABASE_URL: postgresql://moazez_ci:ci_only_not_a_secret@127.0.0.1:5432/moazez_learning_media?schema=public
       REDIS_URL: redis://127.0.0.1:6379
@@ -150,7 +151,8 @@ jobs:
         shell: bash
         run: |
           for attempt in {1..30}; do
-            curl --fail --silent http://127.0.0.1:9000/minio/health/ready && exit 0
+            curl --fail --silent --connect-timeout 1 --max-time 2 \
+              http://127.0.0.1:9000/minio/health/ready && exit 0
             sleep 1
           done
           exit 1
@@ -178,12 +180,22 @@ jobs:
           -c 'npx prisma generate &&
           npx jest --runInBand --detectOpenHandles --runTestsByPath
           src/bootstrap/application-lifecycle.state.spec.ts
+          src/bootstrap/application-startup.spec.ts
           src/bootstrap/graceful-shutdown.spec.ts
           src/bootstrap/graceful-shutdown.process.spec.ts
+          src/bootstrap/management-probe.server.spec.ts
+          src/bootstrap/management-probe.integration.spec.ts
+          src/bootstrap/management-probe.process.spec.ts
           src/bootstrap/http-drain.middleware.spec.ts
           src/bootstrap/route-scoped-filter-lifecycle.integration.spec.ts
           src/bootstrap/shutdown-http.integration.spec.ts
           src/common/exceptions/global-exception.filter.spec.ts
+          src/modules/health/bounded-probe-executor.spec.ts
+           src/modules/health/operational-probe.manifests.spec.ts
+           src/modules/health/operational-probe.service.spec.ts
+           src/infrastructure/realtime/tests/realtime-presence.service.spec.ts
+           src/infrastructure/realtime/tests/realtime-publisher.service.spec.ts
+           src/infrastructure/realtime/tests/realtime-state-store.service.spec.ts
           src/modules/files/uploads/tests/files-upload-multer-exception.filter.spec.ts
           src/modules/settings/branding/tests/branding-logo-multipart-exception.filter.spec.ts
           src/modules/settings/branding/tests/public-school-branding-logo.spec.ts
@@ -197,23 +209,45 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          docker network create moazez-learning-media-probe-network >/dev/null
+          docker run --detach --name moazez-learning-media-probe-redis \
+            --network moazez-learning-media-probe-network \
+            redis:7-alpine >/dev/null
+          for attempt in {1..30}; do
+            if docker exec moazez-learning-media-probe-redis \
+              redis-cli ping | grep --quiet PONG; then
+              break
+            fi
+            sleep 1
+            if [[ "$attempt" -eq 30 ]]; then
+              echo 'The disposable probe Redis did not become ready.'
+              exit 1
+            fi
+          done
+
           docker run --detach --name moazez-learning-media-runtime \
-            --network host \
-            --env APP_PORT --env APP_URL --env DATABASE_URL --env REDIS_URL \
+            --network moazez-learning-media-probe-network \
+            --add-host host.docker.internal:host-gateway \
+            --publish 127.0.0.1:3000:3000 \
+            --env APP_PORT=3000 --env APP_PROBE_PORT=9090 --env APP_URL \
+            --env DATABASE_URL="${DATABASE_URL/127.0.0.1/host.docker.internal}" \
+            --env REDIS_URL=redis://moazez-learning-media-probe-redis:6379 \
             --env APP_CORS_ORIGINS=https://schools.moazez.cloud,https://admin.moazez.cloud \
             --env SWAGGER_ENABLED=false \
             --env APP_SHUTDOWN_TIMEOUT_MS=15000 \
             --env JWT_ACCESS_SECRET --env JWT_REFRESH_SECRET \
             --env JWT_ACCESS_TTL --env JWT_REFRESH_TTL \
             --env SETTINGS_SECRET_ENCRYPTION_KEY \
-            --env STORAGE_PROVIDER --env STORAGE_ENDPOINT \
+            --env STORAGE_PROVIDER \
+            --env STORAGE_ENDPOINT=http://host.docker.internal:9000 \
             --env STORAGE_ACCESS_KEY --env STORAGE_SECRET_KEY \
             --env STORAGE_BUCKET --env STORAGE_PUBLIC_BUCKET \
             --env STORAGE_CORS_ORIGINS --env FCM_ENABLED --env FCM_DRY_RUN \
             --env LOG_LEVEL \
             moazez-learning-media:${{ github.sha }}
           for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:3000/api/v1/health >/dev/null; then
+            if curl --fail --silent --connect-timeout 1 --max-time 2 \
+              http://127.0.0.1:3000/api/v1/health >/dev/null; then
               break
             fi
             if ! docker inspect --format '{{.State.Running}}' \
@@ -228,6 +262,170 @@ jobs:
               docker logs moazez-learning-media-runtime || true
               exit 1
             fi
+          done
+          public_health="$(
+            curl --fail --silent --connect-timeout 1 --max-time 2 \
+              http://127.0.0.1:3000/api/v1/health
+          )"
+          expected_version="$(
+            docker exec moazez-learning-media-runtime \
+              node -p 'require("./package.json").version'
+          )"
+          node - "$public_health" "$expected_version" <<'NODE'
+          const report = JSON.parse(process.argv[2]);
+          const expectedVersion = process.argv[3];
+          const keys = Object.keys(report).sort();
+          const canonicalTimestamp =
+            typeof report.timestamp === 'string' &&
+            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(
+              report.timestamp
+            ) &&
+            new Date(report.timestamp).toISOString() === report.timestamp;
+          if (
+            JSON.stringify(keys) !==
+              JSON.stringify(['status', 'timestamp', 'version']) ||
+            report.status !== 'ok' ||
+            report.version !== expectedVersion ||
+            !canonicalTimestamp
+          ) {
+            throw new Error('Public health contract mismatch');
+          }
+          NODE
+
+          test -n "$(docker port moazez-learning-media-runtime 3000/tcp)"
+          if docker port moazez-learning-media-runtime 9090/tcp \
+            >/dev/null 2>&1; then
+            echo 'The management probe port was published to the host.'
+            exit 1
+          fi
+
+          for role in api core-worker media-worker; do
+            for kind in startup liveness readiness; do
+              for public_path in \
+                "/internal/probes/${role}/${kind}" \
+                "/api/v1/internal/probes/${role}/${kind}"; do
+                public_probe_code="$(
+                  curl --silent --output /dev/null --write-out '%{http_code}' \
+                    --connect-timeout 1 --max-time 2 \
+                    "http://127.0.0.1:3000${public_path}"
+                )"
+                test "$public_probe_code" -eq 404
+              done
+            done
+          done
+
+          assert_internal_probe() {
+            local path="$1"
+            local expected_code="$2"
+            local expected_status="$3"
+            local method="${4:-GET}"
+            docker exec moazez-learning-media-runtime \
+              node - "$path" "$expected_code" "$expected_status" "$method" <<'NODE'
+          void (async () => {
+            const path = process.argv[2];
+            const expectedCode = Number(process.argv[3]);
+            const expectedStatus = process.argv[4];
+            const method = process.argv[5];
+            const response = await fetch(`http://127.0.0.1:9090${path}`, {
+              method,
+              signal: AbortSignal.timeout(2000)
+            });
+            const body = await response.json();
+            const keys = Object.keys(body).sort();
+            const canonicalTimestamp =
+              typeof body.timestamp === 'string' &&
+              /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(
+                body.timestamp
+              ) &&
+              new Date(body.timestamp).toISOString() === body.timestamp;
+            const serialized = JSON.stringify(body);
+            if (
+              response.status !== expectedCode ||
+              response.headers.get('content-type') !== 'application/json' ||
+              response.headers.get('cache-control') !== 'no-store' ||
+              (expectedCode === 405 && response.headers.get('allow') !== 'GET') ||
+              JSON.stringify(keys) !==
+                JSON.stringify(['status', 'timestamp', 'version']) ||
+              body.status !== expectedStatus ||
+              body.version !== require('./package.json').version ||
+              !canonicalTimestamp ||
+              /database|redis|storage|queue|email|provider|topology|secret|credential|url|path|object|bucket/i.test(
+                serialized
+              )
+            ) {
+              throw new Error('Internal probe contract mismatch');
+            }
+          })().catch(() => process.exit(1));
+          NODE
+          }
+
+          for role in api core-worker media-worker; do
+            assert_internal_probe "/internal/probes/${role}/startup" 200 ok
+            assert_internal_probe "/internal/probes/${role}/liveness" 200 ok
+            assert_internal_probe "/internal/probes/${role}/readiness" 200 ok
+          done
+          assert_internal_probe '/internal/probes/unknown' 404 not_found
+          assert_internal_probe \
+            '/internal/probes/api/readiness' 405 method_not_allowed POST
+
+          docker stop moazez-learning-media-probe-redis >/dev/null
+          for attempt in {1..30}; do
+            set +e
+            docker exec moazez-learning-media-runtime \
+              node -e '
+                fetch("http://127.0.0.1:9090/internal/probes/api/readiness", {
+                  signal: AbortSignal.timeout(2000)
+                })
+                  .then((response) => process.exit(
+                    response.status === 503 ? 0 : 1
+                  ))
+                  .catch(() => process.exit(1));
+              '
+            outage_ready="$?"
+            set -e
+            if [[ "$outage_ready" -eq 0 ]]; then
+              break
+            fi
+            sleep 0.25
+            if [[ "$attempt" -eq 30 ]]; then
+              echo 'Readiness did not become unavailable after Redis outage.'
+              docker logs moazez-learning-media-runtime || true
+              exit 1
+            fi
+          done
+          for role in api core-worker media-worker; do
+            assert_internal_probe "/internal/probes/${role}/readiness" \
+              503 unavailable
+            assert_internal_probe "/internal/probes/${role}/liveness" 200 ok
+          done
+
+          docker start moazez-learning-media-probe-redis >/dev/null
+          for attempt in {1..60}; do
+            set +e
+            docker exec moazez-learning-media-runtime \
+              node -e '
+                fetch("http://127.0.0.1:9090/internal/probes/api/readiness", {
+                  signal: AbortSignal.timeout(2000)
+                })
+                  .then((response) => process.exit(
+                    response.status === 200 ? 0 : 1
+                  ))
+                  .catch(() => process.exit(1));
+              '
+            recovered="$?"
+            set -e
+            if [[ "$recovered" -eq 0 ]]; then
+              break
+            fi
+            sleep 0.5
+            if [[ "$attempt" -eq 60 ]]; then
+              echo 'Readiness did not recover after Redis recovery.'
+              docker logs moazez-learning-media-runtime || true
+              exit 1
+            fi
+          done
+          for role in api core-worker media-worker; do
+            assert_internal_probe "/internal/probes/${role}/readiness" 200 ok
           done
 
           shutdown_started_ms="$(date +%s%3N)"
@@ -250,9 +448,38 @@ jobs:
           fi
 
           set +e
+          draining_probe="$(
+            docker exec moazez-learning-media-runtime \
+              node -e '
+                fetch("http://127.0.0.1:9090/internal/probes/api/readiness", {
+                  signal: AbortSignal.timeout(2000)
+                })
+                  .then((response) => {
+                    console.log(response.status);
+                    process.exit(0);
+                  })
+                  .catch(() => {
+                    console.log("connection_unavailable");
+                    process.exit(0);
+                  });
+              ' 2>/dev/null
+          )"
+          draining_probe_exit="$?"
+          set -e
+          if [[ "$draining_probe_exit" -ne 0 ]]; then
+            draining_probe='connection_unavailable'
+          fi
+          if [[ "$draining_probe" == '200' ]]; then
+            echo 'Readiness remained successful while draining.'
+            cat runtime-shutdown.log
+            exit 1
+          fi
+
+          set +e
           post_stop_http_code="$(
             curl --silent --output /dev/null --write-out '%{http_code}' \
-              --max-time 2 http://127.0.0.1:3000/api/v1/health
+              --connect-timeout 1 --max-time 2 \
+              http://127.0.0.1:3000/api/v1/health
           )"
           post_stop_curl_exit="$?"
           set -e
@@ -282,9 +509,188 @@ jobs:
             sleep 1
           done
 
-          echo 'The runtime container exceeded the graceful shutdown bound.'
-          docker logs moazez-learning-media-runtime || true
-          exit 1
+           echo 'The runtime container exceeded the graceful shutdown bound.'
+           docker logs moazez-learning-media-runtime || true
+           exit 1
+      - name: Verify final-image realtime fallback reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 45s docker run --rm --interactive \
+            --network moazez-learning-media-probe-network \
+            --entrypoint node \
+            moazez-learning-media:${{ github.sha }} - <<'NODE'
+          const { randomUUID } = require('node:crypto');
+          const { createConnection, createServer } = require('node:net');
+          const { ConfigService } = require('@nestjs/config');
+          const RedisModule = require('ioredis');
+          const IORedis = RedisModule.default ?? RedisModule;
+          const {
+            RealtimeStateStoreService
+          } = require(
+            './dist/src/infrastructure/realtime/realtime-state-store.service'
+          );
+
+          const delay = (milliseconds) =>
+            new Promise((resolve) => setTimeout(resolve, milliseconds));
+          const suffix = randomUUID();
+          const schoolId = `school-${suffix}`;
+          const userId = `user-${suffix}`;
+          const conversationId = `conversation-${suffix}`;
+          const expiredConversationId = `expired-${suffix}`;
+          const targetUrl =
+            'redis://moazez-learning-media-probe-redis:6379';
+          const proxyPort = 16379;
+          const sockets = new Set();
+          let proxy;
+
+          async function startProxy() {
+            proxy = createServer((downstream) => {
+              const upstream = createConnection({
+                host: 'moazez-learning-media-probe-redis',
+                port: 6379
+              });
+              sockets.add(downstream);
+              sockets.add(upstream);
+              const cleanup = () => {
+                sockets.delete(downstream);
+                sockets.delete(upstream);
+                downstream.destroy();
+                upstream.destroy();
+              };
+              downstream.on('error', cleanup);
+              upstream.on('error', cleanup);
+              downstream.on('close', cleanup);
+              upstream.on('close', cleanup);
+              downstream.pipe(upstream);
+              upstream.pipe(downstream);
+            });
+            await new Promise((resolve, reject) => {
+              proxy.once('error', reject);
+              proxy.listen(proxyPort, '127.0.0.1', resolve);
+            });
+          }
+
+          async function stopProxy() {
+            for (const socket of sockets) socket.destroy();
+            sockets.clear();
+            if (!proxy) return;
+            const closing = proxy;
+            proxy = undefined;
+            await new Promise((resolve) => closing.close(resolve));
+          }
+
+          const presenceUser = `realtime:presence:school:${schoolId}:user:${userId}`;
+          const presenceSockets = `${presenceUser}:sockets`;
+          const presenceUsers = `realtime:presence:school:${schoolId}:users`;
+          const typingUser =
+            `realtime:typing:school:${schoolId}:conversation:${conversationId}:user:${userId}`;
+          const typingUsers =
+            `realtime:typing:school:${schoolId}:conversation:${conversationId}:users`;
+          const expiredTypingUser =
+            `realtime:typing:school:${schoolId}:conversation:${expiredConversationId}:user:${userId}`;
+          const expiredTypingUsers =
+            `realtime:typing:school:${schoolId}:conversation:${expiredConversationId}:users`;
+
+          void (async () => {
+            const admin = new IORedis(targetUrl, { maxRetriesPerRequest: 1 });
+            const stateStore = new RealtimeStateStoreService(
+              new ConfigService({
+                REDIS_URL: `redis://127.0.0.1:${proxyPort}`
+              })
+            );
+            try {
+              await startProxy();
+              await stateStore.checkReadiness();
+              await stateStore.incrementPresence(
+                schoolId,
+                userId,
+                'socket-before-outage',
+                1
+              );
+
+              await stopProxy();
+              await delay(1100);
+              const latestPresence = await stateStore.incrementPresence(
+                schoolId,
+                userId,
+                'socket-during-outage',
+                90
+              );
+              await stateStore.setTyping(
+                schoolId,
+                conversationId,
+                userId,
+                8
+              );
+              await stateStore.setTyping(
+                schoolId,
+                expiredConversationId,
+                userId,
+                1
+              );
+              await delay(1100);
+              await stateStore.checkReadiness().then(
+                () => {
+                  throw new Error('Readiness recovered while Redis was isolated');
+                },
+                () => undefined
+              );
+
+              await startProxy();
+              await stateStore.checkReadiness();
+
+              const restoredSockets = (
+                await admin.smembers(presenceSockets)
+              ).sort();
+              const schoolUsers = await admin.smembers(presenceUsers);
+              const timestamp = await admin.get(presenceUser);
+              const presenceTtl = await admin.ttl(presenceUser);
+              const presenceIndexTtl = await admin.ttl(presenceUsers);
+              const activeTyping = await admin.get(typingUser);
+              const activeTypingUsers = await admin.smembers(typingUsers);
+              const activeTypingTtl = await admin.ttl(typingUser);
+              const expiredTypingExists = await admin.exists(
+                expiredTypingUser,
+                expiredTypingUsers
+              );
+
+              if (
+                JSON.stringify(restoredSockets) !==
+                  JSON.stringify([
+                    'socket-before-outage',
+                    'socket-during-outage'
+                  ]) ||
+                !schoolUsers.includes(userId) ||
+                timestamp !== latestPresence.updatedAt ||
+                presenceTtl <= 0 ||
+                presenceTtl > 90 ||
+                presenceIndexTtl <= 0 ||
+                presenceIndexTtl > 150 ||
+                typeof activeTyping !== 'string' ||
+                !activeTypingUsers.includes(userId) ||
+                activeTypingTtl <= 0 ||
+                activeTypingTtl >= 8 ||
+                expiredTypingExists !== 0
+              ) {
+                throw new Error('Realtime fallback reconciliation mismatch');
+              }
+            } finally {
+              await stateStore.onModuleDestroy();
+              await stopProxy();
+              await admin.del(
+                presenceUser,
+                presenceSockets,
+                presenceUsers,
+                typingUser,
+                typingUsers,
+                expiredTypingUser,
+                expiredTypingUsers
+              );
+              await admin.quit();
+            }
+          })().catch(() => process.exit(1));
+          NODE
       - name: Verify bounded forced-timeout lifecycle path
         shell: bash
         run: |
@@ -303,6 +709,7 @@ jobs:
               const coordinator = new GracefulShutdownCoordinator({
                 app: { close: () => new Promise(() => undefined) },
                 httpServer: { close: (callback) => callback() },
+                managementServer: { close: (callback) => callback() },
                 lifecycle,
                 queue: { beginWorkerDrain: () => Promise.resolve() },
                 realtime: {
@@ -368,6 +775,8 @@ jobs:
           npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
           test/integration/bullmq-shutdown-lifecycle.integration.spec.ts
           test/integration/prisma-shutdown-lifecycle.integration.spec.ts
+          test/integration/realtime-state-store-readiness.integration.spec.ts
+          test/integration/realtime-adapter-recovery.integration.spec.ts
       - name: Shared Student Parent Teacher playback and download compatibility contracts
         run: >-
           npx jest --runInBand --runTestsByPath
@@ -444,7 +853,10 @@ jobs:
           test/security/tenancy.parent-app-child-lessons.spec.ts
           test/security/tenancy.teacher-app-lesson-preparation.spec.ts
       - if: always()
-        run: >-
-          docker rm --force moazez-learning-media-runtime
-          moazez-learning-media-minio
-          moazez-shutdown-timeout-fixture || true
+        shell: bash
+        run: |
+          docker rm --force moazez-learning-media-runtime \
+            moazez-learning-media-minio \
+            moazez-learning-media-probe-redis \
+            moazez-shutdown-timeout-fixture || true
+          docker network rm moazez-learning-media-probe-network || true
