@@ -9,6 +9,9 @@ import type {
 
 const REDIS_STATE_CONNECT_TIMEOUT_MS = 1000;
 const REDIS_STATE_COMMAND_TIMEOUT_MS = 1000;
+const REDIS_STATE_STORE_CLOSE_TIMEOUT_MS = 1000;
+const REDIS_STATE_RECOVERY_CANDIDATE_INVALID =
+  'realtime_state_recovery_candidate_invalid';
 const PRESENCE_USERS_SET_TTL_BUFFER_SECONDS = 60;
 const LOCAL_TYPING_SWEEP_INTERVAL_MS = 4000;
 
@@ -123,6 +126,10 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
   private lifecycleState: RealtimeStateStoreLifecycleState = 'initializing';
   private redis?: IORedis;
   private recoveryPromise: Promise<IORedis | null> | null = null;
+  private readonly redisClientClosePromises = new WeakMap<
+    IORedis,
+    Promise<void>
+  >();
   private mutationTail: Promise<void> = Promise.resolve();
   private readonly localTypingSweepTimer: NodeJS.Timeout;
   private localTypingSweepPromise: Promise<void> | null = null;
@@ -153,11 +160,12 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
       return;
     }
 
+    const redis = this.redis;
     try {
-      await this.redis.ping();
+      await redis.ping();
       this.redisWarningLogged = false;
     } catch {
-      this.markRedisUnavailable(this.redis);
+      this.markRedisUnavailable(redis);
       throw new Error('realtime_state_redis_unavailable');
     }
   }
@@ -467,6 +475,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
       return null;
     }
 
+    const previous = this.redis;
     const candidate = new IORedis(redisUrl, {
       lazyConnect: true,
       maxRetriesPerRequest: null,
@@ -492,18 +501,30 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
         return null;
       }
 
-      const previous = this.redis;
       this.redis = candidate;
-      this.lifecycleState = 'ready';
-      this.redisWarningLogged = false;
       if (previous && previous !== candidate) {
         await this.closeRedisClient(previous);
       }
+
+      this.assertRecoveryCandidateReady(candidate);
+      await candidate.ping();
+      this.assertRecoveryCandidateReady(candidate);
+
+      this.lifecycleState = 'ready';
+      this.redisWarningLogged = false;
       return candidate;
     } catch {
-      await this.closeRedisClient(candidate);
-      this.setFallbackState();
-      this.logRedisFallbackWarning();
+      if (this.redis === candidate || this.redis === previous) {
+        this.redis = undefined;
+      }
+      await Promise.all([
+        this.closeRedisClient(candidate),
+        this.closeRedisClient(previous),
+      ]);
+      if (!this.redis) {
+        this.setFallbackState();
+        this.logRedisFallbackWarning();
+      }
       return null;
     }
   }
@@ -627,8 +648,8 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
   }
 
   private markRedisUnavailable(redis: IORedis): void {
-    if (this.redis === redis) this.redis = undefined;
-    redis.disconnect();
+    void this.closeRedisClient(redis);
+    if (this.redis !== redis) return;
     this.setFallbackState();
     this.logRedisFallbackWarning();
   }
@@ -944,22 +965,35 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
     if (redis) await this.closeRedisClient(redis);
   }
 
-  private async closeRedisClient(redis: IORedis): Promise<void> {
+  private closeRedisClient(redis?: IORedis): Promise<void> {
+    if (!redis) return Promise.resolve();
+    const existing = this.redisClientClosePromises.get(redis);
+    if (existing) return existing;
+
+    const execution = this.closeRedisClientOnce(redis);
+    this.redisClientClosePromises.set(redis, execution);
+    return execution;
+  }
+
+  private async closeRedisClientOnce(redis: IORedis): Promise<void> {
     if (
       redis.status === 'ready' ||
       redis.status === 'connect' ||
       redis.status === 'connecting' ||
       redis.status === 'reconnecting'
     ) {
-      try {
-        await redis.quit();
-        return;
-      } catch {
-        redis.disconnect();
-        return;
-      }
+      const result = await settleRedisClose(
+        Promise.resolve().then(() => redis.quit()),
+        REDIS_STATE_STORE_CLOSE_TIMEOUT_MS,
+      );
+      if (result === 'fulfilled') return;
     }
-    redis.disconnect();
+
+    try {
+      redis.disconnect();
+    } catch {
+      // Redis ownership is settled; lifecycle logging remains fixed.
+    }
   }
 
   private logRedisFallbackWarning(): void {
@@ -973,6 +1007,16 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
 
   private isDestroying(): boolean {
     return this.lifecycleState === 'destroying';
+  }
+
+  private assertRecoveryCandidateReady(candidate: IORedis): void {
+    if (
+      this.isDestroying() ||
+      this.redis !== candidate ||
+      candidate.status !== 'ready'
+    ) {
+      throw new Error(REDIS_STATE_RECOVERY_CANDIDATE_INVALID);
+    }
   }
 }
 
@@ -1084,4 +1128,27 @@ function compareByUserId<T extends { userId: string }>(
   right: T,
 ): number {
   return left.userId.localeCompare(right.userId);
+}
+
+type RedisCloseSettlement = 'fulfilled' | 'rejected' | 'timed_out';
+
+async function settleRedisClose(
+  operation: Promise<unknown>,
+  timeoutMs: number,
+): Promise<RedisCloseSettlement> {
+  let timeout: NodeJS.Timeout | undefined;
+  const observed = operation.then<RedisCloseSettlement, RedisCloseSettlement>(
+    () => 'fulfilled',
+    () => 'rejected',
+  );
+  const deadline = new Promise<RedisCloseSettlement>((resolve) => {
+    timeout = setTimeout(() => resolve('timed_out'), timeoutMs);
+    timeout.unref();
+  });
+
+  try {
+    return await Promise.race([observed, deadline]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }

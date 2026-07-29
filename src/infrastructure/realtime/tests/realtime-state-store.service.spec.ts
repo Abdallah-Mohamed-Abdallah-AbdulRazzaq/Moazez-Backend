@@ -84,7 +84,7 @@ describe('RealtimeStateStoreService recovery lifecycle', () => {
       undefined,
       undefined,
     ]);
-    expect(clients[0].ping).toHaveBeenCalledTimes(1);
+    expect(clients[0].ping).toHaveBeenCalledTimes(2);
 
     await service.onModuleDestroy();
     expect(clients[0].quit).toHaveBeenCalledTimes(1);
@@ -112,7 +112,9 @@ describe('RealtimeStateStoreService recovery lifecycle', () => {
       socketCount: 1,
       transitionedOnline: true,
     });
-    expect(clients[0].disconnect).toHaveBeenCalledTimes(1);
+    await waitForMockCall(clients[0].quit);
+    expect(clients[0].quit).toHaveBeenCalledTimes(1);
+    expect(clients[0].disconnect).not.toHaveBeenCalled();
 
     await expect(service.checkReadiness()).resolves.toBeUndefined();
     expect(MockedIORedis).toHaveBeenCalledTimes(2);
@@ -424,6 +426,401 @@ describe('RealtimeStateStoreService recovery lifecycle', () => {
     await service.onModuleDestroy();
   });
 
+  it('bounds a hanging old-client QUIT before recovery becomes ready', async () => {
+    jest.useFakeTimers();
+    const oldQuit = deferred<string>();
+    const service = createService();
+
+    await service.checkReadiness();
+    const oldClient = clients[0];
+    oldClient.status = 'reconnecting';
+    oldClient.quit.mockImplementation(() => oldQuit.promise);
+
+    const recovery = service.checkReadiness();
+    await waitForMockCall(oldClient.quit);
+    expect(clients).toHaveLength(2);
+    expect(oldClient.quit).toHaveBeenCalledTimes(1);
+
+    let settled = false;
+    void recovery.then(() => {
+      settled = true;
+    });
+    await flushPromises();
+    expect(settled).toBe(false);
+
+    jest.advanceTimersByTime(1_000);
+    await expect(recovery).resolves.toBeUndefined();
+    expect(oldClient.disconnect).toHaveBeenCalledTimes(1);
+    expect(stateStoreInternals(service).redis).toBe(clients[1]);
+    expect(stateStoreInternals(service).lifecycleState).toBe('ready');
+    await expect(service.checkReadiness()).resolves.toBeUndefined();
+
+    await service.onModuleDestroy();
+  });
+
+  it('observes a late old-client QUIT rejection after bounded recovery', async () => {
+    jest.useFakeTimers();
+    const oldQuit = deferred<string>();
+    const unhandledRejection = jest.fn();
+    process.on('unhandledRejection', unhandledRejection);
+
+    try {
+      const service = createService();
+      await service.checkReadiness();
+      const oldClient = clients[0];
+      oldClient.status = 'reconnecting';
+      oldClient.quit.mockImplementation(() => oldQuit.promise);
+
+      const recovery = service.checkReadiness();
+      await waitForMockCall(oldClient.quit);
+      jest.advanceTimersByTime(1_000);
+      await expect(recovery).resolves.toBeUndefined();
+
+      oldQuit.reject(new Error('late redis://sensitive.invalid/private'));
+      await flushPromises();
+      expect(unhandledRejection).not.toHaveBeenCalled();
+      expect(oldClient.disconnect).toHaveBeenCalledTimes(1);
+      await expect(service.checkReadiness()).resolves.toBeUndefined();
+
+      await service.onModuleDestroy();
+    } finally {
+      process.off('unhandledRejection', unhandledRejection);
+    }
+  });
+
+  it('rejects a recovery candidate that becomes unavailable while old-client QUIT is pending', async () => {
+    jest.useFakeTimers();
+    const oldQuit = deferred<string>();
+    const unhandledRejection = jest.fn();
+    process.on('unhandledRejection', unhandledRejection);
+
+    try {
+      const service = createService();
+      await service.checkReadiness();
+      const oldClient = clients[0];
+      oldClient.status = 'reconnecting';
+      oldClient.quit.mockImplementation(() => oldQuit.promise);
+
+      const recovery = service.checkReadiness();
+      await waitForMockCall(oldClient.quit);
+      const candidate = clients[1];
+      expect(candidate.ping).toHaveBeenCalledTimes(1);
+
+      candidate.status = 'reconnecting';
+      jest.advanceTimersByTime(1_000);
+
+      await expect(recovery).rejects.toThrow(
+        'realtime_state_redis_unavailable',
+      );
+      await flushPromises();
+      expect(stateStoreInternals(service).lifecycleState).not.toBe('ready');
+      expect(oldClient.quit).toHaveBeenCalledTimes(1);
+      expect(oldClient.disconnect).toHaveBeenCalledTimes(1);
+      expect(candidate.quit).toHaveBeenCalledTimes(1);
+      expect(candidate.disconnect).not.toHaveBeenCalled();
+      expect(unhandledRejection).not.toHaveBeenCalled();
+
+      await service.onModuleDestroy();
+    } finally {
+      process.off('unhandledRejection', unhandledRejection);
+    }
+  });
+
+  it('keeps recovery unavailable when the final candidate ping fails and permits a later retry', async () => {
+    const service = createService();
+    await service.checkReadiness();
+    const oldClient = clients[0];
+    oldClient.status = 'reconnecting';
+    nextClientFactory = () =>
+      createRedisDouble({
+        ping: jest
+          .fn()
+          .mockResolvedValueOnce('PONG')
+          .mockRejectedValueOnce(new Error('candidate became unavailable')),
+      });
+
+    await expect(service.checkReadiness()).rejects.toThrow(
+      'realtime_state_redis_unavailable',
+    );
+
+    const failedCandidate = clients[1];
+    expect(failedCandidate.ping).toHaveBeenCalledTimes(2);
+    expect(failedCandidate.quit).toHaveBeenCalledTimes(1);
+    expect(stateStoreInternals(service).lifecycleState).not.toBe('ready');
+
+    nextClientFactory = () => createRedisDouble();
+    await expect(service.checkReadiness()).resolves.toBeUndefined();
+    expect(clients).toHaveLength(3);
+    expect(clients[2].ping).toHaveBeenCalledTimes(2);
+    expect(stateStoreInternals(service).redis).toBe(clients[2]);
+    expect(stateStoreInternals(service).lifecycleState).toBe('ready');
+    await expect(service.checkReadiness()).resolves.toBeUndefined();
+
+    await service.onModuleDestroy();
+  });
+
+  it('cannot publish ready when destruction begins during final candidate validation', async () => {
+    const finalPing = deferred<string>();
+    const service = createService();
+    await service.checkReadiness();
+    const oldClient = clients[0];
+    oldClient.status = 'reconnecting';
+    nextClientFactory = () =>
+      createRedisDouble({
+        ping: jest
+          .fn()
+          .mockResolvedValueOnce('PONG')
+          .mockImplementationOnce(() => finalPing.promise),
+      });
+
+    const recovery = service.checkReadiness();
+    const candidate = clients[1];
+    await waitForMockCallCount(candidate.ping, 2);
+
+    const shutdown = service.onModuleDestroy();
+    expect(stateStoreInternals(service).lifecycleState).toBe('destroying');
+    finalPing.resolve('PONG');
+
+    await expect(recovery).rejects.toThrow(
+      'realtime_state_redis_unavailable',
+    );
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(stateStoreInternals(service).lifecycleState).toBe('destroying');
+    expect(stateStoreInternals(service).redis).toBeUndefined();
+    expect(candidate.quit).toHaveBeenCalledTimes(1);
+    expect(candidate.disconnect).not.toHaveBeenCalled();
+    expect(oldClient.quit).toHaveBeenCalledTimes(1);
+  });
+
+  it('revalidates the owned candidate after retiring the previous client before publishing ready', async () => {
+    const order: string[] = [];
+    const service = createService();
+    await service.checkReadiness();
+    await service.incrementPresence(
+      'school-1',
+      'user-1',
+      'socket-1',
+      30,
+    );
+    const oldClient = clients[0];
+    oldClient.status = 'reconnecting';
+    oldClient.quit.mockImplementation(async () => {
+      order.push('previous-retired');
+      oldClient.status = 'end';
+      return 'OK';
+    });
+
+    nextClientFactory = () => {
+      const candidate = createRedisDouble();
+      let pingCount = 0;
+      candidate.ping.mockImplementation(async () => {
+        pingCount += 1;
+        order.push(pingCount === 1 ? 'initial-ping' : 'final-ping');
+        return 'PONG';
+      });
+      candidate.eval.mockImplementation(async () => {
+        order.push('reconciliation');
+        return [1, 1];
+      });
+      return candidate;
+    };
+
+    await expect(service.checkReadiness()).resolves.toBeUndefined();
+    const candidate = clients[1];
+    expect(order).toEqual([
+      'initial-ping',
+      'reconciliation',
+      'previous-retired',
+      'final-ping',
+    ]);
+    expect(candidate.ping).toHaveBeenCalledTimes(2);
+    expect(stateStoreInternals(service).redis).toBe(candidate);
+    expect(stateStoreInternals(service).lifecycleState).toBe('ready');
+
+    await expect(service.checkReadiness()).resolves.toBeUndefined();
+    expect(candidate.ping).toHaveBeenCalledTimes(3);
+    await service.onModuleDestroy();
+  });
+
+  it('does not downgrade or close a newer owned client when candidate revalidation loses ownership', async () => {
+    const finalPing = deferred<string>();
+    const service = createService();
+    await service.checkReadiness();
+    const oldClient = clients[0];
+    oldClient.status = 'reconnecting';
+    nextClientFactory = () =>
+      createRedisDouble({
+        ping: jest
+          .fn()
+          .mockResolvedValueOnce('PONG')
+          .mockImplementationOnce(() => finalPing.promise),
+      });
+
+    const recovery = service.checkReadiness();
+    const failedCandidate = clients[1];
+    await waitForMockCallCount(failedCandidate.ping, 2);
+
+    const newerClient = createRedisDouble({ status: 'ready' });
+    const internals = stateStoreInternals(service);
+    internals.redis = newerClient;
+    internals.lifecycleState = 'ready';
+    finalPing.resolve('PONG');
+
+    await expect(recovery).rejects.toThrow(
+      'realtime_state_redis_unavailable',
+    );
+    expect(internals.redis).toBe(newerClient);
+    expect(internals.lifecycleState).toBe('ready');
+    expect(newerClient.quit).not.toHaveBeenCalled();
+    expect(newerClient.disconnect).not.toHaveBeenCalled();
+    await expect(service.checkReadiness()).resolves.toBeUndefined();
+
+    await service.onModuleDestroy();
+    expect(newerClient.quit).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let a late retired-client failure downgrade the recovered client', async () => {
+    const stalePing = deferred<string>();
+    const service = createService();
+    await service.checkReadiness();
+    const oldClient = clients[0];
+    oldClient.ping.mockImplementationOnce(() => stalePing.promise);
+    oldClient.eval.mockRejectedValueOnce(new Error('redis unavailable'));
+
+    const staleReadiness = service.checkReadiness();
+    await service.incrementPresence('school-1', 'user-1', 'socket-1', 30);
+    await expect(service.checkReadiness()).resolves.toBeUndefined();
+    const recoveredClient = clients[1];
+
+    stalePing.reject(new Error('late retired client failure'));
+    await expect(staleReadiness).rejects.toThrow(
+      'realtime_state_redis_unavailable',
+    );
+    expect(stateStoreInternals(service).redis).toBe(recoveredClient);
+    expect(stateStoreInternals(service).lifecycleState).toBe('ready');
+    expect(recoveredClient.quit).not.toHaveBeenCalled();
+    expect(recoveredClient.disconnect).not.toHaveBeenCalled();
+    await expect(service.checkReadiness()).resolves.toBeUndefined();
+
+    await service.onModuleDestroy();
+  });
+
+  it('clears the close deadline when the old client quits gracefully', async () => {
+    jest.useFakeTimers();
+    const service = createService();
+    await service.checkReadiness();
+    const baselineTimers = jest.getTimerCount();
+    const oldClient = clients[0];
+    oldClient.status = 'reconnecting';
+
+    await expect(service.checkReadiness()).resolves.toBeUndefined();
+
+    expect(oldClient.quit).toHaveBeenCalledTimes(1);
+    expect(oldClient.disconnect).not.toHaveBeenCalled();
+    expect(jest.getTimerCount()).toBe(baselineTimers);
+    await service.onModuleDestroy();
+  });
+
+  it('forces one disconnect when graceful old-client QUIT rejects', async () => {
+    const rawFailure = 'redis://sensitive.invalid/private';
+    const service = createService();
+    await service.checkReadiness();
+    const oldClient = clients[0];
+    oldClient.status = 'reconnecting';
+    oldClient.quit.mockRejectedValue(new Error(rawFailure));
+
+    await expect(service.checkReadiness()).resolves.toBeUndefined();
+
+    expect(oldClient.quit).toHaveBeenCalledTimes(1);
+    expect(oldClient.disconnect).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(loggerWarn.mock.calls)).not.toContain(rawFailure);
+    await service.onModuleDestroy();
+  });
+
+  it('single-owns concurrent close requests for the same Redis client', async () => {
+    jest.useFakeTimers();
+    const service = createService();
+    const closeTarget = createRedisDouble({ status: 'reconnecting' });
+    const hangingQuit = deferred<string>();
+    closeTarget.quit.mockImplementation(() => hangingQuit.promise);
+    const internals = stateStoreInternals(service);
+    const baselineTimers = jest.getTimerCount();
+
+    const first = internals.closeRedisClient(closeTarget as unknown as IORedis);
+    const second = internals.closeRedisClient(
+      closeTarget as unknown as IORedis,
+    );
+
+    expect(first).toBe(second);
+    await flushPromises();
+    expect(closeTarget.quit).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(1_000);
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(closeTarget.disconnect).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(baselineTimers);
+    await service.onModuleDestroy();
+  });
+
+  it('cannot transition from destroying back to ready during replacement', async () => {
+    jest.useFakeTimers();
+    const oldQuit = deferred<string>();
+    const service = createService();
+    await service.checkReadiness();
+    const oldClient = clients[0];
+    oldClient.status = 'reconnecting';
+    oldClient.quit.mockImplementation(() => oldQuit.promise);
+
+    const recovery = service.checkReadiness();
+    await waitForMockCall(oldClient.quit);
+    expect(clients).toHaveLength(2);
+    expect(oldClient.quit).toHaveBeenCalledTimes(1);
+
+    const shutdown = service.onModuleDestroy();
+    expect(stateStoreInternals(service).lifecycleState).toBe('destroying');
+    jest.advanceTimersByTime(1_000);
+
+    await expect(recovery).rejects.toThrow('realtime_state_redis_unavailable');
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(stateStoreInternals(service).lifecycleState).toBe('destroying');
+    expect(stateStoreInternals(service).redis).toBeUndefined();
+    expect(oldClient.quit).toHaveBeenCalledTimes(1);
+    expect(oldClient.disconnect).toHaveBeenCalledTimes(1);
+    expect(clients[1].quit).toHaveBeenCalledTimes(1);
+    expect(clients[1].disconnect).not.toHaveBeenCalled();
+  });
+
+  it('closes a failed candidate and permits one later recovery', async () => {
+    const service = createService();
+    await service.checkReadiness();
+    const oldClient = clients[0];
+    oldClient.status = 'reconnecting';
+    nextClientFactory = () =>
+      createRedisDouble({
+        connect: jest
+          .fn()
+          .mockRejectedValue(new Error('candidate unavailable')),
+      });
+
+    await expect(service.checkReadiness()).rejects.toThrow(
+      'realtime_state_redis_unavailable',
+    );
+
+    const failedCandidate = clients[1];
+    expect(failedCandidate.disconnect).toHaveBeenCalledTimes(1);
+    expect(oldClient.quit).toHaveBeenCalledTimes(1);
+    expect(stateStoreInternals(service).redis).toBeUndefined();
+
+    nextClientFactory = () => createRedisDouble();
+    await expect(service.checkReadiness()).resolves.toBeUndefined();
+    expect(clients).toHaveLength(3);
+    expect(stateStoreInternals(service).redis).toBe(clients[2]);
+    expect(stateStoreInternals(service).lifecycleState).toBe('ready');
+    await service.onModuleDestroy();
+  });
+
   it('never logs a Redis URL or raw failure payload', async () => {
     nextClientFactory = () =>
       createRedisDouble({
@@ -638,8 +1035,10 @@ type LocalTypingMemory = Map<
 
 type RealtimeStateStoreInternals = {
   lifecycleState: string;
+  redis?: RedisDouble;
   localTyping: LocalTypingMemory;
   localTypingSweepTimer: NodeJS.Timeout;
+  closeRedisClient: (client?: IORedis) => Promise<void>;
   runLocalTypingSweep: () => Promise<void>;
   runSerialized: <T>(operation: () => Promise<T>) => Promise<T>;
   removeExpiredLocalTyping: () => void;
@@ -730,14 +1129,31 @@ function createPipelineDouble(): RedisPipelineDouble {
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 async function flushPromises(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
+}
+
+async function waitForMockCall(mock: jest.Mock): Promise<void> {
+  await waitForMockCallCount(mock, 1);
+}
+
+async function waitForMockCallCount(
+  mock: jest.Mock,
+  expectedCount: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (mock.mock.calls.length >= expectedCount) return;
+    await Promise.resolve();
+  }
+  throw new Error(`Expected ${expectedCount} mock calls were not observed`);
 }

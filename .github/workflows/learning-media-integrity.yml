@@ -368,6 +368,18 @@ jobs:
           assert_internal_probe \
             '/internal/probes/api/readiness' 405 method_not_allowed POST
 
+          runtime_container_id="$(
+            docker inspect --format '{{.Id}}' \
+              moazez-learning-media-runtime
+          )"
+          runtime_started_at="$(
+            docker inspect --format '{{.State.StartedAt}}' \
+              moazez-learning-media-runtime
+          )"
+          redis_container_id="$(
+            docker inspect --format '{{.Id}}' \
+              moazez-learning-media-probe-redis
+          )"
           docker stop moazez-learning-media-probe-redis >/dev/null
           for attempt in {1..30}; do
             set +e
@@ -400,6 +412,36 @@ jobs:
           done
 
           docker start moazez-learning-media-probe-redis >/dev/null
+          for attempt in {1..40}; do
+            if docker exec moazez-learning-media-probe-redis \
+              redis-cli ping | grep --quiet PONG; then
+              break
+            fi
+
+            sleep 0.25
+
+            if [[ "$attempt" -eq 40 ]]; then
+              echo 'The disposable probe Redis did not become ready after restart.'
+              docker inspect \
+                --format '{{.State.Status}}' \
+                moazez-learning-media-probe-redis || true
+              docker logs --tail 200 \
+                moazez-learning-media-probe-redis || true
+              exit 1
+            fi
+          done
+          test "$runtime_container_id" = "$(
+            docker inspect --format '{{.Id}}' \
+              moazez-learning-media-runtime
+          )"
+          test "$runtime_started_at" = "$(
+            docker inspect --format '{{.State.StartedAt}}' \
+              moazez-learning-media-runtime
+          )"
+          test "$redis_container_id" = "$(
+            docker inspect --format '{{.Id}}' \
+              moazez-learning-media-probe-redis
+          )"
           for attempt in {1..60}; do
             set +e
             docker exec moazez-learning-media-runtime \
@@ -420,7 +462,19 @@ jobs:
             sleep 0.5
             if [[ "$attempt" -eq 60 ]]; then
               echo 'Readiness did not recover after Redis recovery.'
-              docker logs moazez-learning-media-runtime || true
+              echo "Application container status: $(
+                docker inspect --format '{{.State.Status}}' \
+                  moazez-learning-media-runtime 2>/dev/null || true
+              )"
+              echo "Redis container status: $(
+                docker inspect --format '{{.State.Status}}' \
+                  moazez-learning-media-probe-redis 2>/dev/null || true
+              )"
+              timeout 2s docker exec \
+                moazez-learning-media-probe-redis \
+                redis-cli ping || true
+              docker logs --tail 200 \
+                moazez-learning-media-runtime || true
               exit 1
             fi
           done

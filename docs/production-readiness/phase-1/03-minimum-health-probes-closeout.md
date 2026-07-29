@@ -1,24 +1,32 @@
-# Phase 1C/G04 R6 Final — Minimum Startup, Liveness, and Readiness Closeout
+# Phase 1C/G04 — Final CI and Redis Recovery Closeout
 
 ## Document control
 
 | Field | Value |
 | --- | --- |
-| Task ID | `PRODUCTION-READINESS-1C-G04-R6-FINAL` |
+| Task ID | `PRODUCTION-READINESS-1C-G04-FINAL-CI-REDIS-RECOVERY-CLOSEOUT` |
 | Repository | `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend` |
 | Branch | `feat/production-readiness-1c-health-probes` |
-| Starting baseline / unchanged HEAD | `2f87a155cf27f2186cfd7746026562ef18cb4f71` |
-| Date | `2026-07-29` |
+| Origin/main baseline | `2f87a155cf27f2186cfd7746026562ef18cb4f71` |
+| Feature HEAD before final correction | `e7179f0e6fd61c52e5093ba7a01f0886c88137e6` |
+| Date | `2026-07-30` |
 | Timezone | `Africa/Cairo` |
 | Scope | `PRD1-G04` only |
 | Gate status | `COMPLETE` |
-| Document status | `PHASE_1C_G04_R6_FINAL_READY_FOR_COMMIT_REVIEW` |
+| Document status | `PRD1_G04_CANDIDATE_REVALIDATION_FIX_READY_FOR_COMMIT` |
 
 ## Outcome
 
 `PRD1-G04` is implemented without a second Nest application, a second
 dependency-injection graph, a credential, a JWT requirement, path obscurity,
 or a Phase 2 runtime selector.
+
+The final PR check failure was traced to state-store recovery waiting
+indefinitely for `QUIT` on the retired reconnecting Redis client after a
+candidate client had already connected and reconciled. Retired-client closure
+is now bounded, exact-once, and observed through late settlement. The same
+canonical application process recovers after the same Redis container is
+stopped and restarted.
 
 The process now owns two HTTP listeners:
 
@@ -213,6 +221,18 @@ closed; shutdown awaits owned recovery and serialized mutation work. Product
 operations retain the existing process-local fallback for compatibility, but
 readiness is `503` throughout fallback, recovery, and reconciliation. A
 successful connection and `PING` alone cannot make the service ready.
+
+Every state-store Redis client has one close owner recorded in a `WeakMap`.
+Graceful `QUIT` is observed immediately and bounded to one second; rejection or
+timeout forces exactly one `disconnect()`, while a late `QUIT` rejection
+remains handled. Candidate ownership is installed before bounded retirement of
+the previous client, but lifecycle state becomes `ready` only after that
+retirement settles or reaches its bound, destruction and ownership are
+rechecked, candidate status remains `ready`, and a final bounded candidate
+`PING` succeeds. Those invariants are rechecked again after the final `PING`
+before readiness becomes healthy. A concurrent destroy cannot transition back
+to `ready`. A late command failure from a retired client cannot downgrade or
+close the recovered client.
 
 Local presence ownership records school, user, socket, latest update time, and
 TTL for every connected socket. Reconciliation restores socket membership,
@@ -436,10 +456,13 @@ The experiment proved:
 - post-intake public HTTP could not return `2xx`;
 - SIGTERM after realtime Redis recovery exited `0`; its lifecycle completion
   logs contained exactly one started, intake-stopped, and completed event;
+- the same application container and process recovered from readiness `503`
+  to `200` after the same Redis container was stopped, restarted, and reached
+  `PONG`; liveness remained `200` throughout;
 - both listeners were closed;
-- the final forced-timeout fixture exited `1` after 2,431 ms container wall
-  time against a 1,000 ms coordinator deadline; its timed-out event recorded
-  1,009 ms, it emitted no completion event, and the fixture contained no
+- the final forced-timeout fixture exited `1` after 1,458 ms container wall
+  time against a 1,000 ms coordinator deadline; it emitted the bounded
+  timed-out event, no completion event, and the fixture contained no
   artificial keepalive handle;
 - Node, Firebase Admin app/messaging, Prisma Client, non-root UID 1000, and the
   pinned ffprobe/media runtime contract remained valid; and
@@ -449,31 +472,53 @@ The experiment proved:
 
 | Command / evidence | Outcome |
 | --- | --- |
-| hard Git preflight | PASS — exact branch and baseline HEAD/`origin/main`, `0/0` ahead/behind, zero staged paths, and the accepted 49-path unstaged R5 package present |
+| hard Git preflight | PASS — branch `feat/production-readiness-1c-health-probes`; HEAD and remote feature `e7179f0e6fd61c52e5093ba7a01f0886c88137e6`; `origin/main` `2f87a155cf27f2186cfd7746026562ef18cb4f71`; two branch commits; `0/0` against the remote feature; clean index/worktree before correction |
 | `npm run verify:runtime-policy` | PASS — Node `22.23.1`, Firebase Admin `14.0.0`, 10 tests, 0.307 s, exit `0` |
-| focused health/lifecycle/realtime command, including `realtime.gateway-redis-lifecycle.spec.ts`, in the isolated media-test image with `--detectOpenHandles` | PASS — 15 suites, 136 tests, 20.807 s, exit `0` |
-| complete realtime unit directory with `--detectOpenHandles` | PASS — 10 suites, 86 tests, 11.184 s, exit `0` |
+| pre-candidate-revalidation state-store close/recovery lifecycle with `--detectOpenHandles` | PASS — 1 suite, 25 tests, 2.057 s, exit `0`; historical R6 evidence covering hanging/late-rejected `QUIT`, exact-once forced disconnect, destroy overlap, failed-candidate retry, and stale retired-client failure ownership |
+| pre-candidate-revalidation focused health/lifecycle/realtime command in the isolated media-test image with `--detectOpenHandles` | PASS — 15 suites, 111 tests, 15.56 s, exit `0`; this evidence predates the final five candidate-revalidation tests |
+| pre-self-review complete realtime unit directory with `--detectOpenHandles` | PASS — 10 suites, 93 tests, 3.733 s, exit `0`; the final full-unit run includes the added ownership-race assertion |
 | `npx jest --config ./test/jest-e2e.json --runInBand --detectOpenHandles --runTestsByPath test/integration/realtime-state-store-readiness.integration.spec.ts test/integration/realtime-adapter-recovery.integration.spec.ts` with disposable real Redis | PASS — 2 suites, 4 tests, 5.09 s, exit `0`; this is the evidence owner for second-user and ACL/EVAL denial/retry |
-| `npx jest --config ./test/jest-e2e.json --runInBand --detectOpenHandles --runTestsByPath test/integration/bullmq-shutdown-lifecycle.integration.spec.ts test/integration/prisma-shutdown-lifecycle.integration.spec.ts` with disposable Redis/PostgreSQL | PASS — 2 suites, 3 tests, 8.599 s, exit `0` |
-| full unit Jest run in the isolated media-test image with required repository contracts mounted read-only | PASS — 543 suites, 3,897 tests, 255.608 s, exit `0` |
-| `npm run test:security -- --runInBand` in an exclusive latest media-test container after fresh migrate/seed and with governance contracts mounted read-only | PASS — 89 suites, 1,154 tests, 438.95 s, exit `0` |
-| `npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath test/app.e2e-spec.ts` | PASS — 1 suite, 2 tests, 19.326 s, exit `0`; `/api/v1` unchanged and `/` remains non-identity |
-| canonical final image and canonical media-test image builds | PASS — final image rebuilt in 131.1 s and media-test target rebuilt in 15.2 s, both exit `0`; final image digest `sha256:6bed9e5ec888af3db40d2bebc8eeea796d4bacb461ab401bab3c17f7647a8117` |
+| final candidate-revalidation focused regression with `--detectOpenHandles` | PASS — state-store, operational-probe, and bounded-executor suites; 54 tests passed, zero open handles, exit `0`; covers candidate failure during retired-client close, final-PING failure, destruction during final validation, successful revalidation, and newer-client ownership protection |
+| final candidate-revalidation real-Redis integration | PASS — 2 tests passed against disposable real Redis; recovery remained fail-closed until candidate ownership, status, and the final bounded `PING` were validated |
+| final production TypeScript build | PASS — production build completed using the canonical Node `22.23.1` runtime |
+| R6 full-unit regression before the final candidate-revalidation delta | PASS — 543 suites, 3,905 tests |
+| R6 exact-security regression before the final candidate-revalidation delta | PASS — 89 suites, 1,154 tests, 481.883 s, exit `0` |
+| R6 canonical final-image and media-test-image builds before the final candidate-revalidation delta | PASS — final image rebuilt in 16.6 s and media-test target rebuilt in 164.9 s, both exit `0`; recorded R6 local manifest-list digest `sha256:8f0c82f854a76effc4978497bf317ac2e5861fb7282f3bc35fedaddacc9da4ec` |
 | `npm run db:migrations:check` | PASS — base `origin/main`, 7 active migrations, 0 new, exit `0` |
 | isolated `npx prisma validate && npx prisma generate` | PASS — Prisma `6.19.3`; no host Prisma/config command and no workspace `.env` read |
 | fresh disposable `npx prisma migrate deploy` and corrected `npm run seed` | PASS — all 7 committed migrations plus synthetic seed |
-| final-image fallback reconciliation process | PASS — actual Redis keys for one user, two-socket membership, indexes, exact expected latest `updatedAt`, bounded TTLs, remaining typing TTL, and expired-entry absence |
-| canonical public/internal-port, header/error, outage/recovery, and shutdown proof | PASS — probe port unpublished; 18 public `404`, 9 healthy internal, 2 exact error contracts; all-role outage `503`/liveness `200`, recovery `200`, post-intake public code `000`, SIGTERM exit `0`, exactly one started/intake/completed event, no secret leakage |
-| no-extra-handle forced-timeout process | PASS — exit `1`, 2,431 ms container wall time, `1,009` ms lifecycle-event elapsed time, exactly one timed-out event, no completion event |
+| R6 final-image fallback reconciliation process before the final candidate-revalidation delta | PASS — actual Redis keys for one user, two-socket membership, indexes, exact expected latest `updatedAt`, bounded TTLs, remaining typing TTL, and expired-entry absence |
+| canonical public/internal-port, outage/recovery, and shutdown proof | PASS — probe port unpublished; API readiness `200` → `503` → `200`; liveness stayed `200`; application container ID/start time and Redis container ID remained identical; post-intake public code `000`; SIGTERM exit `0`; no unhandled rejection or post-close Redis command |
+| no-extra-handle forced-timeout process | PASS — exit `1`, 1,458 ms container wall time, bounded timed-out event, no completion event |
 | exact Node/Firebase/Prisma/non-root/media runtime smokes | PASS — Node `v22.23.1`, Firebase app/messaging, Prisma Client, UID `1000`, and ffprobe/media contract |
 | `js-yaml` workflow structural parse | PASS — 40 steps, exit `0` |
 | matrix validator | PASS — 74 unique gates, 38 risks, only PRD1-G04 differs, and G05–G07 remain `NOT_STARTED` |
-| final `git diff --check`, 50-path scope, changed-content secret scan, and disposable cleanup | PASS |
+| final `git diff --check`, exact four-path correction scope, unchanged 50-path PR scope, changed-content secret scan, and disposable cleanup | PASS |
 
 ### Preliminary failures retained
 
 No failed or interrupted attempt is relabeled as a pass:
 
+- GitHub Actions run `30481344419`, job `90675924537`, passed runtime policy,
+  Docker build, Node/Firebase imports, media-test build, graceful-shutdown
+  contracts, and ffprobe verification before the application-startup step
+  ended with `Readiness did not recover after Redis recovery.` Source tracing
+  and the deterministic hanging-`QUIT` fixture confirmed the retired-client
+  close ownership defect; the final same-process Docker stop/start proof now
+  passes.
+- The first combined final lifecycle run used a media-test image with stale
+  generated Prisma artifacts; the isolated rerun generated Prisma Client
+  before Jest and passed. The first full-unit run then omitted repository
+  contract mounts and failed only missing-file assertions; the corrected
+  read-only-mounted run passed all suites.
+- Initial migration-governance containers either lacked Git or observed
+  Windows CRLF-normalized files without the owner checkout's Git normalization
+  policy. The accepted read-only rerun supplied ephemeral
+  `core.autocrlf=true`, changed no Git configuration, and passed.
+- A combined PowerShell Docker lifecycle command was rejected before
+  execution, and two log/timeout wrappers treated expected container stderr as
+  native-command failures. The same bounded assertions were rerun as separate
+  commands and passed; the containers themselves had the expected exit codes.
 - A final self-review unit assertion initially inspected the wrong positional
   Redis script argument, then exposed an extra recovery-side call in its first
   fixture shape. The test was corrected to create inverse timestamp/insertion
@@ -613,8 +658,16 @@ No failed or interrupted attempt is relabeled as a pass:
 
 ## Exact changed-file inventory
 
-The final R6 package contains 50 unstaged paths: 31 tracked modifications and
-19 untracked additions. R6 adds only
+The committed R6 package at the unchanged branch HEAD contains 50 paths
+relative to `origin/main`. This final correction changes four existing members
+of that package, so the PR scope remains 50 paths:
+
+1. `.github/workflows/learning-media-integrity.yml`
+2. `docs/production-readiness/phase-1/03-minimum-health-probes-closeout.md`
+3. `src/infrastructure/realtime/realtime-state-store.service.ts`
+4. `src/infrastructure/realtime/tests/realtime-state-store.service.spec.ts`
+
+The four final corrections remain unstaged and uncommitted. R6 added only
 `realtime.gateway-redis-lifecycle.spec.ts`; it is required for deterministic
 publisher/subscriber command ownership, shared-flight, late-rejection,
 bounded-close, and client-option proof. No new package, schema, migration, or
