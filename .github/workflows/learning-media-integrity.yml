@@ -191,6 +191,8 @@ jobs:
             src/bootstrap/shutdown-http.integration.spec.ts \
             src/common/exceptions/global-exception.filter.spec.ts \
             src/infrastructure/queue/bullmq.service.spec.ts \
+            src/infrastructure/storage/tests/minio.adapter.spec.ts \
+            src/infrastructure/storage/tests/storage.service.spec.ts \
             src/modules/health/bounded-probe-executor.spec.ts \
             src/modules/health/operational-probe.manifests.spec.ts \
             src/modules/health/operational-probe.service.spec.ts \

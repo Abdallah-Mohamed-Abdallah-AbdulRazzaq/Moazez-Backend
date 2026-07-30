@@ -1,7 +1,28 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  Agent as HttpAgent,
+  type ClientRequest,
+  type IncomingMessage,
+  type RequestOptions,
+  request as httpRequest,
+} from 'node:http';
+import { Agent as HttpsAgent, request as httpsRequest } from 'node:https';
 import { Readable } from 'node:stream';
 import { BucketItem, BucketItemStat, Client } from 'minio';
+
+export const STORAGE_READINESS_REQUEST_TIMEOUT_MS = 500;
+
+const STORAGE_READINESS_TIMEOUT_CODE = 'storage_readiness_timeout';
+
+class StorageReadinessTimeoutError extends Error {
+  readonly code = STORAGE_READINESS_TIMEOUT_CODE;
+
+  constructor() {
+    super(STORAGE_READINESS_TIMEOUT_CODE);
+    this.name = 'StorageReadinessTimeoutError';
+  }
+}
 
 type PutObjectInput = {
   bucket: string;
@@ -38,22 +59,52 @@ export type PresignedGetCapability = {
 @Injectable()
 export class MinioAdapter {
   private readonly client: Client;
+  private readonly readinessClient: Client;
 
   constructor(private readonly configService: ConfigService) {
     const endpoint = new URL(
       this.configService.getOrThrow<string>('STORAGE_ENDPOINT'),
     );
+    const port = endpoint.port
+      ? Number(endpoint.port)
+      : endpoint.protocol === 'https:'
+        ? 443
+        : 80;
+    const useSSL = endpoint.protocol === 'https:';
+    const accessKey =
+      this.configService.getOrThrow<string>('STORAGE_ACCESS_KEY');
+    const secretKey =
+      this.configService.getOrThrow<string>('STORAGE_SECRET_KEY');
 
     this.client = new Client({
       endPoint: endpoint.hostname,
-      port: endpoint.port
-        ? Number(endpoint.port)
-        : endpoint.protocol === 'https:'
-          ? 443
-          : 80,
-      useSSL: endpoint.protocol === 'https:',
-      accessKey: this.configService.getOrThrow<string>('STORAGE_ACCESS_KEY'),
-      secretKey: this.configService.getOrThrow<string>('STORAGE_SECRET_KEY'),
+      port,
+      useSSL,
+      accessKey,
+      secretKey,
+    });
+
+    this.readinessClient = new Client({
+      endPoint: endpoint.hostname,
+      port,
+      useSSL,
+      accessKey,
+      secretKey,
+      retryOptions: {
+        disableRetry: true,
+      },
+      transport: createReadinessTransport(useSSL),
+      transportAgent: useSSL
+        ? new HttpsAgent({
+            keepAlive: false,
+            maxSockets: 2,
+            maxTotalSockets: 2,
+          })
+        : new HttpAgent({
+            keepAlive: false,
+            maxSockets: 2,
+            maxTotalSockets: 2,
+          }),
     });
   }
 
@@ -66,6 +117,10 @@ export class MinioAdapter {
 
   bucketExists(bucket: string): Promise<boolean> {
     return this.client.bucketExists(bucket);
+  }
+
+  bucketExistsForReadiness(bucket: string): Promise<boolean> {
+    return this.readinessClient.bucketExists(bucket);
   }
 
   async putObject(
@@ -211,6 +266,33 @@ export class MinioAdapter {
       throw error;
     }
   }
+}
+
+function createReadinessTransport(
+  useSSL: boolean,
+): Pick<typeof import('node:http'), 'request'> {
+  const requestWithProtocol = useSSL ? httpsRequest : httpRequest;
+
+  return {
+    request: ((
+      options: RequestOptions,
+      callback?: (response: IncomingMessage) => void,
+    ): ClientRequest => {
+      const request = requestWithProtocol(options, callback);
+      const deadline = setTimeout(() => {
+        request.destroy(new StorageReadinessTimeoutError());
+      }, STORAGE_READINESS_REQUEST_TIMEOUT_MS);
+      deadline.unref();
+
+      const clearDeadline = (): void => {
+        clearTimeout(deadline);
+      };
+      request.once('close', clearDeadline);
+      request.once('error', clearDeadline);
+
+      return request;
+    }) as typeof httpRequest,
+  };
 }
 
 function isStorageError(error: unknown): error is { code: unknown } {

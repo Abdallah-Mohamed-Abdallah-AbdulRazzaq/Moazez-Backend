@@ -2,30 +2,51 @@
 
 ## Document control
 
-| Field                                            | Value                                                                   |
-| ------------------------------------------------ | ----------------------------------------------------------------------- |
-| Historical task ID                               | `PRD1-G04-IMPLEMENT-PROVEN-BOUNDED-BULLMQ-READINESS-FIX`                |
-| Repository                                       | `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend`                  |
-| Branch                                           | `feat/production-readiness-1c-health-probes`                            |
-| Origin/main baseline                             | `2f87a155cf27f2186cfd7746026562ef18cb4f71`                              |
-| Historical feature HEAD before BullMQ correction | `aca314de829c35d1bfcfad8cdbe149ddbbff5e02`                              |
-| Current remote feature HEAD                      | `5e64005e0db750956036495a3b32c85239194b4e`                              |
-| Current local technical correction               | 8 paths — 7 tracked modifications plus 1 untracked new integration test |
-| Focused F1 documentation correction              | 1 tracked documentation path                                            |
-| Current working-tree scope after correction      | 9 paths — 8 tracked modifications plus 1 untracked path                 |
-| Final publication candidate                      | 51 paths relative to `origin/main` after explicit staging               |
-| Date                                             | `2026-07-30`                                                            |
-| Timezone                                         | `Africa/Cairo`                                                          |
-| Scope                                            | `PRD1-G04` only                                                         |
-| Gate status                                      | `LOCAL_TECHNICAL_GATES_COMPLETE_REMOTE_CI_PENDING`                      |
-| Document status                                  | `F1_DOCUMENTATION_CORRECTED_PUBLICATION_REVIEW_PENDING`                 |
-| Remote CI                                        | `PENDING`                                                               |
+| Field                                            | Value                                                               |
+| ------------------------------------------------ | ------------------------------------------------------------------- |
+| Historical task ID                               | `PRD1-G04-IMPLEMENT-PROVEN-BOUNDED-BULLMQ-READINESS-FIX`            |
+| Repository                                       | `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend`              |
+| Branch                                           | `feat/production-readiness-1c-health-probes`                        |
+| Origin/main baseline                             | `2f87a155cf27f2186cfd7746026562ef18cb4f71`                          |
+| Historical feature HEAD before BullMQ correction | `aca314de829c35d1bfcfad8cdbe149ddbbff5e02`                          |
+| Current remote feature HEAD                      | `8ffb06aa55612276c9f3ef41b9ae399b102d02fb`                          |
+| F2-R1B local correction                          | 6 paths — 5 tracked modifications plus 1 untracked new storage test |
+| Current working-tree scope                       | 6 paths — 5 tracked modifications plus 1 untracked path             |
+| Final publication candidate                      | 55 paths relative to `origin/main` after explicit staging           |
+| Date                                             | `2026-07-30`                                                        |
+| Timezone                                         | `Africa/Cairo`                                                      |
+| Scope                                            | `PRD1-G04` only                                                     |
+| Gate status                                      | `F2_R1B_IMPLEMENTED_LOCAL_VALIDATION_PENDING`                       |
+| Document status                                  | `F2_R1B_MINIO_READINESS_REMEDIATION_RECORDED`                       |
+| Remote CI                                        | `PENDING`                                                           |
 
 ## Outcome
 
 `PRD1-G04` is implemented without a second Nest application, a second
 dependency-injection graph, a credential, a JWT requirement, path obscurity,
 or a Phase 2 runtime selector.
+
+GitHub Actions run `30549505229`, job `90894188042`, reached Redis recovery:
+the same Redis container was running and unpaused, `redis-cli ping` returned
+`PONG`, and the realtime Redis adapter connected again. The final
+`management.probe.readiness_unavailable` event named only `storage`.
+
+F2-R1A reproduced and classified `MINIO_TRANSPORT_TIMEOUT_DEFECT`. A half-open
+MinIO provider request survived the generic 750 ms operational deadline, and a
+subsequent caller reused that still-owned provider flight. The F2-R1B
+production correction gives operational storage readiness a separate MinIO
+client with retries disabled, a non-keepalive two-socket agent, and an absolute
+500 ms transport deadline that destroys the actual `ClientRequest` and socket.
+Product upload, download, stat, removal, listing, presigning, and normal bucket
+operations continue using the unchanged product MinIO client.
+
+Storage readiness now waits for both private- and public-bucket operations to
+settle after fulfillment or transport cancellation. Any missing bucket or
+provider rejection maps to the existing sanitized
+`storage_bucket_unavailable` result. Focused coverage uses one adapter and one
+endpoint to prove half-open cancellation below 750 ms, complete socket cleanup,
+fresh HTTP activity, and successful recovery. Remote CI remains `PENDING`, and
+PR #51 remains Draft.
 
 GitHub Actions run `30500009569`, job `90737376235`, remained at readiness
 `503` even though the same Redis container was running, unpaused, and returning
@@ -740,55 +761,58 @@ No failed or interrupted attempt is relabeled as a pass:
 ## Final publication reconciliation
 
 The remote PR head at
-`5e64005e0db750956036495a3b32c85239194b4e` contains 50 tracked paths
-relative to `origin/main`. The current technical correction covers eight paths:
-seven tracked modifications and one new, currently untracked half-open
-integration test. F1-R1 adds one tracked documentation modification, so the
-current working tree contains nine paths. After those paths are staged
-explicitly, the final publication candidate will contain 51 tracked paths
-relative to `origin/main`; this closeout document was already one of the remote
-50 paths and therefore does not add a fifty-second candidate path.
+`8ffb06aa55612276c9f3ef41b9ae399b102d02fb` contains 51 tracked paths
+relative to `origin/main`. F2-R1B modifies six local paths: five tracked
+modifications and one new, currently untracked storage service test. The
+workflow and this closeout document are already among the remote 51 paths; the
+other four storage paths increase the explicitly staged final publication
+candidate to 55 paths.
 
-The current correction is not BullMQ-only. It includes focused realtime gateway
-local-disconnect ownership, adapter-replacement ordering, Redis adapter
-recovery, fail-fast and single-flight operational readiness, real Redis adapter
-recovery and half-open integration coverage, and workflow outage/recovery and
-shutdown coverage. All local technical gates A through E passed. The first F1
-implementation and workflow reviews also passed; `F1-MED-001` identified only
-the stale documentation and inventory presented as the current publication
-state.
+The complete candidate is not BullMQ-only or realtime-only. It includes the
+accepted realtime gateway local-disconnect ownership, adapter-replacement
+ordering, Redis adapter recovery, fail-fast and single-flight operational
+readiness, real Redis recovery and half-open integration coverage, workflow
+outage/recovery and shutdown coverage, and the F2-R1B cancelling MinIO
+readiness transport. Product storage operations and the workflow Docker
+topology remain unchanged.
 
-Remote CI remains pending. F2 remains blocked until this F1-R1 correction and
-manual owner verification pass. This document does not claim remote CI success,
-remote closure of `PRD1-G04`, merge readiness, or completion of Stage F2.
+Local technical gates A through E and the repeated F1 implementation,
+workflow, documentation, and combined-candidate reviews passed before
+publication. GitHub Actions then isolated the remaining failure to storage
+after Redis recovery. F2-R1A established `MINIO_TRANSPORT_TIMEOUT_DEFECT`;
+F2-R1B implements the focused transport cancellation and same-endpoint
+recovery coverage. Local F2-R1B validation and independent owner verification
+remain required.
 
-- Remote PR head inventory: `50 tracked paths`.
-- Local technical correction: `8 paths` (`7 tracked modifications` plus `1 untracked new integration test`).
-- Focused F1 documentation correction: `1 tracked documentation path`.
-- Current working tree after correction: `9 paths` (`8 tracked modifications` plus `1 untracked path`).
-- Final publication candidate: `51 paths` relative to `origin/main`.
+Remote CI remains pending, and PR #51 remains Draft. This document does not
+claim remote CI success, remote closure of `PRD1-G04`, merge readiness, or
+completion of Stage F2.
+
+- Remote PR head inventory: `51 tracked paths`.
+- F2-R1B local correction: `6 paths` (`5 tracked modifications` plus `1 untracked new storage test`).
+- Current working tree: `6 paths` (`5 tracked modifications` plus `1 untracked path`).
+- New candidate paths introduced by F2-R1B: `4 paths`.
+- Final publication candidate: `55 paths` relative to `origin/main`.
 - Remote CI: `PENDING`.
 
-The local technical correction inventory is:
+The F2-R1B local correction inventory is:
 
 <!-- BEGIN LOCAL TECHNICAL CORRECTION INVENTORY -->
 
 1. `.github/workflows/learning-media-integrity.yml`
-2. `src/infrastructure/realtime/realtime.gateway.ts`
-3. `src/infrastructure/realtime/tests/realtime.gateway-redis-lifecycle.spec.ts`
-4. `src/infrastructure/realtime/tests/realtime.gateway.spec.ts`
-5. `src/modules/health/operational-probe.service.spec.ts`
-6. `src/modules/health/operational-probe.service.ts`
-7. `test/integration/realtime-adapter-recovery.integration.spec.ts`
-8. `test/integration/realtime-adapter-half-open-readiness.integration.spec.ts`
+2. `docs/production-readiness/phase-1/03-minimum-health-probes-closeout.md`
+3. `src/infrastructure/storage/minio.adapter.ts`
+4. `src/infrastructure/storage/storage.service.ts`
+5. `src/infrastructure/storage/tests/minio.adapter.spec.ts`
+6. `src/infrastructure/storage/tests/storage.service.spec.ts`
 
 <!-- END LOCAL TECHNICAL CORRECTION INVENTORY -->
 
-The first seven paths are tracked modifications. The eighth path is the new,
-currently untracked half-open integration test.
+The first five paths are tracked modifications. The sixth path is the new,
+currently untracked storage service test.
 
-The complete final publication candidate, derived from the repository's 50
-tracked candidate paths plus the new half-open integration test and sorted by
+The complete final publication candidate, derived from Git relative to
+`origin/main`, plus the new storage service test, deduplicated, and sorted by
 ordinal path ordering, is:
 
 <!-- BEGIN FINAL CANDIDATE INVENTORY -->
@@ -823,35 +847,41 @@ ordinal path ordering, is:
 28. `src/infrastructure/realtime/tests/realtime-state-store.service.spec.ts`
 29. `src/infrastructure/realtime/tests/realtime.gateway-redis-lifecycle.spec.ts`
 30. `src/infrastructure/realtime/tests/realtime.gateway.spec.ts`
-31. `src/main.ts`
-32. `src/modules/files/uploads/application/media-runtime-startup.guard.ts`
-33. `src/modules/files/uploads/uploads.module.ts`
-34. `src/modules/health/bounded-probe-executor.spec.ts`
-35. `src/modules/health/bounded-probe-executor.ts`
-36. `src/modules/health/health.controller.spec.ts`
-37. `src/modules/health/health.controller.ts`
-38. `src/modules/health/health.module.ts`
-39. `src/modules/health/health.service.spec.ts`
-40. `src/modules/health/health.service.ts`
-41. `src/modules/health/operational-probe.manifests.spec.ts`
-42. `src/modules/health/operational-probe.manifests.ts`
-43. `src/modules/health/operational-probe.service.spec.ts`
-44. `src/modules/health/operational-probe.service.ts`
-45. `src/modules/health/temporary-disk.probe.ts`
-46. `src/modules/settings/branding/tests/public-school-branding-lifecycle.integration.spec.ts`
-47. `test/integration/bullmq-shutdown-lifecycle.integration.spec.ts`
-48. `test/integration/prisma-shutdown-lifecycle.integration.spec.ts`
-49. `test/integration/realtime-adapter-half-open-readiness.integration.spec.ts`
-50. `test/integration/realtime-adapter-recovery.integration.spec.ts`
-51. `test/integration/realtime-state-store-readiness.integration.spec.ts`
+31. `src/infrastructure/storage/minio.adapter.ts`
+32. `src/infrastructure/storage/storage.service.ts`
+33. `src/infrastructure/storage/tests/minio.adapter.spec.ts`
+34. `src/infrastructure/storage/tests/storage.service.spec.ts`
+35. `src/main.ts`
+36. `src/modules/files/uploads/application/media-runtime-startup.guard.ts`
+37. `src/modules/files/uploads/uploads.module.ts`
+38. `src/modules/health/bounded-probe-executor.spec.ts`
+39. `src/modules/health/bounded-probe-executor.ts`
+40. `src/modules/health/health.controller.spec.ts`
+41. `src/modules/health/health.controller.ts`
+42. `src/modules/health/health.module.ts`
+43. `src/modules/health/health.service.spec.ts`
+44. `src/modules/health/health.service.ts`
+45. `src/modules/health/operational-probe.manifests.spec.ts`
+46. `src/modules/health/operational-probe.manifests.ts`
+47. `src/modules/health/operational-probe.service.spec.ts`
+48. `src/modules/health/operational-probe.service.ts`
+49. `src/modules/health/temporary-disk.probe.ts`
+50. `src/modules/settings/branding/tests/public-school-branding-lifecycle.integration.spec.ts`
+51. `test/integration/bullmq-shutdown-lifecycle.integration.spec.ts`
+52. `test/integration/prisma-shutdown-lifecycle.integration.spec.ts`
+53. `test/integration/realtime-adapter-half-open-readiness.integration.spec.ts`
+54. `test/integration/realtime-adapter-recovery.integration.spec.ts`
+55. `test/integration/realtime-state-store-readiness.integration.spec.ts`
 
 <!-- END FINAL CANDIDATE INVENTORY -->
 
 ## Compatibility, rollback, and limitations
 
 Public root, CORS, Swagger, request correlation, public health path, Phase 1B
-admission/drain behavior, queue contracts, storage contracts, product routes,
-and Learning Media completion are unchanged.
+admission/drain behavior, queue contracts, storage API contracts, product
+routes, and Learning Media completion are unchanged. Product MinIO operations
+continue using the existing client and transport; the cancelling 500 ms
+transport is isolated to operational storage readiness.
 
 Rollback restores the prior health files, removes the management server,
 removes `APP_PROBE_PORT`, removes the role manifests and bounded executor,
@@ -860,10 +890,12 @@ adapter/state-store recovery, fallback reconciliation, presence refresh, and
 teardown compatibility changes, reverts the current local-only Socket.IO
 disconnect ownership, adapter-replacement ordering, Redis adapter recovery, and
 fail-fast/single-flight readiness correction, removes the new half-open
-integration test, restores the prior BullMQ registration-only helper, restores
-the previous bootstrap ordering, and removes the related workflow assertions
-and closeout row. No schema, migration, seed, data, dependency, lockfile, queue
-payload, storage object, or cloud rollback is required.
+integration test, removes the dedicated MinIO readiness client and cancelling
+transport, restores the previous readiness bucket checks, removes the new
+storage readiness test, restores the prior BullMQ registration-only helper,
+restores the previous bootstrap ordering, and removes the related workflow
+assertions and closeout row. No schema, migration, seed, data, dependency,
+lockfile, queue payload, storage object, or cloud rollback is required.
 
 Limitations:
 
