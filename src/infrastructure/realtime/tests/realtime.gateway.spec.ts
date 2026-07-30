@@ -595,57 +595,91 @@ describe('RealtimeGateway', () => {
       typingServiceMock(),
       lifecycle,
     );
-    const server = {
+    const localSocket = localSocketFixture({
+      data: authenticatedSocketData(),
+      onDisconnect: (socket) => gateway.handleDisconnect(socket),
+    });
+    const namespace = {
+      server: { adapter: jest.fn() },
       use: jest.fn(),
-      adapter: jest.fn(),
+      sockets: new Map([[localSocket.id, localSocket]]),
       disconnectSockets: jest.fn(),
     };
-    await gateway.afterInit(server as never);
+    await gateway.afterInit(namespace as never);
 
-    const disconnectCleanup = gateway.handleDisconnect(
-      socketMock(authenticatedSocketData()),
-    );
+    expect(localSocket.connected).toBe(true);
+    expect(namespace.sockets.get(localSocket.id)).toBe(localSocket);
+
+    let shutdownSettled = false;
     const first = gateway.disconnectSocketsForShutdown();
     const second = gateway.disconnectSocketsForShutdown();
+    void first.then(
+      () => {
+        shutdownSettled = true;
+      },
+      () => {
+        shutdownSettled = true;
+      },
+    );
 
     expect(second).toBe(first);
-    expect(server.disconnectSockets).toHaveBeenCalledWith(true);
+    expect(localSocket.disconnect).toHaveBeenCalledTimes(1);
+    expect(localSocket.disconnect).toHaveBeenCalledWith(true);
+    expect(namespace.disconnectSockets).not.toHaveBeenCalled();
+    expect(presenceService.unregisterSocket).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    expect(shutdownSettled).toBe(false);
 
     presenceCompletion.resolve(null);
-    await Promise.all([disconnectCleanup, first, second]);
+    await Promise.all([first, second]);
+    expect(shutdownSettled).toBe(true);
+    expect(localSocket.disconnect).toHaveBeenCalledTimes(1);
     expect(presenceService.unregisterSocket).toHaveBeenCalledTimes(1);
+    expect(namespace.disconnectSockets).not.toHaveBeenCalled();
   });
 
   it('blocks new admission and waits for owned adapter recovery during shutdown', async () => {
     const recovery = deferred<boolean>();
-    const server = {
-      use: jest.fn(),
-      adapter: jest.fn(),
-      disconnectSockets: jest.fn(),
-    };
+    const authService = authServiceMock({
+      authenticate: jest.fn().mockResolvedValue(authenticatedContext()),
+    });
     const gateway = new RealtimeGateway(
-      authServiceMock(),
+      authService,
       accessServiceMock(),
       publisherMock(),
       configServiceMock(),
       presenceServiceMock(),
       typingServiceMock(),
     );
+    const localSocket = localSocketFixture();
+    const namespace = {
+      server: { adapter: jest.fn() },
+      use: jest.fn(),
+      sockets: new Map([[localSocket.id, localSocket]]),
+      disconnectSockets: jest.fn(),
+    };
     Object.assign(gateway, {
-      server,
+      server: namespace,
       adapterLifecycleState: 'recovering',
       redisAdapterReadinessPromise: recovery.promise,
     });
 
+    expect(localSocket.connected).toBe(true);
     const shutdown = gateway.disconnectSocketsForShutdown();
-    await Promise.resolve();
-    expect(server.disconnectSockets).not.toHaveBeenCalled();
-    await gateway.handleConnection(socketMock());
-    expect(server.disconnectSockets).not.toHaveBeenCalled();
+    expect(localSocket.disconnect).not.toHaveBeenCalled();
+
+    const admissionSocket = socketMock();
+    await gateway.handleConnection(admissionSocket);
+    expect(admissionSocket.disconnect).toHaveBeenCalledWith(true);
+    expect(authService.authenticate).not.toHaveBeenCalled();
+    expect(localSocket.disconnect).not.toHaveBeenCalled();
+    expect(namespace.disconnectSockets).not.toHaveBeenCalled();
 
     recovery.resolve(false);
     await shutdown;
-    expect(server.disconnectSockets).toHaveBeenCalledTimes(1);
+    expect(localSocket.disconnect).toHaveBeenCalledTimes(1);
+    expect(localSocket.disconnect).toHaveBeenCalledWith(true);
+    expect(namespace.disconnectSockets).not.toHaveBeenCalled();
   });
 
   it('restores the in-memory adapter before closing owned Redis clients', async () => {
@@ -661,6 +695,7 @@ describe('RealtimeGateway', () => {
     const namespace = {
       server: socketServer,
       use: jest.fn(),
+      sockets: new Map(),
       disconnectSockets: jest.fn(),
     };
     await gateway.afterInit(namespace as never);
@@ -679,6 +714,7 @@ describe('RealtimeGateway', () => {
 
     await gateway.onModuleDestroy();
 
+    expect(namespace.disconnectSockets).not.toHaveBeenCalled();
     expect(socketServer.adapter).toHaveBeenCalledWith(Adapter);
     expect(socketServer.adapter.mock.invocationCallOrder[0]).toBeLessThan(
       publisher.disconnect.mock.invocationCallOrder[0],
@@ -703,6 +739,54 @@ function socketMock(
     leave: jest.fn().mockResolvedValue(undefined),
     disconnect: jest.fn(),
   } as unknown as RealtimeSocket;
+}
+
+type LocalSocketDouble = RealtimeSocket & {
+  connected: boolean;
+  once: jest.Mock;
+  disconnect: jest.Mock;
+};
+
+function localSocketFixture(options?: {
+  id?: string;
+  data?: RealtimeSocket['data'];
+  onDisconnect?: (socket: RealtimeSocket) => void | Promise<void>;
+}): LocalSocketDouble {
+  const disconnectListeners = new Set<(...args: unknown[]) => void>();
+  const socket = {
+    id: options?.id ?? 'local-socket-1',
+    data: options?.data ?? {},
+    handshake: {
+      auth: {},
+      headers: {},
+    },
+    connected: true,
+    join: jest.fn().mockResolvedValue(undefined),
+    leave: jest.fn().mockResolvedValue(undefined),
+  } as unknown as LocalSocketDouble;
+
+  socket.once = jest.fn(
+    (event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'disconnect') {
+        disconnectListeners.add(listener);
+      }
+      return socket;
+    },
+  );
+  socket.disconnect = jest.fn((close?: boolean) => {
+    if (!socket.connected) return socket;
+
+    socket.connected = false;
+    const listeners = [...disconnectListeners];
+    disconnectListeners.clear();
+    for (const listener of listeners) {
+      listener('server namespace disconnect');
+    }
+    void options?.onDisconnect?.(socket);
+    return socket;
+  });
+
+  return socket;
 }
 
 function authenticatedSocketData(): RealtimeSocket['data'] {

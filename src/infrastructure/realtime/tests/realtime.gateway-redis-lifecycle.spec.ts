@@ -134,7 +134,7 @@ describe('RealtimeGateway Redis command ownership', () => {
     const internals = gatewayInternals(createGateway(), publisher, subscriber);
 
     const first = internals.pingRedisAdapterClients();
-    jest.advanceTimersByTime(1_000);
+    jest.advanceTimersByTime(600);
     await expect(first).rejects.toThrow('realtime_redis_unavailable');
 
     const second = internals.pingRedisAdapterClients();
@@ -166,7 +166,7 @@ describe('RealtimeGateway Redis command ownership', () => {
 
     try {
       const readiness = internals.pingRedisAdapterClients();
-      jest.advanceTimersByTime(1_000);
+      jest.advanceTimersByTime(600);
       await expect(readiness).rejects.toThrow('realtime_redis_unavailable');
 
       publisherPing.resolve('PONG');
@@ -180,6 +180,40 @@ describe('RealtimeGateway Redis command ownership', () => {
     }
   });
 
+  it('retires half-open clients within the caller deadline and starts recovery independently', async () => {
+    const publisherPing = deferred<string>();
+    const subscriberPing = deferred<string>();
+    const publisher = redisClient({
+      ping: jest.fn().mockReturnValue(publisherPing.promise),
+    });
+    const subscriber = redisClient({
+      ping: jest.fn().mockReturnValue(subscriberPing.promise),
+    });
+    const gateway = createGateway();
+    const internals = gatewayInternals(gateway, publisher, subscriber);
+    internals.adapterLifecycleState = 'ready';
+    internals.server = { sockets: new Map() };
+    const recovery = jest
+      .spyOn(internals, 'ensureRedisAdapterReady')
+      .mockResolvedValue(false);
+
+    const readiness = gateway.checkReadiness();
+    jest.advanceTimersByTime(600);
+    await expect(readiness).rejects.toThrow('realtime_redis_unavailable');
+
+    expect(publisher.disconnect).toHaveBeenCalledTimes(1);
+    expect(subscriber.disconnect).toHaveBeenCalledTimes(1);
+    expect(internals.redisPublisher).toBeUndefined();
+    expect(internals.redisSubscriber).toBeUndefined();
+    expect(internals.adapterLifecycleState).toBe('unavailable');
+    expect(recovery).toHaveBeenCalledTimes(1);
+
+    publisherPing.resolve('PONG');
+    subscriberPing.reject(new Error('late half-open failure'));
+    await flushPromises();
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
   it('single-flights adapter recovery across repeated readiness checks', async () => {
     const recovery = deferred<boolean>();
     const publisher = redisClient();
@@ -190,7 +224,12 @@ describe('RealtimeGateway Redis command ownership', () => {
     internals.server = { sockets: new Map() };
     const configure = jest
       .spyOn(internals, 'configureRedisAdapter')
-      .mockReturnValue(recovery.promise);
+      .mockImplementation(() =>
+        recovery.promise.then((ready) => {
+          if (ready) internals.adapterLifecycleState = 'ready';
+          return ready;
+        }),
+      );
 
     const first = gateway.checkReadiness();
     const second = gateway.checkReadiness();
@@ -202,8 +241,8 @@ describe('RealtimeGateway Redis command ownership', () => {
       undefined,
       undefined,
     ]);
-    expect(publisher.ping).toHaveBeenCalledTimes(1);
-    expect(subscriber.ping).toHaveBeenCalledTimes(1);
+    expect(publisher.ping).not.toHaveBeenCalled();
+    expect(subscriber.ping).not.toHaveBeenCalled();
   });
 
   it('forces one disconnect when quit hangs and clears every close timer', async () => {
@@ -217,7 +256,7 @@ describe('RealtimeGateway Redis command ownership', () => {
     const second = internals.closeRedisClient(client as unknown as IORedis);
     expect(second).toBe(first);
 
-    jest.advanceTimersByTime(1_000);
+    jest.advanceTimersByTime(400);
     await expect(first).resolves.toBeUndefined();
     expect(client.quit).toHaveBeenCalledTimes(1);
     expect(client.disconnect).toHaveBeenCalledTimes(1);
@@ -255,18 +294,28 @@ describe('RealtimeGateway Redis command ownership', () => {
     expect(MockedIORedis).toHaveBeenCalledWith(
       'redis://synthetic:synthetic@redis:6379',
       expect.objectContaining({
-        connectTimeout: 1000,
-        commandTimeout: 1000,
+        lazyConnect: true,
+        maxRetriesPerRequest: 0,
+        enableOfflineQueue: false,
+        autoResendUnfulfilledCommands: false,
+        connectTimeout: 400,
+        commandTimeout: 400,
       }),
     );
     expect(publisher.duplicate).toHaveBeenCalledWith(
       expect.objectContaining({
-        connectTimeout: 1000,
-        commandTimeout: 1000,
+        lazyConnect: true,
+        maxRetriesPerRequest: 0,
+        enableOfflineQueue: false,
+        autoResendUnfulfilledCommands: false,
+        connectTimeout: 400,
+        commandTimeout: 400,
       }),
     );
     expect(publisher.connect).toHaveBeenCalledTimes(1);
     expect(subscriber.connect).toHaveBeenCalledTimes(1);
+    expect(publisher.ping).toHaveBeenCalledTimes(1);
+    expect(subscriber.ping).toHaveBeenCalledTimes(1);
 
     await gateway.onModuleDestroy();
     expect(publisher.quit).toHaveBeenCalledTimes(1);

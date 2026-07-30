@@ -37,6 +37,9 @@ describe('Realtime Redis adapter recovery with connected sockets', () => {
       };
       const presenceCleanupStarted = deferred<void>();
       const presenceCleanupFinished = deferred<void>();
+      const authenticationStarted = deferred<void>();
+      const authenticationCompletion =
+        deferred<ReturnType<typeof authenticatedContext>>();
       const presence = {
         registerSocket: jest.fn().mockResolvedValue(undefined),
         unregisterSocket: jest.fn().mockImplementation(() => {
@@ -86,9 +89,6 @@ describe('Realtime Redis adapter recovery with connected sockets', () => {
         await joinConversation(first);
         await expectDelivery(namespace, first, 'before');
 
-        const authenticationStarted = deferred<void>();
-        const authenticationCompletion =
-          deferred<ReturnType<typeof authenticatedContext>>();
         authService.authenticate.mockImplementationOnce(() => {
           authenticationStarted.resolve();
           return authenticationCompletion.promise;
@@ -99,13 +99,26 @@ describe('Realtime Redis adapter recovery with connected sockets', () => {
         const owned = gateway as unknown as {
           redisPublisher: { disconnect(): void };
           redisSubscriber: { disconnect(): void };
+          redisAdapterReadinessPromise: Promise<boolean> | null;
         };
         owned.redisPublisher.disconnect();
         owned.redisSubscriber.disconnect();
 
         const firstClosed = first.waitForClose();
         const racingClosed = racing.waitForClose();
-        const recovery = gateway.checkReadiness();
+        const triggeringReadiness = gateway.checkReadiness();
+
+        await expect(triggeringReadiness).rejects.toThrow(
+          'realtime_redis_unavailable',
+        );
+
+        const recovery = owned.redisAdapterReadinessPromise;
+        expect(recovery).not.toBeNull();
+
+        if (!recovery) {
+          throw new Error('Expected an owned Redis adapter recovery flight');
+        }
+
         let recoverySettled = false;
         void recovery.then(
           () => {
@@ -115,13 +128,15 @@ describe('Realtime Redis adapter recovery with connected sockets', () => {
             recoverySettled = true;
           },
         );
-        await Promise.all([firstClosed, racingClosed]);
+        await firstClosed;
         await presenceCleanupStarted.promise;
         await Promise.resolve();
         expect(recoverySettled).toBe(false);
         presenceCleanupFinished.resolve();
         authenticationCompletion.resolve(authenticatedContext());
-        await expect(recovery).resolves.toBeUndefined();
+        await racingClosed;
+        await expect(recovery).resolves.toBe(true);
+        await expect(gateway.checkReadiness()).resolves.toBeUndefined();
         await new Promise<void>((resolve) => setImmediate(resolve));
         expect(presence.unregisterSocket).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -147,6 +162,8 @@ describe('Realtime Redis adapter recovery with connected sockets', () => {
         await new Promise<void>((resolve) => setImmediate(resolve));
         expect(unhandled).toEqual([]);
       } finally {
+        presenceCleanupFinished.resolve();
+        authenticationCompletion.resolve(authenticatedContext());
         process.off('unhandledRejection', onUnhandled);
         await gateway.onModuleDestroy();
         await closeSocketServer(socketServer);

@@ -2,18 +2,24 @@
 
 ## Document control
 
-| Field | Value |
-| --- | --- |
-| Task ID | `PRD1-G04-IMPLEMENT-PROVEN-BOUNDED-BULLMQ-READINESS-FIX` |
-| Repository | `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend` |
-| Branch | `feat/production-readiness-1c-health-probes` |
-| Origin/main baseline | `2f87a155cf27f2186cfd7746026562ef18cb4f71` |
-| Feature HEAD before final correction | `aca314de829c35d1bfcfad8cdbe149ddbbff5e02` |
-| Date | `2026-07-30` |
-| Timezone | `Africa/Cairo` |
-| Scope | `PRD1-G04` only |
-| Gate status | `READY_FOR_OWNER_COMMIT_AND_GITHUB_RERUN` |
-| Document status | `PRD1_G04_BULLMQ_READINESS_FINAL_FIX_READY_FOR_COMMIT` |
+| Field                                            | Value                                                                   |
+| ------------------------------------------------ | ----------------------------------------------------------------------- |
+| Historical task ID                               | `PRD1-G04-IMPLEMENT-PROVEN-BOUNDED-BULLMQ-READINESS-FIX`                |
+| Repository                                       | `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend`                  |
+| Branch                                           | `feat/production-readiness-1c-health-probes`                            |
+| Origin/main baseline                             | `2f87a155cf27f2186cfd7746026562ef18cb4f71`                              |
+| Historical feature HEAD before BullMQ correction | `aca314de829c35d1bfcfad8cdbe149ddbbff5e02`                              |
+| Current remote feature HEAD                      | `5e64005e0db750956036495a3b32c85239194b4e`                              |
+| Current local technical correction               | 8 paths — 7 tracked modifications plus 1 untracked new integration test |
+| Focused F1 documentation correction              | 1 tracked documentation path                                            |
+| Current working-tree scope after correction      | 9 paths — 8 tracked modifications plus 1 untracked path                 |
+| Final publication candidate                      | 51 paths relative to `origin/main` after explicit staging               |
+| Date                                             | `2026-07-30`                                                            |
+| Timezone                                         | `Africa/Cairo`                                                          |
+| Scope                                            | `PRD1-G04` only                                                         |
+| Gate status                                      | `LOCAL_TECHNICAL_GATES_COMPLETE_REMOTE_CI_PENDING`                      |
+| Document status                                  | `F1_DOCUMENTATION_CORRECTED_PUBLICATION_REVIEW_PENDING`                 |
+| Remote CI                                        | `PENDING`                                                               |
 
 ## Outcome
 
@@ -78,14 +84,14 @@ changed in this task.
 
 ## Current architecture
 
-| Surface | Implementation | Behavior |
-| --- | --- | --- |
-| Public application listener | existing Nest application on `APP_PORT` | root, API, WebSocket, public health, existing middleware/guards/filters, and all current product behavior |
-| Management listener | one `node:http` server on `APP_PROBE_PORT` in the same process | operational startup/liveness/readiness only; no Nest routes or second application graph |
-| Public health | `GET /api/v1/health` | side-effect-free compatibility response with exactly `status`, `version`, and `timestamp` |
-| Lifecycle state | existing `ApplicationLifecycleState` | makes startup/readiness unavailable during drain; liveness remains process-local |
-| Shutdown coordinator | existing Phase 1B coordinator | begins public HTTP close, management HTTP close, and BullMQ worker drain in one immediately observed operation graph |
-| Role policies | immutable API/Core/Media manifests | reusable target-role requirements over the current single graph |
+| Surface                     | Implementation                                                 | Behavior                                                                                                             |
+| --------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Public application listener | existing Nest application on `APP_PORT`                        | root, API, WebSocket, public health, existing middleware/guards/filters, and all current product behavior            |
+| Management listener         | one `node:http` server on `APP_PROBE_PORT` in the same process | operational startup/liveness/readiness only; no Nest routes or second application graph                              |
+| Public health               | `GET /api/v1/health`                                           | side-effect-free compatibility response with exactly `status`, `version`, and `timestamp`                            |
+| Lifecycle state             | existing `ApplicationLifecycleState`                           | makes startup/readiness unavailable during drain; liveness remains process-local                                     |
+| Shutdown coordinator        | existing Phase 1B coordinator                                  | begins public HTTP close, management HTTP close, and BullMQ worker drain in one immediately observed operation graph |
+| Role policies               | immutable API/Core/Media manifests                             | reusable target-role requirements over the current single graph                                                      |
 
 `APP_PROBE_PORT` defaults conservatively to `9090`, must be an integer from 1
 through 65535, and must differ from `APP_PORT`. It is documented in
@@ -131,13 +137,13 @@ The listener exposes:
 - `/internal/probes/core-worker/{startup|liveness|readiness}`
 - `/internal/probes/media-worker/{startup|liveness|readiness}`
 
-| Condition | HTTP behavior |
-| --- | --- |
-| healthy/available `GET` | `200` |
-| unavailable/not ready `GET` | `503` |
-| unknown path | `404` |
-| method other than `GET` | `405` with `Allow: GET` |
-| every response | `Content-Type: application/json` and `Cache-Control: no-store` |
+| Condition                   | HTTP behavior                                                  |
+| --------------------------- | -------------------------------------------------------------- |
+| healthy/available `GET`     | `200`                                                          |
+| unavailable/not ready `GET` | `503`                                                          |
+| unknown path                | `404`                                                          |
+| method other than `GET`     | `405` with `Allow: GET`                                        |
+| every response              | `Content-Type: application/json` and `Cache-Control: no-store` |
 
 Probe responses contain only `status`, the authoritative application
 `version`, and a canonical millisecond ISO-8601 `timestamp`. Unknown-path and
@@ -186,11 +192,11 @@ or write objects.
 
 ## Role dependency matrix
 
-| Role manifest | Required readiness evidence |
-| --- | --- |
-| API | Prisma query; queue-producer Redis ping; storage readiness because current managed file contracts are enabled; Socket.IO adapter Redis readiness; presence/typing state-store Redis readiness |
-| Core Worker | Prisma query; queue Redis ping; running and unpaused processing loops for communication notification generation, push delivery, school email delivery, import validation, dismissal expiry, and branding cleanup consumers |
-| Media Worker | Prisma query; queue Redis ping; storage readiness; a running and unpaused Learning Media cleanup processing loop; verified ffprobe runtime; writable temporary directory |
+| Role manifest | Required readiness evidence                                                                                                                                                                                                |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API           | Prisma query; queue-producer Redis ping; storage readiness because current managed file contracts are enabled; Socket.IO adapter Redis readiness; presence/typing state-store Redis readiness                              |
+| Core Worker   | Prisma query; queue Redis ping; running and unpaused processing loops for communication notification generation, push delivery, school email delivery, import validation, dismissal expiry, and branding cleanup consumers |
+| Media Worker  | Prisma query; queue Redis ping; storage readiness; a running and unpaused Learning Media cleanup processing loop; verified ffprobe runtime; writable temporary directory                                                   |
 
 Storage and realtime requirements are explicit policy inputs rather than
 hard-coded public behavior. Tests prove that a disabled optional capability is
@@ -499,43 +505,43 @@ The experiment proved:
 
 ## Validation evidence
 
-| Command / evidence | Outcome |
-| --- | --- |
-| hard Git preflight | PASS — branch `feat/production-readiness-1c-health-probes`; HEAD and remote feature `aca314de829c35d1bfcfad8cdbe149ddbbff5e02`; `origin/main` `2f87a155cf27f2186cfd7746026562ef18cb4f71`; `0/0` against the remote feature; empty index, clean worktree, zero untracked paths before correction; PR #51 open, Draft, 50 paths |
-| final BullmqService unit suite with `--runInBand --detectOpenHandles` | PASS — 1 suite, 30 tests, 2.112 s, exit `0`; separate options, service single flight, hanging owned/candidate operations, late settlement, stale ownership, recovery, shutdown race, exact-once close, fixed failure/logging, real executor, and worker isolation |
-| final bounded-executor and operational-probe focused suites | PASS — 2 executor tests and 22 operational-probe tests; API, Core, and Media retain `queue-redis`, readiness fails closed and recovers, and liveness remains independent |
-| final real-Redis BullMQ suspend/resume integration | PASS — 1 suite, 3 tests, zero skips, 3.563 s; bounded case settled in 529 ms, both flight maps were empty, a fresh call recovered, and the same worker processed the post-recovery job |
-| final compiled-production-image BullMQ provider proof | PASS — suspended stable endpoint returned unhealthy in 403 ms; service and executor flights were empty; the next invocation returned healthy |
-| final production TypeScript/image build | PASS — canonical Node `22.23.1` production build and Prisma Client generation completed; final image manifest-list digest `sha256:de7dbc05d6f0d1658a257f2254a3c91b3fe96ac967910c197b8a7305b80163cf` |
-| complete queue and health regression | PASS — 6 suites, 68 tests, 6.544 s, exit `0` |
-| final full-unit regression | PASS — 543 suites, 3,922 tests, 107.62 s, exit `0` |
-| final exact security regression | PASS — 89 suites, 1,154 tests, 424.892 s, exit `0`; unchanged tests and timeouts on fresh synthetic PostgreSQL, Redis, and MinIO |
-| final real `AppModule` E2E | PASS — 1 suite, 2 tests, 46.281 s, `--detectOpenHandles`, exit `0` |
-| final runtime policy | PASS — Node `22.23.1`, Firebase Admin `14.0.0`, 10 tests, exit `0` |
-| final workflow YAML parse | PASS — `js-yaml`, exit `0`; the early lifecycle command includes `bullmq.service.spec.ts`, and the existing BullMQ integration step owns the extended real-Redis file |
-| final migration governance | PASS — base `origin/main` at `2f87a155cf27`, 7 active migrations, 0 new, rebaseline off |
-| final isolated Prisma validation/generation | PASS — schema valid; Prisma Client `6.19.3` generated with synthetic `DATABASE_URL` and no workspace `.env` access |
-| `npm run verify:runtime-policy` | PASS — Node `22.23.1`, Firebase Admin `14.0.0`, 10 tests, 0.307 s, exit `0` |
-| pre-candidate-revalidation state-store close/recovery lifecycle with `--detectOpenHandles` | PASS — 1 suite, 25 tests, 2.057 s, exit `0`; historical R6 evidence covering hanging/late-rejected `QUIT`, exact-once forced disconnect, destroy overlap, failed-candidate retry, and stale retired-client failure ownership |
-| pre-candidate-revalidation focused health/lifecycle/realtime command in the isolated media-test image with `--detectOpenHandles` | PASS — 15 suites, 111 tests, 15.56 s, exit `0`; this evidence predates the final five candidate-revalidation tests |
-| pre-self-review complete realtime unit directory with `--detectOpenHandles` | PASS — 10 suites, 93 tests, 3.733 s, exit `0`; the final full-unit run includes the added ownership-race assertion |
-| `npx jest --config ./test/jest-e2e.json --runInBand --detectOpenHandles --runTestsByPath test/integration/realtime-state-store-readiness.integration.spec.ts test/integration/realtime-adapter-recovery.integration.spec.ts` with disposable real Redis | PASS — 2 suites, 4 tests, 5.09 s, exit `0`; this is the evidence owner for second-user and ACL/EVAL denial/retry |
-| final candidate-revalidation focused regression with `--detectOpenHandles` | PASS — state-store, operational-probe, and bounded-executor suites; 54 tests passed, zero open handles, exit `0`; covers candidate failure during retired-client close, final-PING failure, destruction during final validation, successful revalidation, and newer-client ownership protection |
-| final candidate-revalidation real-Redis integration | PASS — 2 tests passed against disposable real Redis; recovery remained fail-closed until candidate ownership, status, and the final bounded `PING` were validated |
-| final production TypeScript build | PASS — production build completed using the canonical Node `22.23.1` runtime |
-| R6 full-unit regression before the final candidate-revalidation delta | PASS — 543 suites, 3,905 tests |
-| R6 exact-security regression before the final candidate-revalidation delta | PASS — 89 suites, 1,154 tests, 481.883 s, exit `0` |
-| R6 canonical final-image and media-test-image builds before the final candidate-revalidation delta | PASS — final image rebuilt in 16.6 s and media-test target rebuilt in 164.9 s, both exit `0`; recorded R6 local manifest-list digest `sha256:8f0c82f854a76effc4978497bf317ac2e5861fb7282f3bc35fedaddacc9da4ec` |
-| `npm run db:migrations:check` | PASS — base `origin/main`, 7 active migrations, 0 new, exit `0` |
-| isolated `npx prisma validate && npx prisma generate` | PASS — Prisma `6.19.3`; no host Prisma/config command and no workspace `.env` read |
-| fresh disposable `npx prisma migrate deploy` and corrected `npm run seed` | PASS — all 7 committed migrations plus synthetic seed |
-| R6 final-image fallback reconciliation process before the final candidate-revalidation delta | PASS — actual Redis keys for one user, two-socket membership, indexes, exact expected latest `updatedAt`, bounded TTLs, remaining typing TTL, and expired-entry absence |
-| final canonical public/internal-port, stable-endpoint outage/recovery, and shutdown proof | PASS — exact workflow startup script against the final production image; API, Core, and Media readiness each returned `200` → `503` → `200`; all three liveness probes stayed `200`; Redis returned `PONG`; application ID/start time and Redis ID/start time remained identical; no application restart; post-intake public code was non-`2xx`; SIGTERM exit `0` with lifecycle completion in 43 ms |
-| no-extra-handle forced-timeout process | PASS — exit `1`, 1,458 ms container wall time, bounded timed-out event, no completion event |
-| exact Node/Firebase/Prisma/non-root/media runtime smokes | PASS — Node `v22.23.1`, Firebase app/messaging, Prisma Client, UID `1000`, and ffprobe/media contract |
-| `js-yaml` workflow structural parse | PASS — 40 steps, exit `0` |
-| matrix validator | PASS — 74 unique gates, 38 risks, only PRD1-G04 differs, and G05–G07 remain `NOT_STARTED` |
-| final `git diff --check`, exact five-path correction scope, unchanged 50-path PR scope, changed-content secret scan, and disposable cleanup | PASS |
+| Command / evidence                                                                                                                                                                                                                                      | Outcome                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| hard Git preflight                                                                                                                                                                                                                                      | PASS — branch `feat/production-readiness-1c-health-probes`; HEAD and remote feature `aca314de829c35d1bfcfad8cdbe149ddbbff5e02`; `origin/main` `2f87a155cf27f2186cfd7746026562ef18cb4f71`; `0/0` against the remote feature; empty index, clean worktree, zero untracked paths before correction; PR #51 open, Draft, 50 paths                                                                        |
+| final BullmqService unit suite with `--runInBand --detectOpenHandles`                                                                                                                                                                                   | PASS — 1 suite, 30 tests, 2.112 s, exit `0`; separate options, service single flight, hanging owned/candidate operations, late settlement, stale ownership, recovery, shutdown race, exact-once close, fixed failure/logging, real executor, and worker isolation                                                                                                                                    |
+| final bounded-executor and operational-probe focused suites                                                                                                                                                                                             | PASS — 2 executor tests and 22 operational-probe tests; API, Core, and Media retain `queue-redis`, readiness fails closed and recovers, and liveness remains independent                                                                                                                                                                                                                             |
+| final real-Redis BullMQ suspend/resume integration                                                                                                                                                                                                      | PASS — 1 suite, 3 tests, zero skips, 3.563 s; bounded case settled in 529 ms, both flight maps were empty, a fresh call recovered, and the same worker processed the post-recovery job                                                                                                                                                                                                               |
+| final compiled-production-image BullMQ provider proof                                                                                                                                                                                                   | PASS — suspended stable endpoint returned unhealthy in 403 ms; service and executor flights were empty; the next invocation returned healthy                                                                                                                                                                                                                                                         |
+| final production TypeScript/image build                                                                                                                                                                                                                 | PASS — canonical Node `22.23.1` production build and Prisma Client generation completed; final image manifest-list digest `sha256:de7dbc05d6f0d1658a257f2254a3c91b3fe96ac967910c197b8a7305b80163cf`                                                                                                                                                                                                  |
+| complete queue and health regression                                                                                                                                                                                                                    | PASS — 6 suites, 68 tests, 6.544 s, exit `0`                                                                                                                                                                                                                                                                                                                                                         |
+| final full-unit regression                                                                                                                                                                                                                              | PASS — 543 suites, 3,922 tests, 107.62 s, exit `0`                                                                                                                                                                                                                                                                                                                                                   |
+| final exact security regression                                                                                                                                                                                                                         | PASS — 89 suites, 1,154 tests, 424.892 s, exit `0`; unchanged tests and timeouts on fresh synthetic PostgreSQL, Redis, and MinIO                                                                                                                                                                                                                                                                     |
+| final real `AppModule` E2E                                                                                                                                                                                                                              | PASS — 1 suite, 2 tests, 46.281 s, `--detectOpenHandles`, exit `0`                                                                                                                                                                                                                                                                                                                                   |
+| final runtime policy                                                                                                                                                                                                                                    | PASS — Node `22.23.1`, Firebase Admin `14.0.0`, 10 tests, exit `0`                                                                                                                                                                                                                                                                                                                                   |
+| final workflow YAML parse                                                                                                                                                                                                                               | PASS — `js-yaml`, exit `0`; the early lifecycle command includes `bullmq.service.spec.ts`, and the existing BullMQ integration step owns the extended real-Redis file                                                                                                                                                                                                                                |
+| final migration governance                                                                                                                                                                                                                              | PASS — base `origin/main` at `2f87a155cf27`, 7 active migrations, 0 new, rebaseline off                                                                                                                                                                                                                                                                                                              |
+| final isolated Prisma validation/generation                                                                                                                                                                                                             | PASS — schema valid; Prisma Client `6.19.3` generated with synthetic `DATABASE_URL` and no workspace `.env` access                                                                                                                                                                                                                                                                                   |
+| `npm run verify:runtime-policy`                                                                                                                                                                                                                         | PASS — Node `22.23.1`, Firebase Admin `14.0.0`, 10 tests, 0.307 s, exit `0`                                                                                                                                                                                                                                                                                                                          |
+| pre-candidate-revalidation state-store close/recovery lifecycle with `--detectOpenHandles`                                                                                                                                                              | PASS — 1 suite, 25 tests, 2.057 s, exit `0`; historical R6 evidence covering hanging/late-rejected `QUIT`, exact-once forced disconnect, destroy overlap, failed-candidate retry, and stale retired-client failure ownership                                                                                                                                                                         |
+| pre-candidate-revalidation focused health/lifecycle/realtime command in the isolated media-test image with `--detectOpenHandles`                                                                                                                        | PASS — 15 suites, 111 tests, 15.56 s, exit `0`; this evidence predates the final five candidate-revalidation tests                                                                                                                                                                                                                                                                                   |
+| pre-self-review complete realtime unit directory with `--detectOpenHandles`                                                                                                                                                                             | PASS — 10 suites, 93 tests, 3.733 s, exit `0`; the final full-unit run includes the added ownership-race assertion                                                                                                                                                                                                                                                                                   |
+| `npx jest --config ./test/jest-e2e.json --runInBand --detectOpenHandles --runTestsByPath test/integration/realtime-state-store-readiness.integration.spec.ts test/integration/realtime-adapter-recovery.integration.spec.ts` with disposable real Redis | PASS — 2 suites, 4 tests, 5.09 s, exit `0`; this is the evidence owner for second-user and ACL/EVAL denial/retry                                                                                                                                                                                                                                                                                     |
+| final candidate-revalidation focused regression with `--detectOpenHandles`                                                                                                                                                                              | PASS — state-store, operational-probe, and bounded-executor suites; 54 tests passed, zero open handles, exit `0`; covers candidate failure during retired-client close, final-PING failure, destruction during final validation, successful revalidation, and newer-client ownership protection                                                                                                      |
+| final candidate-revalidation real-Redis integration                                                                                                                                                                                                     | PASS — 2 tests passed against disposable real Redis; recovery remained fail-closed until candidate ownership, status, and the final bounded `PING` were validated                                                                                                                                                                                                                                    |
+| final production TypeScript build                                                                                                                                                                                                                       | PASS — production build completed using the canonical Node `22.23.1` runtime                                                                                                                                                                                                                                                                                                                         |
+| R6 full-unit regression before the final candidate-revalidation delta                                                                                                                                                                                   | PASS — 543 suites, 3,905 tests                                                                                                                                                                                                                                                                                                                                                                       |
+| R6 exact-security regression before the final candidate-revalidation delta                                                                                                                                                                              | PASS — 89 suites, 1,154 tests, 481.883 s, exit `0`                                                                                                                                                                                                                                                                                                                                                   |
+| R6 canonical final-image and media-test-image builds before the final candidate-revalidation delta                                                                                                                                                      | PASS — final image rebuilt in 16.6 s and media-test target rebuilt in 164.9 s, both exit `0`; recorded R6 local manifest-list digest `sha256:8f0c82f854a76effc4978497bf317ac2e5861fb7282f3bc35fedaddacc9da4ec`                                                                                                                                                                                       |
+| `npm run db:migrations:check`                                                                                                                                                                                                                           | PASS — base `origin/main`, 7 active migrations, 0 new, exit `0`                                                                                                                                                                                                                                                                                                                                      |
+| isolated `npx prisma validate && npx prisma generate`                                                                                                                                                                                                   | PASS — Prisma `6.19.3`; no host Prisma/config command and no workspace `.env` read                                                                                                                                                                                                                                                                                                                   |
+| fresh disposable `npx prisma migrate deploy` and corrected `npm run seed`                                                                                                                                                                               | PASS — all 7 committed migrations plus synthetic seed                                                                                                                                                                                                                                                                                                                                                |
+| R6 final-image fallback reconciliation process before the final candidate-revalidation delta                                                                                                                                                            | PASS — actual Redis keys for one user, two-socket membership, indexes, exact expected latest `updatedAt`, bounded TTLs, remaining typing TTL, and expired-entry absence                                                                                                                                                                                                                              |
+| final canonical public/internal-port, stable-endpoint outage/recovery, and shutdown proof                                                                                                                                                               | PASS — exact workflow startup script against the final production image; API, Core, and Media readiness each returned `200` → `503` → `200`; all three liveness probes stayed `200`; Redis returned `PONG`; application ID/start time and Redis ID/start time remained identical; no application restart; post-intake public code was non-`2xx`; SIGTERM exit `0` with lifecycle completion in 43 ms |
+| no-extra-handle forced-timeout process                                                                                                                                                                                                                  | PASS — exit `1`, 1,458 ms container wall time, bounded timed-out event, no completion event                                                                                                                                                                                                                                                                                                          |
+| exact Node/Firebase/Prisma/non-root/media runtime smokes                                                                                                                                                                                                | PASS — Node `v22.23.1`, Firebase app/messaging, Prisma Client, UID `1000`, and ffprobe/media contract                                                                                                                                                                                                                                                                                                |
+| `js-yaml` workflow structural parse                                                                                                                                                                                                                     | PASS — 40 steps, exit `0`                                                                                                                                                                                                                                                                                                                                                                            |
+| matrix validator                                                                                                                                                                                                                                        | PASS — 74 unique gates, 38 risks, only PRD1-G04 differs, and G05–G07 remain `NOT_STARTED`                                                                                                                                                                                                                                                                                                            |
+| final `git diff --check`, exact five-path correction scope, unchanged 50-path PR scope, changed-content secret scan, and disposable cleanup                                                                                                             | PASS                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ### Preliminary failures retained
 
@@ -731,23 +737,61 @@ No failed or interrupted attempt is relabeled as a pass:
   coordinator. The corrected `--interactive` invocation produced the passing
   result above; the committed workflow uses `node -e` and was unaffected.
 
-## Exact changed-file inventory
+## Final publication reconciliation
 
-The unchanged branch HEAD contains 50 paths relative to `origin/main`. This
-final correction changes five existing members of that package, so the PR
-scope remains 50 paths:
+The remote PR head at
+`5e64005e0db750956036495a3b32c85239194b4e` contains 50 tracked paths
+relative to `origin/main`. The current technical correction covers eight paths:
+seven tracked modifications and one new, currently untracked half-open
+integration test. F1-R1 adds one tracked documentation modification, so the
+current working tree contains nine paths. After those paths are staged
+explicitly, the final publication candidate will contain 51 tracked paths
+relative to `origin/main`; this closeout document was already one of the remote
+50 paths and therefore does not add a fifty-second candidate path.
+
+The current correction is not BullMQ-only. It includes focused realtime gateway
+local-disconnect ownership, adapter-replacement ordering, Redis adapter
+recovery, fail-fast and single-flight operational readiness, real Redis adapter
+recovery and half-open integration coverage, and workflow outage/recovery and
+shutdown coverage. All local technical gates A through E passed. The first F1
+implementation and workflow reviews also passed; `F1-MED-001` identified only
+the stale documentation and inventory presented as the current publication
+state.
+
+Remote CI remains pending. F2 remains blocked until this F1-R1 correction and
+manual owner verification pass. This document does not claim remote CI success,
+remote closure of `PRD1-G04`, merge readiness, or completion of Stage F2.
+
+- Remote PR head inventory: `50 tracked paths`.
+- Local technical correction: `8 paths` (`7 tracked modifications` plus `1 untracked new integration test`).
+- Focused F1 documentation correction: `1 tracked documentation path`.
+- Current working tree after correction: `9 paths` (`8 tracked modifications` plus `1 untracked path`).
+- Final publication candidate: `51 paths` relative to `origin/main`.
+- Remote CI: `PENDING`.
+
+The local technical correction inventory is:
+
+<!-- BEGIN LOCAL TECHNICAL CORRECTION INVENTORY -->
 
 1. `.github/workflows/learning-media-integrity.yml`
-2. `docs/production-readiness/phase-1/03-minimum-health-probes-closeout.md`
-3. `src/infrastructure/queue/bullmq.service.spec.ts`
-4. `src/infrastructure/queue/bullmq.service.ts`
-5. `test/integration/bullmq-shutdown-lifecycle.integration.spec.ts`
+2. `src/infrastructure/realtime/realtime.gateway.ts`
+3. `src/infrastructure/realtime/tests/realtime.gateway-redis-lifecycle.spec.ts`
+4. `src/infrastructure/realtime/tests/realtime.gateway.spec.ts`
+5. `src/modules/health/operational-probe.service.spec.ts`
+6. `src/modules/health/operational-probe.service.ts`
+7. `test/integration/realtime-adapter-recovery.integration.spec.ts`
+8. `test/integration/realtime-adapter-half-open-readiness.integration.spec.ts`
 
-The five final corrections remain unstaged and uncommitted. No new package,
-lockfile, schema, migration, seed, generated artifact, queue payload, worker
-processor, storage, or realtime change was introduced.
+<!-- END LOCAL TECHNICAL CORRECTION INVENTORY -->
 
-The complete PR path inventory remains:
+The first seven paths are tracked modifications. The eighth path is the new,
+currently untracked half-open integration test.
+
+The complete final publication candidate, derived from the repository's 50
+tracked candidate paths plus the new half-open integration test and sorted by
+ordinal path ordering, is:
+
+<!-- BEGIN FINAL CANDIDATE INVENTORY -->
 
 1. `.env.example`
 2. `.github/workflows/learning-media-integrity.yml`
@@ -797,8 +841,11 @@ The complete PR path inventory remains:
 46. `src/modules/settings/branding/tests/public-school-branding-lifecycle.integration.spec.ts`
 47. `test/integration/bullmq-shutdown-lifecycle.integration.spec.ts`
 48. `test/integration/prisma-shutdown-lifecycle.integration.spec.ts`
-49. `test/integration/realtime-adapter-recovery.integration.spec.ts`
-50. `test/integration/realtime-state-store-readiness.integration.spec.ts`
+49. `test/integration/realtime-adapter-half-open-readiness.integration.spec.ts`
+50. `test/integration/realtime-adapter-recovery.integration.spec.ts`
+51. `test/integration/realtime-state-store-readiness.integration.spec.ts`
+
+<!-- END FINAL CANDIDATE INVENTORY -->
 
 ## Compatibility, rollback, and limitations
 
@@ -810,10 +857,13 @@ Rollback restores the prior health files, removes the management server,
 removes `APP_PROBE_PORT`, removes the role manifests and bounded executor,
 restores the prior shutdown dependency shape, reverts the focused realtime
 adapter/state-store recovery, fallback reconciliation, presence refresh, and
-teardown compatibility changes, restores the prior BullMQ registration-only
-helper, restores the previous bootstrap ordering, and removes the workflow
-assertions and closeout row. No schema, migration, seed, data, queue payload,
-storage object, or cloud rollback is required.
+teardown compatibility changes, reverts the current local-only Socket.IO
+disconnect ownership, adapter-replacement ordering, Redis adapter recovery, and
+fail-fast/single-flight readiness correction, removes the new half-open
+integration test, restores the prior BullMQ registration-only helper, restores
+the previous bootstrap ordering, and removes the related workflow assertions
+and closeout row. No schema, migration, seed, data, dependency, lockfile, queue
+payload, storage object, or cloud rollback is required.
 
 Limitations:
 

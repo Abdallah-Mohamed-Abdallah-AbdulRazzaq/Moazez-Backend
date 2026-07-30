@@ -38,9 +38,10 @@ import type {
 } from './realtime.types';
 
 const REALTIME_NAMESPACE = '/api/v1/realtime';
-const REDIS_ADAPTER_CONNECT_TIMEOUT_MS = 1000;
-const REDIS_ADAPTER_COMMAND_TIMEOUT_MS = 1000;
-const REDIS_ADAPTER_CLOSE_TIMEOUT_MS = 1000;
+const REDIS_ADAPTER_CONNECT_TIMEOUT_MS = 400;
+const REDIS_ADAPTER_COMMAND_TIMEOUT_MS = 400;
+const REDIS_ADAPTER_OPERATION_TIMEOUT_MS = 600;
+const REDIS_ADAPTER_CLOSE_TIMEOUT_MS = 400;
 
 export type RealtimeAdapterLifecycleState =
   | 'initializing'
@@ -79,6 +80,7 @@ export class RealtimeGateway
     IORedis,
     Promise<void>
   >();
+  private readonly forceDisconnectedRedisClients = new WeakSet<IORedis>();
   private adapterLifecycleState: RealtimeAdapterLifecycleState = 'initializing';
   private adapterGeneration = 0;
   private destroyPromise: Promise<void> | null = null;
@@ -119,27 +121,29 @@ export class RealtimeGateway
       throw new Error('realtime_draining');
     }
 
-    if (this.adapterLifecycleState === 'ready') {
+    const publisher = this.redisPublisher;
+    const subscriber = this.redisSubscriber;
+    if (
+      this.adapterLifecycleState === 'ready' &&
+      publisher?.status === 'ready' &&
+      subscriber?.status === 'ready'
+    ) {
       try {
         await this.pingRedisAdapterClients();
         return;
       } catch {
-        this.markAdapterUnavailable();
+        this.markAdapterUnavailable(publisher, subscriber);
+        void this.ensureRedisAdapterReady();
+        throw new Error('realtime_redis_unavailable');
       }
+    }
+
+    if (this.adapterLifecycleState === 'ready') {
+      this.markAdapterUnavailable(publisher, subscriber);
     }
 
     if (!(await this.ensureRedisAdapterReady())) {
       throw new Error('realtime_redis_unavailable');
-    }
-
-    try {
-      await this.pingRedisAdapterClients();
-    } catch {
-      this.markAdapterUnavailable();
-      if (!(await this.ensureRedisAdapterReady())) {
-        throw new Error('realtime_redis_unavailable');
-      }
-      await this.pingRedisAdapterClients();
     }
   }
 
@@ -239,10 +243,8 @@ export class RealtimeGateway
     }
   }
 
-  private async disconnectSockets(): Promise<void> {
-    this.server?.disconnectSockets(true);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    await Promise.all([...this.presenceCleanup]);
+  private disconnectSockets(): Promise<void> {
+    return this.disconnectLocalSockets();
   }
 
   @SubscribeMessage(
@@ -383,7 +385,7 @@ export class RealtimeGateway
     const flight = this.getRedisAdapterPingFlight(publisher, subscriber);
     const bounded = await settleWithin(
       flight.outcome,
-      REDIS_ADAPTER_COMMAND_TIMEOUT_MS,
+      REDIS_ADAPTER_OPERATION_TIMEOUT_MS,
     );
     if (bounded.status !== 'fulfilled' || !bounded.value) {
       throw new Error('realtime_redis_unavailable');
@@ -439,15 +441,21 @@ export class RealtimeGateway
     const previousSubscriber = this.redisSubscriber;
     const publisher = new IORedis(redisUrl, {
       lazyConnect: true,
-      maxRetriesPerRequest: null,
+      maxRetriesPerRequest: 0,
       enableOfflineQueue: false,
+      autoResendUnfulfilledCommands: false,
       connectTimeout: REDIS_ADAPTER_CONNECT_TIMEOUT_MS,
       commandTimeout: REDIS_ADAPTER_COMMAND_TIMEOUT_MS,
       retryStrategy: () => null,
     });
     const subscriber = publisher.duplicate({
+      lazyConnect: true,
+      maxRetriesPerRequest: 0,
+      enableOfflineQueue: false,
+      autoResendUnfulfilledCommands: false,
       connectTimeout: REDIS_ADAPTER_CONNECT_TIMEOUT_MS,
       commandTimeout: REDIS_ADAPTER_COMMAND_TIMEOUT_MS,
+      retryStrategy: () => null,
     });
 
     let warningLogged = false;
@@ -465,10 +473,13 @@ export class RealtimeGateway
 
     let failureStage:
       | 'connect'
+      | 'verification'
       | 'adapter'
       | 'replacement_cleanup' = 'connect';
     try {
       await this.connectRedisClients(publisher, subscriber);
+      failureStage = 'verification';
+      await this.verifyRedisAdapterCandidate(publisher, subscriber);
       if (
         this.lifecycle.isDraining() ||
         this.isAdapterDestroying()
@@ -540,11 +551,46 @@ export class RealtimeGateway
     }
   }
 
-  private async disconnectSocketsForAdapterReplacement(): Promise<void> {
-    const sockets = [...this.getNamespace().sockets.values()];
-    for (const socket of sockets) {
-      socket.disconnect(true);
+  private async verifyRedisAdapterCandidate(
+    publisher: IORedis,
+    subscriber: IORedis,
+  ): Promise<void> {
+    const childSettlements = Promise.allSettled([
+      Promise.resolve().then(() => publisher.ping()),
+      Promise.resolve().then(() => subscriber.ping()),
+    ]);
+    const bounded = await settleWithin(
+      childSettlements,
+      REDIS_ADAPTER_OPERATION_TIMEOUT_MS,
+    );
+    if (
+      bounded.status !== 'fulfilled' ||
+      bounded.value.some((settlement) => settlement.status === 'rejected')
+    ) {
+      throw new Error('realtime_redis_adapter_verification_failed');
     }
+  }
+
+  private disconnectSocketsForAdapterReplacement(): Promise<void> {
+    return this.disconnectLocalSockets();
+  }
+
+  private async disconnectLocalSockets(): Promise<void> {
+    if (!this.server) return;
+
+    const sockets = [...this.getNamespace().sockets.values()];
+    const disconnects = sockets.map(
+      (socket) =>
+        new Promise<void>((resolve) => {
+          if (!socket.connected) {
+            resolve();
+            return;
+          }
+          socket.once('disconnect', () => resolve());
+          socket.disconnect(true);
+        }),
+    );
+    await Promise.all(disconnects);
     await new Promise<void>((resolve) => setImmediate(resolve));
     await Promise.all([...this.presenceCleanup]);
   }
@@ -553,6 +599,16 @@ export class RealtimeGateway
     const recovery = this.redisAdapterReadinessPromise;
     if (recovery) await recovery;
     await this.disconnectSockets();
+  }
+
+  private forceDisconnectRedisClient(client?: IORedis): void {
+    if (!client || this.forceDisconnectedRedisClients.has(client)) return;
+    this.forceDisconnectedRedisClients.add(client);
+    try {
+      client.disconnect();
+    } catch {
+      // Failed adapter clients are retired synchronously and exactly once.
+    }
   }
 
   private closeRedisClient(client?: IORedis): Promise<void> {
@@ -579,19 +635,11 @@ export class RealtimeGateway
       if (bounded.status === 'fulfilled') {
         return;
       }
-      try {
-        client.disconnect();
-      } catch {
-        // Client ownership is still settled; lifecycle logging stays fixed.
-      }
+      this.forceDisconnectRedisClient(client);
       return;
     }
 
-    try {
-      client.disconnect();
-    } catch {
-      // Client ownership is still settled; lifecycle logging stays fixed.
-    }
+    this.forceDisconnectRedisClient(client);
   }
 
   private runWithSocketContext<T>(
@@ -710,10 +758,17 @@ export class RealtimeGateway
     );
   }
 
-  private markAdapterUnavailable(): void {
-    if (this.adapterLifecycleState !== 'destroying') {
-      this.adapterLifecycleState = 'unavailable';
-    }
+  private markAdapterUnavailable(
+    publisher = this.redisPublisher,
+    subscriber = this.redisSubscriber,
+  ): void {
+    if (this.adapterLifecycleState === 'destroying') return;
+
+    this.adapterLifecycleState = 'unavailable';
+    if (this.redisPublisher === publisher) this.redisPublisher = undefined;
+    if (this.redisSubscriber === subscriber) this.redisSubscriber = undefined;
+    this.forceDisconnectRedisClient(publisher);
+    this.forceDisconnectRedisClient(subscriber);
   }
 
   private getNamespace(): Namespace {

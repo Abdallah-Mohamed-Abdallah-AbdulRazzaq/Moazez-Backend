@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ApplicationLifecycleState } from '../../bootstrap/application-lifecycle.state';
 import type { PrismaService } from '../../infrastructure/database/prisma.service';
 import type { BullmqService } from '../../infrastructure/queue/bullmq.service';
@@ -14,6 +15,21 @@ import { OperationalProbeService } from './operational-probe.service';
 import type { TemporaryDiskProbe } from './temporary-disk.probe';
 
 describe('OperationalProbeService', () => {
+  let loggerWarn: jest.SpyInstance;
+  let loggerLog: jest.SpyInstance;
+
+  beforeEach(() => {
+    loggerWarn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    loggerLog = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
   it('keeps startup unavailable before and during delayed initialization', async () => {
     const harness = createHarness();
 
@@ -86,6 +102,34 @@ describe('OperationalProbeService', () => {
       ).resolves.toMatchObject({ statusCode: 200 });
     },
   );
+
+  it('logs fixed failed dependency identifiers once and records recovery', async () => {
+    const harness = readyHarness();
+    const rawFailure =
+      'redis://state-user:state-secret@internal/private-credential';
+    harness.realtime.checkReadiness.mockRejectedValueOnce(
+      new Error(rawFailure),
+    );
+
+    await expect(
+      harness.service.evaluate('api', 'readiness'),
+    ).resolves.toMatchObject({ statusCode: 503 });
+    await expect(
+      harness.service.evaluate('api', 'readiness'),
+    ).resolves.toMatchObject({ statusCode: 200 });
+
+    expect(loggerWarn).toHaveBeenCalledWith({
+      event: 'management.probe.readiness_unavailable',
+      role: 'api',
+      dependencies: ['realtime-adapter-redis'],
+    });
+    expect(loggerWarn).toHaveBeenCalledTimes(1);
+    expect(loggerLog).toHaveBeenCalledWith({
+      event: 'management.probe.readiness_recovered',
+      role: 'api',
+    });
+    expect(JSON.stringify(loggerWarn.mock.calls)).not.toContain(rawFailure);
+  });
 
   it('does not require disabled realtime or optional API storage', async () => {
     const harness = readyHarness({

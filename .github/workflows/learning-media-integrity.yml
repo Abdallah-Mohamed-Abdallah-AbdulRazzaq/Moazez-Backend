@@ -196,6 +196,7 @@ jobs:
             src/modules/health/operational-probe.service.spec.ts \
             src/infrastructure/realtime/tests/realtime-presence.service.spec.ts \
             src/infrastructure/realtime/tests/realtime-publisher.service.spec.ts \
+            src/infrastructure/realtime/tests/realtime.gateway-redis-lifecycle.spec.ts \
             src/infrastructure/realtime/tests/realtime-state-store.service.spec.ts \
             src/modules/files/uploads/tests/files-upload-multer-exception.filter.spec.ts \
             src/modules/settings/branding/tests/branding-logo-multipart-exception.filter.spec.ts \
@@ -856,6 +857,7 @@ jobs:
           test/integration/prisma-shutdown-lifecycle.integration.spec.ts
           test/integration/realtime-state-store-readiness.integration.spec.ts
           test/integration/realtime-adapter-recovery.integration.spec.ts
+          test/integration/realtime-adapter-half-open-readiness.integration.spec.ts
       - name: Shared Student Parent Teacher playback and download compatibility contracts
         run: >-
           npx jest --runInBand --runTestsByPath

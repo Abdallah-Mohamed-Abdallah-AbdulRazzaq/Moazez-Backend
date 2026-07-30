@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { APPLICATION_VERSION } from '../../bootstrap/application-metadata';
 import { ApplicationLifecycleState } from '../../bootstrap/application-lifecycle.state';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
@@ -32,8 +32,13 @@ type StartupState = 'pending' | 'ready' | 'failed';
 
 @Injectable()
 export class OperationalProbeService {
+  private readonly logger = new Logger(OperationalProbeService.name);
   private startupState: StartupState = 'pending';
   private readonly executor = new BoundedProbeExecutor();
+  private readonly readinessFailureFingerprints = new Map<
+    OperationalProbeRole,
+    string
+  >();
   private readonly readinessFlights = new Map<
     OperationalProbeRole,
     Promise<boolean>
@@ -88,13 +93,20 @@ export class OperationalProbeService {
 
     const manifest = this.manifests[role];
     const execution = Promise.all(
-      manifest.readiness.map((dependency) =>
-        this.executor.run(dependency, () =>
+      manifest.readiness.map(async (dependency) => ({
+        dependency,
+        available: await this.executor.run(dependency, () =>
           this.runDependencyCheck(dependency, manifest),
         ),
-      ),
+      })),
     )
-      .then((checks) => checks.every(Boolean))
+      .then((checks) => {
+        const failed = checks
+          .filter((check) => !check.available)
+          .map((check) => check.dependency);
+        this.recordReadinessState(role, failed);
+        return failed.length === 0;
+      })
       .finally(() => {
         if (this.readinessFlights.get(role) === execution) {
           this.readinessFlights.delete(role);
@@ -155,6 +167,30 @@ export class OperationalProbeService {
     return (
       !manifest.requiresVerifiedMediaRuntime || this.mediaRuntime.isVerified()
     );
+  }
+
+  private recordReadinessState(
+    role: OperationalProbeRole,
+    failed: readonly OperationalDependencyId[],
+  ): void {
+    if (failed.length === 0) {
+      if (this.readinessFailureFingerprints.delete(role)) {
+        this.logger.log({
+          event: 'management.probe.readiness_recovered',
+          role,
+        });
+      }
+      return;
+    }
+
+    const fingerprint = failed.join(',');
+    if (this.readinessFailureFingerprints.get(role) === fingerprint) return;
+    this.readinessFailureFingerprints.set(role, fingerprint);
+    this.logger.warn({
+      event: 'management.probe.readiness_unavailable',
+      role,
+      dependencies: failed,
+    });
   }
 
   private result(available: boolean): OperationalProbeResult {
