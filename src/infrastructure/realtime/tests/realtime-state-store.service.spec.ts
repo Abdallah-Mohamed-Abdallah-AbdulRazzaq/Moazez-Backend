@@ -78,6 +78,17 @@ describe('RealtimeStateStoreService recovery lifecycle', () => {
     await Promise.resolve();
 
     expect(MockedIORedis).toHaveBeenCalledTimes(1);
+    expect(MockedIORedis).toHaveBeenCalledWith(
+      'redis://state-user:state-secret@internal:6379',
+      expect.objectContaining({
+        lazyConnect: true,
+        maxRetriesPerRequest: 0,
+        enableOfflineQueue: false,
+        autoResendUnfulfilledCommands: false,
+        connectTimeout: 1000,
+        commandTimeout: 1000,
+      }),
+    );
     expect(clients[0].connect).toHaveBeenCalledTimes(1);
     connection.resolve();
     await expect(Promise.all([first, second])).resolves.toEqual([
@@ -88,6 +99,48 @@ describe('RealtimeStateStoreService recovery lifecycle', () => {
 
     await service.onModuleDestroy();
     expect(clients[0].quit).toHaveBeenCalledTimes(1);
+  });
+
+  it('retires a half-open owned client before the probe caller deadline and recovers with a fresh client', async () => {
+    jest.useFakeTimers();
+    const halfOpenPing = deferred<string>();
+    const unhandledRejection = jest.fn();
+    process.on('unhandledRejection', unhandledRejection);
+
+    try {
+      const service = createService();
+      await service.checkReadiness();
+      const retiredClient = clients[0];
+      retiredClient.ping.mockImplementationOnce(() => halfOpenPing.promise);
+
+      const outage = service.checkReadiness();
+      await flushPromises();
+      jest.advanceTimersByTime(600);
+
+      await expect(outage).rejects.toThrow(
+        'realtime_state_redis_unavailable',
+      );
+      expect(retiredClient.disconnect).toHaveBeenCalledTimes(1);
+      expect(retiredClient.quit).not.toHaveBeenCalled();
+      expect(stateStoreInternals(service).redis).toBeUndefined();
+      expect(stateStoreInternals(service).lifecycleState).not.toBe('ready');
+
+      nextClientFactory = () => createRedisDouble();
+      await expect(service.checkReadiness()).resolves.toBeUndefined();
+      expect(clients).toHaveLength(2);
+      expect(stateStoreInternals(service).redis).toBe(clients[1]);
+      expect(stateStoreInternals(service).lifecycleState).toBe('ready');
+
+      halfOpenPing.reject(new Error('late half-open Redis rejection'));
+      await flushPromises();
+      expect(unhandledRejection).not.toHaveBeenCalled();
+      expect(retiredClient.disconnect).toHaveBeenCalledTimes(1);
+      expect(stateStoreInternals(service).redis).toBe(clients[1]);
+
+      await service.onModuleDestroy();
+    } finally {
+      process.off('unhandledRejection', unhandledRejection);
+    }
   });
 
   it('reconciles fallback presence before readiness recovers', async () => {
@@ -112,9 +165,9 @@ describe('RealtimeStateStoreService recovery lifecycle', () => {
       socketCount: 1,
       transitionedOnline: true,
     });
-    await waitForMockCall(clients[0].quit);
-    expect(clients[0].quit).toHaveBeenCalledTimes(1);
-    expect(clients[0].disconnect).not.toHaveBeenCalled();
+    await waitForMockCall(clients[0].disconnect);
+    expect(clients[0].quit).not.toHaveBeenCalled();
+    expect(clients[0].disconnect).toHaveBeenCalledTimes(1);
 
     await expect(service.checkReadiness()).resolves.toBeUndefined();
     expect(MockedIORedis).toHaveBeenCalledTimes(2);
@@ -1137,10 +1190,10 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-async function flushPromises(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+async function flushPromises(turns = 64): Promise<void> {
+  for (let turn = 0; turn < turns; turn += 1) {
+    await Promise.resolve();
+  }
 }
 
 async function waitForMockCall(mock: jest.Mock): Promise<void> {
@@ -1151,9 +1204,9 @@ async function waitForMockCallCount(
   mock: jest.Mock,
   expectedCount: number,
 ): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 16; attempt += 1) {
     if (mock.mock.calls.length >= expectedCount) return;
-    await Promise.resolve();
+    await flushPromises();
   }
   throw new Error(`Expected ${expectedCount} mock calls were not observed`);
 }

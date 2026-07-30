@@ -239,11 +239,53 @@ describe('Realtime state-store fallback reconciliation', () => {
       expect(proxy.openSocketCount()).toBe(0);
     },
   );
+
+  (redisUrl ? it : it.skip)(
+    'retires a half-open Redis client and recovers on the same stable endpoint',
+    async () => {
+      const target = new URL(redisUrl as string);
+      const proxy = new RedisProxy(
+        target.hostname,
+        Number(target.port || '6379'),
+      );
+      const port = await proxy.listen();
+      const stateStore = new RealtimeStateStoreService(
+        new ConfigService<Env, true>({
+          REDIS_URL: `redis://127.0.0.1:${port}`,
+        }),
+      );
+      const probes = createProbeService(stateStore);
+
+      try {
+        await expect(stateStore.checkReadiness()).resolves.toBeUndefined();
+        proxy.suspendTraffic();
+
+        const outageStartedAt = Date.now();
+        await expect(
+          probes.evaluate('api', 'readiness'),
+        ).resolves.toMatchObject({ statusCode: 503 });
+        expect(Date.now() - outageStartedAt).toBeLessThan(1_250);
+
+        proxy.resumeTraffic();
+        await expect(stateStore.checkReadiness()).resolves.toBeUndefined();
+        await expect(
+          probes.evaluate('api', 'readiness'),
+        ).resolves.toMatchObject({ statusCode: 200 });
+      } finally {
+        proxy.resumeTraffic();
+        await stateStore.onModuleDestroy();
+        await proxy.stop();
+      }
+
+      expect(proxy.openSocketCount()).toBe(0);
+    },
+  );
 });
 
 class RedisProxy {
   private server: Server | null = null;
   private readonly sockets = new Set<Socket>();
+  private suspended = false;
 
   constructor(
     private readonly targetHost: string,
@@ -276,6 +318,16 @@ class RedisProxy {
     });
   }
 
+  suspendTraffic(): void {
+    this.suspended = true;
+    for (const socket of this.sockets) socket.pause();
+  }
+
+  resumeTraffic(): void {
+    this.suspended = false;
+    for (const socket of this.sockets) socket.resume();
+  }
+
   async stop(): Promise<void> {
     for (const socket of this.sockets) socket.destroy();
     this.sockets.clear();
@@ -293,6 +345,7 @@ class RedisProxy {
 
   private track(socket: Socket): void {
     this.sockets.add(socket);
+    if (this.suspended) socket.pause();
     socket.once('close', () => this.sockets.delete(socket));
   }
 }

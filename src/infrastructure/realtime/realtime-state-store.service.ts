@@ -9,6 +9,7 @@ import type {
 
 const REDIS_STATE_CONNECT_TIMEOUT_MS = 1000;
 const REDIS_STATE_COMMAND_TIMEOUT_MS = 1000;
+const REDIS_STATE_READINESS_TIMEOUT_MS = 600;
 const REDIS_STATE_STORE_CLOSE_TIMEOUT_MS = 1000;
 const REDIS_STATE_RECOVERY_CANDIDATE_INVALID =
   'realtime_state_recovery_candidate_invalid';
@@ -130,6 +131,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
     IORedis,
     Promise<void>
   >();
+  private readonly forceDisconnectedRedisClients = new WeakSet<IORedis>();
   private mutationTail: Promise<void> = Promise.resolve();
   private readonly localTypingSweepTimer: NodeJS.Timeout;
   private localTypingSweepPromise: Promise<void> | null = null;
@@ -162,7 +164,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
 
     const redis = this.redis;
     try {
-      await redis.ping();
+      await this.pingRedisForReadiness(redis);
       this.redisWarningLogged = false;
     } catch {
       this.markRedisUnavailable(redis);
@@ -478,8 +480,9 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
     const previous = this.redis;
     const candidate = new IORedis(redisUrl, {
       lazyConnect: true,
-      maxRetriesPerRequest: null,
+      maxRetriesPerRequest: 0,
       enableOfflineQueue: false,
+      autoResendUnfulfilledCommands: false,
       connectTimeout: REDIS_STATE_CONNECT_TIMEOUT_MS,
       commandTimeout: REDIS_STATE_COMMAND_TIMEOUT_MS,
       retryStrategy: () => null,
@@ -488,7 +491,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
 
     try {
       await this.connectRedisClient(candidate);
-      await candidate.ping();
+      await this.pingRedisForReadiness(candidate);
       if (this.isDestroying()) {
         await this.closeRedisClient(candidate);
         return null;
@@ -507,7 +510,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
       }
 
       this.assertRecoveryCandidateReady(candidate);
-      await candidate.ping();
+      await this.pingRedisForReadiness(candidate);
       this.assertRecoveryCandidateReady(candidate);
 
       this.lifecycleState = 'ready';
@@ -543,6 +546,16 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
       ]);
     } finally {
       if (timeout) clearTimeout(timeout);
+    }
+  }
+
+  private async pingRedisForReadiness(redis: IORedis): Promise<void> {
+    const result = await settleRedisClose(
+      Promise.resolve().then(() => redis.ping()),
+      REDIS_STATE_READINESS_TIMEOUT_MS,
+    );
+    if (result !== 'fulfilled') {
+      throw new Error('realtime_state_redis_unavailable');
     }
   }
 
@@ -648,8 +661,12 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
   }
 
   private markRedisUnavailable(redis: IORedis): void {
-    void this.closeRedisClient(redis);
-    if (this.redis !== redis) return;
+    const wasOwned = this.redis === redis;
+    if (wasOwned) {
+      this.redis = undefined;
+    }
+    this.forceDisconnectRedisClient(redis);
+    if (!wasOwned) return;
     this.setFallbackState();
     this.logRedisFallbackWarning();
   }
@@ -965,6 +982,16 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
     if (redis) await this.closeRedisClient(redis);
   }
 
+  private forceDisconnectRedisClient(redis?: IORedis): void {
+    if (!redis || this.forceDisconnectedRedisClients.has(redis)) return;
+    this.forceDisconnectedRedisClients.add(redis);
+    try {
+      redis.disconnect();
+    } catch {
+      // Failed clients are retired synchronously; no raw error is exposed.
+    }
+  }
+
   private closeRedisClient(redis?: IORedis): Promise<void> {
     if (!redis) return Promise.resolve();
     const existing = this.redisClientClosePromises.get(redis);
@@ -989,11 +1016,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
       if (result === 'fulfilled') return;
     }
 
-    try {
-      redis.disconnect();
-    } catch {
-      // Redis ownership is settled; lifecycle logging remains fixed.
-    }
+    this.forceDisconnectRedisClient(redis);
   }
 
   private logRedisFallbackWarning(): void {
