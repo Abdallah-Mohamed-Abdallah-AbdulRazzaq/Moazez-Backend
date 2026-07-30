@@ -4,16 +4,16 @@
 
 | Field | Value |
 | --- | --- |
-| Task ID | `PRODUCTION-READINESS-1C-G04-FINAL-CI-REDIS-RECOVERY-CLOSEOUT` |
+| Task ID | `PRD1-G04-IMPLEMENT-PROVEN-BOUNDED-BULLMQ-READINESS-FIX` |
 | Repository | `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend` |
 | Branch | `feat/production-readiness-1c-health-probes` |
 | Origin/main baseline | `2f87a155cf27f2186cfd7746026562ef18cb4f71` |
-| Feature HEAD before final correction | `e7179f0e6fd61c52e5093ba7a01f0886c88137e6` |
+| Feature HEAD before final correction | `aca314de829c35d1bfcfad8cdbe149ddbbff5e02` |
 | Date | `2026-07-30` |
 | Timezone | `Africa/Cairo` |
 | Scope | `PRD1-G04` only |
-| Gate status | `COMPLETE` |
-| Document status | `PRD1_G04_CANDIDATE_REVALIDATION_FIX_READY_FOR_COMMIT` |
+| Gate status | `READY_FOR_OWNER_COMMIT_AND_GITHUB_RERUN` |
+| Document status | `PRD1_G04_BULLMQ_READINESS_FINAL_FIX_READY_FOR_COMMIT` |
 
 ## Outcome
 
@@ -21,12 +21,28 @@
 dependency-injection graph, a credential, a JWT requirement, path obscurity,
 or a Phase 2 runtime selector.
 
-The final PR check failure was traced to state-store recovery waiting
-indefinitely for `QUIT` on the retired reconnecting Redis client after a
-candidate client had already connected and reconciled. Retired-client closure
-is now bounded, exact-once, and observed through late settlement. The same canonical application process recovers after the same Redis
-container and Redis process are paused and resumed while the configured
-Redis endpoint remains stable.
+GitHub Actions run `30500009569`, job `90737376235`, remained at readiness
+`503` even though the same Redis container was running, unpaused, and returning
+`PONG`. An unchanged local reproduction recovered, so recovery alone was not
+accepted as proof. Diagnostic instrumentation established that `queue-redis`
+crossed its approximately 750 ms caller deadline while its shared-connection
+operation remained active for approximately 3.33 seconds. The deterministic
+defect was therefore a provider operation whose lifetime was longer than and
+independent of its caller deadline.
+
+Queue readiness now owns a separate finite Redis client and a service-level
+single flight. Its complete connect-and-`PING` operation is bounded to 600 ms,
+and its graceful close is bounded to 400 ms with exact-once forced disconnect
+fallback. Late fulfillment and rejection remain observed but cannot restore
+ownership. Queue and Worker instances remain on the original shared BullMQ
+connection with `maxRetriesPerRequest: null`; no readiness-only client is ever
+passed to either.
+
+The same canonical application process now recovers after the same Redis
+container and Redis process are paused and resumed while the configured Redis
+endpoint remains stable. A GitHub rerun remains pending until the owner commits
+and pushes this unstaged correction; this document does not claim remote
+success.
 
 The process now owns two HTTP listeners:
 
@@ -194,11 +210,13 @@ recovery.
 The temporary-disk check creates and removes a unique probe directory and
 zero-length file below the configured operating-system temporary root. Storage
 uses the existing non-destructive bucket-existence readiness method. Queue
-readiness uses the existing Redis connection and verifies that every assigned
-BullMQ worker has a currently running, unpaused processing loop. Unexpected
-`worker.run()` settlement or rejection makes that worker unavailable.
-Readiness does not create a queue or inspect job counts. Queue
-backlog/failure-count telemetry remains Phase 7.
+connectivity readiness uses a dedicated finite Redis client that is never
+passed to a Queue or Worker, while assigned-consumer readiness verifies that
+every required BullMQ worker has a currently running, unpaused processing
+loop. Queue and Worker instances remain on the original shared BullMQ
+connection. Unexpected `worker.run()` settlement or rejection makes that
+worker unavailable. Readiness does not create a queue or inspect job counts.
+Queue backlog/failure-count telemetry remains Phase 7.
 
 ## Realtime coverage, recovery, and shutdown compatibility
 
@@ -435,11 +453,18 @@ The experiment proved:
   topology detail;
 - pausing disposable Redis made API, Core, and Media readiness return `503`
   without removing or changing the configured Redis DNS endpoint;
-- API liveness remained `200`;
+- API, Core, and Media liveness remained `200`;
 - resuming the same Redis container and process allowed readiness to recover
   to `200`; focused real-Redis
   proofs independently exercised both the Socket.IO adapter and state-store
   clients, including state-store fallback and same-process recovery;
+- the final compiled production image settled its BullMQ provider outage in
+  403 ms, below the 750 ms caller deadline, with both the service readiness
+  flight and executor flight maps empty before recovery;
+- the focused real-Redis TCP-proxy integration measured 529 ms at its slowest
+  accepted final-tree run, resumed the stable endpoint, returned healthy on a
+  fresh executor call, and used the same worker instance to process jobs before
+  and after recovery;
 - an additional final-image reconciliation process inspected actual Redis
   keys and proved restoration of two sockets for one user, school/user
   indexes, the exact expected latest `updatedAt`, positive bounded presence
@@ -461,7 +486,8 @@ The experiment proved:
 - the same application container and process recovered from readiness `503`
   to `200` after the same Redis container and Redis process were paused,
   resumed, and reached `PONG`; application and Redis container identities and
-  start times remained unchanged, and liveness remained `200` throughout;
+  start times remained unchanged, all three role liveness probes remained
+  `200`, and the application did not restart;
 - both listeners were closed;
 - the final forced-timeout fixture exited `1` after 1,458 ms container wall
   time against a 1,000 ms coordinator deadline; it emitted the bounded
@@ -475,7 +501,20 @@ The experiment proved:
 
 | Command / evidence | Outcome |
 | --- | --- |
-| hard Git preflight | PASS — branch `feat/production-readiness-1c-health-probes`; HEAD and remote feature `e7179f0e6fd61c52e5093ba7a01f0886c88137e6`; `origin/main` `2f87a155cf27f2186cfd7746026562ef18cb4f71`; two branch commits; `0/0` against the remote feature; clean index/worktree before correction |
+| hard Git preflight | PASS — branch `feat/production-readiness-1c-health-probes`; HEAD and remote feature `aca314de829c35d1bfcfad8cdbe149ddbbff5e02`; `origin/main` `2f87a155cf27f2186cfd7746026562ef18cb4f71`; `0/0` against the remote feature; empty index, clean worktree, zero untracked paths before correction; PR #51 open, Draft, 50 paths |
+| final BullmqService unit suite with `--runInBand --detectOpenHandles` | PASS — 1 suite, 30 tests, 2.112 s, exit `0`; separate options, service single flight, hanging owned/candidate operations, late settlement, stale ownership, recovery, shutdown race, exact-once close, fixed failure/logging, real executor, and worker isolation |
+| final bounded-executor and operational-probe focused suites | PASS — 2 executor tests and 22 operational-probe tests; API, Core, and Media retain `queue-redis`, readiness fails closed and recovers, and liveness remains independent |
+| final real-Redis BullMQ suspend/resume integration | PASS — 1 suite, 3 tests, zero skips, 3.563 s; bounded case settled in 529 ms, both flight maps were empty, a fresh call recovered, and the same worker processed the post-recovery job |
+| final compiled-production-image BullMQ provider proof | PASS — suspended stable endpoint returned unhealthy in 403 ms; service and executor flights were empty; the next invocation returned healthy |
+| final production TypeScript/image build | PASS — canonical Node `22.23.1` production build and Prisma Client generation completed; final image manifest-list digest `sha256:de7dbc05d6f0d1658a257f2254a3c91b3fe96ac967910c197b8a7305b80163cf` |
+| complete queue and health regression | PASS — 6 suites, 68 tests, 6.544 s, exit `0` |
+| final full-unit regression | PASS — 543 suites, 3,922 tests, 107.62 s, exit `0` |
+| final exact security regression | PASS — 89 suites, 1,154 tests, 424.892 s, exit `0`; unchanged tests and timeouts on fresh synthetic PostgreSQL, Redis, and MinIO |
+| final real `AppModule` E2E | PASS — 1 suite, 2 tests, 46.281 s, `--detectOpenHandles`, exit `0` |
+| final runtime policy | PASS — Node `22.23.1`, Firebase Admin `14.0.0`, 10 tests, exit `0` |
+| final workflow YAML parse | PASS — `js-yaml`, exit `0`; the early lifecycle command includes `bullmq.service.spec.ts`, and the existing BullMQ integration step owns the extended real-Redis file |
+| final migration governance | PASS — base `origin/main` at `2f87a155cf27`, 7 active migrations, 0 new, rebaseline off |
+| final isolated Prisma validation/generation | PASS — schema valid; Prisma Client `6.19.3` generated with synthetic `DATABASE_URL` and no workspace `.env` access |
 | `npm run verify:runtime-policy` | PASS — Node `22.23.1`, Firebase Admin `14.0.0`, 10 tests, 0.307 s, exit `0` |
 | pre-candidate-revalidation state-store close/recovery lifecycle with `--detectOpenHandles` | PASS — 1 suite, 25 tests, 2.057 s, exit `0`; historical R6 evidence covering hanging/late-rejected `QUIT`, exact-once forced disconnect, destroy overlap, failed-candidate retry, and stale retired-client failure ownership |
 | pre-candidate-revalidation focused health/lifecycle/realtime command in the isolated media-test image with `--detectOpenHandles` | PASS — 15 suites, 111 tests, 15.56 s, exit `0`; this evidence predates the final five candidate-revalidation tests |
@@ -491,16 +530,40 @@ The experiment proved:
 | isolated `npx prisma validate && npx prisma generate` | PASS — Prisma `6.19.3`; no host Prisma/config command and no workspace `.env` read |
 | fresh disposable `npx prisma migrate deploy` and corrected `npm run seed` | PASS — all 7 committed migrations plus synthetic seed |
 | R6 final-image fallback reconciliation process before the final candidate-revalidation delta | PASS — actual Redis keys for one user, two-socket membership, indexes, exact expected latest `updatedAt`, bounded TTLs, remaining typing TTL, and expired-entry absence |
-| canonical public/internal-port, stable-endpoint outage/recovery, and shutdown proof | PASS — probe port unpublished; pausing Redis produced API readiness `200` → `503`; liveness stayed `200`; resuming the same Redis container and process restored readiness to `200`; application and Redis container IDs/start times remained identical; post-intake public code `000`; SIGTERM exit `0`; no unhandled rejection or post-close Redis command |
+| final canonical public/internal-port, stable-endpoint outage/recovery, and shutdown proof | PASS — exact workflow startup script against the final production image; API, Core, and Media readiness each returned `200` → `503` → `200`; all three liveness probes stayed `200`; Redis returned `PONG`; application ID/start time and Redis ID/start time remained identical; no application restart; post-intake public code was non-`2xx`; SIGTERM exit `0` with lifecycle completion in 43 ms |
 | no-extra-handle forced-timeout process | PASS — exit `1`, 1,458 ms container wall time, bounded timed-out event, no completion event |
 | exact Node/Firebase/Prisma/non-root/media runtime smokes | PASS — Node `v22.23.1`, Firebase app/messaging, Prisma Client, UID `1000`, and ffprobe/media contract |
 | `js-yaml` workflow structural parse | PASS — 40 steps, exit `0` |
 | matrix validator | PASS — 74 unique gates, 38 risks, only PRD1-G04 differs, and G05–G07 remain `NOT_STARTED` |
-| final `git diff --check`, exact four-path correction scope, unchanged 50-path PR scope, changed-content secret scan, and disposable cleanup | PASS |
+| final `git diff --check`, exact five-path correction scope, unchanged 50-path PR scope, changed-content secret scan, and disposable cleanup | PASS |
 
 ### Preliminary failures retained
 
 No failed or interrupted attempt is relabeled as a pass:
+
+- The host BullmqService Jest command found no usable host Jest binary and
+  executed zero tests. The first operational-probe container used stale
+  generated Prisma artifacts and also executed zero tests. Both were rerun in
+  the final media-test image after isolated Prisma generation.
+- The first BullmqService container run exposed four fake-timer assertions
+  whose rejection expectations were attached too late; the fixtures were
+  corrected before the 30-test final-tree pass. The first real-Redis bound
+  asserted an unnecessarily high 550 ms lower limit and observed the valid
+  400 ms client command timeout at 407 ms; the contract assertion was corrected
+  to require bounded settlement below 750 ms, then passed on the final tree.
+- A short wrapper discarded the first full-unit container's final summary, so
+  it was not accepted. The named rerun passed 543 suites and 3,922 tests.
+- The first exact security harness crossed its 15-minute wrapper after fixed
+  five-second setup hooks slowed through a host-gateway dependency path. The
+  first fresh direct-network run completed 88 of 89 suites but the final large
+  discovery setup hook exceeded five seconds and Jest retained teardown
+  handles. Neither attempt is accepted. The unchanged exact command was rerun
+  with Jest's failure cache prioritizing that suite; all 89 suites and 1,154
+  tests passed with unchanged source and timeouts.
+- Two workflow-script extraction attempts failed before lifecycle execution,
+  first from native quoting and then from an incomplete host dependency
+  resolution path. The workflow's parsed literal script was subsequently run
+  unchanged against the final production image and passed.
 
 - GitHub Actions run `30497819229` used `docker stop/start` for the
   disposable Redis outage. Stopping the container removed its Docker DNS
@@ -670,31 +733,21 @@ No failed or interrupted attempt is relabeled as a pass:
 
 ## Exact changed-file inventory
 
-The committed R6 package at the unchanged branch HEAD contains 50 paths
-relative to `origin/main`. This final correction changes four existing members
-of that package, so the PR scope remains 50 paths:
+The unchanged branch HEAD contains 50 paths relative to `origin/main`. This
+final correction changes five existing members of that package, so the PR
+scope remains 50 paths:
 
 1. `.github/workflows/learning-media-integrity.yml`
 2. `docs/production-readiness/phase-1/03-minimum-health-probes-closeout.md`
-3. `src/infrastructure/realtime/realtime-state-store.service.ts`
-4. `src/infrastructure/realtime/tests/realtime-state-store.service.spec.ts`
+3. `src/infrastructure/queue/bullmq.service.spec.ts`
+4. `src/infrastructure/queue/bullmq.service.ts`
+5. `test/integration/bullmq-shutdown-lifecycle.integration.spec.ts`
 
-The four final corrections remain unstaged and uncommitted. R6 added only
-`realtime.gateway-redis-lifecycle.spec.ts`; it is required for deterministic
-publisher/subscriber command ownership, shared-flight, late-rejection,
-bounded-close, and client-option proof. No new package, schema, migration, or
-generated artifact was introduced.
+The five final corrections remain unstaged and uncommitted. No new package,
+lockfile, schema, migration, seed, generated artifact, queue payload, worker
+processor, storage, or realtime change was introduced.
 
-The exact R6 delta over the accepted R5 package is:
-
-1. `.github/workflows/learning-media-integrity.yml`
-2. `OBSERVABILITY.md`
-3. `docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md`
-4. `docs/production-readiness/phase-1/03-minimum-health-probes-closeout.md`
-5. `src/infrastructure/realtime/realtime-state-store.service.ts`
-6. `src/infrastructure/realtime/realtime.gateway.ts`
-7. `src/infrastructure/realtime/tests/realtime-state-store.service.spec.ts`
-8. `src/infrastructure/realtime/tests/realtime.gateway-redis-lifecycle.spec.ts`
+The complete PR path inventory remains:
 
 1. `.env.example`
 2. `.github/workflows/learning-media-integrity.yml`
