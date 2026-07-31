@@ -2,11 +2,13 @@
 
 ## Gate status
 
-`IMPLEMENTED_LOCAL_VALIDATION_PENDING_REMOTE_CI`
+`COMPLETE`
 
-This closeout records the local regression implementation and validation for
-`PRD1-G05`. Remote execution of the dedicated integrity workflow remains
-required before the gate can be accepted.
+`PRD1-G05` is complete. The existing School Email Delivery job ID contract was
+proven against the locked BullMQ packages and real Redis. The exact three-path
+implementation candidate passed local owner verification and pull-request CI,
+PR #52 merged into `main`, and all four post-merge push workflows passed on the
+exact merge commit.
 
 ## Starting baseline
 
@@ -143,23 +145,66 @@ External local evidence is retained at:
 
 `C:\Users\Abdal\AppData\Local\Temp\moazez-prd1-g05-b-20260731-034012-571`
 
+## Remote CI, publication, and merge evidence
+
+The approved implementation candidate was published in PR #52.
+
+| Evidence                  | Verified value                             |
+| ------------------------- | ------------------------------------------ |
+| Candidate commit          | `5f4d07da2361ad63ad443c66b3d303c2255505ea` |
+| Candidate commits         | `1`                                        |
+| Candidate paths           | `3`                                        |
+| Production source changes | `0`                                        |
+| Candidate workflow        | `School Email Delivery Integrity`          |
+| Candidate workflow run    | `30597935686`                              |
+| Candidate workflow event  | `pull_request`                             |
+| Candidate workflow result | PASS                                       |
+| Merge commit              | `ad58d34c45ea77c6fc51b47fa221f79f252a5b78` |
+
+All four reported pull-request checks passed on the implementation candidate.
+
+The exact merge commit then passed these automatic `push` workflows on
+`main`:
+
+| Workflow                        | Run ID        | Result |
+| ------------------------------- | ------------- | ------ |
+| Learning Content Integrity      | `30598436406` | PASS   |
+| Learning Media Integrity        | `30598436417` | PASS   |
+| Migration Integrity             | `30598436434` | PASS   |
+| School Email Delivery Integrity | `30598436400` | PASS   |
+
+The automatic post-merge runs appeared late in the first GitHub CLI listing,
+but they were subsequently resolved by their exact merge SHA. No manually
+dispatched replacement run was required.
+
+The GitHub runner emitted a non-blocking annotation that Node.js 20-based
+versions of `actions/checkout@v4` and `actions/setup-node@v4` were being forced
+to the Node.js 24 action runtime. The workflow completed successfully. This
+annotation does not change the School Email Delivery compatibility result and
+requires no production-source change in this gate.
+
+PR #51 remained open, Draft, unmerged, and unchanged throughout `PRD1-G05`.
+
 ## Unchanged production behavior
 
-This regression adds no production TypeScript change. It does not change queue
-or job names, the builder format, attempts, backoff, worker behavior, delivery
-processing, API contracts, database persistence, Prisma schema, migrations,
-seeds, package manifests, lockfile, runtime image, Compose configuration, or
-the acceptance matrix.
+The implementation PR added no production TypeScript change. It did not change
+queue or job names, the builder format, attempts, backoff, worker behavior,
+delivery processing, API contracts, database persistence, Prisma schema,
+migrations, seeds, package manifests, lockfile, runtime image, or Compose
+configuration.
 
-## Exact changed-file inventory
+This governance closeout updates only this closeout document and the Phase 0A
+acceptance matrix. It introduces no runtime or production-source behavior.
+
+## Implementation PR exact changed-file inventory
 
 1. `.github/workflows/school-email-delivery-integrity.yml`
 2. `test/integration/school-email-delivery-job-id.integration.spec.ts`
 3. `docs/production-readiness/phase-1/04-school-email-delivery-job-id-closeout.md`
 
-No other repository path is authorized or changed.
+No other repository path was changed by implementation PR #52.
 
-## Cleanup
+## Local validation cleanup
 
 - The integration test obliterated its queue and verified zero matching BullMQ
   keys.
@@ -168,13 +213,26 @@ No other repository path is authorized or changed.
 - The disposable Redis container and build-validation container were removed.
 - The temporary validation image was removed after final checks.
 - No test network was created.
-- No worker, email delivery, application process, migration, seed, commit,
-  push, or GitHub mutation was performed.
+- During local validation, no worker, email delivery, application process,
+  migration, seed, commit, push, or GitHub mutation was performed. Publication,
+  CI, merge, and post-merge verification occurred later as recorded above.
 
-## Remaining requirement
+## Final disposition
 
-The dedicated `School Email Delivery Integrity` workflow must pass remotely on
-the eventual focused PR candidate. Until that independent remote result and
-owner verification exist, the status remains:
+The dedicated candidate workflow requirement was satisfied by successful run
+`30597935686` on candidate
+`5f4d07da2361ad63ad443c66b3d303c2255505ea`.
 
-`IMPLEMENTED_LOCAL_VALIDATION_PENDING_REMOTE_CI`
+PR #52 merged the approved three-path candidate into `main` as merge commit
+`ad58d34c45ea77c6fc51b47fa221f79f252a5b78`.
+
+That merge commit passed Learning Content Integrity, Learning Media Integrity,
+Migration Integrity, and School Email Delivery Integrity through automatic
+`push` runs on `main`.
+
+The exact custom job ID contract is compatible with the locked BullMQ and Redis
+runtime. No production-source remediation is required.
+
+Final status:
+
+`COMPLETE`
