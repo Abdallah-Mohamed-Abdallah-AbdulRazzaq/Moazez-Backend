@@ -1,0 +1,124 @@
+name: School Email Delivery Integrity
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/school-email-delivery-integrity.yml'
+      - 'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md'
+      - 'docs/production-readiness/phase-1/04-school-email-delivery-job-id-closeout.md'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'src/infrastructure/queue/**'
+      - 'src/modules/settings/email/delivery/**'
+      - 'test/integration/school-email-delivery-job-id.integration.spec.ts'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/school-email-delivery-integrity.yml'
+      - 'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md'
+      - 'docs/production-readiness/phase-1/04-school-email-delivery-job-id-closeout.md'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'src/infrastructure/queue/**'
+      - 'src/modules/settings/email/delivery/**'
+      - 'test/integration/school-email-delivery-job-id.integration.spec.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: school-email-delivery-integrity-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  school-email-delivery-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://build_only:build_only@127.0.0.1:5432/moazez_build_only?schema=public
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.1'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Record queue package versions
+        run: >-
+          node -e "console.log('BullMQ ' +
+          require('bullmq/package.json').version);
+          console.log('ioredis ' + require('ioredis/package.json').version)"
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Build application
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        run: npm run build
+
+      - name: Run focused school email delivery unit tests
+        run: >-
+          npx jest --runInBand --runTestsByPath
+          src/modules/settings/email/delivery/tests/email-delivery.use-cases.spec.ts
+          src/modules/settings/email/delivery/tests/email-recipient-targeting.service.spec.ts
+          src/modules/settings/email/delivery/tests/process-email-delivery-recipient.use-case.spec.ts
+
+      - name: Run real Redis school email delivery job-ID regression
+        shell: bash
+        env:
+          RUN_PRD1_G05_REDIS_INTEGRATION: '1'
+          PRD1_G05_REDIS_URL: redis://127.0.0.1:6379
+        run: |
+          set -euo pipefail
+          output_file="$RUNNER_TEMP/school-email-delivery-job-id.log"
+          set +e
+          npx jest --config ./test/jest-e2e.json \
+            --runInBand \
+            --detectOpenHandles \
+            --runTestsByPath \
+            test/integration/school-email-delivery-job-id.integration.spec.ts \
+            2>&1 | tee "$output_file"
+          jest_status="${PIPESTATUS[0]}"
+          set -e
+          test "$jest_status" -eq 0
+          grep --extended-regexp --quiet \
+            'Test Suites:[[:space:]]+1 passed,[[:space:]]+1 total' \
+            "$output_file"
+          grep --extended-regexp --quiet \
+            'Tests:[[:space:]]+1 passed,[[:space:]]+1 total' \
+            "$output_file"
+          if grep --extended-regexp --quiet \
+            'Test Suites:.*[1-9][0-9]* skipped|Tests:.*[1-9][0-9]* skipped' \
+            "$output_file"; then
+            echo 'The opted-in integration contract was skipped.' >&2
+            exit 1
+          fi
+          if grep --extended-regexp --ignore-case --quiet \
+            'Jest has detected the following.*open handle|open handles? potentially keeping Jest from exiting|did not exit.*after the test run' \
+            "$output_file"; then
+            echo 'Jest reported an open-handle warning.' >&2
+            exit 1
+          fi
