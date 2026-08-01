@@ -51,7 +51,29 @@ printf 'scenario=%s\nstart=%s\n' "$SCENARIO" "$SCENARIO_STARTED_AT" \
 : >"$ARTIFACT_DIR/transitions.log"
 
 safe_output() {
-  sed -E \
+  node -e '
+    const fs = require("node:fs");
+    const sensitiveNames = [
+      "STORAGE_ACCESS_KEY",
+      "STORAGE_SECRET_KEY",
+      "JWT_ACCESS_SECRET",
+      "JWT_REFRESH_SECRET",
+      "SETTINGS_SECRET_ENCRYPTION_KEY",
+      "DATABASE_URL",
+      "REDIS_URL"
+    ];
+    const values = [...new Set(
+      sensitiveNames
+        .map((name) => process.env[name])
+        .filter((value) => typeof value === "string" && value.length > 0)
+    )].sort((left, right) => right.length - left.length);
+    let output = fs.readFileSync(0, "utf8");
+    for (const value of values) {
+      output = output.split(value).join("[REDACTED]");
+    }
+    process.stdout.write(output);
+  ' |
+    sed -E \
     -e 's#([A-Za-z][A-Za-z0-9+.-]*://)[^/@[:space:]]+@#\1[REDACTED]@#g' \
     -e 's#((password|secret|token|authorization|access[_-]?key|jwt)[^=:" ]*[=:][[:space:]]*)[^, }"]+#\1[REDACTED]#Ig'
 }

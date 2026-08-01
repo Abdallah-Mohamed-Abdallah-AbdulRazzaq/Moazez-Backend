@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ConfigService } from '@nestjs/config';
+import { load } from 'js-yaml';
 import { MediaRuntimeStartupGuard } from '../application/media-runtime-startup.guard';
 import { validateEnv } from '../../../../config/env.validation';
 
@@ -162,6 +163,25 @@ describe('learning media upload foundation contract', () => {
       join(root, '.github/workflows/learning-media-integrity.yml'),
       'utf8',
     );
+    const harness = readFileSync(
+      join(root, 'scripts/ci/health-probe-runtime.sh'),
+      'utf8',
+    );
+    const parsedWorkflow = load(workflow) as {
+      jobs: {
+        'learning-media-integrity': {
+          steps: Array<{
+            id?: string;
+            name?: string;
+            run?: string;
+            uses?: string;
+            if?: string;
+            'continue-on-error'?: boolean;
+          }>;
+        };
+      };
+    };
+    const steps = parsedWorkflow.jobs['learning-media-integrity'].steps;
 
     for (const requiredPath of [
       'test/integration/learning-media-upload.integration.spec.ts',
@@ -189,8 +209,56 @@ describe('learning media upload foundation contract', () => {
     ]) {
       expect(workflow).toContain(requiredPath);
     }
-    expect(workflow).toContain(
-      'Verify application startup with pinned ffprobe',
+    expect(
+      steps.filter((step) => step.name === 'Verify ffprobe runtime contract'),
+    ).toHaveLength(1);
+
+    const scenarios = [
+      ['health_runtime_startup', 'startup'],
+      ['health_runtime_redis_recovery', 'redis-recovery'],
+      ['health_runtime_storage_recovery', 'storage-recovery'],
+      ['health_runtime_realtime_reconciliation', 'realtime-reconciliation'],
+      ['health_runtime_graceful_shutdown', 'graceful-shutdown'],
+      ['health_runtime_forced_timeout', 'forced-timeout'],
+    ] as const;
+    for (const [id, scenario] of scenarios) {
+      const scenarioSteps = steps.filter((step) => step.id === id);
+      expect(scenarioSteps).toHaveLength(1);
+      expect(scenarioSteps[0]).toMatchObject({
+        'continue-on-error': true,
+        run: `bash scripts/ci/health-probe-runtime.sh ${scenario}`,
+      });
+    }
+
+    expect(
+      steps.filter((step) => step.name === 'Health runtime scenario summary'),
+    ).toEqual([expect.objectContaining({ if: 'always()' })]);
+    expect(
+      steps.filter((step) => step.name === 'Upload health runtime diagnostics'),
+    ).toEqual([
+      expect.objectContaining({
+        if: 'always()',
+        uses: 'actions/upload-artifact@v4',
+      }),
+    ]);
+    expect(
+      steps.filter(
+        (step) => step.name === 'Clean up learning media containers',
+      ),
+    ).toEqual([expect.objectContaining({ if: 'always()' })]);
+    expect(
+      steps.some(
+        (step) =>
+          step.name === 'Verify application startup with pinned ffprobe',
+      ),
+    ).toBe(false);
+
+    const dispatchedScenarios = Array.from(
+      harness.matchAll(/^  ([a-z-]+)\) scenario_[a-z_]+ ;;/gmu),
+      (match) => match[1],
+    );
+    expect(dispatchedScenarios).toEqual(
+      scenarios.map(([, scenario]) => scenario),
     );
     expect(workflow).toContain('STORAGE_CORS_ORIGINS');
     expect(workflow).toContain('postgres:16-alpine');
