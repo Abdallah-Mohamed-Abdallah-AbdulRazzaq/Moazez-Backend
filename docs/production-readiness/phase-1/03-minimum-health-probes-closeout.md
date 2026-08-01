@@ -1,55 +1,111 @@
-# Phase 1C/G04 — Recovery Status and Historical Evidence
+# Phase 1C/G04 — Minimum Health Probes Final Closeout
 
 ## Document control
 
-| Field                                            | Value                                                          |
-| ------------------------------------------------ | -------------------------------------------------------------- |
-| Historical task ID                               | `PRD1-G04-IMPLEMENT-PROVEN-BOUNDED-BULLMQ-READINESS-FIX`       |
-| Repository                                       | `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend`         |
-| Branch                                           | `feat/production-readiness-1c-health-probes`                   |
-| Historical merge base                            | `2f87a155cf27f2186cfd7746026562ef18cb4f71`                     |
-| Integrated current main                          | `c2433ac3809225bac59b779fc175efbd0b9f5744`                     |
-| Local reconciliation merge                       | `9a06218ee91ee2ee56ee0cffb08a7ae2a2118d77`                     |
-| Historical feature HEAD before BullMQ correction | `aca314de829c35d1bfcfad8cdbe149ddbbff5e02`                     |
-| Accepted pre-reconciliation implementation HEAD  | `c8aea07a37367d7e88d8b19101f1923ba29fef3f`                     |
-| Current remote feature HEAD                      | `c8aea07a37367d7e88d8b19101f1923ba29fef3f`                     |
-| Historical F2-R1B correction                     | 6 paths — 5 tracked modifications plus 1 then-new storage test |
-| Pre-reconciliation publication candidate         | 55 paths relative to the pre-reconciliation `origin/main`      |
-| Date                                             | `2026-08-01`                                                   |
-| Timezone                                         | `Africa/Cairo`                                                 |
-| Scope                                            | `PRD1-G04` only                                                |
-| Gate status                                      | `RECOVERY IN PROGRESS`                                         |
-| Acceptance matrix                                | G04 `NOT_STARTED`; G05 `COMPLETE`; G06 `COMPLETE`              |
-| PR status                                        | #51 `OPEN`, `DRAFT`, `UNMERGED`                                |
-| Document status                                  | `RECOVERY_STATUS_RECONCILED_WITH_CURRENT_MAIN`                 |
-| Latest remote Learning Media Integrity           | run `30557277380` — `FAILED`                                   |
+| Field                       | Value                                                        |
+| --------------------------- | ------------------------------------------------------------ |
+| Gate                        | `PRD1-G04`                                                   |
+| Gate status                 | `COMPLETE`                                                   |
+| Repository                  | `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend`       |
+| Implementation candidate    | `6286b254120d1cd43f24f72043c414becd29ed02`                   |
+| Implementation PR           | #51 — `MERGED`                                               |
+| Merge commit                | `3c958962e7a9cc82c6d67be0b0fc0d3369ca50c7`                   |
+| Merge date                  | `2026-08-01`                                                 |
+| Pull-request CI             | `GREEN`                                                      |
+| Post-merge `main` CI        | `GREEN`                                                      |
+| Diagnostic security         | `PASS`                                                       |
+| Acceptance matrix           | G04/G05/G06 `COMPLETE`; G07 `NOT_STARTED`                    |
+| Document status             | `FINAL_POST_MERGE_CLOSEOUT`                                  |
+| Timezone                    | `Africa/Cairo`                                               |
 
-## Recovery status
+## Final acceptance
 
-`PRD1-G04` is **not complete**. Its current gate status is
-`RECOVERY IN PROGRESS`, and the acceptance matrix intentionally remains G04
-`NOT_STARTED` while G05 and G06 remain `COMPLETE`. PR #51 remains `OPEN`,
-`DRAFT`, and `UNMERGED`.
+`PRD1-G04` is **complete**. PR #51 merged candidate
+`6286b254120d1cd43f24f72043c414becd29ed02` through merge commit
+`3c958962e7a9cc82c6d67be0b0fc0d3369ca50c7`. All four workflows on the
+pull-request candidate and all four workflows on post-merge `main` passed.
+All six health runtime scenarios passed. The final diagnostic artifact had
+zero exact configured-sensitive-value matches and zero generic
+credential-pattern matches.
 
-The accepted pre-reconciliation implementation head is
-`c8aea07a37367d7e88d8b19101f1923ba29fef3f`. Current main
-`c2433ac3809225bac59b779fc175efbd0b9f5744` was integrated locally through
-merge commit `9a06218ee91ee2ee56ee0cffb08a7ae2a2118d77`.
+The initial storage failure was a disposable CI fixture defect: both required
+MinIO buckets were absent. The fixture now provisions those buckets outside
+the application. Production storage behavior and read-only readiness
+semantics are unchanged. Full metrics, tracing, dashboards, SLOs, alerts,
+paging, retention, and telemetry budget remain Phase 7. `PRD1-G07` remains
+`NOT_STARTED`; this closeout does not mark Phase 1 complete or authorize
+Phase 2.
 
-The latest remote Learning Media Integrity run is `30557277380`, and it
-failed. Its terminal failure domain is storage readiness. The exact storage
-root cause remains unproven: the latest storage transport correction passed
-focused tests but failed canonical runtime acceptance. Phase 1 performed no
-CI refactor and no product fix. This record does not claim `REMOTE CI GREEN`,
-`MERGE READY`, or `COMPLETE` for the current head.
+### Pull-request CI
+
+| Workflow                        | Run           | Result |
+| ------------------------------- | ------------- | ------ |
+| Migration Integrity             | `30694624225` | PASS   |
+| Learning Content Integrity      | `30694624217` | PASS   |
+| Learning Media Integrity        | `30694624220` | PASS   |
+| School Email Delivery Integrity | `30694624226` | PASS   |
+
+### Post-merge CI
+
+| Workflow                        | Run           | Result |
+| ------------------------------- | ------------- | ------ |
+| Migration Integrity             | `30696147346` | PASS   |
+| Learning Content Integrity      | `30696147343` | PASS   |
+| Learning Media Integrity        | `30696147353` | PASS   |
+| School Email Delivery Integrity | `30696147356` | PASS   |
+
+### Health runtime scenarios
+
+| Scenario                    | Result |
+| --------------------------- | ------ |
+| `startup`                   | PASS   |
+| `redis-recovery`            | PASS   |
+| `storage-recovery`          | PASS   |
+| `realtime-reconciliation`   | PASS   |
+| `graceful-shutdown`         | PASS   |
+| `forced-timeout`            | PASS   |
+
+### Diagnostic security
+
+| Evidence                                  | Result |
+| ----------------------------------------- | ------ |
+| Artifact `health-probes-30694624220-1`    | PASS   |
+| Artifact files inspected                  | 88     |
+| Exact configured-sensitive-value findings | 0      |
+| Generic credential-pattern findings       | 0      |
+
+## Confirmed root cause and causal proof
+
+The confirmed cause of the initial remote storage-readiness failure is:
+
+`MISSING_REQUIRED_MINIO_BUCKETS_IN_CI_FIXTURE`
+
+MinIO process health alone did not prove storage readiness. Both configured
+private and public buckets were initially absent from the fresh disposable
+fixture. External provisioning of only those two buckets changed a fresh
+runtime as follows:
+
+| Role readiness | Before provisioning | After provisioning |
+| -------------- | ------------------- | ------------------ |
+| API            | 503                 | 200                |
+| Core Worker    | 200                 | 200                |
+| Media Worker   | 503                 | 200                |
+
+After provisioning, startup, Redis recovery, and storage recovery all passed.
+Readiness continues to perform bounded, non-mutating bucket-existence checks;
+it does not create buckets, objects, records, queues, or live cloud resources.
 
 ## Historical implementation record
+
+The evidence below is explicitly historical and records the investigation and
+implementation path before final acceptance. Historical failures and working
+hypotheses are superseded by the final post-merge evidence above and do not
+describe the current gate state.
 
 The implementation candidate introduces the probe contract without a second
 Nest application, a second dependency-injection graph, a credential, a JWT
 requirement, path obscurity, or a Phase 2 runtime selector. The design and
-local results below are historical implementation evidence, not acceptance of
-the current reconciled head.
+local results below are retained as historical implementation evidence.
 
 GitHub Actions run `30549505229`, job `90894188042`, reached Redis recovery:
 the same Redis container was running and unpaused, `redis-cli ping` returned
@@ -96,8 +152,9 @@ passed to either.
 Historical local evidence showed the same canonical application process
 recovering after the same Redis
 container and Redis process are paused and resumed while the configured Redis
-endpoint remains stable. That local result does not supersede the failed
-remote canonical run and does not establish current acceptance.
+endpoint remains stable. At that historical checkpoint the local result did
+not supersede the then-failed remote canonical run; the final acceptance
+evidence at the start of this document now supersedes that checkpoint.
 
 The process now owns two HTTP listeners:
 
@@ -487,9 +544,9 @@ non-disclosure assertion was silently dropped.
 
 ## Historical canonical container evidence
 
-The following local results predate the failed latest remote canonical run.
-They are retained as historical evidence only and do not accept the current
-head or close PRD1-G04.
+The following local results predate the historically failed remote canonical
+run. They are retained only to explain the investigation sequence; the final
+post-merge acceptance evidence at the start of this document closes G04.
 
 The digest-pinned Node `22.23.1` production image was built and run with
 production configuration and only `3000/tcp` published to the host.
@@ -558,12 +615,13 @@ The experiment proved:
 
 ## Historical validation evidence
 
-These local results remain useful regression evidence, but none is acceptance
-of the current reconciled head or a substitute for the failed remote gate.
+These local results remain useful historical regression evidence. They were
+not acceptance at the time they were recorded and are now supplemented by the
+successful pull-request and post-merge gates above.
 
 | Command / evidence                                                                                                                                                                                                                                      | Outcome                                                                                                                                                                                                                                                                                                                                                                                              |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| hard Git preflight                                                                                                                                                                                                                                      | PASS — branch `feat/production-readiness-1c-health-probes`; HEAD and remote feature `aca314de829c35d1bfcfad8cdbe149ddbbff5e02`; `origin/main` `2f87a155cf27f2186cfd7746026562ef18cb4f71`; `0/0` against the remote feature; empty index, clean worktree, zero untracked paths before correction; PR #51 open, Draft, 50 paths                                                                        |
+| hard Git preflight                                                                                                                                                                                                                                      | HISTORICAL PASS — branch `feat/production-readiness-1c-health-probes`; HEAD and remote feature `aca314de829c35d1bfcfad8cdbe149ddbbff5e02`; `origin/main` `2f87a155cf27f2186cfd7746026562ef18cb4f71`; `0/0` against the remote feature; empty index, clean worktree, zero untracked paths before correction; historical PR #51 state was open/Draft with 50 paths                                                        |
 | final BullmqService unit suite with `--runInBand --detectOpenHandles`                                                                                                                                                                                   | PASS — 1 suite, 30 tests, 2.112 s, exit `0`; separate options, service single flight, hanging owned/candidate operations, late settlement, stale ownership, recovery, shutdown race, exact-once close, fixed failure/logging, real executor, and worker isolation                                                                                                                                    |
 | final bounded-executor and operational-probe focused suites                                                                                                                                                                                             | PASS — 2 executor tests and 22 operational-probe tests; API, Core, and Media retain `queue-redis`, readiness fails closed and recovers, and liveness remains independent                                                                                                                                                                                                                             |
 | final real-Redis BullMQ suspend/resume integration                                                                                                                                                                                                      | PASS — 1 suite, 3 tests, zero skips, 3.563 s; bounded case settled in 529 ms, both flight maps were empty, a fresh call recovered, and the same worker processed the post-recovery job                                                                                                                                                                                                               |
@@ -596,7 +654,7 @@ of the current reconciled head or a substitute for the failed remote gate.
 | no-extra-handle forced-timeout process                                                                                                                                                                                                                  | PASS — exit `1`, 1,458 ms container wall time, bounded timed-out event, no completion event                                                                                                                                                                                                                                                                                                          |
 | exact Node/Firebase/Prisma/non-root/media runtime smokes                                                                                                                                                                                                | PASS — Node `v22.23.1`, Firebase app/messaging, Prisma Client, UID `1000`, and ffprobe/media contract                                                                                                                                                                                                                                                                                                |
 | `js-yaml` workflow structural parse                                                                                                                                                                                                                     | PASS — 40 steps, exit `0`                                                                                                                                                                                                                                                                                                                                                                            |
-| matrix validator                                                                                                                                                                                                                                        | PASS — 74 unique gates, 38 risks, only PRD1-G04 differs, and G05–G07 remain `NOT_STARTED`                                                                                                                                                                                                                                                                                                            |
+| matrix validator                                                                                                                                                                                                                                        | HISTORICAL PASS — 74 unique gates and 38 risks; at that checkpoint only PRD1-G04 differed and G05–G07 were `NOT_STARTED`                                                                                                                                                                                                                                                                                            |
 | final `git diff --check`, exact five-path correction scope, unchanged 50-path PR scope, changed-content secret scan, and disposable cleanup                                                                                                             | PASS                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ### Preliminary failures retained
@@ -795,41 +853,28 @@ No failed or interrupted attempt is relabeled as a pass:
 
 ## Final publication reconciliation
 
-The accepted pre-reconciliation implementation head
-`c8aea07a37367d7e88d8b19101f1923ba29fef3f` contains 55 feature paths relative
-to the current-main baseline before local reconciliation. Integrating exact
-current main through `9a06218ee91ee2ee56ee0cffb08a7ae2a2118d77` makes the
-acceptance matrix match current main, so it is no longer a feature-side path.
-The resulting local PR path set is 54 paths; this closeout remains among them.
+PR #51 merged 13 commits and 56 changed paths. Its final candidate is
+`6286b254120d1cd43f24f72043c414becd29ed02`, and its merge commit is
+`3c958962e7a9cc82c6d67be0b0fc0d3369ca50c7`. The four final pull-request
+workflows and the four post-merge `main` workflows passed.
 
-The complete candidate is not BullMQ-only or realtime-only. It includes the
-accepted realtime gateway local-disconnect ownership, adapter-replacement
-ordering, Redis adapter recovery, fail-fast and single-flight operational
-readiness, real Redis recovery and half-open integration coverage, workflow
-outage/recovery and shutdown coverage, and the F2-R1B cancelling MinIO
-readiness transport. Product storage operations and the workflow Docker
-topology remain unchanged.
+The historical sequence below remains relevant to reviewability:
 
-Historical local technical gates A through E and the repeated F1 implementation,
-workflow, documentation, and combined-candidate reviews passed before
-publication. GitHub Actions later isolated the remaining failure to storage
-after Redis recovery. F2-R1A proposed `MINIO_TRANSPORT_TIMEOUT_DEFECT`, and
-F2-R1B implemented focused transport cancellation and same-endpoint recovery
-coverage. That correction passed focused tests but failed canonical runtime
-acceptance in run `30557277380`; the exact storage root cause is still
-unproven.
+- pre-reconciliation implementation head:
+  `c8aea07a37367d7e88d8b19101f1923ba29fef3f`;
+- local reconciliation merge:
+  `9a06218ee91ee2ee56ee0cffb08a7ae2a2118d77`;
+- historical Learning Media failure:
+  run `30557277380`, which isolated storage readiness before the root cause was
+  proven; and
+- final correction: provision the two required buckets in the disposable CI
+  fixture, without changing production storage logic or mutating readiness.
 
-Remote CI is failed, and PR #51 remains `OPEN`, `DRAFT`, and `UNMERGED`. G04
-remains `NOT_STARTED` in the acceptance matrix while G05 and G06 remain
-`COMPLETE`. This document does not claim remote CI success, remote closure of
-`PRD1-G04`, merge readiness, or completion.
-
-- Remote PR head: `c8aea07a37367d7e88d8b19101f1923ba29fef3f`.
-- Historical pre-reconciliation candidate: `55 paths`.
-- Local post-reconciliation feature diff: `54 paths`.
-- Local reconciliation merge: `9a06218ee91ee2ee56ee0cffb08a7ae2a2118d77`.
-- Latest remote Learning Media Integrity run: `30557277380` — `FAILED`.
-- Phase 1 manual production/workflow/test edits: `0`.
+The final candidate includes the same-process management listener, bounded
+API/Core/Media role probes, Redis and realtime recovery, storage outage and
+recovery, graceful shutdown, and forced-timeout proof. Full telemetry remains
+Phase 7, live Cloud Run/IaC validation remains Phase 8, and `PRD1-G07` remains
+`NOT_STARTED`.
 
 The historical F2-R1B correction inventory was:
 
@@ -952,7 +997,7 @@ Limitations:
   production-equivalent validation of the sole-ingress/internal-probe port
   model.
 
-## Safety attestation
+## Historical implementation safety attestation
 
 - `.env` and real secret values were not read.
 - Only synthetic credentials and uniquely named disposable local containers,
@@ -963,6 +1008,7 @@ Limitations:
   configuration changed.
 - No shared database, shared Redis, shared storage, persistent volume,
   staging, production, or cloud resource was touched.
-- Phase 1 created one local reconciliation merge commit and this local
-  documentation-only status commit. No push, tag, pull-request update,
-  workflow rerun/cancellation, deployment, or provisioning action occurred.
+- At the historical reconciliation checkpoint, Phase 1 created one local
+  reconciliation merge and one documentation-only recovery-status commit; no
+  push, tag, pull-request update, workflow rerun/cancellation, deployment, or
+  provisioning action occurred during that checkpoint.
