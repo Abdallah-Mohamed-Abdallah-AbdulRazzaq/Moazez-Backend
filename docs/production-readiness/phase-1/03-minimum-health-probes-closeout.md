@@ -1,52 +1,80 @@
-# Phase 1C/G04 — Final CI and Redis Recovery Closeout
+# Phase 1C/G04 — Recovery Status and Historical Evidence
 
 ## Document control
 
-| Field                                            | Value                                                               |
-| ------------------------------------------------ | ------------------------------------------------------------------- |
-| Historical task ID                               | `PRD1-G04-IMPLEMENT-PROVEN-BOUNDED-BULLMQ-READINESS-FIX`            |
-| Repository                                       | `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend`              |
-| Branch                                           | `feat/production-readiness-1c-health-probes`                        |
-| Origin/main baseline                             | `2f87a155cf27f2186cfd7746026562ef18cb4f71`                          |
-| Historical feature HEAD before BullMQ correction | `aca314de829c35d1bfcfad8cdbe149ddbbff5e02`                          |
-| Current remote feature HEAD                      | `8ffb06aa55612276c9f3ef41b9ae399b102d02fb`                          |
-| F2-R1B local correction                          | 6 paths — 5 tracked modifications plus 1 untracked new storage test |
-| Current working-tree scope                       | 6 paths — 5 tracked modifications plus 1 untracked path             |
-| Final publication candidate                      | 55 paths relative to `origin/main` after explicit staging           |
-| Date                                             | `2026-07-30`                                                        |
-| Timezone                                         | `Africa/Cairo`                                                      |
-| Scope                                            | `PRD1-G04` only                                                     |
-| Gate status                                      | `F2_R1B_IMPLEMENTED_LOCAL_VALIDATION_PENDING`                       |
-| Document status                                  | `F2_R1B_MINIO_READINESS_REMEDIATION_RECORDED`                       |
-| Remote CI                                        | `PENDING`                                                           |
+| Field                                            | Value                                                          |
+| ------------------------------------------------ | -------------------------------------------------------------- |
+| Historical task ID                               | `PRD1-G04-IMPLEMENT-PROVEN-BOUNDED-BULLMQ-READINESS-FIX`       |
+| Repository                                       | `Abdallah-Mohamed-Abdallah-AbdulRazzaq/Moazez-Backend`         |
+| Branch                                           | `feat/production-readiness-1c-health-probes`                   |
+| Historical merge base                            | `2f87a155cf27f2186cfd7746026562ef18cb4f71`                     |
+| Integrated current main                          | `c2433ac3809225bac59b779fc175efbd0b9f5744`                     |
+| Local reconciliation merge                       | `9a06218ee91ee2ee56ee0cffb08a7ae2a2118d77`                     |
+| Historical feature HEAD before BullMQ correction | `aca314de829c35d1bfcfad8cdbe149ddbbff5e02`                     |
+| Accepted pre-reconciliation implementation HEAD  | `c8aea07a37367d7e88d8b19101f1923ba29fef3f`                     |
+| Current remote feature HEAD                      | `c8aea07a37367d7e88d8b19101f1923ba29fef3f`                     |
+| Historical F2-R1B correction                     | 6 paths — 5 tracked modifications plus 1 then-new storage test |
+| Pre-reconciliation publication candidate         | 55 paths relative to the pre-reconciliation `origin/main`      |
+| Date                                             | `2026-08-01`                                                   |
+| Timezone                                         | `Africa/Cairo`                                                 |
+| Scope                                            | `PRD1-G04` only                                                |
+| Gate status                                      | `RECOVERY IN PROGRESS`                                         |
+| Acceptance matrix                                | G04 `NOT_STARTED`; G05 `COMPLETE`; G06 `COMPLETE`              |
+| PR status                                        | #51 `OPEN`, `DRAFT`, `UNMERGED`                                |
+| Document status                                  | `RECOVERY_STATUS_RECONCILED_WITH_CURRENT_MAIN`                 |
+| Latest remote Learning Media Integrity           | run `30557277380` — `FAILED`                                   |
 
-## Outcome
+## Recovery status
 
-`PRD1-G04` is implemented without a second Nest application, a second
-dependency-injection graph, a credential, a JWT requirement, path obscurity,
-or a Phase 2 runtime selector.
+`PRD1-G04` is **not complete**. Its current gate status is
+`RECOVERY IN PROGRESS`, and the acceptance matrix intentionally remains G04
+`NOT_STARTED` while G05 and G06 remain `COMPLETE`. PR #51 remains `OPEN`,
+`DRAFT`, and `UNMERGED`.
+
+The accepted pre-reconciliation implementation head is
+`c8aea07a37367d7e88d8b19101f1923ba29fef3f`. Current main
+`c2433ac3809225bac59b779fc175efbd0b9f5744` was integrated locally through
+merge commit `9a06218ee91ee2ee56ee0cffb08a7ae2a2118d77`.
+
+The latest remote Learning Media Integrity run is `30557277380`, and it
+failed. Its terminal failure domain is storage readiness. The exact storage
+root cause remains unproven: the latest storage transport correction passed
+focused tests but failed canonical runtime acceptance. Phase 1 performed no
+CI refactor and no product fix. This record does not claim `REMOTE CI GREEN`,
+`MERGE READY`, or `COMPLETE` for the current head.
+
+## Historical implementation record
+
+The implementation candidate introduces the probe contract without a second
+Nest application, a second dependency-injection graph, a credential, a JWT
+requirement, path obscurity, or a Phase 2 runtime selector. The design and
+local results below are historical implementation evidence, not acceptance of
+the current reconciled head.
 
 GitHub Actions run `30549505229`, job `90894188042`, reached Redis recovery:
 the same Redis container was running and unpaused, `redis-cli ping` returned
 `PONG`, and the realtime Redis adapter connected again. The final
 `management.probe.readiness_unavailable` event named only `storage`.
 
-F2-R1A reproduced and classified `MINIO_TRANSPORT_TIMEOUT_DEFECT`. A half-open
-MinIO provider request survived the generic 750 ms operational deadline, and a
-subsequent caller reused that still-owned provider flight. The F2-R1B
-production correction gives operational storage readiness a separate MinIO
-client with retries disabled, a non-keepalive two-socket agent, and an absolute
-500 ms transport deadline that destroys the actual `ClientRequest` and socket.
+At the historical F2-R1A checkpoint, `MINIO_TRANSPORT_TIMEOUT_DEFECT` was the
+working classification: a half-open MinIO provider request survived the
+generic 750 ms operational deadline, and a subsequent caller reused that
+still-owned provider flight. The F2-R1B production correction gives
+operational storage readiness a separate MinIO client with retries disabled, a
+non-keepalive two-socket agent, and an absolute 500 ms transport deadline that
+destroys the actual `ClientRequest` and socket.
 Product upload, download, stat, removal, listing, presigning, and normal bucket
 operations continue using the unchanged product MinIO client.
 
-Storage readiness now waits for both private- and public-bucket operations to
+The storage correction makes readiness wait for both private- and
+public-bucket operations to
 settle after fulfillment or transport cancellation. Any missing bucket or
 provider rejection maps to the existing sanitized
 `storage_bucket_unavailable` result. Focused coverage uses one adapter and one
 endpoint to prove half-open cancellation below 750 ms, complete socket cleanup,
-fresh HTTP activity, and successful recovery. Remote CI remains `PENDING`, and
-PR #51 remains Draft.
+fresh HTTP activity, and successful recovery. Those focused tests passed, but
+remote run `30557277380` subsequently failed canonical runtime acceptance in
+the storage readiness domain.
 
 GitHub Actions run `30500009569`, job `90737376235`, remained at readiness
 `503` even though the same Redis container was running, unpaused, and returning
@@ -65,11 +93,11 @@ ownership. Queue and Worker instances remain on the original shared BullMQ
 connection with `maxRetriesPerRequest: null`; no readiness-only client is ever
 passed to either.
 
-The same canonical application process now recovers after the same Redis
+Historical local evidence showed the same canonical application process
+recovering after the same Redis
 container and Redis process are paused and resumed while the configured Redis
-endpoint remains stable. A GitHub rerun remains pending until the owner commits
-and pushes this unstaged correction; this document does not claim remote
-success.
+endpoint remains stable. That local result does not supersede the failed
+remote canonical run and does not establish current acceptance.
 
 The process now owns two HTTP listeners:
 
@@ -457,7 +485,11 @@ The old failed-job count is intentionally not an operational readiness input;
 queue backlog and failure-count telemetry remain Phase 7. No security
 non-disclosure assertion was silently dropped.
 
-## Canonical container evidence
+## Historical canonical container evidence
+
+The following local results predate the failed latest remote canonical run.
+They are retained as historical evidence only and do not accept the current
+head or close PRD1-G04.
 
 The digest-pinned Node `22.23.1` production image was built and run with
 production configuration and only `3000/tcp` published to the host.
@@ -524,7 +556,10 @@ The experiment proved:
   pinned ffprobe/media runtime contract remained valid; and
 - probe bodies exposed no secret or topology details.
 
-## Validation evidence
+## Historical validation evidence
+
+These local results remain useful regression evidence, but none is acceptance
+of the current reconciled head or a substitute for the failed remote gate.
 
 | Command / evidence                                                                                                                                                                                                                                      | Outcome                                                                                                                                                                                                                                                                                                                                                                                              |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -760,13 +795,12 @@ No failed or interrupted attempt is relabeled as a pass:
 
 ## Final publication reconciliation
 
-The remote PR head at
-`8ffb06aa55612276c9f3ef41b9ae399b102d02fb` contains 51 tracked paths
-relative to `origin/main`. F2-R1B modifies six local paths: five tracked
-modifications and one new, currently untracked storage service test. The
-workflow and this closeout document are already among the remote 51 paths; the
-other four storage paths increase the explicitly staged final publication
-candidate to 55 paths.
+The accepted pre-reconciliation implementation head
+`c8aea07a37367d7e88d8b19101f1923ba29fef3f` contains 55 feature paths relative
+to the current-main baseline before local reconciliation. Integrating exact
+current main through `9a06218ee91ee2ee56ee0cffb08a7ae2a2118d77` makes the
+acceptance matrix match current main, so it is no longer a feature-side path.
+The resulting local PR path set is 54 paths; this closeout remains among them.
 
 The complete candidate is not BullMQ-only or realtime-only. It includes the
 accepted realtime gateway local-disconnect ownership, adapter-replacement
@@ -776,26 +810,28 @@ outage/recovery and shutdown coverage, and the F2-R1B cancelling MinIO
 readiness transport. Product storage operations and the workflow Docker
 topology remain unchanged.
 
-Local technical gates A through E and the repeated F1 implementation,
+Historical local technical gates A through E and the repeated F1 implementation,
 workflow, documentation, and combined-candidate reviews passed before
-publication. GitHub Actions then isolated the remaining failure to storage
-after Redis recovery. F2-R1A established `MINIO_TRANSPORT_TIMEOUT_DEFECT`;
-F2-R1B implements the focused transport cancellation and same-endpoint
-recovery coverage. Local F2-R1B validation and independent owner verification
-remain required.
+publication. GitHub Actions later isolated the remaining failure to storage
+after Redis recovery. F2-R1A proposed `MINIO_TRANSPORT_TIMEOUT_DEFECT`, and
+F2-R1B implemented focused transport cancellation and same-endpoint recovery
+coverage. That correction passed focused tests but failed canonical runtime
+acceptance in run `30557277380`; the exact storage root cause is still
+unproven.
 
-Remote CI remains pending, and PR #51 remains Draft. This document does not
-claim remote CI success, remote closure of `PRD1-G04`, merge readiness, or
-completion of Stage F2.
+Remote CI is failed, and PR #51 remains `OPEN`, `DRAFT`, and `UNMERGED`. G04
+remains `NOT_STARTED` in the acceptance matrix while G05 and G06 remain
+`COMPLETE`. This document does not claim remote CI success, remote closure of
+`PRD1-G04`, merge readiness, or completion.
 
-- Remote PR head inventory: `51 tracked paths`.
-- F2-R1B local correction: `6 paths` (`5 tracked modifications` plus `1 untracked new storage test`).
-- Current working tree: `6 paths` (`5 tracked modifications` plus `1 untracked path`).
-- New candidate paths introduced by F2-R1B: `4 paths`.
-- Final publication candidate: `55 paths` relative to `origin/main`.
-- Remote CI: `PENDING`.
+- Remote PR head: `c8aea07a37367d7e88d8b19101f1923ba29fef3f`.
+- Historical pre-reconciliation candidate: `55 paths`.
+- Local post-reconciliation feature diff: `54 paths`.
+- Local reconciliation merge: `9a06218ee91ee2ee56ee0cffb08a7ae2a2118d77`.
+- Latest remote Learning Media Integrity run: `30557277380` — `FAILED`.
+- Phase 1 manual production/workflow/test edits: `0`.
 
-The F2-R1B local correction inventory is:
+The historical F2-R1B correction inventory was:
 
 <!-- BEGIN LOCAL TECHNICAL CORRECTION INVENTORY -->
 
@@ -808,12 +844,11 @@ The F2-R1B local correction inventory is:
 
 <!-- END LOCAL TECHNICAL CORRECTION INVENTORY -->
 
-The first five paths are tracked modifications. The sixth path is the new,
-currently untracked storage service test.
+At that historical checkpoint, the first five paths were tracked
+modifications and the sixth was the then-new storage service test.
 
-The complete final publication candidate, derived from Git relative to
-`origin/main`, plus the new storage service test, deduplicated, and sorted by
-ordinal path ordering, is:
+The complete historical pre-reconciliation 55-path candidate, deduplicated
+and sorted by ordinal path ordering, was:
 
 <!-- BEGIN FINAL CANDIDATE INVENTORY -->
 
@@ -928,5 +963,6 @@ Limitations:
   configuration changed.
 - No shared database, shared Redis, shared storage, persistent volume,
   staging, production, or cloud resource was touched.
-- No branch, staging, commit, push, tag, pull request, merge, deployment, or
-  provisioning action occurred.
+- Phase 1 created one local reconciliation merge commit and this local
+  documentation-only status commit. No push, tag, pull-request update,
+  workflow rerun/cancellation, deployment, or provisioning action occurred.
