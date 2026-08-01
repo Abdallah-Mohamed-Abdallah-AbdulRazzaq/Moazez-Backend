@@ -209,627 +209,41 @@ jobs:
           docker run --rm --entrypoint node
           moazez-learning-media:${{ github.sha }}
           scripts/verify-media-runtime.cjs
-      - name: Verify application startup with pinned ffprobe
+      - name: Verify health runtime startup contract
+        id: health_runtime_startup
+        continue-on-error: true
         shell: bash
-        run: |
-          set -euo pipefail
-          docker network create moazez-learning-media-probe-network >/dev/null
-          docker run --detach --name moazez-learning-media-probe-redis \
-            --network moazez-learning-media-probe-network \
-            redis:7-alpine >/dev/null
-          for attempt in {1..30}; do
-            if docker exec moazez-learning-media-probe-redis \
-              redis-cli ping | grep --quiet PONG; then
-              break
-            fi
-            sleep 1
-            if [[ "$attempt" -eq 30 ]]; then
-              echo 'The disposable probe Redis did not become ready.'
-              exit 1
-            fi
-          done
+        run: bash scripts/ci/health-probe-runtime.sh startup
 
-          docker run --detach --name moazez-learning-media-runtime \
-            --network moazez-learning-media-probe-network \
-            --add-host host.docker.internal:host-gateway \
-            --publish 127.0.0.1:3000:3000 \
-            --env APP_PORT=3000 --env APP_PROBE_PORT=9090 --env APP_URL \
-            --env DATABASE_URL="${DATABASE_URL/127.0.0.1/host.docker.internal}" \
-            --env REDIS_URL=redis://moazez-learning-media-probe-redis:6379 \
-            --env APP_CORS_ORIGINS=https://schools.moazez.cloud,https://admin.moazez.cloud \
-            --env SWAGGER_ENABLED=false \
-            --env APP_SHUTDOWN_TIMEOUT_MS=15000 \
-            --env JWT_ACCESS_SECRET --env JWT_REFRESH_SECRET \
-            --env JWT_ACCESS_TTL --env JWT_REFRESH_TTL \
-            --env SETTINGS_SECRET_ENCRYPTION_KEY \
-            --env STORAGE_PROVIDER \
-            --env STORAGE_ENDPOINT=http://host.docker.internal:9000 \
-            --env STORAGE_ACCESS_KEY --env STORAGE_SECRET_KEY \
-            --env STORAGE_BUCKET --env STORAGE_PUBLIC_BUCKET \
-            --env STORAGE_CORS_ORIGINS --env FCM_ENABLED --env FCM_DRY_RUN \
-            --env LOG_LEVEL \
-            moazez-learning-media:${{ github.sha }}
-          for attempt in {1..30}; do
-            if curl --fail --silent --connect-timeout 1 --max-time 2 \
-              http://127.0.0.1:3000/api/v1/health >/dev/null; then
-              break
-            fi
-            if ! docker inspect --format '{{.State.Running}}' \
-              moazez-learning-media-runtime 2>/dev/null | grep --quiet '^true$'; then
-              echo 'The runtime container exited before becoming healthy.'
-              docker logs moazez-learning-media-runtime || true
-              exit 1
-            fi
-            sleep 1
-            if [[ "$attempt" -eq 30 ]]; then
-              echo 'The runtime container did not become healthy before the timeout.'
-              docker logs moazez-learning-media-runtime || true
-              exit 1
-            fi
-          done
-          public_health="$(
-            curl --fail --silent --connect-timeout 1 --max-time 2 \
-              http://127.0.0.1:3000/api/v1/health
-          )"
-          expected_version="$(
-            docker exec moazez-learning-media-runtime \
-              node -p 'require("./package.json").version'
-          )"
-          node - "$public_health" "$expected_version" <<'NODE'
-          const report = JSON.parse(process.argv[2]);
-          const expectedVersion = process.argv[3];
-          const keys = Object.keys(report).sort();
-          const canonicalTimestamp =
-            typeof report.timestamp === 'string' &&
-            /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(
-              report.timestamp
-            ) &&
-            new Date(report.timestamp).toISOString() === report.timestamp;
-          if (
-            JSON.stringify(keys) !==
-              JSON.stringify(['status', 'timestamp', 'version']) ||
-            report.status !== 'ok' ||
-            report.version !== expectedVersion ||
-            !canonicalTimestamp
-          ) {
-            throw new Error('Public health contract mismatch');
-          }
-          NODE
-
-          test -n "$(docker port moazez-learning-media-runtime 3000/tcp)"
-          if docker port moazez-learning-media-runtime 9090/tcp \
-            >/dev/null 2>&1; then
-            echo 'The management probe port was published to the host.'
-            exit 1
-          fi
-
-          for role in api core-worker media-worker; do
-            for kind in startup liveness readiness; do
-              for public_path in \
-                "/internal/probes/${role}/${kind}" \
-                "/api/v1/internal/probes/${role}/${kind}"; do
-                public_probe_code="$(
-                  curl --silent --output /dev/null --write-out '%{http_code}' \
-                    --connect-timeout 1 --max-time 2 \
-                    "http://127.0.0.1:3000${public_path}"
-                )"
-                test "$public_probe_code" -eq 404
-              done
-            done
-          done
-
-          assert_internal_probe() {
-            local path="$1"
-            local expected_code="$2"
-            local expected_status="$3"
-            local method="${4:-GET}"
-            docker exec moazez-learning-media-runtime \
-              node - "$path" "$expected_code" "$expected_status" "$method" <<'NODE'
-          void (async () => {
-            const path = process.argv[2];
-            const expectedCode = Number(process.argv[3]);
-            const expectedStatus = process.argv[4];
-            const method = process.argv[5];
-            const response = await fetch(`http://127.0.0.1:9090${path}`, {
-              method,
-              signal: AbortSignal.timeout(2000)
-            });
-            const body = await response.json();
-            const keys = Object.keys(body).sort();
-            const canonicalTimestamp =
-              typeof body.timestamp === 'string' &&
-              /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(
-                body.timestamp
-              ) &&
-              new Date(body.timestamp).toISOString() === body.timestamp;
-            const serialized = JSON.stringify(body);
-            if (
-              response.status !== expectedCode ||
-              response.headers.get('content-type') !== 'application/json' ||
-              response.headers.get('cache-control') !== 'no-store' ||
-              (expectedCode === 405 && response.headers.get('allow') !== 'GET') ||
-              JSON.stringify(keys) !==
-                JSON.stringify(['status', 'timestamp', 'version']) ||
-              body.status !== expectedStatus ||
-              body.version !== require('./package.json').version ||
-              !canonicalTimestamp ||
-              /database|redis|storage|queue|email|provider|topology|secret|credential|url|path|object|bucket/i.test(
-                serialized
-              )
-            ) {
-              throw new Error('Internal probe contract mismatch');
-            }
-          })().catch(() => process.exit(1));
-          NODE
-          }
-
-          for role in api core-worker media-worker; do
-            assert_internal_probe "/internal/probes/${role}/startup" 200 ok
-            assert_internal_probe "/internal/probes/${role}/liveness" 200 ok
-            assert_internal_probe "/internal/probes/${role}/readiness" 200 ok
-          done
-          assert_internal_probe '/internal/probes/unknown' 404 not_found
-          assert_internal_probe \
-            '/internal/probes/api/readiness' 405 method_not_allowed POST
-
-          runtime_container_id="$(
-            docker inspect --format '{{.Id}}' \
-              moazez-learning-media-runtime
-          )"
-          runtime_started_at="$(
-            docker inspect --format '{{.State.StartedAt}}' \
-              moazez-learning-media-runtime
-          )"
-          redis_container_id="$(
-            docker inspect --format '{{.Id}}' \
-              moazez-learning-media-probe-redis
-          )"
-          redis_started_at="$(
-            docker inspect --format '{{.State.StartedAt}}' \
-              moazez-learning-media-probe-redis
-          )"
-
-          docker pause moazez-learning-media-probe-redis >/dev/null
-
-          test "$(
-            docker inspect --format '{{.State.Paused}}' \
-              moazez-learning-media-probe-redis
-          )" = 'true'
-          for attempt in {1..30}; do
-            set +e
-            docker exec moazez-learning-media-runtime \
-              node -e '
-                fetch("http://127.0.0.1:9090/internal/probes/api/readiness", {
-                  signal: AbortSignal.timeout(2000)
-                })
-                  .then((response) => process.exit(
-                    response.status === 503 ? 0 : 1
-                  ))
-                  .catch(() => process.exit(1));
-              '
-            outage_ready="$?"
-            set -e
-            if [[ "$outage_ready" -eq 0 ]]; then
-              break
-            fi
-            sleep 0.25
-            if [[ "$attempt" -eq 30 ]]; then
-              echo 'Readiness did not become unavailable after Redis outage.'
-              docker logs moazez-learning-media-runtime || true
-              exit 1
-            fi
-          done
-          for role in api core-worker media-worker; do
-            assert_internal_probe "/internal/probes/${role}/readiness" \
-              503 unavailable
-            assert_internal_probe "/internal/probes/${role}/liveness" 200 ok
-          done
-
-          docker unpause moazez-learning-media-probe-redis >/dev/null
-          for attempt in {1..40}; do
-            if docker exec moazez-learning-media-probe-redis \
-              redis-cli ping | grep --quiet PONG; then
-              break
-            fi
-
-            sleep 0.25
-
-            if [[ "$attempt" -eq 40 ]]; then
-              echo 'The disposable probe Redis did not become ready after resume.'
-              docker inspect \
-                --format '{{.State.Status}}' \
-                moazez-learning-media-probe-redis || true
-              docker logs --tail 200 \
-                moazez-learning-media-probe-redis || true
-              exit 1
-            fi
-          done
-          test "$runtime_container_id" = "$(
-            docker inspect --format '{{.Id}}' \
-              moazez-learning-media-runtime
-          )"
-          test "$runtime_started_at" = "$(
-            docker inspect --format '{{.State.StartedAt}}' \
-              moazez-learning-media-runtime
-          )"
-          test "$redis_container_id" = "$(
-            docker inspect --format '{{.Id}}' \
-              moazez-learning-media-probe-redis
-          )"
-
-          test "$redis_started_at" = "$(
-            docker inspect --format '{{.State.StartedAt}}' \
-              moazez-learning-media-probe-redis
-          )"
-
-          test "$(
-            docker inspect --format '{{.State.Paused}}' \
-              moazez-learning-media-probe-redis
-          )" = 'false'
-          for attempt in {1..60}; do
-            set +e
-            docker exec moazez-learning-media-runtime \
-              node -e '
-                fetch("http://127.0.0.1:9090/internal/probes/api/readiness", {
-                  signal: AbortSignal.timeout(2000)
-                })
-                  .then((response) => process.exit(
-                    response.status === 200 ? 0 : 1
-                  ))
-                  .catch(() => process.exit(1));
-              '
-            recovered="$?"
-            set -e
-            if [[ "$recovered" -eq 0 ]]; then
-              break
-            fi
-            sleep 0.5
-            if [[ "$attempt" -eq 60 ]]; then
-              echo 'Readiness did not recover after Redis recovery.'
-              echo "Application container status: $(
-                docker inspect --format '{{.State.Status}}' \
-                  moazez-learning-media-runtime 2>/dev/null || true
-              )"
-              echo "Redis container status: $(
-                docker inspect --format '{{.State.Status}}' \
-                  moazez-learning-media-probe-redis 2>/dev/null || true
-              )"
-              echo "Redis container paused: $(
-                docker inspect --format '{{.State.Paused}}' \
-                  moazez-learning-media-probe-redis 2>/dev/null || true
-              )"
-              timeout 2s docker exec \
-                moazez-learning-media-probe-redis \
-                redis-cli ping || true
-              docker logs --tail 200 \
-                moazez-learning-media-runtime || true
-              exit 1
-            fi
-          done
-          for role in api core-worker media-worker; do
-            assert_internal_probe "/internal/probes/${role}/readiness" 200 ok
-          done
-
-          shutdown_started_ms="$(date +%s%3N)"
-          docker kill --signal SIGTERM moazez-learning-media-runtime >/dev/null
-          intake_stopped=false
-          for attempt in {1..100}; do
-            docker logs moazez-learning-media-runtime \
-              >runtime-shutdown.log 2>&1 || true
-            if grep --quiet 'lifecycle.shutdown.intake_stopped' \
-              runtime-shutdown.log; then
-              intake_stopped=true
-              break
-            fi
-            sleep 0.1
-          done
-          if [[ "$intake_stopped" != 'true' ]]; then
-            echo 'The runtime did not record stopped intake after SIGTERM.'
-            cat runtime-shutdown.log
-            exit 1
-          fi
-
-          set +e
-          draining_probe="$(
-            docker exec moazez-learning-media-runtime \
-              node -e '
-                fetch("http://127.0.0.1:9090/internal/probes/api/readiness", {
-                  signal: AbortSignal.timeout(2000)
-                })
-                  .then((response) => {
-                    console.log(response.status);
-                    process.exit(0);
-                  })
-                  .catch(() => {
-                    console.log("connection_unavailable");
-                    process.exit(0);
-                  });
-              ' 2>/dev/null
-          )"
-          draining_probe_exit="$?"
-          set -e
-          if [[ "$draining_probe_exit" -ne 0 ]]; then
-            draining_probe='connection_unavailable'
-          fi
-          if [[ "$draining_probe" == '200' ]]; then
-            echo 'Readiness remained successful while draining.'
-            cat runtime-shutdown.log
-            exit 1
-          fi
-
-          set +e
-          post_stop_http_code="$(
-            curl --silent --output /dev/null --write-out '%{http_code}' \
-              --connect-timeout 1 --max-time 2 \
-              http://127.0.0.1:3000/api/v1/health
-          )"
-          post_stop_curl_exit="$?"
-          set -e
-          if [[ "$post_stop_curl_exit" -eq 0 ]] &&
-            [[ "$post_stop_http_code" =~ ^2[0-9][0-9]$ ]]; then
-            echo 'The runtime admitted a successful HTTP response after intake stopped.'
-            cat runtime-shutdown.log
-            exit 1
-          fi
-
-          for attempt in {1..25}; do
-            runtime_status="$(docker inspect --format '{{.State.Status}}' \
-              moazez-learning-media-runtime 2>/dev/null || true)"
-            if [[ "$runtime_status" == 'exited' ]]; then
-              shutdown_elapsed_ms="$(( $(date +%s%3N) - shutdown_started_ms ))"
-              runtime_exit_code="$(docker inspect --format '{{.State.ExitCode}}' \
-                moazez-learning-media-runtime)"
-              docker logs moazez-learning-media-runtime >runtime-shutdown.log 2>&1 || true
-              cat runtime-shutdown.log
-              test "$runtime_exit_code" -eq 0
-              test "$shutdown_elapsed_ms" -le 20000
-              grep --quiet 'lifecycle.shutdown.started' runtime-shutdown.log
-              grep --quiet 'lifecycle.shutdown.intake_stopped' runtime-shutdown.log
-              grep --quiet 'lifecycle.shutdown.completed' runtime-shutdown.log
-              exit 0
-            fi
-            sleep 1
-          done
-
-           echo 'The runtime container exceeded the graceful shutdown bound.'
-           docker logs moazez-learning-media-runtime || true
-           exit 1
-      - name: Verify final-image realtime fallback reconciliation
+      - name: Verify health runtime Redis recovery
+        id: health_runtime_redis_recovery
+        continue-on-error: true
         shell: bash
-        run: |
-          set -euo pipefail
-          timeout 45s docker run --rm --interactive \
-            --network moazez-learning-media-probe-network \
-            --entrypoint node \
-            moazez-learning-media:${{ github.sha }} - <<'NODE'
-          const { randomUUID } = require('node:crypto');
-          const { createConnection, createServer } = require('node:net');
-          const { ConfigService } = require('@nestjs/config');
-          const RedisModule = require('ioredis');
-          const IORedis = RedisModule.default ?? RedisModule;
-          const {
-            RealtimeStateStoreService
-          } = require(
-            './dist/src/infrastructure/realtime/realtime-state-store.service'
-          );
+        run: bash scripts/ci/health-probe-runtime.sh redis-recovery
 
-          const delay = (milliseconds) =>
-            new Promise((resolve) => setTimeout(resolve, milliseconds));
-          const suffix = randomUUID();
-          const schoolId = `school-${suffix}`;
-          const userId = `user-${suffix}`;
-          const conversationId = `conversation-${suffix}`;
-          const expiredConversationId = `expired-${suffix}`;
-          const targetUrl =
-            'redis://moazez-learning-media-probe-redis:6379';
-          const proxyPort = 16379;
-          const sockets = new Set();
-          let proxy;
-
-          async function startProxy() {
-            proxy = createServer((downstream) => {
-              const upstream = createConnection({
-                host: 'moazez-learning-media-probe-redis',
-                port: 6379
-              });
-              sockets.add(downstream);
-              sockets.add(upstream);
-              const cleanup = () => {
-                sockets.delete(downstream);
-                sockets.delete(upstream);
-                downstream.destroy();
-                upstream.destroy();
-              };
-              downstream.on('error', cleanup);
-              upstream.on('error', cleanup);
-              downstream.on('close', cleanup);
-              upstream.on('close', cleanup);
-              downstream.pipe(upstream);
-              upstream.pipe(downstream);
-            });
-            await new Promise((resolve, reject) => {
-              proxy.once('error', reject);
-              proxy.listen(proxyPort, '127.0.0.1', resolve);
-            });
-          }
-
-          async function stopProxy() {
-            for (const socket of sockets) socket.destroy();
-            sockets.clear();
-            if (!proxy) return;
-            const closing = proxy;
-            proxy = undefined;
-            await new Promise((resolve) => closing.close(resolve));
-          }
-
-          const presenceUser = `realtime:presence:school:${schoolId}:user:${userId}`;
-          const presenceSockets = `${presenceUser}:sockets`;
-          const presenceUsers = `realtime:presence:school:${schoolId}:users`;
-          const typingUser =
-            `realtime:typing:school:${schoolId}:conversation:${conversationId}:user:${userId}`;
-          const typingUsers =
-            `realtime:typing:school:${schoolId}:conversation:${conversationId}:users`;
-          const expiredTypingUser =
-            `realtime:typing:school:${schoolId}:conversation:${expiredConversationId}:user:${userId}`;
-          const expiredTypingUsers =
-            `realtime:typing:school:${schoolId}:conversation:${expiredConversationId}:users`;
-
-          void (async () => {
-            const admin = new IORedis(targetUrl, { maxRetriesPerRequest: 1 });
-            const stateStore = new RealtimeStateStoreService(
-              new ConfigService({
-                REDIS_URL: `redis://127.0.0.1:${proxyPort}`
-              })
-            );
-            try {
-              await startProxy();
-              await stateStore.checkReadiness();
-              await stateStore.incrementPresence(
-                schoolId,
-                userId,
-                'socket-before-outage',
-                1
-              );
-
-              await stopProxy();
-              await delay(1100);
-              const latestPresence = await stateStore.incrementPresence(
-                schoolId,
-                userId,
-                'socket-during-outage',
-                90
-              );
-              await stateStore.setTyping(
-                schoolId,
-                conversationId,
-                userId,
-                8
-              );
-              await stateStore.setTyping(
-                schoolId,
-                expiredConversationId,
-                userId,
-                1
-              );
-              await delay(1100);
-              await stateStore.checkReadiness().then(
-                () => {
-                  throw new Error('Readiness recovered while Redis was isolated');
-                },
-                () => undefined
-              );
-
-              await startProxy();
-              await stateStore.checkReadiness();
-
-              const restoredSockets = (
-                await admin.smembers(presenceSockets)
-              ).sort();
-              const schoolUsers = await admin.smembers(presenceUsers);
-              const timestamp = await admin.get(presenceUser);
-              const presenceTtl = await admin.ttl(presenceUser);
-              const presenceIndexTtl = await admin.ttl(presenceUsers);
-              const activeTyping = await admin.get(typingUser);
-              const activeTypingUsers = await admin.smembers(typingUsers);
-              const activeTypingTtl = await admin.ttl(typingUser);
-              const expiredTypingExists = await admin.exists(
-                expiredTypingUser,
-                expiredTypingUsers
-              );
-
-              if (
-                JSON.stringify(restoredSockets) !==
-                  JSON.stringify([
-                    'socket-before-outage',
-                    'socket-during-outage'
-                  ]) ||
-                !schoolUsers.includes(userId) ||
-                timestamp !== latestPresence.updatedAt ||
-                presenceTtl <= 0 ||
-                presenceTtl > 90 ||
-                presenceIndexTtl <= 0 ||
-                presenceIndexTtl > 150 ||
-                typeof activeTyping !== 'string' ||
-                !activeTypingUsers.includes(userId) ||
-                activeTypingTtl <= 0 ||
-                activeTypingTtl >= 8 ||
-                expiredTypingExists !== 0
-              ) {
-                throw new Error('Realtime fallback reconciliation mismatch');
-              }
-            } finally {
-              await stateStore.onModuleDestroy();
-              await stopProxy();
-              await admin.del(
-                presenceUser,
-                presenceSockets,
-                presenceUsers,
-                typingUser,
-                typingUsers,
-                expiredTypingUser,
-                expiredTypingUsers
-              );
-              await admin.quit();
-            }
-          })().catch(() => process.exit(1));
-          NODE
-      - name: Verify bounded forced-timeout lifecycle path
+      - name: Verify health runtime storage recovery
+        id: health_runtime_storage_recovery
+        continue-on-error: true
         shell: bash
-        run: |
-          set -euo pipefail
-          timeout_log="$RUNNER_TEMP/moazez-shutdown-timeout.log"
-          timeout_started_ms="$(date +%s%3N)"
-          docker run --detach --name moazez-shutdown-timeout-fixture \
-            --entrypoint node \
-            moazez-learning-media:${{ github.sha }} \
-            -e '
-              const { ApplicationLifecycleState } =
-                require("./dist/src/bootstrap/application-lifecycle.state");
-              const { GracefulShutdownCoordinator } =
-                require("./dist/src/bootstrap/graceful-shutdown");
-              const lifecycle = new ApplicationLifecycleState();
-              const coordinator = new GracefulShutdownCoordinator({
-                app: { close: () => new Promise(() => undefined) },
-                httpServer: { close: (callback) => callback() },
-                managementServer: { close: (callback) => callback() },
-                lifecycle,
-                queue: { beginWorkerDrain: () => Promise.resolve() },
-                realtime: {
-                  disconnectSocketsForShutdown: () => Promise.resolve()
-                },
-                timeoutMs: 1000,
-                logger: {
-                  log: (event) => console.log(JSON.stringify(event)),
-                  error: (event) => console.error(JSON.stringify(event))
-                }
-              });
-              coordinator.handleSignal("SIGTERM");
-            ' >/dev/null
-          set +e
-          timeout_exit_code="$(
-            timeout 10s docker wait moazez-shutdown-timeout-fixture
-          )"
-          timeout_wait_status="$?"
-          set -e
-          timeout_elapsed_ms="$(( $(date +%s%3N) - timeout_started_ms ))"
-          docker logs moazez-shutdown-timeout-fixture \
-            >"$timeout_log" 2>&1 || true
-          cat "$timeout_log"
-          test "$timeout_wait_status" -eq 0
-          test "$timeout_exit_code" -eq 1
-          test "$timeout_elapsed_ms" -ge 1000
-          test "$timeout_elapsed_ms" -le 10000
-          timeout_event_elapsed_ms="$(
-            grep 'lifecycle.shutdown.timed_out' "$timeout_log" |
-              grep --only-matching '"elapsedMs":[0-9]*' |
-              tail --lines 1 |
-              cut --delimiter : --fields 2
-          )"
-          test "$timeout_event_elapsed_ms" -ge 1000
-          test "$timeout_event_elapsed_ms" -le 1500
-          grep --quiet 'lifecycle.shutdown.timed_out' "$timeout_log"
-          ! grep --quiet 'lifecycle.shutdown.completed' "$timeout_log"
-          docker rm moazez-shutdown-timeout-fixture >/dev/null
+        run: bash scripts/ci/health-probe-runtime.sh storage-recovery
+
+      - name: Verify health runtime realtime reconciliation
+        id: health_runtime_realtime_reconciliation
+        continue-on-error: true
+        shell: bash
+        run: bash scripts/ci/health-probe-runtime.sh realtime-reconciliation
+
+      - name: Verify health runtime graceful shutdown
+        id: health_runtime_graceful_shutdown
+        continue-on-error: true
+        shell: bash
+        run: bash scripts/ci/health-probe-runtime.sh graceful-shutdown
+
+      - name: Verify health runtime forced timeout
+        id: health_runtime_forced_timeout
+        continue-on-error: true
+        shell: bash
+        run: bash scripts/ci/health-probe-runtime.sh forced-timeout
       - name: Verify non-root runtime and Prisma Client
         run: >-
           docker run --rm --entrypoint sh
@@ -935,11 +349,54 @@ jobs:
           test/security/tenancy.student-app-lessons.spec.ts
           test/security/tenancy.parent-app-child-lessons.spec.ts
           test/security/tenancy.teacher-app-lesson-preparation.spec.ts
-      - if: always()
+      - name: Health runtime scenario summary
+        if: always()
+        shell: bash
+        env:
+          STARTUP_OUTCOME: ${{ steps.health_runtime_startup.outcome }}
+          REDIS_RECOVERY_OUTCOME: ${{ steps.health_runtime_redis_recovery.outcome }}
+          STORAGE_RECOVERY_OUTCOME: ${{ steps.health_runtime_storage_recovery.outcome }}
+          REALTIME_RECONCILIATION_OUTCOME: ${{ steps.health_runtime_realtime_reconciliation.outcome }}
+          GRACEFUL_SHUTDOWN_OUTCOME: ${{ steps.health_runtime_graceful_shutdown.outcome }}
+          FORCED_TIMEOUT_OUTCOME: ${{ steps.health_runtime_forced_timeout.outcome }}
+        run: |
+          set -euo pipefail
+          failed=0
+          report_scenario() {
+            local scenario="$1"
+            local outcome="$2"
+            case "$outcome" in
+              success | failure | skipped | cancelled) ;;
+              *) outcome='skipped' ;;
+            esac
+            printf 'scenario=%s outcome=%s\n' "$scenario" "$outcome"
+            if [[ "$outcome" != 'success' ]]; then
+              failed=1
+            fi
+          }
+          report_scenario startup "$STARTUP_OUTCOME"
+          report_scenario redis-recovery "$REDIS_RECOVERY_OUTCOME"
+          report_scenario storage-recovery "$STORAGE_RECOVERY_OUTCOME"
+          report_scenario realtime-reconciliation "$REALTIME_RECONCILIATION_OUTCOME"
+          report_scenario graceful-shutdown "$GRACEFUL_SHUTDOWN_OUTCOME"
+          report_scenario forced-timeout "$FORCED_TIMEOUT_OUTCOME"
+          exit "$failed"
+
+      - name: Upload health runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-probes-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/health-probes/**
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Clean up learning media containers
+        if: always()
         shell: bash
         run: |
-          docker rm --force moazez-learning-media-runtime \
-            moazez-learning-media-minio \
-            moazez-learning-media-probe-redis \
-            moazez-shutdown-timeout-fixture || true
-          docker network rm moazez-learning-media-probe-network || true
+          docker ps --all --quiet --filter 'name=^/moazez-health-' |
+            xargs --no-run-if-empty docker rm --force || true
+          docker network ls --quiet --filter 'name=moazez-health-' |
+            xargs --no-run-if-empty docker network rm || true
+          docker rm --force moazez-learning-media-minio || true
