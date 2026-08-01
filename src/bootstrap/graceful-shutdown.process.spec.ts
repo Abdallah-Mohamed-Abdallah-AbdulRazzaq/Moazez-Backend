@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 jest.setTimeout(20_000);
 
 describe('graceful shutdown early-failure process behavior', () => {
-  it.each(['worker', 'http'] as const)(
+  it.each(['worker', 'http', 'management'] as const)(
     'observes an immediate %s rejection with active work',
     async (failureSource) => {
       const result = await runFailureProcess(failureSource);
@@ -25,7 +25,7 @@ describe('graceful shutdown early-failure process behavior', () => {
 });
 
 function runFailureProcess(
-  failureSource: 'worker' | 'http',
+  failureSource: 'worker' | 'http' | 'management',
 ): Promise<{ code: number | null; stderr: string; stdout: string }> {
   const fixture = `
 const { ApplicationLifecycleState } = require('./src/bootstrap/application-lifecycle.state');
@@ -50,6 +50,11 @@ const coordinator = new GracefulShutdownCoordinator({
   httpServer: {
     close(callback) {
       callback(failureSource === 'http' ? new Error(secret) : undefined);
+    },
+  },
+  managementServer: {
+    close(callback) {
+      callback(failureSource === 'management' ? new Error(secret) : undefined);
     },
   },
   lifecycle,

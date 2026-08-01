@@ -30,6 +30,8 @@ export class RealtimePresenceService implements OnModuleDestroy {
     { schoolId: string; userId: string; socketId: string }
   >();
   private readonly refreshTimer: NodeJS.Timeout;
+  private refreshPromise: Promise<void> | null = null;
+  private destroyPromise: Promise<void> | null = null;
 
   constructor(
     private readonly stateStore: RealtimeStateStoreService,
@@ -37,7 +39,7 @@ export class RealtimePresenceService implements OnModuleDestroy {
     private readonly communicationAccessService: RealtimeCommunicationAccessService,
   ) {
     this.refreshTimer = setInterval(
-      () => void this.refreshLocalPresence(),
+      () => void this.startRefresh(),
       PRESENCE_REFRESH_INTERVAL_MS,
     );
     this.refreshTimer.unref?.();
@@ -101,8 +103,12 @@ export class RealtimePresenceService implements OnModuleDestroy {
     return this.stateStore.getPresenceSnapshot(schoolId);
   }
 
-  onModuleDestroy(): void {
-    clearInterval(this.refreshTimer);
+  onModuleDestroy(): Promise<void> {
+    if (!this.destroyPromise) {
+      clearInterval(this.refreshTimer);
+      this.destroyPromise = this.refreshPromise ?? Promise.resolve();
+    }
+    return this.destroyPromise;
   }
 
   private publishPresenceTransition(input: {
@@ -155,19 +161,41 @@ export class RealtimePresenceService implements OnModuleDestroy {
     await Promise.all(
       sockets.map(async (socket) => {
         try {
-          await this.stateStore.refreshPresence(
+          const refreshed = await this.stateStore.refreshPresence(
             socket.schoolId,
             socket.userId,
             socket.socketId,
             PRESENCE_TTL_SECONDS,
           );
-        } catch (error) {
-          this.logger.warn(
-            `Realtime presence refresh failed: ${getErrorMessage(error)}`,
-          );
+          if (!refreshed && this.localSockets.has(localSocketKey(socket))) {
+            await this.stateStore.restorePresence(
+              socket.schoolId,
+              socket.userId,
+              socket.socketId,
+              PRESENCE_TTL_SECONDS,
+            );
+          }
+        } catch {
+          this.logger.warn({
+            event: 'realtime.presence.refresh_failed',
+            stage: 'refresh',
+          });
         }
       }),
     );
+  }
+
+  private startRefresh(): Promise<void> {
+    if (this.destroyPromise) return this.destroyPromise;
+    if (!this.refreshPromise) {
+      const execution = this.refreshLocalPresence().finally(() => {
+        if (this.refreshPromise === execution) {
+          this.refreshPromise = null;
+        }
+      });
+      this.refreshPromise = execution;
+    }
+    return this.refreshPromise;
   }
 }
 
@@ -204,9 +232,4 @@ function localSocketKey(input: {
   socketId: string;
 }): string {
   return `${input.schoolId}:${input.userId}:${input.socketId}`;
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return 'unknown_error';
 }

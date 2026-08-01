@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ConfigService } from '@nestjs/config';
+import { load } from 'js-yaml';
 import { MediaRuntimeStartupGuard } from '../application/media-runtime-startup.guard';
 import { validateEnv } from '../../../../config/env.validation';
 
@@ -162,6 +163,27 @@ describe('learning media upload foundation contract', () => {
       join(root, '.github/workflows/learning-media-integrity.yml'),
       'utf8',
     );
+    const harness = readFileSync(
+      join(root, 'scripts/ci/health-probe-runtime.sh'),
+      'utf8',
+    );
+    const parsedWorkflow = load(workflow) as {
+      jobs: {
+        'learning-media-integrity': {
+          env: Record<string, string>;
+          steps: Array<{
+            id?: string;
+            name?: string;
+            run?: string;
+            uses?: string;
+            if?: string;
+            'continue-on-error'?: boolean;
+          }>;
+        };
+      };
+    };
+    const job = parsedWorkflow.jobs['learning-media-integrity'];
+    const steps = job.steps;
 
     for (const requiredPath of [
       'test/integration/learning-media-upload.integration.spec.ts',
@@ -189,8 +211,97 @@ describe('learning media upload foundation contract', () => {
     ]) {
       expect(workflow).toContain(requiredPath);
     }
-    expect(workflow).toContain(
-      'Verify application startup with pinned ffprobe',
+    expect(
+      steps.filter((step) => step.name === 'Verify ffprobe runtime contract'),
+    ).toHaveLength(1);
+
+    const minioStartSteps = steps.filter(
+      (step) => step.name === 'Start exact MinIO release',
+    );
+    expect(minioStartSteps).toHaveLength(1);
+    expect(minioStartSteps[0].run).toContain(
+      '--env MINIO_ROOT_USER="$STORAGE_ACCESS_KEY"',
+    );
+    expect(minioStartSteps[0].run).toContain(
+      '--env MINIO_ROOT_PASSWORD="$STORAGE_SECRET_KEY"',
+    );
+    expect(minioStartSteps[0].run?.match(/MINIO_ROOT_USER=/gu)).toHaveLength(1);
+    expect(
+      minioStartSteps[0].run?.match(/MINIO_ROOT_PASSWORD=/gu),
+    ).toHaveLength(1);
+
+    const waitForMinioIndex = steps.findIndex(
+      (step) => step.name === 'Wait for MinIO',
+    );
+    const provisionStepIndexes = steps.flatMap((step, index) =>
+      step.name === 'Provision required MinIO buckets' ? [index] : [],
+    );
+    const startupScenarioIndex = steps.findIndex(
+      (step) => step.id === 'health_runtime_startup',
+    );
+    expect(waitForMinioIndex).toBeGreaterThanOrEqual(0);
+    expect(provisionStepIndexes).toHaveLength(1);
+    expect(waitForMinioIndex).toBeLessThan(provisionStepIndexes[0]);
+    expect(provisionStepIndexes[0]).toBeLessThan(startupScenarioIndex);
+
+    const provisionRun = steps[provisionStepIndexes[0]].run ?? '';
+    expect(provisionRun).toContain("require('minio')");
+    expect(provisionRun).toContain('process.env.STORAGE_BUCKET');
+    expect(provisionRun).toContain('process.env.STORAGE_PUBLIC_BUCKET');
+    expect(provisionRun).toContain('process.env.STORAGE_ACCESS_KEY');
+    expect(provisionRun).toContain('process.env.STORAGE_SECRET_KEY');
+    expect(provisionRun).toContain('client.bucketExists(bucket)');
+    expect(provisionRun).toContain('client.makeBucket(bucket)');
+    expect(provisionRun.indexOf('client.bucketExists(bucket)')).toBeLessThan(
+      provisionRun.indexOf('client.makeBucket(bucket)'),
+    );
+
+    const scenarios = [
+      ['health_runtime_startup', 'startup'],
+      ['health_runtime_redis_recovery', 'redis-recovery'],
+      ['health_runtime_storage_recovery', 'storage-recovery'],
+      ['health_runtime_realtime_reconciliation', 'realtime-reconciliation'],
+      ['health_runtime_graceful_shutdown', 'graceful-shutdown'],
+      ['health_runtime_forced_timeout', 'forced-timeout'],
+    ] as const;
+    for (const [id, scenario] of scenarios) {
+      const scenarioSteps = steps.filter((step) => step.id === id);
+      expect(scenarioSteps).toHaveLength(1);
+      expect(scenarioSteps[0]).toMatchObject({
+        'continue-on-error': true,
+        run: `bash scripts/ci/health-probe-runtime.sh ${scenario}`,
+      });
+    }
+
+    expect(
+      steps.filter((step) => step.name === 'Health runtime scenario summary'),
+    ).toEqual([expect.objectContaining({ if: 'always()' })]);
+    expect(
+      steps.filter((step) => step.name === 'Upload health runtime diagnostics'),
+    ).toEqual([
+      expect.objectContaining({
+        if: 'always()',
+        uses: 'actions/upload-artifact@v4',
+      }),
+    ]);
+    expect(
+      steps.filter(
+        (step) => step.name === 'Clean up learning media containers',
+      ),
+    ).toEqual([expect.objectContaining({ if: 'always()' })]);
+    expect(
+      steps.some(
+        (step) =>
+          step.name === 'Verify application startup with pinned ffprobe',
+      ),
+    ).toBe(false);
+
+    const dispatchedScenarios = Array.from(
+      harness.matchAll(/^  ([a-z-]+)\) scenario_[a-z_]+ ;;/gmu),
+      (match) => match[1],
+    );
+    expect(dispatchedScenarios).toEqual(
+      scenarios.map(([, scenario]) => scenario),
     );
     expect(workflow).toContain('STORAGE_CORS_ORIGINS');
     expect(workflow).toContain('postgres:16-alpine');

@@ -49,6 +49,7 @@ import { PrismaLearningMediaUnitOfWork } from './infrastructure/prisma-learning-
     CompleteLearningMediaUploadUseCase,
     CancelLearningMediaUploadUseCase,
     VerifyLegacyLearningMediaUseCase,
+    MediaRuntimeStartupGuard,
   ],
 })
 export class UploadsModule {}

@@ -1,26 +1,30 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JobsOptions, Processor, Queue, RedisConnection, Worker } from 'bullmq';
-import IORedis from 'ioredis';
+import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { JobsOptions, Processor, Queue, RedisConnection, Worker } from "bullmq";
+import IORedis from "ioredis";
 
 const DEFAULT_REMOVE_ON_COMPLETE = 100;
 const DEFAULT_REMOVE_ON_FAIL = 500;
+const BULLMQ_READINESS_CONNECT_TIMEOUT_MS = 400;
+const BULLMQ_READINESS_COMMAND_TIMEOUT_MS = 400;
+const BULLMQ_READINESS_OPERATION_TIMEOUT_MS = 600;
+const BULLMQ_READINESS_CLOSE_TIMEOUT_MS = 400;
 const SHUTDOWN_CONNECTION_ERROR_CODES = new Set([
-  'ECONNABORTED',
-  'ECONNREFUSED',
-  'ECONNRESET',
-  'EPIPE',
+  "ECONNABORTED",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EPIPE",
 ]);
 
 type RedisConnectionLifecycle = {
   _client?: RedisShutdownClient;
   initializing: Promise<unknown>;
-  status: RedisConnection['status'];
+  status: RedisConnection["status"];
 };
 
 type RedisShutdownStream = {
   destroyed?: boolean;
-  once(event: 'close', listener: () => void): unknown;
+  once(event: "close", listener: () => void): unknown;
 };
 
 type RedisShutdownConnector = {
@@ -30,6 +34,9 @@ type RedisShutdownConnector = {
 type RedisShutdownClient = {
   connector?: RedisShutdownConnector;
 };
+
+type BoundedSettlement = "fulfilled" | "rejected" | "timed_out";
+type QueueReadinessCloseMode = "force" | "graceful";
 
 /**
  * BullMQ removes RedisConnection listeners during close. If an initializing
@@ -50,9 +57,9 @@ class WorkerShutdownRedisConnection extends RedisConnection {
     super.removeAllListeners(event);
     if (
       this.retainClosingErrorListener &&
-      (event === undefined || event === 'error')
+      (event === undefined || event === "error")
     ) {
-      super.on('error', this.closingErrorListener);
+      super.on("error", this.closingErrorListener);
     }
     return this;
   }
@@ -61,6 +68,7 @@ class WorkerShutdownRedisConnection extends RedisConnection {
 @Injectable()
 export class BullmqService implements OnModuleDestroy {
   private readonly logger = new Logger(BullmqService.name);
+  private readonly redisUrl: string;
   private readonly connection: IORedis;
   private readonly sharedStreamSettlement: () => Promise<void>;
   private readonly queues = new Map<string, Queue>();
@@ -70,30 +78,37 @@ export class BullmqService implements OnModuleDestroy {
     () => Promise<void>
   >();
   private readonly workerRuns = new WeakMap<Worker, Promise<void>>();
+  private readonly workerRunAvailable = new WeakMap<Worker, boolean>();
+  private queueReadinessClient?: IORedis;
+  private queueReadinessFlight: Promise<void> | null = null;
+  private readonly queueReadinessClosePromises = new WeakMap<
+    IORedis,
+    Promise<void>
+  >();
+  private readonly disconnectedQueueReadinessClients = new WeakSet<IORedis>();
+  private queueReadinessWarningEmitted = false;
   private isShuttingDown = false;
   private workerDrainPromise: Promise<void> | null = null;
   private shutdownPromise: Promise<void> | null = null;
 
   constructor(private readonly configService: ConfigService) {
-    this.connection = new IORedis(
-      this.configService.getOrThrow<string>('REDIS_URL'),
-      {
-        lazyConnect: true,
-        maxRetriesPerRequest: null,
-      },
-    );
+    this.redisUrl = this.configService.getOrThrow<string>("REDIS_URL");
+    this.connection = new IORedis(this.redisUrl, {
+      lazyConnect: true,
+      maxRetriesPerRequest: null,
+    });
     this.sharedStreamSettlement = this.trackRedisClientStreams(
       this.connection as unknown as RedisShutdownClient,
     );
-    this.connection.on('error', (error: Error) => {
+    this.connection.on("error", (error: Error) => {
       if (this.isExpectedSharedConnectionShutdownError(error)) {
         return;
       }
 
-      this.logger.error(
-        `BullMQ Redis connection failed: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error({
+        event: "bullmq.redis.unavailable",
+        stage: "connection",
+      });
     });
   }
 
@@ -128,13 +143,41 @@ export class BullmqService implements OnModuleDestroy {
     return this.getQueue(queueName).add(jobName, data, options);
   }
 
-  async ping(): Promise<void> {
-    await this.connection.ping();
+  ping(): Promise<void> {
+    if (this.isShuttingDown) {
+      return Promise.reject(this.queueRedisUnavailable());
+    }
+
+    if (this.queueReadinessFlight) {
+      return this.queueReadinessFlight;
+    }
+
+    let execution: Promise<void>;
+    execution = this.executeQueueReadiness().finally(() => {
+      if (this.queueReadinessFlight === execution) {
+        this.queueReadinessFlight = null;
+      }
+    });
+    this.queueReadinessFlight = execution;
+    return execution;
+  }
+
+  hasAvailableWorkers(queueNames: readonly string[]): boolean {
+    return queueNames.every((queueName) =>
+      this.workers.some(
+        (worker) =>
+          worker.name === queueName &&
+          this.workerRunAvailable.get(worker) === true &&
+          worker.closing === undefined &&
+          worker.isRunning() &&
+          !worker.isPaused(),
+      ),
+    );
   }
 
   async getQueueReadiness(name: string): Promise<{
     name: string;
-    status: 'ok';
+    status: "ok";
     counts: {
       waiting: number;
       active: number;
@@ -144,15 +187,15 @@ export class BullmqService implements OnModuleDestroy {
   }> {
     const queue = this.getQueue(name);
     const counts = await queue.getJobCounts(
-      'waiting',
-      'active',
-      'delayed',
-      'failed',
+      "waiting",
+      "active",
+      "delayed",
+      "failed",
     );
 
     return {
       name,
-      status: 'ok',
+      status: "ok",
       counts: {
         waiting: counts.waiting ?? 0,
         active: counts.active ?? 0,
@@ -173,24 +216,24 @@ export class BullmqService implements OnModuleDestroy {
       WorkerShutdownRedisConnection,
     );
 
-    worker.on('error', (error: Error) => {
+    worker.on("error", (error: Error) => {
       if (this.isExpectedShutdownError(worker, error)) {
         return;
       }
 
       if (this.isShuttingDown) {
         this.logger.error({
-          event: 'lifecycle.resource.failed',
-          resource: 'bullmq_worker',
-          stage: 'drain',
+          event: "lifecycle.resource.failed",
+          resource: "bullmq_worker",
+          stage: "drain",
         });
         return;
       }
 
-      this.logger.error(
-        `BullMQ worker ${queueName} failed: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error({
+        event: "bullmq.worker.failed",
+        stage: "runtime",
+      });
     });
 
     this.retainBlockingConnectionErrorSafety(worker);
@@ -198,9 +241,22 @@ export class BullmqService implements OnModuleDestroy {
     this.stopLateStalledCheckOnShutdown(worker);
 
     this.workers.push(worker as unknown as Worker);
-    const run = worker.run().catch((error: Error) => {
-      worker.emit('error', error);
-    });
+    this.workerRunAvailable.set(worker as unknown as Worker, true);
+    const run = worker.run().then(
+      () => {
+        this.workerRunAvailable.set(worker as unknown as Worker, false);
+        if (!this.isShuttingDown) {
+          this.logger.error({
+            event: "bullmq.worker.run_stopped",
+            stage: "unexpected_settlement",
+          });
+        }
+      },
+      (error: Error) => {
+        this.workerRunAvailable.set(worker as unknown as Worker, false);
+        worker.emit("error", error);
+      },
+    );
     this.workerRuns.set(worker as unknown as Worker, run);
     return worker;
   }
@@ -227,6 +283,19 @@ export class BullmqService implements OnModuleDestroy {
   private async shutdown(): Promise<void> {
     await this.beginWorkerDrain();
 
+    const readinessFlight = this.queueReadinessFlight;
+    if (readinessFlight) {
+      await readinessFlight.catch(() => undefined);
+    }
+
+    const readinessClient = this.queueReadinessClient;
+    if (readinessClient) {
+      if (this.queueReadinessClient === readinessClient) {
+        this.queueReadinessClient = undefined;
+      }
+      await this.closeQueueReadinessClient(readinessClient, "graceful");
+    }
+
     await Promise.all(
       [...this.queues.values()].map((queue) => this.closeQueue(queue)),
     );
@@ -235,12 +304,210 @@ export class BullmqService implements OnModuleDestroy {
     await this.sharedStreamSettlement();
   }
 
+  private async executeQueueReadiness(): Promise<void> {
+    const ownedClient = this.queueReadinessClient;
+    if (ownedClient) {
+      await this.checkOwnedQueueReadinessClient(ownedClient);
+      return;
+    }
+
+    await this.connectQueueReadinessCandidate();
+  }
+
+  private async checkOwnedQueueReadinessClient(client: IORedis): Promise<void> {
+    if (client.status !== "ready") {
+      await this.retireFailedQueueReadinessClient(client);
+      throw this.queueRedisUnavailable();
+    }
+
+    let pingOperation: Promise<void>;
+    try {
+      pingOperation = client.ping().then(() => undefined);
+    } catch {
+      await this.retireFailedQueueReadinessClient(client);
+      this.warnQueueReadinessUnavailable();
+      throw this.queueRedisUnavailable();
+    }
+
+    const outcome = await this.settleWithin(
+      pingOperation,
+      BULLMQ_READINESS_OPERATION_TIMEOUT_MS,
+    );
+    if (
+      outcome !== "fulfilled" ||
+      this.isShuttingDown ||
+      this.queueReadinessClient !== client ||
+      client.status !== "ready"
+    ) {
+      await this.retireFailedQueueReadinessClient(client);
+      this.warnQueueReadinessUnavailable();
+      throw this.queueRedisUnavailable();
+    }
+
+    this.queueReadinessWarningEmitted = false;
+  }
+
+  private async connectQueueReadinessCandidate(): Promise<void> {
+    let candidate: IORedis | undefined;
+    try {
+      candidate = new IORedis(this.redisUrl, {
+        lazyConnect: true,
+        enableOfflineQueue: false,
+        maxRetriesPerRequest: 0,
+        connectTimeout: BULLMQ_READINESS_CONNECT_TIMEOUT_MS,
+        commandTimeout: BULLMQ_READINESS_COMMAND_TIMEOUT_MS,
+        retryStrategy: () => null,
+      });
+      candidate.on("error", () => {
+        this.warnQueueReadinessUnavailable();
+      });
+    } catch {
+      if (candidate) {
+        await this.closeQueueReadinessClient(candidate, "force");
+      }
+      this.warnQueueReadinessUnavailable();
+      throw this.queueRedisUnavailable();
+    }
+
+    let connectAndPing: Promise<void>;
+    try {
+      connectAndPing = candidate
+        .connect()
+        .then(() => candidate.ping())
+        .then(() => undefined);
+    } catch {
+      await this.closeQueueReadinessClient(candidate, "force");
+      this.warnQueueReadinessUnavailable();
+      throw this.queueRedisUnavailable();
+    }
+
+    const outcome = await this.settleWithin(
+      connectAndPing,
+      BULLMQ_READINESS_OPERATION_TIMEOUT_MS,
+    );
+    if (
+      outcome !== "fulfilled" ||
+      this.isShuttingDown ||
+      candidate.status !== "ready" ||
+      this.queueReadinessClient !== undefined
+    ) {
+      await this.closeQueueReadinessClient(candidate, "force");
+      this.warnQueueReadinessUnavailable();
+      throw this.queueRedisUnavailable();
+    }
+
+    this.queueReadinessClient = candidate;
+    this.queueReadinessWarningEmitted = false;
+  }
+
+  private async retireFailedQueueReadinessClient(
+    client: IORedis,
+  ): Promise<void> {
+    if (this.queueReadinessClient === client) {
+      this.queueReadinessClient = undefined;
+    }
+    await this.closeQueueReadinessClient(client, "force");
+  }
+
+  private closeQueueReadinessClient(
+    client: IORedis,
+    mode: QueueReadinessCloseMode,
+  ): Promise<void> {
+    const existing = this.queueReadinessClosePromises.get(client);
+    if (existing) {
+      return existing;
+    }
+
+    const close =
+      mode === "force"
+        ? this.forceDisconnectQueueReadinessClient(client)
+        : this.gracefullyCloseQueueReadinessClient(client);
+    this.queueReadinessClosePromises.set(client, close);
+    return close;
+  }
+
+  private async forceDisconnectQueueReadinessClient(
+    client: IORedis,
+  ): Promise<void> {
+    if (this.disconnectedQueueReadinessClients.has(client)) {
+      return;
+    }
+
+    this.disconnectedQueueReadinessClients.add(client);
+    try {
+      client.disconnect();
+    } catch {
+      // Forced readiness retirement is best-effort and must remain bounded.
+    }
+  }
+
+  private async gracefullyCloseQueueReadinessClient(
+    client: IORedis,
+  ): Promise<void> {
+    let quitOperation: Promise<unknown>;
+    try {
+      quitOperation = client.quit();
+    } catch {
+      await this.forceDisconnectQueueReadinessClient(client);
+      return;
+    }
+
+    const outcome = await this.settleWithin(
+      quitOperation,
+      BULLMQ_READINESS_CLOSE_TIMEOUT_MS,
+    );
+    if (outcome !== "fulfilled") {
+      await this.forceDisconnectQueueReadinessClient(client);
+    }
+  }
+
+  private async settleWithin(
+    operation: Promise<unknown>,
+    timeoutMilliseconds: number,
+  ): Promise<BoundedSettlement> {
+    const observed = operation.then<BoundedSettlement, BoundedSettlement>(
+      () => "fulfilled",
+      () => "rejected",
+    );
+    let timer: NodeJS.Timeout | undefined;
+
+    try {
+      return await Promise.race([
+        observed,
+        new Promise<BoundedSettlement>((resolve) => {
+          timer = setTimeout(() => resolve("timed_out"), timeoutMilliseconds);
+          timer.unref();
+        }),
+      ]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  private warnQueueReadinessUnavailable(): void {
+    if (this.queueReadinessWarningEmitted || this.isShuttingDown) {
+      return;
+    }
+
+    this.queueReadinessWarningEmitted = true;
+    this.logger.warn({
+      event: "bullmq.readiness.unavailable",
+      stage: "connection",
+    });
+  }
+
+  private queueRedisUnavailable(): Error {
+    return new Error("queue_redis_unavailable");
+  }
+
   private async closeSharedConnection(): Promise<void> {
     try {
       if (
-        this.connection.status === 'ready' ||
-        this.connection.status === 'connect' ||
-        this.connection.status === 'reconnecting'
+        this.connection.status === "ready" ||
+        this.connection.status === "connect" ||
+        this.connection.status === "reconnecting"
       ) {
         await this.connection.quit();
         return;
@@ -308,7 +575,7 @@ export class BullmqService implements OnModuleDestroy {
     let currentConnector = client.connector;
     observe(currentConnector);
 
-    Object.defineProperty(client, 'connector', {
+    Object.defineProperty(client, "connector", {
       configurable: true,
       enumerable: true,
       get: () => currentConnector,
@@ -342,7 +609,7 @@ export class BullmqService implements OnModuleDestroy {
       observedStreams.add(stream);
       streamSettlements.push(
         new Promise<void>((resolve) => {
-          stream.once('close', () => {
+          stream.once("close", () => {
             if (this.isShuttingDown && connector.stream === stream) {
               connector.stream = undefined;
             }
@@ -354,7 +621,7 @@ export class BullmqService implements OnModuleDestroy {
     let currentStream = connector.stream;
     observe(currentStream);
 
-    Object.defineProperty(connector, 'stream', {
+    Object.defineProperty(connector, "stream", {
       configurable: true,
       enumerable: true,
       get: () => currentStream,
@@ -377,7 +644,7 @@ export class BullmqService implements OnModuleDestroy {
     } catch (error: unknown) {
       if (
         error instanceof Error &&
-        connection.status === 'closed' &&
+        connection.status === "closed" &&
         this.isConnectionClosureError(error)
       ) {
         return;
@@ -399,8 +666,8 @@ export class BullmqService implements OnModuleDestroy {
     return (
       this.isShuttingDown &&
       this.isConnectionClosureError(error) &&
-      (this.connection.status === 'close' ||
-        this.connection.status === 'end' ||
+      (this.connection.status === "close" ||
+        this.connection.status === "end" ||
         this.workers.every((worker) => worker.closing !== undefined))
     );
   }
@@ -408,7 +675,7 @@ export class BullmqService implements OnModuleDestroy {
   private isConnectionClosureError(error: Error): boolean {
     const code = (error as NodeJS.ErrnoException).code;
     return (
-      error.message === 'Connection is closed.' ||
+      error.message === "Connection is closed." ||
       (code !== undefined && SHUTDOWN_CONNECTION_ERROR_CODES.has(code))
     );
   }
@@ -430,17 +697,17 @@ export class BullmqService implements OnModuleDestroy {
 
     blockingConnection.removeAllListeners = (event?: string | symbol) => {
       removeAllListeners(event);
-      if (event === undefined || event === 'error') {
-        blockingConnection.on('error', (error: Error) => {
+      if (event === undefined || event === "error") {
+        blockingConnection.on("error", (error: Error) => {
           if (
             this.isShuttingDown &&
-            (blockingConnection.status === 'closing' ||
-              blockingConnection.status === 'closed')
+            (blockingConnection.status === "closing" ||
+              blockingConnection.status === "closed")
           ) {
             return;
           }
 
-          worker.emit('error', error);
+          worker.emit("error", error);
         });
       }
       return blockingConnection;
@@ -459,7 +726,7 @@ export class BullmqService implements OnModuleDestroy {
     };
     let stalledCheckStopper = lifecycle.stalledCheckStopper;
 
-    Object.defineProperty(worker, 'stalledCheckStopper', {
+    Object.defineProperty(worker, "stalledCheckStopper", {
       configurable: true,
       get: () => stalledCheckStopper,
       set: (stopper: (() => void) | undefined) => {

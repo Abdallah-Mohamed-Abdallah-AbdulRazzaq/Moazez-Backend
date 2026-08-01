@@ -95,9 +95,9 @@ describe('public branding stream shutdown lifecycle', () => {
     expect(fixture.probe.destroyed).not.toHaveBeenCalled();
 
     source.end(Buffer.from('bytes'));
-    await expect(within(request.completed, 'response completion')).resolves.toEqual(
-      Buffer.from('image-bytes'),
-    );
+    await expect(
+      within(request.completed, 'response completion'),
+    ).resolves.toEqual(Buffer.from('image-bytes'));
     response.destroy();
     clientSocket.destroy();
     request.client.destroy();
@@ -219,6 +219,7 @@ async function createFixture(): Promise<{
   const coordinator = new GracefulShutdownCoordinator({
     app,
     httpServer: server,
+    managementServer: { close: (callback) => callback() },
     lifecycle,
     queue: { beginWorkerDrain: jest.fn().mockResolvedValue(undefined) },
     realtime: {

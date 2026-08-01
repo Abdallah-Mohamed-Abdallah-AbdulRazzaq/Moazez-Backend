@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
+import type { Env } from '../../../config/env.validation';
 import { REALTIME_SERVER_EVENTS } from '../realtime-event-names';
 import { RealtimeCommunicationAccessService } from '../realtime-communication-access.service';
 import { RealtimePresenceService } from '../realtime-presence.service';
@@ -22,7 +23,7 @@ describe('RealtimePresenceService', () => {
   });
 
   afterEach(async () => {
-    service.onModuleDestroy();
+    await service.onModuleDestroy();
     await stateStore.onModuleDestroy();
     warnSpy.mockRestore();
   });
@@ -239,16 +240,107 @@ describe('RealtimePresenceService', () => {
       actor: actorCard(),
     });
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      'Realtime state Redis unavailable; using in-memory presence and typing state.',
+    expect(warnSpy).toHaveBeenCalledWith({
+      event: 'realtime.state_store.unavailable',
+      stage: 'fallback',
+    });
+  });
+
+  it('restores a missing Redis membership without publishing another online event', async () => {
+    const store = stateStoreMock();
+    store.refreshPresence.mockResolvedValue(false);
+    const controlled = new RealtimePresenceService(
+      store,
+      publisher,
+      accessService,
     );
+    await controlled.registerSocket({
+      schoolId: 'school-1',
+      userId: 'user-1',
+      socketId: 'socket-1',
+      actor: actorCard(),
+    });
+    publisher.publishToConversation.mockClear();
+
+    await startRefresh(controlled);
+
+    expect(store.restorePresence).toHaveBeenCalledWith(
+      'school-1',
+      'user-1',
+      'socket-1',
+      90,
+    );
+    expect(publisher.publishToConversation).not.toHaveBeenCalled();
+    await controlled.onModuleDestroy();
+  });
+
+  it('single-flights refresh and waits for it during shutdown', async () => {
+    const store = stateStoreMock();
+    const refresh = deferred<boolean>();
+    store.refreshPresence.mockReturnValue(refresh.promise);
+    const controlled = new RealtimePresenceService(
+      store,
+      publisher,
+      accessService,
+    );
+    await controlled.registerSocket({
+      schoolId: 'school-1',
+      userId: 'user-1',
+      socketId: 'socket-1',
+      actor: actorCard(),
+    });
+
+    const first = startRefresh(controlled);
+    const second = startRefresh(controlled);
+    const shutdown = controlled.onModuleDestroy();
+    await Promise.resolve();
+
+    expect(first).toBe(second);
+    expect(store.refreshPresence).toHaveBeenCalledTimes(1);
+    let shutdownSettled = false;
+    void shutdown.then(() => {
+      shutdownSettled = true;
+    });
+    await Promise.resolve();
+    expect(shutdownSettled).toBe(false);
+
+    refresh.resolve(true);
+    await expect(shutdown).resolves.toBeUndefined();
+  });
+
+  it('does not restore Redis membership after the owned socket disconnects during refresh', async () => {
+    const store = stateStoreMock();
+    const refresh = deferred<boolean>();
+    store.refreshPresence.mockReturnValue(refresh.promise);
+    const controlled = new RealtimePresenceService(
+      store,
+      publisher,
+      accessService,
+    );
+    const socket = {
+      schoolId: 'school-1',
+      userId: 'user-1',
+      socketId: 'socket-1',
+      actor: actorCard(),
+    };
+    await controlled.registerSocket(socket);
+
+    const refreshing = startRefresh(controlled);
+    await Promise.resolve();
+    await controlled.unregisterSocket(socket);
+    refresh.resolve(false);
+
+    await expect(refreshing).resolves.toBeUndefined();
+    expect(store.restorePresence).not.toHaveBeenCalled();
+    expect(store.decrementPresence).toHaveBeenCalledTimes(1);
+    await controlled.onModuleDestroy();
   });
 });
 
-function configServiceMock(): ConfigService {
+function configServiceMock(): ConfigService<Env, true> {
   return {
     get: jest.fn().mockReturnValue(undefined),
-  } as unknown as ConfigService;
+  } as unknown as ConfigService<Env, true>;
 }
 
 function publisherMock(): jest.Mocked<RealtimePublisherService> {
@@ -276,4 +368,37 @@ function actorCard() {
     userType: 'teacher' as const,
     avatarUrl: null,
   };
+}
+
+function stateStoreMock(): jest.Mocked<RealtimeStateStoreService> {
+  return {
+    incrementPresence: jest.fn().mockResolvedValue({
+      socketCount: 1,
+      updatedAt: new Date().toISOString(),
+      transitionedOnline: true,
+      transitionedOffline: false,
+    }),
+    decrementPresence: jest.fn().mockResolvedValue({
+      socketCount: 0,
+      updatedAt: new Date().toISOString(),
+      transitionedOnline: false,
+      transitionedOffline: true,
+    }),
+    refreshPresence: jest.fn().mockResolvedValue(true),
+    restorePresence: jest.fn().mockResolvedValue(true),
+  } as unknown as jest.Mocked<RealtimeStateStoreService>;
+}
+
+function startRefresh(service: RealtimePresenceService): Promise<void> {
+  return (
+    service as unknown as { startRefresh(): Promise<void> }
+  ).startRefresh();
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }

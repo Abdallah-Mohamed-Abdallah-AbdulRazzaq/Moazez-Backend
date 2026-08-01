@@ -44,6 +44,7 @@ interface ShutdownClock {
 export interface GracefulShutdownDependencies {
   app: Pick<INestApplication, 'close'>;
   httpServer: Pick<HttpServer, 'close'>;
+  managementServer: Pick<HttpServer, 'close'>;
   lifecycle: ApplicationLifecycleState;
   queue: QueueLifecycle;
   realtime: RealtimeLifecycle;
@@ -170,6 +171,7 @@ export class GracefulShutdownCoordinator {
     this.dependencies.lifecycle.beginDraining();
     const shutdownOperations = Promise.all([
       stopHttpIntake(this.dependencies.httpServer),
+      stopHttpIntake(this.dependencies.managementServer),
       this.dependencies.queue.beginWorkerDrain(),
       this.dependencies.lifecycle.waitForIdle().then(async () => {
         await this.dependencies.realtime.disconnectSocketsForShutdown();

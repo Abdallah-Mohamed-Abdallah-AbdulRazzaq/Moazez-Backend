@@ -1,14 +1,29 @@
 import { Module } from '@nestjs/common';
-import { FirebaseAdminModule } from '../../infrastructure/push/firebase/firebase-admin.module';
 import { QueueModule } from '../../infrastructure/queue/queue.module';
+import { RealtimeModule } from '../../infrastructure/realtime/realtime.module';
 import { StorageModule } from '../../infrastructure/storage/storage.module';
-import { EmailSecretCrypto } from '../settings/email/domain/email-secret-crypto';
+import { UploadsModule } from '../files/uploads/uploads.module';
 import { HealthController } from './health.controller';
 import { HealthService } from './health.service';
+import {
+  createOperationalRoleManifests,
+  OPERATIONAL_ROLE_MANIFESTS,
+} from './operational-probe.manifests';
+import { OperationalProbeService } from './operational-probe.service';
+import { TemporaryDiskProbe } from './temporary-disk.probe';
 
 @Module({
-  imports: [QueueModule, StorageModule, FirebaseAdminModule],
+  imports: [QueueModule, RealtimeModule, StorageModule, UploadsModule],
   controllers: [HealthController],
-  providers: [EmailSecretCrypto, HealthService],
+  providers: [
+    HealthService,
+    OperationalProbeService,
+    TemporaryDiskProbe,
+    {
+      provide: OPERATIONAL_ROLE_MANIFESTS,
+      useValue: createOperationalRoleManifests(),
+    },
+  ],
+  exports: [OperationalProbeService],
 })
 export class HealthModule {}

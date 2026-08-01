@@ -49,6 +49,10 @@ export class MediaRuntimeStartupGuard implements OnModuleInit {
     if (!this.verified) await this.verify();
   }
 
+  isVerified(): boolean {
+    return this.verified;
+  }
+
   private async verify(): Promise<void> {
     await runtime.verifyRuntimeIdentity({
       executablePath: this.config.getOrThrow<string>('FFPROBE_PATH'),

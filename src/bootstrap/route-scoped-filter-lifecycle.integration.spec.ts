@@ -270,6 +270,7 @@ describe('route-scoped multipart filter lifecycle settlement', () => {
     const coordinator = new GracefulShutdownCoordinator({
       app,
       httpServer: app.getHttpServer(),
+      managementServer: { close: (callback) => callback() },
       lifecycle,
       queue: { beginWorkerDrain: jest.fn().mockResolvedValue(undefined) },
       realtime: {

@@ -89,7 +89,9 @@ describe('RealtimePublisherService', () => {
   it('returns false when Socket.io delivery fails', () => {
     const service = new RealtimePublisherService();
     const to = jest.fn(() => {
-      throw new Error('socket adapter unavailable');
+      throw new Error(
+        'redis://publisher-user:publisher-secret@internal/school-1',
+      );
     });
     service.bindServer({ to } as unknown as Server);
 
@@ -101,8 +103,16 @@ describe('RealtimePublisherService', () => {
         { messageId: 'message-1' },
       ),
     ).toBe(false);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('communication.chat.message.created'),
+    expect(warnSpy).toHaveBeenCalledWith({
+      event: 'realtime.publish.failed',
+      stage: 'emit',
+    });
+    const serializedLogs = JSON.stringify(warnSpy.mock.calls);
+    expect(serializedLogs).not.toContain('publisher-secret');
+    expect(serializedLogs).not.toContain('school-1');
+    expect(serializedLogs).not.toContain('conversation-1');
+    expect(serializedLogs).not.toContain(
+      'communication.chat.message.created',
     );
   });
 });

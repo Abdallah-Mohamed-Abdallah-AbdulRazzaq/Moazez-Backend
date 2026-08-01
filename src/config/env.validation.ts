@@ -13,7 +13,8 @@ const optionalNonEmptyString = z.preprocess(
 
 export const envSchema = z
   .object({
-    APP_PORT: z.coerce.number().int().positive().default(3000),
+    APP_PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
+    APP_PROBE_PORT: z.coerce.number().int().min(1).max(65_535).default(9090),
     NODE_ENV: z
       .enum(['development', 'test', 'staging', 'production'])
       .default('development'),
@@ -97,6 +98,14 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['SWAGGER_ENABLED'],
         message: 'SWAGGER_ENABLED=true is forbidden in production',
+      });
+    }
+
+    if (env.APP_PROBE_PORT === env.APP_PORT) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['APP_PROBE_PORT'],
+        message: 'APP_PROBE_PORT must differ from APP_PORT',
       });
     }
 

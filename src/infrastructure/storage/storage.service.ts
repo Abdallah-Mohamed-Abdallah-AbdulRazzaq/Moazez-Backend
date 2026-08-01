@@ -115,12 +115,16 @@ export class StorageService {
       FileVisibility.PUBLIC,
     );
 
-    const [privateExists, publicExists] = await Promise.all([
-      this.minioAdapter.bucketExists(privateBucket),
-      this.minioAdapter.bucketExists(publicBucket),
+    const bucketResults = await Promise.allSettled([
+      this.minioAdapter.bucketExistsForReadiness(privateBucket),
+      this.minioAdapter.bucketExistsForReadiness(publicBucket),
     ]);
 
-    if (!privateExists || !publicExists) {
+    if (
+      bucketResults.some(
+        (result) => result.status !== 'fulfilled' || !result.value,
+      )
+    ) {
       throw new Error('storage_bucket_unavailable');
     }
   }

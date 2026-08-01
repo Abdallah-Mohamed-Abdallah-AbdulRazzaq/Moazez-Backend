@@ -96,6 +96,7 @@ describe('Prisma graceful shutdown ordering', () => {
     const coordinator = new GracefulShutdownCoordinator({
       app,
       httpServer: server,
+      managementServer: { close: (callback) => callback() },
       lifecycle,
       queue: { beginWorkerDrain: jest.fn().mockResolvedValue(undefined) },
       realtime: {
