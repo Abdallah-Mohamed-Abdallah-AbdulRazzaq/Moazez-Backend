@@ -23,6 +23,7 @@ import { ApproveReinforcementSubmissionUseCase } from '../application/approve-re
 import { GetReinforcementReviewItemUseCase } from '../application/get-reinforcement-review-item.use-case';
 import { ListReinforcementReviewQueueUseCase } from '../application/list-reinforcement-review-queue.use-case';
 import { RejectReinforcementSubmissionUseCase } from '../application/reject-reinforcement-submission.use-case';
+import { ReinforcementProofContentVerifierService } from '../application/reinforcement-proof-content-verifier.service';
 import { SubmitReinforcementStageUseCase } from '../application/submit-reinforcement-stage.use-case';
 import { ReinforcementReviewsRepository } from '../infrastructure/reinforcement-reviews.repository';
 
@@ -56,7 +57,11 @@ describe('reinforcement review use cases', () => {
   it('submits a valid assignment stage and audits the mutation', async () => {
     const repository = baseRepository();
     const auth = authRepository();
-    const useCase = new SubmitReinforcementStageUseCase(repository, auth);
+    const useCase = new SubmitReinforcementStageUseCase(
+      repository,
+      auth,
+      noOpProofContentVerifier(),
+    );
 
     const result = await withScope(() =>
       useCase.execute(ASSIGNMENT_ID, STAGE_ID, { proofText: 'Done' }),
@@ -82,14 +87,17 @@ describe('reinforcement review use cases', () => {
 
   it('requires proofFileId when proof type requires a file', async () => {
     const repository = baseRepository({
-      findStageForAssignment: jest.fn().mockResolvedValue(
-        stageRecord({ proofType: ReinforcementProofType.IMAGE }),
-      ),
+      findStageForAssignment: jest
+        .fn()
+        .mockResolvedValue(
+          stageRecord({ proofType: ReinforcementProofType.IMAGE }),
+        ),
       createOrResubmitSubmission: jest.fn(),
     });
     const useCase = new SubmitReinforcementStageUseCase(
       repository,
       authRepository(),
+      noOpProofContentVerifier(),
     );
 
     await expect(
@@ -98,11 +106,215 @@ describe('reinforcement review use cases', () => {
     expect(repository.createOrResubmitSubmission).not.toHaveBeenCalled();
   });
 
+  it('rejects a cross-type proof before persistence and audit', async () => {
+    const repository = baseRepository({
+      findStageForAssignment: jest
+        .fn()
+        .mockResolvedValue(
+          stageRecord({ proofType: ReinforcementProofType.VIDEO }),
+        ),
+      findProofFile: jest.fn().mockResolvedValue({
+        id: 'file-1',
+        originalName: 'proof.png',
+        mimeType: 'image/png',
+        sizeBytes: BigInt(1234),
+        visibility: FileVisibility.PRIVATE,
+        createdAt: new Date('2026-04-29T08:00:00.000Z'),
+      }),
+    });
+    const auth = authRepository();
+    const useCase = new SubmitReinforcementStageUseCase(
+      repository,
+      auth,
+      noOpProofContentVerifier(),
+    );
+
+    await expect(
+      withScope(() =>
+        useCase.execute(ASSIGNMENT_ID, STAGE_ID, {
+          proofFileId: 'file-1',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'reinforcement.proof.mime_not_allowed',
+    });
+
+    expect(repository.createOrResubmitSubmission).not.toHaveBeenCalled();
+    expect(auth.createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('scopes proof-file lookup to the current organization, school, and actor', async () => {
+    const findProofFile = jest.fn().mockResolvedValue(null);
+    const repository = baseRepository({
+      findStageForAssignment: jest
+        .fn()
+        .mockResolvedValue(
+          stageRecord({ proofType: ReinforcementProofType.IMAGE }),
+        ),
+      findProofFile,
+    });
+    const auth = authRepository();
+    const useCase = new SubmitReinforcementStageUseCase(
+      repository,
+      auth,
+      noOpProofContentVerifier(),
+    );
+
+    await expect(
+      withScope(() =>
+        useCase.execute(ASSIGNMENT_ID, STAGE_ID, {
+          proofFileId: 'file-1',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'not_found' });
+
+    expect(findProofFile).toHaveBeenCalledWith({
+      fileId: 'file-1',
+      organizationId: 'org-1',
+      schoolId: SCHOOL_ID,
+      uploaderId: 'reviewer-1',
+    });
+    expect(repository.createOrResubmitSubmission).not.toHaveBeenCalled();
+    expect(auth.createAuditLog).not.toHaveBeenCalled();
+  });
+  it('verifies stored object content before persisting a file proof', async () => {
+    const proofContentVerifier = {
+      verify: jest.fn().mockResolvedValue(undefined),
+    };
+    const repository = baseRepository({
+      findStageForAssignment: jest
+        .fn()
+        .mockResolvedValue(
+          stageRecord({ proofType: ReinforcementProofType.IMAGE }),
+        ),
+      findProofFile: jest.fn().mockResolvedValue({
+        id: 'file-1',
+        originalName: 'proof.png',
+        mimeType: 'image/png',
+        sizeBytes: BigInt(1234),
+        visibility: FileVisibility.PRIVATE,
+        bucket: 'private-files',
+        objectKey: 'org-1/school-1/proofs/file-1',
+        createdAt: new Date('2026-04-29T08:00:00.000Z'),
+      }),
+    });
+    const auth = authRepository();
+    const useCase = Reflect.construct(SubmitReinforcementStageUseCase, [
+      repository,
+      auth,
+      proofContentVerifier,
+    ]) as SubmitReinforcementStageUseCase;
+
+    await withScope(() =>
+      useCase.execute(ASSIGNMENT_ID, STAGE_ID, {
+        proofFileId: 'file-1',
+      }),
+    );
+
+    expect(proofContentVerifier.verify).toHaveBeenCalledWith({
+      proofType: ReinforcementProofType.IMAGE,
+      declaredMimeType: 'image/png',
+      bucket: 'private-files',
+      objectKey: 'org-1/school-1/proofs/file-1',
+      expectedSizeBytes: BigInt(1234),
+    });
+    expect(
+      proofContentVerifier.verify.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      repository.createOrResubmitSubmission.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('does not persist or audit when stored object verification rejects', async () => {
+    const proofContentVerifier = {
+      verify: jest.fn().mockRejectedValue(
+        Object.assign(new Error('Proof MIME mismatch'), {
+          code: 'reinforcement.proof.mime_mismatch',
+        }),
+      ),
+    };
+    const repository = baseRepository({
+      findStageForAssignment: jest
+        .fn()
+        .mockResolvedValue(
+          stageRecord({ proofType: ReinforcementProofType.IMAGE }),
+        ),
+      findProofFile: jest.fn().mockResolvedValue({
+        id: 'file-1',
+        originalName: 'proof.png',
+        mimeType: 'image/png',
+        sizeBytes: BigInt(1234),
+        visibility: FileVisibility.PRIVATE,
+        bucket: 'private-files',
+        objectKey: 'org-1/school-1/proofs/file-1',
+        createdAt: new Date('2026-04-29T08:00:00.000Z'),
+      }),
+    });
+    const auth = authRepository();
+    const useCase = Reflect.construct(SubmitReinforcementStageUseCase, [
+      repository,
+      auth,
+      proofContentVerifier,
+    ]) as SubmitReinforcementStageUseCase;
+
+    await expect(
+      withScope(() =>
+        useCase.execute(ASSIGNMENT_ID, STAGE_ID, {
+          proofFileId: 'file-1',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'reinforcement.proof.mime_mismatch',
+    });
+
+    expect(repository.createOrResubmitSubmission).not.toHaveBeenCalled();
+    expect(auth.createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('preserves NONE proof compatibility without inspecting object bytes', async () => {
+    const proofContentVerifier = {
+      verify: jest.fn().mockResolvedValue(undefined),
+    };
+    const repository = baseRepository({
+      findStageForAssignment: jest
+        .fn()
+        .mockResolvedValue(
+          stageRecord({ proofType: ReinforcementProofType.NONE }),
+        ),
+      findProofFile: jest.fn().mockResolvedValue({
+        id: 'file-1',
+        originalName: 'optional-proof.png',
+        mimeType: 'image/png',
+        sizeBytes: BigInt(1234),
+        visibility: FileVisibility.PRIVATE,
+        bucket: 'private-files',
+        objectKey: 'org-1/school-1/proofs/file-1',
+        createdAt: new Date('2026-04-29T08:00:00.000Z'),
+      }),
+    });
+    const auth = authRepository();
+    const useCase = Reflect.construct(SubmitReinforcementStageUseCase, [
+      repository,
+      auth,
+      proofContentVerifier,
+    ]) as SubmitReinforcementStageUseCase;
+
+    await expect(
+      withScope(() =>
+        useCase.execute(ASSIGNMENT_ID, STAGE_ID, {
+          proofFileId: 'file-1',
+        }),
+      ),
+    ).resolves.toMatchObject({ status: 'submitted' });
+
+    expect(proofContentVerifier.verify).not.toHaveBeenCalled();
+  });
   it('accepts no proof when proof type is none', async () => {
     const repository = baseRepository();
     const useCase = new SubmitReinforcementStageUseCase(
       repository,
       authRepository(),
+      noOpProofContentVerifier(),
     );
 
     await expect(
@@ -121,6 +333,7 @@ describe('reinforcement review use cases', () => {
     const useCase = new SubmitReinforcementStageUseCase(
       repository,
       authRepository(),
+      noOpProofContentVerifier(),
     );
 
     await expect(
@@ -138,6 +351,7 @@ describe('reinforcement review use cases', () => {
     const useCase = new SubmitReinforcementStageUseCase(
       repository,
       authRepository(),
+      noOpProofContentVerifier(),
     );
 
     await expect(
@@ -149,11 +363,14 @@ describe('reinforcement review use cases', () => {
     const repository = baseRepository({
       findSubmissionByAssignmentStage: jest
         .fn()
-        .mockResolvedValue(submissionState(ReinforcementSubmissionStatus.SUBMITTED)),
+        .mockResolvedValue(
+          submissionState(ReinforcementSubmissionStatus.SUBMITTED),
+        ),
     });
     const useCase = new SubmitReinforcementStageUseCase(
       repository,
       authRepository(),
+      noOpProofContentVerifier(),
     );
 
     await expect(
@@ -167,11 +384,14 @@ describe('reinforcement review use cases', () => {
     const repository = baseRepository({
       findSubmissionByAssignmentStage: jest
         .fn()
-        .mockResolvedValue(submissionState(ReinforcementSubmissionStatus.REJECTED)),
+        .mockResolvedValue(
+          submissionState(ReinforcementSubmissionStatus.REJECTED),
+        ),
     });
     const useCase = new SubmitReinforcementStageUseCase(
       repository,
       authRepository(),
+      noOpProofContentVerifier(),
     );
 
     await withScope(() => useCase.execute(ASSIGNMENT_ID, STAGE_ID, {}));
@@ -284,7 +504,9 @@ describe('reinforcement review use cases', () => {
     const auth = authRepository();
 
     await new ListReinforcementReviewQueueUseCase(repository).execute({});
-    await new GetReinforcementReviewItemUseCase(repository).execute('submission-1');
+    await new GetReinforcementReviewItemUseCase(repository).execute(
+      'submission-1',
+    );
 
     expect(auth.createAuditLog).not.toHaveBeenCalled();
   });
@@ -296,6 +518,11 @@ describe('reinforcement review use cases', () => {
     expect(repository.writeXpLedger).toBeUndefined();
   });
 
+  function noOpProofContentVerifier(): ReinforcementProofContentVerifierService {
+    return {
+      verify: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ReinforcementProofContentVerifierService;
+  }
   function baseRepository(overrides?: Partial<Record<string, jest.Mock>>) {
     const repository = {
       findAssignmentForSubmit: jest.fn().mockResolvedValue(assignmentRecord()),
@@ -309,9 +536,7 @@ describe('reinforcement review use cases', () => {
         createdAt: new Date('2026-04-29T08:00:00.000Z'),
       }),
       findSubmissionByAssignmentStage: jest.fn().mockResolvedValue(null),
-      createOrResubmitSubmission: jest
-        .fn()
-        .mockResolvedValue(reviewItem()),
+      createOrResubmitSubmission: jest.fn().mockResolvedValue(reviewItem()),
       findSubmissionForReview: jest.fn().mockResolvedValue(reviewItem()),
       listReviewQueue: jest.fn().mockResolvedValue({
         items: [reviewItem()],
@@ -500,7 +725,8 @@ describe('reinforcement review use cases', () => {
         termId: 'term-1',
         studentId: STUDENT_ID,
         enrollmentId: ENROLLMENT_ID,
-        status: overrides?.assignmentStatus ?? ReinforcementTaskStatus.UNDER_REVIEW,
+        status:
+          overrides?.assignmentStatus ?? ReinforcementTaskStatus.UNDER_REVIEW,
         progress: overrides?.assignmentProgress ?? 0,
         assignedAt: now,
         startedAt: now,
