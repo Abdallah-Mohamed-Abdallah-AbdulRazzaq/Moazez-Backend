@@ -143,8 +143,8 @@ jobs:
         run: >-
           docker run --detach --rm --name moazez-learning-media-minio
           --publish 9000:9000
-          --env MINIO_ROOT_USER=minioadmin
-          --env MINIO_ROOT_PASSWORD=minioadmin
+          --env MINIO_ROOT_USER="$STORAGE_ACCESS_KEY"
+          --env MINIO_ROOT_PASSWORD="$STORAGE_SECRET_KEY"
           --env MINIO_API_CORS_ALLOW_ORIGIN=http://127.0.0.1:3001
           minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
       - name: Wait for MinIO
@@ -156,6 +156,49 @@ jobs:
             sleep 1
           done
           exit 1
+
+      - name: Provision required MinIO buckets
+        shell: bash
+        run: |
+          node <<'NODE'
+          const { Client } = require('minio');
+
+          void (async () => {
+            const endpoint = new URL(process.env.STORAGE_ENDPOINT);
+            const buckets = [
+              process.env.STORAGE_BUCKET,
+              process.env.STORAGE_PUBLIC_BUCKET,
+            ];
+            if (
+              !['http:', 'https:'].includes(endpoint.protocol) ||
+              buckets.some((bucket) => !bucket)
+            ) {
+              throw new Error('invalid_storage_fixture_configuration');
+            }
+
+            const client = new Client({
+              endPoint: endpoint.hostname,
+              port: endpoint.port
+                ? Number(endpoint.port)
+                : endpoint.protocol === 'https:'
+                  ? 443
+                  : 80,
+              useSSL: endpoint.protocol === 'https:',
+              accessKey: process.env.STORAGE_ACCESS_KEY,
+              secretKey: process.env.STORAGE_SECRET_KEY,
+            });
+
+            for (const bucket of buckets) {
+              if (!(await client.bucketExists(bucket))) {
+                await client.makeBucket(bucket);
+              }
+            }
+            console.log(`Provisioned ${buckets.length} required MinIO buckets`);
+          })().catch((error) => {
+            console.error(`MinIO bucket provisioning failed: ${error.name}`);
+            process.exit(1);
+          });
+          NODE
 
       - name: Build canonical runtime image
         run: DOCKER_BUILDKIT=1 docker build --tag moazez-learning-media:${{ github.sha }} .

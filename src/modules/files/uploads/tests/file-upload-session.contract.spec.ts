@@ -170,6 +170,7 @@ describe('learning media upload foundation contract', () => {
     const parsedWorkflow = load(workflow) as {
       jobs: {
         'learning-media-integrity': {
+          env: Record<string, string>;
           steps: Array<{
             id?: string;
             name?: string;
@@ -181,7 +182,8 @@ describe('learning media upload foundation contract', () => {
         };
       };
     };
-    const steps = parsedWorkflow.jobs['learning-media-integrity'].steps;
+    const job = parsedWorkflow.jobs['learning-media-integrity'];
+    const steps = job.steps;
 
     for (const requiredPath of [
       'test/integration/learning-media-upload.integration.spec.ts',
@@ -212,6 +214,47 @@ describe('learning media upload foundation contract', () => {
     expect(
       steps.filter((step) => step.name === 'Verify ffprobe runtime contract'),
     ).toHaveLength(1);
+
+    const minioStartSteps = steps.filter(
+      (step) => step.name === 'Start exact MinIO release',
+    );
+    expect(minioStartSteps).toHaveLength(1);
+    expect(minioStartSteps[0].run).toContain(
+      '--env MINIO_ROOT_USER="$STORAGE_ACCESS_KEY"',
+    );
+    expect(minioStartSteps[0].run).toContain(
+      '--env MINIO_ROOT_PASSWORD="$STORAGE_SECRET_KEY"',
+    );
+    expect(minioStartSteps[0].run?.match(/MINIO_ROOT_USER=/gu)).toHaveLength(1);
+    expect(
+      minioStartSteps[0].run?.match(/MINIO_ROOT_PASSWORD=/gu),
+    ).toHaveLength(1);
+
+    const waitForMinioIndex = steps.findIndex(
+      (step) => step.name === 'Wait for MinIO',
+    );
+    const provisionStepIndexes = steps.flatMap((step, index) =>
+      step.name === 'Provision required MinIO buckets' ? [index] : [],
+    );
+    const startupScenarioIndex = steps.findIndex(
+      (step) => step.id === 'health_runtime_startup',
+    );
+    expect(waitForMinioIndex).toBeGreaterThanOrEqual(0);
+    expect(provisionStepIndexes).toHaveLength(1);
+    expect(waitForMinioIndex).toBeLessThan(provisionStepIndexes[0]);
+    expect(provisionStepIndexes[0]).toBeLessThan(startupScenarioIndex);
+
+    const provisionRun = steps[provisionStepIndexes[0]].run ?? '';
+    expect(provisionRun).toContain("require('minio')");
+    expect(provisionRun).toContain('process.env.STORAGE_BUCKET');
+    expect(provisionRun).toContain('process.env.STORAGE_PUBLIC_BUCKET');
+    expect(provisionRun).toContain('process.env.STORAGE_ACCESS_KEY');
+    expect(provisionRun).toContain('process.env.STORAGE_SECRET_KEY');
+    expect(provisionRun).toContain('client.bucketExists(bucket)');
+    expect(provisionRun).toContain('client.makeBucket(bucket)');
+    expect(provisionRun.indexOf('client.bucketExists(bucket)')).toBeLessThan(
+      provisionRun.indexOf('client.makeBucket(bucket)'),
+    );
 
     const scenarios = [
       ['health_runtime_startup', 'startup'],
