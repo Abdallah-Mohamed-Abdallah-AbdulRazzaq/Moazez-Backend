@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import { ReinforcementProofType } from '@prisma/client';
 import { NotFoundDomainException } from '../../../../common/exceptions/domain-exception';
 import { AuthRepository } from '../../../iam/auth/infrastructure/auth.repository';
+import { ReinforcementProofContentVerifierService } from './reinforcement-proof-content-verifier.service';
 import { requireReinforcementScope } from '../../reinforcement-context';
 import {
   assertAssignmentCanSubmit,
+  assertDeclaredProofMimeAllowed,
   assertProofPayloadMatchesProofType,
   assertStageBelongsToTask,
   assertSubmissionCanBeSubmitted,
@@ -20,6 +23,7 @@ export class SubmitReinforcementStageUseCase {
   constructor(
     private readonly reviewsRepository: ReinforcementReviewsRepository,
     private readonly authRepository: AuthRepository,
+    private readonly proofContentVerifier: ReinforcementProofContentVerifierService,
   ) {}
 
   async execute(
@@ -54,12 +58,30 @@ export class SubmitReinforcementStageUseCase {
     });
 
     if (command.proofFileId) {
-      const proofFile = await this.reviewsRepository.findProofFile(
-        command.proofFileId,
-      );
+      const proofFile = await this.reviewsRepository.findProofFile({
+        fileId: command.proofFileId,
+        organizationId: scope.organizationId,
+        schoolId: scope.schoolId,
+        uploaderId: scope.actorId,
+      });
       if (!proofFile) {
         throw new NotFoundDomainException('Proof file not found', {
           proofFileId: command.proofFileId,
+        });
+      }
+
+      assertDeclaredProofMimeAllowed({
+        proofType: stage.proofType,
+        mimeType: proofFile.mimeType,
+      });
+
+      if (stage.proofType !== ReinforcementProofType.NONE) {
+        await this.proofContentVerifier.verify({
+          proofType: stage.proofType,
+          declaredMimeType: proofFile.mimeType,
+          bucket: proofFile.bucket,
+          objectKey: proofFile.objectKey,
+          expectedSizeBytes: proofFile.sizeBytes,
         });
       }
     }
@@ -71,19 +93,18 @@ export class SubmitReinforcementStageUseCase {
       });
     assertSubmissionCanBeSubmitted(existing);
 
-    const submitted =
-      await this.reviewsRepository.createOrResubmitSubmission({
-        schoolId: scope.schoolId,
-        assignment,
-        stage,
-        existingSubmissionId: existing?.id ?? null,
-        assignmentStatus: deriveAssignmentStatusAfterSubmit(assignment),
-        proofText: normalizeNullableText(command.proofText),
-        proofFileId: normalizeNullableText(command.proofFileId),
-        submittedById: scope.actorId,
-        submittedAt: new Date(),
-        metadata: command.metadata,
-      });
+    const submitted = await this.reviewsRepository.createOrResubmitSubmission({
+      schoolId: scope.schoolId,
+      assignment,
+      stage,
+      existingSubmissionId: existing?.id ?? null,
+      assignmentStatus: deriveAssignmentStatusAfterSubmit(assignment),
+      proofText: normalizeNullableText(command.proofText),
+      proofFileId: normalizeNullableText(command.proofFileId),
+      submittedById: scope.actorId,
+      submittedAt: new Date(),
+      metadata: command.metadata,
+    });
 
     await this.authRepository.createAuditLog(
       buildSubmissionAuditEntry({

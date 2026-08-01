@@ -5,6 +5,7 @@ import {
 } from '@prisma/client';
 import {
   assertAssignmentCanSubmit,
+  assertDeclaredProofMimeAllowed,
   assertProofPayloadMatchesProofType,
   assertReviewNoteForRejection,
   assertStageBelongsToTask,
@@ -44,6 +45,39 @@ describe('reinforcement review domain', () => {
     ).not.toThrow();
   });
 
+  it.each([
+    [ReinforcementProofType.IMAGE, 'image/jpeg'],
+    [ReinforcementProofType.IMAGE, 'image/png'],
+    [ReinforcementProofType.VIDEO, 'video/mp4'],
+    [ReinforcementProofType.VIDEO, 'video/webm'],
+    [ReinforcementProofType.DOCUMENT, 'application/pdf'],
+  ] as const)(
+    'accepts declared MIME %s for proof type %s',
+    (proofType, mimeType) => {
+      expect(() =>
+        assertDeclaredProofMimeAllowed({ proofType, mimeType }),
+      ).not.toThrow();
+    },
+  );
+
+  it.each([
+    [ReinforcementProofType.IMAGE, 'video/mp4'],
+    [ReinforcementProofType.VIDEO, 'image/png'],
+    [ReinforcementProofType.DOCUMENT, 'text/plain'],
+    [ReinforcementProofType.IMAGE, 'image/jpg'],
+  ] as const)(
+    'rejects declared MIME %s for proof type %s',
+    (proofType, mimeType) => {
+      expect(() =>
+        assertDeclaredProofMimeAllowed({ proofType, mimeType }),
+      ).toThrow(
+        expect.objectContaining({
+          code: 'reinforcement.proof.mime_not_allowed',
+        }),
+      );
+    },
+  );
+
   it('rejects cancelled assignments and tasks', () => {
     expect(() =>
       assertAssignmentCanSubmit({
@@ -54,7 +88,9 @@ describe('reinforcement review domain', () => {
           status: ReinforcementTaskStatus.NOT_COMPLETED,
         },
       }),
-    ).toThrow(expect.objectContaining({ code: 'reinforcement.task.cancelled' }));
+    ).toThrow(
+      expect.objectContaining({ code: 'reinforcement.task.cancelled' }),
+    );
 
     expect(() =>
       assertAssignmentCanSubmit({
@@ -65,7 +101,9 @@ describe('reinforcement review domain', () => {
           status: ReinforcementTaskStatus.CANCELLED,
         },
       }),
-    ).toThrow(expect.objectContaining({ code: 'reinforcement.task.cancelled' }));
+    ).toThrow(
+      expect.objectContaining({ code: 'reinforcement.task.cancelled' }),
+    );
   });
 
   it('rejects a stage that does not belong to the task', () => {
@@ -127,7 +165,9 @@ describe('reinforcement review domain', () => {
     expect(() => assertReviewNoteForRejection({ note: '  ' })).toThrow(
       expect.objectContaining({ code: 'validation.failed' }),
     );
-    expect(() => assertReviewNoteForRejection({ noteAr: 'Rejected AR' })).not.toThrow();
+    expect(() =>
+      assertReviewNoteForRejection({ noteAr: 'Rejected AR' }),
+    ).not.toThrow();
   });
 
   it('calculates progress using active stages only', () => {
