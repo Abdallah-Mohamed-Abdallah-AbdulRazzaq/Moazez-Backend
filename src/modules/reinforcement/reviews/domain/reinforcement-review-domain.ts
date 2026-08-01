@@ -43,6 +43,26 @@ export class ReinforcementTaskCancelledException extends DomainException {
   }
 }
 
+export class ReinforcementProofMimeNotAllowedException extends DomainException {
+  constructor(details?: Record<string, unknown>) {
+    super({
+      code: 'reinforcement.proof.mime_not_allowed',
+      message: 'The proof file type is not allowed for this stage',
+      httpStatus: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+      details,
+    });
+  }
+}
+
+const REINFORCEMENT_PROOF_MIME_TYPES: Record<
+  ReinforcementProofType,
+  readonly string[]
+> = {
+  [ReinforcementProofType.NONE]: [],
+  [ReinforcementProofType.IMAGE]: ['image/jpeg', 'image/png'],
+  [ReinforcementProofType.VIDEO]: ['video/mp4', 'video/webm'],
+  [ReinforcementProofType.DOCUMENT]: ['application/pdf'],
+};
 export interface AssignmentReviewStateLike {
   id: string;
   status: ReinforcementTaskStatus | string;
@@ -71,12 +91,13 @@ export interface SubmissionReviewStateLike {
   status: ReinforcementSubmissionStatus | string;
 }
 
-const SUBMISSION_STATUS_ALIASES: Record<string, ReinforcementSubmissionStatus> = {
-  pending: ReinforcementSubmissionStatus.PENDING,
-  submitted: ReinforcementSubmissionStatus.SUBMITTED,
-  approved: ReinforcementSubmissionStatus.APPROVED,
-  rejected: ReinforcementSubmissionStatus.REJECTED,
-};
+const SUBMISSION_STATUS_ALIASES: Record<string, ReinforcementSubmissionStatus> =
+  {
+    pending: ReinforcementSubmissionStatus.PENDING,
+    submitted: ReinforcementSubmissionStatus.SUBMITTED,
+    approved: ReinforcementSubmissionStatus.APPROVED,
+    rejected: ReinforcementSubmissionStatus.REJECTED,
+  };
 
 const REVIEW_OUTCOME_ALIASES: Record<string, ReinforcementReviewOutcome> = {
   approved: ReinforcementReviewOutcome.APPROVED,
@@ -90,7 +111,9 @@ export function assertAssignmentCanSubmit(
 ): void {
   assertTaskActive(assignment.task, { assignmentId: assignment.id });
 
-  if (normalizeTaskStatus(assignment.status) === ReinforcementTaskStatus.CANCELLED) {
+  if (
+    normalizeTaskStatus(assignment.status) === ReinforcementTaskStatus.CANCELLED
+  ) {
     throw new ReinforcementTaskCancelledException({
       assignmentId: assignment.id,
     });
@@ -156,14 +179,20 @@ export function assertReviewNoteForRejection(command: {
   note?: string | null;
   noteAr?: string | null;
 }): void {
-  if (normalizeNullableText(command.note) || normalizeNullableText(command.noteAr)) {
+  if (
+    normalizeNullableText(command.note) ||
+    normalizeNullableText(command.noteAr)
+  ) {
     return;
   }
 
-  throw new ValidationDomainException('Rejecting a submission requires a note', {
-    field: 'note',
-    aliases: ['noteAr'],
-  });
+  throw new ValidationDomainException(
+    'Rejecting a submission requires a note',
+    {
+      field: 'note',
+      aliases: ['noteAr'],
+    },
+  );
 }
 
 export function assertStageBelongsToTask(params: {
@@ -186,9 +215,33 @@ export function assertProofPayloadMatchesProofType(params: {
   if (proofType === ReinforcementProofType.NONE) return;
 
   if (!normalizeNullableText(params.proofFileId)) {
-    throw new ValidationDomainException('Proof file is required for this stage', {
-      field: 'proofFileId',
+    throw new ValidationDomainException(
+      'Proof file is required for this stage',
+      {
+        field: 'proofFileId',
+        proofType,
+      },
+    );
+  }
+}
+
+export function assertDeclaredProofMimeAllowed(params: {
+  proofType: ReinforcementProofType | string;
+  mimeType: string;
+}): void {
+  const proofType = normalizeProofType(params.proofType);
+  if (proofType === ReinforcementProofType.NONE) return;
+
+  const normalizedMimeType = normalizeNullableText(
+    params.mimeType,
+  )?.toLowerCase();
+  const allowedMimeTypes = REINFORCEMENT_PROOF_MIME_TYPES[proofType];
+
+  if (!normalizedMimeType || !allowedMimeTypes.includes(normalizedMimeType)) {
+    throw new ReinforcementProofMimeNotAllowedException({
       proofType,
+      mimeType: normalizedMimeType ?? null,
+      allowedMimeTypes: [...allowedMimeTypes],
     });
   }
 }
@@ -348,7 +401,8 @@ function normalizeEnumValue<TEnum extends string>(params: {
   }
 
   const aliasKey = normalized.replace(/[-\s]/g, '_').toLowerCase();
-  const alias = params.aliases[aliasKey] ?? params.aliases[aliasKey.replace(/_/g, '')];
+  const alias =
+    params.aliases[aliasKey] ?? params.aliases[aliasKey.replace(/_/g, '')];
   if (alias) return alias;
 
   const enumValue = normalized.toUpperCase() as TEnum;

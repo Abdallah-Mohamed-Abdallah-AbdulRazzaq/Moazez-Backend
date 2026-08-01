@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  FileVisibility,
   Prisma,
   ReinforcementReviewOutcome,
   ReinforcementSource,
@@ -17,6 +18,11 @@ const FILE_SAFE_SELECT = {
   createdAt: true,
 } satisfies Prisma.FileSelect;
 
+const PROOF_FILE_VERIFICATION_SELECT = {
+  ...FILE_SAFE_SELECT,
+  bucket: true,
+  objectKey: true,
+} satisfies Prisma.FileSelect;
 const REVIEW_SELECT = {
   id: true,
   submissionId: true,
@@ -237,9 +243,8 @@ const SUBMISSION_STATE_ARGS =
     },
   });
 
-export type ReinforcementReviewItemRecord = Prisma.ReinforcementSubmissionGetPayload<
-  typeof REVIEW_ITEM_ARGS
->;
+export type ReinforcementReviewItemRecord =
+  Prisma.ReinforcementSubmissionGetPayload<typeof REVIEW_ITEM_ARGS>;
 export type ReinforcementAssignmentForSubmitRecord =
   Prisma.ReinforcementAssignmentGetPayload<typeof ASSIGNMENT_FOR_SUBMIT_ARGS>;
 export type ReinforcementStageForAssignmentRecord =
@@ -247,7 +252,7 @@ export type ReinforcementStageForAssignmentRecord =
 export type ReinforcementSubmissionStateRecord =
   Prisma.ReinforcementSubmissionGetPayload<typeof SUBMISSION_STATE_ARGS>;
 export type ReinforcementProofFileRecord = Prisma.FileGetPayload<{
-  select: typeof FILE_SAFE_SELECT;
+  select: typeof PROOF_FILE_VERIFICATION_SELECT;
 }>;
 
 export interface ListReviewQueueFilters {
@@ -328,11 +333,29 @@ export class ReinforcementReviewsRepository {
     });
   }
 
-  findProofFile(fileId: string): Promise<ReinforcementProofFileRecord | null> {
-    return this.scopedPrisma.file.findFirst({
-      where: { id: fileId },
-      select: FILE_SAFE_SELECT,
+  async findProofFile(params: {
+    fileId: string;
+    organizationId: string;
+    schoolId: string;
+    uploaderId: string;
+  }): Promise<ReinforcementProofFileRecord | null> {
+    const proofFile = await this.scopedPrisma.file.findFirst({
+      where: {
+        id: params.fileId,
+        organizationId: params.organizationId,
+        schoolId: params.schoolId,
+        uploaderId: params.uploaderId,
+        visibility: FileVisibility.PRIVATE,
+        deletedAt: null,
+        sizeBytes: { gt: 0n },
+        bucket: { not: '' },
+        objectKey: { not: '' },
+      },
+      select: PROOF_FILE_VERIFICATION_SELECT,
     });
+
+    if (!proofFile?.bucket.trim() || !proofFile.objectKey.trim()) return null;
+    return proofFile;
   }
 
   findSubmissionByAssignmentStage(params: {
@@ -380,7 +403,11 @@ export class ReinforcementReviewsRepository {
     const [items, total] = await Promise.all([
       this.scopedPrisma.reinforcementSubmission.findMany({
         where,
-        orderBy: [{ submittedAt: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }],
+        orderBy: [
+          { submittedAt: 'desc' },
+          { createdAt: 'desc' },
+          { id: 'asc' },
+        ],
         ...(filters.limit ? { take: filters.limit } : {}),
         ...(filters.offset ? { skip: filters.offset } : {}),
         ...REVIEW_ITEM_ARGS,
@@ -418,13 +445,14 @@ export class ReinforcementReviewsRepository {
   async listApprovedStageIdsForAssignment(
     assignmentId: string,
   ): Promise<string[]> {
-    const submissions = await this.scopedPrisma.reinforcementSubmission.findMany({
-      where: {
-        assignmentId,
-        status: ReinforcementSubmissionStatus.APPROVED,
-      },
-      select: { stageId: true },
-    });
+    const submissions =
+      await this.scopedPrisma.reinforcementSubmission.findMany({
+        where: {
+          assignmentId,
+          status: ReinforcementSubmissionStatus.APPROVED,
+        },
+        select: { stageId: true },
+      });
 
     return submissions.map((submission) => submission.stageId);
   }
@@ -585,7 +613,9 @@ export class ReinforcementReviewsRepository {
     });
 
     if (!item) {
-      throw new Error('Reinforcement review item mutation result was not found');
+      throw new Error(
+        'Reinforcement review item mutation result was not found',
+      );
     }
 
     return item;
@@ -627,11 +657,7 @@ export class ReinforcementReviewsRepository {
       });
     }
 
-    if (
-      filters.classroomId ||
-      filters.sectionId ||
-      filters.gradeId
-    ) {
+    if (filters.classroomId || filters.sectionId || filters.gradeId) {
       and.push({
         enrollment: {
           classroom: {

@@ -393,6 +393,10 @@ tenant, actor, content, File, or timestamp values are exposed.
 | `reinforcement.task.duplicate_target`                  | 409  | Reinforcement task target is duplicated                |
 | `reinforcement.task.cancelled`                         | 409  | Reinforcement task is cancelled                        |
 | `reinforcement.submission.already_submitted`           | 409  | Submission is already submitted                        |
+| `reinforcement.proof.mime_not_allowed`                 | 415  | Proof content type is not allowed                      |
+| `reinforcement.proof.mime_mismatch`                    | 400  | Proof content does not match its declared MIME type    |
+| `reinforcement.proof.invalid_content`                  | 400  | Proof content is invalid                               |
+| `reinforcement.proof.verification_unavailable`         | 503  | Proof content verification is temporarily unavailable  |
 | `reinforcement.review.not_submitted`                   | 409  | Submission must be submitted before review             |
 | `reinforcement.policy.conflict`                        | 409  | An active XP policy already exists for this scope      |
 | `reinforcement.xp.duplicate_source`                    | 409  | XP has already been granted for this source            |
@@ -418,6 +422,11 @@ tenant, actor, content, File, or timestamp values are exposed.
 | `reinforcement.redemption.not_approved`                | 409  | Reward redemption must be approved first               |
 | `reinforcement.redemption.terminal`                    | 409  | Reward redemption is already in a terminal state       |
 | `reinforcement.redemption.invalid_source`              | 422  | Reward redemption request source is invalid            |
+
+Proof-file lookup failures caused by absence, ownership, tenant scope,
+visibility, deletion, empty content, or an invalid storage locator use the
+existing non-enumerating `not_found` 404 response. They do not
+distinguish whether a file exists outside the authenticated request boundary.
 
 ### Behavior
 
