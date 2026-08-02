@@ -86,6 +86,7 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
   let prisma: PrismaClient;
   let demoSchoolId = '';
   let demoOrganizationId = '';
+  let previousDemoSchoolTimezone: string | null | undefined;
   let deniedPrincipal: CreatedPrincipal;
   let academicYearId = '';
   let termId = '';
@@ -150,6 +151,21 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     demoSchoolId = demoSchool.id;
     demoOrganizationId = demoSchool.organizationId;
 
+    const existingProfile = await prisma.schoolProfile.findUnique({
+      where: { schoolId: demoSchoolId },
+      select: { timezone: true },
+    });
+    previousDemoSchoolTimezone = existingProfile?.timezone;
+    await prisma.schoolProfile.upsert({
+      where: { schoolId: demoSchoolId },
+      create: {
+        schoolId: demoSchoolId,
+        schoolName: 'Moazez Academy',
+        timezone: 'Africa/Cairo',
+      },
+      update: { timezone: 'Africa/Cairo' },
+    });
+
     const hierarchy = await createAnalyticsHierarchyFixtures();
     academicYearId = hierarchy.academicYearId;
     termId = hierarchy.termId;
@@ -202,6 +218,16 @@ describe('DASHBOARD-ANALYTICS-PACKS-1A data pack foundation (e2e)', () => {
     if (prisma) {
       await cleanupAnalyticsHierarchyFixtures();
       await cleanupE2eData();
+      if (previousDemoSchoolTimezone === undefined) {
+        await prisma.schoolProfile.deleteMany({
+          where: { schoolId: demoSchoolId },
+        });
+      } else {
+        await prisma.schoolProfile.update({
+          where: { schoolId: demoSchoolId },
+          data: { timezone: previousDemoSchoolTimezone },
+        });
+      }
       await prisma.$disconnect();
     }
   });
