@@ -8,6 +8,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
+import { HttpLifecycleAdmissionGuard } from '../../src/bootstrap/http-drain.middleware';
 import { JwtAuthGuard } from '../../src/common/guards/jwt-auth.guard';
 import { OrganizationScopeGuard } from '../../src/common/guards/organization-scope.guard';
 import { PermissionsGuard } from '../../src/common/guards/permissions.guard';
@@ -215,6 +216,7 @@ describe('Communication security-contract route inventory (e2e)', () => {
       .map((provider) => provider.useClass);
 
     expect(globalGuardOrder).toEqual([
+      HttpLifecycleAdmissionGuard,
       JwtAuthGuard,
       ScopeResolverGuard,
       OrganizationScopeGuard,

@@ -1,0 +1,51 @@
+name: Phase 1 Universal Regression Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-1-universal-regression-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  universal-regression:
+    name: Blocking aggregate gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      G07_SUMMARY_PATH: ${{ runner.temp }}/prd1-g07-summary.json
+      G07_SECURITY_BATCH_SIZE: '3'
+      G07_E2E_BATCH_SIZE: '5'
+      G07_INTEGRATION_BATCH_SIZE: '5'
+      G07_NODE_HEAP_MB: '1536'
+      G07_CONTAINER_MEMORY_MB: '2304'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.1'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run the canonical PRD1-G07 aggregate
+        run: npm run test:g07
+
+      - name: Publish machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prd1-g07-summary-${{ github.run_id }}
+          path: ${{ runner.temp }}/prd1-g07-summary.json
+          if-no-files-found: error
+          retention-days: 30
