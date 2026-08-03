@@ -37,6 +37,7 @@ import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import { REALTIME_SERVER_EVENTS } from '../../src/infrastructure/realtime/realtime-event-names';
 import { RealtimePublisherService } from '../../src/infrastructure/realtime/realtime-publisher.service';
+import { CoreWorkerRuntimeModule } from '../../src/runtime/core-worker/core-worker-runtime.module';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'Communication123!';
@@ -3846,6 +3847,7 @@ describe('Communication policy tenancy isolation (security)', () => {
 
 describe('Communication announcement tenancy isolation (security)', () => {
   let app: INestApplication<App>;
+  let coreWorker: TestingModule;
   let prisma: PrismaClient;
 
   let organizationAId: string;
@@ -4075,9 +4077,15 @@ describe('Communication announcement tenancy isolation (security)', () => {
       }),
     );
     await app.init();
+
+    coreWorker = await Test.createTestingModule({
+      imports: [CoreWorkerRuntimeModule],
+    }).compile();
+    await coreWorker.init();
   });
 
   afterAll(async () => {
+    await coreWorker?.close();
     try {
       await cleanupAnnouncementSchools([schoolAId, schoolBId]);
       await prisma.auditLog.deleteMany({
@@ -4280,7 +4288,7 @@ describe('Communication announcement tenancy isolation (security)', () => {
 
   it('publishing a school announcement enqueues and generates current-school in-app notifications only', async () => {
     const { accessToken } = await login(adminAEmail);
-    const publisher = app.get(RealtimePublisherService);
+    const publisher = coreWorker.get(RealtimePublisherService);
     const publishToUserSpy = jest.spyOn(publisher, 'publishToUser');
     const publishToSchoolSpy = jest.spyOn(publisher, 'publishToSchool');
     const bullmqService = app.get(BullmqService, { strict: false });
