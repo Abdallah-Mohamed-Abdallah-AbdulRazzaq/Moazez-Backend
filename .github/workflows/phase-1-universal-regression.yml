@@ -19,7 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     env:
-      G07_SUMMARY_PATH: ${{ runner.temp }}/prd1-g07-summary.json
       G07_SECURITY_BATCH_SIZE: '3'
       G07_E2E_BATCH_SIZE: '5'
       G07_INTEGRATION_BATCH_SIZE: '5'
@@ -40,6 +39,8 @@ jobs:
 
       - name: Run the canonical PRD1-G07 aggregate
         run: npm run test:g07
+        env:
+          G07_SUMMARY_PATH: ${{ runner.temp }}/prd1-g07-summary.json
 
       - name: Publish machine-readable evidence
         if: always()
