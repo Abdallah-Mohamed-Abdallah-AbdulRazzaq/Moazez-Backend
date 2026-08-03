@@ -24,7 +24,6 @@ import { DismissalNotificationsRepository } from './notifications/infrastructure
 import { GetDismissalProfileUseCase } from './profile/application/get-dismissal-profile.use-case';
 import { DismissalProfileController } from './profile/controller/dismissal-profile.controller';
 import { EscalateDismissalRequestUseCase } from './requests/application/escalate-dismissal-request.use-case';
-import { ExpireDismissalRequestsUseCase } from './requests/application/expire-dismissal-requests.use-case';
 import { GetDismissalRequestDetailUseCase } from './requests/application/get-dismissal-request-detail.use-case';
 import { GetDismissalRequestHistoryDetailUseCase } from './requests/application/get-dismissal-request-history-detail.use-case';
 import { ListDismissalPickupRecipientsUseCase } from './requests/application/list-dismissal-pickup-recipients.use-case';
@@ -39,7 +38,6 @@ import { DismissalRequestsExpiryRepository } from './requests/infrastructure/dis
 import { DismissalRequestsHistoryRepository } from './requests/infrastructure/dismissal-requests-history.repository';
 import { DismissalRequestsReadRepository } from './requests/infrastructure/dismissal-requests-read.repository';
 import { DismissalRequestsWriteRepository } from './requests/infrastructure/dismissal-requests-write.repository';
-import { DismissalRequestExpiryWorker } from './requests/worker/dismissal-request-expiry.worker';
 import { DismissalRealtimeEventsService } from './realtime/dismissal-realtime-events.service';
 import { DismissalRealtimeRepository } from './realtime/dismissal-realtime.repository';
 import { ConfirmStudentArrivalUseCase } from './waiting-students/application/confirm-student-arrival.use-case';
@@ -108,8 +106,6 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     UpdateDismissalRequestStatusUseCase,
     EscalateDismissalRequestUseCase,
     DeliverDismissalRequestUseCase,
-    ExpireDismissalRequestsUseCase,
-    DismissalRequestExpiryWorker,
     PickupRecipientTokenService,
     ListWaitingStudentsUseCase,
     ConfirmStudentArrivalUseCase,
@@ -129,7 +125,6 @@ import { DismissalStaffAssignmentsRepository } from './staff-assignments/infrast
     DismissalRequestsExpiryRepository,
     DismissalRequestsHistoryRepository,
     DismissalRealtimeEventsService,
-    ExpireDismissalRequestsUseCase,
   ],
 })
 export class DismissalModule {}

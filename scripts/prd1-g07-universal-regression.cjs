@@ -749,6 +749,13 @@ async function runJestStage(context, stage) {
 }
 
 function buildStages(context) {
+  context.gate ??= {
+    mode: 'historical',
+    label: 'G07',
+    orchestratorTestFiles: [
+      'scripts/tests/prd1-g07-universal-regression.test.cjs',
+    ],
+  };
   const securityFiles = discoverTestFiles(context.repositoryRoot, 'test/security', /\.spec\.ts$/u);
   const g06Security = securityFiles.filter((file) => file.endsWith('tenancy.reinforcement-proof-mime.spec.ts'));
   const generalSecurity = securityFiles.filter((file) => !g06Security.includes(file));
@@ -767,7 +774,7 @@ function buildStages(context) {
   }
 
   const stages = [
-    { id: 'orchestrator_tests', label: 'G07 orchestrator contract tests', runner: 'host-node-test', files: ['scripts/tests/prd1-g07-universal-regression.test.cjs'] },
+    { id: 'orchestrator_tests', label: `${context.gate.label} orchestrator contract tests`, runner: 'host-node-test', files: context.gate.orchestratorTestFiles },
     { id: 'scope', label: 'Baseline, worktree, scope, and tracked-env checks', runner: 'scope' },
     { id: 'diff_check', label: 'Git whitespace integrity', runner: 'git-diff-check' },
     { id: 'migration_governance', label: 'Migration governance check', runner: 'host-node', script: 'scripts/check-migration-governance.cjs' },
@@ -875,15 +882,25 @@ function buildStages(context) {
       integration: context.config.integrationBatchSize,
     },
   };
+  if (context.gate.mode === 'current') {
+    for (const stage of stages) {
+      if (stage.id === 'scope' || stage.id === 'orchestrator_tests') continue;
+      stage.dependsOn = [...new Set([...(stage.dependsOn ?? []), 'scope'])];
+    }
+  }
   return stages;
 }
 
 async function runScopeCheck(context) {
+  const base = context.gate.base;
   const commands = [
     ['rev-parse', 'HEAD'],
-    ['merge-base', '--is-ancestor', BASELINE_SHA, 'HEAD'],
+    ['rev-parse', '--verify', `${base}^{commit}`],
+    context.gate.mode === 'historical'
+      ? ['merge-base', '--is-ancestor', base, 'HEAD']
+      : ['merge-base', base, 'HEAD'],
     ['branch', '--show-current'],
-    ['diff', '--name-only', BASELINE_SHA],
+    ['diff', '--name-only', context.gate.mode === 'historical' ? base : `${base}...HEAD`],
     ['ls-files', '--others', '--exclude-standard'],
     ['ls-files', '--', '.env', '.env.*'],
   ];
@@ -898,30 +915,41 @@ async function runScopeCheck(context) {
     if (!result.ok) return result;
     outputs.push(result.stdout.trim());
   }
-  const branch = outputs[2];
-  if (branch && branch !== EXPECTED_BRANCH && !process.env.CI) {
+  const head = outputs[0];
+  const branch = outputs[3];
+  if (context.gate.expectedBranch && branch && branch !== context.gate.expectedBranch && !process.env.CI) {
     return { ok: false, exitCode: 1, error: `Unexpected branch: ${branch}` };
   }
-  const changed = [...outputs[3].split(/\r?\n/u), ...outputs[4].split(/\r?\n/u)]
+  const changed = [...outputs[4].split(/\r?\n/u), ...outputs[5].split(/\r?\n/u)]
     .filter(Boolean).map((item) => item.replace(/\\/gu, '/'));
-  const outOfScope = [...new Set(changed)].filter((item) => !ALLOWED_SCOPE_PATHS.has(item));
+  const outOfScope = context.gate.allowedScopePaths
+    ? [...new Set(changed)].filter((item) => !context.gate.allowedScopePaths.has(item))
+    : [];
   if (outOfScope.length > 0) {
     return { ok: false, exitCode: 1, error: `Out-of-scope paths: ${outOfScope.join(', ')}` };
   }
-  const trackedEnv = outputs[5].split(/\r?\n/u).filter(
+  const trackedEnv = outputs[6].split(/\r?\n/u).filter(
     (item) => item && item !== '.env.example',
   );
   if (trackedEnv.length > 0) {
     return { ok: false, exitCode: 1, error: `Tracked env files: ${trackedEnv.join(', ')}` };
   }
-  if (changed.some((item) => item === 'package-lock.json' || item === 'prisma/schema.prisma' || item.startsWith('prisma/migrations/'))) {
+  if (context.gate.forbidHistoricalSchemaAndLockfileScope && changed.some((item) => item === 'package-lock.json' || item === 'prisma/schema.prisma' || item.startsWith('prisma/migrations/'))) {
     return { ok: false, exitCode: 1, error: 'Forbidden schema, migration, or lockfile scope change' };
   }
+  context.comparison = {
+    base,
+    head,
+    event: context.gate.event,
+    baseSource: context.gate.baseSource,
+    branch,
+    changedPaths: [...new Set(changed)].sort(),
+  };
   return { ok: true, exitCode: 0, counts: { changedPaths: new Set(changed).size } };
 }
 
 async function runStage(context, stage) {
-  process.stdout.write(`\n[G07] ${stage.id}: ${stage.label}\n`);
+  process.stdout.write(`\n[${context.gate.logPrefix}] ${stage.id}: ${stage.label}\n`);
   if (stage.files?.length) {
     for (const file of stage.files) process.stdout.write(`  - ${file}\n`);
   }
@@ -935,7 +963,7 @@ async function runStage(context, stage) {
     case 'host-node':
       return runCommand(process.execPath, [stage.script], {
         cwd: context.repositoryRoot,
-        env: { ...context.hostEnvironment, MIGRATION_BASE_REF: BASELINE_SHA },
+        env: { ...context.hostEnvironment, MIGRATION_BASE_REF: context.gate.base },
         timeoutMs: stage.timeoutMs ?? context.config.stageTimeoutMs,
         sensitiveValues: context.fixture.sensitiveValues,
       });
@@ -943,7 +971,7 @@ async function runStage(context, stage) {
       return runScopeCheck(context);
     case 'git-diff-check': {
       for (const args of [
-        ['diff', '--check', BASELINE_SHA], ['diff', '--check'], ['diff', '--cached', '--check'],
+        ['diff', '--check', context.gate.base], ['diff', '--check'], ['diff', '--cached', '--check'],
       ]) {
         const result = await runCommand('git', args, {
           cwd: context.repositoryRoot, env: context.hostEnvironment, timeoutMs: 30_000,
@@ -988,13 +1016,13 @@ async function runStage(context, stage) {
   }
 }
 
-function printResult(result) {
+function printResult(result, prefix = 'G07') {
   const exit = result.exitCode === null ? '-' : result.exitCode;
-  process.stdout.write(`[G07] ${result.status.padEnd(7)} ${result.id} (exit ${exit}, ${result.durationMs} ms)\n`);
+  process.stdout.write(`[${prefix}] ${result.status.padEnd(7)} ${result.id} (exit ${exit}, ${result.durationMs} ms)\n`);
 }
 
 function printHumanSummary(summary) {
-  process.stdout.write('\nPRD1-G07 Universal Regression Summary\n');
+  process.stdout.write(`\n${summary.gate} Universal Regression Summary\n`);
   process.stdout.write(`Baseline: ${summary.baseline}\n`);
   process.stdout.write(`Overall: ${summary.overall}\n`);
   for (const result of summary.results) {
@@ -1031,18 +1059,44 @@ async function provisionMinioInternal() {
   process.stdout.write('Provisioned private and public G07 buckets\n');
 }
 
-async function main() {
+async function main(gateOptions = {}) {
   if (process.argv[2] === '--internal' && process.argv[3] === 'provision-minio') {
     await provisionMinioInternal();
     return;
   }
 
   const repositoryRoot = path.resolve(__dirname, '..');
+  const gate = {
+    mode: gateOptions.mode ?? 'historical',
+    gate: gateOptions.gate ?? 'PRD1-G07',
+    label: gateOptions.label ?? 'G07',
+    logPrefix: gateOptions.logPrefix ?? 'G07',
+    base: gateOptions.base ?? BASELINE_SHA,
+    baseSource: gateOptions.baseSource ?? 'frozen-historical-baseline',
+    event: gateOptions.event ?? 'historical',
+    expectedBranch:
+      gateOptions.expectedBranch === undefined
+        ? EXPECTED_BRANCH
+        : gateOptions.expectedBranch,
+    allowedScopePaths:
+      gateOptions.allowedScopePaths === undefined
+        ? ALLOWED_SCOPE_PATHS
+        : gateOptions.allowedScopePaths,
+    forbidHistoricalSchemaAndLockfileScope:
+      gateOptions.forbidHistoricalSchemaAndLockfileScope ?? true,
+    orchestratorTestFiles:
+      gateOptions.orchestratorTestFiles ?? [
+        'scripts/tests/prd1-g07-universal-regression.test.cjs',
+      ],
+    summaryEnvironmentVariable:
+      gateOptions.summaryEnvironmentVariable ?? 'G07_SUMMARY_PATH',
+  };
   const suffix = createSuffix();
   const fixture = createFixture(suffix);
   const outputDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), `moazez-g07-${suffix}-`));
   const summaryPath = path.resolve(
-    process.env.G07_SUMMARY_PATH || path.join(outputDirectory, 'summary.json'),
+    process.env[gate.summaryEnvironmentVariable] ||
+      path.join(outputDirectory, 'summary.json'),
   );
   const cleanup = new CleanupManager();
   cleanup.add('temporary output directory', async () => {
@@ -1070,12 +1124,21 @@ async function main() {
     runCounter: 0,
     aborted: false,
     inventory: null,
+    comparison: {
+      base: gate.base,
+      head: null,
+      event: gate.event,
+      baseSource: gate.baseSource,
+      branch: null,
+      changedPaths: [],
+    },
+    gate,
   };
 
   const stop = async (signal) => {
     if (context.aborted) return;
     context.aborted = true;
-    process.stderr.write(`\n[G07] ${signal} received; cleaning disposable resources.\n`);
+    process.stderr.write(`\n[${gate.logPrefix}] ${signal} received; cleaning disposable resources.\n`);
     if (context.currentRunContainer) {
       await runCommand('docker', ['rm', '--force', context.currentRunContainer], {
         cwd: repositoryRoot, env: context.hostEnvironment, timeoutMs: 30_000,
@@ -1094,16 +1157,18 @@ async function main() {
     runStage: (stage) => runStage(context, stage),
     cleanup,
     isAborted: () => context.aborted,
-    onResult: printResult,
+    onResult: (result) => printResult(result, gate.logPrefix),
   });
   const finishedAt = new Date();
   if (context.aborted) execution.exitCode = 1;
 
   const summary = redactJson({
     schemaVersion: 1,
-    gate: 'PRD1-G07',
-    baseline: BASELINE_SHA,
-    expectedBranch: EXPECTED_BRANCH,
+    gate: gate.gate,
+    mode: gate.mode,
+    baseline: gate.base,
+    expectedBranch: gate.expectedBranch,
+    comparison: context.comparison,
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
@@ -1155,6 +1220,8 @@ module.exports = {
   redactJson,
   redactText,
   routeIntegrationFile,
+  runScopeCheck,
   runCommand,
   runStageGraph,
+  main,
 };

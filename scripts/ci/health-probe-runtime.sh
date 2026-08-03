@@ -735,7 +735,7 @@ const IORedis = RedisModule.default ?? RedisModule;
 const {
   RealtimeStateStoreService
 } = require(
-  './dist/src/infrastructure/realtime/realtime-state-store.service'
+  './dist/infrastructure/realtime/realtime-state-store.service'
 );
 
 const delay = (milliseconds) =>
@@ -987,9 +987,9 @@ scenario_forced_timeout() {
     --entrypoint node "$RUNTIME_IMAGE" \
     -e '
       const { ApplicationLifecycleState } =
-        require("./dist/src/bootstrap/application-lifecycle.state");
+        require("./dist/bootstrap/application-lifecycle.state");
       const { GracefulShutdownCoordinator } =
-        require("./dist/src/bootstrap/graceful-shutdown");
+        require("./dist/bootstrap/graceful-shutdown");
       const lifecycle = new ApplicationLifecycleState();
       const coordinator = new GracefulShutdownCoordinator({
         app: { close: () => new Promise(() => undefined) },

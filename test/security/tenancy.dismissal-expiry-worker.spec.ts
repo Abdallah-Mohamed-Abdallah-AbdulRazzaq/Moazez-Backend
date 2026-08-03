@@ -1,69 +1,32 @@
 import { readFileSync } from 'node:fs';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
 import { CommunicationNotificationType, PrismaClient } from '@prisma/client';
-import request from 'supertest';
-import type { App } from 'supertest/types';
-import { AppModule } from '../../src/app.module';
-import { ExpireDismissalRequestsUseCase } from '../../src/modules/dismissal/requests/application/expire-dismissal-requests.use-case';
-import { DismissalRequestExpiryWorker } from '../../src/modules/dismissal/requests/worker/dismissal-request-expiry.worker';
-
-const GLOBAL_PREFIX = '/api/v1';
-
-jest.setTimeout(60_000);
 
 describe('DISMISSAL-EXPIRY-1A tenancy and worker security', () => {
-  let app: INestApplication<App>;
   let prisma: PrismaClient;
 
   beforeAll(async () => {
     prisma = new PrismaClient();
     await prisma.$connect();
-
-    const moduleRef: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleRef.createNestApplication();
-    app.setGlobalPrefix(GLOBAL_PREFIX.replace(/^\//, ''));
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-    await app.init();
   });
 
   afterAll(async () => {
-    await app?.close();
     await prisma?.$disconnect();
   });
 
-  it('registers the expiry worker internally without adding public routes', async () => {
-    expect(app.get(ExpireDismissalRequestsUseCase)).toBeDefined();
-    expect(app.get(DismissalRequestExpiryWorker)).toBeDefined();
+  it('keeps the expiry worker out of the API graph without adding public routes', () => {
+    const apiModuleSource = readFileSync(
+      'src/modules/dismissal/dismissal.module.ts',
+      'utf8',
+    );
+    const routeSource = readFileSync(
+      'src/modules/dismissal/requests/controller/dismissal-requests.controller.ts',
+      'utf8',
+    );
 
-    for (const route of [
-      `${GLOBAL_PREFIX}/dismissal/requests/expire`,
-      `${GLOBAL_PREFIX}/dismissal/requests/expiry`,
-      `${GLOBAL_PREFIX}/dismissal/expiry`,
-      `${GLOBAL_PREFIX}/jobs/dismissal-expiry`,
-      `${GLOBAL_PREFIX}/pickup`,
-      `${GLOBAL_PREFIX}/waiting-students`,
-    ]) {
-      expect(
-        [401, 404].includes(
-          (await request(app.getHttpServer()).get(route)).status,
-        ),
-      ).toBe(true);
-      expect(
-        [401, 404].includes(
-          (await request(app.getHttpServer()).post(route).send({})).status,
-        ),
-      ).toBe(true);
-    }
+    expect(apiModuleSource).not.toContain('DismissalRequestExpiryWorker');
+    expect(apiModuleSource).not.toContain('ExpireDismissalRequestsUseCase');
+    expect(routeSource).not.toContain('expire');
+    expect(routeSource).not.toContain('expiry');
   });
 
   it('adds only the allowed expiry settings field and expired notification enum', () => {
@@ -132,6 +95,14 @@ describe('DISMISSAL-EXPIRY-1A tenancy and worker security', () => {
       'src/modules/dismissal/requests/worker/dismissal-request-expiry.worker.ts',
       'utf8',
     );
+    const scheduleSource = readFileSync(
+      'src/runtime/maintenance-scheduler/dismissal-expiry.schedule.ts',
+      'utf8',
+    );
+    const scheduleConstantsSource = readFileSync(
+      'src/modules/dismissal/requests/domain/dismissal-request-expiry.constants.ts',
+      'utf8',
+    );
     const repositorySource = readFileSync(
       'src/modules/dismissal/requests/infrastructure/dismissal-requests-expiry.repository.ts',
       'utf8',
@@ -143,8 +114,9 @@ describe('DISMISSAL-EXPIRY-1A tenancy and worker security', () => {
 
     expect(routeInventory).not.toContain('expire');
     expect(routeInventory).not.toContain('expiry');
-    expect(workerSource).toContain("'* * * * *'");
-    expect(workerSource).toContain("process.env.NODE_ENV === 'test'");
+    expect(workerSource).not.toContain('registerRepeatJob');
+    expect(scheduleSource).toContain('registerRepeatJob');
+    expect(scheduleConstantsSource).toContain("'* * * * *'");
     expect(repositorySource).toContain('dismissal.request.expired');
     expect(repositorySource).toContain('actorUserId: null');
     expect(repositorySource).toContain('UserType.SERVICE_ACCOUNT');

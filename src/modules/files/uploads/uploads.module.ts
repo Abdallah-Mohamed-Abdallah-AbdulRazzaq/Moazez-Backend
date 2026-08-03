@@ -1,7 +1,5 @@
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../../infrastructure/storage/storage.module';
-import { QueueModule } from '../../../infrastructure/queue/queue.module';
-import { LearningMediaCleanupService } from './application/learning-media-cleanup.service';
 import { LearningMediaUnitOfWork } from './application/learning-media.unit-of-work';
 import {
   CancelLearningMediaUploadUseCase,
@@ -20,7 +18,7 @@ import { LearningMediaRepository } from './infrastructure/learning-media.reposit
 import { PrismaLearningMediaUnitOfWork } from './infrastructure/prisma-learning-media.unit-of-work';
 
 @Module({
-  imports: [StorageModule, QueueModule],
+  imports: [StorageModule],
   controllers: [UploadsController],
   providers: [
     FilesRepository,
@@ -38,7 +36,6 @@ import { PrismaLearningMediaUnitOfWork } from './infrastructure/prisma-learning-
     CompleteLearningMediaUploadUseCase,
     CancelLearningMediaUploadUseCase,
     VerifyLegacyLearningMediaUseCase,
-    LearningMediaCleanupService,
   ],
   exports: [
     FilesRepository,

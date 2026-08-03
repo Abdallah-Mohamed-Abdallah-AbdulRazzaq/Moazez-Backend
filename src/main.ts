@@ -17,7 +17,6 @@ import {
   listenManagementProbeServer,
 } from './bootstrap/management-probe.server';
 import type { Env } from './config/env.validation';
-import { BullmqService } from './infrastructure/queue/bullmq.service';
 import { RealtimeGateway } from './infrastructure/realtime/realtime.gateway';
 import { OperationalProbeService } from './modules/health/operational-probe.service';
 
@@ -51,7 +50,6 @@ async function bootstrap(): Promise<void> {
         httpServer: app.getHttpServer(),
         managementServer,
         lifecycle,
-        queue: app.get(BullmqService),
         realtime: app.get(RealtimeGateway),
         timeoutMs: config.get('APP_SHUTDOWN_TIMEOUT_MS', { infer: true }),
         logger,

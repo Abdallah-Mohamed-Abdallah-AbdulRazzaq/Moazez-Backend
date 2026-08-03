@@ -1,4 +1,4 @@
-import type { INestApplication } from '@nestjs/common';
+import type { INestApplicationContext } from '@nestjs/common';
 import type { Server as HttpServer } from 'node:http';
 import { ApplicationLifecycleState } from './application-lifecycle.state';
 
@@ -42,12 +42,12 @@ interface ShutdownClock {
 }
 
 export interface GracefulShutdownDependencies {
-  app: Pick<INestApplication, 'close'>;
-  httpServer: Pick<HttpServer, 'close'>;
+  app: Pick<INestApplicationContext, 'close'>;
+  httpServer?: Pick<HttpServer, 'close'>;
   managementServer: Pick<HttpServer, 'close'>;
   lifecycle: ApplicationLifecycleState;
-  queue: QueueLifecycle;
-  realtime: RealtimeLifecycle;
+  queue?: QueueLifecycle;
+  realtime?: RealtimeLifecycle;
   timeoutMs: number;
   logger: ShutdownLogger;
   processTarget?: ProcessLifecycle;
@@ -169,14 +169,19 @@ export class GracefulShutdownCoordinator {
     startedAt: number,
   ): Promise<void> {
     this.dependencies.lifecycle.beginDraining();
-    const shutdownOperations = Promise.all([
-      stopHttpIntake(this.dependencies.httpServer),
+    const intakeOperations: Promise<void>[] = [
       stopHttpIntake(this.dependencies.managementServer),
-      this.dependencies.queue.beginWorkerDrain(),
       this.dependencies.lifecycle.waitForIdle().then(async () => {
-        await this.dependencies.realtime.disconnectSocketsForShutdown();
+        await this.dependencies.realtime?.disconnectSocketsForShutdown();
       }),
-    ]);
+    ];
+    if (this.dependencies.queue) {
+      intakeOperations.push(this.dependencies.queue.beginWorkerDrain());
+    }
+    if (this.dependencies.httpServer) {
+      intakeOperations.unshift(stopHttpIntake(this.dependencies.httpServer));
+    }
+    const shutdownOperations = Promise.all(intakeOperations);
 
     this.dependencies.logger.log({
       event: LIFECYCLE_EVENTS.intakeStopped,

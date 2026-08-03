@@ -557,13 +557,6 @@ describe('learning media upload foundation', () => {
     expect(addJob).toHaveBeenNthCalledWith(
       1,
       LEARNING_MEDIA_CLEANUP_QUEUE,
-      'discover',
-      {},
-      expect.objectContaining({ attempts: 1 }),
-    );
-    expect(addJob).toHaveBeenNthCalledWith(
-      2,
-      LEARNING_MEDIA_CLEANUP_QUEUE,
       'cleanup',
       { uploadId: session.id, target: 'staging' },
       expect.objectContaining({

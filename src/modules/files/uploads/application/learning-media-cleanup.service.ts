@@ -4,14 +4,15 @@ import { Job, Queue } from 'bullmq';
 import { BullmqService } from '../../../../infrastructure/queue/bullmq.service';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import {
-  LEARNING_MEDIA_CLEANUP_INTERVAL_MS,
   LEARNING_MEDIA_STALE_CLAIM_MS,
 } from '../domain/learning-media.constants';
+import {
+  LEARNING_MEDIA_CLEANUP_QUEUE,
+  LEARNING_MEDIA_DISCOVERY_JOB_NAME,
+} from '../domain/learning-media-cleanup.constants';
 import { LearningMediaRepository } from '../infrastructure/learning-media.repository';
 import type { LearningMediaCleanupTarget } from '../infrastructure/learning-media.repository';
 
-export const LEARNING_MEDIA_CLEANUP_QUEUE = 'learning-media-cleanup';
-const DISCOVERY_JOB_ID = 'learning-media-cleanup-discovery';
 const FINISHED_JOB_REPLACEMENT_LOCK_MS = 30_000;
 const FINISHED_JOB_STATES = new Set(['completed', 'failed']);
 const RELEASE_LOCK_SCRIPT = `
@@ -34,21 +35,13 @@ export class LearningMediaCleanupService implements OnModuleInit {
     private readonly storage: StorageService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    await this.queue.addJob(
-      LEARNING_MEDIA_CLEANUP_QUEUE,
-      'discover',
-      {},
-      {
-        jobId: DISCOVERY_JOB_ID,
-        repeat: { every: LEARNING_MEDIA_CLEANUP_INTERVAL_MS },
-        attempts: 1,
-      },
-    );
+  onModuleInit(): void {
     this.queue.createWorker<Record<string, unknown>>(
       LEARNING_MEDIA_CLEANUP_QUEUE,
       async (job) => {
-        if (job.name === 'discover') return this.discoverAndEnqueue();
+        if (job.name === LEARNING_MEDIA_DISCOVERY_JOB_NAME) {
+          return this.discoverAndEnqueue();
+        }
         if (job.name === 'cleanup') {
           const data = job.data as CleanupJobData;
           return this.cleanUpload(data.uploadId, data.target);
@@ -185,3 +178,9 @@ export function learningMediaCleanupJobId(
 }
 
 export type LearningMediaCleanupJob = Job<CleanupJobData>;
+
+export {
+  LEARNING_MEDIA_CLEANUP_QUEUE,
+  LEARNING_MEDIA_DISCOVERY_JOB_ID,
+  LEARNING_MEDIA_DISCOVERY_JOB_NAME,
+} from '../domain/learning-media-cleanup.constants';

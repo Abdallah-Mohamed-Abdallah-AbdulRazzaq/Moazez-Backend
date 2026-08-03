@@ -38,6 +38,14 @@ type RedisShutdownClient = {
 type BoundedSettlement = "fulfilled" | "rejected" | "timed_out";
 type QueueReadinessCloseMode = "force" | "graceful";
 
+export interface BullmqRepeatRegistration {
+  queueName: string;
+  jobName: string;
+  jobId: string;
+  pattern?: string;
+  every?: number;
+}
+
 /**
  * BullMQ removes RedisConnection listeners during close. If an initializing
  * connection rejects immediately afterward, EventEmitter would otherwise
@@ -73,6 +81,10 @@ export class BullmqService implements OnModuleDestroy {
   private readonly sharedStreamSettlement: () => Promise<void>;
   private readonly queues = new Map<string, Queue>();
   private readonly workers: Worker[] = [];
+  private readonly repeatRegistrations = new Map<
+    string,
+    BullmqRepeatRegistration
+  >();
   private readonly blockingStreamSettlements = new WeakMap<
     Worker,
     () => Promise<void>
@@ -143,6 +155,29 @@ export class BullmqService implements OnModuleDestroy {
     return this.getQueue(queueName).add(jobName, data, options);
   }
 
+  async registerRepeatJob<TData extends object>(
+    queueName: string,
+    jobName: string,
+    data: TData,
+    options: JobsOptions & {
+      jobId: string;
+      repeat: NonNullable<JobsOptions["repeat"]>;
+    },
+  ): Promise<void> {
+    await this.addJob(queueName, jobName, data, options);
+    const registration: BullmqRepeatRegistration = {
+      queueName,
+      jobName,
+      jobId: options.jobId,
+      pattern: options.repeat.pattern,
+      every: options.repeat.every,
+    };
+    this.repeatRegistrations.set(
+      repeatRegistrationKey(registration),
+      registration,
+    );
+  }
+
   ping(): Promise<void> {
     if (this.isShuttingDown) {
       return Promise.reject(this.queueRedisUnavailable());
@@ -171,6 +206,43 @@ export class BullmqService implements OnModuleDestroy {
           worker.closing === undefined &&
           worker.isRunning() &&
           !worker.isPaused(),
+      ),
+    );
+  }
+
+  hasExactAvailableWorkers(queueNames: readonly string[]): boolean {
+    const expected = [...queueNames].sort();
+    const registered = this.workers.map((worker) => worker.name).sort();
+    return (
+      expected.length === registered.length &&
+      expected.every((queueName, index) => queueName === registered[index]) &&
+      this.hasAvailableWorkers(queueNames)
+    );
+  }
+
+  hasExactRepeatRegistrations(
+    registrations: readonly BullmqRepeatRegistration[],
+  ): boolean {
+    if (registrations.length !== this.repeatRegistrations.size) return false;
+    return registrations.every((registration) => {
+      const current = this.repeatRegistrations.get(
+        repeatRegistrationKey(registration),
+      );
+      return (
+        current?.pattern === registration.pattern &&
+        current?.every === registration.every
+      );
+    });
+  }
+
+  getRegisteredWorkerQueueNames(): readonly string[] {
+    return Object.freeze(this.workers.map((worker) => worker.name).sort());
+  }
+
+  getRepeatRegistrations(): readonly BullmqRepeatRegistration[] {
+    return Object.freeze(
+      [...this.repeatRegistrations.values()].sort((left, right) =>
+        repeatRegistrationKey(left).localeCompare(repeatRegistrationKey(right)),
       ),
     );
   }
@@ -737,4 +809,13 @@ export class BullmqService implements OnModuleDestroy {
       },
     });
   }
+}
+
+function repeatRegistrationKey(
+  registration: Pick<
+    BullmqRepeatRegistration,
+    "queueName" | "jobName" | "jobId"
+  >,
+): string {
+  return `${registration.queueName}:${registration.jobName}:${registration.jobId}`;
 }

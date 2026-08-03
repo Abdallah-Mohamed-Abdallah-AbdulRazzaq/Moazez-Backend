@@ -1,9 +1,11 @@
 import { Logger } from '@nestjs/common';
 import { ApplicationLifecycleState } from '../../bootstrap/application-lifecycle.state';
 import type { PrismaService } from '../../infrastructure/database/prisma.service';
+import type { FirebaseAdminService } from '../../infrastructure/push/firebase/firebase-admin.service';
 import type { BullmqService } from '../../infrastructure/queue/bullmq.service';
 import type { RealtimeGateway } from '../../infrastructure/realtime/realtime.gateway';
 import type { RealtimeStateStoreService } from '../../infrastructure/realtime/realtime-state-store.service';
+import type { RedisRealtimePublisherService } from '../../infrastructure/realtime/redis-realtime-publisher.service';
 import type { StorageService } from '../../infrastructure/storage/storage.service';
 import type { MediaRuntimeStartupGuard } from '../files/uploads/application/media-runtime-startup.guard';
 import {
@@ -158,8 +160,8 @@ describe('OperationalProbeService', () => {
   ] as const)(
     'fails %s startup and readiness when an assigned consumer is absent',
     async (role, assignedConsumers) => {
-      const harness = readyHarness();
-      harness.queue.hasAvailableWorkers.mockImplementation(
+      const harness = readyHarness({ role });
+      harness.queue.hasExactAvailableWorkers.mockImplementation(
         (names: readonly string[]) => names !== assignedConsumers,
       );
 
@@ -173,13 +175,13 @@ describe('OperationalProbeService', () => {
   );
 
   it.each(['ffprobe_missing', 'ffprobe_invalid', 'ffprobe_timeout'])(
-    'fails media readiness for %s without exposing it',
+    'fails API readiness for %s without exposing it',
     async (failure) => {
       const harness = readyHarness();
       harness.mediaRuntime.assertReady.mockRejectedValue(new Error(failure));
 
       const result = await harness.service.evaluate(
-        'media-worker',
+        'api',
         'readiness',
       );
 
@@ -188,27 +190,41 @@ describe('OperationalProbeService', () => {
     },
   );
 
-  it('accepts a verified media runtime and writable temporary disk', async () => {
+  it('accepts a verified API media runtime and writable temporary disk', async () => {
     const harness = readyHarness();
 
     await expect(
-      harness.service.evaluate('media-worker', 'readiness'),
+      harness.service.evaluate('api', 'readiness'),
     ).resolves.toMatchObject({ statusCode: 200 });
     expect(harness.mediaRuntime.assertReady).toHaveBeenCalledTimes(1);
     expect(harness.temporaryDisk.checkReadiness).toHaveBeenCalledTimes(1);
   });
 
-  it('fails media readiness when the temporary directory is unwritable', async () => {
+  it('fails API readiness when the temporary directory is unwritable', async () => {
     const harness = readyHarness();
     harness.temporaryDisk.checkReadiness.mockRejectedValue(
       new Error('EACCES C:\\secret\\temporary'),
     );
 
-    const result = await harness.service.evaluate('media-worker', 'readiness');
+    const result = await harness.service.evaluate('api', 'readiness');
 
     expect(result.statusCode).toBe(503);
     expect(JSON.stringify(result.response)).not.toContain('temporary');
     expect(JSON.stringify(result.response)).not.toContain('C:\\secret');
+  });
+
+  it('does not require ffprobe or temporary disk for Media Worker readiness', async () => {
+    const harness = readyHarness({ role: 'media-worker' });
+    harness.mediaRuntime.assertReady.mockRejectedValue(new Error('forbidden'));
+    harness.temporaryDisk.checkReadiness.mockRejectedValue(
+      new Error('forbidden'),
+    );
+
+    await expect(
+      harness.service.evaluate('media-worker', 'readiness'),
+    ).resolves.toMatchObject({ statusCode: 200 });
+    expect(harness.mediaRuntime.assertReady).not.toHaveBeenCalled();
+    expect(harness.temporaryDisk.checkReadiness).not.toHaveBeenCalled();
   });
 
   it('returns public-safe bounded fields for dependency and secret failures', async () => {
@@ -371,6 +387,7 @@ function readyHarness(
 function createHarness(
   options: {
     manifests?: ReturnType<typeof createOperationalRoleManifests>;
+    role?: 'api' | 'core-worker' | 'media-worker' | 'maintenance-scheduler';
   } = {},
 ) {
   const lifecycle = new ApplicationLifecycleState();
@@ -379,7 +396,8 @@ function createHarness(
   };
   const queue = {
     ping: jest.fn().mockResolvedValue(undefined),
-    hasAvailableWorkers: jest.fn().mockReturnValue(true),
+    hasExactAvailableWorkers: jest.fn().mockReturnValue(true),
+    hasExactRepeatRegistrations: jest.fn().mockReturnValue(true),
   };
   const realtime = {
     checkReadiness: jest.fn().mockResolvedValue(undefined),
@@ -397,6 +415,12 @@ function createHarness(
   const temporaryDisk = {
     checkReadiness: jest.fn().mockResolvedValue(undefined),
   };
+  const realtimeEmitter = {
+    checkReadiness: jest.fn().mockResolvedValue(undefined),
+  };
+  const firebase = {
+    checkReadiness: jest.fn().mockReturnValue({ mode: 'disabled' }),
+  };
   const service = new OperationalProbeService(
     lifecycle,
     prisma as unknown as PrismaService,
@@ -407,14 +431,19 @@ function createHarness(
     mediaRuntime as unknown as MediaRuntimeStartupGuard,
     temporaryDisk as unknown as TemporaryDiskProbe,
     options.manifests ?? createOperationalRoleManifests(),
+    options.role ?? 'api',
+    realtimeEmitter as unknown as RedisRealtimePublisherService,
+    firebase as unknown as FirebaseAdminService,
   );
   return {
     lifecycle,
     mediaRuntime,
+    firebase,
     prisma,
     queue,
     realtime,
     realtimeStateStore,
+    realtimeEmitter,
     service,
     storage,
     temporaryDisk,

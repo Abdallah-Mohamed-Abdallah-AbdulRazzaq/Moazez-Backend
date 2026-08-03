@@ -48,7 +48,7 @@ COPY --chown=node:node scripts/media-runtime-contract.cjs scripts/verify-media-r
 
 USER node
 EXPOSE 3000
-CMD ["node", "dist/src/main.js"]
+CMD ["node", "dist/main.js"]
 
 FROM runtime AS media-test
 USER root
