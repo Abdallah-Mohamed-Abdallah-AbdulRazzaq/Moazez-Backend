@@ -33,6 +33,7 @@ const ALLOWED_SCOPE_PATHS = new Set([
   'scripts/tests/prd1-g07-universal-regression.test.cjs',
   'test/e2e/communication-security-contract.e2e-spec.ts',
   'test/e2e/dashboard-analytics-data-pack-foundation.e2e-spec.ts',
+  'test/e2e/dashboard-widgets-foundation.e2e-spec.ts',
 ]);
 
 function normalizeRepositoryPath(value) {

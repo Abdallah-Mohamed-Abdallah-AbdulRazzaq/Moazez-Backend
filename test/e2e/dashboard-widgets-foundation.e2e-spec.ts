@@ -59,6 +59,7 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
   let prisma: PrismaClient;
   let demoSchoolId = '';
   let demoOrganizationId = '';
+  let previousDemoSchoolTimezone: string | null | undefined;
   let widgetsPermissionId = '';
   let deniedPrincipal: CreatedPrincipal;
   let previewOnlyPrincipal: CreatedPrincipal;
@@ -82,6 +83,25 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
     }
     demoSchoolId = demoSchool.id;
     demoOrganizationId = demoSchool.organizationId;
+
+    const existingProfile = await prisma.schoolProfile.findUnique({
+      where: { schoolId: demoSchoolId },
+      select: { timezone: true },
+    });
+
+    previousDemoSchoolTimezone = existingProfile?.timezone;
+
+    await prisma.schoolProfile.upsert({
+      where: { schoolId: demoSchoolId },
+      create: {
+        schoolId: demoSchoolId,
+        schoolName: 'Moazez Academy',
+        timezone: 'Africa/Cairo',
+      },
+      update: {
+        timezone: 'Africa/Cairo',
+      },
+    });
 
     widgetsPermissionId = await ensureWidgetsPermission();
     await ensureDemoAdminHasWidgetsPermission();
@@ -179,12 +199,52 @@ describe('DASHBOARD-WIDGETS-1A foundation (e2e)', () => {
   });
 
   afterAll(async () => {
-    if (app) {
-      await app.close();
+    const cleanupErrors: unknown[] = [];
+
+    try {
+      if (app) {
+        await app.close();
+      }
+    } catch (error) {
+      cleanupErrors.push(error);
     }
+
     if (prisma) {
-      await cleanupE2eData();
-      await prisma.$disconnect();
+      try {
+        await cleanupE2eData();
+      } catch (error) {
+        cleanupErrors.push(error);
+      } finally {
+        try {
+          if (previousDemoSchoolTimezone === undefined) {
+            await prisma.schoolProfile.deleteMany({
+              where: { schoolId: demoSchoolId },
+            });
+          } else {
+            await prisma.schoolProfile.update({
+              where: { schoolId: demoSchoolId },
+              data: {
+                timezone: previousDemoSchoolTimezone,
+              },
+            });
+          }
+        } catch (error) {
+          cleanupErrors.push(error);
+        } finally {
+          try {
+            await prisma.$disconnect();
+          } catch (error) {
+            cleanupErrors.push(error);
+          }
+        }
+      }
+    }
+
+    if (cleanupErrors.length === 1) {
+      throw cleanupErrors[0];
+    }
+    if (cleanupErrors.length > 1) {
+      throw new AggregateError(cleanupErrors, 'Dashboard widgets E2E cleanup failed');
     }
   });
 
