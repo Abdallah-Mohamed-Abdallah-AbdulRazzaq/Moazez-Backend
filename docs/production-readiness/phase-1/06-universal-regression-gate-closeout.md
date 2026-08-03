@@ -1,22 +1,26 @@
-# PRD1-G07 Phase 1 Universal Regression Gate Closeout Candidate
+# PRD1-G07 Phase 1 Universal Regression Gate Closeout
 
 ## Gate status
 
-`IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE`
+`COMPLETE`
 
-This branch implements the reusable Phase 1 universal regression gate. It is
-not a Phase 1 completion claim: the complete local inventory passes, but the
-gate remains a candidate until the pull request is reviewed and merged, and
-post-merge CI evidence exists.
+PRD1-G07 has exact completion evidence. Implementation PR #58 and stabilization
+PR #59 are merged, the exact final pull-request candidate and exact final
+`main` merge passed the blocking aggregate, and their machine-readable
+artifacts and cleanup evidence are verified.
 
-Phase 2 remains `NOT_STARTED`. This work does not create API or Worker
-composition roots and does not authorize Phase 2.
+Phase 2 remains `NOT_STARTED`. This closeout does not itself start Phase 2.
+Any Phase 2 work requires a separate explicit kickoff, baseline, and branch.
 
 ## Frozen baseline and scope
 
 - Frozen baseline: `d9cb589a49dfc920e2118feb618b2b9edac732b9`.
+- Final merged `main` baseline:
+  `29c5fd5d7a7aff0c07d4776bdef361ec8122d4c0`.
 - Implementation branch:
   `chore/production-readiness-g07-universal-regression`.
+- Stabilization branch:
+  `fix/production-readiness-g07-workflow-context`.
 - Canonical command: `npm run test:g07`.
 - Compatibility alias: `npm run test:regression` delegates to the canonical
   command without an `&&` chain.
@@ -28,6 +32,8 @@ composition roots and does not authorize Phase 2.
 - The dashboard analytics E2E fixture now creates and restores its required
   `Africa/Cairo` SchoolProfile timezone explicitly. This is a test-fixture
   correction for a clean database, not a product-contract change.
+- The dashboard widgets E2E fixture now owns and restores the same SchoolProfile
+  timezone contract. This is also test-fixture isolation, not a product change.
 
 The baseline dry run found harness defects only. It did not establish an
 independent product regression.
@@ -53,6 +59,10 @@ independent product regression.
 8. Four `src/**/*.integration.spec.ts` files were inventoried but filtered by
    the E2E Jest project. They now run in a dedicated default-Jest stage; this
    closes a detected `274/291` false-green.
+9. The final pull-request execution exposed an unowned SchoolProfile timezone
+   in the dashboard widgets fixture around the UTC/Cairo civil-date boundary.
+   The fixture now owns and restores `Africa/Cairo`; no product implementation
+   changed.
 
 ## Orchestrator design
 
@@ -158,8 +168,6 @@ composition-root work in this workflow.
 
 The final canonical run was `npm run test:g07` on 2026-08-02, against frozen
 baseline/working-tree `HEAD` `d9cb589a49dfc920e2118feb618b2b9edac732b9`.
-Because no commit was requested, the implementation remains an uncommitted
-candidate diff and does not yet have a pull-request candidate SHA.
 
 - Aggregate: `PASS`, exit `0`, `85 PASS / 0 FAIL / 0 BLOCKED`, duration
   `8,088,420 ms`.
@@ -178,21 +186,132 @@ candidate diff and does not yet have a pull-request candidate SHA.
   `git diff --check`: all `PASS`, each exit `0`.
 - Cleanup: `PASS`, exit `0`, duration `18,761 ms`; an independent Docker query
   found `0` matching containers, `0` networks, and `0` temporary image tags.
-- Machine summary:
-  `%TEMP%/moazez-g07-msbd6hwu-hz8-a45ecb-NoQ8Br/summary.json`.
 
-The local evidence is complete. Pull-request review, a committed candidate SHA,
-CI artifact/run, merge commit, and post-merge workflow evidence remain pending.
-Until those values exist, PRD1-G07 must not be recorded as `COMPLETE`.
+## Implementation publication and merge evidence
 
-## Explicit boundaries
+Implementation PR #58 published the universal gate from branch
+`chore/production-readiness-g07-universal-regression`:
 
-- Phase 2 has not started and remains `NOT_STARTED`.
-- No local `.env` is read by the gate and no secret is copied into scripts,
-  workflows, summaries, or documentation.
-- All committed fixture credentials are clearly CI-only and non-production.
-- No accepted Phase 1 product contract is changed.
-- No product behavior is changed because the baseline produced no independent
-  product-regression evidence.
-- No branch push, pull request, merge, deployment, or production action is part
-  of this implementation task.
+- candidate: `cbf6a60bbfc27db63e7b73349d43c3330ee07dd8`;
+- candidate commits: `1`;
+- candidate paths: `9`;
+- merge commit: `d53e9b9efe7067bc1fc58a215222380b6490a873`;
+- merged at: `2026-08-02T13:38:00Z`.
+
+The workflow was new and therefore could not create a pull-request run before
+it existed on the default branch. PR #58 records this one-time bootstrap
+exception.
+
+Stabilization PR #59 published the workflow-context and fixture-isolation
+corrections from branch `fix/production-readiness-g07-workflow-context`:
+
+- first fix commit: `d204a78d10f9581d63e1cd78ef469793d7bd0dc7`;
+- final head: `793adfc92392e443ca1eb8706689f83ebb9d0b75`;
+- commits: `2`;
+- changed paths: `3`;
+- merge commit: `29c5fd5d7a7aff0c07d4776bdef361ec8122d4c0`;
+- merge parents: `d53e9b9efe7067bc1fc58a215222380b6490a873` and
+  `793adfc92392e443ca1eb8706689f83ebb9d0b75`;
+- merged at: `2026-08-03T01:50:12Z`.
+
+The three stabilization paths were the G07 workflow, the G07 orchestrator
+allowlist, and the dashboard widgets E2E fixture. PR #59 changed no production
+source, schema, migration, dependency, lockfile, Dockerfile, API contract, or
+composition root.
+
+## Stabilization chronology
+
+1. Run `30750345219` failed during workflow evaluation before GitHub created a
+   job because `${{ runner.temp }}` was referenced from job-level `env`.
+   Product tests executed: `0`; no product regression was established.
+2. Run `30771413923` executed the aggregate and passed every G07 stage except
+   `e2e_9`, where the dashboard widgets file reported `4/5` suites and `31/33`
+   tests with zero skipped tests.
+3. The two failures came from a SchoolProfile timezone the test fixture did not
+   own around the UTC/Cairo civil-date boundary. The application correctly
+   returned the civil date derived from the stored timezone.
+4. The fixture was corrected to own and restore `Africa/Cairo`; no product
+   implementation or assertion changed.
+5. The targeted dashboard widgets E2E file passed `9/9` tests.
+6. The permanent orchestrator contracts passed `12/12` tests.
+7. Disposable targeted-test infrastructure cleanup reported zero residual
+   resources.
+
+No product regression was established by either failed intermediate run.
+
+## Final pull-request evidence
+
+- Run: `30775381876`.
+- Trigger: pull request.
+- Head SHA: `793adfc92392e443ca1eb8706689f83ebb9d0b75`.
+- Workflow: `Phase 1 Universal Regression Gate`.
+- Job: `Blocking aggregate gate`.
+- Result: `PASS`.
+- Artifact: `prd1-g07-summary-30775381876`.
+- Artifact ID: `8842537173`.
+- Artifact digest:
+  `sha256:8fb3d3a47c65503a5781df893d46ca33ebe0a21d80fb9851e15afdf70fc887d7`.
+
+## Final post-merge evidence
+
+- Run: `30777819800`.
+- Trigger: push.
+- Branch: `main`.
+- Head SHA: `29c5fd5d7a7aff0c07d4776bdef361ec8122d4c0`.
+- Job ID: `91576569699`.
+- Workflow: `Phase 1 Universal Regression Gate`.
+- Job: `Blocking aggregate gate`.
+- Result: `PASS`.
+- Duration: `49m33s`.
+- Artifact: `prd1-g07-summary-30777819800`.
+- Artifact ID: `8843256939`.
+- Artifact digest:
+  `sha256:34d93914661d1d12b9371e3ae4662e9cc4807d9ed233afc258030815e5cf12bf`.
+
+## Machine-readable evidence
+
+Both final workflow artifacts contain the machine-readable G07 summary. The
+final post-merge artifact records:
+
+```text
+overall       = PASS
+exitCode      = 0
+aborted       = false
+stages        = 85
+PASS          = 85
+FAIL/BLOCKED  = 0
+skipped tests = 0
+cleanup       = PASS, exit 0
+```
+
+Its complete inventories are:
+
+- Unit: `545/545` suites and `3978/3978` tests.
+- Security: `90/90` suites and `1172/1172` tests.
+- E2E: `103/103` suites and `543/543` tests.
+- Root E2E: `1/1` suite and `2/2` tests.
+- Integration: `27/27` suites and `291/291` tests.
+
+The pull-request artifact ID `8842537173` and post-merge artifact ID
+`8843256939`, with their recorded SHA-256 digests, bind the summaries to the
+exact successful candidate and merged heads.
+
+## Final disposition
+
+`COMPLETE`
+
+PRD1-G07 satisfies its exact completion evidence: the local canonical gate,
+implementation publication and merge, stabilization publication and merge,
+final pull-request aggregate, final post-merge aggregate, machine-readable
+artifacts, zero skipped tests, and cleanup proof all passed.
+
+- Phase 2 remains `NOT_STARTED`.
+- This closeout does not itself start Phase 2.
+- Any Phase 2 work requires a separate explicit kickoff, baseline, and branch.
+- No deployment or production action occurred.
+- No product regression was established by the failed intermediate runs.
+- No accepted Phase 1 product contract or product behavior changed.
+- No local `.env` was read by the gate, and all fixture credentials remain
+  explicitly CI-only and non-production.
+- The Node 20 deprecation annotation emitted by GitHub-hosted actions is
+  non-blocking maintenance evidence, not a G07 acceptance failure.
