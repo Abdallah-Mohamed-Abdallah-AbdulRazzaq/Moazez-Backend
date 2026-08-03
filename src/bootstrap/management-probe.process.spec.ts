@@ -42,7 +42,8 @@ const service = new OperationalProbeService(
   { $queryRaw: async () => [{ value: 1 }] },
   {
     ping: async () => undefined,
-    hasAvailableWorkers: () => true,
+    hasExactAvailableWorkers: () => true,
+    hasExactRepeatRegistrations: () => true,
   },
   { checkReadiness: async () => undefined },
   { checkReadiness: async () => undefined },

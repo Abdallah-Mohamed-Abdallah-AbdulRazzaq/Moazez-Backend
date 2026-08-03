@@ -27,6 +27,7 @@ import {
 import type { Env } from '../../config/env.validation';
 import { RealtimeAuthService } from './realtime-auth.service';
 import { RealtimeCommunicationAccessService } from './realtime-communication-access.service';
+import { REALTIME_NAMESPACE } from './realtime-contract';
 import { REALTIME_CLIENT_COMMANDS } from './realtime-event-names';
 import { RealtimePresenceService } from './realtime-presence.service';
 import { conversationRoom, schoolRoom, userRoom } from './realtime-room-names';
@@ -37,7 +38,6 @@ import type {
   RealtimeSocket,
 } from './realtime.types';
 
-const REALTIME_NAMESPACE = '/api/v1/realtime';
 const REDIS_ADAPTER_CONNECT_TIMEOUT_MS = 400;
 const REDIS_ADAPTER_COMMAND_TIMEOUT_MS = 400;
 const REDIS_ADAPTER_OPERATION_TIMEOUT_MS = 600;
@@ -799,7 +799,7 @@ function installSocketAdapter(
   target.adapter(adapter);
 }
 
-export { REALTIME_NAMESPACE };
+export { REALTIME_NAMESPACE } from './realtime-contract';
 
 type BoundedSettlement<T> =
   | { status: 'fulfilled'; value: T }

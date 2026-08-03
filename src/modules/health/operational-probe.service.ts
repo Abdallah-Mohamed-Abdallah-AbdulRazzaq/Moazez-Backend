@@ -1,9 +1,11 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { APPLICATION_VERSION } from '../../bootstrap/application-metadata';
 import { ApplicationLifecycleState } from '../../bootstrap/application-lifecycle.state';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { BullmqService } from '../../infrastructure/queue/bullmq.service';
+import { FirebaseAdminService } from '../../infrastructure/push/firebase/firebase-admin.service';
 import { RealtimeGateway } from '../../infrastructure/realtime/realtime.gateway';
+import { RedisRealtimePublisherService } from '../../infrastructure/realtime/redis-realtime-publisher.service';
 import { RealtimeStateStoreService } from '../../infrastructure/realtime/realtime-state-store.service';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { MediaRuntimeStartupGuard } from '../files/uploads/application/media-runtime-startup.guard';
@@ -16,6 +18,7 @@ import {
   type OperationalRoleDependencyManifest,
 } from './operational-probe.manifests';
 import { TemporaryDiskProbe } from './temporary-disk.probe';
+import { RUNTIME_ROLE } from '../../runtime/runtime-role';
 
 export interface OperationalProbeResponse {
   status: 'ok' | 'unavailable';
@@ -46,17 +49,38 @@ export class OperationalProbeService {
 
   constructor(
     private readonly lifecycle: ApplicationLifecycleState,
-    private readonly prisma: PrismaService,
+    @Inject(PrismaService)
+    @Optional()
+    private readonly prisma: PrismaService | undefined,
     private readonly queue: BullmqService,
-    private readonly realtime: RealtimeGateway,
-    private readonly realtimeStateStore: RealtimeStateStoreService,
-    private readonly storage: StorageService,
-    private readonly mediaRuntime: MediaRuntimeStartupGuard,
-    private readonly temporaryDisk: TemporaryDiskProbe,
+    @Inject(RealtimeGateway)
+    @Optional()
+    private readonly realtime: RealtimeGateway | undefined,
+    @Inject(RealtimeStateStoreService)
+    @Optional()
+    private readonly realtimeStateStore: RealtimeStateStoreService | undefined,
+    @Inject(StorageService)
+    @Optional()
+    private readonly storage: StorageService | undefined,
+    @Inject(MediaRuntimeStartupGuard)
+    @Optional()
+    private readonly mediaRuntime: MediaRuntimeStartupGuard | undefined,
+    @Inject(TemporaryDiskProbe)
+    @Optional()
+    private readonly temporaryDisk: TemporaryDiskProbe | undefined,
     @Inject(OPERATIONAL_ROLE_MANIFESTS)
     private readonly manifests: Readonly<
       Record<OperationalProbeRole, OperationalRoleDependencyManifest>
     >,
+    @Inject(RUNTIME_ROLE)
+    private readonly runtimeRole: OperationalProbeRole = 'api',
+    @Inject(RedisRealtimePublisherService)
+    @Optional()
+    private readonly realtimeEmitter: RedisRealtimePublisherService | undefined =
+      undefined,
+    @Inject(FirebaseAdminService)
+    @Optional()
+    private readonly firebase: FirebaseAdminService | undefined = undefined,
   ) {}
 
   markInitializationComplete(): void {
@@ -71,6 +95,7 @@ export class OperationalProbeService {
     role: OperationalProbeRole,
     kind: OperationalProbeKind,
   ): Promise<OperationalProbeResult> {
+    if (role !== this.runtimeRole) return this.result(false);
     if (kind === 'liveness') return this.result(true);
 
     if (
@@ -122,34 +147,62 @@ export class OperationalProbeService {
   ): Promise<void> {
     switch (dependency) {
       case 'prisma':
-        return this.checkPrisma();
+        return this.checkPrisma(this.requireProvider(this.prisma, dependency));
       case 'queue-redis':
         return this.queue.ping();
       case 'storage':
-        return this.storage.checkReadiness();
+        return this.requireProvider(this.storage, dependency).checkReadiness();
       case 'realtime-adapter-redis':
-        return this.realtime.checkReadiness();
+        return this.requireProvider(this.realtime, dependency).checkReadiness();
       case 'realtime-state-store-redis':
-        return this.realtimeStateStore.checkReadiness();
+        return this.requireProvider(
+          this.realtimeStateStore,
+          dependency,
+        ).checkReadiness();
+      case 'realtime-emitter-redis':
+        return this.requireProvider(
+          this.realtimeEmitter,
+          dependency,
+        ).checkReadiness();
       case 'core-consumers':
       case 'media-consumers':
         return this.assertConsumersRegistered(manifest.assignedConsumers);
+      case 'schedule-registrations':
+        return this.assertSchedulesRegistered(manifest.assignedSchedules);
       case 'ffprobe':
-        return this.mediaRuntime.assertReady();
+        return this.requireProvider(
+          this.mediaRuntime,
+          dependency,
+        ).assertReady();
       case 'temporary-disk':
-        return this.temporaryDisk.checkReadiness();
+        return this.requireProvider(
+          this.temporaryDisk,
+          dependency,
+        ).checkReadiness();
+      case 'firebase':
+        this.requireProvider(this.firebase, dependency).checkReadiness();
+        return Promise.resolve();
     }
   }
 
-  private async checkPrisma(): Promise<void> {
-    await this.prisma.$queryRaw`SELECT 1`;
+  private async checkPrisma(prisma: PrismaService): Promise<void> {
+    await prisma.$queryRaw`SELECT 1`;
   }
 
   private assertConsumersRegistered(
     assignedConsumers: readonly string[],
   ): Promise<void> {
-    if (!this.queue.hasAvailableWorkers(assignedConsumers)) {
+    if (!this.queue.hasExactAvailableWorkers(assignedConsumers)) {
       return Promise.reject(new Error('assigned_consumer_unavailable'));
+    }
+    return Promise.resolve();
+  }
+
+  private assertSchedulesRegistered(
+    assignedSchedules: OperationalRoleDependencyManifest['assignedSchedules'],
+  ): Promise<void> {
+    if (!this.queue.hasExactRepeatRegistrations(assignedSchedules)) {
+      return Promise.reject(new Error('assigned_schedule_unavailable'));
     }
     return Promise.resolve();
   }
@@ -157,16 +210,25 @@ export class OperationalProbeService {
   private hasRequiredLocalCapabilities(
     manifest: OperationalRoleDependencyManifest,
   ): boolean {
-    if (
-      manifest.assignedConsumers.length > 0 &&
-      !this.queue.hasAvailableWorkers(manifest.assignedConsumers)
-    ) {
+    if (!this.queue.hasExactAvailableWorkers(manifest.assignedConsumers)) {
+      return false;
+    }
+    if (!this.queue.hasExactRepeatRegistrations(manifest.assignedSchedules)) {
       return false;
     }
 
     return (
-      !manifest.requiresVerifiedMediaRuntime || this.mediaRuntime.isVerified()
+      (!manifest.requiresVerifiedMediaRuntime ||
+        this.mediaRuntime?.isVerified() === true)
     );
+  }
+
+  private requireProvider<T>(
+    provider: T | undefined,
+    dependency: OperationalDependencyId,
+  ): T {
+    if (!provider) throw new Error(`${dependency}_provider_unavailable`);
+    return provider;
   }
 
   private recordReadinessState(

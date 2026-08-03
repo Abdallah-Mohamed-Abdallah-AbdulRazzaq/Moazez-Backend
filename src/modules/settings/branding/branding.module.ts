@@ -6,13 +6,11 @@ import { BrandingLogoCleanupQueueService } from './application/branding-logo-cle
 import { DeleteBrandingLogoUseCase } from './application/delete-branding-logo.use-case';
 import { GetBrandingUseCase } from './application/get-branding.use-case';
 import { GetPublicSchoolBrandingLogoUseCase } from './application/get-public-school-branding-logo.use-case';
-import { ProcessBrandingLogoCleanupUseCase } from './application/process-branding-logo-cleanup.use-case';
 import { ResolveSchoolLogoUrlService } from './application/resolve-school-logo-url.service';
 import { UpdateBrandingUseCase } from './application/update-branding.use-case';
 import { UploadBrandingLogoUseCase } from './application/upload-branding-logo.use-case';
 import { BrandingController } from './controller/branding.controller';
 import { PublicSchoolBrandingController } from './controller/public-school-branding.controller';
-import { BrandingLogoCleanupWorker } from './infrastructure/branding-logo-cleanup.worker';
 import { BrandingRepository } from './infrastructure/branding.repository';
 
 @Module({
@@ -27,8 +25,6 @@ import { BrandingRepository } from './infrastructure/branding.repository';
     DeleteBrandingLogoUseCase,
     GetPublicSchoolBrandingLogoUseCase,
     BrandingLogoCleanupQueueService,
-    ProcessBrandingLogoCleanupUseCase,
-    BrandingLogoCleanupWorker,
   ],
   exports: [ResolveSchoolLogoUrlService],
 })

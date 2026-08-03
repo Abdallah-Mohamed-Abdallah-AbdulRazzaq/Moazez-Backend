@@ -26,6 +26,8 @@ import {
   DismissalRequestsExpiryRepository,
   MAX_DISMISSAL_EXPIRY_BATCH_SIZE,
 } from '../../src/modules/dismissal/requests/infrastructure/dismissal-requests-expiry.repository';
+import { CORE_WORKER_CONSUMER_PROVIDERS } from '../../src/runtime/core-worker/core-worker-consumers.module';
+import { CoreWorkerRuntimeModule } from '../../src/runtime/core-worker/core-worker-runtime.module';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'DismissalOpsAudit123!';
@@ -43,6 +45,7 @@ jest.setTimeout(180_000);
 
 describe('DISMISSAL-OPERATIONS-AUDIT-1A production hardening (e2e)', () => {
   let app: INestApplication<App>;
+  let coreWorker: TestingModule;
   let prisma: PrismaClient;
   let expireUseCase: ExpireDismissalRequestsUseCase;
   let expiryRepository: DismissalRequestsExpiryRepository;
@@ -126,9 +129,18 @@ describe('DISMISSAL-OPERATIONS-AUDIT-1A production hardening (e2e)', () => {
     );
     await app.init();
 
-    expireUseCase = app.get(ExpireDismissalRequestsUseCase);
-    expiryRepository = app.get(DismissalRequestsExpiryRepository);
-    realtimePublisher = app.get(RealtimePublisherService);
+    const coreWorkerBuilder = Test.createTestingModule({
+      imports: [CoreWorkerRuntimeModule],
+    });
+    for (const consumerProvider of CORE_WORKER_CONSUMER_PROVIDERS) {
+      coreWorkerBuilder.overrideProvider(consumerProvider).useValue({});
+    }
+    coreWorker = await coreWorkerBuilder.compile();
+    await coreWorker.init();
+
+    expireUseCase = coreWorker.get(ExpireDismissalRequestsUseCase);
+    expiryRepository = coreWorker.get(DismissalRequestsExpiryRepository);
+    realtimePublisher = coreWorker.get(RealtimePublisherService);
     adminToken = await login(admin.email);
     parentToken = await login(parent.email);
     staffToken = await login(staff.email);
@@ -144,6 +156,7 @@ describe('DISMISSAL-OPERATIONS-AUDIT-1A production hardening (e2e)', () => {
   });
 
   afterAll(async () => {
+    await coreWorker?.close();
     if (app) await app.close();
     if (prisma) {
       await resetRequestState();

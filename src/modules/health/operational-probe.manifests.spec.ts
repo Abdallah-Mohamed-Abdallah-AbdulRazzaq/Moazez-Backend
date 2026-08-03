@@ -2,7 +2,7 @@ import {
   COMMUNICATION_NOTIFICATION_PUSH_QUEUE_NAME,
   COMMUNICATION_NOTIFICATION_QUEUE_NAME,
 } from '../communication/domain/communication-notification-generation-domain';
-import { DISMISSAL_REQUEST_EXPIRY_QUEUE_NAME } from '../dismissal/requests/worker/dismissal-request-expiry.worker';
+import { DISMISSAL_REQUEST_EXPIRY_QUEUE_NAME } from '../dismissal/requests/domain/dismissal-request-expiry.constants';
 import { LEARNING_MEDIA_CLEANUP_QUEUE } from '../files/uploads/application/learning-media-cleanup.service';
 import { FILES_IMPORT_QUEUE_NAME } from '../files/imports/domain/import-job.types';
 import { BRANDING_LOGO_CLEANUP_QUEUE } from '../settings/branding/domain/branding-logo.constants';
@@ -28,18 +28,35 @@ describe('operational role dependency manifests', () => {
     ]);
   });
 
-  it('keeps storage and realtime conditional only for the API manifest', () => {
+  it('keeps readiness dependencies aligned to each runtime capability', () => {
     const disabled = createOperationalRoleManifests({
       realtimeEnabled: false,
       storageRequiredForApi: false,
     });
 
-    expect(disabled.api.readiness).toEqual(['prisma', 'queue-redis']);
+    expect(disabled.api.readiness).toEqual([
+      'prisma',
+      'queue-redis',
+      'ffprobe',
+      'temporary-disk',
+    ]);
     expect(disabled['core-worker'].readiness).toEqual([
       'prisma',
       'queue-redis',
+      'storage',
       'core-consumers',
+      'realtime-emitter-redis',
+      'firebase',
     ]);
-    expect(disabled['media-worker'].readiness).toContain('storage');
+    expect(disabled['media-worker'].readiness).toEqual([
+      'prisma',
+      'queue-redis',
+      'storage',
+      'media-consumers',
+    ]);
+    expect(disabled['maintenance-scheduler'].readiness).toEqual([
+      'queue-redis',
+      'schedule-registrations',
+    ]);
   });
 });

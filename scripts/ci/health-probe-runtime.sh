@@ -27,6 +27,8 @@ readonly RUN_COMPONENT="$(sanitize_resource_component "${GITHUB_RUN_ID:-local}")
 readonly ATTEMPT_COMPONENT="$(sanitize_resource_component "${GITHUB_RUN_ATTEMPT:-1}")"
 readonly RESOURCE_PREFIX="moazez-health-$(sanitize_resource_component "$SCENARIO")-${RUN_COMPONENT}-${ATTEMPT_COMPONENT}-$$"
 readonly APP_CONTAINER="${RESOURCE_PREFIX}-app"
+readonly CORE_WORKER_CONTAINER="${RESOURCE_PREFIX}-core-worker"
+readonly MEDIA_WORKER_CONTAINER="${RESOURCE_PREFIX}-media-worker"
 readonly REDIS_CONTAINER="${RESOURCE_PREFIX}-redis"
 readonly PROBE_NETWORK="${RESOURCE_PREFIX}-net"
 readonly MINIO_CONTAINER="${HEALTH_MINIO_CONTAINER:-moazez-learning-media-minio}"
@@ -105,6 +107,8 @@ collect_diagnostics() {
 
   {
     safe_container_state "$APP_CONTAINER"
+    safe_container_state "$CORE_WORKER_CONTAINER"
+    safe_container_state "$MEDIA_WORKER_CONTAINER"
     safe_container_state "$REDIS_CONTAINER"
     if [[ "$SCENARIO" == 'storage-recovery' ]]; then
       safe_container_state "$MINIO_CONTAINER"
@@ -114,6 +118,12 @@ collect_diagnostics() {
   docker logs --tail 200 "$APP_CONTAINER" 2>&1 |
     safe_output |
     tail --bytes 32768 >"$ARTIFACT_DIR/application.log" || true
+  docker logs --tail 200 "$CORE_WORKER_CONTAINER" 2>&1 |
+    safe_output |
+    tail --bytes 32768 >"$ARTIFACT_DIR/core-worker.log" || true
+  docker logs --tail 200 "$MEDIA_WORKER_CONTAINER" 2>&1 |
+    safe_output |
+    tail --bytes 32768 >"$ARTIFACT_DIR/media-worker.log" || true
 
   {
     docker logs --tail 120 "$REDIS_CONTAINER" 2>&1 || true
@@ -133,7 +143,9 @@ cleanup_resources() {
     docker unpause "$MINIO_CONTAINER" >/dev/null 2>&1 || true
     MINIO_PAUSED_BY_SCENARIO='false'
   fi
-  docker rm --force "$APP_CONTAINER" "$REDIS_CONTAINER" \
+  docker rm --force \
+    "$APP_CONTAINER" "$CORE_WORKER_CONTAINER" "$MEDIA_WORKER_CONTAINER" \
+    "$REDIS_CONTAINER" \
     >/dev/null 2>&1 || true
   docker network rm "$PROBE_NETWORK" >/dev/null 2>&1 || true
   rm -rf -- "$TEMP_ROOT" || true
@@ -236,6 +248,39 @@ start_runtime() {
   wait_for_public_health
 }
 
+start_application_context_runtime() {
+  local role="$1"
+  local container="$2"
+  local entrypoint="$3"
+  local runtime_database_url
+  local runtime_storage_endpoint
+
+  runtime_database_url="${DATABASE_URL/127.0.0.1/host.docker.internal}"
+  runtime_storage_endpoint="${STORAGE_ENDPOINT/127.0.0.1/host.docker.internal}"
+
+  docker run --detach --name "$container" \
+    --network "$PROBE_NETWORK" \
+    --add-host host.docker.internal:host-gateway \
+    --env APP_PROBE_PORT="$MANAGEMENT_CONTAINER_PORT" \
+    --env APP_SHUTDOWN_TIMEOUT_MS=15000 \
+    --env APP_URL="${APP_URL:-http://127.0.0.1:${PUBLIC_CONTAINER_PORT}}" \
+    --env DATABASE_URL="$runtime_database_url" \
+    --env REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
+    --env SETTINGS_SECRET_ENCRYPTION_KEY \
+    --env STORAGE_PROVIDER \
+    --env STORAGE_ENDPOINT="$runtime_storage_endpoint" \
+    --env STORAGE_ACCESS_KEY \
+    --env STORAGE_SECRET_KEY \
+    --env STORAGE_BUCKET \
+    --env STORAGE_PUBLIC_BUCKET \
+    --env FCM_ENABLED \
+    --env FCM_DRY_RUN \
+    --env LOG_LEVEL \
+    "$RUNTIME_IMAGE" node "$entrypoint" >/dev/null
+
+  wait_for_probe_status "$role" startup 200 30 1
+}
+
 wait_for_public_health() {
   local attempt
   for attempt in {1..30}; do
@@ -257,16 +302,32 @@ start_common_runtime() {
   create_network
   start_redis
   start_runtime
+  start_application_context_runtime \
+    core-worker "$CORE_WORKER_CONTAINER" dist/core-worker
+  start_application_context_runtime \
+    media-worker "$MEDIA_WORKER_CONTAINER" dist/media-worker
+}
+
+runtime_container_for_role() {
+  case "$1" in
+    api) printf '%s' "$APP_CONTAINER" ;;
+    core-worker) printf '%s' "$CORE_WORKER_CONTAINER" ;;
+    media-worker) printf '%s' "$MEDIA_WORKER_CONTAINER" ;;
+    *) return 2 ;;
+  esac
 }
 
 observe_internal_probe() {
   local role="$1"
   local kind="$2"
   local method="${3:-GET}"
+  local runtime_container
   local output
 
+  runtime_container="$(runtime_container_for_role "$role")"
+
   if output="$(
-    docker exec --interactive "$APP_CONTAINER" \
+    docker exec --interactive "$runtime_container" \
       node - "$role" "$kind" "$method" <<'NODE'
 void (async () => {
   const role = process.argv[2];
@@ -305,10 +366,13 @@ assert_internal_probe() {
   local expected_code="$3"
   local expected_status="$4"
   local method="${5:-GET}"
+  local runtime_container
   local output
 
+  runtime_container="$(runtime_container_for_role "$role")"
+
   if ! output="$(
-    docker exec --interactive "$APP_CONTAINER" node - \
+    docker exec --interactive "$runtime_container" node - \
       "$role" "$kind" "$expected_code" "$expected_status" "$method" <<'NODE'
 void (async () => {
   const role = process.argv[2];
@@ -593,11 +657,22 @@ scenario_startup() {
     fail_scenario 'contract=public-port expected=published observed=missing'
     return 1
   fi
-  if docker port "$APP_CONTAINER" "${MANAGEMENT_CONTAINER_PORT}/tcp" \
-    >/dev/null 2>&1; then
-    fail_scenario 'contract=management-port expected=not-published observed=published'
-    return 1
-  fi
+  local runtime_container
+  for runtime_container in \
+    "$APP_CONTAINER" "$CORE_WORKER_CONTAINER" "$MEDIA_WORKER_CONTAINER"; do
+    if docker port "$runtime_container" "${MANAGEMENT_CONTAINER_PORT}/tcp" \
+      >/dev/null 2>&1; then
+      fail_scenario "contract=management-port runtime=${runtime_container} expected=not-published observed=published"
+      return 1
+    fi
+  done
+  for runtime_container in "$CORE_WORKER_CONTAINER" "$MEDIA_WORKER_CONTAINER"; do
+    if docker port "$runtime_container" "${PUBLIC_CONTAINER_PORT}/tcp" \
+      >/dev/null 2>&1; then
+      fail_scenario "contract=public-port runtime=${runtime_container} expected=not-published observed=published"
+      return 1
+    fi
+  done
 
   local role
   local kind
@@ -651,10 +726,18 @@ scenario_redis_recovery() {
 
   local app_id
   local app_started_at
+  local core_worker_id
+  local core_worker_started_at
+  local media_worker_id
+  local media_worker_started_at
   local redis_id
   local redis_started_at
   app_id="$(docker inspect --format '{{.Id}}' "$APP_CONTAINER")"
   app_started_at="$(docker inspect --format '{{.State.StartedAt}}' "$APP_CONTAINER")"
+  core_worker_id="$(docker inspect --format '{{.Id}}' "$CORE_WORKER_CONTAINER")"
+  core_worker_started_at="$(docker inspect --format '{{.State.StartedAt}}' "$CORE_WORKER_CONTAINER")"
+  media_worker_id="$(docker inspect --format '{{.Id}}' "$MEDIA_WORKER_CONTAINER")"
+  media_worker_started_at="$(docker inspect --format '{{.State.StartedAt}}' "$MEDIA_WORKER_CONTAINER")"
   redis_id="$(docker inspect --format '{{.Id}}' "$REDIS_CONTAINER")"
   redis_started_at="$(docker inspect --format '{{.State.StartedAt}}' "$REDIS_CONTAINER")"
 
@@ -669,6 +752,10 @@ scenario_redis_recovery() {
   docker unpause "$REDIS_CONTAINER" >/dev/null
   wait_for_redis
   assert_container_identity "$APP_CONTAINER" "$app_id" "$app_started_at"
+  assert_container_identity \
+    "$CORE_WORKER_CONTAINER" "$core_worker_id" "$core_worker_started_at"
+  assert_container_identity \
+    "$MEDIA_WORKER_CONTAINER" "$media_worker_id" "$media_worker_started_at"
   assert_container_identity "$REDIS_CONTAINER" "$redis_id" "$redis_started_at"
   if [[ "$(docker inspect --format '{{.State.Paused}}' "$REDIS_CONTAINER")" != 'false' ]]; then
     fail_scenario 'dependency=redis expected=unpaused observed=paused'
@@ -678,7 +765,7 @@ scenario_redis_recovery() {
 }
 
 scenario_storage_recovery() {
-  EXPECTED_TRANSITION='readiness 200 -> MinIO pause -> API/Media 503 and Core 200 -> same MinIO resume -> recovery'
+  EXPECTED_TRANSITION='readiness 200 -> MinIO pause -> all storage-owning runtimes 503 -> same MinIO resume -> recovery'
   docker inspect "$MINIO_CONTAINER" >/dev/null
   wait_for_minio
 
@@ -698,8 +785,7 @@ scenario_storage_recovery() {
     return 1
   fi
 
-  poll_roles_independently 503 30 0.25 api media-worker
-  assert_internal_probe core-worker readiness 200 ok
+  poll_roles_independently 503 30 0.25 api core-worker media-worker
   assert_all_roles liveness 200 ok
 
   docker unpause "$MINIO_CONTAINER" >/dev/null
@@ -711,8 +797,7 @@ scenario_storage_recovery() {
     return 1
   fi
 
-  poll_roles_independently 200 60 0.5 api media-worker
-  assert_internal_probe core-worker readiness 200 ok
+  poll_roles_independently 200 60 0.5 api core-worker media-worker
   for role in api core-worker media-worker; do
     observe_internal_probe "$role" readiness
   done
@@ -735,7 +820,7 @@ const IORedis = RedisModule.default ?? RedisModule;
 const {
   RealtimeStateStoreService
 } = require(
-  './dist/src/infrastructure/realtime/realtime-state-store.service'
+  './dist/infrastructure/realtime/realtime-state-store.service'
 );
 
 const delay = (milliseconds) =>
@@ -885,7 +970,9 @@ NODE
 
 scenario_graceful_shutdown() {
   EXPECTED_TRANSITION='fresh started runtime -> SIGTERM -> intake stopped -> bounded clean exit'
-  start_common_runtime
+  create_network
+  start_redis
+  start_runtime
 
   local shutdown_started_ms
   local intake_stopped='false'
@@ -987,9 +1074,9 @@ scenario_forced_timeout() {
     --entrypoint node "$RUNTIME_IMAGE" \
     -e '
       const { ApplicationLifecycleState } =
-        require("./dist/src/bootstrap/application-lifecycle.state");
+        require("./dist/bootstrap/application-lifecycle.state");
       const { GracefulShutdownCoordinator } =
-        require("./dist/src/bootstrap/graceful-shutdown");
+        require("./dist/bootstrap/graceful-shutdown");
       const lifecycle = new ApplicationLifecycleState();
       const coordinator = new GracefulShutdownCoordinator({
         app: { close: () => new Promise(() => undefined) },

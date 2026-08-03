@@ -28,16 +28,12 @@ import { EmailRecipientTargetingService } from './delivery/application/email-rec
 import { PreviewCampaignRecipientsUseCase } from './delivery/application/preview-campaign-recipients.use-case';
 import { PreviewCredentialDeliveryRecipientsUseCase } from './delivery/application/preview-credential-delivery-recipients.use-case';
 import { PreviewEmailCampaignUseCase } from './delivery/application/preview-email-campaign.use-case';
-import { ProcessEmailDeliveryRecipientUseCase } from './delivery/application/process-email-delivery-recipient.use-case';
 import { SchoolEmailDeliveryQueueService } from './delivery/application/school-email-delivery-queue.service';
 import { SchoolEmailRendererService } from './delivery/application/school-email-renderer.service';
 import { CredentialDeliveryController } from './delivery/controller/credential-delivery.controller';
 import { EmailCampaignController } from './delivery/controller/email-campaign.controller';
 import { EmailDeliveryController } from './delivery/controller/email-delivery.controller';
 import { EmailDeliveryRepository } from './delivery/infrastructure/email-delivery.repository';
-import { SchoolEmailDeliveryWorker } from './delivery/infrastructure/school-email-delivery.worker';
-import { SCHOOL_EMAIL_TRANSPORT } from './delivery/transport/email-transport';
-import { NodemailerEmailTransport } from './delivery/transport/nodemailer-email.transport';
 import { EmailSecretCrypto } from './domain/email-secret-crypto';
 import { EmailSettingsRepository } from './infrastructure/email-settings.repository';
 
@@ -67,12 +63,6 @@ import { EmailSettingsRepository } from './infrastructure/email-settings.reposit
     GetEmailDeliveryUseCase,
     ListEmailDeliveryRecipientsUseCase,
     CancelEmailDeliveryUseCase,
-    ProcessEmailDeliveryRecipientUseCase,
-    SchoolEmailDeliveryWorker,
-    {
-      provide: SCHOOL_EMAIL_TRANSPORT,
-      useClass: NodemailerEmailTransport,
-    },
     GetEmailConnectionUseCase,
     UpdateEmailConnectionUseCase,
     TestEmailConnectionUseCase,

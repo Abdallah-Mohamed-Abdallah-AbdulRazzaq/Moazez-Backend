@@ -52,6 +52,19 @@ describe('GracefulShutdownCoordinator', () => {
     expect(harness.processTarget.listenerCount('SIGINT')).toBe(0);
   });
 
+  it('does not claim worker drain ownership when the runtime owns no consumers', async () => {
+    const harness = createHarness({
+      closeHttpImmediately: true,
+      includeQueue: false,
+    });
+
+    await harness.coordinator.handleSignal('SIGTERM');
+
+    expect(harness.queue.beginWorkerDrain).not.toHaveBeenCalled();
+    expect(harness.app.close).toHaveBeenCalledTimes(1);
+    expect(harness.processTarget.exitCode).toBe(0);
+  });
+
   it('forces a non-zero immediate exit on a second active signal', async () => {
     const harness = createHarness();
 
@@ -192,6 +205,7 @@ function createHarness(
     closeHttpErrorImmediately?: Error;
     closeManagementErrorImmediately?: Error;
     clock?: NonNullable<GracefulShutdownDependencies['clock']>;
+    includeQueue?: boolean;
   } = {},
 ) {
   const lifecycle = new ApplicationLifecycleState();
@@ -227,7 +241,7 @@ function createHarness(
       httpServer as unknown as GracefulShutdownDependencies['httpServer'],
     managementServer,
     lifecycle,
-    queue,
+    queue: options.includeQueue === false ? undefined : queue,
     realtime,
     timeoutMs: 15_000,
     logger,

@@ -27,6 +27,8 @@ import { FirebasePushProvider } from '../../src/infrastructure/push/firebase/fir
 import { CommunicationNotificationPushDeliveryService } from '../../src/modules/communication/application/communication-notification-push-delivery.service';
 import { CommunicationNotificationPushQueueService } from '../../src/modules/communication/application/communication-notification-push-queue.service';
 import { ExpireDismissalRequestsUseCase } from '../../src/modules/dismissal/requests/application/expire-dismissal-requests.use-case';
+import { CORE_WORKER_CONSUMER_PROVIDERS } from '../../src/runtime/core-worker/core-worker-consumers.module';
+import { CoreWorkerRuntimeModule } from '../../src/runtime/core-worker/core-worker-runtime.module';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'DismissalPush123!';
@@ -55,6 +57,7 @@ type FirebasePushProviderMock = Pick<FirebasePushProvider, 'sendBatch'> & {
 
 describe('DISMISSAL-NOTIFICATIONS-1B push delivery and device tokens (e2e)', () => {
   let app: INestApplication<App>;
+  let coreWorker: TestingModule;
   let prisma: PrismaClient;
   let pushQueue: PushQueueMock;
   let firebasePushProvider: FirebasePushProviderMock;
@@ -222,8 +225,23 @@ describe('DISMISSAL-NOTIFICATIONS-1B push delivery and device tokens (e2e)', () 
     );
     await app.init();
 
-    pushDeliveryService = app.get(CommunicationNotificationPushDeliveryService);
-    expiryUseCase = app.get(ExpireDismissalRequestsUseCase);
+    const coreWorkerBuilder = Test.createTestingModule({
+      imports: [CoreWorkerRuntimeModule],
+    })
+      .overrideProvider(CommunicationNotificationPushQueueService)
+      .useValue(pushQueue)
+      .overrideProvider(FirebasePushProvider)
+      .useValue(firebasePushProvider);
+    for (const consumerProvider of CORE_WORKER_CONSUMER_PROVIDERS) {
+      coreWorkerBuilder.overrideProvider(consumerProvider).useValue({});
+    }
+    coreWorker = await coreWorkerBuilder.compile();
+    await coreWorker.init();
+
+    pushDeliveryService = coreWorker.get(
+      CommunicationNotificationPushDeliveryService,
+    );
+    expiryUseCase = coreWorker.get(ExpireDismissalRequestsUseCase);
     adminToken = await login(admin.email);
     parentToken = await login(parent.email);
     staffAssignedToken = await login(staffAssigned.email);
@@ -239,6 +257,7 @@ describe('DISMISSAL-NOTIFICATIONS-1B push delivery and device tokens (e2e)', () 
   });
 
   afterAll(async () => {
+    await coreWorker?.close();
     try {
       const schoolIds = [schoolId, crossSchoolId].filter(Boolean);
       await clearRuntimeState();

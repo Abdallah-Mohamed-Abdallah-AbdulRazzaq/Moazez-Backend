@@ -8,6 +8,20 @@ import { BrandingRepository } from '../infrastructure/branding.repository';
 import { BrandingLogoCleanupWorker } from '../infrastructure/branding-logo-cleanup.worker';
 
 describe('branding logo cleanup and reconciliation', () => {
+  it('keeps the cleanup queue service producer-only at startup', () => {
+    const bullmq = {
+      addJob: jest.fn().mockResolvedValue({ id: 'job-1' }),
+      getQueueReadiness: jest.fn(),
+    } as unknown as BullmqService;
+    const service = new BrandingLogoCleanupQueueService(
+      bullmq,
+      createStorage(),
+    );
+
+    expect(service).not.toHaveProperty('onModuleInit');
+    expect(bullmq.addJob).not.toHaveBeenCalled();
+  });
+
   it('retries failed immediate cleanup with bounded attempts and retained failure', async () => {
     const bullmq = {
       addJob: jest.fn().mockResolvedValue({ id: 'job-1' }),

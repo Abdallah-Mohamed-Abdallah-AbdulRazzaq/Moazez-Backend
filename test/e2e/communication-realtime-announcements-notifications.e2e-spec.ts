@@ -36,6 +36,7 @@ import {
   COMMUNICATION_NOTIFICATION_QUEUE_NAME,
   COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
 } from '../../src/modules/communication/domain/communication-notification-generation-domain';
+import { CoreWorkerRuntimeModule } from '../../src/runtime/core-worker/core-worker-runtime.module';
 
 const GLOBAL_PREFIX = '/api/v1';
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
@@ -61,6 +62,7 @@ jest.setTimeout(90000);
 
 describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)', () => {
   let app: INestApplication<App>;
+  let coreWorker: TestingModule;
   let prisma: PrismaClient;
   let storageService: StorageService;
   let demoSchoolId: string;
@@ -142,9 +144,14 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
     await app.init();
 
     storageService = app.get(StorageService);
+    coreWorker = await Test.createTestingModule({
+      imports: [CoreWorkerRuntimeModule],
+    }).compile();
+    await coreWorker.init();
   });
 
   afterAll(async () => {
+    await coreWorker?.close();
     if (uploadedBucket && uploadedObjectKey && storageService) {
       await storageService.deleteObject({
         bucket: uploadedBucket,
@@ -820,7 +827,7 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
   async function generateAnnouncementNotifications(
     announcementId: string,
   ): Promise<void> {
-    const generationService = app.get(
+    const generationService = coreWorker.get(
       CommunicationNotificationGenerationService,
     );
     const context = createRequestContext(

@@ -535,20 +535,10 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
     );
     await app.init();
 
-    expect(bullmqServiceMock.addJob).toHaveBeenCalledWith(
-      'settings-branding-logo-cleanup',
-      expect.any(String),
-      expect.any(Object),
-      expect.any(Object),
-    );
-    expect(bullmqServiceMock.getQueueReadiness).toHaveBeenCalledWith(
-      'settings-branding-logo-cleanup',
-    );
-    expect(bullmqServiceMock.createWorker).toHaveBeenCalledWith(
-      'settings-branding-logo-cleanup',
-      expect.any(Function),
-    );
-    expect(bullmqWorkerOn).toHaveBeenCalledWith('failed', expect.any(Function));
+    expect(bullmqServiceMock.addJob).not.toHaveBeenCalled();
+    expect(bullmqServiceMock.getQueueReadiness).not.toHaveBeenCalled();
+    expect(bullmqServiceMock.createWorker).not.toHaveBeenCalled();
+    expect(bullmqWorkerOn).not.toHaveBeenCalled();
   });
 
   afterAll(async () => {

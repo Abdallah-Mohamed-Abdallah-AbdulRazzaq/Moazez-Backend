@@ -18,6 +18,7 @@ import {
 } from '../modules/health/operational-probe.manifests';
 import { OperationalProbeService } from '../modules/health/operational-probe.service';
 import { TemporaryDiskProbe } from '../modules/health/temporary-disk.probe';
+import { RUNTIME_ROLE } from '../runtime/runtime-role';
 
 describe('Nest-managed operational probes on the management listener', () => {
   let moduleRef: TestingModule;
@@ -41,7 +42,8 @@ describe('Nest-managed operational probes on the management listener', () => {
           provide: BullmqService,
           useValue: {
             ping: queuePing,
-            hasAvailableWorkers: jest.fn().mockReturnValue(true),
+            hasExactAvailableWorkers: jest.fn().mockReturnValue(true),
+            hasExactRepeatRegistrations: jest.fn().mockReturnValue(true),
           },
         },
         {
@@ -71,6 +73,7 @@ describe('Nest-managed operational probes on the management listener', () => {
           provide: OPERATIONAL_ROLE_MANIFESTS,
           useValue: createOperationalRoleManifests(),
         },
+        { provide: RUNTIME_ROLE, useValue: 'api' },
       ],
     }).compile();
     lifecycle = moduleRef.get(ApplicationLifecycleState);
@@ -91,8 +94,16 @@ describe('Nest-managed operational probes on the management listener', () => {
     probes.markInitializationComplete();
 
     await expectStatus('/internal/probes/api/startup', 200, 'ok');
-    await expectStatus('/internal/probes/core-worker/startup', 200, 'ok');
-    await expectStatus('/internal/probes/media-worker/startup', 200, 'ok');
+    await expectStatus(
+      '/internal/probes/core-worker/startup',
+      503,
+      'unavailable',
+    );
+    await expectStatus(
+      '/internal/probes/media-worker/startup',
+      503,
+      'unavailable',
+    );
   });
 
   it('keeps liveness healthy, makes readiness recoverable, and rejects drain', async () => {

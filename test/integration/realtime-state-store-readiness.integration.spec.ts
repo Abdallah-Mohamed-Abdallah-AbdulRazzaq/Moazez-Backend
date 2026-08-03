@@ -360,7 +360,8 @@ function createProbeService(
     } as unknown as PrismaService,
     {
       ping: jest.fn().mockResolvedValue(undefined),
-      hasAvailableWorkers: jest.fn().mockReturnValue(true),
+      hasExactAvailableWorkers: jest.fn().mockReturnValue(true),
+      hasExactRepeatRegistrations: jest.fn().mockReturnValue(true),
     } as unknown as BullmqService,
     {
       checkReadiness: jest.fn().mockResolvedValue(undefined),

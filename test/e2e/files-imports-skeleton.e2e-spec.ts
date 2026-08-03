@@ -5,6 +5,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { StorageService } from '../../src/infrastructure/storage/storage.service';
+import { CoreWorkerRuntimeModule } from '../../src/runtime/core-worker/core-worker-runtime.module';
 
 const GLOBAL_PREFIX = '/api/v1';
 
@@ -15,6 +16,7 @@ jest.setTimeout(30000);
 
 describe('Files imports skeleton flow (e2e)', () => {
   let app: INestApplication<App>;
+  let coreWorker: TestingModule;
   let prisma: PrismaClient;
   let storageService: StorageService;
   let uploadedFileId: string | null = null;
@@ -103,10 +105,15 @@ describe('Files imports skeleton flow (e2e)', () => {
     await app.init();
 
     storageService = app.get(StorageService);
+    coreWorker = await Test.createTestingModule({
+      imports: [CoreWorkerRuntimeModule],
+    }).compile();
+    await coreWorker.init();
     attachmentCountBefore = await prisma.attachment.count();
   });
 
   afterAll(async () => {
+    await coreWorker?.close();
     if (importJobId) {
       await prisma.importJob.deleteMany({ where: { id: importJobId } });
     }

@@ -24,6 +24,8 @@ import { AppModule } from '../../src/app.module';
 import { REALTIME_SERVER_EVENTS } from '../../src/infrastructure/realtime/realtime-event-names';
 import { RealtimePublisherService } from '../../src/infrastructure/realtime/realtime-publisher.service';
 import { ExpireDismissalRequestsUseCase } from '../../src/modules/dismissal/requests/application/expire-dismissal-requests.use-case';
+import { CORE_WORKER_CONSUMER_PROVIDERS } from '../../src/runtime/core-worker/core-worker-consumers.module';
+import { CoreWorkerRuntimeModule } from '../../src/runtime/core-worker/core-worker-runtime.module';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'DismissalExpiryE2E123!';
@@ -46,6 +48,7 @@ type PublishSpy = jest.SpyInstance<
 
 describe('DISMISSAL-EXPIRY-1A request expiration worker (e2e)', () => {
   let app: INestApplication<App>;
+  let coreWorker: TestingModule;
   let prisma: PrismaClient;
   let expireUseCase: ExpireDismissalRequestsUseCase;
   let organizationId: string;
@@ -126,7 +129,16 @@ describe('DISMISSAL-EXPIRY-1A request expiration worker (e2e)', () => {
     );
     await app.init();
 
-    expireUseCase = app.get(ExpireDismissalRequestsUseCase);
+    const coreWorkerBuilder = Test.createTestingModule({
+      imports: [CoreWorkerRuntimeModule],
+    });
+    for (const consumerProvider of CORE_WORKER_CONSUMER_PROVIDERS) {
+      coreWorkerBuilder.overrideProvider(consumerProvider).useValue({});
+    }
+    coreWorker = await coreWorkerBuilder.compile();
+    await coreWorker.init();
+
+    expireUseCase = coreWorker.get(ExpireDismissalRequestsUseCase);
     adminToken = await login(admin.email);
     parentToken = await login(parent.email);
   });
@@ -141,6 +153,7 @@ describe('DISMISSAL-EXPIRY-1A request expiration worker (e2e)', () => {
   });
 
   afterAll(async () => {
+    await coreWorker?.close();
     if (app) await app.close();
     if (prisma) {
       await resetRequestState();
@@ -919,7 +932,7 @@ describe('DISMISSAL-EXPIRY-1A request expiration worker (e2e)', () => {
   }
 
   function publisherSpy(): PublishSpy {
-    const publisher = app.get(RealtimePublisherService);
+    const publisher = coreWorker.get(RealtimePublisherService);
     return jest.spyOn(publisher, 'publishToUser') as PublishSpy;
   }
 
