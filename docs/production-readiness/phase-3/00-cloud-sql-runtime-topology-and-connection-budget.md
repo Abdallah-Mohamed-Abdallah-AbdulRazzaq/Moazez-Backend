@@ -15,8 +15,10 @@
 | Scope | Local runtime policy, tests, and governance only; no cloud provisioning |
 
 PRD3-G01 is not complete. This document locks a conservative implementation
-baseline while saturation/recovery, database privileges, real Cloud SQL
-failover, exact-candidate CI, merge, and post-merge closeout remain pending.
+baseline. Corrected local raw Prisma pool saturation/recovery evidence is
+recorded in PRD3-G01-B1-FINAL, while runtime outage/reconnect,
+business-transaction pressure, database privileges, real Cloud SQL failover,
+exact-candidate CI, merge, and post-merge closeout remain pending.
 
 ## Approved Saudi production direction
 
@@ -218,9 +220,27 @@ A safe empty default exists solely for direct lifecycle-test construction with
 `new PrismaService()`. Production dependency injection remains required; it is
 not marked optional.
 
-## Pool-pressure inventory for PRD3-G01-B
+## Pool-pressure inventory after PRD3-G01-B1-FINAL
 
-No transaction or business logic is changed here. Saturation testing must
+PRD3-G01-B1-FINAL completed three fail-closed live rehearsals and two
+independent disposable PostgreSQL 16 runs for raw
+Prisma pool saturation, exact P2024 timing, same-client recovery, aggregate
+20/12/6/38 sessions, disconnect cleanup, and new-client pool reduction. The
+measured evidence is in
+`01-prisma-pool-saturation-and-budget-evidence.md`.
+The corrected harness pins a verified local Docker endpoint, disables implicit
+image pulls, executes the pre-inspected fixture image by immutable ID, creates
+an internal disposable network, uses hard child-process escalation, and
+requires fail-closed exact-name plus current-run-label Docker inspection. Its
+schema-v5 summaries are published atomically only after bounded two-phase
+Prisma disconnect, process-tree termination, exact-name and label cleanup,
+image verification, and zero scratch-file checks. The owned internal network
+is not an internal-only fixture: its owned PostgreSQL container is temporarily
+multi-homed to the verified local built-in bridge to activate Docker Desktop
+loopback publishing. These final runs supersede all B1, B1-R1, and B1-R2 draft
+candidates.
+
+No transaction or business logic is changed here. PRD3-G01-B3 must still
 include:
 
 - Learning Media transaction: 15-second timeout.
@@ -251,10 +271,18 @@ PRD3-G01-A supplies the immutable runtime policy, environment validation,
 bounded Prisma construction, scheduler-negative ownership tests, static budget
 proof, ADR-0005, and governance amendments.
 
+PRD3-G01-B1-FINAL supplies deterministic local evidence from the actual Prisma
+6.19.3 pools against disposable PostgreSQL 16. Two complete runs observed exact
+default maxima 5/6/3, aggregate maxima 20/12/6/38, exact P2024 codes, bounded
+waits, recovery, lower new-client pools, and zero residual owned resources
+after successful fail-closed inspection and label-verified cleanup.
+It does not supply Cloud Run or Cloud SQL provider evidence.
+
 Still deferred:
 
-- **PRD3-G01-B:** connection saturation, transaction pressure, termination,
-  recovery, pool reduction, and cutback evidence.
+- **PRD3-G01-B2:** runtime outage, readiness, and reconnect evidence.
+- **PRD3-G01-B3:** registered business-transaction pressure and operational
+  cutback evidence.
 - **PRD3-G01-C:** separate PostgreSQL users, least-privilege grants, negative
   DDL/cross-role access proof, and migration/runtime separation evidence.
 - **PRD3-G01-D:** real Cloud SQL regional failover, reconnect behavior,

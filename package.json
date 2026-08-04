@@ -84,6 +84,8 @@
     "verify:media-runtime": "node scripts/verify-media-runtime.cjs",
     "verify:runtime-policy": "node scripts/verify-runtime-policy.cjs && node --test scripts/tests/verify-runtime-policy.test.cjs",
     "verify:prd3-g01-a": "node scripts/ci/validate-production-readiness-governance.cjs && node --test scripts/tests/health-probe-database-runtime-contract.test.cjs scripts/tests/validate-production-readiness-governance.test.cjs && npm run verify:runtime-policy",
+    "verify:prd3-g01-b1": "npm run verify:prd3-g01-a && npx prisma generate && npm run build && node --test scripts/tests/prd3-g01-b-pool-saturation.test.cjs && node scripts/ci/prd3-g01-b-pool-saturation.cjs",
+    "verify:prd3-g01-b1-failures": "node scripts/ci/prd3-g01-b-pool-saturation.cjs --failure-rehearsals",
     "verify:legacy-learning-media": "node scripts/classify-legacy-learning-media.cjs",
     "test:learning-media": "jest --runInBand --runTestsByPath src/modules/files/uploads/tests/file-upload-session.contract.spec.ts src/modules/files/uploads/tests/learning-media-upload.use-case.spec.ts",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",

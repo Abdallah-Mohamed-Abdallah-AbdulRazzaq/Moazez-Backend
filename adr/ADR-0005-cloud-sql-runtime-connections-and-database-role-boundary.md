@@ -180,7 +180,7 @@ change application queue concurrency in this subtask.
 | Decision | Owning question | Decision-level status |
 | --- | --- | --- |
 | PRD0-D011 | PRD0-Q006 | Accepted, provisional sizing |
-| PRD0-D012 | PRD0-Q014 | Accepted, pending saturation proof |
+| PRD0-D012 | PRD0-Q014 | Accepted; local Prisma pool proof complete, provider evidence pending |
 | PRD0-D030 | PRD0-Q015 | Accepted, pilot envelope |
 | PRD0-D031 | PRD0-Q003 | Accepted, pilot envelope |
 
@@ -190,8 +190,12 @@ elsewhere.
 
 ## Transaction saturation inputs
 
-No transaction is refactored by this decision. PRD3-G01-B must exercise these
-observed pool-pressure inputs:
+No transaction is refactored by this decision. PRD3-G01-B1-FINAL proves the
+exact raw Prisma pool limits, P2024 wait behavior, recovery, aggregate
+38-runtime-connection envelope, disconnect cleanup, and new-client pool reduction in
+`docs/production-readiness/phase-3/01-prisma-pool-saturation-and-budget-evidence.md`.
+PRD3-G01-B3 must still exercise these observed business-transaction pressure
+inputs:
 
 - Learning Media transaction: 15-second timeout.
 - Teacher Lifecycle transaction: 30-second Serializable timeout.
@@ -230,9 +234,27 @@ saturation evidence rejects the pool/instance envelope, failover consumes the
 reserve, provider limits differ, workload/growth changes materially, or Saudi
 residency requirements change.
 
+PRD3-G01-B1-FINAL local disposable evidence is complete: three live fail-closed
+rehearsals plus two independent runs observed exact role maxima 5/6/3, exact
+aggregate 20/12/6/38,
+bounded P2024 waits, same-client recovery, lower new-client pool settings, no
+sampled session overshoot, and zero owned Docker resources after label-verified
+cleanup and fail-closed exact-name and current-run-label Docker inspection. The
+harness pins a verified local Docker endpoint, executes the pre-existing
+PostgreSQL image by immutable ID with pulls disabled, and creates its disposable
+network with `--internal`. The owned container is temporarily attached to the
+verified local built-in bridge only to activate Docker Desktop loopback
+publishing.
+Schema-v5 evidence is atomically published only after bounded two-phase Prisma
+disconnect, process-tree termination, exact cleanup inspection, and immutable
+image verification succeed. The final evidence supersedes all pre-review B1,
+B1-R1, and B1-R2 draft candidates. This does not close the gate or prove
+provider behavior.
+
 Required closeout evidence remains:
 
-- PRD3-G01-B saturation, transaction pressure, recovery, and cutback testing;
+- PRD3-G01-B2 runtime outage, readiness, and reconnect testing;
+- PRD3-G01-B3 business-transaction pressure and operational cutback testing;
 - PRD3-G01-C database-user privileges and negative DDL/access proof;
 - PRD3-G01-D real Cloud SQL regional failover and final closeout;
 - exact-candidate CI, including `npm run verify:prd3-g01-a`, review, merge, and
