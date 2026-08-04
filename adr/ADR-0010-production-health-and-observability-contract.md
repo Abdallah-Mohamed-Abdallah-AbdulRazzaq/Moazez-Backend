@@ -75,6 +75,23 @@ telemetry, complete metrics, worker heartbeats, dashboards, SLOs, alerts,
 traces, paging, and approved retention/budget remain Phase 7 work because
 PRD0-D025 is still pending.
 
+PRD3-G01-B2-R1 now supplies local disposable evidence for the established
+database-health contract. Across two independent canonical-runtime runs, a
+steady-state PostgreSQL stall made API, Core Worker, and Media Worker readiness
+return 503 within the bounded probe window while startup and process-local
+liveness stayed 200; the API public compatibility health response also stayed
+200. The same runtime processes recovered readiness after two cycles and after
+forced destruction of their Prisma backend sessions. Duplicate unavailable
+fingerprints were bounded and paired with recovered events. A fresh runtime
+with PostgreSQL unavailable failed closed during Prisma initialization. The
+canonical final command correlated every probe with its requested role and
+kind, verified response version against the in-image package, executed the
+29-mode proof matrix, and proved interruption-safe publication and two-phase
+tracked observer cleanup. The pre-review B2 record is superseded. The
+measured record is
+`docs/production-readiness/phase-3/02-database-outage-readiness-and-reconnect-evidence.md`.
+This local evidence does not select SLOs or prove provider behavior.
+
 ## Consequences
 
 ### Positive

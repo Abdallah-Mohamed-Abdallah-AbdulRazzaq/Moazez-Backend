@@ -16,8 +16,9 @@
 
 PRD3-G01 is not complete. This document locks a conservative implementation
 baseline. Corrected local raw Prisma pool saturation/recovery evidence is
-recorded in PRD3-G01-B1-FINAL, while runtime outage/reconnect,
-business-transaction pressure, database privileges, real Cloud SQL failover,
+recorded in PRD3-G01-B1-FINAL. PRD3-G01-B2-R1 local runtime outage/reconnect
+evidence is also complete, while business-transaction pressure, database
+privileges, real Cloud SQL failover,
 exact-candidate CI, merge, and post-merge closeout remain pending.
 
 ## Approved Saudi production direction
@@ -278,9 +279,25 @@ waits, recovery, lower new-client pools, and zero residual owned resources
 after successful fail-closed inspection and label-verified cleanup.
 It does not supply Cloud Run or Cloud SQL provider evidence.
 
+PRD3-G01-B2-R1 supplies one canonical final-suite execution containing three
+failure rehearsals and two independent canonical-runtime runs against fresh
+disposable PostgreSQL 16 fixtures. It proves readiness 503 with bounded callers
+during two stalls, startup/liveness/public-health continuity, unchanged runtime
+identity, same-process recovery, forced established-session replacement, exact
+application names, no per-runtime pool overshoot, unavailable-at-start
+fail-closed behavior, successful fresh startup after recovery, bounded
+unavailable/recovered logging, signal rehearsals, and verified zero-session and
+zero-resource cleanup. The archived baseline commit/tree, runtime manifest,
+host/runtime Prisma 6.19.3 identities, two-phase tracked observer teardown,
+interruption-safe atomic publication, exact two-cycle schema, and executable
+29/29 proof coverage are recorded with the corrected formal summary hashes.
+The pre-review B2 candidate is superseded. Exact measurements are in
+`02-database-outage-readiness-and-reconnect-evidence.md`. It does not supply
+Cloud Run, Cloud SQL, production transport, privilege, SLO, or
+business-transaction evidence.
+
 Still deferred:
 
-- **PRD3-G01-B2:** runtime outage, readiness, and reconnect evidence.
 - **PRD3-G01-B3:** registered business-transaction pressure and operational
   cutback evidence.
 - **PRD3-G01-C:** separate PostgreSQL users, least-privilege grants, negative

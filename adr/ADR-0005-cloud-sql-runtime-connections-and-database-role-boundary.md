@@ -251,9 +251,22 @@ image verification succeed. The final evidence supersedes all pre-review B1,
 B1-R1, and B1-R2 draft candidates. This does not close the gate or prove
 provider behavior.
 
+PRD3-G01-B2-R1 local disposable evidence is complete and recorded in
+`docs/production-readiness/phase-3/02-database-outage-readiness-and-reconnect-evidence.md`.
+One canonical final-suite command rebuilt the runtime from the archived
+baseline commit/tree, verified its package-lock/runtime manifest and Node/Prisma
+identity, executed all 29 exact failure proofs, and retained two independent
+formal summaries. Those canonical-runtime runs proved bounded readiness 503
+during two database stalls, startup/liveness/public-health continuity,
+same-process recovery, destruction and replacement of established PostgreSQL sessions,
+exact application names, no per-runtime pool overshoot, unavailable-at-start
+fail-closed behavior, two-phase tracked observer cleanup, and clean signal/fault
+recovery. The pre-review B2 summaries are superseded. This is local
+PostgreSQL/Docker evidence; it does not prove Cloud SQL, Cloud Run, production
+TLS, IAM, or provider failover behavior.
+
 Required closeout evidence remains:
 
-- PRD3-G01-B2 runtime outage, readiness, and reconnect testing;
 - PRD3-G01-B3 business-transaction pressure and operational cutback testing;
 - PRD3-G01-C database-user privileges and negative DDL/access proof;
 - PRD3-G01-D real Cloud SQL regional failover and final closeout;
