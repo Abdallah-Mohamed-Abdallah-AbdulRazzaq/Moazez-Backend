@@ -15,10 +15,11 @@ Accepted for PRD0-D022 only — 2026-07-27
 
 ## Context
 
-The current application has centralized storage infrastructure with fragmented
-upload, authorization, verification, replacement, retention, and physical
-lifecycle policies. It binds the concrete MinIO adapter and uses
-environment-specific browser, WebSocket, and direct-storage origin behavior.
+At the 2026-07-27 Phase 0B closeout, the application had centralized storage
+infrastructure with fragmented upload, authorization, verification,
+replacement, retention, and physical lifecycle policies. It bound the
+concrete MinIO adapter and used environment-specific browser, WebSocket, and
+direct-storage origin behavior.
 Production data source, production provider, GCS identity, bucket topology,
 object migration, and protection decisions are not yet approved.
 
@@ -66,11 +67,12 @@ PRD0-D022, PRD0-D029, and PRD0-D049 through PRD0-D053. Acceptance applies only
 to PRD0-D022. PRD0-D010 remains a proposal and is not converted into an
 approved decision.
 
-## Current implementation gap
+## Implementation status
 
-Production HTTP and WebSocket CORS are currently disabled rather than
-configured with these approved allowlists. Storage CORS is external to the
-application. The concrete MinIO adapter, static credential model,
+At the 2026-07-27 Phase 0B closeout, production HTTP and WebSocket CORS were
+disabled. Phase 1 subsequently implemented and closed the approved application
+HTTP/Socket.IO allowlists. Storage CORS remains external to the application.
+The concrete MinIO adapter, static credential model,
 request-path bucket creation, MinIO-derived capability types, and
 provider-specific error interpretation remain current behavior. No GCS
 adapter, production bucket IaC, signing identity, object inventory, copy, or

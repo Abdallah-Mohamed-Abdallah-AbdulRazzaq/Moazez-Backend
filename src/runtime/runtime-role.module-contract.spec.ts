@@ -19,13 +19,11 @@ import {
   MEDIA_WORKER_ASSIGNED_CONSUMERS,
 } from '../modules/health/operational-probe.manifests';
 import { CORE_WORKER_CONSUMER_PROVIDERS } from './core-worker/core-worker-consumers.module';
-import { CoreWorkerRuntimeModule } from './core-worker/core-worker-runtime.module';
 import { MEDIA_WORKER_CONSUMER_PROVIDERS } from './media-worker/media-worker-consumer.module';
-import { MediaWorkerRuntimeModule } from './media-worker/media-worker-runtime.module';
 import { BrandingLogoReconciliationSchedule } from './maintenance-scheduler/branding-logo-reconciliation.schedule';
 import { DismissalExpirySchedule } from './maintenance-scheduler/dismissal-expiry.schedule';
 import { LearningMediaCleanupSchedule } from './maintenance-scheduler/learning-media-cleanup.schedule';
-import { MaintenanceSchedulerRuntimeModule } from './maintenance-scheduler/maintenance-scheduler-runtime.module';
+import { DATABASE_RUNTIME_ENVIRONMENT_FIELDS } from '../infrastructure/database/database-runtime-env.validation';
 import {
   validateMaintenanceSchedulerEnv,
   validateMediaWorkerEnv,
@@ -48,6 +46,21 @@ const SCHEDULE_PROVIDER_NAMES = [
 ];
 
 describe('runtime role module graphs', () => {
+  const originalDatabaseEnvironment = new Map<string, string | undefined>();
+
+  beforeAll(() => {
+    for (const field of DATABASE_RUNTIME_ENVIRONMENT_FIELDS) {
+      originalDatabaseEnvironment.set(field, process.env[field]);
+    }
+  });
+
+  afterAll(() => {
+    for (const [field, value] of originalDatabaseEnvironment) {
+      if (value === undefined) delete process.env[field];
+      else process.env[field] = value;
+    }
+  });
+
   it('keeps the API graph producer-only while retaining HTTP realtime and synchronous media', () => {
     const graph = inspectModuleGraph(AppModule);
 
@@ -89,19 +102,21 @@ describe('runtime role module graphs', () => {
     );
   });
 
-  it('owns exactly the six Core consumers without HTTP or local Socket.IO', () => {
+  it('owns exactly the six Core consumers without HTTP or local Socket.IO', async () => {
+    setDatabaseRuntimeEnvironment('core-worker');
+    const { CoreWorkerRuntimeModule } = jest.requireActual<
+      typeof import('./core-worker/core-worker-runtime.module')
+    >('./core-worker/core-worker-runtime.module');
     const graph = inspectModuleGraph(CoreWorkerRuntimeModule);
 
-    expect(CORE_WORKER_CONSUMER_PROVIDERS.map(providerName).sort()).toEqual(
-      [
-        'BrandingLogoCleanupWorker',
-        'CommunicationNotificationGenerationWorker',
-        'CommunicationNotificationPushWorker',
-        'DismissalRequestExpiryWorker',
-        'ImportValidationWorker',
-        'SchoolEmailDeliveryWorker',
-      ],
-    );
+    expect(CORE_WORKER_CONSUMER_PROVIDERS.map(providerName).sort()).toEqual([
+      'BrandingLogoCleanupWorker',
+      'CommunicationNotificationGenerationWorker',
+      'CommunicationNotificationPushWorker',
+      'DismissalRequestExpiryWorker',
+      'ImportValidationWorker',
+      'SchoolEmailDeliveryWorker',
+    ]);
     expect(CORE_WORKER_ASSIGNED_CONSUMERS).toHaveLength(6);
     expect(intersection(graph.providers, CONSUMER_PROVIDER_NAMES)).toHaveLength(
       6,
@@ -112,15 +127,17 @@ describe('runtime role module graphs', () => {
     expect(graph.providers).not.toContain(RealtimeGateway.name);
   });
 
-  it('owns only Learning Media cleanup without API media verification capability', () => {
+  it('owns only Learning Media cleanup without API media verification capability', async () => {
+    setDatabaseRuntimeEnvironment('media-worker');
+    const { MediaWorkerRuntimeModule } = jest.requireActual<
+      typeof import('./media-worker/media-worker-runtime.module')
+    >('./media-worker/media-worker-runtime.module');
     const graph = inspectModuleGraph(MediaWorkerRuntimeModule);
 
     expect(MEDIA_WORKER_CONSUMER_PROVIDERS.map(providerName)).toEqual([
       'LearningMediaCleanupService',
     ]);
-    expect(MEDIA_WORKER_ASSIGNED_CONSUMERS).toEqual([
-      'learning-media-cleanup',
-    ]);
+    expect(MEDIA_WORKER_ASSIGNED_CONSUMERS).toEqual(['learning-media-cleanup']);
     expect(intersection(graph.providers, CONSUMER_PROVIDER_NAMES)).toEqual([
       'LearningMediaCleanupService',
     ]);
@@ -132,19 +149,29 @@ describe('runtime role module graphs', () => {
   });
 
   it('owns exactly three registrations and no consumer, controller, Gateway, or storage provider', async () => {
+    for (const field of DATABASE_RUNTIME_ENVIRONMENT_FIELDS) {
+      delete process.env[field];
+    }
+    const { MaintenanceSchedulerRuntimeModule } = jest.requireActual<
+      typeof import('./maintenance-scheduler/maintenance-scheduler-runtime.module')
+    >('./maintenance-scheduler/maintenance-scheduler-runtime.module');
     const graph = inspectModuleGraph(MaintenanceSchedulerRuntimeModule);
     const registerRepeatJob = jest.fn().mockResolvedValue(undefined);
 
-    await new DismissalExpirySchedule({ registerRepeatJob } as never).onModuleInit();
-    await new LearningMediaCleanupSchedule({ registerRepeatJob } as never).onModuleInit();
+    await new DismissalExpirySchedule({
+      registerRepeatJob,
+    } as never).onModuleInit();
+    await new LearningMediaCleanupSchedule({
+      registerRepeatJob,
+    } as never).onModuleInit();
     await new BrandingLogoReconciliationSchedule({
       registerRepeatJob,
     } as never).onModuleInit();
 
     expect(intersection(graph.providers, CONSUMER_PROVIDER_NAMES)).toEqual([]);
-    expect(intersection(graph.providers, SCHEDULE_PROVIDER_NAMES).sort()).toEqual(
-      [...SCHEDULE_PROVIDER_NAMES].sort(),
-    );
+    expect(
+      intersection(graph.providers, SCHEDULE_PROVIDER_NAMES).sort(),
+    ).toEqual([...SCHEDULE_PROVIDER_NAMES].sort());
     expect(graph.controllers).toEqual([]);
     expect(graph.providers).not.toContain(RealtimeGateway.name);
     expect(graph.providers).not.toContain(StorageService.name);
@@ -175,6 +202,13 @@ describe('runtime role module graphs', () => {
         STORAGE_PUBLIC_BUCKET: 'media-public',
       }),
     ).not.toHaveProperty('FFPROBE_PATH');
+    expect(() =>
+      validateMaintenanceSchedulerEnv({
+        REDIS_URL: 'redis://127.0.0.1:6379',
+        DATABASE_URL:
+          'postgresql://runtime-user:runtime-value@127.0.0.1:5432/moazez',
+      }),
+    ).toThrow(/DATABASE_URL/u);
   });
 });
 
@@ -211,7 +245,8 @@ function inspectModuleGraph(root: unknown): {
       ...(dynamic?.imports ?? []),
     ];
 
-    for (const provider of moduleProviders) providers.add(providerName(provider));
+    for (const provider of moduleProviders)
+      providers.add(providerName(provider));
     for (const controller of moduleControllers) {
       controllers.add(providerName(controller));
     }
@@ -233,7 +268,7 @@ function providerName(provider: unknown): string {
   if (provider && typeof provider === 'object' && 'provide' in provider) {
     return providerName((provider as { provide: unknown }).provide);
   }
-  return typeof provider === 'symbol' ? provider.description ?? '' : '';
+  return typeof provider === 'symbol' ? (provider.description ?? '') : '';
 }
 
 function intersection(values: string[], expected: string[]): string[] {
@@ -254,4 +289,14 @@ function isForwardReference(
   value: unknown,
 ): value is { forwardRef: () => unknown } {
   return Boolean(value && typeof value === 'object' && 'forwardRef' in value);
+}
+
+function setDatabaseRuntimeEnvironment(
+  role: 'core-worker' | 'media-worker',
+): void {
+  const coreWorker = role === 'core-worker';
+  process.env.DATABASE_RUNTIME_ROLE = role;
+  process.env.DATABASE_CONNECTION_LIMIT = coreWorker ? '6' : '3';
+  process.env.DATABASE_POOL_TIMEOUT_SECONDS = '10';
+  process.env.DATABASE_CONNECT_TIMEOUT_SECONDS = '5';
 }

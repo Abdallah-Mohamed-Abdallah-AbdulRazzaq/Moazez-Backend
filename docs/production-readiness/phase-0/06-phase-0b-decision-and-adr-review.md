@@ -14,13 +14,20 @@
 | Scope | Owner-decision, ADR, acceptance-gate, and directory-governance documentation only |
 | Document status | `PHASE_0B_DECISION_PACKAGE_MERGED_AND_POST_MERGE_VERIFIED` |
 
-PR #46 merged this decision package. PRD0B-G07 and PRD0B-G08 now have
-completion evidence, with authoritative closeout evidence in
-`07-phase-0b-post-merge-closeout.md`. This closeout task remains
-documentation-only. Phase 1 begins only after the closeout package is reviewed
-and merged into `main`.
+At the 2026-07-27 Phase 0B closeout, the document-control block, PR #46 facts,
+ten approved answers, 38 pending answers, validation counts, gate evidence,
+and recorded next steps below formed the immutable historical snapshot. Phase
+1 could begin only after that closeout package was reviewed and merged into
+`main`. The Phase 3 amendment does not backdate later approvals or
+implementation evidence into PR #46.
 
-## Owner approval record
+Current-state note: Phase 1 and Phase 2 are complete, Phase 3 is active, and
+PRD3-G01 is `BASELINE_ONLY`. The authoritative Phase 1 closeout documents and
+`phase-2/02-runtime-role-separation-closeout.md` supersede present-tense
+pre-implementation language without changing any historical PR number, SHA,
+run, validation count, or date.
+
+## Historical Phase 0B owner approval record
 
 Abdallah approved the recommended Batch A answers on 2026-07-27 in
 Africa/Cairo while acting in the product, architecture, security, operations,
@@ -40,7 +47,7 @@ The exact answers and one constrained disposition for every question are in
 `05-owner-decision-disposition-register.md`. A pending disposition does not
 select a recommendation or authorize implementation or cloud provisioning.
 
-## Approved D/Q/ADR authority map
+## Historical Phase 0B D/Q/ADR authority map
 
 | ADR      | Approved decisions | Approved questions     | Pending owned decisions           |
 | -------- | ------------------ | ---------------------- | --------------------------------- |
@@ -54,7 +61,35 @@ Each major decision has one authoritative owning ADR. ADRs with mixed
 decision-level status accept only the decisions listed in the approved column.
 PRD0-D010 remains a proposed recommendation, not an approved decision.
 
-## Pending decision groups
+## Phase 3 governance amendment — 2026-08-04
+
+During Phase 3, Abdallah approved four additional questions in Africa/Cairo:
+
+- PRD0-Q003 option B: 10 tenants, 25,000 users, 200 peak RPS, 5,000
+  WebSockets, media concurrency 4, upload p95 25 MiB, upload maximum 200 MiB,
+  3x 12-month growth, and the exact per-queue job rates in the disposition
+  register.
+- PRD0-Q006 option A: primary region `me-central2`, DR region `NONE`, initial
+  production data and primary managed services remain in Saudi Arabia, and
+  cross-region DR requires separate residency approval.
+- PRD0-Q014: API/Core/Media pools 5/6/3, Migration allowance 2, operations
+  reserve 10, and governed maximum 100.
+- PRD0-Q015: API min 1/max 4/concurrency 40; Core Worker min 1/max 2/
+  concurrency 1 per assigned consumer; Media Worker min 1/max 2/concurrency 1.
+
+The current disposition count is 14 approved and 34 pending. ADR-0005 now
+exists and authoritatively owns D011, D012, D030, and D031. ADR-0014 is
+reserved for D008/Learning Media so that the previously reserved ADR-0005
+number can serve the Cloud SQL boundary mandated by Phase 3. ADR-0007 is
+reserved for D026–D027, and ADR-0012 owns the still-pending D016 and D028.
+Q012, Q013, and all Redis decisions remain unchanged and pending.
+
+These approvals establish a provisional database baseline, not final
+load-tested capacity. PRD3-G01 is `BASELINE_ONLY`; saturation and recovery,
+database-privilege proof, real Cloud SQL failover, exact-candidate CI, merge,
+and post-merge closeout remain outstanding.
+
+## Historical Phase 0B pending decision groups
 
 - **Learning Media transition:** PRD0-D008 / PRD0-Q009. Completion remains
   synchronous through Phase 5A and Phase 5B; Phase 6 is separately blocked.
@@ -62,9 +97,10 @@ PRD0-D010 remains a proposed recommendation, not an approved decision.
   PRD0-D019, PRD0-D029, and PRD0-D049–PRD0-D053. GCS, MinIO migration,
   authoritative data source, bucket topology, signer, versioning, lifecycle,
   and deletion protection remain unapproved.
-- **Cloud SQL, Redis, recovery, and capacity:** PRD0-D011–PRD0-D016,
-  PRD0-D028, PRD0-D030–PRD0-D032. Workload, pool, concurrency, backup,
-  RTO/RPO, staging, promotion, SLO, cost, and launch controls remain pending.
+- **Cloud SQL, Redis, recovery, and capacity (historical):** PRD0-D011–PRD0-D016,
+  PRD0-D028, PRD0-D030–PRD0-D032 were pending in the Phase 0B snapshot. After
+  the Phase 3 amendment, D011, D012, D030, and D031 are provisionally approved;
+  D013–D016, D028, and D032 remain pending.
 - **Cloud environments, IAM, secrets, crypto, and ingress:** PRD0-D017,
   PRD0-D018, PRD0-D020, PRD0-D021, PRD0-D023, and PRD0-D026. No project,
   identity, secret, key, edge, migration-job pipeline, or cloud resource is
@@ -98,7 +134,7 @@ No Phase 0A evidence baseline, runtime inventory, owner questionnaire, source,
 test, package, Prisma, migration, Docker, CI, existing ADR, or unrelated
 documentation path changed.
 
-## Validation results
+## Historical Phase 0B validation results
 
 All reads and document validators use strict UTF-8 decoding.
 
@@ -131,10 +167,13 @@ All reads and document validators use strict UTF-8 decoding.
 | PRD0B-G07 | COMPLETE | governing architecture/documentation review; PR #46; decision-package commit `a3c86b8f6a97cbecebdf52534862eddddd40d554`; merge commit `a855392cf094fcf151b2b02277189031bd3bac7b`; successful Learning Content Integrity / Lesson Content atomicity and visibility, Learning Media Integrity / learning-media-integrity, and Migration Integrity / Fresh PostgreSQL replay checks; exact ten-path documentation-only scope |
 | PRD0B-G08 | COMPLETE | `07-phase-0b-post-merge-closeout.md`; verified baseline `a855392cf094fcf151b2b02277189031bd3bac7b`; clean and synchronized local/`origin/main`/live-remote evidence; zero implementation drift |
 
-PRD0B-G01 through PRD0B-G08 have completion evidence. No Phase 1, Phase 2, or
-Phase 5B implementation gate is complete.
+At the 2026-07-27 Phase 0B closeout, PRD0B-G01 through PRD0B-G08 had completion
+evidence and no Phase 1, Phase 2, or Phase 5B implementation gate was complete.
+Currently, Phase 1 and Phase 2 are complete; Phase 5B remains incomplete.
 
-## Exact next steps
+## Historical Phase 0B next steps
+
+At the 2026-07-27 Phase 0B closeout, the recorded next steps were:
 
 1. Review this closeout package.
 2. Owner stages and commits the exact closeout scope.
@@ -146,11 +185,11 @@ Phase 5B implementation gate is complete.
 
 ## Scope and safety attestation
 
-This package records decisions, governance, and post-merge verification. It
-records the technical Phase 0B closure evidence but does not authorize Phase 1
-before this closeout is merged, or claim implementation, GCS approval, file
-lifecycle approval, asynchronous Learning Media approval, destructive cleanup
-approval, cloud provisioning, or production readiness.
+At the 2026-07-27 Phase 0B closeout, this package recorded decisions,
+governance, and post-merge verification without authorizing Phase 1 before the
+closeout merge or claiming implementation, GCS approval, file lifecycle
+approval, asynchronous Learning Media approval, destructive cleanup approval,
+cloud provisioning, or production readiness.
 
 No `.env` file or secret value was read. No source, test, schema, migration,
 seed, dependency, package, Docker, CI, database, Redis, object-storage, or

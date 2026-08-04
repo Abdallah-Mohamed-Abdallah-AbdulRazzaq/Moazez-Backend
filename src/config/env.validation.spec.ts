@@ -5,6 +5,63 @@ import {
 import { validateEnv } from './env.validation';
 
 describe('bootstrap environment validation', () => {
+  it('applies exact API database defaults', () => {
+    expect(validateEnv(baseEnv())).toMatchObject({
+      DATABASE_RUNTIME_ROLE: 'api',
+      DATABASE_CONNECTION_LIMIT: 5,
+      DATABASE_POOL_TIMEOUT_SECONDS: 5,
+      DATABASE_CONNECT_TIMEOUT_SECONDS: 5,
+    });
+  });
+
+  it('accepts lower bounded API database overrides', () => {
+    expect(
+      validateEnv(
+        baseEnv({
+          DATABASE_CONNECTION_LIMIT: '2',
+          DATABASE_POOL_TIMEOUT_SECONDS: '3',
+          DATABASE_CONNECT_TIMEOUT_SECONDS: '4',
+        }),
+      ),
+    ).toMatchObject({
+      DATABASE_CONNECTION_LIMIT: 2,
+      DATABASE_POOL_TIMEOUT_SECONDS: 3,
+      DATABASE_CONNECT_TIMEOUT_SECONDS: 4,
+    });
+  });
+
+  it.each([
+    ['DATABASE_CONNECTION_LIMIT', '0'],
+    ['DATABASE_CONNECTION_LIMIT', '-1'],
+    ['DATABASE_CONNECTION_LIMIT', '1.5'],
+    ['DATABASE_CONNECTION_LIMIT', '6'],
+    ['DATABASE_POOL_TIMEOUT_SECONDS', '0'],
+    ['DATABASE_POOL_TIMEOUT_SECONDS', '6'],
+    ['DATABASE_CONNECT_TIMEOUT_SECONDS', '0'],
+    ['DATABASE_CONNECT_TIMEOUT_SECONDS', '6'],
+  ])('rejects invalid API %s=%s', (field, value) => {
+    expect(() => validateEnv(baseEnv({ [field]: value }))).toThrow(
+      new RegExp(field, 'u'),
+    );
+  });
+
+  it('rejects an incorrect API database role', () => {
+    expect(() =>
+      validateEnv(baseEnv({ DATABASE_RUNTIME_ROLE: 'core-worker' })),
+    ).toThrow(/DATABASE_RUNTIME_ROLE/u);
+  });
+
+  it('requires encrypted PostgreSQL transport in staging and production', () => {
+    expect(() =>
+      validateEnv(
+        productionEnv({
+          DATABASE_URL:
+            'postgresql://runtime-user:runtime-value@database.internal/moazez',
+        }),
+      ),
+    ).toThrow(/sslmode/u);
+  });
+
   it('defaults the internal management probe port to 9090', () => {
     expect(validateEnv(baseEnv()).APP_PROBE_PORT).toBe(9090);
   });
@@ -115,6 +172,8 @@ function productionEnv(
     NODE_ENV: 'production',
     APP_CORS_ORIGINS: APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(','),
     STORAGE_CORS_ORIGINS: 'https://schools.moazez.cloud',
+    DATABASE_URL:
+      'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
     ...overrides,
   });
 }

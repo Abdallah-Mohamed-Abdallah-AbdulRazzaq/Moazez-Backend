@@ -15,10 +15,11 @@ Accepted for PRD0-D033 and PRD0-D034 only — 2026-07-27
 
 ## Context
 
-The baseline Dockerfile and GitHub workflows use Node 20 while the locked
-Firebase Admin 14 dependency line declares Node 22 or later. Swagger is always
-mounted. No production-equivalent staging or immutable artifact-promotion
-policy has owner approval.
+At the 2026-07-27 Phase 0B closeout, the baseline Dockerfile and GitHub
+workflows used Node 20 while the locked Firebase Admin 14 dependency line
+declared Node 22 or later, and Swagger was always mounted. No
+production-equivalent staging or immutable artifact-promotion policy has owner
+approval.
 
 Runtime support and production documentation exposure are immediate Phase 1
 boundaries. Staging topology, promotion, canary, and soak remain separate
@@ -51,14 +52,15 @@ explicit environment configuration and must never contain secrets.
 This ADR is the sole authoritative owner of PRD0-D032 through PRD0-D034.
 Acceptance does not extend to PRD0-D032.
 
-## Current implementation gap
+## Implementation status
 
-The current Dockerfile and three workflows still use Node 20, the exact Phase 1
-Node 22 patch and image digest have not been selected, and the complete
-supported-pair regression has not run. Swagger is still mounted in production
-code without an environment gate. There is no artifact registry promotion,
-SBOM/provenance/signing, production-equivalent staging, canary, or soak
-implementation.
+At the 2026-07-27 Phase 0B closeout, Docker/CI used Node 20, the supported Node
+22 pair had not been selected, and Swagger lacked its production environment
+gate. Phase 1 subsequently implemented and closed Node `22.23.1`, the supported
+Firebase Admin `14.0.0` pairing, exact-version runtime validation, and the
+production-forbidden Swagger policy. Artifact registry promotion,
+SBOM/provenance/signing, production-equivalent staging, canary, and soak remain
+pending under PRD0-D032/Phase 8.
 
 ## Consequences
 

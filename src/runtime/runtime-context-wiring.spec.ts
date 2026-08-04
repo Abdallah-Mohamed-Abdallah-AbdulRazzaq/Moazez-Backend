@@ -1,18 +1,21 @@
 import { Test } from '@nestjs/testing';
+import { DATABASE_RUNTIME_ENVIRONMENT_FIELDS } from '../infrastructure/database/database-runtime-env.validation';
 import { PrismaService } from '../infrastructure/database/prisma.service';
 import { BullmqService } from '../infrastructure/queue/bullmq.service';
 import { REALTIME_EMITTER_REDIS_CLIENT } from '../infrastructure/realtime/redis-realtime-publisher.service';
 import { StorageService } from '../infrastructure/storage/storage.service';
-import { CoreWorkerRuntimeModule } from './core-worker/core-worker-runtime.module';
-import { MaintenanceSchedulerRuntimeModule } from './maintenance-scheduler/maintenance-scheduler-runtime.module';
-import { MediaWorkerRuntimeModule } from './media-worker/media-worker-runtime.module';
 
 describe('runtime application-context wiring', () => {
   const originalEnvironment = new Map<string, string | undefined>();
 
   beforeAll(() => {
-    for (const [key, value] of Object.entries(runtimeEnvironment())) {
+    for (const key of DATABASE_RUNTIME_ENVIRONMENT_FIELDS) {
       originalEnvironment.set(key, process.env[key]);
+    }
+    for (const [key, value] of Object.entries(runtimeEnvironment())) {
+      if (!originalEnvironment.has(key)) {
+        originalEnvironment.set(key, process.env[key]);
+      }
       process.env[key] = value;
     }
   });
@@ -25,6 +28,10 @@ describe('runtime application-context wiring', () => {
   });
 
   it('initializes Core Worker with exactly six consumers and no repeats', async () => {
+    setDatabaseRuntimeEnvironment('core-worker');
+    const { CoreWorkerRuntimeModule } = jest.requireActual<
+      typeof import('./core-worker/core-worker-runtime.module')
+    >('./core-worker/core-worker-runtime.module');
     const queue = queueHarness();
     const module = await Test.createTestingModule({
       imports: [CoreWorkerRuntimeModule],
@@ -53,6 +60,10 @@ describe('runtime application-context wiring', () => {
   });
 
   it('initializes Media Worker with only cleanup consumption and no repeats', async () => {
+    setDatabaseRuntimeEnvironment('media-worker');
+    const { MediaWorkerRuntimeModule } = jest.requireActual<
+      typeof import('./media-worker/media-worker-runtime.module')
+    >('./media-worker/media-worker-runtime.module');
     const queue = queueHarness();
     const module = await Test.createTestingModule({
       imports: [MediaWorkerRuntimeModule],
@@ -72,6 +83,12 @@ describe('runtime application-context wiring', () => {
   });
 
   it('initializes Maintenance Scheduler with three repeats and no consumers', async () => {
+    for (const field of DATABASE_RUNTIME_ENVIRONMENT_FIELDS) {
+      delete process.env[field];
+    }
+    const { MaintenanceSchedulerRuntimeModule } = jest.requireActual<
+      typeof import('./maintenance-scheduler/maintenance-scheduler-runtime.module')
+    >('./maintenance-scheduler/maintenance-scheduler-runtime.module');
     const queue = queueHarness();
     const module = await Test.createTestingModule({
       imports: [MaintenanceSchedulerRuntimeModule],
@@ -158,4 +175,14 @@ function runtimeEnvironment(): Record<string, string> {
     FCM_ENABLED: 'false',
     FCM_DRY_RUN: 'true',
   };
+}
+
+function setDatabaseRuntimeEnvironment(
+  role: 'core-worker' | 'media-worker',
+): void {
+  const coreWorker = role === 'core-worker';
+  process.env.DATABASE_RUNTIME_ROLE = role;
+  process.env.DATABASE_CONNECTION_LIMIT = coreWorker ? '6' : '3';
+  process.env.DATABASE_POOL_TIMEOUT_SECONDS = '10';
+  process.env.DATABASE_CONNECT_TIMEOUT_SECONDS = '5';
 }

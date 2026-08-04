@@ -213,10 +213,16 @@ start_runtime() {
     --network "$PROBE_NETWORK" \
     --add-host host.docker.internal:host-gateway \
     --publish "127.0.0.1::${PUBLIC_CONTAINER_PORT}" \
+    --env NODE_ENV=test \
+    --env MEDIA_RUNTIME_ENFORCE_IN_TEST=true \
     --env APP_PORT="$PUBLIC_CONTAINER_PORT" \
     --env APP_PROBE_PORT="$MANAGEMENT_CONTAINER_PORT" \
     --env APP_URL="${APP_URL:-http://127.0.0.1:${PUBLIC_CONTAINER_PORT}}" \
     --env DATABASE_URL="$runtime_database_url" \
+    --env DATABASE_RUNTIME_ROLE=api \
+    --env DATABASE_CONNECTION_LIMIT=5 \
+    --env DATABASE_POOL_TIMEOUT_SECONDS=5 \
+    --env DATABASE_CONNECT_TIMEOUT_SECONDS=5 \
     --env REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
     --env APP_CORS_ORIGINS="${APP_CORS_ORIGINS:-https://schools.moazez.cloud,https://admin.moazez.cloud}" \
     --env SWAGGER_ENABLED=false \
@@ -254,17 +260,39 @@ start_application_context_runtime() {
   local entrypoint="$3"
   local runtime_database_url
   local runtime_storage_endpoint
+  local database_connection_limit
+  local database_pool_timeout_seconds
 
   runtime_database_url="${DATABASE_URL/127.0.0.1/host.docker.internal}"
   runtime_storage_endpoint="${STORAGE_ENDPOINT/127.0.0.1/host.docker.internal}"
 
+  case "$role" in
+    core-worker)
+      database_connection_limit=6
+      database_pool_timeout_seconds=10
+      ;;
+    media-worker)
+      database_connection_limit=3
+      database_pool_timeout_seconds=10
+      ;;
+    *)
+      fail_scenario "contract=database-runtime-role observed=unsupported-role"
+      return 1
+      ;;
+  esac
+
   docker run --detach --name "$container" \
     --network "$PROBE_NETWORK" \
     --add-host host.docker.internal:host-gateway \
+    --env NODE_ENV=test \
     --env APP_PROBE_PORT="$MANAGEMENT_CONTAINER_PORT" \
     --env APP_SHUTDOWN_TIMEOUT_MS=15000 \
     --env APP_URL="${APP_URL:-http://127.0.0.1:${PUBLIC_CONTAINER_PORT}}" \
     --env DATABASE_URL="$runtime_database_url" \
+    --env DATABASE_RUNTIME_ROLE="$role" \
+    --env DATABASE_CONNECTION_LIMIT="$database_connection_limit" \
+    --env DATABASE_POOL_TIMEOUT_SECONDS="$database_pool_timeout_seconds" \
+    --env DATABASE_CONNECT_TIMEOUT_SECONDS=5 \
     --env REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
     --env SETTINGS_SECRET_ENCRYPTION_KEY \
     --env STORAGE_PROVIDER \
@@ -306,6 +334,68 @@ start_common_runtime() {
     core-worker "$CORE_WORKER_CONTAINER" dist/core-worker
   start_application_context_runtime \
     media-worker "$MEDIA_WORKER_CONTAINER" dist/media-worker
+}
+
+assert_container_environment_value() {
+  local container="$1"
+  local field="$2"
+  local expected="$3"
+
+  if ! docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
+    "$container" | grep --fixed-strings --line-regexp --quiet \
+    -- "${field}=${expected}"; then
+    fail_scenario "contract=runtime-environment runtime=${container} field=${field} observed=unexpected"
+    return 1
+  fi
+}
+
+assert_container_environment_absent() {
+  local container="$1"
+  local field="$2"
+
+  if docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
+    "$container" | grep --extended-regexp --quiet -- "^${field}="; then
+    fail_scenario "contract=runtime-environment runtime=${container} field=${field} observed=unexpectedly-present"
+    return 1
+  fi
+}
+
+assert_startup_runtime_environment_contract() {
+  assert_container_environment_value "$APP_CONTAINER" NODE_ENV test
+  assert_container_environment_value \
+    "$APP_CONTAINER" MEDIA_RUNTIME_ENFORCE_IN_TEST true
+  assert_container_environment_value \
+    "$APP_CONTAINER" DATABASE_RUNTIME_ROLE api
+  assert_container_environment_value \
+    "$APP_CONTAINER" DATABASE_CONNECTION_LIMIT 5
+  assert_container_environment_value \
+    "$APP_CONTAINER" DATABASE_POOL_TIMEOUT_SECONDS 5
+  assert_container_environment_value \
+    "$APP_CONTAINER" DATABASE_CONNECT_TIMEOUT_SECONDS 5
+
+  assert_container_environment_value "$CORE_WORKER_CONTAINER" NODE_ENV test
+  assert_container_environment_value \
+    "$CORE_WORKER_CONTAINER" DATABASE_RUNTIME_ROLE core-worker
+  assert_container_environment_value \
+    "$CORE_WORKER_CONTAINER" DATABASE_CONNECTION_LIMIT 6
+  assert_container_environment_value \
+    "$CORE_WORKER_CONTAINER" DATABASE_POOL_TIMEOUT_SECONDS 10
+  assert_container_environment_value \
+    "$CORE_WORKER_CONTAINER" DATABASE_CONNECT_TIMEOUT_SECONDS 5
+  assert_container_environment_absent \
+    "$CORE_WORKER_CONTAINER" MEDIA_RUNTIME_ENFORCE_IN_TEST
+
+  assert_container_environment_value "$MEDIA_WORKER_CONTAINER" NODE_ENV test
+  assert_container_environment_value \
+    "$MEDIA_WORKER_CONTAINER" DATABASE_RUNTIME_ROLE media-worker
+  assert_container_environment_value \
+    "$MEDIA_WORKER_CONTAINER" DATABASE_CONNECTION_LIMIT 3
+  assert_container_environment_value \
+    "$MEDIA_WORKER_CONTAINER" DATABASE_POOL_TIMEOUT_SECONDS 10
+  assert_container_environment_value \
+    "$MEDIA_WORKER_CONTAINER" DATABASE_CONNECT_TIMEOUT_SECONDS 5
+  assert_container_environment_absent \
+    "$MEDIA_WORKER_CONTAINER" MEDIA_RUNTIME_ENFORCE_IN_TEST
 }
 
 runtime_container_for_role() {
@@ -651,6 +741,9 @@ wait_for_minio() {
 scenario_startup() {
   EXPECTED_TRANSITION='canonical image -> public health -> isolated internal probes healthy'
   start_common_runtime
+  assert_startup_runtime_environment_contract
+  printf 'api_media_runtime_verification=enforced-in-test\n' \
+    >>"$ARTIFACT_DIR/scenario.txt"
   assert_public_health_contract
 
   if [[ -z "$(docker port "$APP_CONTAINER" "${PUBLIC_CONTAINER_PORT}/tcp")" ]]; then
