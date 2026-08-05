@@ -6,17 +6,22 @@
 | --- | --- |
 | Phase | `PHASE_3` |
 | Gate | `PRD3-G01` |
-| Subgate | `PRD3-G01-C` |
-| Baseline commit | `1816a3294be92ac177b6a5e906199a33d9c1912a` |
+| Subgate | `PRD3-G01-C` / `PRD3-G01-C1` |
+| G01-C baseline commit | `1816a3294be92ac177b6a5e906199a33d9c1912a` |
+| G01-C1 baseline commit | `6e73da066beb79ba59284a7b96260134c0b38df5` |
 | Parent B3 commit | `5dba92b120c8d36ad0d5738a522910575138b284` |
-| Status | `COMPLETE` |
+| Status | `PRD3-G01-C=COMPLETE`; `PRD3-G01-C1=CANDIDATE_COMPLETE` |
 | Parent gate status | `BASELINE_ONLY` |
-| Scope | Versioned PostgreSQL policy and disposable local PostgreSQL 16 proof only |
+| Scope | Cloud SQL-compatible bootstrap correction and disposable local PostgreSQL 16 proof only |
 
 PRD3-G01-C separates runtime DML authority from governed migration DDL
 authority. It changes no production TypeScript, Prisma schema, migration,
 application contract, dependency, lockfile, image, workflow, or cloud
 resource.
+
+PRD3-G01-C1 corrects only the administrative mechanism used to establish that
+same boundary. It does not change the accepted role attributes, current or
+future grants, runtime behavior, schema, migrations, or deployment contract.
 
 ## Inspected production boundary
 
@@ -40,18 +45,32 @@ database connection.
 
 ## Versioned policy
 
-The idempotent bootstrap policy creates or normalizes these exact login roles:
+The idempotent bootstrap policy creates only missing role shells, using
+`CREATE ROLE <role> LOGIN` and PostgreSQL's safe administrative defaults, for
+these exact identities:
 
 - `moazez_api`
 - `moazez_core_worker`
 - `moazez_media_worker`
 - `moazez_migration`
 
-Every role is `LOGIN`, `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`,
-`NOREPLICATION`, `NOBYPASSRLS`, and `INHERIT`. None owns the database or
-application schema. Runtime roles own no table, sequence, function, index, or
-constraint. Catalog proof also found no membership edge between any pair of
-Moazez roles.
+No credential or explicit administrative attribute is present in the create
+statement. After all missing shells exist, the policy queries
+`pg_catalog.pg_roles` and requires every identity to be `LOGIN`,
+`NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, `NOREPLICATION`,
+`NOBYPASSRLS`, and `INHERIT`. An absent role, `NOLOGIN`, `SUPERUSER`,
+`CREATEDB`, `CREATEROLE`, `REPLICATION`, `BYPASSRLS`, or `NOINHERIT` aborts
+with a generic error before password or privilege changes. Unsafe attributes
+are not silently repaired.
+
+The same pre-password guard rejects direct or indirect membership between any
+pair of Moazez identities. When the Cloud SQL system role
+`cloudsqlsuperuser` exists, it also rejects direct or indirect membership of
+any Moazez identity in that role; ordinary PostgreSQL safely passes when the
+system role is absent. Only after these catalog guards pass does the policy
+run one password-only `ALTER ROLE ... PASSWORD` statement per identity using
+bound `psql` variables. None of the four roles owns the database or application
+schema. Runtime roles own no table, sequence, function, index, or constraint.
 
 The target database removes PUBLIC database privileges, and schema `public`
 removes PUBLIC `CREATE`. Runtime roles receive only:
@@ -96,16 +115,45 @@ One fresh fixture uses:
 - PostgreSQL data on tmpfs with no persistent volume;
 - one random port bound only to `127.0.0.1`;
 - synthetic credentials generated in memory and never printed;
-- a disposable bootstrap superuser used only for fixture and catalog work.
+- a disposable fixture-owner superuser used only to establish and clean the
+  bounded evidence fixture;
+- `moazez_cloudsql_admin_fixture`, a managed-admin-like `LOGIN`,
+  `NOSUPERUSER`, `CREATEDB`, `CREATEROLE`, `NOREPLICATION`, `NOBYPASSRLS`,
+  `INHERIT` identity that owns only the disposable database and `public`
+  schema and executes the committed bootstrap.
 
-The bootstrap and grants policies are each applied twice. Both second
-applications complete as idempotent no-ops with the same final catalog state.
+The bootstrap is never executed through the fixture superuser. Its first
+application creates the four safe shells and assigns synthetic credentials;
+its second application rotates those credentials without changing
+administrative attributes, creating duplicate roles, or introducing
+membership drift. The grants policy remains unchanged and is applied twice by
+the disposable fixture owner after migration deployment because that policy
+must govern both database/schema ACLs and migration-owned objects; C1's bounded
+managed-administrator simulation targets the role bootstrap that failed on
+Cloud SQL.
 
 ## Verification results
 
-`npm run verify:prd3-g01-c-tests` passed 20 focused pure tests with no skipped
+`npm run verify:prd3-g01-c-tests` passed 25 focused pure tests with no skipped
 or todo test. `npm run verify:prd3-g01-c-final` then reran those tests and
 completed the live fixture.
+
+C1 bootstrap compatibility proof:
+
+- the committed bootstrap completed through the managed-admin-like
+  non-superuser and never through the fixture superuser;
+- ordinary local PostgreSQL, where `cloudsqlsuperuser` is absent, completed
+  both the initial and idempotent password-rotation applications;
+- a fixture-superuser-created `CREATEDB=true` target was rejected before its
+  candidate credential or any grant changed;
+- static executable-SQL checks cover `NOLOGIN`, `SUPERUSER`, `CREATEDB`,
+  `CREATEROLE`, `REPLICATION`, `BYPASSRLS`, and `NOINHERIT`, and reject any
+  restricted administrative attribute in executable `ALTER ROLE` statements;
+- synthetic direct membership in a fixture-only `cloudsqlsuperuser` group was
+  rejected, after which the group and edge were removed;
+- a synthetic Moazez cross-role membership edge was rejected and removed by
+  fixture cleanup, leaving no accepted boundary edge;
+- failure output contained no supplied synthetic credential or database URL.
 
 Migration proof:
 
@@ -158,6 +206,24 @@ All Prisma clients disconnected before teardown. The final application
 database session count was zero. Label and exact-name inspection found zero
 owned containers and zero owned networks after cleanup.
 
+## Managed-provider finding and C1 correction
+
+The second real Cloud SQL apply attempt (R2) proved that the approved
+PostgreSQL 16, Enterprise Plus, `db-perf-optimized-N-2`, `me-central2`,
+private-only regional topology could reach `RUNNABLE`. The database bootstrap
+then stopped before Prisma migrations. Its original combined statement used
+`ALTER ROLE ... WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+NOREPLICATION NOBYPASSRLS INHERIT PASSWORD ...`; that normalization depended
+on true PostgreSQL-superuser behavior, and Cloud SQL's managed administrator
+rejected the restricted role-attribute mutation.
+
+C1 removes that dependency. Missing roles use safe creation defaults,
+administrative attributes and both membership boundaries are validated from
+catalogs with fail-closed behavior, and accepted roles receive only
+password-only rotation. The privilege design and runtime-grants policy are
+unchanged. R2 did not run migrations or failover, so it is provider finding
+evidence rather than G01-D closeout evidence.
+
 ## Limitations and deferred work
 
 This evidence proves PostgreSQL permissions against one disposable local
@@ -169,4 +235,15 @@ PostgreSQL 16 fixture. It does not provision or prove:
 - `PRD3-G01-D` provider failover and final G01 closeout;
 - `PRD3-G04` governed Migration Job deployment.
 
-Accordingly, `PRD3-G01-C=COMPLETE` while `PRD3-G01=BASELINE_ONLY`.
+Accordingly:
+
+```text
+PRD3-G01-C=COMPLETE
+PRD3-G01-C1=CANDIDATE_COMPLETE
+PRD3-G01-D=WAITING_FOR_C1_COMMIT_AND_R3
+PRD3-G01=BASELINE_ONLY
+```
+
+The corrected bootstrap still requires independent patch review, one bounded
+commit, and an authorized R3 run to deploy migrations and complete the real
+regional failover proof. Phase 3 and PRD3-G01 are not complete.

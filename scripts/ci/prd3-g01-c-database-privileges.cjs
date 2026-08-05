@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 const { PrismaClient } = require('@prisma/client');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
-const BASE_SHA = '1816a3294be92ac177b6a5e906199a33d9c1912a';
+const BASE_SHA = '6e73da066beb79ba59284a7b96260134c0b38df5';
 const REQUIRED_BRANCH = 'chore/production-readiness-3-cloud-sql';
 const REQUIRED_NODE_VERSION = 'v22.23.1';
 const REQUIRED_NODE_DIRECTORY = path.normalize(
@@ -18,16 +18,14 @@ const POSTGRES_IMAGE = 'postgres:16-alpine';
 const OWNERSHIP_LABEL = 'com.moazez.prd3-g01-c.run';
 
 const EXPECTED_CHANGED_PATHS = Object.freeze([
-  'adr/ADR-0005-cloud-sql-runtime-connections-and-database-role-boundary.md',
-  'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md',
-  'docs/production-readiness/phase-3/00-cloud-sql-runtime-topology-and-connection-budget.md',
   'docs/production-readiness/phase-3/04-database-identities-and-least-privilege-evidence.md',
-  'package.json',
   'scripts/ci/prd3-g01-c-database-privileges.cjs',
   'scripts/database/prd3-g01-c-role-bootstrap.sql',
-  'scripts/database/prd3-g01-c-runtime-grants.sql',
   'scripts/tests/prd3-g01-c-database-privileges.test.cjs',
 ]);
+
+const MANAGED_ADMIN_LOGIN = 'moazez_cloudsql_admin_fixture';
+const CLOUD_SQL_SYSTEM_ROLE = 'cloudsqlsuperuser';
 
 const POSTGRESQL_ROLES = Object.freeze([
   'moazez_api',
@@ -254,6 +252,8 @@ function psqlArgs(context, login, databaseName, credential, extra = []) {
     '-X',
     '--no-psqlrc',
     '-q',
+    '-h',
+    '127.0.0.1',
     '-U',
     login,
     '-d',
@@ -262,18 +262,18 @@ function psqlArgs(context, login, databaseName, credential, extra = []) {
   ];
 }
 
-function applySqlPolicy(context, sqlPath, variables) {
+function runSqlPolicy(context, sqlPath, variables, identity = {}) {
   const variableArgs = Object.entries(variables).flatMap(([name, value]) => [
     '-v',
     `${name}=${value}`,
   ]);
-  const result = spawnSync(
+  return spawnSync(
     'docker',
     psqlArgs(
       context,
-      context.adminLogin,
+      identity.login ?? context.adminLogin,
       context.databaseName,
-      context.adminCredential,
+      identity.credential ?? context.adminCredential,
       [...variableArgs, '-f', '-'],
     ),
     {
@@ -285,6 +285,10 @@ function applySqlPolicy(context, sqlPath, variables) {
       maxBuffer: 16 * 1024 * 1024,
     },
   );
+}
+
+function applySqlPolicy(context, sqlPath, variables, identity) {
+  const result = runSqlPolicy(context, sqlPath, variables, identity);
   if (result.error || result.status !== 0) {
     const safeCategory = `${result.stdout ?? ''}\n${result.stderr ?? ''}`
       .split(/\r?\n/u)
@@ -298,17 +302,43 @@ function applySqlPolicy(context, sqlPath, variables) {
   }
 }
 
-function queryScalar(context, sql) {
+function applySqlPolicyExpectedFailure(context, sqlPath, variables, expectedError) {
+  const result = runSqlPolicy(context, sqlPath, variables);
+  if (result.error || result.status === 0) {
+    throw new Error('unsafe SQL policy rehearsal did not fail closed');
+  }
+  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+  for (const credential of context.credentialValues) {
+    if (output.includes(credential)) {
+      throw new Error('SQL policy failure output exposed synthetic credential material');
+    }
+  }
+  if (!expectedError.test(output)) {
+    throw new Error('SQL policy failure did not report the expected sanitized guard');
+  }
+  return true;
+}
+
+function queryScalarAs(context, login, credential, sql, databaseName) {
   return docker(
     psqlArgs(
       context,
-      context.adminLogin,
-      context.databaseName,
-      context.adminCredential,
+      login,
+      databaseName ?? context.databaseName,
+      credential,
       ['-A', '-t', '-c', sql],
     ),
     { label: 'catalog assertion' },
   ).stdout.trim();
+}
+
+function queryScalar(context, sql) {
+  return queryScalarAs(
+    context,
+    context.adminLogin,
+    context.adminCredential,
+    sql,
+  );
 }
 
 function executePsql(context, login, credential, sql, databaseName) {
@@ -321,6 +351,30 @@ function executePsql(context, login, credential, sql, databaseName) {
       ['-v', 'ON_ERROR_STOP=1', '-f', '-'],
     ),
     { input: sql, label: 'bounded PostgreSQL assertion' },
+  );
+}
+
+function executePsqlWithVariables(
+  context,
+  login,
+  credential,
+  sql,
+  variables,
+  databaseName,
+) {
+  const variableArgs = Object.entries(variables).flatMap(([name, value]) => [
+    '-v',
+    `${name}=${value}`,
+  ]);
+  docker(
+    psqlArgs(
+      context,
+      login,
+      databaseName ?? context.databaseName,
+      credential,
+      [...variableArgs, '-v', 'ON_ERROR_STOP=1', '-f', '-'],
+    ),
+    { input: sql, label: 'bounded PostgreSQL fixture setup' },
   );
 }
 
@@ -350,13 +404,15 @@ function runPrisma(context, args, label) {
 function redactFixtureValues(context, value) {
   let redacted = value;
   for (const sensitive of [
+    context.fixtureOwnerLogin,
+    context.fixtureOwnerCredential,
     context.adminLogin,
     context.adminCredential,
     context.databaseName,
     context.migrationUrl,
-    ...Object.values(context.credentials),
+    ...context.credentialValues,
     ...POSTGRESQL_ROLES,
-  ]) {
+  ].filter((candidate) => typeof candidate === 'string' && candidate.length > 0)) {
     redacted = redacted.replaceAll(sensitive, '[redacted]');
   }
   return redacted
@@ -388,7 +444,7 @@ function waitForPostgres(context) {
         'pg_isready',
         '-q',
         '-U',
-        context.adminLogin,
+        context.fixtureOwnerLogin,
         '-d',
         context.databaseName,
       ],
@@ -402,20 +458,30 @@ function waitForPostgres(context) {
 
 function createFixture(dockerEvidence, imageId) {
   const runId = crypto.randomUUID().replaceAll('-', '').slice(0, 20);
+  const fixtureOwnerCredential = syntheticCredential();
+  const adminCredential = syntheticCredential();
+  const credentials = {
+    moazez_api: syntheticCredential(),
+    moazez_core_worker: syntheticCredential(),
+    moazez_media_worker: syntheticCredential(),
+    moazez_migration: syntheticCredential(),
+  };
   const context = {
     runId,
     label: `${OWNERSHIP_LABEL}=${runId}`,
     networkName: `moazez-g01c-net-${runId}`,
     containerName: `moazez-g01c-pg-${runId}`,
-    adminLogin: `g01c_admin_${runId}`,
-    adminCredential: syntheticCredential(),
+    fixtureOwnerLogin: `g01c_owner_${runId}`,
+    fixtureOwnerCredential,
+    adminLogin: MANAGED_ADMIN_LOGIN,
+    adminCredential,
     databaseName: `g01c_app_${runId}`,
-    credentials: Object.freeze({
-      moazez_api: syntheticCredential(),
-      moazez_core_worker: syntheticCredential(),
-      moazez_media_worker: syntheticCredential(),
-      moazez_migration: syntheticCredential(),
-    }),
+    credentials,
+    credentialValues: new Set([
+      fixtureOwnerCredential,
+      adminCredential,
+      ...Object.values(credentials),
+    ]),
     imageId,
     dockerEvidence,
     containerCreated: false,
@@ -443,11 +509,13 @@ function createFixture(dockerEvidence, imageId) {
     '--publish',
     '127.0.0.1::5432',
     '--env',
-    `POSTGRES_USER=${context.adminLogin}`,
+    `POSTGRES_USER=${context.fixtureOwnerLogin}`,
     '--env',
-    `POSTGRES_PASSWORD=${context.adminCredential}`,
+    `POSTGRES_PASSWORD=${context.fixtureOwnerCredential}`,
     '--env',
     `POSTGRES_DB=${context.databaseName}`,
+    '--env',
+    'POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256',
     imageId,
   ]);
   context.containerCreated = true;
@@ -488,23 +556,103 @@ function createFixture(dockerEvidence, imageId) {
   const match = port.match(/^127\.0\.0\.1:(\d+)$/u);
   assert.ok(match, 'PostgreSQL must bind only to a random 127.0.0.1 port');
   context.hostPort = Number(match[1]);
-  context.migrationUrl = makeDatabaseUrl(
-    context,
-    'moazez_migration',
-    context.credentials.moazez_migration,
-    { connection_limit: 2, application_name: 'moazez-migration' },
-  );
   return context;
 }
 
-function bootstrapVariables(context) {
+function initializeManagedAdministrator(context) {
+  executePsqlWithVariables(
+    context,
+    context.fixtureOwnerLogin,
+    context.fixtureOwnerCredential,
+    `CREATE ROLE ${MANAGED_ADMIN_LOGIN}
+       LOGIN NOSUPERUSER CREATEDB CREATEROLE NOREPLICATION NOBYPASSRLS INHERIT
+       PASSWORD :'managed_admin_credential';
+     ALTER DATABASE :"database_name" OWNER TO ${MANAGED_ADMIN_LOGIN};
+     ALTER SCHEMA public OWNER TO ${MANAGED_ADMIN_LOGIN};`,
+    {
+      database_name: context.databaseName,
+      managed_admin_credential: context.adminCredential,
+    },
+  );
+  assert.equal(
+    queryScalarAs(
+      context,
+      context.fixtureOwnerLogin,
+      context.fixtureOwnerCredential,
+      `SELECT rolcanlogin AND NOT rolsuper AND rolcreatedb AND rolcreaterole
+         AND NOT rolreplication AND NOT rolbypassrls AND rolinherit
+       FROM pg_catalog.pg_roles
+       WHERE rolname = ${sqlLiteral(MANAGED_ADMIN_LOGIN)}`,
+    ),
+    't',
+  );
+  assert.equal(
+    queryScalarAs(
+      context,
+      context.fixtureOwnerLogin,
+      context.fixtureOwnerCredential,
+      `SELECT count(*)
+       FROM pg_catalog.pg_roles AS super_role
+       JOIN pg_catalog.pg_roles AS managed_role
+         ON managed_role.rolname = ${sqlLiteral(MANAGED_ADMIN_LOGIN)}
+       WHERE super_role.rolsuper
+         AND super_role.oid <> managed_role.oid
+         AND pg_catalog.pg_has_role(managed_role.oid, super_role.oid, 'MEMBER')`,
+    ),
+    '0',
+  );
+  assert.equal(
+    queryScalar(
+      context,
+      `SELECT database_owner.rolname = ${sqlLiteral(MANAGED_ADMIN_LOGIN)}
+         AND schema_owner.rolname = ${sqlLiteral(MANAGED_ADMIN_LOGIN)}
+       FROM pg_catalog.pg_database AS database
+       JOIN pg_catalog.pg_roles AS database_owner ON database_owner.oid = database.datdba
+       JOIN pg_catalog.pg_namespace AS namespace ON namespace.nspname = 'public'
+       JOIN pg_catalog.pg_roles AS schema_owner ON schema_owner.oid = namespace.nspowner
+       WHERE database.datname = current_database()`,
+    ),
+    't',
+  );
+  return true;
+}
+
+function bootstrapVariables(context, credentials = context.credentials) {
   return {
     database_name: context.databaseName,
-    api_role_credential: context.credentials.moazez_api,
-    core_worker_role_credential: context.credentials.moazez_core_worker,
-    media_worker_role_credential: context.credentials.moazez_media_worker,
-    migration_role_credential: context.credentials.moazez_migration,
+    api_role_credential: credentials.moazez_api,
+    core_worker_role_credential: credentials.moazez_core_worker,
+    media_worker_role_credential: credentials.moazez_media_worker,
+    migration_role_credential: credentials.moazez_migration,
   };
+}
+
+function rotatedCredentials(context) {
+  const credentials = Object.fromEntries(
+    POSTGRESQL_ROLES.map((role) => [role, syntheticCredential()]),
+  );
+  for (const credential of Object.values(credentials)) {
+    context.credentialValues.add(credential);
+  }
+  return credentials;
+}
+
+function verifyCredentialRotation(context, previousCredentials) {
+  for (const role of POSTGRESQL_ROLES) {
+    executePsql(context, role, context.credentials[role], 'SELECT 1;');
+    commandExpectedFailure(
+      'docker',
+      psqlArgs(
+        context,
+        role,
+        context.databaseName,
+        previousCredentials[role],
+        ['-v', 'ON_ERROR_STOP=1', '-c', 'SELECT 1'],
+      ),
+      { label: 'retired synthetic database credential' },
+    );
+  }
+  return true;
 }
 
 function verifyRoleCatalog(context) {
@@ -538,14 +686,174 @@ function verifyMembershipCatalog(context) {
     queryScalar(
       context,
       `SELECT count(*)
-       FROM pg_catalog.pg_auth_members membership
-       JOIN pg_catalog.pg_roles granted_role ON granted_role.oid = membership.roleid
-       JOIN pg_catalog.pg_roles member_role ON member_role.oid = membership.member
-       WHERE granted_role.rolname = ANY (ARRAY[${POSTGRESQL_ROLES.map(sqlLiteral).join(',')}])
-          OR member_role.rolname = ANY (ARRAY[${POSTGRESQL_ROLES.map(sqlLiteral).join(',')}])`,
+       FROM pg_catalog.pg_roles AS member_role
+       CROSS JOIN pg_catalog.pg_roles AS granted_role
+       WHERE member_role.rolname = ANY (ARRAY[${POSTGRESQL_ROLES.map(sqlLiteral).join(',')}])
+         AND (
+           granted_role.rolname = ${sqlLiteral(CLOUD_SQL_SYSTEM_ROLE)}
+           OR (
+             granted_role.rolname = ANY (ARRAY[${POSTGRESQL_ROLES.map(sqlLiteral).join(',')}])
+             AND granted_role.oid <> member_role.oid
+           )
+         )
+         AND pg_catalog.pg_has_role(member_role.oid, granted_role.oid, 'MEMBER')`,
     ),
     '0',
   );
+  return true;
+}
+
+function assertCredentialStillActive(context, role, credential) {
+  executePsql(context, role, credential, 'SELECT 1;');
+}
+
+function assertCredentialRejected(context, role, credential) {
+  commandExpectedFailure(
+    'docker',
+    psqlArgs(
+      context,
+      role,
+      context.databaseName,
+      credential,
+      ['-v', 'ON_ERROR_STOP=1', '-c', 'SELECT 1'],
+    ),
+    { label: 'rejected synthetic rehearsal credential' },
+  );
+}
+
+function rehearseUnsafeRoleAttribute(context) {
+  const candidateCredentials = rotatedCredentials(context);
+  executePsql(
+    context,
+    context.fixtureOwnerLogin,
+    context.fixtureOwnerCredential,
+    'ALTER ROLE moazez_api CREATEDB;',
+  );
+  try {
+    const before = securitySnapshot(context);
+    applySqlPolicyExpectedFailure(
+      context,
+      ROLE_BOOTSTRAP_PATH,
+      bootstrapVariables(context, candidateCredentials),
+      /required database role attributes are unsafe/u,
+    );
+    assert.equal(securitySnapshot(context), before);
+    assertCredentialStillActive(
+      context,
+      'moazez_api',
+      context.credentials.moazez_api,
+    );
+    assertCredentialRejected(
+      context,
+      'moazez_api',
+      candidateCredentials.moazez_api,
+    );
+  } finally {
+    executePsql(
+      context,
+      context.fixtureOwnerLogin,
+      context.fixtureOwnerCredential,
+      'ALTER ROLE moazez_api NOCREATEDB;',
+    );
+  }
+  verifyRoleCatalog(context);
+  return true;
+}
+
+function rehearseCloudSqlSystemMembership(context) {
+  assert.equal(
+    queryScalar(
+      context,
+      `SELECT count(*) FROM pg_catalog.pg_roles
+       WHERE rolname = ${sqlLiteral(CLOUD_SQL_SYSTEM_ROLE)}`,
+    ),
+    '0',
+  );
+  const candidateCredentials = rotatedCredentials(context);
+  executePsql(
+    context,
+    context.fixtureOwnerLogin,
+    context.fixtureOwnerCredential,
+    `CREATE ROLE ${CLOUD_SQL_SYSTEM_ROLE} NOLOGIN;
+     GRANT ${CLOUD_SQL_SYSTEM_ROLE} TO moazez_api;`,
+  );
+  try {
+    const before = securitySnapshot(context);
+    applySqlPolicyExpectedFailure(
+      context,
+      ROLE_BOOTSTRAP_PATH,
+      bootstrapVariables(context, candidateCredentials),
+      /required database role memberships are unsafe/u,
+    );
+    assert.equal(securitySnapshot(context), before);
+    assertCredentialStillActive(
+      context,
+      'moazez_api',
+      context.credentials.moazez_api,
+    );
+    assertCredentialRejected(
+      context,
+      'moazez_api',
+      candidateCredentials.moazez_api,
+    );
+  } finally {
+    executePsql(
+      context,
+      context.fixtureOwnerLogin,
+      context.fixtureOwnerCredential,
+      `REVOKE ${CLOUD_SQL_SYSTEM_ROLE} FROM moazez_api;
+       DROP ROLE ${CLOUD_SQL_SYSTEM_ROLE};`,
+    );
+  }
+  assert.equal(
+    queryScalar(
+      context,
+      `SELECT count(*) FROM pg_catalog.pg_roles
+       WHERE rolname = ${sqlLiteral(CLOUD_SQL_SYSTEM_ROLE)}`,
+    ),
+    '0',
+  );
+  verifyMembershipCatalog(context);
+  return true;
+}
+
+function rehearseCrossRoleMembership(context) {
+  const candidateCredentials = rotatedCredentials(context);
+  executePsql(
+    context,
+    context.fixtureOwnerLogin,
+    context.fixtureOwnerCredential,
+    'GRANT moazez_migration TO moazez_api;',
+  );
+  try {
+    const before = securitySnapshot(context);
+    applySqlPolicyExpectedFailure(
+      context,
+      ROLE_BOOTSTRAP_PATH,
+      bootstrapVariables(context, candidateCredentials),
+      /required database role memberships are unsafe/u,
+    );
+    assert.equal(securitySnapshot(context), before);
+    assertCredentialStillActive(
+      context,
+      'moazez_api',
+      context.credentials.moazez_api,
+    );
+    assertCredentialRejected(
+      context,
+      'moazez_api',
+      candidateCredentials.moazez_api,
+    );
+  } finally {
+    executePsql(
+      context,
+      context.fixtureOwnerLogin,
+      context.fixtureOwnerCredential,
+      'REVOKE moazez_migration FROM moazez_api;',
+    );
+  }
+  verifyMembershipCatalog(context);
+  return true;
 }
 
 function verifyOwnershipAndPrivileges(context) {
@@ -998,7 +1306,7 @@ function securitySnapshot(context) {
     context,
     `SELECT jsonb_build_object(
        'roles', (SELECT COALESCE(jsonb_agg(to_jsonb(role_row) ORDER BY rolname), '[]'::jsonb)
-                 FROM (SELECT rolname, rolsuper, rolcreatedb, rolcreaterole, rolreplication,
+                 FROM (SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolreplication,
                               rolbypassrls, rolinherit
                        FROM pg_catalog.pg_roles
                        WHERE rolname = ANY (ARRAY[${POSTGRESQL_ROLES.map(sqlLiteral).join(',')}])) role_row),
@@ -1136,8 +1444,8 @@ function verifyMigrationAdministrativeBoundary(context) {
 function verifyMigrationCannotAccessOtherDatabase(context) {
   executePsql(
     context,
-    context.adminLogin,
-    context.adminCredential,
+    context.fixtureOwnerLogin,
+    context.fixtureOwnerCredential,
     'REVOKE ALL PRIVILEGES ON DATABASE postgres FROM PUBLIC;',
   );
   commandExpectedFailure(
@@ -1238,6 +1546,18 @@ function createPassingSummaryForTests() {
     runtimes: Object.fromEntries(
       Object.keys(RUNTIME_ROLES).map((role) => [role, { positive: { ...positive }, negative: { ...negative } }]),
     ),
+    bootstrap: {
+      managedAdministrator: true,
+      localWithoutCloudSqlSystemRole: true,
+      firstApply: true,
+      secondApply: true,
+      passwordRotation: true,
+      attributesStable: true,
+      unsafeAttributeRejected: true,
+      cloudSqlSystemMembershipRejected: true,
+      crossRoleMembershipRejected: true,
+      credentialRedaction: true,
+    },
     migration: {
       deploy: true,
       status: true,
@@ -1263,6 +1583,20 @@ function validateSummary(summary) {
   for (const runtimeRole of Object.keys(RUNTIME_ROLES)) {
     for (const name of POSITIVE_CHECK_NAMES) assert.equal(summary.runtimes?.[runtimeRole]?.positive?.[name], true);
     for (const name of NEGATIVE_CHECK_NAMES) assert.equal(summary.runtimes?.[runtimeRole]?.negative?.[name], true);
+  }
+  for (const name of [
+    'managedAdministrator',
+    'localWithoutCloudSqlSystemRole',
+    'firstApply',
+    'secondApply',
+    'passwordRotation',
+    'attributesStable',
+    'unsafeAttributeRejected',
+    'cloudSqlSystemMembershipRejected',
+    'crossRoleMembershipRejected',
+    'credentialRedaction',
+  ]) {
+    assert.equal(summary.bootstrap?.[name], true);
   }
   assert.equal(summary.migration?.deploy, true);
   assert.equal(summary.migration?.status, true);
@@ -1291,9 +1625,53 @@ async function runLiveVerification() {
   let summary;
   try {
     context = createFixture(dockerEvidence, imageId);
-    const bootstrap = bootstrapVariables(context);
-    applySqlPolicy(context, ROLE_BOOTSTRAP_PATH, bootstrap);
-    applySqlPolicy(context, ROLE_BOOTSTRAP_PATH, bootstrap);
+    const managedAdministrator = initializeManagedAdministrator(context);
+    assert.equal(
+      queryScalar(
+        context,
+        `SELECT count(*) FROM pg_catalog.pg_roles
+         WHERE rolname = ${sqlLiteral(CLOUD_SQL_SYSTEM_ROLE)}`,
+      ),
+      '0',
+    );
+
+    const previousCredentials = { ...context.credentials };
+    applySqlPolicy(
+      context,
+      ROLE_BOOTSTRAP_PATH,
+      bootstrapVariables(context, previousCredentials),
+    );
+    const firstRoleCatalog = verifyRoleCatalog(context);
+    verifyMembershipCatalog(context);
+
+    const nextCredentials = rotatedCredentials(context);
+    applySqlPolicy(
+      context,
+      ROLE_BOOTSTRAP_PATH,
+      bootstrapVariables(context, nextCredentials),
+    );
+    context.credentials = nextCredentials;
+    const secondRoleCatalog = verifyRoleCatalog(context);
+    assert.deepEqual(secondRoleCatalog, firstRoleCatalog);
+    verifyMembershipCatalog(context);
+    const passwordRotation = verifyCredentialRotation(
+      context,
+      previousCredentials,
+    );
+
+    const unsafeAttributeRejected = rehearseUnsafeRoleAttribute(context);
+    const cloudSqlSystemMembershipRejected =
+      rehearseCloudSqlSystemMembership(context);
+    const crossRoleMembershipRejected = rehearseCrossRoleMembership(context);
+    verifyRoleCatalog(context);
+    verifyMembershipCatalog(context);
+
+    context.migrationUrl = makeDatabaseUrl(
+      context,
+      'moazez_migration',
+      context.credentials.moazez_migration,
+      { connection_limit: 2, application_name: 'moazez-migration' },
+    );
 
     const deployOutput = runPrisma(context, ['migrate', 'deploy'], 'Prisma migration deployment');
     assert.match(deployOutput, /migrations? have been successfully applied|applied|No pending migrations/u);
@@ -1302,8 +1680,22 @@ async function runLiveVerification() {
     const secondDeployOutput = runPrisma(context, ['migrate', 'deploy'], 'second Prisma migration deployment');
     assert.match(secondDeployOutput, /No pending migrations to apply/u);
 
-    applySqlPolicy(context, RUNTIME_GRANTS_PATH, { database_name: context.databaseName });
-    applySqlPolicy(context, RUNTIME_GRANTS_PATH, { database_name: context.databaseName });
+    const fixtureOwner = {
+      login: context.fixtureOwnerLogin,
+      credential: context.fixtureOwnerCredential,
+    };
+    applySqlPolicy(
+      context,
+      RUNTIME_GRANTS_PATH,
+      { database_name: context.databaseName },
+      fixtureOwner,
+    );
+    applySqlPolicy(
+      context,
+      RUNTIME_GRANTS_PATH,
+      { database_name: context.databaseName },
+      fixtureOwner,
+    );
 
     const postgresVersionNumber = Number(queryScalar(context, 'SHOW server_version_num'));
     assert.equal(Math.trunc(postgresVersionNumber / 10_000), 16);
@@ -1346,6 +1738,18 @@ async function runLiveVerification() {
       dockerEndpointTransport: dockerEvidence.endpointTransport,
       roles: [...POSTGRESQL_ROLES],
       runtimes,
+      bootstrap: {
+        managedAdministrator,
+        localWithoutCloudSqlSystemRole: true,
+        firstApply: true,
+        secondApply: true,
+        passwordRotation,
+        attributesStable: true,
+        unsafeAttributeRejected,
+        cloudSqlSystemMembershipRejected,
+        crossRoleMembershipRejected,
+        credentialRedaction: true,
+      },
       migration: {
         deploy: true,
         status: true,
@@ -1409,6 +1813,14 @@ async function main() {
       postgresMajor: summary.postgresMajor,
       postgresVersionNumber: summary.postgresVersionNumber,
       roles: summary.roles,
+      managedAdministrator: summary.bootstrap.managedAdministrator,
+      firstBootstrap: summary.bootstrap.firstApply,
+      secondBootstrap: summary.bootstrap.secondApply,
+      unsafeAttributeRejected: summary.bootstrap.unsafeAttributeRejected,
+      cloudSqlSystemMembershipRejected:
+        summary.bootstrap.cloudSqlSystemMembershipRejected,
+      crossRoleMembershipRejected:
+        summary.bootstrap.crossRoleMembershipRejected,
       positiveChecks: POSITIVE_CHECK_NAMES.length * Object.keys(RUNTIME_ROLES).length,
       negativeChecks: NEGATIVE_CHECK_NAMES.length * Object.keys(RUNTIME_ROLES).length,
       setRoleDenials: Object.values(summary.setRoleDenials).reduce(

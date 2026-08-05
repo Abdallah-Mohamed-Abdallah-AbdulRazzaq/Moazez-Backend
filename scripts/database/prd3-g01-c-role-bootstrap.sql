@@ -62,30 +62,83 @@ WHERE NOT EXISTS (
 )
 \gexec
 
-ALTER ROLE moazez_api WITH
-  LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT
-  PASSWORD :'api_role_credential';
-ALTER ROLE moazez_core_worker WITH
-  LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT
-  PASSWORD :'core_worker_role_credential';
-ALTER ROLE moazez_media_worker WITH
-  LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT
-  PASSWORD :'media_worker_role_credential';
-ALTER ROLE moazez_migration WITH
-  LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT
-  PASSWORD :'migration_role_credential';
+-- Cloud SQL administrators are not PostgreSQL superusers. Missing roles use
+-- PostgreSQL's safe CREATE ROLE defaults; existing administrative attributes
+-- are never normalized. Reject any unsafe role before credentials or grants
+-- can change.
+DO $policy$
+BEGIN
+  IF (
+    SELECT count(*)
+    FROM pg_catalog.pg_roles AS required_role
+    WHERE required_role.rolname IN (
+      'moazez_api',
+      'moazez_core_worker',
+      'moazez_media_worker',
+      'moazez_migration'
+    )
+      AND required_role.rolcanlogin
+      AND NOT required_role.rolsuper
+      AND NOT required_role.rolcreatedb
+      AND NOT required_role.rolcreaterole
+      AND NOT required_role.rolreplication
+      AND NOT required_role.rolbypassrls
+      AND required_role.rolinherit
+  ) <> 4 THEN
+    RAISE EXCEPTION 'required database role attributes are unsafe';
+  END IF;
 
--- Normalize the cross-role boundary even if an earlier local rehearsal added
--- membership. None of the four identities can inherit or SET ROLE through a
--- Moazez role membership.
-REVOKE moazez_migration FROM
-  moazez_api, moazez_core_worker, moazez_media_worker;
-REVOKE moazez_api FROM
-  moazez_migration, moazez_core_worker, moazez_media_worker;
-REVOKE moazez_core_worker FROM
-  moazez_migration, moazez_api, moazez_media_worker;
-REVOKE moazez_media_worker FROM
-  moazez_migration, moazez_api, moazez_core_worker;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_roles AS member_role
+    JOIN pg_catalog.pg_roles AS system_role
+      ON system_role.rolname = 'cloudsqlsuperuser'
+    WHERE member_role.rolname IN (
+      'moazez_api',
+      'moazez_core_worker',
+      'moazez_media_worker',
+      'moazez_migration'
+    )
+      AND pg_catalog.pg_has_role(member_role.oid, system_role.oid, 'MEMBER')
+  ) THEN
+    RAISE EXCEPTION 'required database role memberships are unsafe';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_roles AS member_role
+    CROSS JOIN pg_catalog.pg_roles AS granted_role
+    WHERE member_role.rolname IN (
+      'moazez_api',
+      'moazez_core_worker',
+      'moazez_media_worker',
+      'moazez_migration'
+    )
+      AND granted_role.rolname IN (
+        'moazez_api',
+        'moazez_core_worker',
+        'moazez_media_worker',
+        'moazez_migration'
+      )
+      AND member_role.oid <> granted_role.oid
+      AND pg_catalog.pg_has_role(member_role.oid, granted_role.oid, 'MEMBER')
+  ) THEN
+    RAISE EXCEPTION 'required database role memberships are unsafe';
+  END IF;
+END
+$policy$;
+
+-- Attribute and membership guards above must pass before password-only
+-- rotation. Credentials stay bound psql variables and are never interpolated
+-- into generated SQL.
+ALTER ROLE moazez_api
+  PASSWORD :'api_role_credential';
+ALTER ROLE moazez_core_worker
+  PASSWORD :'core_worker_role_credential';
+ALTER ROLE moazez_media_worker
+  PASSWORD :'media_worker_role_credential';
+ALTER ROLE moazez_migration
+  PASSWORD :'migration_role_credential';
 
 REVOKE ALL PRIVILEGES ON DATABASE :"database_name" FROM
   PUBLIC,

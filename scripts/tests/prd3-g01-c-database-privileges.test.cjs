@@ -23,6 +23,16 @@ const read = (relativePath) =>
 const bootstrapSql = read('scripts/database/prd3-g01-c-role-bootstrap.sql');
 const grantsSql = read('scripts/database/prd3-g01-c-runtime-grants.sql');
 const verifier = read('scripts/ci/prd3-g01-c-database-privileges.cjs');
+const executableBootstrapSql = bootstrapSql
+  .replace(/\/\*[\s\S]*?\*\//gu, '')
+  .replace(/--[^\r\n]*/gu, '');
+
+const ROLE_CREDENTIAL_VARIABLES = Object.freeze({
+  moazez_api: 'api_role_credential',
+  moazez_core_worker: 'core_worker_role_credential',
+  moazez_media_worker: 'media_worker_role_credential',
+  moazez_migration: 'migration_role_credential',
+});
 
 test('defines exactly the four approved PostgreSQL login identities', () => {
   assert.deepEqual(POSTGRESQL_ROLES, [
@@ -31,10 +41,13 @@ test('defines exactly the four approved PostgreSQL login identities', () => {
     'moazez_media_worker',
     'moazez_migration',
   ]);
-  for (const role of POSTGRESQL_ROLES) assert.match(bootstrapSql, new RegExp(`ALTER ROLE ${role} WITH`, 'u'));
+  for (const role of POSTGRESQL_ROLES) {
+    assert.match(bootstrapSql, new RegExp(`\\('${role}'\\)`, 'u'));
+    assert.match(bootstrapSql, new RegExp(`ALTER ROLE ${role}\\s+PASSWORD`, 'u'));
+  }
 });
 
-test('normalizes the exact non-administrative role attributes', () => {
+test('requires the exact non-administrative role attributes through a fail-closed catalog guard', () => {
   assert.deepEqual(ROLE_ATTRIBUTES, {
     login: true,
     superuser: false,
@@ -44,21 +57,47 @@ test('normalizes the exact non-administrative role attributes', () => {
     bypassRls: false,
     inherit: true,
   });
-  for (const role of POSTGRESQL_ROLES) {
+  for (const predicate of [
+    'required_role.rolcanlogin',
+    'NOT required_role.rolsuper',
+    'NOT required_role.rolcreatedb',
+    'NOT required_role.rolcreaterole',
+    'NOT required_role.rolreplication',
+    'NOT required_role.rolbypassrls',
+    'required_role.rolinherit',
+  ]) {
+    assert.ok(bootstrapSql.includes(predicate), `missing catalog predicate: ${predicate}`);
+  }
+  assert.match(bootstrapSql, /required database role attributes are unsafe/u);
+});
+
+test('creates only missing LOGIN shells using PostgreSQL administrative defaults', () => {
+  assert.match(
+    executableBootstrapSql,
+    /SELECT format\('CREATE ROLE %I LOGIN', role_name\)[\s\S]*?WHERE NOT EXISTS[\s\S]*?\\gexec/u,
+  );
+  assert.doesNotMatch(
+    executableBootstrapSql,
+    /CREATE ROLE %I LOGIN\s+(?:(?:NO)?SUPERUSER|(?:NO)?CREATEDB|(?:NO)?CREATEROLE|(?:NO)?REPLICATION|(?:NO)?BYPASSRLS|(?:NO)?INHERIT|PASSWORD)/iu,
+  );
+});
+
+test('uses one password-only ALTER ROLE statement per exact identity', () => {
+  const alterations = executableBootstrapSql.match(/ALTER\s+ROLE\s+[\s\S]*?;/giu) ?? [];
+  assert.equal(alterations.length, POSTGRESQL_ROLES.length);
+  for (const [role, variable] of Object.entries(ROLE_CREDENTIAL_VARIABLES)) {
     assert.match(
-      bootstrapSql,
-      new RegExp(`ALTER ROLE ${role} WITH[\\s\\S]*?LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT`, 'u'),
+      executableBootstrapSql,
+      new RegExp(`ALTER ROLE ${role}\\s+PASSWORD :'${variable}';`, 'u'),
     );
+  }
+  for (const alteration of alterations) {
+    assert.doesNotMatch(alteration, /\bWITH\b|\bLOGIN\b|\b(?:NO)?SUPERUSER\b|\b(?:NO)?CREATEDB\b|\b(?:NO)?CREATEROLE\b|\b(?:NO)?REPLICATION\b|\b(?:NO)?BYPASSRLS\b|\b(?:NO)?INHERIT\b/iu);
   }
 });
 
 test('bootstrap SQL accepts variables and contains no literal role credential', () => {
-  for (const variable of [
-    'api_role_credential',
-    'core_worker_role_credential',
-    'media_worker_role_credential',
-    'migration_role_credential',
-  ]) {
+  for (const variable of Object.values(ROLE_CREDENTIAL_VARIABLES)) {
     assert.match(bootstrapSql, new RegExp(`PASSWORD :'${variable}'`, 'u'));
   }
   assert.doesNotMatch(bootstrapSql, /PASSWORD\s+'[^']+'/iu);
@@ -130,10 +169,36 @@ test('PUBLIC schema CREATE and unnecessary database privileges are revoked', () 
   );
 });
 
-test('cross-role membership is removed and catalog-verified', () => {
-  for (const role of POSTGRESQL_ROLES) assert.match(bootstrapSql, new RegExp(`REVOKE ${role} FROM`, 'u'));
+test('Cloud SQL system and Moazez cross-role memberships fail closed', () => {
+  assert.match(bootstrapSql, /system_role\.rolname = 'cloudsqlsuperuser'/u);
+  assert.match(bootstrapSql, /pg_catalog\.pg_has_role\(member_role\.oid, system_role\.oid, 'MEMBER'\)/u);
+  assert.match(bootstrapSql, /member_role\.oid <> granted_role\.oid/u);
+  assert.match(bootstrapSql, /pg_catalog\.pg_has_role\(member_role\.oid, granted_role\.oid, 'MEMBER'\)/u);
+  assert.match(bootstrapSql, /required database role memberships are unsafe/u);
+  assert.doesNotMatch(bootstrapSql, /REVOKE\s+moazez_[a-z_]+\s+FROM\s+moazez_/iu);
   assert.match(verifier, /pg_catalog\.pg_auth_members/u);
   assert.match(verifier, /verifyAllSetRoleDenials/u);
+});
+
+test('live verifier executes bootstrap through a managed-admin-like non-superuser', () => {
+  assert.match(verifier, /MANAGED_ADMIN_LOGIN = 'moazez_cloudsql_admin_fixture'/u);
+  assert.match(
+    verifier,
+    /LOGIN NOSUPERUSER CREATEDB CREATEROLE NOREPLICATION NOBYPASSRLS INHERIT/u,
+  );
+  assert.match(verifier, /initializeManagedAdministrator\(context\)/u);
+  assert.match(verifier, /context\.fixtureOwnerLogin/u);
+  assert.match(verifier, /runSqlPolicy\(context, sqlPath, variables\)/u);
+});
+
+test('live verifier rehearses unsafe attributes and both membership boundaries', () => {
+  assert.match(verifier, /ALTER ROLE moazez_api CREATEDB/u);
+  assert.match(verifier, /rehearseUnsafeRoleAttribute/u);
+  assert.match(verifier, /CREATE ROLE \$\{CLOUD_SQL_SYSTEM_ROLE\} NOLOGIN/u);
+  assert.match(verifier, /rehearseCloudSqlSystemMembership/u);
+  assert.match(verifier, /GRANT moazez_migration TO moazez_api/u);
+  assert.match(verifier, /rehearseCrossRoleMembership/u);
+  assert.match(verifier, /SQL policy failure output exposed synthetic credential material/u);
 });
 
 test('production runtimes retain one DATABASE_URL deployment contract', () => {
@@ -205,9 +270,25 @@ test('final summary rejects a missing or failed permission check', () => {
   const failed = structuredClone(passing);
   failed.runtimes['media-worker'].positive.insert_update_delete = false;
   assert.throws(() => validateSummary(failed));
+  const missingBootstrapGuard = structuredClone(passing);
+  missingBootstrapGuard.bootstrap.cloudSqlSystemMembershipRejected = false;
+  assert.throws(() => validateSummary(missingBootstrapGuard));
 });
 
-test('working-tree scope is exactly the nine authorized paths', () => {
-  assert.equal(EXPECTED_CHANGED_PATHS.length, 9);
+test('working-tree scope is exactly the four C1 authorized paths', () => {
+  assert.equal(EXPECTED_CHANGED_PATHS.length, 4);
+  assert.deepEqual(EXPECTED_CHANGED_PATHS, [
+    'docs/production-readiness/phase-3/04-database-identities-and-least-privilege-evidence.md',
+    'scripts/ci/prd3-g01-c-database-privileges.cjs',
+    'scripts/database/prd3-g01-c-role-bootstrap.sql',
+    'scripts/tests/prd3-g01-c-database-privileges.test.cjs',
+  ]);
   assert.deepEqual(readChangedPaths(), [...EXPECTED_CHANGED_PATHS].sort());
+});
+
+test('verifier is locked to the C1 baseline and proves password rotation idempotency', () => {
+  assert.match(verifier, /BASE_SHA = '6e73da066beb79ba59284a7b96260134c0b38df5'/u);
+  assert.match(verifier, /verifyCredentialRotation/u);
+  assert.match(verifier, /assert\.deepEqual\(secondRoleCatalog, firstRoleCatalog\)/u);
+  assert.doesNotMatch(verifier, /BASE_SHA = '1816a3294be92ac177b6a5e906199a33d9c1912a'/u);
 });
