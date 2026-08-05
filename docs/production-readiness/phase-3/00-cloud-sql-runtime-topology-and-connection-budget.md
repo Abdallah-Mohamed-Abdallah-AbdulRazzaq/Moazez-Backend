@@ -17,8 +17,8 @@
 PRD3-G01 is not complete. This document locks a conservative implementation
 baseline. Corrected local raw Prisma pool saturation/recovery evidence is
 recorded in PRD3-G01-B1-FINAL. PRD3-G01-B2-R1 local runtime outage/reconnect
-evidence is also complete, while business-transaction pressure, database
-privileges, real Cloud SQL failover,
+evidence and PRD3-G01-B3 local business-transaction pressure/cutback evidence
+are also complete, while database privileges, real Cloud SQL failover,
 exact-candidate CI, merge, and post-merge closeout remain pending.
 
 ## Approved Saudi production direction
@@ -241,17 +241,24 @@ multi-homed to the verified local built-in bridge to activate Docker Desktop
 loopback publishing. These final runs supersede all B1, B1-R1, and B1-R2 draft
 candidates.
 
-No transaction or business logic is changed here. PRD3-G01-B3 must still
-include:
+PRD3-G01-B3 local transaction-pressure evidence is complete for:
 
 - Learning Media transaction: 15-second timeout.
 - Teacher Lifecycle transaction: 30-second Serializable timeout.
 - Lesson Content transaction: 30-second timeout.
-- Lesson Content Playback may await signed storage capability creation inside
-  a 15-second database transaction.
+- Lesson Content Playback uses two bounded 15-second authorization/snapshot
+  transactions with signed capability creation between them and exposes the
+  capability only after an unchanged final snapshot.
 
-These are explicit saturation/load-test inputs, not defects silently fixed by
-the runtime-policy baseline.
+The corrected 174-site inventory, actual production entry-class scenarios,
+full 5/2/1 readiness matrix, live failure rehearsals, and two canonical formal
+runs are in
+`03-business-transaction-pressure-and-cutback-evidence.md`.
+The R4 closeout fails closed on unknown/known-business Serializable errors,
+sequential Teacher execution, contradictory cross-field summaries, catalog-
+copied or non-recomputable fault receipts, untracked bounded operations,
+unmeasured final audits, cleanup residue before driver publication, and abort
+during PostgreSQL/container/loopback polling.
 
 ## Rollback and cutback constraints
 
@@ -298,8 +305,6 @@ business-transaction evidence.
 
 Still deferred:
 
-- **PRD3-G01-B3:** registered business-transaction pressure and operational
-  cutback evidence.
 - **PRD3-G01-C:** separate PostgreSQL users, least-privilege grants, negative
   DDL/cross-role access proof, and migration/runtime separation evidence.
 - **PRD3-G01-D:** real Cloud SQL regional failover, reconnect behavior,

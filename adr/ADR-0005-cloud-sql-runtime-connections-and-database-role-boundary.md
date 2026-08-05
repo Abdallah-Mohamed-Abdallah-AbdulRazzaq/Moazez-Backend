@@ -190,20 +190,20 @@ elsewhere.
 
 ## Transaction saturation inputs
 
-No transaction is refactored by this decision. PRD3-G01-B1-FINAL proves the
-exact raw Prisma pool limits, P2024 wait behavior, recovery, aggregate
-38-runtime-connection envelope, disconnect cleanup, and new-client pool reduction in
+PRD3-G01-B1-FINAL proves the exact raw Prisma pool limits, P2024 wait behavior,
+recovery, aggregate 38-runtime-connection envelope, disconnect cleanup, and
+new-client pool reduction in
 `docs/production-readiness/phase-3/01-prisma-pool-saturation-and-budget-evidence.md`.
-PRD3-G01-B3 must still exercise these observed business-transaction pressure
-inputs:
+PRD3-G01-B3 exercised these business-transaction pressure inputs:
 
 - Learning Media transaction: 15-second timeout.
 - Teacher Lifecycle transaction: 30-second Serializable timeout.
 - Lesson Content transaction: 30-second timeout.
-- Lesson Content Playback may await signed storage capability creation inside
-  a 15-second database transaction.
+- Lesson Content Playback signs between two bounded authorization/snapshot
+  transactions and revalidates before capability exposure.
 
-These observations are load-test inputs, not defects silently fixed here.
+The transaction timeouts remain explicit load-test inputs. The playback
+transaction-lifetime correction is the only B3 production-source change.
 
 ## Security and compatibility consequences
 
@@ -265,9 +265,21 @@ recovery. The pre-review B2 summaries are superseded. This is local
 PostgreSQL/Docker evidence; it does not prove Cloud SQL, Cloud Run, production
 TLS, IAM, or provider failover behavior.
 
+PRD3-G01-B3 local business-transaction pressure evidence is complete and
+recorded in
+`docs/production-readiness/phase-3/03-business-transaction-pressure-and-cutback-evidence.md`.
+It exercises actual production entry classes, the full 5/2/1 readiness matrix,
+two independent formal runs, and live signal/false-state/disconnect rehearsals.
+Its R4 authenticity correction additionally requires two already-started
+Teacher production operations with measured backend overlap, a truthful
+Serializable-contention F24 model, evidence-derived SHA-256 fault receipts,
+automatic tracking of every bounded normal operation, measured driver and
+supervisor final audits, cross-field summary pairing, finalization before
+result publication, and abort-aware normal-work polling. It does not prove
+managed-service or production behavior.
+
 Required closeout evidence remains:
 
-- PRD3-G01-B3 business-transaction pressure and operational cutback testing;
 - PRD3-G01-C database-user privileges and negative DDL/access proof;
 - PRD3-G01-D real Cloud SQL regional failover and final closeout;
 - exact-candidate CI, including `npm run verify:prd3-g01-a`, review, merge, and

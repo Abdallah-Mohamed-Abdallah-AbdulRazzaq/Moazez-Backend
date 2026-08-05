@@ -62,6 +62,25 @@ export class LessonContentPlaybackCoordinator {
     const candidate = await this.findCandidate(this.scopedPrisma, request);
     if (!candidate) return null;
 
+    const authorizedCandidate = await this.revalidateInTransaction(
+      request,
+      candidate,
+    );
+    if (!authorizedCandidate) return null;
+
+    const result = await operation(authorizedCandidate.record);
+    const finalCandidate = await this.revalidateInTransaction(
+      request,
+      authorizedCandidate,
+    );
+
+    return finalCandidate ? result : null;
+  }
+
+  private async revalidateInTransaction(
+    request: LessonContentPlaybackRequest,
+    candidate: LessonContentPlaybackCandidate,
+  ): Promise<LessonContentPlaybackCandidate | null> {
     return this.prisma.$transaction(
       async (transaction) => {
         if (!(await request.lockAuthorization(transaction, candidate))) {
@@ -77,7 +96,7 @@ export class LessonContentPlaybackCoordinator {
           return null;
         }
 
-        return operation(revalidated.record);
+        return revalidated;
       },
       {
         isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
