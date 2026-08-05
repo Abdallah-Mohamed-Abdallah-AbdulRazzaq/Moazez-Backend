@@ -6,7 +6,7 @@
 | --- | --- |
 | Phase | `PHASE_3` |
 | Gate | `PRD3-G01` |
-| Subtask | `PRD3-G01-A` |
+| Subtask | `PRD3-G01-A` through `PRD3-G01-C` |
 | Owner/approver | Abdallah |
 | Approval date | 2026-08-04 |
 | Timezone | Africa/Cairo |
@@ -16,10 +16,10 @@
 
 PRD3-G01 is not complete. This document locks a conservative implementation
 baseline. Corrected local raw Prisma pool saturation/recovery evidence is
-recorded in PRD3-G01-B1-FINAL. PRD3-G01-B2-R1 local runtime outage/reconnect
-evidence and PRD3-G01-B3 local business-transaction pressure/cutback evidence
-are also complete, while database privileges, real Cloud SQL failover,
-exact-candidate CI, merge, and post-merge closeout remain pending.
+recorded in PRD3-G01-B1-FINAL. PRD3-G01-B2-R1 local runtime outage/reconnect,
+PRD3-G01-B3 local business-transaction pressure/cutback, and PRD3-G01-C local
+database-identity/least-privilege evidence are complete. Real Cloud SQL
+failover, exact-candidate CI, merge, and post-merge closeout remain pending.
 
 ## Approved Saudi production direction
 
@@ -54,8 +54,35 @@ Maintenance Scheduler remains database-free and rejects database fields.
 | Maintenance Scheduler | none | none | prohibited |
 
 Migration Job remains separately governed and receives only the allowance in
-the connection budget. This subtask does not change migrations, Migration Job
-behavior, DDL policy, schema, or deployment ordering.
+the connection budget. PRD3-G01-C fixes its PostgreSQL login as
+`moazez_migration` and proves that it can deploy and inspect the governed
+Prisma chain without PostgreSQL administration privilege. It does not change
+migrations, Migration Job deployment behavior, schema, or deployment ordering.
+
+The exact PostgreSQL identities and grants are:
+
+| Deployment | PostgreSQL login | Effective database authority |
+| --- | --- | --- |
+| API | `moazez_api` | application DML only |
+| Core Worker | `moazez_core_worker` | application DML only |
+| Media Worker | `moazez_media_worker` | application DML only |
+| Migration Job | `moazez_migration` | target-database/application-schema governed DDL |
+
+Runtime DML is database `CONNECT`, schema `USAGE`, table `SELECT, INSERT,
+UPDATE, DELETE`, and sequence `USAGE, SELECT`. Runtime identities have no DDL,
+ownership, grant option, administration, cross-role membership or
+impersonation, or `_prisma_migrations` access. Migration-owned default
+privileges retain that exact runtime set for future tables and sequences. The
+migration identity's target-database `CREATE` ACL is distinct from the forbidden
+PostgreSQL `CREATEDB` role attribute and is required by the committed baseline's
+schema statement.
+Maintenance Scheduler remains database-free.
+
+The existing immutable, data-free Learning Media original-name normalizer is a
+reviewed exception: its table CHECK constraint requires the default PUBLIC
+execution path for application DML. Runtime identities have no direct function
+ACL, and migration-owned future functions default to no PUBLIC/runtime execute
+authority pending explicit privilege review.
 
 ## Immutable runtime policy
 
@@ -303,10 +330,17 @@ The pre-review B2 candidate is superseded. Exact measurements are in
 Cloud Run, Cloud SQL, production transport, privilege, SLO, or
 business-transaction evidence.
 
+PRD3-G01-C supplies the exact four PostgreSQL identities, idempotent
+bootstrap/current/default grant policies, migration-owned object proof,
+positive API/Core/Media Prisma DML and rollback evidence, the complete runtime
+DDL/administration denial matrix, `_prisma_migrations` denial, all cross-role
+membership and `SET ROLE` denials, and zero-resource cleanup against one fresh
+disposable PostgreSQL 16 fixture. The evidence is in
+`04-database-identities-and-least-privilege-evidence.md`. It does not provision
+Cloud SQL users, IAM, secrets, Terraform, or Migration Job infrastructure.
+
 Still deferred:
 
-- **PRD3-G01-C:** separate PostgreSQL users, least-privilege grants, negative
-  DDL/cross-role access proof, and migration/runtime separation evidence.
 - **PRD3-G01-D:** real Cloud SQL regional failover, reconnect behavior,
   failover-budget measurement, exact-candidate CI including
   `npm run verify:prd3-g01-a`, review, merge, and post-merge closeout.

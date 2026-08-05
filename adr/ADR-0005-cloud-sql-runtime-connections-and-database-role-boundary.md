@@ -22,8 +22,8 @@ consume the database connection ceiling during normal operation or failover.
 
 The approved capacity values are a conservative Saudi launch pilot envelope.
 They establish bounded inputs for implementation and testing but are not final
-load-tested capacity. Saturation, recovery, least-privilege, and real provider
-failover evidence remain mandatory.
+load-tested capacity. Saturation, recovery, and local least-privilege evidence
+are complete; real provider failover evidence remains mandatory.
 
 ## Decision
 
@@ -63,6 +63,25 @@ The validated runtime roles and application names are exact:
 Maintenance Scheduler neither accepts nor returns database configuration.
 Migration Job behavior, DDL authority, and deployment ordering remain governed
 separately; this ADR grants only its connection-budget allowance.
+
+PRD3-G01-C fixes the exact PostgreSQL login identities as `moazez_api`,
+`moazez_core_worker`, `moazez_media_worker`, and `moazez_migration`. Runtime
+identities have database `CONNECT`, schema `USAGE`, application-table
+`SELECT, INSERT, UPDATE, DELETE`, and sequence `USAGE, SELECT` only. They have
+no DDL, ownership, grant option, administration, role membership, cross-role
+impersonation, or `_prisma_migrations` access. The migration identity is the
+non-administrative owner of governed Prisma-created objects and has target-
+database `CONNECT, CREATE` plus application-schema `USAGE, CREATE`. Database
+`CREATE` is required by the committed baseline schema statement and is distinct
+from the forbidden `CREATEDB` role attribute. Migration-owned default
+privileges preserve the exact runtime DML and sequence grants for future
+objects, with exceptional objects requiring explicit review. The versioned
+policy and local proof are recorded
+in `docs/production-readiness/phase-3/04-database-identities-and-least-privilege-evidence.md`.
+The existing immutable, strict, data-free Learning Media name normalizer retains
+reviewed PUBLIC execution because an application-table CHECK constraint invokes
+it; no runtime role receives a direct function ACL, and future migration-owned
+functions default to no PUBLIC or runtime execution.
 
 ### Runtime connection policy
 
@@ -209,6 +228,13 @@ transaction-lifetime correction is the only B3 production-source change.
 
 - Separate database users make later least-privilege proof possible without
   changing the single `DATABASE_URL` deployment contract.
+- The local least-privilege proof is complete: every runtime identity can
+  perform representative application DML, cannot perform the governed DDL or
+  PostgreSQL administration matrix, cannot impersonate another Moazez role,
+  and cannot access `_prisma_migrations`.
+- `moazez_migration` can deploy, inspect, and re-run the governed migration
+  chain while remaining `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`,
+  `NOREPLICATION`, and `NOBYPASSRLS`.
 - Existing API routes, DTOs, responses, authorization, tenancy, queue names,
   worker ownership, storage behavior, Redis configuration, Prisma schema, and
   migrations remain unchanged.
@@ -278,9 +304,18 @@ supervisor final audits, cross-field summary pairing, finalization before
 result publication, and abort-aware normal-work polling. It does not prove
 managed-service or production behavior.
 
+PRD3-G01-C local database-identity evidence is complete and recorded in
+`docs/production-readiness/phase-3/04-database-identities-and-least-privilege-evidence.md`.
+One fresh disposable PostgreSQL 16 fixture applied the role and grant policies
+twice, deployed and inspected the governed Prisma chain as `moazez_migration`,
+proved exact current and future privileges, completed all API/Core/Media
+positive DML and rollback checks, rejected the full runtime DDL/administration
+matrix plus all cross-role `SET ROLE` attempts, preserved the database-free
+Maintenance Scheduler contract, and removed every owned resource. This does
+not create Cloud SQL users or prove managed-provider behavior.
+
 Required closeout evidence remains:
 
-- PRD3-G01-C database-user privileges and negative DDL/access proof;
 - PRD3-G01-D real Cloud SQL regional failover and final closeout;
 - exact-candidate CI, including `npm run verify:prd3-g01-a`, review, merge, and
   post-merge verification.
