@@ -6,20 +6,20 @@
 | --- | --- |
 | Phase | `PHASE_3` |
 | Gate | `PRD3-G01` |
-| Subtask | `PRD3-G01-A` through `PRD3-G01-C` |
+| Subtask | `PRD3-G01-A` through `PRD3-G01-D-FUNCTIONAL` |
 | Owner/approver | Abdallah |
 | Approval date | 2026-08-04 |
 | Timezone | Africa/Cairo |
-| Status | `BASELINE_ONLY` |
+| Status | `PRD3-G01=FUNCTIONALLY_COMPLETE`; `PRD3-G01-PROVIDER-CLEANUP=DEFERRED` |
 | Architecture authority | ADR-0005 |
-| Scope | Local runtime policy, tests, and governance only; no cloud provisioning |
+| Scope | Runtime policy, local evidence, and accepted real-provider R3 functional evidence; this closeout performs no cloud provisioning |
 
-PRD3-G01 is not complete. This document locks a conservative implementation
-baseline. Corrected local raw Prisma pool saturation/recovery evidence is
-recorded in PRD3-G01-B1-FINAL. PRD3-G01-B2-R1 local runtime outage/reconnect,
-PRD3-G01-B3 local business-transaction pressure/cutback, and PRD3-G01-C local
-database-identity/least-privilege evidence are complete. Real Cloud SQL
-failover, exact-candidate CI, merge, and post-merge closeout remain pending.
+PRD3-G01 is functionally complete. This document retains the conservative
+runtime baseline and records the accepted R3 real-provider proof alongside the
+completed B1, B2-R1, B3, C, and C1 evidence. All R3 active and billable
+resources were removed. Cleanup of the provider-retained R2 network path is
+separately deferred and must be retried before PRD3-G06; it does not require
+another Cloud SQL instance or failover.
 
 ## Approved Saudi production direction
 
@@ -35,9 +35,10 @@ The provisional initial database direction is:
 - no cross-region DR until separate residency approval.
 
 Initial production data and primary managed services remain in Saudi Arabia.
-Exact machine sizing is provisional until pool saturation and provider
-failover evidence is complete. No Terraform, GCP resource, IAM, network,
-database, or other infrastructure is created or changed by PRD3-G01-A.
+Exact production sizing remains provisional beyond the bounded pool and
+single-provider failover proof until production-shaped load evidence exists.
+No Terraform, GCP resource, IAM, network, database, or other infrastructure is
+created or changed by this documentation closeout.
 
 ## Runtime database boundary
 
@@ -153,9 +154,9 @@ If the raw URL already includes any application-managed parameter, validation
 fails rather than accepting two sources of truth. Error messages name only the
 invalid field or policy violation and must not expose URLs, credentials,
 usernames, passwords, hostnames, database names, certificate paths, or query
-strings. The constructed URL is not logged. Preserving certificate-related
-parameters does not prove CA or hostname verification; real Cloud SQL
-certificate and transport behavior remains PRD3-G01-D evidence.
+strings. The constructed URL is not logged. R3 proved `ENCRYPTED_ONLY` Cloud
+SQL transport and active TLS; it did not separately claim client-side CA or
+hostname verification beyond that accepted provider evidence.
 
 The current health startup scenario deliberately uses a disposable non-TLS
 PostgreSQL fixture with `NODE_ENV=test`. The API also sets
@@ -187,6 +188,48 @@ The failover/emergency reserve is not normal application or rollout capacity.
 An increase in aggregate active-revision instances, connection limits,
 concurrency, or rollout overlap requires measured pool wait,
 transaction-duration, provider-failover, and recovery evidence.
+
+## Accepted real-provider R3 evidence
+
+R3 completed the functional Cloud SQL proof with this classification:
+
+```text
+PRD3-G01-D-R3=FUNCTIONAL_PASS_CLEANUP_DEFERRED
+FUNCTIONAL_PROOF_COMPLETE=YES
+ACTIVE_RESOURCE_CLEANUP_COMPLETE=YES
+NETWORK_CLEANUP_COMPLETE=NO
+CLEANUP_STATE=DEFERRED_BY_PROVIDER_RETENTION
+```
+
+The functional Cloud SQL proof passed, active/billable cleanup passed, and only
+provider network cleanup is deferred.
+
+The disposable real-provider instance proved PostgreSQL 16, Enterprise Plus,
+`db-perf-optimized-N-2`, `me-central2`, `REGIONAL` availability with
+provider-managed zones, 10 GB SSD, private IP only, public IP disabled,
+`ENCRYPTED_ONLY`, `max_connections=100`, and deletion protection disabled.
+
+The primary changed from `me-central2-b` to `me-central2-a`. The maximum
+observed database outage and readiness outage were each 10.847 seconds. This is
+one measured provider-test result, not a guaranteed SLO. The original probe
+process identifiers remained unchanged, process-local liveness remained
+healthy, readiness failed and recovered, and the same processes reconnected.
+The committed marker survived, the deliberately uncommitted marker was absent,
+and post-recovery read/write passed. TLS and private connectivity were retained.
+
+The maximum observed application connection count was 4 against the governed
+application limit of 50. The 50-connection emergency reserve was not consumed
+as steady-state capacity. Maintenance Scheduler database sessions remained
+zero.
+
+All R3 Cloud SQL instances, VMs, disks, firewalls, external IPs, containers,
+processes, candidate archives, credential files, and temporary scripts were
+removed. Cloud SQL deletion completed at `2026-08-06T00:53:00.0836906Z`.
+Producer retention still holds one task-owned R2 VPC, subnet, PSA allocation,
+and Service Networking connection. They have zero attached VMs, firewalls,
+routers, or forwarding rules and retain zero billable compute. A cleanup-only
+retry after provider release is required before PRD3-G06; provider release time
+is not guaranteed.
 
 ## Owner-delegated pilot assumptions
 
@@ -330,22 +373,30 @@ The pre-review B2 candidate is superseded. Exact measurements are in
 Cloud Run, Cloud SQL, production transport, privilege, SLO, or
 business-transaction evidence.
 
-PRD3-G01-C supplies the exact four PostgreSQL identities, idempotent
+PRD3-G01-C and C1 supply the exact four PostgreSQL identities, idempotent
 bootstrap/current/default grant policies, migration-owned object proof,
 positive API/Core/Media Prisma DML and rollback evidence, the complete runtime
 DDL/administration denial matrix, `_prisma_migrations` denial, all cross-role
 membership and `SET ROLE` denials, and zero-resource cleanup against one fresh
-disposable PostgreSQL 16 fixture. The evidence is in
-`04-database-identities-and-least-privilege-evidence.md`. It does not provision
-Cloud SQL users, IAM, secrets, Terraform, or Migration Job infrastructure.
+disposable PostgreSQL 16 fixture. C1 additionally proves the fail-closed,
+password-only bootstrap through a managed-administrator-like non-superuser.
+The evidence is in
+`04-database-identities-and-least-privilege-evidence.md`.
 
-Still deferred:
+PRD3-G01-D R3 supplies the accepted real-provider functional proof. The
+corrected bootstrap and password rotation passed twice, Prisma deploy/status/
+no-op deploy passed as `moazez_migration`, the three runtime roles passed their
+positive DML transactions and 57/57 administration/DDL denials, and the
+regional failover proved same-process recovery and transaction durability.
 
-- **PRD3-G01-D:** real Cloud SQL regional failover, reconnect behavior,
-  failover-budget measurement, exact-candidate CI including
-  `npm run verify:prd3-g01-a`, review, merge, and post-merge closeout.
+Still deferred is one cleanup-only retry for the provider-retained R2 VPC,
+subnet, PSA allocation, and Service Networking connection. It must complete
+before PRD3-G06 and requires neither another Cloud SQL instance nor another
+failover.
 
-No PRD3-G01 completion claim is made until those evidence sets pass.
+Accordingly, PRD3-G01 is `FUNCTIONALLY_COMPLETE`, its provider cleanup is
+`DEFERRED`, Phase 3 remains active, and the next implementation gate is
+PRD3-G02.
 
 ## Contract attestation
 

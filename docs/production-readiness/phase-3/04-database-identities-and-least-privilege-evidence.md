@@ -6,13 +6,14 @@
 | --- | --- |
 | Phase | `PHASE_3` |
 | Gate | `PRD3-G01` |
-| Subgate | `PRD3-G01-C` / `PRD3-G01-C1` |
+| Subgate | `PRD3-G01-C` / `PRD3-G01-C1` / `PRD3-G01-D-R3` evidence closeout |
 | G01-C baseline commit | `1816a3294be92ac177b6a5e906199a33d9c1912a` |
 | G01-C1 baseline commit | `6e73da066beb79ba59284a7b96260134c0b38df5` |
+| R3 source commit | `13261a17044d032f80fc1b0c8cb8d50e0f9b10ba` |
 | Parent B3 commit | `5dba92b120c8d36ad0d5738a522910575138b284` |
-| Status | `PRD3-G01-C=COMPLETE`; `PRD3-G01-C1=CANDIDATE_COMPLETE` |
-| Parent gate status | `BASELINE_ONLY` |
-| Scope | Cloud SQL-compatible bootstrap correction and disposable local PostgreSQL 16 proof only |
+| Status | `PRD3-G01-C=COMPLETE`; `PRD3-G01-C1=COMPLETE`; `PRD3-G01-D-R3=FUNCTIONAL_PASS_CLEANUP_DEFERRED` |
+| Parent gate status | `PRD3-G01=FUNCTIONALLY_COMPLETE`; `PRD3-G01-PROVIDER-CLEANUP=DEFERRED` |
+| Scope | Local least-privilege proof plus accepted real-provider R3 evidence; documentation-only closeout |
 
 PRD3-G01-C separates runtime DML authority from governed migration DDL
 authority. It changes no production TypeScript, Prisma schema, migration,
@@ -22,6 +23,10 @@ resource.
 PRD3-G01-C1 corrects only the administrative mechanism used to establish that
 same boundary. It does not change the accepted role attributes, current or
 future grants, runtime behavior, schema, migrations, or deployment contract.
+
+R3 proves that the corrected boundary works on the approved real Cloud SQL
+regional topology. This closeout records sanitized accepted results only; it
+does not access or mutate Google Cloud.
 
 ## Inspected production boundary
 
@@ -221,29 +226,137 @@ C1 removes that dependency. Missing roles use safe creation defaults,
 administrative attributes and both membership boundaries are validated from
 catalogs with fail-closed behavior, and accepted roles receive only
 password-only rotation. The privilege design and runtime-grants policy are
-unchanged. R2 did not run migrations or failover, so it is provider finding
-evidence rather than G01-D closeout evidence.
+unchanged. R2 did not run migrations or failover, so it remains provider
+finding evidence rather than G01-D functional closeout evidence.
+
+## Accepted real-provider R3 evidence
+
+R3 is accepted with the following cleanup-aware classification:
+
+```text
+PRD3-G01-D-R3=FUNCTIONAL_PASS_CLEANUP_DEFERRED
+FUNCTIONAL_PROOF_COMPLETE=YES
+ACTIVE_RESOURCE_CLEANUP_COMPLETE=YES
+NETWORK_CLEANUP_COMPLETE=NO
+CLEANUP_STATE=DEFERRED_BY_PROVIDER_RETENTION
+```
+
+The functional Cloud SQL proof passed and active/billable cleanup passed.
+Provider network cleanup alone is deferred.
+
+### Topology and managed bootstrap
+
+The disposable instance proved PostgreSQL 16, Enterprise Plus,
+`db-perf-optimized-N-2`, `me-central2`, regional availability with
+provider-managed zones, 10 GB SSD, private IP only, public IP disabled,
+`ENCRYPTED_ONLY`, `max_connections=100`, and deletion protection disabled.
+
+The corrected bootstrap passed through the managed Cloud SQL administrator.
+The first bootstrap passed, and the second bootstrap passed with password-only
+credential rotation and no administrative or membership drift. The four exact
+identities were safe:
+
+| Identity | Required attributes | Result |
+| --- | --- | --- |
+| `moazez_api` | `LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT` | SAFE |
+| `moazez_core_worker` | `LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT` | SAFE |
+| `moazez_media_worker` | `LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT` | SAFE |
+| `moazez_migration` | `LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT` | SAFE |
+
+`cloudsqlsuperuser` membership was zero, and Moazez cross-role membership was
+zero. First `prisma migrate deploy` passed, `prisma migrate status` passed, and
+the second `prisma migrate deploy` passed as a no-op.
+
+### Runtime privilege boundary
+
+```text
+RUNTIME_DML_ROLES=3/3 PASS
+RUNTIME_POSITIVE_TRANSACTION_CHECKS=3/3 PASS
+RUNTIME_ADMINISTRATION_DDL_DENIALS=57/57 PASS
+RUNTIME_OWNED_APPLICATION_OBJECTS=0
+NEGATIVE_CATALOG_RESIDUE=0
+SCHEDULER_DATABASE_SESSIONS=0
+```
+
+The unchanged grants policy required a temporary ownership delegation during
+the controlled apply. That delegation was revoked after the grants were
+applied, and final membership was zero. The accepted privilege architecture is
+unchanged.
+
+### Regional failover and transaction durability
+
+| Measurement | Accepted result |
+| --- | --- |
+| Primary zone before | `me-central2-b` |
+| Primary zone after | `me-central2-a` |
+| Primary zone changed | YES |
+| Maximum database outage | 10.847 seconds |
+| Maximum readiness outage | 10.847 seconds |
+| Same-process reconnect | PASS |
+| Original probe PIDs unchanged | YES |
+| Liveness remained healthy | YES |
+| Readiness failed and recovered | YES |
+| Committed marker survived | YES |
+| Uncommitted marker absent | YES |
+| Post-recovery read/write | PASS |
+| TLS retained | YES |
+| Private connectivity retained | YES |
+| Maximum observed application connections | 4 |
+| Governed application connection limit | 50 |
+| Emergency reserve consumed | NO |
+
+The 10.847-second observation is one measured provider-test result, not a
+future guaranteed SLO.
+
+### Cleanup and provider retention
+
+Final R3 counts were zero for Cloud SQL instances, VMs, disks, firewalls,
+external IPs, containers, processes, candidate archives, credential files, and
+temporary scripts. Cloud SQL deletion completed at
+`2026-08-06T00:53:00.0836906Z`.
+
+Provider retention still holds one task-owned R2 VPC, one R2 subnet, one R2 PSA
+allocation, and one Service Networking connection. Attached VMs, firewalls,
+routers, and forwarding rules are zero, and billable compute retained is zero.
+A cleanup-only retry after provider release is required before PRD3-G06. It
+does not require another Cloud SQL instance or failover, and no exact provider
+release time is claimed.
+
+### Evidence integrity
+
+Only the accepted sanitized hashes are recorded; raw evidence and file
+locations are not committed here.
+
+| Evidence | SHA-256 |
+| --- | --- |
+| Candidate archive | `4327080ee79cf350972e0b3e293e5871f0f286ccde66770db6702ee614e13137` |
+| Probe archive | `8c57f9e78c8572be26e091757428fb172eb53a2c90d8e070310bfffb35b519be` |
+| Session evidence | `4e0c14872407679b1129f1859588dc31fb9699e8f501e1718727ae30cc2e5f5b` |
 
 ## Limitations and deferred work
 
-This evidence proves PostgreSQL permissions against one disposable local
-PostgreSQL 16 fixture. It does not provision or prove:
+The combined local and R3 evidence proves the PostgreSQL permission boundary
+and one real regional Cloud SQL failover. It does not implement or prove:
 
-- real Cloud SQL users or Cloud SQL IAM authentication;
+- Cloud SQL IAM authentication;
 - Secret Manager, credential rotation, or Terraform;
-- private networking, production transport, or regional failover;
-- `PRD3-G01-D` provider failover and final G01 closeout;
+- persistent production deployment or production-load capacity;
 - `PRD3-G04` governed Migration Job deployment.
 
 Accordingly:
 
 ```text
+PRD3-G01-A=COMPLETE
+PRD3-G01-B1=COMPLETE
+PRD3-G01-B2=COMPLETE
+PRD3-G01-B3=COMPLETE
 PRD3-G01-C=COMPLETE
-PRD3-G01-C1=CANDIDATE_COMPLETE
-PRD3-G01-D=WAITING_FOR_C1_COMMIT_AND_R3
-PRD3-G01=BASELINE_ONLY
+PRD3-G01-C1=COMPLETE
+PRD3-G01-D-FUNCTIONAL=COMPLETE
+PRD3-G01=FUNCTIONALLY_COMPLETE
+PRD3-G01-PROVIDER-CLEANUP=DEFERRED
 ```
 
-The corrected bootstrap still requires independent patch review, one bounded
-commit, and an authorized R3 run to deploy migrations and complete the real
-regional failover proof. Phase 3 and PRD3-G01 are not complete.
+Phase 3 is not complete, and final network cleanup is not complete. The
+provider-retention follow-up must finish before PRD3-G06. The next
+implementation gate is PRD3-G02, Redis topology and recovery.

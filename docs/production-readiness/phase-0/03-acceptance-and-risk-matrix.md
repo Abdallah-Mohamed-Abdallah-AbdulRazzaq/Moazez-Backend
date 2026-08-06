@@ -10,6 +10,9 @@ future phase is marked complete. Status values are:
 
 - `BASELINE_ONLY`: useful current evidence exists, but the production gate is
   not met.
+- `FUNCTIONALLY_COMPLETE`: the gate's functional provider proof is accepted
+  and active/billable resources are removed, while a separately registered
+  provider-retention cleanup remains deferred.
 - `NOT_STARTED`: required implementation/evidence is absent.
 - `BLOCKED_BY_OWNER`: work cannot be accepted until a Phase 0 owner decision is
   approved.
@@ -77,12 +80,36 @@ and Phase 2 are now complete.
 
 | Gate     | Requirement                                                                                                                                                                                                                                                 | Evidence/test required                                                                                                              | Block | Owner               | Current          | Prerequisites       | Rollback proof                                              | Exact completion evidence                                  |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------- | ---------------- | ------------------- | ----------------------------------------------------------- | ---------------------------------------------------------- |
-| PRD3-G01 | Cloud SQL region/HA/private connectivity/DB roles and provisional per-role pool budgets are approved and failover-tested.                                                                                                                                   | ADR-0005; Q003/Q006/Q014/Q015; static connection math; completed local B1, B2-R1, B3, and C evidence; pending real provider-failover evidence | Yes   | Platform + DBA      | BASELINE_ONLY    | PRD2-G04            | conservative caps, failover reserve, and data-bearing cutback constraints | Phase 3 B1 proves local saturation/cutback; B2-R1 proves bounded outage/readiness/reconnect; B3 proves the 174-site inventory, genuinely overlapping production Teacher operations on distinct observed sessions, playback provider separation, same-pool pressure, full 5/2/1 readiness, evidence-derived F01-F35 receipts, automatic bounded-work accounting, measured final audits, cleanup-before-publication, abort-aware polling, live failure rehearsals, and zero-resource cleanup across two formal runs; C proves four separate login identities, exact runtime DML/current/default grants, migration-owned governed DDL, `_prisma_migrations` denial, complete runtime DDL/administration and cross-role impersonation denials, scheduler-negative ownership, and zero-resource cleanup on disposable PostgreSQL 16; provider failover, exact-candidate CI, merge, and post-merge closeout remain pending |
+| PRD3-G01 | Cloud SQL region/HA/private connectivity/DB roles and provisional per-role pool budgets are approved and failover-tested.                                                                                                                                   | ADR-0005; Q003/Q006/Q014/Q015; static connection math; completed local B1, B2-R1, B3, C, and C1 evidence; accepted real-provider R3 functional proof | Yes   | Platform + DBA      | FUNCTIONALLY_COMPLETE | PRD2-G04            | conservative caps, failover reserve, and data-bearing cutback constraints | B1/B2-R1/B3 prove local pool, outage/reconnect, and transaction-pressure boundaries; C/C1 prove the four-role least-privilege boundary and Cloud SQL-compatible managed-administrator bootstrap; R3 proved the approved private-only regional topology, migrations, 57/57 runtime denials, same-process failover recovery, transaction durability, and a measured maximum 10.847-second database/readiness outage. Active/billable R3 cleanup is complete; provider-retained R2 VPC/subnet/PSA/Service Networking cleanup remains deferred and requires one cleanup-only retry before PRD3-G06. |
 | PRD3-G02 | Queue and realtime Redis topology has explicit budgets and no silent multi-instance in-memory production fallback.                                                                                                                                          | outage/reconnect and multi-API Socket.IO/presence tests                                                                             | Yes   | Platform + realtime | BLOCKED_BY_OWNER | PRD2-G04, PRD3-G01  | controlled drain/cutback; rebuild ephemeral state           | approved ADR-0008 and recovery report                      |
 | PRD3-G03 | Each queue has retry/idempotency/terminal/reconcile policy and one scheduler owner; Redis queues drain/reconcile/re-enqueue from persisted truth rather than being copied.                                                                                  | poison/duplicate/provider outage/restart/missed schedule tests                                                                      | Yes   | Backend owners      | NOT_STARTED      | PRD3-G02            | replay/disable procedure and persisted-truth reconciliation | signed per-queue policies and exclusivity evidence         |
 | PRD3-G04 | Migration Job uses immutable artifact and only governed `migrate deploy`; runtime identities cannot DDL.                                                                                                                                                    | IAM negative, fresh replay, drift/P3009 hard-stop, second no-op                                                                     | Yes   | DBA + security      | BASELINE_ONLY    | PRD3-G01            | forward-fix/schema-compatible runtime rollback              | job execution and intentional-failure evidence             |
 | PRD3-G05 | Q004/D029 branch is explicit for persisted PostgreSQL: clean start is `N/A_WITH_EVIDENCE` with signed zero-source/zero-legacy-row proof and approved seeds, otherwise dry runs/manifests/freeze-delta/reconciliation/source retention/cutback are complete. | signed inventory or rehearsed migration                                                                                             | Yes   | Data + DBA          | BLOCKED_BY_OWNER | PRD0B-G01, PRD3-G04 | retained source and rehearsed abort/cutback                 | clean-start attestation or signed migration reconciliation |
 | PRD3-G06 | Phase 3 universal regression gate passes.                                                                                                                                                                                                                   | affected unit/integration/security/tenancy/E2E; migration governance/Prisma; build/diff/scope; SQL/Redis/queue canonical regression | Yes   | QA + data/platform  | NOT_STARTED      | PRD3-G01–PRD3-G05   | prior configs/artifact and restore/cutback record           | phase-bound evidence bundle                                |
+
+PRD3-G01-D R3 is accepted as
+`FUNCTIONAL_PASS_CLEANUP_DEFERRED`: the functional Cloud SQL proof passed and
+all active/billable resources were removed. Provider network cleanup alone is
+deferred because producer retention still holds one task-owned R2 VPC, subnet,
+PSA allocation, and Service Networking connection; they have no attached VM,
+firewall, router, forwarding rule, or billable compute. No additional Cloud SQL
+instance or failover is required. A cleanup-only retry after provider release
+must complete before final Phase 3 closeout at PRD3-G06.
+
+```text
+PRD3-G01-A=COMPLETE
+PRD3-G01-B1=COMPLETE
+PRD3-G01-B2=COMPLETE
+PRD3-G01-B3=COMPLETE
+PRD3-G01-C=COMPLETE
+PRD3-G01-C1=COMPLETE
+PRD3-G01-D-FUNCTIONAL=COMPLETE
+PRD3-G01=FUNCTIONALLY_COMPLETE
+PRD3-G01-PROVIDER-CLEANUP=DEFERRED
+```
+
+Phase 3 is not complete. The next implementation gate is PRD3-G02, Redis
+topology and recovery.
 
 ### Phase 4 — Service Identities, Secret Manager, and Crypto Foundation
 
