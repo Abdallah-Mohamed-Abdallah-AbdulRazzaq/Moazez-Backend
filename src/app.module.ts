@@ -46,6 +46,7 @@ import { OrganizationAdminModule } from './modules/organization-admin/organizati
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
+      ignoreEnvFile: process.env.NODE_ENV === 'test',
       validate: validateEnv,
     }),
     ApplicationLifecycleModule,

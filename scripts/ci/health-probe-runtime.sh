@@ -101,7 +101,10 @@ NODE
     require_b2_value B2_DATABASE_POOL_TIMEOUT_SECONDS
     require_b2_value B2_DATABASE_CONNECT_TIMEOUT_SECONDS
     require_b2_value DATABASE_URL
-    require_b2_value REDIS_URL
+    require_b2_value QUEUE_REDIS_URL
+    if [[ "$role" == 'api' || "$role" == 'core-worker' ]]; then
+      require_b2_value REALTIME_REDIS_URL
+    fi
     require_b2_value STORAGE_ENDPOINT
     require_b2_value STORAGE_ACCESS_KEY
     require_b2_value STORAGE_SECRET_KEY
@@ -153,7 +156,7 @@ NODE
       --env "DATABASE_CONNECTION_LIMIT=$B2_DATABASE_CONNECTION_LIMIT"
       --env "DATABASE_POOL_TIMEOUT_SECONDS=$B2_DATABASE_POOL_TIMEOUT_SECONDS"
       --env "DATABASE_CONNECT_TIMEOUT_SECONDS=$B2_DATABASE_CONNECT_TIMEOUT_SECONDS"
-      --env REDIS_URL
+      --env QUEUE_REDIS_URL
       --env APP_CORS_ORIGINS=https://schools.moazez.invalid
       --env SWAGGER_ENABLED=false
       --env APP_SHUTDOWN_TIMEOUT_MS=15000
@@ -173,6 +176,9 @@ NODE
       --env FCM_DRY_RUN=true
       --env LOG_LEVEL=info
     )
+    if [[ "$role" == 'api' || "$role" == 'core-worker' ]]; then
+      args+=(--env REALTIME_REDIS_URL)
+    fi
     if [[ "$role" == 'api' ]]; then
       args+=(--env MEDIA_RUNTIME_ENFORCE_IN_TEST=true)
     fi
@@ -345,7 +351,8 @@ safe_output() {
       "JWT_REFRESH_SECRET",
       "SETTINGS_SECRET_ENCRYPTION_KEY",
       "DATABASE_URL",
-      "REDIS_URL"
+      "QUEUE_REDIS_URL",
+      "REALTIME_REDIS_URL"
     ];
     const values = [...new Set(
       sensitiveNames
@@ -506,7 +513,8 @@ start_runtime() {
     --env DATABASE_CONNECTION_LIMIT=5 \
     --env DATABASE_POOL_TIMEOUT_SECONDS=5 \
     --env DATABASE_CONNECT_TIMEOUT_SECONDS=5 \
-    --env REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
+    --env QUEUE_REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
+    --env REALTIME_REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
     --env APP_CORS_ORIGINS="${APP_CORS_ORIGINS:-https://schools.moazez.cloud,https://admin.moazez.cloud}" \
     --env SWAGGER_ENABLED=false \
     --env APP_SHUTDOWN_TIMEOUT_MS=15000 \
@@ -576,7 +584,8 @@ start_application_context_runtime() {
     --env DATABASE_CONNECTION_LIMIT="$database_connection_limit" \
     --env DATABASE_POOL_TIMEOUT_SECONDS="$database_pool_timeout_seconds" \
     --env DATABASE_CONNECT_TIMEOUT_SECONDS=5 \
-    --env REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
+    --env QUEUE_REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
+    --env REALTIME_REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
     --env SETTINGS_SECRET_ENCRYPTION_KEY \
     --env STORAGE_PROVIDER \
     --env STORAGE_ENDPOINT="$runtime_storage_endpoint" \
@@ -1186,7 +1195,7 @@ scenario_realtime_reconciliation() {
 
   timeout 45s docker run --name "$APP_CONTAINER" --interactive \
     --network "$PROBE_NETWORK" \
-    --env "TARGET_REDIS_URL=redis://${REDIS_CONTAINER}:6379" \
+    --env "TARGET_REALTIME_REDIS_URL=redis://${REDIS_CONTAINER}:6379" \
     --entrypoint node "$RUNTIME_IMAGE" - <<'NODE'
 const { randomUUID } = require('node:crypto');
 const { createConnection, createServer } = require('node:net');
@@ -1206,7 +1215,7 @@ const schoolId = `school-${suffix}`;
 const userId = `user-${suffix}`;
 const conversationId = `conversation-${suffix}`;
 const expiredConversationId = `expired-${suffix}`;
-const targetUrl = process.env.TARGET_REDIS_URL;
+const targetUrl = process.env.TARGET_REALTIME_REDIS_URL;
 const proxyPort = 16379;
 const sockets = new Set();
 let proxy;
@@ -1263,7 +1272,10 @@ const expiredTypingUsers =
 void (async () => {
   const admin = new IORedis(targetUrl, { maxRetriesPerRequest: 1 });
   const stateStore = new RealtimeStateStoreService(
-    new ConfigService({ REDIS_URL: `redis://127.0.0.1:${proxyPort}` })
+    new ConfigService({
+      NODE_ENV: 'test',
+      REALTIME_REDIS_URL: `redis://127.0.0.1:${proxyPort}`
+    })
   );
   try {
     await startProxy();

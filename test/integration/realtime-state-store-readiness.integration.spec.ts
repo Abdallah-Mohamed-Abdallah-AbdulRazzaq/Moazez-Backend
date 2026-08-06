@@ -22,7 +22,7 @@ import type { TemporaryDiskProbe } from '../../src/modules/health/temporary-disk
 jest.setTimeout(45_000);
 
 describe('Realtime state-store fallback reconciliation', () => {
-  const redisUrl = process.env.TEST_REDIS_URL;
+  const redisUrl = process.env.TEST_REALTIME_REDIS_URL;
 
   (redisUrl ? it : it.skip)(
     'restores presence and unexpired typing before API readiness recovers',
@@ -45,7 +45,7 @@ describe('Realtime state-store fallback reconciliation', () => {
       );
       const port = await proxy.listen();
       const config = new ConfigService<Env, true>({
-        REDIS_URL: `redis://127.0.0.1:${port}`,
+        REALTIME_REDIS_URL: `redis://127.0.0.1:${port}`,
       });
       const stateStore = new RealtimeStateStoreService(config);
       const probes = createProbeService(stateStore);
@@ -197,7 +197,7 @@ describe('Realtime state-store fallback reconciliation', () => {
       const port = await proxy.listen();
       const stateStore = new RealtimeStateStoreService(
         new ConfigService<Env, true>({
-          REDIS_URL: `redis://${aclUser}:${encodeURIComponent(
+          REALTIME_REDIS_URL: `redis://${aclUser}:${encodeURIComponent(
             aclPassword,
           )}@127.0.0.1:${port}`,
         }),
@@ -251,7 +251,7 @@ describe('Realtime state-store fallback reconciliation', () => {
       const port = await proxy.listen();
       const stateStore = new RealtimeStateStoreService(
         new ConfigService<Env, true>({
-          REDIS_URL: `redis://127.0.0.1:${port}`,
+          REALTIME_REDIS_URL: `redis://127.0.0.1:${port}`,
         }),
       );
       const probes = createProbeService(stateStore);

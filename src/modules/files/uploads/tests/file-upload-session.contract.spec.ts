@@ -118,7 +118,8 @@ describe('learning media upload foundation contract', () => {
     const base = {
       APP_URL: 'https://api.example.test',
       DATABASE_URL: 'postgresql://user:pass@example.test/db',
-      REDIS_URL: 'redis://example.test:6379',
+      QUEUE_REDIS_URL: 'redis://example.test:6379',
+      REALTIME_REDIS_URL: 'redis://example.test:6379',
       JWT_ACCESS_SECRET: 'access-secret-at-least-sixteen',
       JWT_REFRESH_SECRET: 'refresh-secret-at-least-sixteen',
       JWT_ACCESS_TTL: '15m',

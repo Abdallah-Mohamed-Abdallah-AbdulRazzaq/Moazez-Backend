@@ -117,6 +117,86 @@ describe('bootstrap environment validation', () => {
     expect(validateEnv(baseEnv()).SWAGGER_ENABLED).toBe(false);
   });
 
+  it('requires explicit Queue and Realtime Redis URLs and never resolves legacy REDIS_URL', () => {
+    expect(() =>
+      validateEnv(
+        baseEnv({
+          QUEUE_REDIS_URL: undefined,
+          REALTIME_REDIS_URL: undefined,
+          REDIS_URL: 'redis://127.0.0.1:6379',
+        }),
+      ),
+    ).toThrow(/QUEUE_REDIS_URL.*REALTIME_REDIS_URL/su);
+  });
+
+  it('accepts the same disposable Redis endpoint in development and test', () => {
+    expect(
+      validateEnv(
+        baseEnv({
+          QUEUE_REDIS_URL: 'redis://127.0.0.1:6379/0',
+          REALTIME_REDIS_URL: 'redis://127.0.0.1:6379/1',
+        }),
+      ),
+    ).toMatchObject({
+      QUEUE_REDIS_URL: 'redis://127.0.0.1:6379/0',
+      REALTIME_REDIS_URL: 'redis://127.0.0.1:6379/1',
+    });
+  });
+
+  it.each([
+    {
+      QUEUE_REDIS_URL: 'redis://queue-user:queue-value@cache.invalid:6379/0',
+      REALTIME_REDIS_URL:
+        'redis://realtime-user:realtime-value@cache.invalid:6379/1',
+    },
+    {
+      QUEUE_REDIS_URL: 'redis://cache.invalid/0',
+      REALTIME_REDIS_URL: 'rediss://cache.invalid:6379/15?tls=true',
+    },
+  ])(
+    'rejects logical-database or credential-only Redis separation in production',
+    (redis) => {
+      expect(() => validateEnv(productionEnv(redis))).toThrow(
+        /must use different Redis endpoints/u,
+      );
+    },
+  );
+
+  it('accepts distinct Queue and Realtime Redis endpoints in staging and production', () => {
+    expect(validateEnv(productionEnv())).toMatchObject({
+      QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379/0',
+      REALTIME_REDIS_URL: 'rediss://realtime-cache.invalid:6379/0',
+    });
+  });
+
+  it('redacts Redis endpoint components from separation errors', () => {
+    let message = '';
+    try {
+      validateEnv(
+        productionEnv({
+          QUEUE_REDIS_URL:
+            'redis://queue-user:queue-value@sensitive-cache.invalid:6380/0?field=value',
+          REALTIME_REDIS_URL:
+            'redis://other-user:other-value@sensitive-cache.invalid:6380/1?other=value',
+        }),
+      );
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(message).toContain('REALTIME_REDIS_URL');
+    for (const sensitive of [
+      'queue-user',
+      'queue-value',
+      'sensitive-cache',
+      '6380',
+      '/0',
+      'field=value',
+    ]) {
+      expect(message).not.toContain(sensitive);
+    }
+  });
+
   it('parses explicit Swagger enablement outside production', () => {
     expect(
       validateEnv(baseEnv({ SWAGGER_ENABLED: 'true' })).SWAGGER_ENABLED,
@@ -174,6 +254,8 @@ function productionEnv(
     STORAGE_CORS_ORIGINS: 'https://schools.moazez.cloud',
     DATABASE_URL:
       'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
+    QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379/0',
+    REALTIME_REDIS_URL: 'rediss://realtime-cache.invalid:6379/0',
     ...overrides,
   });
 }
@@ -184,7 +266,8 @@ function baseEnv(
   const values: Record<string, string | undefined> = {
     APP_URL: 'http://localhost:3000',
     DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/moazez',
-    REDIS_URL: 'redis://localhost:6379',
+    QUEUE_REDIS_URL: 'redis://localhost:6379',
+    REALTIME_REDIS_URL: 'redis://localhost:6379',
     JWT_ACCESS_SECRET: 'access-secret-for-tests',
     JWT_REFRESH_SECRET: 'refresh-secret-for-tests',
     JWT_ACCESS_TTL: '15m',

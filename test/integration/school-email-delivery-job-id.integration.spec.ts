@@ -33,7 +33,7 @@ describeRedisIntegration('School email delivery custom BullMQ job ID', () => {
 
     const configService = {
       getOrThrow: jest.fn((key: string) => {
-        if (key !== 'REDIS_URL') {
+        if (key !== 'QUEUE_REDIS_URL') {
           throw new Error(`Unexpected configuration key: ${key}`);
         }
         return dedicatedRedisUrl;

@@ -22,7 +22,7 @@ import type { RealtimeTypingService } from '../../src/infrastructure/realtime/re
 jest.setTimeout(30_000);
 
 describe('Realtime Redis adapter half-open readiness', () => {
-  const redisUrl = process.env.TEST_REDIS_URL;
+  const redisUrl = process.env.TEST_REALTIME_REDIS_URL;
 
   (redisUrl ? it : it.skip)(
     'retires half-open clients below the probe deadline and recovers on the same gateway',
@@ -74,7 +74,7 @@ function createGateway(redisUrl: string): RealtimeGateway {
     {} as RealtimeAuthService,
     {} as RealtimeCommunicationAccessService,
     { bindServer: jest.fn() } as unknown as RealtimePublisherService,
-    new ConfigService<Env, true>({ REDIS_URL: redisUrl }),
+    new ConfigService<Env, true>({ REALTIME_REDIS_URL: redisUrl }),
     {
       registerSocket: jest.fn(),
       unregisterSocket: jest.fn(),

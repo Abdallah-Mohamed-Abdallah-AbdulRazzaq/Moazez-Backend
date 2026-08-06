@@ -138,8 +138,12 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
   private localTypingSweepTimerCleared = false;
   private destroyPromise: Promise<void> | null = null;
   private redisWarningLogged = false;
+  private readonly allowLocalFallback: boolean;
 
   constructor(private readonly configService: ConfigService<Env, true>) {
+    const environment = this.configService.get('NODE_ENV', { infer: true });
+    this.allowLocalFallback =
+      environment !== 'staging' && environment !== 'production';
     this.localTypingSweepTimer = setInterval(() => {
       void this.runLocalTypingSweep();
     }, LOCAL_TYPING_SWEEP_INTERVAL_MS);
@@ -191,7 +195,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
       );
       if (!this.canUseRedis(redis)) {
         this.setFallbackState();
-        return localResult;
+        return this.localFallbackOrThrow(localResult);
       }
 
       try {
@@ -205,7 +209,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
         );
       } catch {
         this.markRedisUnavailable(redis);
-        return localResult;
+        return this.localFallbackOrThrow(localResult);
       }
     });
   }
@@ -228,7 +232,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
       );
       if (!this.canUseRedis(redis)) {
         this.setFallbackState();
-        return localResult;
+        return this.localFallbackOrThrow(localResult);
       }
 
       try {
@@ -255,7 +259,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
         };
       } catch {
         this.markRedisUnavailable(redis);
-        return localResult;
+        return this.localFallbackOrThrow(localResult);
       }
     });
   }
@@ -280,7 +284,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
       if (!localOwner) return false;
       if (!this.canUseRedis(redis)) {
         this.setFallbackState();
-        return true;
+        return this.localFallbackOrThrow(true);
       }
 
       try {
@@ -300,7 +304,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
         return Number(refreshed) === 1;
       } catch {
         this.markRedisUnavailable(redis);
-        return true;
+        return this.localFallbackOrThrow(true);
       }
     });
   }
@@ -320,7 +324,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
       owner.updatedAt = new Date().toISOString();
       if (!this.canUseRedis(redis)) {
         this.setFallbackState();
-        return false;
+        return this.localFallbackOrThrow(false);
       }
 
       try {
@@ -335,7 +339,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
         return true;
       } catch {
         this.markRedisUnavailable(redis);
-        return false;
+        return this.localFallbackOrThrow(false);
       }
     });
   }
@@ -352,7 +356,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
       }
     }
 
-    return this.getLocalPresenceSnapshot(schoolId);
+    return this.localFallbackOrThrow(this.getLocalPresenceSnapshot(schoolId));
   }
 
   async setTyping(
@@ -365,21 +369,31 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
 
     return this.runSerialized(async () => {
       const nowMs = Date.now();
-      const owner = this.setLocalTyping(
-        schoolId,
-        conversationId,
-        userId,
-        new Date(nowMs).toISOString(),
-        nowMs + ttlSeconds * 1000,
-      );
+      const owner = this.allowLocalFallback
+        ? this.setLocalTyping(
+            schoolId,
+            conversationId,
+            userId,
+            new Date(nowMs).toISOString(),
+            nowMs + ttlSeconds * 1000,
+          )
+        : createLocalTypingOwner(
+            schoolId,
+            conversationId,
+            userId,
+            new Date(nowMs).toISOString(),
+            nowMs + ttlSeconds * 1000,
+          );
       if (this.canUseRedis(redis)) {
         try {
           await this.writeRedisTyping(redis, owner, ttlSeconds);
         } catch {
           this.markRedisUnavailable(redis);
+          return this.localFallbackOrThrow(typingUser(owner));
         }
       } else {
         this.setFallbackState();
+        return this.localFallbackOrThrow(typingUser(owner));
       }
 
       return typingUser(owner);
@@ -394,9 +408,12 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
     const redis = await this.getRedisForOperation();
 
     await this.runSerialized(async () => {
-      this.clearLocalTyping(schoolId, conversationId, userId);
+      if (this.allowLocalFallback) {
+        this.clearLocalTyping(schoolId, conversationId, userId);
+      }
       if (!this.canUseRedis(redis)) {
         this.setFallbackState();
+        this.localFallbackOrThrow(undefined);
         return;
       }
 
@@ -410,6 +427,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
         assertRedisTransaction(result);
       } catch {
         this.markRedisUnavailable(redis);
+        this.localFallbackOrThrow(undefined);
       }
     });
   }
@@ -427,7 +445,9 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
       }
     }
 
-    return this.getLocalTypingUsers(schoolId, conversationId);
+    return this.localFallbackOrThrow(
+      this.getLocalTypingUsers(schoolId, conversationId),
+    );
   }
 
   onModuleDestroy(): Promise<void> {
@@ -470,7 +490,9 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
   }
 
   private async connectAndReconcile(): Promise<IORedis | null> {
-    const redisUrl = this.configService.get('REDIS_URL', { infer: true });
+    const redisUrl = this.configService.get('REALTIME_REDIS_URL', {
+      infer: true,
+    });
     if (!redisUrl) {
       this.setFallbackState();
       this.logRedisFallbackWarning();
@@ -580,6 +602,8 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
       }
     }
 
+    if (!this.allowLocalFallback) return;
+
     const nowMs = Date.now();
     const activeTyping: Array<{
       owner: LocalTypingOwner;
@@ -674,7 +698,15 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
   private setFallbackState(): void {
     if (this.lifecycleState === 'destroying') return;
     this.removeExpiredLocalTyping();
-    this.lifecycleState = this.hasLocalState() ? 'fallback' : 'unavailable';
+    this.lifecycleState =
+      this.allowLocalFallback && this.hasLocalState()
+        ? 'fallback'
+        : 'unavailable';
+  }
+
+  private localFallbackOrThrow<T>(value: T): T {
+    if (this.allowLocalFallback) return value;
+    throw new Error('realtime_state_redis_unavailable');
   }
 
   private canUseRedis(redis: IORedis | null): redis is IORedis {
@@ -1024,7 +1056,7 @@ export class RealtimeStateStoreService implements OnModuleDestroy {
     this.redisWarningLogged = true;
     this.logger.warn({
       event: 'realtime.state_store.unavailable',
-      stage: 'fallback',
+      stage: this.allowLocalFallback ? 'fallback' : 'dependency',
     });
   }
 
@@ -1143,6 +1175,22 @@ function typingUser(owner: LocalTypingOwner): RealtimeTypingUser {
     userId: owner.userId,
     startedAt: owner.startedAt,
     expiresAt: new Date(owner.expiresAtMs).toISOString(),
+  };
+}
+
+function createLocalTypingOwner(
+  schoolId: string,
+  conversationId: string,
+  userId: string,
+  startedAt: string,
+  expiresAtMs: number,
+): LocalTypingOwner {
+  return {
+    schoolId: normalizeStateId(schoolId, 'schoolId'),
+    conversationId: normalizeStateId(conversationId, 'conversationId'),
+    userId: normalizeStateId(userId, 'userId'),
+    startedAt,
+    expiresAtMs,
   };
 }
 

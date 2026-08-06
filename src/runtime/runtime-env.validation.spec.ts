@@ -84,7 +84,7 @@ describe('runtime role database environment validation', () => {
 
   it('keeps Maintenance Scheduler database-free', () => {
     const scheduler = validateMaintenanceSchedulerEnv({
-      REDIS_URL: 'redis://127.0.0.1:6379',
+      QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
     });
     expect(scheduler).not.toHaveProperty('DATABASE_URL');
     expect(scheduler).not.toHaveProperty('DATABASE_RUNTIME_ROLE');
@@ -98,45 +98,104 @@ describe('runtime role database environment validation', () => {
     ]) {
       expect(() =>
         validateMaintenanceSchedulerEnv({
-          REDIS_URL: 'redis://127.0.0.1:6379',
+          QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
           [field]: '1',
         }),
       ).toThrow(new RegExp(field, 'u'));
     }
   });
+
+  it('requires Queue and Realtime Redis for Core Worker', () => {
+    expect(() =>
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          QUEUE_REDIS_URL: undefined,
+          REALTIME_REDIS_URL: undefined,
+          REDIS_URL: 'redis://127.0.0.1:6379',
+        }),
+      ),
+    ).toThrow(/QUEUE_REDIS_URL.*REALTIME_REDIS_URL/su);
+  });
+
+  it('requires only Queue Redis for Media Worker and Maintenance Scheduler', () => {
+    const media = validateMediaWorkerEnv(mediaEnvironment());
+    const scheduler = validateMaintenanceSchedulerEnv({
+      NODE_ENV: 'production',
+      QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379',
+      REALTIME_REDIS_URL: 'rediss://realtime-cache.invalid:6379',
+    });
+
+    expect(media.QUEUE_REDIS_URL).toBe('redis://127.0.0.1:6379');
+    expect(media).not.toHaveProperty('REALTIME_REDIS_URL');
+    expect(scheduler.QUEUE_REDIS_URL).toBe(
+      'rediss://queue-cache.invalid:6379',
+    );
+    expect(scheduler).not.toHaveProperty('REALTIME_REDIS_URL');
+  });
+
+  it('rejects same-endpoint Core Worker Redis URLs in staging and production', () => {
+    expect(() =>
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          NODE_ENV: 'production',
+          DATABASE_URL:
+            'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
+          QUEUE_REDIS_URL: 'rediss://queue-user:value@cache.invalid:6379/0',
+          REALTIME_REDIS_URL:
+            'rediss://realtime-user:value@cache.invalid:6379/1',
+        }),
+      ),
+    ).toThrow(/must use different Redis endpoints/u);
+  });
+
+  it('accepts equal Core Worker Redis endpoints in test', () => {
+    expect(validateCoreWorkerEnv(coreEnvironment())).toMatchObject({
+      QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
+      REALTIME_REDIS_URL: 'redis://127.0.0.1:6379',
+    });
+  });
 });
 
 function coreEnvironment(
-  overrides: Record<string, string> = {},
+  overrides: Record<string, string | undefined> = {},
 ): Record<string, string> {
-  return {
+  return compact({
     NODE_ENV: 'test',
     APP_URL: 'http://127.0.0.1:3000',
     DATABASE_URL:
       'postgresql://runtime-user:runtime-value@127.0.0.1:5432/moazez',
-    REDIS_URL: 'redis://127.0.0.1:6379',
+    QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
+    REALTIME_REDIS_URL: 'redis://127.0.0.1:6379',
     STORAGE_ENDPOINT: 'http://127.0.0.1:9000',
     STORAGE_ACCESS_KEY: 'runtime-access',
     STORAGE_SECRET_KEY: 'runtime-value',
     STORAGE_BUCKET: 'runtime-private',
     STORAGE_PUBLIC_BUCKET: 'runtime-public',
     ...overrides,
-  };
+  });
 }
 
 function mediaEnvironment(
-  overrides: Record<string, string> = {},
+  overrides: Record<string, string | undefined> = {},
 ): Record<string, string> {
-  return {
+  return compact({
     NODE_ENV: 'test',
     DATABASE_URL:
       'postgresql://runtime-user:runtime-value@127.0.0.1:5432/moazez',
-    REDIS_URL: 'redis://127.0.0.1:6379',
+    QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
     STORAGE_ENDPOINT: 'http://127.0.0.1:9000',
     STORAGE_ACCESS_KEY: 'runtime-access',
     STORAGE_SECRET_KEY: 'runtime-value',
     STORAGE_BUCKET: 'runtime-private',
     STORAGE_PUBLIC_BUCKET: 'runtime-public',
     ...overrides,
-  };
+  });
+}
+
+function compact(
+  values: Record<string, string | undefined>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined),
+  ) as Record<string, string>;
 }

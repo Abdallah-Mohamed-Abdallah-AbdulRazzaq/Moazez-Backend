@@ -14,12 +14,12 @@ import { BoundedProbeExecutor } from "../../src/modules/health/bounded-probe-exe
 
 jest.setTimeout(30_000);
 
-const redisUrl = process.env.TEST_REDIS_URL ?? process.env.REDIS_URL;
+const redisUrl = process.env.TEST_QUEUE_REDIS_URL;
 
 describe("BullMQ graceful shutdown and recovery", () => {
   if (!redisUrl) {
     throw new Error(
-      "TEST_REDIS_URL or REDIS_URL is required for isolated BullMQ lifecycle proof",
+      "TEST_QUEUE_REDIS_URL is required for isolated BullMQ lifecycle proof",
     );
   }
 

@@ -1073,6 +1073,41 @@ describe('RealtimeStateStoreService recovery lifecycle', () => {
     await service.onModuleDestroy();
   });
 
+  it.each(['staging', 'production'] as const)(
+    'never reports local presence or typing fallback success in %s',
+    async (environment) => {
+      const config = {
+        get: jest.fn((key: string) =>
+          key === 'NODE_ENV' ? environment : undefined,
+        ),
+      } as unknown as ConfigService<Env, true>;
+      const service = new RealtimeStateStoreService(config);
+      const internals = stateStoreInternals(service);
+      let fallbackSuccesses = 0;
+
+      for (const operation of [
+        () => service.incrementPresence('school-1', 'user-1', 'socket-1', 90),
+        () => service.getPresenceSnapshot('school-1'),
+        () => service.setTyping('school-1', 'conversation-1', 'user-1', 8),
+        () => service.getTypingUsers('school-1', 'conversation-1'),
+      ]) {
+        try {
+          await operation();
+          fallbackSuccesses += 1;
+        } catch (error) {
+          expect(error).toEqual(
+            new Error('realtime_state_redis_unavailable'),
+          );
+        }
+      }
+
+      expect(fallbackSuccesses).toBe(0);
+      expect(internals.lifecycleState).toBe('unavailable');
+      expect(typingMemoryUsage(internals.localTyping).owners).toBe(0);
+      await service.onModuleDestroy();
+    },
+  );
+
   function createService(): RealtimeStateStoreService {
     const config = {
       get: jest.fn(() => 'redis://state-user:state-secret@internal:6379'),

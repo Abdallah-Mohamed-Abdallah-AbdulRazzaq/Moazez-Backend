@@ -87,8 +87,12 @@ export class RedisRealtimePublisherService
 
   async checkReadiness(): Promise<void> {
     if (this.closing) throw new Error('realtime_emitter_redis_unavailable');
-    await this.ensureConnected();
-    await this.redis.ping();
+    try {
+      await this.ensureConnected();
+      await this.redis.ping();
+    } catch {
+      throw new Error('realtime_emitter_redis_unavailable');
+    }
   }
 
   onModuleDestroy(): Promise<void> {
@@ -105,7 +109,7 @@ export class RedisRealtimePublisherService
     if (!normalizedEventName) {
       throw new Error('eventName is required for realtime publishing');
     }
-    if (this.closing) return false;
+    if (this.closing || this.redis.status !== 'ready') return false;
 
     try {
       this.emitter.to(roomName).emit(normalizedEventName, payload);

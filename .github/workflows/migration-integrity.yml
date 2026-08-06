@@ -49,7 +49,8 @@ jobs:
       APP_PORT: '3000'
       APP_URL: http://127.0.0.1:3000
       DATABASE_URL: postgresql://moazez_ci:ci_only_not_a_secret@127.0.0.1:5432/moazez_migration_integrity?schema=public
-      REDIS_URL: redis://127.0.0.1:6379
+      QUEUE_REDIS_URL: redis://127.0.0.1:6379
+      REALTIME_REDIS_URL: redis://127.0.0.1:6379
       JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production
       JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production
       JWT_ACCESS_TTL: 15m

@@ -4,6 +4,10 @@ import {
   createDatabaseRuntimeEnvironmentShape,
   refineDatabaseRuntimeEnvironment,
 } from '../infrastructure/database/database-runtime-env.validation';
+import {
+  redisUrlSchema,
+  refineRedisEndpointSeparation,
+} from './redis-env.validation';
 
 const booleanFromString = z
   .enum(['true', 'false'])
@@ -33,7 +37,8 @@ export const envSchema = z
       .default(15_000),
 
     ...createDatabaseRuntimeEnvironmentShape('api'),
-    REDIS_URL: z.string().url(),
+    QUEUE_REDIS_URL: redisUrlSchema,
+    REALTIME_REDIS_URL: redisUrlSchema,
 
     JWT_ACCESS_SECRET: z.string().min(16),
     JWT_REFRESH_SECRET: z.string().min(16),
@@ -85,6 +90,7 @@ export const envSchema = z
   })
   .superRefine((env, ctx) => {
     refineDatabaseRuntimeEnvironment(env, ctx);
+    refineRedisEndpointSeparation(env, ctx);
 
     try {
       parseApplicationCorsOrigins(env.NODE_ENV, env.APP_CORS_ORIGINS);

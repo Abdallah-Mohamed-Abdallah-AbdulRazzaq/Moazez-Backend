@@ -4,6 +4,10 @@ import {
   createDatabaseRuntimeEnvironmentShape,
   refineDatabaseRuntimeEnvironment,
 } from '../infrastructure/database/database-runtime-env.validation';
+import {
+  redisUrlSchema,
+  refineRedisEndpointSeparation,
+} from '../config/redis-env.validation';
 
 const booleanFromString = z
   .enum(['true', 'false'])
@@ -25,7 +29,6 @@ const managementShape = {
   NODE_ENV: z
     .enum(['development', 'test', 'staging', 'production'])
     .default('development'),
-  REDIS_URL: z.string().url(),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
     .default('info'),
@@ -43,6 +46,8 @@ const storageShape = {
 const coreWorkerSchema = z
   .object({
     ...managementShape,
+    QUEUE_REDIS_URL: redisUrlSchema,
+    REALTIME_REDIS_URL: redisUrlSchema,
     ...createDatabaseRuntimeEnvironmentShape('core-worker'),
     ...storageShape,
     APP_URL: z.string().url(),
@@ -56,6 +61,7 @@ const coreWorkerSchema = z
   })
   .superRefine((env, context) => {
     refineDatabaseRuntimeEnvironment(env, context);
+    refineRedisEndpointSeparation(env, context);
 
     const firebaseFields = [
       env.FIREBASE_PROJECT_ID,
@@ -87,6 +93,7 @@ const coreWorkerSchema = z
 const mediaWorkerSchema = z
   .object({
     ...managementShape,
+    QUEUE_REDIS_URL: redisUrlSchema,
     ...createDatabaseRuntimeEnvironmentShape('media-worker'),
     ...storageShape,
   })
@@ -94,7 +101,10 @@ const mediaWorkerSchema = z
     refineDatabaseRuntimeEnvironment(env, context);
   });
 
-const maintenanceSchedulerSchema = z.object(managementShape);
+const maintenanceSchedulerSchema = z.object({
+  ...managementShape,
+  QUEUE_REDIS_URL: redisUrlSchema,
+});
 
 export const validateCoreWorkerEnv = createValidator(coreWorkerSchema);
 export const validateMediaWorkerEnv = createValidator(mediaWorkerSchema);

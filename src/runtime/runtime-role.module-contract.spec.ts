@@ -4,7 +4,6 @@ import {
   PATH_METADATA,
 } from '@nestjs/common/constants';
 import { HttpStatus } from '@nestjs/common';
-import { AppModule } from '../app.module';
 import { RealtimeGateway } from '../infrastructure/realtime/realtime.gateway';
 import { RedisRealtimePublisherService } from '../infrastructure/realtime/redis-realtime-publisher.service';
 import { RealtimePresenceService } from '../infrastructure/realtime/realtime-presence.service';
@@ -46,22 +45,26 @@ const SCHEDULE_PROVIDER_NAMES = [
 ];
 
 describe('runtime role module graphs', () => {
-  const originalDatabaseEnvironment = new Map<string, string | undefined>();
+  const originalEnvironment = new Map<string, string | undefined>();
 
   beforeAll(() => {
-    for (const field of DATABASE_RUNTIME_ENVIRONMENT_FIELDS) {
-      originalDatabaseEnvironment.set(field, process.env[field]);
+    for (const [field, value] of Object.entries(apiTestEnvironment())) {
+      originalEnvironment.set(field, process.env[field]);
+      process.env[field] = value;
     }
   });
 
   afterAll(() => {
-    for (const [field, value] of originalDatabaseEnvironment) {
+    for (const [field, value] of originalEnvironment) {
       if (value === undefined) delete process.env[field];
       else process.env[field] = value;
     }
   });
 
   it('keeps the API graph producer-only while retaining HTTP realtime and synchronous media', () => {
+    const { AppModule } = jest.requireActual<typeof import('../app.module')>(
+      '../app.module',
+    );
     const graph = inspectModuleGraph(AppModule);
 
     expect(intersection(graph.providers, CONSUMER_PROVIDER_NAMES)).toEqual([]);
@@ -189,11 +192,13 @@ describe('runtime role module graphs', () => {
 
   it('does not require database, storage, ffprobe, or temporary-media configuration outside owning roles', () => {
     expect(
-      validateMaintenanceSchedulerEnv({ REDIS_URL: 'redis://127.0.0.1:6379' }),
+      validateMaintenanceSchedulerEnv({
+        QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
+      }),
     ).not.toHaveProperty('DATABASE_URL');
     expect(
       validateMediaWorkerEnv({
-        REDIS_URL: 'redis://127.0.0.1:6379',
+        QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
         DATABASE_URL: 'postgresql://worker:worker@127.0.0.1:5432/worker',
         STORAGE_ENDPOINT: 'http://127.0.0.1:9000',
         STORAGE_ACCESS_KEY: 'media-access',
@@ -204,13 +209,36 @@ describe('runtime role module graphs', () => {
     ).not.toHaveProperty('FFPROBE_PATH');
     expect(() =>
       validateMaintenanceSchedulerEnv({
-        REDIS_URL: 'redis://127.0.0.1:6379',
+        QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
         DATABASE_URL:
           'postgresql://runtime-user:runtime-value@127.0.0.1:5432/moazez',
       }),
     ).toThrow(/DATABASE_URL/u);
   });
 });
+
+function apiTestEnvironment(): Record<string, string> {
+  return {
+    NODE_ENV: 'test',
+    APP_URL: 'http://127.0.0.1:3000',
+    DATABASE_URL: 'postgresql://runtime:runtime@127.0.0.1:5432/runtime',
+    DATABASE_RUNTIME_ROLE: 'api',
+    DATABASE_CONNECTION_LIMIT: '5',
+    DATABASE_POOL_TIMEOUT_SECONDS: '5',
+    DATABASE_CONNECT_TIMEOUT_SECONDS: '5',
+    QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
+    REALTIME_REDIS_URL: 'redis://127.0.0.1:6379',
+    JWT_ACCESS_SECRET: 'runtime-access-secret',
+    JWT_REFRESH_SECRET: 'runtime-refresh-secret',
+    JWT_ACCESS_TTL: '15m',
+    JWT_REFRESH_TTL: '7d',
+    STORAGE_ENDPOINT: 'http://127.0.0.1:9000',
+    STORAGE_ACCESS_KEY: 'runtime-access',
+    STORAGE_SECRET_KEY: 'runtime-secret',
+    STORAGE_BUCKET: 'runtime-private',
+    STORAGE_PUBLIC_BUCKET: 'runtime-public',
+  };
+}
 
 function inspectModuleGraph(root: unknown): {
   providers: string[];

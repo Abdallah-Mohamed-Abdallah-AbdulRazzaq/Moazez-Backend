@@ -135,7 +135,7 @@ test('machine summary redacts credentials and fixture URLs', () => {
   const fixture = createFixture('redaction');
   const summary = redactJson({
     url: fixture.environment.DATABASE_URL,
-    redis: fixture.environment.REDIS_URL,
+    redis: fixture.environment.QUEUE_REDIS_URL,
     credential: fixture.storageSecretKey,
   }, fixture.sensitiveValues);
   const serialized = JSON.stringify(summary);

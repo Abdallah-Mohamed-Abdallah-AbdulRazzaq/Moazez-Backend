@@ -841,7 +841,7 @@ describe('learning media cleanup and BullMQ integration', () => {
   }
 
   async function clearCleanupQueue(): Promise<void> {
-    const redisUrl = process.env.REDIS_URL;
+    const redisUrl = process.env.TEST_QUEUE_REDIS_URL;
     if (!redisUrl) return;
     const redis = new IORedis(redisUrl, { maxRetriesPerRequest: 1 });
     try {

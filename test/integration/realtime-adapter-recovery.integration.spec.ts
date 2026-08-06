@@ -26,7 +26,7 @@ import type { RealtimeSocket } from '../../src/infrastructure/realtime/realtime.
 jest.setTimeout(30_000);
 
 describe('Realtime Redis adapter recovery with connected sockets', () => {
-  const redisUrl = process.env.TEST_REDIS_URL;
+  const redisUrl = process.env.TEST_REALTIME_REDIS_URL;
 
   (redisUrl ? it : it.skip)(
     'disconnects before replacement and requires room-safe reauthentication',
@@ -56,7 +56,7 @@ describe('Realtime Redis adapter recovery with connected sockets', () => {
         {
           bindServer: jest.fn(),
         } as unknown as RealtimePublisherService,
-        new ConfigService<Env, true>({ REDIS_URL: redisUrl }),
+        new ConfigService<Env, true>({ REALTIME_REDIS_URL: redisUrl }),
         presence as unknown as RealtimePresenceService,
         {
           startTyping: jest.fn(),
@@ -189,7 +189,7 @@ describe('Realtime Redis adapter recovery with connected sockets', () => {
           isOnlinePresenceEnabled: jest.fn().mockResolvedValue(true),
         } as unknown as RealtimeCommunicationAccessService,
         { bindServer: jest.fn() } as unknown as RealtimePublisherService,
-        new ConfigService<Env, true>({ REDIS_URL: redisUrl }),
+        new ConfigService<Env, true>({ REALTIME_REDIS_URL: redisUrl }),
         {
           registerSocket: jest.fn(),
           unregisterSocket: jest.fn(),
