@@ -20,6 +20,22 @@ export const COMMUNICATION_NOTIFICATION_PUSH_QUEUE_NAME =
   'communication-notification-push';
 export const COMMUNICATION_NOTIFICATION_PUSH_SEND_JOB_NAME =
   'communication.notification.push.send';
+export const COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_RECONCILE_JOB_NAME =
+  'communication.announcement.notifications.reconcile';
+export const COMMUNICATION_NOTIFICATION_PUSH_RECONCILE_JOB_NAME =
+  'communication.notification.push.reconcile';
+export const COMMUNICATION_NOTIFICATION_RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
+export const COMMUNICATION_NOTIFICATION_RECOVERY_WINDOW_MS =
+  24 * 60 * 60 * 1000;
+export const COMMUNICATION_PUSH_RECOVERY_WINDOW_EXPIRED_CODE =
+  'push/recovery-window-expired';
+
+const RETRYABLE_PUSH_ERROR_CODES = new Set([
+  'fcm/quota-exceeded',
+  'fcm/unavailable',
+  'fcm/internal',
+  'fcm/unknown',
+]);
 
 const ANNOUNCEMENT_NOTIFICATION_PREVIEW_MAX_LENGTH = 240;
 const MESSAGE_NOTIFICATION_PREVIEW_MAX_LENGTH = 160;
@@ -33,8 +49,8 @@ export interface CommunicationAnnouncementNotificationGenerationJobData {
   schoolId: string;
   organizationId: string;
   announcementId: string;
-  actorUserId: string;
-  actorUserType: UserType;
+  actorUserId: string | null;
+  actorUserType: UserType | null;
 }
 
 export interface CommunicationAnnouncementNotificationGenerationResult {
@@ -76,6 +92,12 @@ export function buildCommunicationNotificationPushJobId(input: {
   deliveryId: string;
 }): string {
   return `communication-push-${input.deliveryId}`;
+}
+
+export function isRetryableCommunicationPushErrorCode(
+  errorCode: string | null,
+): boolean {
+  return errorCode !== null && RETRYABLE_PUSH_ERROR_CODES.has(errorCode);
 }
 
 export function buildAnnouncementNotificationPreview(body: string): string {

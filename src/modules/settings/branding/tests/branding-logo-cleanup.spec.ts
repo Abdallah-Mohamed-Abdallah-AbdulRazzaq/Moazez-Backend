@@ -11,6 +11,7 @@ describe('branding logo cleanup and reconciliation', () => {
   it('keeps the cleanup queue service producer-only at startup', () => {
     const bullmq = {
       addJob: jest.fn().mockResolvedValue({ id: 'job-1' }),
+      ensureJobFromPersistedTruth: jest.fn().mockResolvedValue('created'),
       getQueueReadiness: jest.fn(),
     } as unknown as BullmqService;
     const service = new BrandingLogoCleanupQueueService(
@@ -25,6 +26,7 @@ describe('branding logo cleanup and reconciliation', () => {
   it('retries failed immediate cleanup with bounded attempts and retained failure', async () => {
     const bullmq = {
       addJob: jest.fn().mockResolvedValue({ id: 'job-1' }),
+      ensureJobFromPersistedTruth: jest.fn().mockResolvedValue('created'),
       getQueueReadiness: jest.fn().mockResolvedValue({
         name: 'settings-branding-logo-cleanup',
         status: 'ok',
@@ -39,12 +41,12 @@ describe('branding logo cleanup and reconciliation', () => {
 
     await service.cleanupAfterCommit(cleanupFile());
 
-    expect(bullmq.addJob).toHaveBeenCalledWith(
+    expect(bullmq.ensureJobFromPersistedTruth).toHaveBeenCalledWith(
       'settings-branding-logo-cleanup',
       'delete-object',
       { fileId: 'file-1' },
       expect.objectContaining({
-        jobId: expect.stringMatching(/^branding-logo-cleanup-[0-9a-f-]{36}$/),
+        jobId: 'branding-logo-cleanup-file-1',
         attempts: 5,
         backoff: { type: 'exponential', delay: 5_000 },
         removeOnComplete: 100,

@@ -12,8 +12,8 @@ export interface CommunicationNotificationPushJobData {
   organizationId: string;
   notificationId: string;
   deliveryId: string;
-  actorUserId: string;
-  actorUserType: UserType;
+  actorUserId: string | null;
+  actorUserType: UserType | null;
 }
 
 @Injectable()

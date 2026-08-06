@@ -21,6 +21,8 @@ export class DismissalExpirySchedule implements OnModuleInit {
       {},
       {
         jobId: DISMISSAL_REQUEST_EXPIRY_REPEAT_JOB_ID,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
         repeat: { pattern: DISMISSAL_REQUEST_EXPIRY_REPEAT_PATTERN },
       },
     );

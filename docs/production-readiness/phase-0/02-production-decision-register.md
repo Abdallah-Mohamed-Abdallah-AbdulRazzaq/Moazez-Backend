@@ -33,7 +33,7 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D012 | Cloud SQL role pool budgets | LOCKED_FROM_APPROVED_CONTEXT | D005, D011 | approved bounded API/Core/Media pools within a 100-connection governed budget |
 | PRD0-D013 | Redis shared versus separated workloads | OWNER_DECISION_REQUIRED | D005 | separate queue and realtime production instances |
 | PRD0-D014 | Redis production fallback | OWNER_DECISION_REQUIRED | D013 | fail readiness/realtime, never silent in-memory multi-instance mode |
-| PRD0-D015 | Critical job recovery/reconciliation | OWNER_DECISION_REQUIRED | D005–D007, D013 | DB-backed outcome/reconcile contract per critical queue |
+| PRD0-D015 | Critical job recovery/reconciliation | LOCKED_FROM_APPROVED_CONTEXT | D005–D007, D013 | approved persisted-truth recovery for the seven existing queues through Q017 and ADR-0009 |
 | PRD0-D016 | Worker capacity/autoscaling | OWNER_DECISION_REQUIRED | D012–D015 | fixed bounded minimum first; external scale only from measured lag |
 | PRD0-D017 | GCP project/environment separation | OWNER_DECISION_REQUIRED | D004 | separate prod and non-prod projects |
 | PRD0-D018 | Service-account boundaries | OWNER_DECISION_REQUIRED | D005, D017 | identity per runtime/job role |
@@ -373,21 +373,30 @@ dates, PR numbers, SHAs, or validation counts.
 
 ### PRD0-D015 — Recover and reconcile critical jobs
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; generation enqueue gap,
-  single-attempt imports, partial dismissal success, and cleanup claims exist
-  (EVD-019–EVD-025).
-- **Options / recommendation:** retries only; generic dead-letter; domain
-  persisted outcome plus queue retry/reconciler. Recommend the last for
-  notification, email, import, dismissal, media, and destructive cleanup.
-- **Reasoning / alternatives:** Redis job retention alone is not durable
-  business truth.
-- **Impacts:** additive status/outbox/execution-ledger migrations may be needed;
-  no existing response may claim completion before its current contract point.
-  Replay must enforce tenant context.
-- **Operations / rollback:** idempotency keys, terminal dashboards, replay
-  authorization, poison isolation, and immutable audit.
-- **Phase / approval / reopen:** Phase 3; criticality/retry windows need owner
-  approval. Reopen per job based on side-effect semantics.
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q017 option A was
+  approved by Abdallah at `2026-08-06T10:30:34+03:00` in the Operations,
+  Release, and Architecture Owner capacities. ADR-0009 is Accepted.
+- **Approved decision:** Redis queue state is disposable coordination state and
+  is never copied for recovery. The seven existing queues reconstruct current
+  work from PostgreSQL domain rows, object existence/absence, deterministic
+  job builders, and current policy. The approved windows are 24 hours or
+  announcement expiry for announcement generation, 24 hours for push, 72
+  hours for email, 24 hours for imports, and domain-terminal boundaries for
+  dismissal, Learning Media, and Branding.
+- **Reasoning / alternatives:** Redis retention, a generic ledger, or a generic
+  dead-letter queue cannot safely represent domain eligibility or ambiguous
+  provider outcome. Domain reconcilers preserve tenant/source scope and avoid
+  replaying known-success external effects.
+- **Impacts:** no schema, migration, public contract, queue, or consumer is
+  added. Four reconciliation job names are added to existing queues, and the
+  existing Maintenance Scheduler owns seven registrations.
+- **Operations / rollback:** processing is at least once with idempotent
+  persisted effects where proven. Manual replay requires Abdallah as Operations
+  and Release Owner, an audit, tenant/source scope, and exclusion of known
+  success. Email `outcome_unknown` is never automatic.
+- **Phase / approval / reopen:** Phase 3 through PRD3-G03. Reopen only when a
+  queue's persisted truth, recovery window, side-effect contract, or owner
+  approval changes.
 
 ### PRD0-D016 — Choose worker capacity model
 
@@ -846,13 +855,14 @@ does not accept a pending decision.
 | ADR-0005 | Cloud SQL Runtime Connections and Database Role Boundary | owns D011–D012, D030–D031 | created and accepted through the Phase 3 approvals for Q003, Q006, Q014, and Q015; sizing remains provisional pending PRD3-G01-B/C/D evidence |
 | ADR-0006 | Production Data Source, Object Storage, and Signed Capability Boundary | owns D009–D010, D019, D022, D029, D049–D053 | created; accepts D022/Q022 only; all other owned decisions remain pending or proposed |
 | ADR-0007 | Migration Job and Deployment Ordering | owns D026–D027 | reserved; migration/deployment-order answers remain pending |
-| ADR-0008 | Redis Workload Isolation and Failure Policy | owns D013–D015 | reserved; Redis/fallback/recovery answers remain pending |
-| ADR-0009 | GCP Environment, Workload Identity, Secrets, and Crypto | owns D017–D021, D023 | reserved; project/IAM/secret/key answers remain pending |
+| ADR-0008 | Redis Workload Isolation and Failure Policy                            | owns D013–D014                              | created and accepted through Q012 and Q013                                                                                                    |
+| ADR-0009 | Critical Job Recovery and Reconciliation                               | owns D015                                   | created and accepted through Q017; PRD3-G03 implementation evidence recorded                                                                  |
 | ADR-0010 | Production Health and Observability Contract | owns D024–D025, D035 | created; accepts D024/Q024 and D035/Q030; D025/Q025 remains pending |
 | ADR-0011 | Artifact, Runtime Version, Staging, and Promotion | owns D032–D034 | created; accepts D033/Q028 and D034/Q029; D032/Q027 remains pending |
 | ADR-0012 | Capacity, Backup, RTO/RPO, and Recovery Objectives | owns D016, D028 | reserved; autoscaling and backup/RTO/RPO answers remain pending |
 | ADR-0013 | File Security, Retention, and Reference-Aware Lifecycle | owns D036–D048 | created; accepts D037/Q032 only; all other owned decisions remain pending |
 | ADR-0014 | Learning Media Asynchronous Completion Compatibility | owns D008 | reserved; Q009 remains pending |
+| ADR-0015 | GCP Environment, Workload Identity, Secrets, and Crypto                | owns D017–D021, D023                        | reserved; project/IAM/secret/key answers remain pending                                                                                       |
 
 Each listed major decision has exactly one owning ADR. Other ADRs may cite the
 owning record but must not redefine it, especially for capacity and
@@ -861,8 +871,9 @@ backup/RTO/RPO policy.
 ## Decision closure rule
 
 The Phase 0B closeout recorded ten approved decision changes on 2026-07-27.
-Phase 3 added four approvals (Q003, Q006, Q014, and Q015) on 2026-08-04
-(Africa/Cairo), for fourteen approved owner-question dispositions in the
+Phase 3 added four approvals (Q003, Q006, Q014, and Q015) on 2026-08-04,
+Q012 and Q013 on 2026-08-06 at `05:56:00+03:00`, and Q017 on 2026-08-06 at
+`10:30:34+03:00`, for seventeen approved owner-question dispositions in the
 current register. All remaining `OWNER_DECISION_REQUIRED` entries stay open
 until the owner supplies exact answers, impacts are reconciled, and their
 owning ADRs are approved. Absence of an answer does not select the recommended

@@ -22,6 +22,7 @@ import {
 import {
   buildFailedImportJobReport,
   buildPendingImportJobReport,
+  toImportJobRecoveryReportJson,
   toImportJobReportJson,
 } from '../domain/import-job.report';
 import {
@@ -30,6 +31,7 @@ import {
 } from '../domain/import-upload.constraints';
 import {
   FILES_IMPORT_QUEUE_NAME,
+  FILES_IMPORT_RETRYABLE_ENQUEUE_CODE,
   FILES_IMPORT_VALIDATE_JOB_NAME,
 } from '../domain/import-job.types';
 import { requireImportsScope } from '../imports-scope';
@@ -111,7 +113,11 @@ export class CreateImportJobUseCase {
           FILES_IMPORT_QUEUE_NAME,
           FILES_IMPORT_VALIDATE_JOB_NAME,
           { importJobId: importJob.id },
-          { jobId: importJob.id },
+          {
+            jobId: importJob.id,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 1000 },
+          },
         );
 
         return presentImportJobStatus(importJob);
@@ -119,7 +125,7 @@ export class CreateImportJobUseCase {
         const failedJob = await this.importJobsRepository.updateImportJob({
           importJobId: importJob.id,
           status: ImportJobStatus.FAILED,
-          reportJson: toImportJobReportJson(
+          reportJson: toImportJobRecoveryReportJson(
             buildFailedImportJobReport(
               {
                 uploadedFileId: storedFile.id,
@@ -127,8 +133,12 @@ export class CreateImportJobUseCase {
                 mimeType: normalizedMimeType,
                 sizeBytes: uploadedFile.buffer.byteLength,
               },
-              'Import validation could not be enqueued.',
+              'Import validation is awaiting recovery.',
             ),
+            {
+              classification: 'retryable',
+              code: FILES_IMPORT_RETRYABLE_ENQUEUE_CODE,
+            },
           ),
         });
 

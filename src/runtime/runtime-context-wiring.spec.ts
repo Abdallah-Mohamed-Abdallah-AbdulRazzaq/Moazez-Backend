@@ -82,7 +82,7 @@ describe('runtime application-context wiring', () => {
     await module.close();
   });
 
-  it('initializes Maintenance Scheduler with three repeats and no consumers', async () => {
+  it('initializes Maintenance Scheduler with seven repeats and no consumers', async () => {
     for (const field of DATABASE_RUNTIME_ENVIRONMENT_FIELDS) {
       delete process.env[field];
     }
@@ -99,7 +99,7 @@ describe('runtime application-context wiring', () => {
 
     await module.init();
     expect(queue.workerQueues).toEqual([]);
-    expect(queue.repeatRegistrations).toHaveLength(3);
+    expect(queue.repeatRegistrations).toHaveLength(7);
     await module.close();
   });
 });

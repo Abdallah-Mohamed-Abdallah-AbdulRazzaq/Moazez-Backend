@@ -59,27 +59,30 @@ export class ExpireDismissalRequestsUseCase {
     }
 
     const expiredRequestIds: string[] = [];
+    let mutationFailureCount = 0;
 
     for (const candidate of candidates) {
+      let expired: Awaited<
+        ReturnType<DismissalRequestsExpiryRepository['expireCandidate']>
+      >;
       try {
-        const expired = await this.expiryRepository.expireCandidate(
-          candidate,
-          now,
-        );
-        if (!expired) continue;
+        expired = await this.expiryRepository.expireCandidate(candidate, now);
+      } catch {
+        mutationFailureCount += 1;
+        this.logger.warn('dismissal_expiry_candidate_mutation_failed');
+        continue;
+      }
+      if (!expired) continue;
 
-        expiredRequestIds.push(expired.requestId);
+      expiredRequestIds.push(expired.requestId);
+      try {
         await this.dismissalRealtimeEvents.publishStatusChanged({
           schoolId: expired.schoolId,
           requestId: expired.requestId,
           previousStatus: expired.previousStatus,
         });
-      } catch (error) {
-        this.logger.warn(
-          `Dismissal expiry skipped request ${candidate.id}: ${getErrorMessage(
-            error,
-          )}`,
-        );
+      } catch {
+        this.logger.warn('dismissal_expiry_realtime_publication_failed');
       }
     }
 
@@ -94,6 +97,10 @@ export class ExpireDismissalRequestsUseCase {
     this.logger.log(
       `Dismissal expiry scanned ${result.scannedCount}, expired ${result.expiredCount}, skipped ${result.skippedCount}.`,
     );
+
+    if (mutationFailureCount > 0) {
+      throw new Error('dismissal_expiry_batch_mutation_failed');
+    }
 
     return result;
   }
@@ -110,11 +117,8 @@ function normalizeBatchSize(value: number | undefined): number {
   return Math.min(integer, MAX_DISMISSAL_EXPIRY_BATCH_SIZE);
 }
 
-function countDistinctSchools(candidates: DismissalRequestExpiryCandidate[]): number {
+function countDistinctSchools(
+  candidates: DismissalRequestExpiryCandidate[],
+): number {
   return new Set(candidates.map((candidate) => candidate.schoolId)).size;
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return 'unknown_error';
 }

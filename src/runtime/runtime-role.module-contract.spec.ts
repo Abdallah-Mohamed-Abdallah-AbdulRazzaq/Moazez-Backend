@@ -22,6 +22,10 @@ import { MEDIA_WORKER_CONSUMER_PROVIDERS } from './media-worker/media-worker-con
 import { BrandingLogoReconciliationSchedule } from './maintenance-scheduler/branding-logo-reconciliation.schedule';
 import { DismissalExpirySchedule } from './maintenance-scheduler/dismissal-expiry.schedule';
 import { LearningMediaCleanupSchedule } from './maintenance-scheduler/learning-media-cleanup.schedule';
+import { CommunicationNotificationReconciliationSchedule } from './maintenance-scheduler/communication-notification-reconciliation.schedule';
+import { CommunicationPushReconciliationSchedule } from './maintenance-scheduler/communication-push-reconciliation.schedule';
+import { ImportValidationReconciliationSchedule } from './maintenance-scheduler/import-validation-reconciliation.schedule';
+import { SchoolEmailDeliveryReconciliationSchedule } from './maintenance-scheduler/school-email-delivery-reconciliation.schedule';
 import { DATABASE_RUNTIME_ENVIRONMENT_FIELDS } from '../infrastructure/database/database-runtime-env.validation';
 import {
   validateMaintenanceSchedulerEnv,
@@ -42,6 +46,10 @@ const SCHEDULE_PROVIDER_NAMES = [
   DismissalExpirySchedule.name,
   LearningMediaCleanupSchedule.name,
   BrandingLogoReconciliationSchedule.name,
+  CommunicationNotificationReconciliationSchedule.name,
+  CommunicationPushReconciliationSchedule.name,
+  SchoolEmailDeliveryReconciliationSchedule.name,
+  ImportValidationReconciliationSchedule.name,
 ];
 
 describe('runtime role module graphs', () => {
@@ -62,9 +70,8 @@ describe('runtime role module graphs', () => {
   });
 
   it('keeps the API graph producer-only while retaining HTTP realtime and synchronous media', () => {
-    const { AppModule } = jest.requireActual<typeof import('../app.module')>(
-      '../app.module',
-    );
+    const { AppModule } =
+      jest.requireActual<typeof import('../app.module')>('../app.module');
     const graph = inspectModuleGraph(AppModule);
 
     expect(intersection(graph.providers, CONSUMER_PROVIDER_NAMES)).toEqual([]);
@@ -151,7 +158,7 @@ describe('runtime role module graphs', () => {
     expect(graph.providers).not.toContain('TemporaryDiskProbe');
   });
 
-  it('owns exactly three registrations and no consumer, controller, Gateway, or storage provider', async () => {
+  it('owns exactly seven registrations and no consumer, controller, Gateway, or storage provider', async () => {
     for (const field of DATABASE_RUNTIME_ENVIRONMENT_FIELDS) {
       delete process.env[field];
     }
@@ -170,6 +177,18 @@ describe('runtime role module graphs', () => {
     await new BrandingLogoReconciliationSchedule({
       registerRepeatJob,
     } as never).onModuleInit();
+    await new CommunicationNotificationReconciliationSchedule({
+      registerRepeatJob,
+    } as never).onModuleInit();
+    await new CommunicationPushReconciliationSchedule({
+      registerRepeatJob,
+    } as never).onModuleInit();
+    await new SchoolEmailDeliveryReconciliationSchedule({
+      registerRepeatJob,
+    } as never).onModuleInit();
+    await new ImportValidationReconciliationSchedule({
+      registerRepeatJob,
+    } as never).onModuleInit();
 
     expect(intersection(graph.providers, CONSUMER_PROVIDER_NAMES)).toEqual([]);
     expect(
@@ -178,7 +197,7 @@ describe('runtime role module graphs', () => {
     expect(graph.controllers).toEqual([]);
     expect(graph.providers).not.toContain(RealtimeGateway.name);
     expect(graph.providers).not.toContain(StorageService.name);
-    expect(registerRepeatJob).toHaveBeenCalledTimes(3);
+    expect(registerRepeatJob).toHaveBeenCalledTimes(7);
     expect(
       registerRepeatJob.mock.calls.map(([queueName, jobName, , options]) => ({
         queueName,

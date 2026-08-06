@@ -16,7 +16,8 @@
 
 Current amendments: four Phase 3 owner approvals were added on 2026-08-04
 (Africa/Cairo) under PRD3-G01-A. Abdallah additionally approved PRD0-Q012 and
-PRD0-Q013 at `2026-08-06T05:56:00+03:00` for PRD3-G02. The Phase 0B
+PRD0-Q013 at `2026-08-06T05:56:00+03:00` for PRD3-G02 and PRD0-Q017 at
+`2026-08-06T10:30:34+03:00` for PRD3-G03. The Phase 0B
 document-control values above remain the historical 2026-07-27 closeout
 record.
 
@@ -30,7 +31,8 @@ not evidence of current implementation.
 At that closeout every other owner question was explicitly pending. On
 2026-08-04 Abdallah additionally approved Q003, Q006, Q014, and Q015 for the
 provisional Phase 3 database baseline. On 2026-08-06 Abdallah approved Q012 and
-Q013 for the split Redis topology and outage policy. Every question not named
+Q013 for the split Redis topology and outage policy and Q017 option A for the
+critical-queue persisted-truth recovery policy. Every question not named
 in the current approved set below remains pending. A pending disposition does
 not select its recommended default, cannot unblock its dependent phase, and
 authorizes no implementation or cloud provisioning through silence.
@@ -38,8 +40,8 @@ authorizes no implementation or cloud provisioning through silence.
 ## Post-merge closeout note
 
 PR #46 merged the ten approved answers, and those answers remain binding. The
-other 38 answers were pending at that historical closeout. The six Phase 3
-approvals reduce the current pending set to 32 without changing the PR #46
+other 38 answers were pending at that historical closeout. The seven Phase 3
+approvals reduce the current pending set to 31 without changing the PR #46
 evidence. Silence selects no recommendation. Authoritative Phase 0B post-merge
 evidence remains in `07-phase-0b-post-merge-closeout.md`.
 
@@ -65,7 +67,7 @@ Each row is the sole disposition entry for that question.
 | PRD0-Q014 | APPROVED | `PRD0-Q014: api_pool=5; core_pool=6; media_pool=3; migration_pool=2; ops_reserve=10; max_total=100; approver=Abdallah` |
 | PRD0-Q015 | APPROVED | `PRD0-Q015: api=min:1,max:4,concurrency:40; core=min:1,max:2,concurrency:1 per assigned consumer; media=min:1,max:2,concurrency:1; approver=Abdallah` |
 | PRD0-Q016 | PENDING | `PENDING(owner=Abdallah,deadline=before final Phase 3 and Phase 6 capacity acceptance,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q017 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 3,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
+| PRD0-Q017 | APPROVED | `PRD0-Q017: option=A; critical_queues=communication-notifications,communication-notification-push,school-email-delivery,files-imports,dismissal-request-expiry,learning-media-cleanup,settings-branding-logo-cleanup; source_of_truth=PostgreSQL domain rows,object-storage existence or absence,approved deterministic job builders,current application policy; redis_copy=NONE; manual_replay=requires Abdallah as Operations and Release Owner plus audit and tenant/source scope and exclusion of known-success side effects; push_replay=non-SENT attempts only; email_outcome_unknown=never automatic; approver=Abdallah; approval_capacities=Operations Owner,Release Owner,Architecture Owner; approved_at=2026-08-06T10:30:34+03:00`                              |
 | PRD0-Q018 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 4,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q019 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 4/5A,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q020 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 4,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
@@ -103,17 +105,17 @@ Each row is the sole disposition entry for that question.
 | Disposition | Count |
 | --- | ---: |
 | Total | 48 |
-| APPROVED | 16 |
-| PENDING | 32 |
+| APPROVED | 17 |
+| PENDING | 31 |
 | Omitted | 0 |
 | Duplicated | 0 |
 
 The current approved IDs are exactly PRD0-Q001, PRD0-Q002, PRD0-Q003,
 PRD0-Q006, PRD0-Q010, PRD0-Q011, PRD0-Q012, PRD0-Q013, PRD0-Q014,
-PRD0-Q015, PRD0-Q022,
+PRD0-Q015, PRD0-Q017, PRD0-Q022,
 PRD0-Q024, PRD0-Q028, PRD0-Q029, PRD0-Q030, and PRD0-Q032. The Phase 0B
 snapshot was exactly 10 approved and 38 pending; the Phase 3 amendments add
-Q003, Q006, Q012, Q013, Q014, and Q015. All other PRD0-Q001 through
+Q003, Q006, Q012, Q013, Q014, Q015, and Q017. All other PRD0-Q001 through
 PRD0-Q048 entries are explicitly pending as shown.
 
 ## Scope and non-authorization

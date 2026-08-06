@@ -6,8 +6,16 @@ import {
   buildFailedImportJobReport,
   buildProcessingImportJobReport,
   getImportJobReportFile,
+  readImportJobRecovery,
+  toImportJobRecoveryReportJson,
   toImportJobReportJson,
 } from '../domain/import-job.report';
+import {
+  FILES_IMPORT_PROCESSING_LEASE_MS,
+  FILES_IMPORT_RETRYABLE_STORAGE_CODE,
+  FILES_IMPORT_TERMINAL_METADATA_MISSING_CODE,
+  FILES_IMPORT_TERMINAL_OBJECT_MISSING_CODE,
+} from '../domain/import-job.types';
 import { ImportJobsRepository } from '../infrastructure/import-jobs.repository';
 
 @Injectable()
@@ -18,29 +26,45 @@ export class ProcessImportValidationUseCase {
   ) {}
 
   async execute(importJobId: string): Promise<void> {
-    const importJob = await this.importJobsRepository.findImportJobById(
-      importJobId,
-    );
+    const importJob =
+      await this.importJobsRepository.findImportJobById(importJobId);
     if (!importJob) {
-      throw new Error(`Import job not found: ${importJobId}`);
+      return;
     }
 
-    const file = getImportJobReportFile(importJob);
+    if (importJob.status === ImportJobStatus.COMPLETED) return;
 
-    await this.importJobsRepository.updateImportJob({
+    const file = getImportJobReportFile(importJob);
+    const recovery = readImportJobRecovery(importJob.reportJson);
+    if (
+      importJob.status === ImportJobStatus.FAILED &&
+      recovery?.classification !== 'retryable'
+    ) {
+      return;
+    }
+    const claimed = await this.importJobsRepository.claimImportJobProcessing({
       importJobId,
-      status: ImportJobStatus.PROCESSING,
+      retryableFailed: recovery?.classification === 'retryable',
+      staleProcessingBefore: new Date(
+        Date.now() - FILES_IMPORT_PROCESSING_LEASE_MS,
+      ),
       reportJson: toImportJobReportJson(buildProcessingImportJobReport(file)),
     });
+    if (!claimed) return;
+
+    if (!claimed.uploadedFile) {
+      await this.persistTerminalFailure(
+        claimed,
+        FILES_IMPORT_TERMINAL_METADATA_MISSING_CODE,
+        'Uploaded file metadata is unavailable.',
+      );
+      return;
+    }
 
     try {
-      if (!importJob.uploadedFile) {
-        throw new Error('Uploaded file metadata is missing');
-      }
-
       await this.storageService.statObject({
-        bucket: importJob.uploadedFile.bucket,
-        objectKey: importJob.uploadedFile.objectKey,
+        bucket: claimed.uploadedFile.bucket,
+        objectKey: claimed.uploadedFile.objectKey,
       });
 
       await this.importJobsRepository.updateImportJob({
@@ -49,18 +73,54 @@ export class ProcessImportValidationUseCase {
         reportJson: toImportJobReportJson(buildCompletedImportJobReport(file)),
       });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Import validation failed';
-
+      if (isStorageObjectMissing(error)) {
+        await this.persistTerminalFailure(
+          claimed,
+          FILES_IMPORT_TERMINAL_OBJECT_MISSING_CODE,
+          'Uploaded object is unavailable.',
+        );
+        return;
+      }
       await this.importJobsRepository.updateImportJob({
         importJobId,
         status: ImportJobStatus.FAILED,
-        reportJson: toImportJobReportJson(
-          buildFailedImportJobReport(file, message),
+        reportJson: toImportJobRecoveryReportJson(
+          buildFailedImportJobReport(
+            file,
+            'Storage validation is awaiting recovery.',
+          ),
+          {
+            classification: 'retryable',
+            code: FILES_IMPORT_RETRYABLE_STORAGE_CODE,
+          },
         ),
       });
-
-      throw error;
+      throw new Error('import_validation_retryable_failure');
     }
   }
+
+  private async persistTerminalFailure(
+    importJob: Parameters<typeof getImportJobReportFile>[0] & { id: string },
+    code: string,
+    message: string,
+  ): Promise<void> {
+    await this.importJobsRepository.updateImportJob({
+      importJobId: importJob.id,
+      status: ImportJobStatus.FAILED,
+      reportJson: toImportJobRecoveryReportJson(
+        buildFailedImportJobReport(getImportJobReportFile(importJob), message),
+        { classification: 'terminal', code },
+      ),
+    });
+  }
+}
+
+function isStorageObjectMissing(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const value = error as { code?: unknown; statusCode?: unknown };
+  const code = typeof value.code === 'string' ? value.code : '';
+  return (
+    ['NoSuchKey', 'NoSuchObject', 'NotFound'].includes(code) ||
+    value.statusCode === 404
+  );
 }

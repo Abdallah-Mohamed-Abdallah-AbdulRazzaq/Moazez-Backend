@@ -17,6 +17,23 @@ import {
   BRANDING_LOGO_RECONCILE_JOB,
 } from '../settings/branding/domain/branding-logo.constants';
 import { RUNTIME_ROLES, type RuntimeRole } from '../../runtime/runtime-role';
+import {
+  COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_RECONCILE_JOB_NAME,
+  COMMUNICATION_NOTIFICATION_PUSH_QUEUE_NAME,
+  COMMUNICATION_NOTIFICATION_PUSH_RECONCILE_JOB_NAME,
+  COMMUNICATION_NOTIFICATION_QUEUE_NAME,
+  COMMUNICATION_NOTIFICATION_RECONCILE_INTERVAL_MS,
+} from '../communication/domain/communication-notification-generation-domain';
+import {
+  FILES_IMPORT_QUEUE_NAME,
+  FILES_IMPORT_RECONCILE_INTERVAL_MS,
+  FILES_IMPORT_RECONCILE_JOB_NAME,
+} from '../files/imports/domain/import-job.types';
+import {
+  SCHOOL_EMAIL_DELIVERY_QUEUE_NAME,
+  SCHOOL_EMAIL_DELIVERY_RECONCILE_INTERVAL_MS,
+  SCHOOL_EMAIL_DELIVERY_RECONCILE_JOB_NAME,
+} from '../settings/email/delivery/domain/email-delivery.constants';
 
 export const OPERATIONAL_PROBE_ROLES = RUNTIME_ROLES;
 export type OperationalProbeRole = RuntimeRole;
@@ -94,20 +111,39 @@ export const MAINTENANCE_SCHEDULE_REGISTRATIONS = Object.freeze([
     jobId: BRANDING_LOGO_RECONCILE_JOB,
     every: BRANDING_LOGO_RECONCILE_INTERVAL_MS,
   }),
+  Object.freeze({
+    queueName: COMMUNICATION_NOTIFICATION_QUEUE_NAME,
+    jobName: COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_RECONCILE_JOB_NAME,
+    jobId: COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_RECONCILE_JOB_NAME,
+    every: COMMUNICATION_NOTIFICATION_RECONCILE_INTERVAL_MS,
+  }),
+  Object.freeze({
+    queueName: COMMUNICATION_NOTIFICATION_PUSH_QUEUE_NAME,
+    jobName: COMMUNICATION_NOTIFICATION_PUSH_RECONCILE_JOB_NAME,
+    jobId: COMMUNICATION_NOTIFICATION_PUSH_RECONCILE_JOB_NAME,
+    every: COMMUNICATION_NOTIFICATION_RECONCILE_INTERVAL_MS,
+  }),
+  Object.freeze({
+    queueName: SCHOOL_EMAIL_DELIVERY_QUEUE_NAME,
+    jobName: SCHOOL_EMAIL_DELIVERY_RECONCILE_JOB_NAME,
+    jobId: SCHOOL_EMAIL_DELIVERY_RECONCILE_JOB_NAME,
+    every: SCHOOL_EMAIL_DELIVERY_RECONCILE_INTERVAL_MS,
+  }),
+  Object.freeze({
+    queueName: FILES_IMPORT_QUEUE_NAME,
+    jobName: FILES_IMPORT_RECONCILE_JOB_NAME,
+    jobId: FILES_IMPORT_RECONCILE_JOB_NAME,
+    every: FILES_IMPORT_RECONCILE_INTERVAL_MS,
+  }),
 ] satisfies BullmqRepeatRegistration[]);
 
 const NO_CONSUMERS = Object.freeze([]) as readonly string[];
-const NO_SCHEDULES = Object.freeze(
-  [],
-) as readonly BullmqRepeatRegistration[];
+const NO_SCHEDULES = Object.freeze([]) as readonly BullmqRepeatRegistration[];
 
 export function createOperationalRoleManifests(
   policy: OperationalRolePolicy = CURRENT_OPERATIONAL_ROLE_POLICY,
 ): Readonly<Record<OperationalProbeRole, OperationalRoleDependencyManifest>> {
-  const apiDependencies: OperationalDependencyId[] = [
-    'prisma',
-    'queue-redis',
-  ];
+  const apiDependencies: OperationalDependencyId[] = ['prisma', 'queue-redis'];
   if (policy.storageRequiredForApi) apiDependencies.push('storage');
   if (policy.realtimeEnabled) {
     apiDependencies.push(

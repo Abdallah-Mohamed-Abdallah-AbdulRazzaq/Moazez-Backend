@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JobsOptions, Processor, Queue, RedisConnection, Worker } from 'bullmq';
 import IORedis, { RedisOptions } from 'ioredis';
+import { randomUUID } from 'node:crypto';
 
 const DEFAULT_REMOVE_ON_COMPLETE = 100;
 const DEFAULT_REMOVE_ON_FAIL = 500;
@@ -12,6 +13,14 @@ const BULLMQ_READINESS_CLOSE_TIMEOUT_MS = 400;
 const BULLMQ_COMMAND_CONNECT_TIMEOUT_MS = 500;
 const BULLMQ_COMMAND_TIMEOUT_MS = 750;
 const BULLMQ_RECONNECT_DELAY_MAX_MS = 1000;
+const FINISHED_JOB_REPLACEMENT_LOCK_MS = 30_000;
+const FINISHED_JOB_STATES = new Set(['completed', 'failed']);
+const RELEASE_OWNED_LOCK_SCRIPT = `
+  if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('del', KEYS[1])
+  end
+  return 0
+`;
 const SHUTDOWN_CONNECTION_ERROR_CODES = new Set([
   'ECONNABORTED',
   'ECONNREFUSED',
@@ -59,6 +68,22 @@ export interface BullmqRepeatRegistration {
   jobId: string;
   pattern?: string;
   every?: number;
+}
+
+export type PersistedTruthJobEnsureResult =
+  | 'created'
+  | 'replaced'
+  | 'preserved'
+  | 'not_required'
+  | 'replacement_contended';
+
+interface DesiredRepeatRegistration<TData extends object = object> {
+  registration: BullmqRepeatRegistration;
+  data: TData;
+  options: JobsOptions & {
+    jobId: string;
+    repeat: NonNullable<JobsOptions['repeat']>;
+  };
 }
 
 /**
@@ -154,6 +179,11 @@ export class BullmqService implements OnModuleDestroy {
     string,
     BullmqRepeatRegistration
   >();
+  private readonly desiredRepeatRegistrations = new Map<
+    string,
+    DesiredRepeatRegistration
+  >();
+  private repeatRestorationFlight: Promise<void> | null = null;
   private readonly blockingStreamSettlements = new WeakMap<
     Worker,
     () => Promise<void>
@@ -194,6 +224,27 @@ export class BullmqService implements OnModuleDestroy {
           stage: 'connection',
         });
       }
+    });
+    this.connection.on('close', () => {
+      this.repeatRegistrations.clear();
+    });
+    this.connection.on('reconnecting', () => {
+      this.repeatRegistrations.clear();
+    });
+    this.connection.on('ready', () => {
+      this.queueConnectionWarningEmitted = false;
+      if (this.isShuttingDown || this.desiredRepeatRegistrations.size === 0) {
+        return;
+      }
+
+      void this.restoreDesiredRepeatRegistrations().catch(() => {
+        if (!this.isShuttingDown) {
+          this.logger.error({
+            event: 'bullmq.repeat.restore_failed',
+            stage: 'redis_ready',
+          });
+        }
+      });
     });
   }
 
@@ -241,6 +292,69 @@ export class BullmqService implements OnModuleDestroy {
     }
   }
 
+  async ensureJobFromPersistedTruth<TData extends object>(
+    queueName: string,
+    jobName: string,
+    data: TData,
+    options: JobsOptions & { jobId: string },
+    workStillRequired = true,
+  ): Promise<PersistedTruthJobEnsureResult> {
+    if (!options.jobId || options.jobId.trim().length === 0) {
+      throw new Error('queue_recovery_job_id_required');
+    }
+    if (!workStillRequired) return 'not_required';
+
+    await this.ensureCommandConnectionReady();
+    const queue = this.getQueue(queueName);
+
+    try {
+      const existing = await queue.getJob(options.jobId);
+      if (!existing) {
+        await queue.add(jobName, data, options);
+        this.queueConnectionWarningEmitted = false;
+        return 'created';
+      }
+
+      const state = await existing.getState();
+      if (!FINISHED_JOB_STATES.has(state)) return 'preserved';
+
+      const client = await queue.client;
+      const lockKey = queue.toKey(
+        `persisted-truth-replacement:${options.jobId}`,
+      );
+      const lockToken = randomUUID();
+      const acquired = await client.set(
+        lockKey,
+        lockToken,
+        'PX',
+        FINISHED_JOB_REPLACEMENT_LOCK_MS,
+        'NX',
+      );
+      if (acquired !== 'OK') return 'replacement_contended';
+
+      try {
+        const current = await queue.getJob(options.jobId);
+        if (current) {
+          const currentState = await current.getState();
+          if (!FINISHED_JOB_STATES.has(currentState)) return 'preserved';
+          await queue.remove(options.jobId);
+        }
+
+        if (await queue.getJob(options.jobId)) return 'preserved';
+        await queue.add(jobName, data, options);
+        this.queueConnectionWarningEmitted = false;
+        return 'replaced';
+      } finally {
+        await client.eval(RELEASE_OWNED_LOCK_SCRIPT, 1, lockKey, lockToken);
+      }
+    } catch (error) {
+      if (this.isQueueRedisAvailabilityError(error)) {
+        throw this.queueRedisUnavailable();
+      }
+      throw new Error('queue_recovery_command_failed');
+    }
+  }
+
   async registerRepeatJob<TData extends object>(
     queueName: string,
     jobName: string,
@@ -250,7 +364,6 @@ export class BullmqService implements OnModuleDestroy {
       repeat: NonNullable<JobsOptions['repeat']>;
     },
   ): Promise<void> {
-    await this.addJob(queueName, jobName, data, options);
     const registration: BullmqRepeatRegistration = {
       queueName,
       jobName,
@@ -258,9 +371,16 @@ export class BullmqService implements OnModuleDestroy {
       pattern: options.repeat.pattern,
       every: options.repeat.every,
     };
-    this.repeatRegistrations.set(
-      repeatRegistrationKey(registration),
+    const key = repeatRegistrationKey(registration);
+    this.desiredRepeatRegistrations.set(key, {
       registration,
+      data,
+      options,
+    });
+    do {
+      await this.restoreDesiredRepeatRegistrations();
+    } while (
+      !repeatRegistrationsEqual(this.repeatRegistrations.get(key), registration)
     );
   }
 
@@ -330,6 +450,18 @@ export class BullmqService implements OnModuleDestroy {
       [...this.repeatRegistrations.values()].sort((left, right) =>
         repeatRegistrationKey(left).localeCompare(repeatRegistrationKey(right)),
       ),
+    );
+  }
+
+  getDesiredRepeatRegistrations(): readonly BullmqRepeatRegistration[] {
+    return Object.freeze(
+      [...this.desiredRepeatRegistrations.values()]
+        .map((definition) => definition.registration)
+        .sort((left, right) =>
+          repeatRegistrationKey(left).localeCompare(
+            repeatRegistrationKey(right),
+          ),
+        ),
     );
   }
 
@@ -452,6 +584,11 @@ export class BullmqService implements OnModuleDestroy {
   private async shutdown(): Promise<void> {
     await this.beginWorkerDrain();
 
+    const repeatRestorationFlight = this.repeatRestorationFlight;
+    if (repeatRestorationFlight) {
+      await repeatRestorationFlight.catch(() => undefined);
+    }
+
     const readinessFlight = this.queueReadinessFlight;
     if (readinessFlight) {
       await readinessFlight.catch(() => undefined);
@@ -485,10 +622,73 @@ export class BullmqService implements OnModuleDestroy {
     const ownedClient = this.queueReadinessClient;
     if (ownedClient) {
       await this.checkOwnedQueueReadinessClient(ownedClient);
-      return;
+    } else {
+      await this.connectQueueReadinessCandidate();
     }
 
-    await this.connectQueueReadinessCandidate();
+    if (!this.haveAllDesiredRepeatRegistrations()) {
+      this.warnQueueReadinessUnavailable();
+      throw this.queueRedisUnavailable();
+    }
+  }
+
+  private restoreDesiredRepeatRegistrations(): Promise<void> {
+    if (this.isShuttingDown) {
+      return Promise.reject(this.queueRedisUnavailable());
+    }
+    if (this.repeatRestorationFlight) return this.repeatRestorationFlight;
+
+    let execution: Promise<void>;
+    execution = this.executeRepeatRestoration().finally(() => {
+      if (this.repeatRestorationFlight === execution) {
+        this.repeatRestorationFlight = null;
+      }
+    });
+    this.repeatRestorationFlight = execution;
+    return execution;
+  }
+
+  private async executeRepeatRestoration(): Promise<void> {
+    await this.ensureCommandConnectionReady();
+
+    while (!this.isShuttingDown) {
+      const missing = [...this.desiredRepeatRegistrations.entries()].filter(
+        ([key, desired]) =>
+          !repeatRegistrationsEqual(
+            this.repeatRegistrations.get(key),
+            desired.registration,
+          ),
+      );
+      if (missing.length === 0) return;
+
+      for (const [key, desired] of missing) {
+        if (this.isShuttingDown) throw this.queueRedisUnavailable();
+        try {
+          await this.getQueue(desired.registration.queueName).add(
+            desired.registration.jobName,
+            desired.data,
+            desired.options,
+          );
+          this.repeatRegistrations.set(key, desired.registration);
+          this.queueConnectionWarningEmitted = false;
+        } catch (error) {
+          this.repeatRegistrations.delete(key);
+          this.rethrowSanitizedQueueCommandError(error);
+        }
+      }
+    }
+
+    throw this.queueRedisUnavailable();
+  }
+
+  private haveAllDesiredRepeatRegistrations(): boolean {
+    return [...this.desiredRepeatRegistrations.entries()].every(
+      ([key, desired]) =>
+        repeatRegistrationsEqual(
+          this.repeatRegistrations.get(key),
+          desired.registration,
+        ),
+    );
   }
 
   private async checkOwnedQueueReadinessClient(client: IORedis): Promise<void> {
@@ -1022,6 +1222,19 @@ function repeatRegistrationKey(
   >,
 ): string {
   return `${registration.queueName}:${registration.jobName}:${registration.jobId}`;
+}
+
+function repeatRegistrationsEqual(
+  current: BullmqRepeatRegistration | undefined,
+  desired: BullmqRepeatRegistration,
+): boolean {
+  return (
+    current?.queueName === desired.queueName &&
+    current.jobName === desired.jobName &&
+    current.jobId === desired.jobId &&
+    current.pattern === desired.pattern &&
+    current.every === desired.every
+  );
 }
 
 function queueRedisReconnectDelay(attempt: number): number {

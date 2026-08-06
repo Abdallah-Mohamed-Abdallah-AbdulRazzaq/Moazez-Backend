@@ -14,9 +14,12 @@ import {
   CommunicationParticipantRole,
   CommunicationParticipantStatus,
   MembershipStatus,
+  OrganizationStatus,
   Prisma,
+  SchoolStatus,
   StudentEnrollmentStatus,
   UserStatus,
+  UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import {
@@ -187,6 +190,15 @@ export interface CommunicationMessageNotificationCreateResult {
   pushDeliveries: CommunicationGeneratedPushDeliveryRecord[];
 }
 
+export interface CommunicationAnnouncementRecoveryCandidate {
+  id: string;
+  schoolId: string;
+  organizationId: string;
+  publishedAt: Date;
+  actorUserId: string | null;
+  actorUserType: UserType | null;
+}
+
 interface AudienceTargetIds {
   stageIds: string[];
   gradeIds: string[];
@@ -215,6 +227,87 @@ export class CommunicationNotificationGenerationRepository {
       },
       ...COMMUNICATION_ANNOUNCEMENT_FOR_NOTIFICATION_GENERATION_ARGS,
     });
+  }
+
+  async listPublishedAnnouncementRecoveryCandidates(input: {
+    now: Date;
+    windowStartedAt: Date;
+    after?: { publishedAt: Date; id: string };
+    take: number;
+  }): Promise<{
+    candidates: CommunicationAnnouncementRecoveryCandidate[];
+    next: { publishedAt: Date; id: string } | null;
+  }> {
+    const rows = await this.prisma.communicationAnnouncement.findMany({
+      where: {
+        status: CommunicationAnnouncementStatus.PUBLISHED,
+        publishedAt: {
+          not: null,
+          gt: input.windowStartedAt,
+          lte: input.now,
+        },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: input.now } }],
+        school: {
+          status: SchoolStatus.ACTIVE,
+          deletedAt: null,
+          organization: {
+            status: OrganizationStatus.ACTIVE,
+            deletedAt: null,
+          },
+        },
+        ...(input.after
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { publishedAt: { gt: input.after.publishedAt } },
+                    {
+                      publishedAt: input.after.publishedAt,
+                      id: { gt: input.after.id },
+                    },
+                  ],
+                },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        schoolId: true,
+        publishedAt: true,
+        school: { select: { organizationId: true } },
+        publishedBy: {
+          select: { id: true, userType: true, status: true, deletedAt: true },
+        },
+        createdBy: {
+          select: { id: true, userType: true, status: true, deletedAt: true },
+        },
+      },
+      orderBy: [{ publishedAt: 'asc' }, { id: 'asc' }],
+      take: input.take,
+    });
+
+    const last = rows[rows.length - 1];
+    return {
+      candidates: rows.flatMap((row) => {
+        const actor = row.publishedBy ?? row.createdBy ?? null;
+        if (!row.publishedAt) return [];
+        return [
+          {
+            id: row.id,
+            schoolId: row.schoolId,
+            organizationId: row.school.organizationId,
+            publishedAt: row.publishedAt,
+            actorUserId: actor?.id ?? null,
+            actorUserType: actor?.userType ?? null,
+          },
+        ];
+      }),
+      next:
+        last?.publishedAt && rows.length === input.take
+          ? { publishedAt: last.publishedAt, id: last.id }
+          : null,
+    };
   }
 
   findSentCurrentSchoolMessageForNotificationGeneration(
@@ -266,7 +359,9 @@ export class CommunicationNotificationGenerationRepository {
     if (message.status !== CommunicationMessageStatus.SENT) return [];
     if (message.kind === CommunicationMessageKind.SYSTEM) return [];
     if (message.hiddenAt || message.deletedAt) return [];
-    if (message.conversation.status !== CommunicationConversationStatus.ACTIVE) {
+    if (
+      message.conversation.status !== CommunicationConversationStatus.ACTIVE
+    ) {
       return [];
     }
     if (message.conversation.deletedAt) return [];
@@ -600,21 +695,23 @@ export class CommunicationNotificationGenerationRepository {
         data: missingDeliveryNotificationIds.map((notificationId) => {
           const recipientUserId = recipientByNotificationId.get(notificationId);
           const pushEnabled =
-            !!recipientUserId && pushEnabledRecipientUserIds.has(recipientUserId);
-          const data: Prisma.CommunicationNotificationDeliveryCreateManyInput = {
-            schoolId: input.schoolId,
-            notificationId,
-            channel: CommunicationNotificationDeliveryChannel.PUSH,
-            status: pushEnabled
-              ? CommunicationNotificationDeliveryStatus.PENDING
-              : CommunicationNotificationDeliveryStatus.SKIPPED,
-            provider: COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
-            attemptedAt: pushEnabled ? null : input.now,
-            errorCode: pushEnabled ? null : PUSH_PREFERENCE_DISABLED_CODE,
-            errorMessage: pushEnabled
-              ? null
-              : 'Push notification preference disabled',
-          };
+            !!recipientUserId &&
+            pushEnabledRecipientUserIds.has(recipientUserId);
+          const data: Prisma.CommunicationNotificationDeliveryCreateManyInput =
+            {
+              schoolId: input.schoolId,
+              notificationId,
+              channel: CommunicationNotificationDeliveryChannel.PUSH,
+              status: pushEnabled
+                ? CommunicationNotificationDeliveryStatus.PENDING
+                : CommunicationNotificationDeliveryStatus.SKIPPED,
+              provider: COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
+              attemptedAt: pushEnabled ? null : input.now,
+              errorCode: pushEnabled ? null : PUSH_PREFERENCE_DISABLED_CODE,
+              errorMessage: pushEnabled
+                ? null
+                : 'Push notification preference disabled',
+            };
           if (!pushEnabled) {
             data.metadata = { skippedReason: 'preference_disabled' };
           }

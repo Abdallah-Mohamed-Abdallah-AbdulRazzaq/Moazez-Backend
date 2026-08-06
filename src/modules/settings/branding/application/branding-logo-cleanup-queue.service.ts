@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FileVisibility } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
 import { BullmqService } from '../../../../infrastructure/queue/bullmq.service';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import {
@@ -43,12 +42,12 @@ export class BrandingLogoCleanupQueueService {
   }
 
   enqueueCleanup(fileId: string) {
-    return this.bullmqService.addJob(
+    return this.bullmqService.ensureJobFromPersistedTruth(
       BRANDING_LOGO_CLEANUP_QUEUE,
       BRANDING_LOGO_CLEANUP_JOB,
       { fileId },
       {
-        jobId: `branding-logo-cleanup-${randomUUID()}`,
+        jobId: `branding-logo-cleanup-${fileId}`,
         attempts: 5,
         backoff: { type: 'exponential', delay: 5_000 },
         removeOnComplete: 100,

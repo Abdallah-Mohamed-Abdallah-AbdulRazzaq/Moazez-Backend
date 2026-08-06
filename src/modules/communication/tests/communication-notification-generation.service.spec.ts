@@ -18,6 +18,7 @@ import { CommunicationRealtimeEventsService } from '../application/communication
 import { CommunicationNotificationGenerationService } from '../application/communication-notification-generation.service';
 import { CommunicationNotificationPreferenceService } from '../application/communication-notification-preference.service';
 import { CommunicationNotificationPushQueueService } from '../application/communication-notification-push-queue.service';
+import { CommunicationAnnouncementNotificationGenerationJobData } from '../domain/communication-notification-generation-domain';
 import {
   CommunicationAnnouncementForNotificationGeneration,
   CommunicationGeneratedNotificationRecord,
@@ -168,6 +169,114 @@ describe('CommunicationNotificationGenerationService', () => {
       actorUserId: ACTOR_ID,
       actorUserType: UserType.SCHOOL_USER,
     });
+  });
+
+  it('generates and immediately enqueues actorless announcement Push deliveries without fabrication', async () => {
+    const realtime = realtimeMock();
+    const pushQueue = pushQueueMock();
+    const repository = repositoryMock({
+      findPublishedCurrentSchoolAnnouncementForNotificationGeneration: jest
+        .fn()
+        .mockResolvedValue(
+          announcementRecord({ publishedById: null, createdById: null }),
+        ),
+      resolveCurrentSchoolAnnouncementRecipientUserIds: jest
+        .fn()
+        .mockResolvedValue(['user-1']),
+      createMissingAnnouncementPublishedNotifications: jest
+        .fn()
+        .mockResolvedValueOnce({
+          recipientCount: 1,
+          createdNotificationCount: 1,
+          existingNotificationCount: 0,
+          createdDeliveryCount: 1,
+          existingDeliveryCount: 0,
+          createdNotifications: [
+            generatedNotificationRecord({ actorUserId: null }),
+          ],
+          pushDeliveries: [
+            { id: 'push-delivery-actorless', notificationId: 'notification-1' },
+          ],
+        })
+        .mockResolvedValueOnce({
+          recipientCount: 1,
+          createdNotificationCount: 0,
+          existingNotificationCount: 1,
+          createdDeliveryCount: 0,
+          existingDeliveryCount: 1,
+          createdNotifications: [],
+          pushDeliveries: [],
+        }),
+    });
+    const service = createGenerationService(
+      repository,
+      realtime,
+      preferenceMock(),
+      pushQueue,
+    );
+    const actorlessJob = jobData({ actorUserId: null, actorUserType: null });
+
+    await expect(
+      service.generateForPublishedAnnouncement(actorlessJob),
+    ).resolves.toMatchObject({
+      announcementId: ANNOUNCEMENT_ID,
+      createdNotificationCount: 1,
+      createdDeliveryCount: 1,
+      skippedReason: null,
+    });
+    await expect(
+      service.generateForPublishedAnnouncement(actorlessJob),
+    ).resolves.toMatchObject({
+      createdNotificationCount: 0,
+      createdDeliveryCount: 0,
+    });
+
+    expect(
+      repository.createMissingAnnouncementPublishedNotifications,
+    ).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ actorUserId: null }),
+    );
+    expect(pushQueue.enqueueNotificationPushDelivery).toHaveBeenCalledTimes(1);
+    expect(pushQueue.enqueueNotificationPushDelivery).toHaveBeenCalledWith({
+      schoolId: SCHOOL_ID,
+      organizationId: ORGANIZATION_ID,
+      notificationId: 'notification-1',
+      deliveryId: 'push-delivery-actorless',
+      actorUserId: null,
+      actorUserType: null,
+    });
+    expect(realtime.publishNotificationCreated).toHaveBeenCalledWith(
+      SCHOOL_ID,
+      expect.objectContaining({ actorUserId: null }),
+    );
+  });
+
+  it('preserves a persisted historical announcement actor when recovery job actor fields are absent', async () => {
+    const realtime = realtimeMock();
+    const repository = repositoryMock({
+      findPublishedCurrentSchoolAnnouncementForNotificationGeneration: jest
+        .fn()
+        .mockResolvedValue(
+          announcementRecord({
+            publishedById: 'inactive-historical-actor',
+            createdById: 'creator-1',
+          }),
+        ),
+    });
+
+    await createGenerationService(
+      repository,
+      realtime,
+    ).generateForPublishedAnnouncement(
+      jobData({ actorUserId: null, actorUserType: null }),
+    );
+
+    expect(
+      repository.createMissingAnnouncementPublishedNotifications,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ actorUserId: 'inactive-historical-actor' }),
+    );
   });
 
   it('keeps in-app notifications but skips push enqueue when push preference is disabled', async () => {
@@ -796,7 +905,9 @@ function preferenceMock(
     Record<string, jest.Mock>;
 }
 
-function announcementRecord(): CommunicationAnnouncementForNotificationGeneration {
+function announcementRecord(
+  overrides: Partial<CommunicationAnnouncementForNotificationGeneration> = {},
+): CommunicationAnnouncementForNotificationGeneration {
   return {
     id: ANNOUNCEMENT_ID,
     schoolId: SCHOOL_ID,
@@ -810,16 +921,20 @@ function announcementRecord(): CommunicationAnnouncementForNotificationGeneratio
     createdById: 'creator-1',
     publishedById: ACTOR_ID,
     audiences: [],
+    ...overrides,
   };
 }
 
-function jobData() {
+function jobData(
+  overrides: Partial<CommunicationAnnouncementNotificationGenerationJobData> = {},
+): CommunicationAnnouncementNotificationGenerationJobData {
   return {
     schoolId: SCHOOL_ID,
     organizationId: ORGANIZATION_ID,
     announcementId: ANNOUNCEMENT_ID,
     actorUserId: ACTOR_ID,
     actorUserType: UserType.SCHOOL_USER,
+    ...overrides,
   };
 }
 

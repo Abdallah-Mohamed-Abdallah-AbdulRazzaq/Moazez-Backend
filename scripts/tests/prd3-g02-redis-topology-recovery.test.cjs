@@ -81,7 +81,7 @@ test('runtime role ownership stays at the completed Phase 2 graph', () => {
     contract,
     /MEDIA_WORKER_ASSIGNED_CONSUMERS\)\.toEqual\(\['learning-media-cleanup'\]\)/u,
   );
-  assert.match(contract, /registerRepeatJob\)\.toHaveBeenCalledTimes\(3\)/u);
+  assert.match(contract, /registerRepeatJob\)\.toHaveBeenCalledTimes\(7\)/u);
 });
 
 test('real evidence harness locks two instances, budgets, outages, and cleanup', () => {
@@ -117,8 +117,7 @@ test('legacy REDIS_URL has no executable fallback reference', () => {
     'src/infrastructure/realtime/tests/realtime.gateway-redis-lifecycle.spec.ts',
     'src/runtime/runtime-env.validation.spec.ts',
   ]);
-  const excluded =
-    'scripts/tests/prd3-g02-redis-topology-recovery.test.cjs';
+  const excluded = 'scripts/tests/prd3-g02-redis-topology-recovery.test.cjs';
 
   function collectFiles(relativePath) {
     const absolutePath = path.join(ROOT, relativePath);
@@ -131,9 +130,7 @@ test('legacy REDIS_URL has no executable fallback reference', () => {
     return fs
       .readdirSync(absolutePath, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() || entry.isFile())
-      .flatMap((entry) =>
-        collectFiles(path.join(relativePath, entry.name)),
-      );
+      .flatMap((entry) => collectFiles(path.join(relativePath, entry.name)));
   }
 
   const unexpected = ['src', 'scripts', 'test', '.github']
