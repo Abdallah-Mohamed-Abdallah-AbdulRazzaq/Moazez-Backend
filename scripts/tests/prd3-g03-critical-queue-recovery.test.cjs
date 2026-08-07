@@ -7,6 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const ROOT = path.resolve(__dirname, '..', '..');
+const G03_TEST_PATH = 'scripts/tests/prd3-g03-critical-queue-recovery.test.cjs';
 const read = (relativePath) =>
   fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
 
@@ -31,9 +32,8 @@ test('Q017, D015, ADR-0009, and G03 governance are accepted consistently', () =>
     decisions,
     /PRD0-D015 \| Critical job recovery\/reconciliation \| LOCKED_FROM_APPROVED_CONTEXT/u,
   );
-  assert.match(dispositions, /PRD0-Q017 \| APPROVED/u);
-  assert.match(dispositions, /\| APPROVED \| 17 \|/u);
-  assert.match(dispositions, /\| PENDING \| 31 \|/u);
+  assert.equal(questionDispositionStatus(dispositions, 'PRD0-Q017'), 'APPROVED');
+  assertDispositionTotalsConsistent(dispositions);
   assert.match(
     matrix,
     /PRD3-G03=IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE/u,
@@ -54,6 +54,76 @@ test('Q017, D015, ADR-0009, and G03 governance are accepted consistently', () =>
       `unrelated Markdown separator drift in ${relativePath}`,
     );
   }
+});
+
+test('G03 disposition totals are consistent without owning later approval counts', () => {
+  const alternateApprovalSplit = [
+    '| Disposition | Count |',
+    '| --- | ---: |',
+    '| Total | 48 |',
+    '| APPROVED | 19 |',
+    '| PENDING | 29 |',
+    '| Omitted | 0 |',
+    '| Duplicated | 0 |',
+  ].join('\n');
+  const totals = assertDispositionTotalsConsistent(alternateApprovalSplit);
+  assert.equal(totals.APPROVED, 19);
+  assert.equal(totals.PENDING, 29);
+
+  assert.throws(() =>
+    assertDispositionTotalsConsistent(
+      alternateApprovalSplit.replace('| Total | 48 |', '| Total | 47 |'),
+    ),
+  );
+  assert.throws(() =>
+    assertDispositionTotalsConsistent(
+      alternateApprovalSplit.replace('| Omitted | 0 |', '| Omitted | 1 |'),
+    ),
+  );
+  assert.throws(() =>
+    assertDispositionTotalsConsistent(
+      alternateApprovalSplit.replace('| Duplicated | 0 |', '| Duplicated | 1 |'),
+    ),
+  );
+});
+
+test('timeless source discovery uses current tracked TypeScript source', () => {
+  const sourcePaths = trackedSourcePaths();
+  assert.ok(sourcePaths.length > 0);
+  assert.ok(
+    sourcePaths.every(
+      (relativePath) =>
+        relativePath.startsWith('src/') && relativePath.endsWith('.ts'),
+    ),
+  );
+  assert.ok(allSourceText().length > 0);
+
+  const testSource = read(G03_TEST_PATH);
+  const discoverySource =
+    /function trackedSourcePaths\(\)[\s\S]*?function markdownTableSeparators/u.exec(
+      testSource,
+    )?.[0] ?? '';
+  assert.match(discoverySource, /\['ls-files', '--', 'src'\]/u);
+  assert.doesNotMatch(
+    discoverySource,
+    /changedPaths|status --short|node_modules|dist|coverage|\.env/u,
+  );
+});
+
+test('candidate scope and changed-file security checks remain diff-based', () => {
+  const testSource = read(G03_TEST_PATH);
+  assert.match(
+    testSource,
+    /test\('schema, migrations, dependencies, lockfile, and public API stay unchanged'[\s\S]*?const changed = changedPaths\(\);/u,
+  );
+  assert.match(
+    testSource,
+    /test\('changed paths stay inside the bounded G03 implementation'[\s\S]*?const unexpected = changedPaths\(\)\.filter/u,
+  );
+  assert.match(
+    testSource,
+    /test\('changed executable and evidence files contain no real secret or unsafe shell literal'[\s\S]*?const paths = changedPaths\(\)\.filter/u,
+  );
 });
 
 test('the existing seven queues and seven consumers remain the complete inventory', () => {
@@ -408,11 +478,69 @@ test('changed executable and evidence files contain no real secret or unsafe she
   assert.deepEqual(findings, []);
 });
 
+function parseDispositionTotals(source) {
+  const totals = Object.create(null);
+  for (const line of source.split(/\r?\n/u)) {
+    const match =
+      /^\|\s*(Total|APPROVED|PENDING|Omitted|Duplicated)\s*\|\s*(\d+)\s*\|$/u.exec(
+        line,
+      );
+    if (!match) continue;
+    assert.equal(
+      Object.hasOwn(totals, match[1]),
+      false,
+      `duplicate disposition total ${match[1]}`,
+    );
+    totals[match[1]] = Number(match[2]);
+  }
+  assert.deepEqual(Object.keys(totals).sort(), [
+    'APPROVED',
+    'Duplicated',
+    'Omitted',
+    'PENDING',
+    'Total',
+  ]);
+  return totals;
+}
+
+function assertDispositionTotalsConsistent(source) {
+  const totals = parseDispositionTotals(source);
+  assert.equal(totals.Total, 48);
+  assert.equal(totals.APPROVED + totals.PENDING, totals.Total);
+  assert.equal(totals.Omitted, 0);
+  assert.equal(totals.Duplicated, 0);
+  return totals;
+}
+
+function questionDispositionStatus(source, questionId) {
+  const rows = source
+    .split(/\r?\n/u)
+    .map((line) =>
+      /^\|\s*(PRD0-Q\d{3})\s*\|\s*([A-Z_]+)\s*\|/u.exec(line),
+    )
+    .filter((match) => match?.[1] === questionId);
+  assert.equal(rows.length, 1, `expected one disposition for ${questionId}`);
+  return rows[0][2];
+}
+
+function trackedSourcePaths() {
+  const sourcePaths = command('git', ['ls-files', '--', 'src'])
+    .stdout.split(/\r?\n/u)
+    .filter(Boolean)
+    .map((relativePath) => relativePath.replaceAll('\\', '/'))
+    .filter(
+      (relativePath) =>
+        relativePath.startsWith('src/') && relativePath.endsWith('.ts'),
+    )
+    .sort();
+  assert.ok(sourcePaths.length > 0, 'tracked TypeScript source inventory is empty');
+  return sourcePaths;
+}
+
 function allSourceText() {
-  return changedPaths()
-    .filter((entry) => entry.startsWith('src/') && entry.endsWith('.ts'))
-    .map(read)
-    .join('\n');
+  const source = trackedSourcePaths().map(read).join('\n');
+  assert.ok(source.length > 0, 'tracked TypeScript source text is empty');
+  return source;
 }
 
 function markdownTableSeparators(source) {
