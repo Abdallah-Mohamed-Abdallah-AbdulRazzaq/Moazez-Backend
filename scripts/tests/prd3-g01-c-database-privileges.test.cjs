@@ -5,15 +5,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const {
+  BASE_SHA,
   EXPECTED_CHANGED_PATHS,
   NEGATIVE_CHECK_NAMES,
   POSITIVE_CHECK_NAMES,
   POSTGRESQL_ROLES,
   ROLE_ATTRIBUTES,
   RUNTIME_ROLES,
+  VERIFICATION_MODES,
   assertCleanup,
   createPassingSummaryForTests,
-  readChangedPaths,
+  resolveVerificationMode,
+  validateRepositoryState,
   validateSummary,
 } = require('../ci/prd3-g01-c-database-privileges.cjs');
 
@@ -26,6 +29,30 @@ const verifier = read('scripts/ci/prd3-g01-c-database-privileges.cjs');
 const executableBootstrapSql = bootstrapSql
   .replace(/\/\*[\s\S]*?\*\//gu, '')
   .replace(/--[^\r\n]*/gu, '');
+
+const MAINTENANCE_CHANGED_PATHS = Object.freeze([
+  'scripts/ci/prd3-g01-c-database-privileges.cjs',
+  'scripts/tests/prd3-g01-c-database-privileges.test.cjs',
+  'scripts/ci/prd3-g04-governed-migration-job.cjs',
+  'scripts/tests/prd3-g04-governed-migration-job.test.cjs',
+  'scripts/ci/prd3-g05-clean-start.cjs',
+  'scripts/tests/prd3-g05-clean-start.test.cjs',
+]);
+
+function repositoryState(overrides = {}) {
+  return {
+    branch: 'chore/production-readiness-3-cloud-sql',
+    head: 'd5983578be2007b8378de4818a1f96446e9e9c1e',
+    nodeVersion: 'v22.23.1',
+    nodeDirectory:
+      'C:\\Users\\Abdal\\AppData\\Local\\Moazez\\toolchains\\node-v22.23.1-win-x64',
+    indexClean: true,
+    changedPaths: [...MAINTENANCE_CHANGED_PATHS],
+    historicalBaseIsAncestor: true,
+    dependencyChanged: false,
+    ...overrides,
+  };
+}
 
 const ROLE_CREDENTIAL_VARIABLES = Object.freeze({
   moazez_api: 'api_role_credential',
@@ -283,7 +310,22 @@ test('working-tree scope is exactly the four C1 authorized paths', () => {
     'scripts/database/prd3-g01-c-role-bootstrap.sql',
     'scripts/tests/prd3-g01-c-database-privileges.test.cjs',
   ]);
-  assert.deepEqual(readChangedPaths(), [...EXPECTED_CHANGED_PATHS].sort());
+  assert.equal(
+    validateRepositoryState(
+      repositoryState({ head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] }),
+      VERIFICATION_MODES.CANDIDATE,
+    ),
+    true,
+  );
+  assert.throws(() =>
+    validateRepositoryState(repositoryState(), VERIFICATION_MODES.CANDIDATE),
+  );
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ head: BASE_SHA, changedPaths: EXPECTED_CHANGED_PATHS.slice(1) }),
+      VERIFICATION_MODES.CANDIDATE,
+    ),
+  );
 });
 
 test('verifier is locked to the C1 baseline and proves password rotation idempotency', () => {
@@ -291,4 +333,70 @@ test('verifier is locked to the C1 baseline and proves password rotation idempot
   assert.match(verifier, /verifyCredentialRotation/u);
   assert.match(verifier, /assert\.deepEqual\(secondRoleCatalog, firstRoleCatalog\)/u);
   assert.doesNotMatch(verifier, /BASE_SHA = '1816a3294be92ac177b6a5e906199a33d9c1912a'/u);
+});
+
+test('verification mode parsing preserves candidate default and explicit regression only', () => {
+  assert.equal(resolveVerificationMode([]), VERIFICATION_MODES.CANDIDATE);
+  assert.equal(resolveVerificationMode(['--regression']), VERIFICATION_MODES.REGRESSION);
+  for (const option of [
+    '--skip-preflight', '--force', '--current', '--ignore-scope', '--anything-else',
+  ]) {
+    assert.throws(() => resolveVerificationMode([option]), /unknown verification mode/u);
+  }
+  assert.throws(
+    () => resolveVerificationMode(['--regression', '--force']),
+    /unknown verification mode/u,
+  );
+});
+
+test('regression mode accepts a descendant and rejects non-descendant or staged state', () => {
+  assert.equal(
+    validateRepositoryState(repositoryState(), VERIFICATION_MODES.REGRESSION),
+    true,
+  );
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ historicalBaseIsAncestor: false }),
+      VERIFICATION_MODES.REGRESSION,
+    ),
+  );
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ indexClean: false }),
+      VERIFICATION_MODES.REGRESSION,
+    ),
+  );
+});
+
+test('regression mode rejects every protected production and release-contract scope', () => {
+  for (const changedPath of [
+    'src/main.ts',
+    'prisma/schema.prisma',
+    'prisma/migrations/20260101000000_fixture/migration.sql',
+    'prisma/seeds/01-permissions.seed.ts',
+    'package-lock.json',
+    'Dockerfile',
+    '.github/workflows/fixture.yml',
+    'config/deployment/fixture.json',
+    'adr/ADR-9999-fixture.md',
+    'scripts/database/fixture.sql',
+    'scripts/migrations/fixture.cjs',
+    'scripts/release/fixture.cjs',
+  ]) {
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ changedPaths: [changedPath] }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+  }
+});
+
+test('regression mode rejects dependency or devDependency drift', () => {
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ dependencyChanged: true }),
+      VERIFICATION_MODES.REGRESSION,
+    ),
+  );
 });

@@ -26,6 +26,13 @@ const {
   RELEASE_STAGE_IDS,
   runGovernedReleaseSequence,
 } = require('../release/governed-release-gate.cjs');
+const {
+  BASE_SHA,
+  EXPECTED_CHANGED_PATHS,
+  VERIFICATION_MODES,
+  resolveVerificationMode,
+  validateRepositoryState,
+} = require('../ci/prd3-g04-governed-migration-job.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const read = (relativePath) =>
@@ -34,6 +41,29 @@ const json = (relativePath) => JSON.parse(read(relativePath));
 const runnerSource = read('scripts/migrations/run-governed-migration-job.cjs');
 const manifestSource = read('scripts/migrations/migration-artifact-manifest.cjs');
 const releaseGateSource = read('scripts/release/governed-release-gate.cjs');
+const MAINTENANCE_CHANGED_PATHS = Object.freeze([
+  'scripts/ci/prd3-g01-c-database-privileges.cjs',
+  'scripts/tests/prd3-g01-c-database-privileges.test.cjs',
+  'scripts/ci/prd3-g04-governed-migration-job.cjs',
+  'scripts/tests/prd3-g04-governed-migration-job.test.cjs',
+  'scripts/ci/prd3-g05-clean-start.cjs',
+  'scripts/tests/prd3-g05-clean-start.test.cjs',
+]);
+
+function repositoryState(overrides = {}) {
+  return {
+    branch: 'chore/production-readiness-3-cloud-sql',
+    head: 'd5983578be2007b8378de4818a1f96446e9e9c1e',
+    nodeVersion: 'v22.23.1',
+    nodeDirectory:
+      'C:\\Users\\Abdal\\AppData\\Local\\Moazez\\toolchains\\node-v22.23.1-win-x64',
+    indexClean: true,
+    changedPaths: [...MAINTENANCE_CHANGED_PATHS],
+    historicalBaseIsAncestor: true,
+    dependencyChanged: false,
+    ...overrides,
+  };
+}
 
 function validEnvironment(overrides = {}) {
   const executionId = overrides.MIGRATION_JOB_EXECUTION_ID ?? 'g04-unit-001';
@@ -113,6 +143,108 @@ function makeOperations(failureStage, calls) {
     ]),
   );
 }
+
+test('G04 historical candidate contract retains its exact baseline and 16 paths', () => {
+  assert.equal(BASE_SHA, '3c2f6ad6b31001b37aa6b2962767de163474856d');
+  assert.deepEqual(EXPECTED_CHANGED_PATHS, [
+    'Dockerfile',
+    'MIGRATION_GOVERNANCE.md',
+    'adr/ADR-0007-migration-job-and-deployment-ordering.md',
+    'config/deployment/migration-artifact-manifest.json',
+    'config/deployment/migration-job.contract.json',
+    'config/deployment/release-sequence.contract.json',
+    'docs/production-readiness/phase-0/02-production-decision-register.md',
+    'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md',
+    'docs/production-readiness/phase-0/05-owner-decision-disposition-register.md',
+    'docs/production-readiness/phase-3/07-governed-migration-job-evidence.md',
+    'package.json',
+    'scripts/ci/prd3-g04-governed-migration-job.cjs',
+    'scripts/migrations/migration-artifact-manifest.cjs',
+    'scripts/migrations/run-governed-migration-job.cjs',
+    'scripts/release/governed-release-gate.cjs',
+    'scripts/tests/prd3-g04-governed-migration-job.test.cjs',
+  ]);
+  assert.equal(
+    validateRepositoryState(
+      repositoryState({ head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] }),
+      VERIFICATION_MODES.CANDIDATE,
+    ),
+    true,
+  );
+  assert.throws(() =>
+    validateRepositoryState(repositoryState(), VERIFICATION_MODES.CANDIDATE),
+  );
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ head: BASE_SHA, changedPaths: EXPECTED_CHANGED_PATHS.slice(1) }),
+      VERIFICATION_MODES.CANDIDATE,
+    ),
+  );
+});
+
+test('G04 verification mode parsing permits only candidate default or --regression', () => {
+  assert.equal(resolveVerificationMode([]), VERIFICATION_MODES.CANDIDATE);
+  assert.equal(resolveVerificationMode(['--regression']), VERIFICATION_MODES.REGRESSION);
+  for (const option of [
+    '--skip-preflight', '--force', '--current', '--ignore-scope', '--anything-else',
+  ]) {
+    assert.throws(() => resolveVerificationMode([option]), /unknown verification mode/u);
+  }
+  assert.throws(() => resolveVerificationMode(['--regression', '--force']));
+});
+
+test('G04 regression mode accepts a descendant and rejects non-descendant or staged state', () => {
+  assert.equal(
+    validateRepositoryState(repositoryState(), VERIFICATION_MODES.REGRESSION),
+    true,
+  );
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ historicalBaseIsAncestor: false }),
+      VERIFICATION_MODES.REGRESSION,
+    ),
+  );
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ indexClean: false }),
+      VERIFICATION_MODES.REGRESSION,
+    ),
+  );
+});
+
+test('G04 regression mode rejects protected source, schema, migration, and release drift', () => {
+  for (const changedPath of [
+    'src/main.ts',
+    'prisma/schema.prisma',
+    'prisma/migrations/20260101000000_fixture/migration.sql',
+    'prisma/seeds/01-permissions.seed.ts',
+    'package-lock.json',
+    'Dockerfile',
+    '.github/workflows/fixture.yml',
+    'config/deployment/fixture.json',
+    'adr/ADR-9999-fixture.md',
+    'scripts/database/fixture.sql',
+    'scripts/migrations/fixture.cjs',
+    'scripts/release/fixture.cjs',
+    'terraform/main.tf',
+  ]) {
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ changedPaths: [changedPath] }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+  }
+});
+
+test('G04 regression mode rejects dependency or devDependency drift', () => {
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ dependencyChanged: true }),
+      VERIFICATION_MODES.REGRESSION,
+    ),
+  );
+});
 
 test('records the exact approved PRD0-Q026 owner decision', () => {
   const disposition = read(

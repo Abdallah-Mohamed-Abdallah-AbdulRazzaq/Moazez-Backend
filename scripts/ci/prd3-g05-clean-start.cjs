@@ -7,6 +7,7 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { isDeepStrictEqual } = require('node:util');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_SHA = '10be00c51eba72bbdfe9591eb0e00399402100ef';
@@ -24,6 +25,10 @@ const ROLE_LABEL = 'com.moazez.prd3-g05.role';
 const DATABASE_CONTAINER = `moazez-prd3-g05-db-${RUN_ID}`;
 const DATABASE_NAME = `g05_clean_${RUN_ID}`;
 const TEMPORARY_PREFIX = 'moazez-prd3-g05-';
+const VERIFICATION_MODES = Object.freeze({
+  CANDIDATE: 'candidate',
+  REGRESSION: 'regression',
+});
 const ROLE_BOOTSTRAP_PATH = path.join(
   REPOSITORY_ROOT,
   'scripts',
@@ -53,6 +58,22 @@ const EXPECTED_CHANGED_PATHS = Object.freeze([
   'package.json',
   'scripts/ci/prd3-g05-clean-start.cjs',
   'scripts/tests/prd3-g05-clean-start.test.cjs',
+]);
+const REGRESSION_PROTECTED_PATHS = Object.freeze([
+  'prisma/schema.prisma',
+  'package-lock.json',
+  'Dockerfile',
+]);
+const REGRESSION_PROTECTED_PREFIXES = Object.freeze([
+  'src/',
+  'prisma/migrations/',
+  'prisma/seeds/',
+  '.github/',
+  'config/',
+  'adr/',
+  'scripts/database/',
+  'scripts/migrations/',
+  'scripts/release/',
 ]);
 const ALLOWED_NONZERO_APPLICATION_TABLES = Object.freeze([
   'permissions',
@@ -130,56 +151,88 @@ function readChangedPaths() {
     .sort();
 }
 
-function assertRepositoryPreflight() {
-  assert.equal(git(['branch', '--show-current']).stdout.trim(), REQUIRED_BRANCH);
-  assert.equal(git(['rev-parse', 'HEAD']).stdout.trim(), BASE_SHA);
-  assert.equal(process.version, REQUIRED_NODE_VERSION);
-  assert.equal(
-    path.dirname(path.resolve(process.execPath)).toLowerCase(),
-    REQUIRED_NODE_DIRECTORY.toLowerCase(),
-  );
-  assert.equal(
-    spawnSync('git', ['diff', '--cached', '--quiet'], {
-      cwd: REPOSITORY_ROOT,
-      windowsHide: true,
-    }).status,
-    0,
-    'the real Git index must remain clean',
-  );
-  assert.deepEqual(readChangedPaths(), [...EXPECTED_CHANGED_PATHS].sort());
+function resolveVerificationMode(args = []) {
+  if (args.length === 0) return VERIFICATION_MODES.CANDIDATE;
+  if (args.length === 1 && args[0] === '--regression') {
+    return VERIFICATION_MODES.REGRESSION;
+  }
+  throw new Error('unknown verification mode; expected no argument or --regression');
 }
 
-function assertProtectedScope() {
-  const protectedResult = spawnSync(
+function isProtectedRegressionPath(changedPath) {
+  const normalized = changedPath.replaceAll('\\', '/');
+  return (
+    REGRESSION_PROTECTED_PATHS.includes(normalized) ||
+    REGRESSION_PROTECTED_PREFIXES.some((prefix) => normalized.startsWith(prefix)) ||
+    /(?:^|\/)(?:[^/]+\.tf|[^/]*terraform[^/]*|cloudbuild[^/]*)$/iu.test(normalized)
+  );
+}
+
+function validateRepositoryState(state, mode) {
+  assert.ok(Object.values(VERIFICATION_MODES).includes(mode), 'unknown verification mode');
+  assert.equal(state.branch, REQUIRED_BRANCH);
+  assert.equal(state.nodeVersion, REQUIRED_NODE_VERSION);
+  assert.equal(
+    path.normalize(state.nodeDirectory).toLowerCase(),
+    REQUIRED_NODE_DIRECTORY.toLowerCase(),
+  );
+  assert.equal(state.indexClean, true, 'the real Git index must remain clean');
+  assert.equal(state.dependencyChanged, false, 'dependency drift is not permitted');
+  if (mode === VERIFICATION_MODES.CANDIDATE) {
+    assert.equal(state.head, BASE_SHA);
+    assert.deepEqual([...state.changedPaths].sort(), [...EXPECTED_CHANGED_PATHS].sort());
+  } else {
+    assert.equal(
+      state.historicalBaseIsAncestor,
+      true,
+      'historical BASE_SHA must be an ancestor of HEAD',
+    );
+    assert.deepEqual(
+      state.changedPaths.filter(isProtectedRegressionPath),
+      [],
+      'protected repository scope changed',
+    );
+  }
+  return true;
+}
+
+function inspectRepositoryState() {
+  const ancestor = spawnSync(
     'git',
-    [
-      'diff',
-      '--quiet',
-      'HEAD',
-      '--',
-      'prisma/schema.prisma',
-      'prisma/migrations',
-      'prisma/seeds',
-      'package-lock.json',
-      'src',
-      'Dockerfile',
-      '.github',
-    ],
+    ['merge-base', '--is-ancestor', BASE_SHA, 'HEAD'],
     { cwd: REPOSITORY_ROOT, windowsHide: true },
   );
-  assert.equal(protectedResult.status, 0, 'protected repository scope changed');
-  const baselinePackage = JSON.parse(git(['show', 'HEAD:package.json']).stdout);
-  const candidatePackage = JSON.parse(
+  if (ancestor.error || ![0, 1].includes(ancestor.status)) {
+    throw new Error('historical baseline ancestry inspection failed');
+  }
+  const cached = spawnSync('git', ['diff', '--cached', '--quiet'], {
+    cwd: REPOSITORY_ROOT,
+    windowsHide: true,
+  });
+  const headPackage = JSON.parse(git(['show', 'HEAD:package.json']).stdout);
+  const workingPackage = JSON.parse(
     fs.readFileSync(path.join(REPOSITORY_ROOT, 'package.json'), 'utf8'),
   );
-  assert.deepEqual(candidatePackage.dependencies, baselinePackage.dependencies);
-  assert.deepEqual(candidatePackage.devDependencies, baselinePackage.devDependencies);
-  assert.ok(readChangedPaths().every((changedPath) => EXPECTED_CHANGED_PATHS.includes(changedPath)));
-  assert.ok(
-    !readChangedPaths().some((changedPath) =>
-      /\.tf$|terraform|cloudbuild|\.github\/|package-lock\.json$/iu.test(changedPath),
-    ),
-  );
+  return {
+    branch: git(['branch', '--show-current']).stdout.trim(),
+    head: git(['rev-parse', 'HEAD']).stdout.trim(),
+    nodeVersion: process.version,
+    nodeDirectory: path.dirname(path.resolve(process.execPath)),
+    indexClean: cached.status === 0,
+    changedPaths: readChangedPaths(),
+    historicalBaseIsAncestor: ancestor.status === 0,
+    dependencyChanged:
+      !isDeepStrictEqual(workingPackage.dependencies, headPackage.dependencies) ||
+      !isDeepStrictEqual(workingPackage.devDependencies, headPackage.devDependencies),
+  };
+}
+
+function assertRepositoryPreflight(mode = VERIFICATION_MODES.CANDIDATE) {
+  validateRepositoryState(inspectRepositoryState(), mode);
+}
+
+function assertProtectedScope(mode = VERIFICATION_MODES.CANDIDATE) {
+  validateRepositoryState(inspectRepositoryState(), mode);
 }
 
 function runFocusedTests() {
@@ -192,7 +245,7 @@ function runFocusedTests() {
   const tests = Number(output.match(/# tests (\d+)/u)?.[1]);
   const failed = Number(output.match(/# fail (\d+)/u)?.[1]);
   const skipped = Number(output.match(/# skipped (\d+)/u)?.[1]);
-  assert.equal(tests, 12);
+  assert.equal(tests, 17);
   assert.equal(failed, 0);
   assert.equal(skipped, 0);
   return { tests, passed: tests, failed, skipped };
@@ -685,17 +738,18 @@ async function runLiveEvidence() {
 }
 
 async function main() {
+  const mode = resolveVerificationMode(process.argv.slice(2));
   let summary;
   let cleanup;
   let primaryFailure;
   try {
-    assertRepositoryPreflight();
-    assertProtectedScope();
+    assertRepositoryPreflight(mode);
+    assertProtectedScope(mode);
     const focusedTests = runFocusedTests();
     summary = await runLiveEvidence();
     summary.focusedTests = focusedTests;
-    assertRepositoryPreflight();
-    assertProtectedScope();
+    assertRepositoryPreflight(mode);
+    assertProtectedScope(mode);
   } catch (error) {
     primaryFailure = error;
   } finally {
@@ -719,6 +773,12 @@ if (require.main === module) {
 
 module.exports = {
   ALLOWED_NONZERO_APPLICATION_TABLES,
+  BASE_SHA,
   EXPECTED_CHANGED_PATHS,
+  VERIFICATION_MODES,
+  inspectRepositoryState,
+  isProtectedRegressionPath,
   readChangedPaths,
+  resolveVerificationMode,
+  validateRepositoryState,
 };

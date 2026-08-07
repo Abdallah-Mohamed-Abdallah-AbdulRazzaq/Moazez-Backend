@@ -5,18 +5,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
+const {
+  BASE_SHA,
+  EXPECTED_CHANGED_PATHS,
+  VERIFICATION_MODES,
+  resolveVerificationMode,
+  validateRepositoryState,
+} = require('../ci/prd3-g05-clean-start.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
-const BASE_SHA = '10be00c51eba72bbdfe9591eb0e00399402100ef';
-const EXPECTED_CHANGED_PATHS = Object.freeze([
-  'adr/ADR-0006-production-data-source-object-storage-and-signed-capability-boundary.md',
-  'config/deployment/production-data-branch.contract.json',
-  'config/deployment/production-seed-inventory.json',
-  'docs/production-readiness/phase-0/02-production-decision-register.md',
-  'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md',
-  'docs/production-readiness/phase-0/05-owner-decision-disposition-register.md',
-  'docs/production-readiness/phase-3/08-clean-start-production-data-evidence.md',
-  'package.json',
+const MAINTENANCE_CHANGED_PATHS = Object.freeze([
+  'scripts/ci/prd3-g01-c-database-privileges.cjs',
+  'scripts/tests/prd3-g01-c-database-privileges.test.cjs',
+  'scripts/ci/prd3-g04-governed-migration-job.cjs',
+  'scripts/tests/prd3-g04-governed-migration-job.test.cjs',
   'scripts/ci/prd3-g05-clean-start.cjs',
   'scripts/tests/prd3-g05-clean-start.test.cjs',
 ]);
@@ -43,15 +45,116 @@ function git(args, options = {}) {
   });
 }
 
-function changedPaths() {
-  const result = git(['status', '--short', '--untracked-files=all']);
-  assert.equal(result.status, 0);
-  return result.stdout
-    .split(/\r?\n/u)
-    .filter(Boolean)
-    .map((line) => line.slice(3).replaceAll('\\', '/'))
-    .sort();
+function repositoryState(overrides = {}) {
+  return {
+    branch: 'chore/production-readiness-3-cloud-sql',
+    head: 'd5983578be2007b8378de4818a1f96446e9e9c1e',
+    nodeVersion: 'v22.23.1',
+    nodeDirectory:
+      'C:\\Users\\Abdal\\AppData\\Local\\Moazez\\toolchains\\node-v22.23.1-win-x64',
+    indexClean: true,
+    changedPaths: [...MAINTENANCE_CHANGED_PATHS],
+    historicalBaseIsAncestor: true,
+    dependencyChanged: false,
+    ...overrides,
+  };
 }
+
+test('G05 historical candidate contract retains its exact baseline and ten paths', () => {
+  assert.equal(BASE_SHA, '10be00c51eba72bbdfe9591eb0e00399402100ef');
+  assert.deepEqual(EXPECTED_CHANGED_PATHS, [
+    'adr/ADR-0006-production-data-source-object-storage-and-signed-capability-boundary.md',
+    'config/deployment/production-data-branch.contract.json',
+    'config/deployment/production-seed-inventory.json',
+    'docs/production-readiness/phase-0/02-production-decision-register.md',
+    'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md',
+    'docs/production-readiness/phase-0/05-owner-decision-disposition-register.md',
+    'docs/production-readiness/phase-3/08-clean-start-production-data-evidence.md',
+    'package.json',
+    'scripts/ci/prd3-g05-clean-start.cjs',
+    'scripts/tests/prd3-g05-clean-start.test.cjs',
+  ]);
+  assert.equal(
+    validateRepositoryState(
+      repositoryState({ head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] }),
+      VERIFICATION_MODES.CANDIDATE,
+    ),
+    true,
+  );
+  assert.throws(() =>
+    validateRepositoryState(repositoryState(), VERIFICATION_MODES.CANDIDATE),
+  );
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ head: BASE_SHA, changedPaths: EXPECTED_CHANGED_PATHS.slice(1) }),
+      VERIFICATION_MODES.CANDIDATE,
+    ),
+  );
+});
+
+test('G05 verification mode parsing permits only candidate default or --regression', () => {
+  assert.equal(resolveVerificationMode([]), VERIFICATION_MODES.CANDIDATE);
+  assert.equal(resolveVerificationMode(['--regression']), VERIFICATION_MODES.REGRESSION);
+  for (const option of [
+    '--skip-preflight', '--force', '--current', '--ignore-scope', '--anything-else',
+  ]) {
+    assert.throws(() => resolveVerificationMode([option]), /unknown verification mode/u);
+  }
+  assert.throws(() => resolveVerificationMode(['--regression', '--force']));
+});
+
+test('G05 regression mode accepts a descendant and rejects non-descendant or staged state', () => {
+  assert.equal(
+    validateRepositoryState(repositoryState(), VERIFICATION_MODES.REGRESSION),
+    true,
+  );
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ historicalBaseIsAncestor: false }),
+      VERIFICATION_MODES.REGRESSION,
+    ),
+  );
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ indexClean: false }),
+      VERIFICATION_MODES.REGRESSION,
+    ),
+  );
+});
+
+test('G05 regression mode rejects protected source, schema, migration, seed, and release drift', () => {
+  for (const changedPath of [
+    'src/main.ts',
+    'prisma/schema.prisma',
+    'prisma/migrations/20260101000000_fixture/migration.sql',
+    'prisma/seeds/01-permissions.seed.ts',
+    'package-lock.json',
+    'Dockerfile',
+    '.github/workflows/fixture.yml',
+    'config/deployment/fixture.json',
+    'adr/ADR-9999-fixture.md',
+    'scripts/database/fixture.sql',
+    'scripts/migrations/fixture.cjs',
+    'scripts/release/fixture.cjs',
+    'terraform/main.tf',
+  ]) {
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ changedPaths: [changedPath] }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+  }
+});
+
+test('G05 regression mode rejects dependency or devDependency drift', () => {
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ dependencyChanged: true }),
+      VERIFICATION_MODES.REGRESSION,
+    ),
+  );
+});
 
 test('Q004 clean-start contract locks the exact approved decision', () => {
   const contract = readJson('config/deployment/production-data-branch.contract.json');
@@ -216,7 +319,6 @@ test('package exposes only the two focused G05 verification scripts', () => {
 });
 
 test('schema, migrations, seeds, dependencies, lockfile, and real index are unchanged', () => {
-  assert.equal(git(['rev-parse', 'HEAD']).stdout.trim(), BASE_SHA);
   const protectedDiff = git([
     'diff',
     '--quiet',
@@ -253,11 +355,9 @@ test('G05 evidence and repository scope are complete and bounded', () => {
   ]) {
     assert.ok(evidence.includes(required));
   }
-  assert.deepEqual(changedPaths(), [...EXPECTED_CHANGED_PATHS].sort());
 });
 
 module.exports = {
   BASE_SHA,
   EXPECTED_CHANGED_PATHS,
-  changedPaths,
 };
