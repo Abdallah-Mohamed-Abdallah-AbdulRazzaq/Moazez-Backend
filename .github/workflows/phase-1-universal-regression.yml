@@ -24,15 +24,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     env:
+      EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       G07_SECURITY_BATCH_SIZE: '3'
       G07_E2E_BATCH_SIZE: '5'
       G07_INTEGRATION_BATCH_SIZE: '5'
       G07_NODE_HEAP_MB: '1536'
       G07_CONTAINER_MEMORY_MB: '2304'
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact candidate SHA
+        uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+
+      - name: Verify exact checked-out SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$EXPECTED_SHA" ]]; then
+            echo "Exact candidate SHA mismatch." >&2
+            exit 1
+          fi
+          echo "Universal Regression expected SHA: $EXPECTED_SHA"
+          echo "Universal Regression tested SHA:   $actual_sha"
 
       - uses: actions/setup-node@v4
         with:
