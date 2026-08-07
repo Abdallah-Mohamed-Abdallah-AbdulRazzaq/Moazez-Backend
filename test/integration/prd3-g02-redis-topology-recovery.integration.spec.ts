@@ -88,6 +88,12 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
         media: '',
       };
       let failedSchedulerRegistrationJobId = '';
+      let failedSchedulerRegistrationActiveDuringOutage = false;
+      let failedSchedulerRegistrationDesiredDuringOutage = false;
+      let failedSchedulerDesiredRegistrationRestored = false;
+      let failedSchedulerRegistrationActiveCount = 0;
+      let failedSchedulerRegistrationDesiredCount = 0;
+      let recoveredSchedulerRegistrationActive = false;
 
       try {
         await topology.initialize();
@@ -234,14 +240,23 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
         expect(topology.schedulerBullmq.getRepeatRegistrations()).toEqual(
           schedulerInventoryBeforeFailure,
         );
-        expect(
+        failedSchedulerRegistrationActiveDuringOutage = topology.schedulerBullmq
+          .getRepeatRegistrations()
+          .some(
+            (registration) =>
+              registration.jobId === failedSchedulerRegistrationJobId,
+          );
+        expect(failedSchedulerRegistrationActiveDuringOutage).toBe(false);
+        const failedSchedulerDesiredRegistrationsDuringOutage =
           topology.schedulerBullmq
-            .getRepeatRegistrations()
-            .some(
+            .getDesiredRepeatRegistrations()
+            .filter(
               (registration) =>
                 registration.jobId === failedSchedulerRegistrationJobId,
-            ),
-        ).toBe(false);
+            );
+        expect(failedSchedulerDesiredRegistrationsDuringOutage).toHaveLength(1);
+        failedSchedulerRegistrationDesiredDuringOutage =
+          failedSchedulerDesiredRegistrationsDuringOutage.length === 1;
 
         await expectAllResolved([
           ...topology.gateways.map((gateway) => gateway.checkReadiness()),
@@ -288,10 +303,36 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
           ]);
           return outcomes.every((outcome) => outcome.status === 'fulfilled');
         });
+        const failedSchedulerActiveRegistrations = topology.schedulerBullmq
+          .getRepeatRegistrations()
+          .filter(
+            (registration) =>
+              registration.jobId === failedSchedulerRegistrationJobId,
+          );
+        const failedSchedulerDesiredRegistrations = topology.schedulerBullmq
+          .getDesiredRepeatRegistrations()
+          .filter(
+            (registration) =>
+              registration.jobId === failedSchedulerRegistrationJobId,
+          );
+        expect(failedSchedulerActiveRegistrations).toHaveLength(1);
+        expect(failedSchedulerDesiredRegistrations).toHaveLength(1);
+        failedSchedulerRegistrationActiveCount =
+          failedSchedulerActiveRegistrations.length;
+        failedSchedulerRegistrationDesiredCount =
+          failedSchedulerDesiredRegistrations.length;
+        failedSchedulerDesiredRegistrationRestored =
+          failedSchedulerRegistrationActiveCount === 1 &&
+          failedSchedulerRegistrationDesiredCount === 1;
+        expect(failedSchedulerDesiredRegistrationRestored).toBe(true);
+
         const recoveredApiJobId = `api-recovered-${topology.runId}`;
         const recoveredCoreProducerJobId = `core-producer-recovered-${topology.runId}`;
         const recoveredMediaProducerJobId = `media-producer-recovered-${topology.runId}`;
         const recoveredSchedulerRegistrationJobId = `scheduler-recovered-${topology.runId}`;
+        expect(recoveredSchedulerRegistrationJobId).not.toBe(
+          failedSchedulerRegistrationJobId,
+        );
         await topology.apiBullmq[0].addJob(
           CORE_QUEUE_NAMES[0],
           TEST_JOB_NAME,
@@ -343,21 +384,22 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
             .getQueue(MEDIA_QUEUE_NAME)
             .getJob(failedProducerJobIds.media),
         ).resolves.toBeUndefined();
-        const failedSchedulerRegistrationReplayed = topology.schedulerBullmq
-          .getRepeatRegistrations()
-          .some(
+        const postRecoverySchedulerRegistrations =
+          topology.schedulerBullmq.getRepeatRegistrations();
+        expect(
+          postRecoverySchedulerRegistrations.filter(
             (registration) =>
               registration.jobId === failedSchedulerRegistrationJobId,
+          ),
+        ).toHaveLength(1);
+        const recoveredSchedulerRegistrations =
+          postRecoverySchedulerRegistrations.filter(
+            (registration) =>
+              registration.jobId === recoveredSchedulerRegistrationJobId,
           );
-        expect(failedSchedulerRegistrationReplayed).toBe(false);
-        expect(
-          topology.schedulerBullmq
-            .getRepeatRegistrations()
-            .some(
-              (registration) =>
-                registration.jobId === recoveredSchedulerRegistrationJobId,
-            ),
-        ).toBe(true);
+        expect(recoveredSchedulerRegistrations).toHaveLength(1);
+        recoveredSchedulerRegistrationActive =
+          recoveredSchedulerRegistrations.length === 1;
 
         await topology.stateStores[0].setTyping(
           'school-expired-g02',
@@ -585,7 +627,12 @@ describe('PRD3-G02 split Redis topology and same-process recovery', () => {
               total + (topology.processedJobCounts.get(jobId) ?? 0),
             0,
           ),
-          failedSchedulerRegistrationReplayed: false,
+          failedSchedulerRegistrationActiveDuringOutage,
+          failedSchedulerRegistrationDesiredDuringOutage,
+          failedSchedulerDesiredRegistrationRestored,
+          failedSchedulerRegistrationActiveCount,
+          failedSchedulerRegistrationDesiredCount,
+          recoveredSchedulerRegistrationActive,
           fallbackSuccessCount,
           queueKeyOwnership: initialOwnership,
           queueRecovery: true,

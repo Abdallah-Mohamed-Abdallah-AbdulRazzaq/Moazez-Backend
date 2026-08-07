@@ -106,7 +106,26 @@ test('real evidence harness locks two instances, budgets, outages, and cleanup',
   assert.match(integration, /coreProducerFailureMilliseconds/u);
   assert.match(integration, /mediaProducerFailureMilliseconds/u);
   assert.match(integration, /schedulerRegistrationFailureMilliseconds/u);
-  assert.match(integration, /failedSchedulerRegistrationReplayed: false/u);
+  assert.match(integration, /failedSchedulerRegistrationActiveDuringOutage/u);
+  assert.match(integration, /failedSchedulerRegistrationDesiredDuringOutage/u);
+  assert.match(integration, /failedSchedulerDesiredRegistrationRestored/u);
+  assert.match(integration, /failedSchedulerRegistrationActiveCount/u);
+  assert.match(integration, /failedSchedulerRegistrationDesiredCount/u);
+  assert.match(integration, /recoveredSchedulerRegistrationActive/u);
+  assert.match(integration, /getDesiredRepeatRegistrations/u);
+  assert.match(
+    integration,
+    /expect\(failedSchedulerActiveRegistrations\)\.toHaveLength\(1\)/u,
+  );
+  assert.match(
+    integration,
+    /expect\(failedSchedulerDesiredRegistrations\)\.toHaveLength\(1\)/u,
+  );
+  assert.match(
+    integration,
+    /expect\(recoveredSchedulerRegistrations\)\.toHaveLength\(1\)/u,
+  );
+  assert.doesNotMatch(integration, /failedSchedulerRegistrationReplayed/u);
   assert.match(integration, /processInstancesReplaced: 0/u);
 });
 
