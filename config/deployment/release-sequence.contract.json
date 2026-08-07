@@ -1,0 +1,47 @@
+{
+  "contractVersion": 1,
+  "failurePolicy": "stop-after-first-failure",
+  "automaticRetryAllowed": false,
+  "stages": [
+    {
+      "id": "artifact-and-checksum-preflight",
+      "blocking": true
+    },
+    {
+      "id": "backup-and-data-authority-checkpoint",
+      "blocking": true
+    },
+    {
+      "id": "migration-job",
+      "blocking": true
+    },
+    {
+      "id": "migration-status-and-drift-verification",
+      "blocking": true
+    },
+    {
+      "id": "core-worker-promotion",
+      "blocking": true
+    },
+    {
+      "id": "media-worker-promotion",
+      "blocking": true
+    },
+    {
+      "id": "api-no-traffic-promotion",
+      "blocking": true
+    },
+    {
+      "id": "maintenance-scheduler-promotion",
+      "blocking": true
+    },
+    {
+      "id": "protected-readiness-and-smoke",
+      "blocking": true
+    },
+    {
+      "id": "traffic-promotion",
+      "blocking": true
+    }
+  ]
+}

@@ -44,7 +44,7 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D023 | Ingress/domain/LB/Cloud Armor | OWNER_DECISION_REQUIRED | D017, D022 | authenticated/private where possible; edge controls by threat model |
 | PRD0-D024 | Liveness/startup/readiness semantics | LOCKED_FROM_APPROVED_CONTEXT | D005, D013 | approved protected role-specific probes and minimum dependency semantics through Q024 |
 | PRD0-D025 | Logs, metrics, SLOs, alerts | OWNER_DECISION_REQUIRED | D005, D024 | structured/redacted telemetry and service/queue/media SLOs |
-| PRD0-D026 | Migration job and deploy ordering | OWNER_DECISION_REQUIRED | D003, D005, D011, D018 | migration job before compatible runtime promotion |
+| PRD0-D026 | Migration job and deploy ordering | LOCKED_FROM_APPROVED_CONTEXT | D003, D005, D011, D018 | Q026 option A; same-image governed Migration Job before compatible runtime promotion |
 | PRD0-D027 | Backward-compatible rollback constraints | LOCKED_FROM_APPROVED_CONTEXT | D003, D026 | immutable migrations and compatible rollback are locked; expand/contract is the recommended technique, not a separately locked mandate |
 | PRD0-D028 | Backups, PITR, RTO, RPO | OWNER_DECISION_REQUIRED | D011 | PITR plus restore drills against approved objectives |
 | PRD0-D029 | Production data migration/clean start | OWNER_DECISION_REQUIRED | D009, D011, D028 | persisted PostgreSQL/object data migrate only if required; Redis queues drain/reconcile/re-enqueue from persisted truth and ephemeral realtime state is rebuilt |
@@ -582,24 +582,36 @@ dates, PR numbers, SHAs, or validation counts.
 
 ### PRD0-D026 — Order migration job and deployment
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; governed deploy command
-  exists but no deployment pipeline/job (EVD-030, EVD-059).
-- **Options / recommendation:** app-startup migration; manual console; explicit
-  Migration Cloud Run Job gate. Recommend the job: preflight/backup gate,
-  `migrate deploy`, status, then compatible runtime promotion.
-- **Reasoning / alternatives:** app-startup race and manual untracked commands
-  are rejected.
-- **Impacts:** migration policy governs schema; seeds excluded. Job identity has
-  DDL privilege unavailable to runtimes.
-- **Operations / rollback:** failure blocks rollout; immutable logs/checksum;
-  forward fix or approved restore, never automatic down migration.
-- **Phase / approval / reopen:** Phase 8; orchestration approval missing.
-  Reopen only for provider pipeline constraints.
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q026 option A was
+  approved by Abdallah at `2026-08-07T00:22:00+03:00` and is owned by
+  `adr/ADR-0007-migration-job-and-deployment-ordering.md`.
+- **Approved decision:** one standalone Cloud Run Job or later approved
+  equivalent uses `moazez_migration` and the same immutable final application
+  image. It runs one task, parallelism 1, connection allowance 2, zero retries,
+  and a 20-minute timeout. It executes only manifest verification,
+  `prisma validate`, `prisma migrate deploy`, `prisma migrate status`, and the
+  read-only post-deploy drift diff. Seeds and application bootstrap are
+  prohibited.
+- **Release order:** artifact/checksum preflight; backup/PITR or signed
+  disposable N/A and data-authority checkpoint; Migration Job; status and zero
+  drift; Core Worker; Media Worker; API without traffic; Maintenance Scheduler;
+  protected readiness/smoke; traffic only under later Q027/Phase 8 policy.
+- **Reasoning / alternatives:** app-startup migration, manual untracked schema
+  commands, direct SQL bypass, and runtime DDL are rejected.
+- **Operations / rollback:** any failure blocks all later runtime and traffic
+  promotion and requires a new manual approval before rerun. Recovery is a
+  compatible forward-fix or approved isolated restore; no automatic down
+  migration or schema rollback occurs. Artifact rollback requires schema/data
+  compatibility.
+- **Phase / approval / reopen:** PRD3-G04 implements the platform-neutral job
+  and gate contracts; Phase 8 later wires approved IaC and CI/CD. Reopen only
+  for a material platform constraint or a new owner decision.
 
 ### PRD0-D027 — Preserve backward-compatible rollback constraints
 
 - **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; immutable migrations
-  and compatibility rules are approved (EVD-062).
+  and compatibility rules are approved (EVD-062) and owned by
+  `adr/ADR-0007-migration-job-and-deployment-ordering.md`.
 - **Locked rule versus recommendation:** committed migrations remain immutable
   and runtime rollback must remain schema/data compatible. Expand/contract is
   the recommended implementation technique; this draft does not elevate that
@@ -854,7 +866,7 @@ does not accept a pending decision.
 | ADR-0004 | Production Runtime Roles in the Modular Monolith | owns D004–D007 | created and accepted through Q001, Q002, Q010, and Q011; Q003 is not a logical-boundary prerequisite |
 | ADR-0005 | Cloud SQL Runtime Connections and Database Role Boundary | owns D011–D012, D030–D031 | created and accepted through the Phase 3 approvals for Q003, Q006, Q014, and Q015; sizing remains provisional pending PRD3-G01-B/C/D evidence |
 | ADR-0006 | Production Data Source, Object Storage, and Signed Capability Boundary | owns D009–D010, D019, D022, D029, D049–D053 | created; accepts D022/Q022 only; all other owned decisions remain pending or proposed |
-| ADR-0007 | Migration Job and Deployment Ordering | owns D026–D027 | reserved; migration/deployment-order answers remain pending |
+| ADR-0007 | Migration Job and Deployment Ordering | owns D026–D027 | created and accepted through Q026 option A at `2026-08-07T00:22:00+03:00` |
 | ADR-0008 | Redis Workload Isolation and Failure Policy                            | owns D013–D014                              | created and accepted through Q012 and Q013                                                                                                    |
 | ADR-0009 | Critical Job Recovery and Reconciliation                               | owns D015                                   | created and accepted through Q017; PRD3-G03 implementation evidence recorded                                                                  |
 | ADR-0010 | Production Health and Observability Contract | owns D024–D025, D035 | created; accepts D024/Q024 and D035/Q030; D025/Q025 remains pending |

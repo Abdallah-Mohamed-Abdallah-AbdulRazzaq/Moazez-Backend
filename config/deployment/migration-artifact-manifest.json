@@ -1,0 +1,58 @@
+{
+  "manifestVersion": 1,
+  "prismaSchema": {
+    "path": "prisma/schema.prisma",
+    "sha256": "40308e9fde779757610d28edbdfeca4ea8db7e597821bc1a8a79b5a115178f53"
+  },
+  "prismaConfig": {
+    "path": "prisma.config.ts",
+    "sha256": "6120bfab70546ecac94be1ff2ed3762464915a2075760db3598b9acca52280d8"
+  },
+  "migrationDirectories": [
+    "20260710135222_baseline_v1",
+    "20260711162248_dashboard_todos",
+    "20260716120000_school_branding_logo_asset",
+    "20260718115332_teacher_directory_data_foundation",
+    "20260720182221_membership_suspended_open_state",
+    "20260721224852_lesson_content_publication_lifecycle",
+    "20260722160000_learning_media_runtime_upload_foundation"
+  ],
+  "migrations": [
+    {
+      "directory": "20260710135222_baseline_v1",
+      "path": "prisma/migrations/20260710135222_baseline_v1/migration.sql",
+      "sha256": "97099c5b2c98ef115da4fc6797749142b3f15ccc3eb1b7f7934cece183833ee2"
+    },
+    {
+      "directory": "20260711162248_dashboard_todos",
+      "path": "prisma/migrations/20260711162248_dashboard_todos/migration.sql",
+      "sha256": "9b6228c639cb4da4529093e8dba3e40beb27c7c8bcd2902c12157a97a0239e8a"
+    },
+    {
+      "directory": "20260716120000_school_branding_logo_asset",
+      "path": "prisma/migrations/20260716120000_school_branding_logo_asset/migration.sql",
+      "sha256": "d03eff789012b0ae5a10a91be1193a0549df04c0aa935f073ef51286a468b060"
+    },
+    {
+      "directory": "20260718115332_teacher_directory_data_foundation",
+      "path": "prisma/migrations/20260718115332_teacher_directory_data_foundation/migration.sql",
+      "sha256": "9b3f0df79c42a5dd9859f93f761d645022e8d9f14fcce710c5acabcb30b66d9f"
+    },
+    {
+      "directory": "20260720182221_membership_suspended_open_state",
+      "path": "prisma/migrations/20260720182221_membership_suspended_open_state/migration.sql",
+      "sha256": "c07a3545cdf93ac2756dcf61ff46e1667d2e8e7bcbf6046e88cd51b4de6aed62"
+    },
+    {
+      "directory": "20260721224852_lesson_content_publication_lifecycle",
+      "path": "prisma/migrations/20260721224852_lesson_content_publication_lifecycle/migration.sql",
+      "sha256": "28cd82ec605102894f0ecd4b9cc0c633b0aa5886d41bd532839d045aefd08f4f"
+    },
+    {
+      "directory": "20260722160000_learning_media_runtime_upload_foundation",
+      "path": "prisma/migrations/20260722160000_learning_media_runtime_upload_foundation/migration.sql",
+      "sha256": "bfba960da2a1307811a697611f0cd28e500aeab65e05f854082b0b991acdc83f"
+    }
+  ],
+  "aggregateMigrationChainSha256": "f6ae231cb29a9b2e314a7a4d84f5498702e5eba95c73116444fbd84fbd40a602"
+}
