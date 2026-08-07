@@ -200,15 +200,20 @@ function isProtectedRegressionPath(changedPath) {
 
 function validateRepositoryState(state, mode) {
   assert.ok(Object.values(VERIFICATION_MODES).includes(mode), 'unknown verification mode');
-  assert.equal(state.branch, REQUIRED_BRANCH);
   assert.equal(state.nodeVersion, REQUIRED_NODE_VERSION);
-  assert.equal(
-    path.normalize(state.nodeDirectory).toLowerCase(),
-    REQUIRED_NODE_DIRECTORY.toLowerCase(),
-  );
   assert.equal(state.indexClean, true, 'the real Git index must remain clean');
   assert.equal(state.dependencyChanged, false, 'dependency drift is not permitted');
+  assert.equal(
+    state.devDependencyChanged,
+    false,
+    'devDependency drift is not permitted',
+  );
   if (mode === VERIFICATION_MODES.CANDIDATE) {
+    assert.equal(state.branch, REQUIRED_BRANCH);
+    assert.equal(
+      path.normalize(state.nodeDirectory).toLowerCase(),
+      REQUIRED_NODE_DIRECTORY.toLowerCase(),
+    );
     assert.equal(state.head, BASE_SHA);
     assert.deepEqual([...state.changedPaths].sort(), [...EXPECTED_CHANGED_PATHS].sort());
   } else {
@@ -248,12 +253,18 @@ function inspectRepositoryState() {
     head: git(['rev-parse', 'HEAD']).stdout.trim(),
     nodeVersion: process.version,
     nodeDirectory: path.dirname(path.resolve(process.execPath)),
+    platform: process.platform,
     indexClean: cached.status === 0,
     changedPaths: readChangedPaths(),
     historicalBaseIsAncestor: ancestor.status === 0,
-    dependencyChanged:
-      !isDeepStrictEqual(workingPackage.dependencies, headPackage.dependencies) ||
-      !isDeepStrictEqual(workingPackage.devDependencies, headPackage.devDependencies),
+    dependencyChanged: !isDeepStrictEqual(
+      workingPackage.dependencies,
+      headPackage.dependencies,
+    ),
+    devDependencyChanged: !isDeepStrictEqual(
+      workingPackage.devDependencies,
+      headPackage.devDependencies,
+    ),
   };
 }
 

@@ -57,10 +57,12 @@ function repositoryState(overrides = {}) {
     nodeVersion: 'v22.23.1',
     nodeDirectory:
       'C:\\Users\\Abdal\\AppData\\Local\\Moazez\\toolchains\\node-v22.23.1-win-x64',
+    platform: 'win32',
     indexClean: true,
     changedPaths: [...MAINTENANCE_CHANGED_PATHS],
     historicalBaseIsAncestor: true,
     dependencyChanged: false,
+    devDependencyChanged: false,
     ...overrides,
   };
 }
@@ -180,6 +182,22 @@ test('G04 historical candidate contract retains its exact baseline and 16 paths'
       VERIFICATION_MODES.CANDIDATE,
     ),
   );
+  for (const override of [
+    { branch: 'main', head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] },
+    { nodeVersion: 'v22.22.0', head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] },
+    {
+      nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
+      head: BASE_SHA,
+      changedPaths: [...EXPECTED_CHANGED_PATHS],
+    },
+  ]) {
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState(override),
+        VERIFICATION_MODES.CANDIDATE,
+      ),
+    );
+  }
 });
 
 test('G04 verification mode parsing permits only candidate default or --regression', () => {
@@ -194,9 +212,24 @@ test('G04 verification mode parsing permits only candidate default or --regressi
 });
 
 test('G04 regression mode accepts a descendant and rejects non-descendant or staged state', () => {
-  assert.equal(
-    validateRepositoryState(repositoryState(), VERIFICATION_MODES.REGRESSION),
-    true,
+  for (const branch of ['main', 'HEAD']) {
+    assert.equal(
+      validateRepositoryState(
+        repositoryState({
+          branch,
+          nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
+          platform: 'linux',
+        }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+      true,
+    );
+  }
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ nodeVersion: 'v22.22.0' }),
+      VERIFICATION_MODES.REGRESSION,
+    ),
   );
   assert.throws(() =>
     validateRepositoryState(
@@ -241,6 +274,12 @@ test('G04 regression mode rejects dependency or devDependency drift', () => {
   assert.throws(() =>
     validateRepositoryState(
       repositoryState({ dependencyChanged: true }),
+      VERIFICATION_MODES.REGRESSION,
+    ),
+  );
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ devDependencyChanged: true }),
       VERIFICATION_MODES.REGRESSION,
     ),
   );
