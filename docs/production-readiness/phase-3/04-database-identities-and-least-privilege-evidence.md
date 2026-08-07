@@ -12,7 +12,7 @@
 | R3 source commit | `13261a17044d032f80fc1b0c8cb8d50e0f9b10ba` |
 | Parent B3 commit | `5dba92b120c8d36ad0d5738a522910575138b284` |
 | Status | `PRD3-G01-C=COMPLETE`; `PRD3-G01-C1=COMPLETE`; `PRD3-G01-D-R3=FUNCTIONAL_PASS_CLEANUP_DEFERRED` |
-| Parent gate status | `PRD3-G01=FUNCTIONALLY_COMPLETE`; `PRD3-G01-PROVIDER-CLEANUP=DEFERRED` |
+| Parent gate status | `PRD3-G01=COMPLETE`; `PRD3-G01-PROVIDER-CLEANUP=DEFERRED_NON_BLOCKING_PROVIDER_DEBT` |
 | Scope | Local least-privilege proof plus accepted real-provider R3 evidence; documentation-only closeout |
 
 PRD3-G01-C separates runtime DML authority from governed migration DDL
@@ -318,9 +318,27 @@ temporary scripts. Cloud SQL deletion completed at
 Provider retention still holds one task-owned R2 VPC, one R2 subnet, one R2 PSA
 allocation, and one Service Networking connection. Attached VMs, firewalls,
 routers, and forwarding rules are zero, and billable compute retained is zero.
-A cleanup-only retry after provider release is required before PRD3-G06. It
-does not require another Cloud SQL instance or failover, and no exact provider
-release time is claimed.
+Cleanup remains mandatory under the constrained future boundary recorded in
+`09-g01-provider-retention-disposition.md`. It does not require another Cloud
+SQL instance or failover, and no exact provider release time is claimed.
+
+## Provider-retention governance follow-up
+
+The required cleanup-only retry was performed at
+`2026-08-07T04:08:54.6239236Z`. Google rejected the Service Networking
+connection deletion because the managed producer still reported the connection
+in use, classified as `FLOW_SN_DC_RESOURCE_PREVENTING_DELETE_CONNECTION`.
+Read-only inventory verified zero unexpected consumers and zero task Cloud SQL
+instances, VMs, disks, firewalls, external IPs, routers, and forwarding rules.
+
+Owner Abdallah explicitly approved conversion of the remaining cleanup into
+constrained non-blocking provider debt at `2026-08-07T07:17:00+03:00`. The
+authoritative disposition is
+`docs/production-readiness/phase-3/09-g01-provider-retention-disposition.md`.
+PRD3-G01 is now `COMPLETE`; cleanup itself is not complete and remains mandatory
+before the production-infrastructure boundary defined by that disposition.
+PRD3-G06 is authorized to start but remains `NOT_STARTED`. No new Cloud SQL
+instance or failover proof is required.
 
 ### Evidence integrity
 
@@ -353,10 +371,11 @@ PRD3-G01-B3=COMPLETE
 PRD3-G01-C=COMPLETE
 PRD3-G01-C1=COMPLETE
 PRD3-G01-D-FUNCTIONAL=COMPLETE
-PRD3-G01=FUNCTIONALLY_COMPLETE
-PRD3-G01-PROVIDER-CLEANUP=DEFERRED
+PRD3-G01=COMPLETE
+PRD3-G01-PROVIDER-CLEANUP=DEFERRED_NON_BLOCKING_PROVIDER_DEBT
 ```
 
 Phase 3 is not complete, and final network cleanup is not complete. The
-provider-retention follow-up must finish before PRD3-G06. The next
-implementation gate is PRD3-G02, Redis topology and recovery.
+provider-retention debt remains mandatory at the future boundary defined in
+`09-g01-provider-retention-disposition.md`. PRD3-G06 is authorized to start and
+remains `NOT_STARTED`.
