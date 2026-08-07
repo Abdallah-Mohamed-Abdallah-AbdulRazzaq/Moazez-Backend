@@ -17,7 +17,9 @@
 Current amendments: four Phase 3 owner approvals were added on 2026-08-04
 (Africa/Cairo) under PRD3-G01-A. Abdallah additionally approved PRD0-Q012 and
 PRD0-Q013 at `2026-08-06T05:56:00+03:00` for PRD3-G02 and PRD0-Q017 at
-`2026-08-06T10:30:34+03:00` for PRD3-G03. The Phase 0B
+`2026-08-06T10:30:34+03:00` for PRD3-G03. Abdallah approved PRD0-Q004 option A
+as approver and data authority at `2026-08-07T04:46:00+03:00` for PRD3-G05.
+The Phase 0B
 document-control values above remain the historical 2026-07-27 closeout
 record.
 
@@ -32,7 +34,9 @@ At that closeout every other owner question was explicitly pending. On
 2026-08-04 Abdallah additionally approved Q003, Q006, Q014, and Q015 for the
 provisional Phase 3 database baseline. On 2026-08-06 Abdallah approved Q012 and
 Q013 for the split Redis topology and outage policy and Q017 option A for the
-critical-queue persisted-truth recovery policy. Every question not named
+critical-queue persisted-truth recovery policy. On 2026-08-07 Abdallah
+approved Q004 option A, `CLEAN_START`, on the explicit owner/data-authority
+zero-source attestation and mandatory reopen-on-discovery rule. Every question not named
 in the current approved set below remains pending. A pending disposition does
 not select its recommended default, cannot unblock its dependent phase, and
 authorizes no implementation or cloud provisioning through silence.
@@ -41,9 +45,10 @@ authorizes no implementation or cloud provisioning through silence.
 
 PR #46 merged the ten approved answers, and those answers remain binding. The
 other 38 answers were pending at that historical closeout. The seven Phase 3
-approvals reduce the current pending set to 31 without changing the PR #46
-evidence. Silence selects no recommendation. Authoritative Phase 0B post-merge
-evidence remains in `07-phase-0b-post-merge-closeout.md`.
+approvals plus the later Q004 approval reduce the current pending set to 30
+without changing the PR #46 evidence. Silence selects no recommendation.
+Authoritative Phase 0B post-merge evidence remains in
+`07-phase-0b-post-merge-closeout.md`.
 
 ## All-question disposition register
 
@@ -54,7 +59,7 @@ Each row is the sole disposition entry for that question.
 | PRD0-Q001 | APPROVED | `PRD0-Q001: option=B; roles=API,Core Worker,Media Worker,Migration Job,Maintenance Scheduler; approver=Abdallah` |
 | PRD0-Q002 | APPROVED | `PRD0-Q002: option=A; api=HTTP and WebSocket entrypoints, controllers, authentication, authorization, realtime connections, queue producers, and synchronous Learning Media completion until the separately approved Phase 6 transition; core=communication notification generation, communication push delivery, school email delivery, import validation, dismissal-expiry consumption, and branding-cleanup consumption; media=Learning Media cleanup consumption and future asynchronous verification only after Phase 6 approval; migration=governed prisma migrate deploy only with no runtime DDL; maintenance=singular registration or invocation of dismissal expiry, Learning Media discovery, branding reconciliation, and future schedules; approver=Abdallah` |
 | PRD0-Q003 | APPROVED | `PRD0-Q003: option=B; tenants=10; users=25000; peak_rps=200; websockets=5000; queue_jobs_per_min={communication-notifications:60,communication-notification-push:1000,school-email-delivery:300,files-imports:10,dismissal-request-expiry:5,learning-media-cleanup:50,settings-branding-logo-cleanup:10}; media_concurrency=4; upload_p95_mib=25; upload_max_mib=200; growth_12m=3x; approver=Abdallah` |
-| PRD0-Q004 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 3/4/5A design closeout,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
+| PRD0-Q004 | APPROVED | `PRD0-Q004: option=A; production_data_branch=CLEAN_START; persisted_postgresql_migration=N/A_WITH_EVIDENCE; object_migration=N/A_WITH_EVIDENCE_FOR_CURRENT_PRODUCTION_SOURCE; redis_migration=PROHIBITED_AS_COPY_SOURCE; redis_recovery=drain/reconcile/re-enqueue from persisted truth and rebuild ephemeral realtime state; authoritative_postgresql_source_count=0; authoritative_object_source_count=0; evidence_classification=OWNER_DATA_AUTHORITY_ATTESTATION; reopen_on_data_discovery=YES; approver=Abdallah; data_authority=Abdallah; approved_at=2026-08-07T04:46:00+03:00` |
 | PRD0-Q005 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 4/5A/8 provisioning,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q006 | APPROVED | `PRD0-Q006: option=A; primary_region=me-central2; dr_region=NONE; residency_constraint=Initial production data and primary managed services remain in Saudi Arabia; cross-region DR requires separate residency approval; approver=Abdallah` |
 | PRD0-Q007 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 3 implementation,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
@@ -105,17 +110,17 @@ Each row is the sole disposition entry for that question.
 | Disposition | Count |
 | --- | ---: |
 | Total | 48 |
-| APPROVED | 17 |
-| PENDING | 31 |
+| APPROVED | 18 |
+| PENDING | 30 |
 | Omitted | 0 |
 | Duplicated | 0 |
 
 The current approved IDs are exactly PRD0-Q001, PRD0-Q002, PRD0-Q003,
-PRD0-Q006, PRD0-Q010, PRD0-Q011, PRD0-Q012, PRD0-Q013, PRD0-Q014,
+PRD0-Q004, PRD0-Q006, PRD0-Q010, PRD0-Q011, PRD0-Q012, PRD0-Q013, PRD0-Q014,
 PRD0-Q015, PRD0-Q017, PRD0-Q022,
 PRD0-Q024, PRD0-Q028, PRD0-Q029, PRD0-Q030, and PRD0-Q032. The Phase 0B
 snapshot was exactly 10 approved and 38 pending; the Phase 3 amendments add
-Q003, Q006, Q012, Q013, Q014, Q015, and Q017. All other PRD0-Q001 through
+Q003, Q006, Q012, Q013, Q014, Q015, Q017, and Q004. All other PRD0-Q001 through
 PRD0-Q048 entries are explicitly pending as shown.
 
 ## Scope and non-authorization

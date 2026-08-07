@@ -100,6 +100,8 @@
     "verify:prd3-g03-final": "npm run verify:prd3-g03-tests && node scripts/ci/prd3-g03-critical-queue-recovery.cjs && npm run build && git diff --check && node --test scripts/tests/prd3-g03-critical-queue-recovery.test.cjs",
     "verify:prd3-g04-tests": "node --test scripts/tests/prd3-g04-governed-migration-job.test.cjs",
     "verify:prd3-g04-final": "node scripts/ci/prd3-g04-governed-migration-job.cjs",
+    "verify:prd3-g05-tests": "node --test scripts/tests/prd3-g05-clean-start.test.cjs",
+    "verify:prd3-g05-final": "node scripts/ci/prd3-g05-clean-start.cjs",
     "verify:legacy-learning-media": "node scripts/classify-legacy-learning-media.cjs",
     "test:learning-media": "jest --runInBand --runTestsByPath src/modules/files/uploads/tests/file-upload-session.contract.spec.ts src/modules/files/uploads/tests/learning-media-upload.use-case.spec.ts",
     "verify:sprint1b:preflight": "node scripts/check-local-readiness.cjs",

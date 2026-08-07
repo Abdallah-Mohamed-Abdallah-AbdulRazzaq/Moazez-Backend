@@ -1,0 +1,25 @@
+{
+  "contractVersion": 1,
+  "decision": "PRD0-Q004",
+  "decisionId": "PRD0-D029",
+  "branch": "CLEAN_START",
+  "authoritativePostgresqlSourceCount": 0,
+  "authoritativeObjectSourceCount": 0,
+  "postgresqlMigration": "N/A_WITH_EVIDENCE",
+  "objectMigration": "N/A_WITH_EVIDENCE_FOR_CURRENT_PRODUCTION_SOURCE",
+  "redisCopyAllowed": false,
+  "redisRecoveryPolicy": "persisted-truth-reconciliation",
+  "sourceRetention": "N/A_AFTER_ZERO_SOURCE_EVIDENCE",
+  "migrationCutback": "N/A_AFTER_ZERO_SOURCE_EVIDENCE",
+  "reopenOnDataDiscovery": true,
+  "approver": "Abdallah",
+  "dataAuthority": "Abdallah",
+  "approvedAt": "2026-08-07T04:46:00+03:00",
+  "sourceCountEvidence": {
+    "classification": "OWNER_DATA_AUTHORITY_ATTESTATION",
+    "statement": "There is currently no real authoritative Production PostgreSQL database, Production object source, or Production business/user history that must be migrated or preserved before the first real Moazez production launch.",
+    "externalCloudAccountsScanned": false,
+    "localEvidenceScope": "clean-target migration replay and production-approved reference bootstrap only"
+  },
+  "reopenRule": "Any later discovery of real pre-production or production data that must be preserved automatically reopens PRD0-Q004 / PRD0-D029 before cutover."
+}

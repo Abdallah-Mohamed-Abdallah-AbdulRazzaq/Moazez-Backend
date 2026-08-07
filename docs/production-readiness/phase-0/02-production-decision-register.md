@@ -47,7 +47,7 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D026 | Migration job and deploy ordering | LOCKED_FROM_APPROVED_CONTEXT | D003, D005, D011, D018 | Q026 option A; same-image governed Migration Job before compatible runtime promotion |
 | PRD0-D027 | Backward-compatible rollback constraints | LOCKED_FROM_APPROVED_CONTEXT | D003, D026 | immutable migrations and compatible rollback are locked; expand/contract is the recommended technique, not a separately locked mandate |
 | PRD0-D028 | Backups, PITR, RTO, RPO | OWNER_DECISION_REQUIRED | D011 | PITR plus restore drills against approved objectives |
-| PRD0-D029 | Production data migration/clean start | OWNER_DECISION_REQUIRED | D009, D011, D028 | persisted PostgreSQL/object data migrate only if required; Redis queues drain/reconcile/re-enqueue from persisted truth and ephemeral realtime state is rebuilt |
+| PRD0-D029 | Production data migration/clean start | LOCKED_FROM_APPROVED_CONTEXT | D009, D011, D028 | Q004 option A: `CLEAN_START`; PostgreSQL/object migration are N/A for the current owner-attested zero-source state; Redis copy is prohibited and recovery reconciles persisted truth/rebuilds ephemeral realtime state; later data discovery reopens D029 |
 | PRD0-D030 | Initial max instances/concurrency | LOCKED_FROM_APPROVED_CONTEXT | D012–D016 | approved conservative pilot caps; saturation and failover evidence still required |
 | PRD0-D031 | Workload/file-size assumptions | LOCKED_FROM_APPROVED_CONTEXT | D008, D016, D030 | approved owner-delegated pilot envelope; not final load-tested capacity |
 | PRD0-D032 | Staging equivalence/release promotion | OWNER_DECISION_REQUIRED | D017–D031 | same artifact/config shape, immutable digest promotion |
@@ -643,22 +643,35 @@ dates, PR numbers, SHAs, or validation counts.
 
 ### PRD0-D029 — Decide clean start versus production data migration
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; target production data
-  source/volume is unknown (LIM-003).
-- **Options / recommendation:** clean start; migrate persisted PostgreSQL only;
-  or migrate persisted PostgreSQL plus required objects. Owner must state
-  authoritative sources. Redis queue state is not a normal copy source:
-  consumers/producers drain, persisted outcomes reconcile, required work is
-  re-enqueued from persisted truth, and ephemeral realtime state is rebuilt.
-- **Reasoning / alternatives:** assuming clean start can lose required data;
-  copying Redis queues blindly can duplicate effects.
-- **Impacts:** potentially all normalized data and `File` objects; no contract
-  change. Encryption/key availability and tenant isolation must be validated.
-- **Operations / rollback:** reconciliation counts/checksums, freeze/delta plan,
-  source retention, and tested abort point.
-- **Phase / approval / reopen:** Phase 0B decision; Phase 3 data behavior,
-  Phase 5A objects, Phase 4 crypto, and Phase 8 rehearsals branch on it. Reopen
-  if scope/data changes.
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; Abdallah approved
+  PRD0-Q004 option A as approver and data authority at
+  `2026-08-07T04:46:00+03:00`. The selected production-data branch is
+  `CLEAN_START`.
+- **Owner/data-authority attestation:** there is currently no real
+  authoritative Production PostgreSQL database, Production object source, or
+  Production business/user history that must be migrated or preserved before
+  the first real Moazez production launch. The authoritative PostgreSQL source
+  count is `0` and authoritative object source count is `0`. This is an
+  `OWNER_DATA_AUTHORITY_ATTESTATION`, not a claim that Phase 3 scanned every
+  external cloud account.
+- **Approved disposition:** persisted PostgreSQL migration is
+  `N/A_WITH_EVIDENCE`; object migration is
+  `N/A_WITH_EVIDENCE_FOR_CURRENT_PRODUCTION_SOURCE`. Redis migration is
+  `PROHIBITED_AS_COPY_SOURCE`; recovery drains/reconciles/re-enqueues from
+  persisted truth and rebuilds ephemeral realtime state.
+- **Clean-target and bootstrap evidence:** G05 proves a newly created empty
+  PostgreSQL target, the existing governed G04 migration replay, and exactly
+  the approved deterministic Permission and system-Role reference seeds. It
+  proves that no Production User, Organization, School, or business history is
+  fabricated.
+- **Non-authorization:** Q004 does not approve GCS provider selection, bucket
+  topology, object lifecycle, signing IAM, source deletion, physical cleanup,
+  or future real-data destruction. It does not authorize deleting a
+  later-discovered source.
+- **Phase / approval / reopen:** any later discovery of real pre-production or
+  production data that must be preserved automatically reopens PRD0-Q004 /
+  PRD0-D029 before cutover. Phase 5A provider/object controls, Phase 4 crypto,
+  and Phase 8 release/bootstrap controls remain independently governed.
 
 ### PRD0-D030 — Set initial instances and concurrency
 
