@@ -677,6 +677,7 @@ describe('learning media cleanup and BullMQ integration', () => {
       },
     });
     const queue = {
+      getQueueReadiness: jest.fn().mockResolvedValue({}),
       getQueue: jest.fn().mockReturnValue({
         getJob: jest.fn().mockResolvedValue(null),
       }),

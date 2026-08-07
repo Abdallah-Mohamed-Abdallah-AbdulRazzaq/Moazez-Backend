@@ -9,6 +9,7 @@ import {
   HttpLifecycleCompletionInterceptor,
 } from '../../src/bootstrap/http-drain.middleware';
 import { configureHttpApplication } from '../../src/bootstrap/http-application';
+import { PRISMA_CLIENT_OPTIONS } from '../../src/infrastructure/database/prisma-client-options.provider';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
 
 jest.setTimeout(20_000);
@@ -32,6 +33,10 @@ class PrismaShutdownFixtureController {
 @Module({
   controllers: [PrismaShutdownFixtureController],
   providers: [
+    {
+      provide: PRISMA_CLIENT_OPTIONS,
+      useValue: {},
+    },
     PrismaService,
     {
       provide: APP_INTERCEPTOR,

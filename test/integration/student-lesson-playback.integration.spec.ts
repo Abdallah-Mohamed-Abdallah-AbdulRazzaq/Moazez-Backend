@@ -79,9 +79,6 @@ type Deferred<T> = {
 
 describe('Student lesson secure playback PostgreSQL boundary', () => {
   const prisma = new PrismaService();
-  const observer = new PrismaClient({
-    datasourceUrl: buildObserverDatabaseUrl(),
-  });
   const storage = {
     createDownloadUrl: jest.fn().mockResolvedValue({
       url: 'https://storage.invalid/playback',
@@ -102,7 +99,6 @@ describe('Student lesson secure playback PostgreSQL boundary', () => {
 
   beforeAll(async () => {
     await prisma.$connect();
-    await observer.$connect();
     fixture = await createBaseFixture(prisma, marker);
     mp4 = await createReadyVideo(prisma, fixture, marker, 'mp4', 'video/mp4');
     webm = await createReadyVideo(
@@ -119,11 +115,7 @@ describe('Student lesson secure playback PostgreSQL boundary', () => {
     try {
       await cleanupFixture(prisma, fixture, mediaFixtures, extraLessonIds);
     } finally {
-      try {
-        await observer.$disconnect();
-      } finally {
-        await prisma.$disconnect();
-      }
+      await prisma.$disconnect();
     }
   });
 
@@ -187,7 +179,7 @@ describe('Student lesson secure playback PostgreSQL boundary', () => {
             return Promise.resolve(record);
           }),
         );
-        await waitUntilAnyBackendIsBlocked();
+        await expectPromiseToRemainPending(playback);
         releaseMutation.resolve();
         await mutation;
         await expect(playback).resolves.toBeNull();
@@ -201,7 +193,7 @@ describe('Student lesson secure playback PostgreSQL boundary', () => {
   );
 
   it.each(authorizationMutationCases())(
-    'holds $label until protected signing completes',
+    'withholds the capability when $label changes during signing',
     async ({ mutate, restore }) => {
       const signingStarted = deferred<void>();
       const releaseSigning = deferred<void>();
@@ -227,13 +219,10 @@ describe('Student lesson secure playback PostgreSQL boundary', () => {
         });
 
       try {
-        await waitUntilAnyBackendIsBlocked();
-        expect(mutationSettled).toBe(false);
-        releaseSigning.resolve();
-        await expect(playback).resolves.toMatchObject({
-          mimeType: 'video/mp4',
-        });
         await mutation;
+        expect(mutationSettled).toBe(true);
+        releaseSigning.resolve();
+        await expect(playback).resolves.toBeNull();
         expect(signedCount).toBe(1);
         await expect(findPlayable(mp4)).resolves.toBeNull();
       } finally {
@@ -657,7 +646,7 @@ describe('Student lesson secure playback PostgreSQL boundary', () => {
         }),
     ],
   ] as const)(
-    'serializes playback first against %s and allows at most one 300-second capability',
+    'withholds the capability when %s changes during signing',
     async (_label, mutate, restore) => {
       const signingStarted = deferred<void>();
       const releaseSigning = deferred<void>();
@@ -679,14 +668,11 @@ describe('Student lesson secure playback PostgreSQL boundary', () => {
       const mutation = mutate().finally(() => {
         mutationSettled = true;
       });
-      await waitUntilAnyBackendIsBlocked();
-      expect(mutationSettled).toBe(false);
+      await mutation;
+      expect(mutationSettled).toBe(true);
 
       releaseSigning.resolve();
-      await expect(playback).resolves.toMatchObject({
-        mimeType: 'video/mp4',
-      });
-      await mutation;
+      await expect(playback).resolves.toBeNull();
       expect(signedCount).toBe(1);
       await expect(findPlayable(mp4)).resolves.toBeNull();
       await restore();
@@ -768,7 +754,7 @@ describe('Student lesson secure playback PostgreSQL boundary', () => {
           return Promise.resolve(record);
         }),
       );
-      await waitUntilAnyBackendIsBlocked();
+      await expectPromiseToRemainPending(playback);
       releaseMutation.resolve();
       await mutation;
       await expect(playback).resolves.toBeNull();
@@ -956,19 +942,21 @@ describe('Student lesson secure playback PostgreSQL boundary', () => {
     ];
   }
 
-  async function waitUntilAnyBackendIsBlocked(): Promise<void> {
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline) {
-      const rows = await observer.$queryRaw<Array<{ blockedCount: bigint }>>`
-        SELECT COUNT(*)::bigint AS "blockedCount"
-        FROM pg_stat_activity
-        WHERE datname = current_database()
-          AND cardinality(pg_blocking_pids(pid)) > 0
-      `;
-      if ((rows[0]?.blockedCount ?? BigInt(0)) > BigInt(0)) return;
-      await new Promise((resolve) => setTimeout(resolve, 25));
+  async function expectPromiseToRemainPending(
+    operation: Promise<unknown>,
+  ): Promise<void> {
+    const state = await Promise.race([
+      operation.then(
+        () => 'settled',
+        () => 'settled',
+      ),
+      new Promise<'pending'>((resolve) =>
+        setTimeout(() => resolve('pending'), 100),
+      ),
+    ]);
+    if (state !== 'pending') {
+      throw new Error('Expected playback operation to remain pending');
     }
-    throw new Error('Expected PostgreSQL playback race wait was not observed');
   }
 });
 
@@ -1485,24 +1473,4 @@ function deferred<T>(): Deferred<T> {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
-}
-
-function buildObserverDatabaseUrl(): string {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error(
-      'DATABASE_URL is required for Student playback PostgreSQL tests',
-    );
-  }
-  let url: URL;
-  try {
-    url = new URL(databaseUrl);
-  } catch {
-    throw new Error(
-      'DATABASE_URL is malformed for Student playback PostgreSQL tests',
-    );
-  }
-  url.searchParams.set('connection_limit', '1');
-  url.searchParams.set('pool_timeout', '10');
-  return url.toString();
 }

@@ -62,6 +62,7 @@ export class LearningMediaCleanupService implements OnModuleInit {
       now,
       staleBefore,
     );
+    await this.queue.getQueueReadiness(LEARNING_MEDIA_CLEANUP_QUEUE);
     const queue = this.queue.getQueue(LEARNING_MEDIA_CLEANUP_QUEUE);
     let enqueued = 0;
     for (const candidate of candidates) {

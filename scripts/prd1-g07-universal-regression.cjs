@@ -78,6 +78,12 @@ function discoverTestFiles(repositoryRoot, relativeDirectory, pattern) {
 
 function routeIntegrationFile(file) {
   const normalized = normalizeRepositoryPath(file);
+  if (normalized.endsWith('/prd3-g02-redis-topology-recovery.integration.spec.ts')) {
+    return 'prd3-g02';
+  }
+  if (normalized.endsWith('/prd3-g03-critical-queue-recovery.integration.spec.ts')) {
+    return 'prd3-g03';
+  }
   if (normalized.endsWith('/school-email-delivery-job-id.integration.spec.ts')) {
     return 'g05-redis';
   }
@@ -768,6 +774,8 @@ function buildStages(context) {
     general: [],
     src: srcIntegrations,
     g06: [],
+    'prd3-g02': [],
+    'prd3-g03': [],
     'teacher-closeout': [],
     'g05-redis': [],
   };
@@ -840,6 +848,16 @@ function buildStages(context) {
       jest: { resultId: `integration-general-${index + 1}`, config: 'test/jest-e2e.json' },
       timeoutMs: context.config.stageTimeoutMs,
     });
+  });
+  stages.push({
+    id: 'integration_prd3_g02', label: 'PRD3-G02 dedicated Redis topology and recovery integration', runner: 'host-node',
+    dependsOn: ['build'], script: 'scripts/ci/prd3-g02-redis-topology-recovery.cjs',
+    files: integrationGroups['prd3-g02'], timeoutMs: context.config.stageTimeoutMs,
+  });
+  stages.push({
+    id: 'integration_prd3_g03', label: 'PRD3-G03 dedicated critical queue recovery integration', runner: 'host-node',
+    dependsOn: ['build'], script: 'scripts/ci/prd3-g03-critical-queue-recovery.cjs',
+    files: integrationGroups['prd3-g03'], timeoutMs: context.config.stageTimeoutMs,
   });
   stages.push({
     id: 'integration_src', label: 'Integration specs under src', runner: 'jest',

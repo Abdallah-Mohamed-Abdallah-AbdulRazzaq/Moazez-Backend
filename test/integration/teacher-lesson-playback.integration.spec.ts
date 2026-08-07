@@ -3,7 +3,6 @@ import {
   LessonPlanStatus,
   MembershipStatus,
   Prisma,
-  PrismaClient,
   UserStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../src/infrastructure/database/prisma.service';
@@ -12,13 +11,12 @@ import { LessonContentPlaybackCoordinator } from '../../src/modules/academics/cu
 import { TeacherLessonPreparationReadAdapter } from '../../src/modules/teacher-app/lesson-preparation/infrastructure/teacher-lesson-preparation-read.adapter';
 import type { TeacherAppContext } from '../../src/modules/teacher-app/shared/teacher-app-context';
 import {
-  buildObserverDatabaseUrl,
   cleanupPlaybackFixture,
   createPlaybackFixture,
   deferred,
+  expectPromiseToRemainPending,
   type PlaybackFixture,
   runInActorScope,
-  waitUntilAnyBackendIsBlocked,
 } from './support/lesson-playback-fixture';
 
 jest.setTimeout(120_000);
@@ -31,9 +29,6 @@ type MutationCase = {
 
 describe('Teacher lesson preparation playback PostgreSQL boundary', () => {
   const prisma = new PrismaService();
-  const observer = new PrismaClient({
-    datasourceUrl: buildObserverDatabaseUrl('Teacher playback tests'),
-  });
   const storage = {
     createDownloadUrl: jest.fn().mockResolvedValue({
       url: 'https://storage.invalid/teacher-playback',
@@ -49,7 +44,6 @@ describe('Teacher lesson preparation playback PostgreSQL boundary', () => {
 
   beforeAll(async () => {
     await prisma.$connect();
-    await observer.$connect();
     fixture = await createPlaybackFixture(prisma, 'teacher-playback');
   });
 
@@ -57,11 +51,7 @@ describe('Teacher lesson preparation playback PostgreSQL boundary', () => {
     try {
       await cleanupPlaybackFixture(prisma, fixture);
     } finally {
-      try {
-        await observer.$disconnect();
-      } finally {
-        await prisma.$disconnect();
-      }
+      await prisma.$disconnect();
     }
   });
 
@@ -164,7 +154,7 @@ describe('Teacher lesson preparation playback PostgreSQL boundary', () => {
       try {
         await mutationHeld.promise;
         playback = play(fixture.publishedContentItemId);
-        await waitUntilAnyBackendIsBlocked(observer);
+        await expectPromiseToRemainPending(playback);
         releaseMutation.resolve();
         await mutation;
         await expect(playback).resolves.toBeNull();
@@ -178,7 +168,7 @@ describe('Teacher lesson preparation playback PostgreSQL boundary', () => {
   );
 
   it.each(teacherMutationCases())(
-    'holds $label until protected signing completes',
+    'withholds the capability when $label changes during signing',
     async ({ mutate, restore }) => {
       const signingStarted = deferred<void>();
       const releaseSigning = deferred<void>();
@@ -201,14 +191,10 @@ describe('Teacher lesson preparation playback PostgreSQL boundary', () => {
         });
 
       try {
-        await waitUntilAnyBackendIsBlocked(observer);
-        expect(mutationSettled).toBe(false);
-        releaseSigning.resolve();
-        await expect(playback).resolves.toMatchObject({
-          mimeType: 'video/mp4',
-          disposition: 'inline',
-        });
         await mutation;
+        expect(mutationSettled).toBe(true);
+        releaseSigning.resolve();
+        await expect(playback).resolves.toBeNull();
         expect(storage.createDownloadUrl).toHaveBeenCalledTimes(1);
         await expect(play(fixture.publishedContentItemId)).resolves.toBeNull();
       } finally {

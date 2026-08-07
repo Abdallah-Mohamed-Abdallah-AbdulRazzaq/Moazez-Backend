@@ -26,7 +26,7 @@ describeRedisIntegration('School email delivery custom BullMQ job ID', () => {
   let cleanupRedis: IORedis;
   let moduleDestroyCalls = 0;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     if (!dedicatedRedisUrl) {
       throw new Error('Dedicated PRD1-G05 Redis URL was not resolved');
     }
@@ -42,6 +42,7 @@ describeRedisIntegration('School email delivery custom BullMQ job ID', () => {
 
     bullmqService = new BullmqService(configService);
     deliveryQueueService = new SchoolEmailDeliveryQueueService(bullmqService);
+    await bullmqService.getQueueReadiness(SCHOOL_EMAIL_DELIVERY_QUEUE_NAME);
     queue = bullmqService.getQueue(
       SCHOOL_EMAIL_DELIVERY_QUEUE_NAME,
     ) as Queue<SchoolEmailDeliveryRecipientJobData>;
