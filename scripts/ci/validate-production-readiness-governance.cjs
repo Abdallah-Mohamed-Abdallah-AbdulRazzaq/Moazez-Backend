@@ -8,6 +8,10 @@ const ACTIVE_GATE_STATUSES = new Set([
   'IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
   'IN_PROGRESS',
 ]);
+const PREREQUISITE_ENFORCED_GATE_STATUSES = new Set([
+  ...ACTIVE_GATE_STATUSES,
+  'COMPLETE',
+]);
 const KNOWN_GATE_STATUSES = new Set([
   ...ACTIVE_GATE_STATUSES,
   'BLOCKED_BY_OWNER',
@@ -120,7 +124,7 @@ function validateProductionReadinessGovernance(matrixText, phase2CloseoutText) {
   }
 
   for (const gate of gates.values()) {
-    if (!ACTIVE_GATE_STATUSES.has(gate.status)) continue;
+    if (!PREREQUISITE_ENFORCED_GATE_STATUSES.has(gate.status)) continue;
     for (const prerequisiteId of prerequisiteGateIds(gate.prerequisites)) {
       if (!authoritativeCompleted.has(prerequisiteId)) continue;
       const prerequisite = gates.get(prerequisiteId);
@@ -133,8 +137,8 @@ function validateProductionReadinessGovernance(matrixText, phase2CloseoutText) {
   }
 
   const phase3DatabaseGate = gates.get('PRD3-G01');
-  if (phase3DatabaseGate?.status !== 'BASELINE_ONLY') {
-    problems.push('PRD3-G01 must remain BASELINE_ONLY');
+  if (phase3DatabaseGate?.status !== 'COMPLETE') {
+    problems.push('PRD3-G01 must be COMPLETE');
   }
 
   if (problems.length > 0) {

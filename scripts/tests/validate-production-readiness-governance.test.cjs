@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const {
+  parseAcceptanceMatrix,
   validateProductionReadinessGovernance,
   validateRepository,
 } = require('../ci/validate-production-readiness-governance.cjs');
@@ -34,7 +35,12 @@ test('current production-readiness governance reconciles Phase 2 completion', ()
   );
 });
 
-test('baseline-active gate fails when its completed prerequisite regresses to NOT_STARTED', () => {
+test('current PRD3-G01 lifecycle state is COMPLETE', () => {
+  const matrix = fs.readFileSync(MATRIX_PATH, 'utf8');
+  assert.equal(parseAcceptanceMatrix(matrix).get('PRD3-G01')?.status, 'COMPLETE');
+});
+
+test('completed gate fails when its completed prerequisite regresses to NOT_STARTED', () => {
   const matrix = fs.readFileSync(MATRIX_PATH, 'utf8');
   const closeout = fs.readFileSync(PHASE_2_CLOSEOUT_PATH, 'utf8');
   const regressed = matrix.replace(
@@ -44,6 +50,25 @@ test('baseline-active gate fails when its completed prerequisite regresses to NO
   assert.notEqual(regressed, matrix);
   assert.throws(
     () => validateProductionReadinessGovernance(regressed, closeout),
-    /PRD3-G01 is BASELINE_ONLY while authoritative completed prerequisite PRD2-G04 is incorrectly NOT_STARTED/u,
+    (error) => {
+      assert.match(error.message, /PRD3-G01/u);
+      assert.match(error.message, /PRD2-G04/u);
+      assert.match(error.message, /NOT_STARTED/u);
+      return true;
+    },
+  );
+});
+
+test('unknown gate status remains rejected', () => {
+  const matrix = fs.readFileSync(MATRIX_PATH, 'utf8');
+  const closeout = fs.readFileSync(PHASE_2_CLOSEOUT_PATH, 'utf8');
+  const invalid = matrix.replace(
+    /^(\| PRD3-G01 \|[^\r\n]*?)\| COMPLETE \|/mu,
+    '$1| UNKNOWN_LIFECYCLE_STATE |',
+  );
+  assert.notEqual(invalid, matrix);
+  assert.throws(
+    () => validateProductionReadinessGovernance(invalid, closeout),
+    /Governance gate PRD3-G01 has no parseable status\/prerequisite/u,
   );
 });
