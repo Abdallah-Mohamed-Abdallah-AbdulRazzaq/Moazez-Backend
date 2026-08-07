@@ -12,8 +12,10 @@ const {
   computeSummarySha256,
   deriveOverall,
   deriveStageCounts,
+  executeFixedStage,
   finalizeSummary,
   redactText,
+  resolveStageInvocation,
   resolveSummaryPath,
   runStagePlan,
   sanitizeJson,
@@ -95,6 +97,33 @@ function validSummary() {
   );
 }
 
+function launcherStage(executable, args) {
+  return { executable, args };
+}
+
+function simulatedLauncher(platform) {
+  const windows = platform === 'win32';
+  const npmCliPath = windows
+    ? 'C:\\portable\\node_modules\\npm\\bin\\npm-cli.js'
+    : '/portable/node_modules/npm/bin/npm-cli.js';
+  const npxCliPath = windows
+    ? 'C:\\portable\\node_modules\\npm\\bin\\npx-cli.js'
+    : '/portable/node_modules/npm/bin/npx-cli.js';
+  const nodeExecutable = windows ? 'C:\\portable\\node.exe' : '/portable/bin/node';
+  const existingFiles = new Set([npmCliPath, npxCliPath]);
+  return {
+    npmCliPath,
+    npxCliPath,
+    nodeExecutable,
+    options: {
+      platform,
+      environment: { npm_execpath: npmCliPath },
+      nodeExecutable,
+      fileExists: (candidate) => existingFiles.has(candidate),
+    },
+  };
+}
+
 test('stage plan has exactly the eleven required IDs in deterministic order', () => {
   assert.equal(STAGE_PLAN.length, 11);
   assert.deepEqual(
@@ -135,6 +164,170 @@ test('stage plan contains neither Universal Regression nor Google Cloud commands
   const serialized = JSON.stringify(STAGE_PLAN);
   assert.doesNotMatch(serialized, /test:regression|universal-regression/iu);
   assert.doesNotMatch(serialized, /gcloud|google cloud/iu);
+});
+
+test('Windows npm resolves to Node plus the verified npm CLI entrypoint', () => {
+  const simulation = simulatedLauncher('win32');
+  assert.deepEqual(
+    resolveStageInvocation(launcherStage('npm', ['run', 'build']), simulation.options),
+    {
+      executable: simulation.nodeExecutable,
+      args: [simulation.npmCliPath, 'run', 'build'],
+    },
+  );
+});
+
+test('Windows npx resolves to Node plus the sibling npx CLI entrypoint', () => {
+  const simulation = simulatedLauncher('win32');
+  assert.deepEqual(
+    resolveStageInvocation(
+      launcherStage('npx', ['prisma', 'validate']),
+      simulation.options,
+    ),
+    {
+      executable: simulation.nodeExecutable,
+      args: [simulation.npxCliPath, 'prisma', 'validate'],
+    },
+  );
+});
+
+test('git remains a direct fixed executable with its original arguments', () => {
+  assert.deepEqual(resolveStageInvocation(launcherStage('git', ['diff', '--check'])), {
+    executable: 'git',
+    args: ['diff', '--check'],
+  });
+});
+
+test('Windows package-manager resolution never returns a shell or cmd launcher', () => {
+  const simulation = simulatedLauncher('win32');
+  for (const executable of ['npm', 'npx']) {
+    const invocation = resolveStageInvocation(
+      launcherStage(executable, ['--version']),
+      simulation.options,
+    );
+    assert.equal(invocation.executable, simulation.nodeExecutable);
+    assert.doesNotMatch(
+      invocation.executable,
+      /npm\.cmd|npx\.cmd|cmd\.exe|powershell\.exe|pwsh\.exe/iu,
+    );
+  }
+});
+
+test('Linux npm and npx also resolve through Node and JavaScript CLI entrypoints', () => {
+  const simulation = simulatedLauncher('linux');
+  assert.deepEqual(
+    resolveStageInvocation(launcherStage('npm', ['--version']), simulation.options),
+    {
+      executable: simulation.nodeExecutable,
+      args: [simulation.npmCliPath, '--version'],
+    },
+  );
+  assert.deepEqual(
+    resolveStageInvocation(launcherStage('npx', ['--version']), simulation.options),
+    {
+      executable: simulation.nodeExecutable,
+      args: [simulation.npxCliPath, '--version'],
+    },
+  );
+});
+
+test('launcher preserves logical npm and npx argument arrays without mutation', () => {
+  const simulation = simulatedLauncher('linux');
+  for (const executable of ['npm', 'npx']) {
+    const original = ['run', 'synthetic', '--', '--fixed'];
+    const invocation = resolveStageInvocation(
+      launcherStage(executable, original),
+      simulation.options,
+    );
+    assert.deepEqual(invocation.args.slice(1), original);
+    assert.deepEqual(original, ['run', 'synthetic', '--', '--fixed']);
+  }
+});
+
+test('missing or empty npm_execpath fails closed', () => {
+  const simulation = simulatedLauncher('linux');
+  for (const environment of [{}, { npm_execpath: '   ' }]) {
+    assert.throws(
+      () =>
+        resolveStageInvocation(launcherStage('npm', ['--version']), {
+          ...simulation.options,
+          environment,
+        }),
+      /npm_execpath/iu,
+    );
+  }
+});
+
+test('malformed or non-absolute npm CLI identity fails closed', () => {
+  const simulation = simulatedLauncher('linux');
+  for (const npmExecPath of ['/portable/bin/not-npm.js', 'npm-cli.js']) {
+    assert.throws(
+      () =>
+        resolveStageInvocation(launcherStage('npm', ['--version']), {
+          ...simulation.options,
+          environment: { npm_execpath: npmExecPath },
+        }),
+      /npm_execpath/iu,
+    );
+  }
+});
+
+test('missing npm CLI file fails closed', () => {
+  const simulation = simulatedLauncher('linux');
+  assert.throws(
+    () =>
+      resolveStageInvocation(launcherStage('npm', ['--version']), {
+        ...simulation.options,
+        fileExists: () => false,
+      }),
+    /npm-cli\.js does not exist/iu,
+  );
+});
+
+test('missing sibling npx CLI file fails closed', () => {
+  const simulation = simulatedLauncher('linux');
+  assert.throws(
+    () =>
+      resolveStageInvocation(launcherStage('npx', ['--version']), {
+        ...simulation.options,
+        fileExists: (candidate) => candidate === simulation.npmCliPath,
+      }),
+    /npx-cli\.js does not exist/iu,
+  );
+});
+
+test('launcher identity failure is classified as CI_SCRIPT_DEFECT and cannot pass', () => {
+  const plan = [
+    { id: 'LAUNCHER_SMOKE', executable: 'npm', args: ['--version'], required: true },
+  ];
+  const stages = runStagePlan({
+    plan,
+    executeStage: (stageDefinition) =>
+      resolveStageInvocation(stageDefinition, { environment: {} }),
+    now: clock(),
+  });
+  assert.equal(stages[0].status, 'FAIL');
+  assert.equal(stages[0].classification, 'CI_SCRIPT_DEFECT');
+  assert.equal(stages[0].exitCode, 1);
+  assert.notEqual(deriveOverall(stages), 'PASS');
+});
+
+test('real npm launcher smoke succeeds through the production launcher', () => {
+  const result = executeFixedStage(launcherStage('npm', ['--version']), {
+    timeoutMs: 10_000,
+  });
+  assert.equal(result.error, null);
+  assert.equal(result.exitCode, 0);
+  assert.match(result.output.trim(), /^\d+\.\d+\.\d+/u);
+});
+
+test('real npx launcher smoke succeeds through the production launcher', () => {
+  const result = executeFixedStage(launcherStage('npx', ['--version']), {
+    timeoutMs: 10_000,
+  });
+  assert.equal(result.error, null);
+  assert.equal(result.exitCode, 0);
+  assert.match(result.output.trim(), /^\d+\.\d+\.\d+/u);
 });
 
 test('all successful required stages produce PASS with recorded timings', () => {
@@ -275,11 +468,15 @@ test('redaction removes URL variables and token/password-like values', () => {
 test('child environment excludes inherited secret-bearing values', () => {
   const environment = childEnvironment({
     PATH: '/usr/bin',
+    npm_execpath: '/portable/node_modules/npm/bin/npm-cli.js',
     DATABASE_URL: 'synthetic',
     QUEUE_REDIS_URL: 'synthetic',
     JWT_SECRET: 'synthetic',
   });
-  assert.deepEqual(environment, { PATH: '/usr/bin' });
+  assert.deepEqual(environment, {
+    PATH: '/usr/bin',
+    npm_execpath: '/portable/node_modules/npm/bin/npm-cli.js',
+  });
 });
 
 test('summary output path honors PRD3_G06_EVIDENCE_DIR', () => {
@@ -327,9 +524,13 @@ test('package exposes only the two minimal G06 commands and preserves Universal 
 
 test('orchestrator uses fixed spawnSync execution with shell disabled', () => {
   const source = read('scripts/ci/prd3-g06-phase3-regression.cjs');
-  assert.match(source, /spawnSync\(executable, \[\.\.\.stageDefinition\.args\]/u);
+  assert.match(source, /spawnSync\(invocation\.executable, invocation\.args/u);
   assert.match(source, /shell: false/u);
-  assert.doesNotMatch(source, /shell:\s*true|\bexec\s*\(/u);
+  assert.doesNotMatch(source, /shell:\s*true|\bexec\s*\(|\bexecSync\s*\(/u);
+  assert.doesNotMatch(
+    source,
+    /npm\.cmd|npx\.cmd|cmd\.exe|powershell\.exe|pwsh\.exe/iu,
+  );
 });
 
 test('workflow is exact-SHA Ubuntu verification with no alias or path simulation', () => {

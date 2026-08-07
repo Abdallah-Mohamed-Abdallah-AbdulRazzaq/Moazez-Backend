@@ -79,13 +79,6 @@ function sanitizeJson(value) {
   );
 }
 
-function commandForPlatform(executable, platform = process.platform) {
-  if (platform === 'win32' && ['npm', 'npx'].includes(executable)) {
-    return `${executable}.cmd`;
-  }
-  return executable;
-}
-
 function childEnvironment(environment = process.env) {
   return Object.fromEntries(
     Object.entries(environment).filter(
@@ -97,15 +90,58 @@ function childEnvironment(environment = process.env) {
   );
 }
 
-function executeFixedStage(stageDefinition, options = {}) {
-  const executable = commandForPlatform(
-    stageDefinition.executable,
-    options.platform ?? process.platform,
+function resolveStageInvocation(stageDefinition, options = {}) {
+  if (stageDefinition.executable === 'git') {
+    return { executable: 'git', args: [...stageDefinition.args] };
+  }
+  assert.ok(
+    ['npm', 'npx'].includes(stageDefinition.executable),
+    `unsupported logical stage executable: ${stageDefinition.executable}`,
   );
-  const result = spawnSync(executable, [...stageDefinition.args], {
+
+  const environment = options.environment ?? process.env;
+  const npmExecPath = environment.npm_execpath;
+  assert.equal(typeof npmExecPath, 'string', 'npm_execpath is required');
+  assert.notEqual(npmExecPath.trim(), '', 'npm_execpath must not be empty');
+
+  const platform = options.platform ?? process.platform;
+  const pathImplementation = platform === 'win32' ? path.win32 : path.posix;
+  const npmCliPath = npmExecPath.trim();
+  assert.equal(pathImplementation.isAbsolute(npmCliPath), true, 'npm_execpath must be absolute');
+  assert.equal(
+    pathImplementation.basename(npmCliPath),
+    'npm-cli.js',
+    'npm_execpath must identify npm-cli.js',
+  );
+
+  const fileExists = options.fileExists ?? fs.existsSync;
+  assert.equal(fileExists(npmCliPath), true, 'npm-cli.js does not exist');
+  const cliPath =
+    stageDefinition.executable === 'npm'
+      ? npmCliPath
+      : pathImplementation.join(pathImplementation.dirname(npmCliPath), 'npx-cli.js');
+  if (stageDefinition.executable === 'npx') {
+    assert.equal(fileExists(cliPath), true, 'npx-cli.js does not exist');
+  }
+
+  return {
+    executable: options.nodeExecutable ?? process.execPath,
+    args: [cliPath, ...stageDefinition.args],
+  };
+}
+
+function executeFixedStage(stageDefinition, options = {}) {
+  const environment = options.environment ?? process.env;
+  const invocation = resolveStageInvocation(stageDefinition, {
+    environment,
+    platform: options.platform,
+    nodeExecutable: options.nodeExecutable,
+    fileExists: options.fileExists,
+  });
+  const result = spawnSync(invocation.executable, invocation.args, {
     cwd: options.repositoryRoot ?? REPOSITORY_ROOT,
     encoding: 'utf8',
-    env: childEnvironment(options.environment ?? process.env),
+    env: childEnvironment(environment),
     maxBuffer: 64 * 1024 * 1024,
     shell: false,
     timeout: options.timeoutMs ?? 45 * 60 * 1000,
@@ -533,7 +569,6 @@ module.exports = {
   blockedRecord,
   childEnvironment,
   classifyFailure,
-  commandForPlatform,
   computeSummarySha256,
   deriveOverall,
   deriveStageCounts,
@@ -542,9 +577,11 @@ module.exports = {
   main,
   readGovernance,
   redactText,
+  resolveStageInvocation,
   resolveSummaryPath,
   runStagePlan,
   sanitizeJson,
+  executeFixedStage,
   validateExactCandidateState,
   validateGovernanceSources,
   validateSummary,
