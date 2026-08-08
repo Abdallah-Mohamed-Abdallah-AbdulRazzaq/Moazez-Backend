@@ -12,6 +12,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
+import { RealtimeGateway } from '../../src/infrastructure/realtime/realtime.gateway';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'DashboardTodos123!';
@@ -87,6 +88,8 @@ describe('DASHBOARD-TODOS-1A CRUD (e2e)', () => {
     })
       .overrideProvider(BullmqService)
       .useValue(noopBullmq())
+      .overrideProvider(RealtimeGateway)
+      .useValue(createNoopRealtimeGateway())
       .compile();
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix(GLOBAL_PREFIX.replace(/^\//, ''));
@@ -565,6 +568,17 @@ function noopBullmq(): AppModuleBullmqServiceMock {
       on: jest.fn(),
       close: jest.fn().mockResolvedValue(undefined),
     }),
+    onModuleDestroy: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createNoopRealtimeGateway(): Pick<
+  RealtimeGateway,
+  'checkReadiness' | 'disconnectSocketsForShutdown' | 'onModuleDestroy'
+> {
+  return {
+    checkReadiness: jest.fn().mockResolvedValue(undefined),
+    disconnectSocketsForShutdown: jest.fn().mockResolvedValue(undefined),
     onModuleDestroy: jest.fn().mockResolvedValue(undefined),
   };
 }

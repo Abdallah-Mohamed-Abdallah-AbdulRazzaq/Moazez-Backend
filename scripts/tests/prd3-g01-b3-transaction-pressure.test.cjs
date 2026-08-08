@@ -166,6 +166,121 @@ test('external waits are detected through a locally resolved helper', () => {
   });
 });
 
+test('portable resolver follows a callback passed through withSoftDeleted', () => {
+  withFixture({
+    'request-context.ts': `
+      export async function withSoftDeleted<T>(fn: () => Promise<T>): Promise<T> {
+        const context = true;
+        if (!context) return fn();
+        return await fn();
+      }
+    `,
+    'repository.ts': `
+      import { withSoftDeleted } from './request-context';
+      class Sample {
+        constructor(private prisma: any) {}
+        private async find(tx: any) {
+          const load = () => tx.user.findFirst({ where: { id: 'one' } });
+          return await withSoftDeleted(load);
+        }
+        run() {
+          return this.prisma.$transaction(async (tx: any) => await this.find(tx));
+        }
+      }
+    `,
+  }, (rows) => {
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].unresolvedCalls, []);
+    assert.equal(rows[0].manualOverrides.some((item) => item.unresolvedCallExpression === 'withSoftDeleted'), false);
+    assert.ok(rows[0].databaseCalls.some((item) => item.target === 'tx.user.findFirst'));
+    assert.ok(rows[0].resolvedHelpers.some((item) => item.endsWith('#withSoftDeleted')));
+  });
+});
+
+test('wrapped callbacks still expose forbidden provider waits', () => {
+  withFixture({
+    'request-context.ts': `
+      export async function withSoftDeleted<T>(fn: () => Promise<T>): Promise<T> {
+        return await fn();
+      }
+    `,
+    'repository.ts': `
+      import { withSoftDeleted } from './request-context';
+      class Sample {
+        constructor(private prisma: any, private storage: any) {}
+        private async find() {
+          const load = () => this.storage.createDownloadUrl({});
+          return await withSoftDeleted(load);
+        }
+        run() {
+          return this.prisma.$transaction(async () => await this.find());
+        }
+      }
+    `,
+  }, (rows) => {
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].externalWaitInsideTransaction, true);
+    assert.equal(rows[0].classification, 'EXTERNAL_WAIT_SENSITIVE');
+  });
+});
+
+test('the same wrapper analyzes different callback bindings independently', () => {
+  withFixture({
+    'request-context.ts': `
+      export async function withSoftDeleted<T>(fn: () => Promise<T>): Promise<T> {
+        return await fn();
+      }
+    `,
+    'repository.ts': `
+      import { withSoftDeleted } from './request-context';
+      class Sample {
+        constructor(private prisma: any, private storage: any) {}
+        private async find(tx: any) {
+          const databaseOnly = () => tx.user.findFirst({ where: { id: 'one' } });
+          const providerWait = () => this.storage.createDownloadUrl({});
+          await withSoftDeleted(databaseOnly);
+          return await withSoftDeleted(providerWait);
+        }
+        run() {
+          return this.prisma.$transaction(async (tx: any) => await this.find(tx));
+        }
+      }
+    `,
+  }, (rows) => {
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].unresolvedCalls, []);
+    assert.ok(rows[0].databaseCalls.some((item) => item.target === 'tx.user.findFirst'));
+    assert.equal(rows[0].externalWaitInsideTransaction, true);
+    assert.equal(rows[0].classification, 'EXTERNAL_WAIT_SENSITIVE');
+  });
+});
+
+test('wrapped unknown callbacks remain unresolved and fail closed', () => {
+  withFixture({
+    'request-context.ts': `
+      export async function withSoftDeleted<T>(fn: () => Promise<T>): Promise<T> {
+        return await fn();
+      }
+    `,
+    'repository.ts': `
+      import { withSoftDeleted } from './request-context';
+      class Sample {
+        constructor(private prisma: any) {}
+        run(operation: () => Promise<unknown>) {
+          return this.prisma.$transaction(async () => await withSoftDeleted(operation));
+        }
+      }
+    `,
+  }, (rows) => {
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].unresolvedCalls.map((item) => item.target), ['fn']);
+    assert.throws(
+      () => validateInventory([{ ...rows[0], runtimeRole: 'test-only', runtimeRoles: ['test-only'] }]),
+      /unresolved calls/u,
+    );
+  });
+});
+
 test('returned Promises are treated as waits across direct, aggregate, helper, conditional, and generic callback forms', () => {
   withFixture(`
     class Sample {
@@ -870,7 +985,12 @@ test('B3-F01 through B3-F35 coverage is exact after matching injection paths exe
 function withFixture(source, assertion) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'b3-inventory-'));
   try {
-    fs.writeFileSync(path.join(directory, 'fixture.ts'), source, 'utf8');
+    const files = typeof source === 'string' ? { 'fixture.ts': source } : source;
+    for (const [relativePath, contents] of Object.entries(files)) {
+      const target = path.join(directory, relativePath);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, contents, 'utf8');
+    }
     assertion(inventoryTransactions(directory));
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 }

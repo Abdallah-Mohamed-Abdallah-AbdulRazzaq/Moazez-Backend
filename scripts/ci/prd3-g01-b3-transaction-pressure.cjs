@@ -365,12 +365,6 @@ const REVIEWED_CALL_OVERRIDES = Object.freeze([
     evidence: 'Reviewed repository contracts call buildAuditEntry only to construct Prisma AuditLog create data; the returned value is awaited by Prisma, not by the builder.',
   }),
   Object.freeze({
-    target: /^withSoftDeleted$/,
-    reason: 'The request-context wrapper is imported through an alias that the lightweight source resolver cannot bind.',
-    classification: 'SHORT_DB_ONLY',
-    evidence: 'withSoftDeleted only changes AsyncLocalStorage query scope for the enclosed repository read and has no provider boundary.',
-  }),
-  Object.freeze({
     target: /^load$/,
     reason: 'The transaction-local loader is returned by a higher-order helper and has no directly resolvable declaration body.',
     classification: 'SHORT_DB_ONLY',
@@ -485,7 +479,12 @@ function resolveRuntimeRole(relativePath, detectedRoles, overrides = []) {
   });
 }
 
-function resolveCallDeclaration(checker, call) {
+function isPathWithinDirectory(fileName, directory) {
+  const relative = path.relative(path.resolve(directory), path.resolve(fileName));
+  return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+function resolveCallDeclaration(checker, call, sourceRoot) {
   let symbol = checker.getSymbolAtLocation(
     ts.isPropertyAccessExpression(call.expression)
       ? call.expression.name
@@ -494,8 +493,53 @@ function resolveCallDeclaration(checker, call) {
   if (symbol?.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
   const declarations = symbol?.getDeclarations() ?? [];
   return declarations.find((declaration) =>
-    declaration.getSourceFile().fileName.startsWith(path.join(ROOT, 'src')),
+    isPathWithinDirectory(declaration.getSourceFile().fileName, sourceRoot),
   ) ?? null;
+}
+
+function functionImplementation(declaration) {
+  if (ts.isFunctionLike(declaration)) return declaration;
+  if (
+    ts.isVariableDeclaration(declaration) &&
+    declaration.initializer &&
+    ts.isFunctionLike(declaration.initializer)
+  ) return declaration.initializer;
+  return null;
+}
+
+function resolveCallbackArgument(checker, argument, sourceRoot) {
+  if (ts.isFunctionLike(argument)) return argument;
+  let symbol = checker.getSymbolAtLocation(argument);
+  if (symbol?.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+  for (const declaration of symbol?.getDeclarations() ?? []) {
+    if (!isPathWithinDirectory(declaration.getSourceFile().fileName, sourceRoot)) continue;
+    const implementation = functionImplementation(declaration);
+    if (implementation?.body) return implementation;
+  }
+  return null;
+}
+
+function bindCallbackArguments(checker, implementation, call, sourceRoot) {
+  const bindings = new Map();
+  for (let index = 0; index < implementation.parameters.length; index += 1) {
+    const parameter = implementation.parameters[index];
+    const argument = call.arguments[index];
+    if (!argument || !ts.isIdentifier(parameter.name)) continue;
+    const callback = resolveCallbackArgument(checker, argument, sourceRoot);
+    if (callback) bindings.set(parameter.name.text, callback);
+  }
+  return bindings;
+}
+
+function astIdentity(node) {
+  return `${normalized(path.resolve(node.getSourceFile().fileName))}:${node.pos}:${node.end}`;
+}
+
+function callbackBindingsIdentity(callbackBindings) {
+  return [...callbackBindings.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([parameter, callback]) => `${parameter}=${astIdentity(callback)}`)
+    .join(',');
 }
 
 function resolveLocalCallDeclaration(source, call) {
@@ -524,7 +568,7 @@ function resolveLocalCallDeclaration(source, call) {
   return name ? source.__b3LocalDeclarations.get(name) ?? null : null;
 }
 
-function analyzeCallback({ callback, ownerNode, source, checker }) {
+function analyzeCallback({ callback, ownerNode, source, checker, sourceRoot }) {
   const analysis = {
     awaitedCalls: [],
     effectiveWaitCalls: [],
@@ -539,8 +583,8 @@ function analyzeCallback({ callback, ownerNode, source, checker }) {
   const callbackStart = callback.pos;
   const callbackEnd = callback.end;
 
-  function visitTree(node, origin, includeNestedFunctions = true) {
-    const key = `${node.getSourceFile().fileName}:${node.pos}:${node.end}`;
+  function visitTree(node, origin, includeNestedFunctions = true, callbackBindings = new Map()) {
+    const key = `${astIdentity(node)}|callbacks:${callbackBindingsIdentity(callbackBindings)}`;
     if (visited.has(key)) return;
     visited.add(key);
     const nodeSource = node.getSourceFile();
@@ -564,7 +608,12 @@ function analyzeCallback({ callback, ownerNode, source, checker }) {
             ? child.expression.text
             : target;
         const root = target.split('.')[0];
-        if (property === '$transaction') {
+        const boundCallback = ts.isIdentifier(child.expression)
+          ? callbackBindings.get(child.expression.text)
+          : null;
+        if (boundCallback?.body) {
+          visitTree(boundCallback, target, false);
+        } else if (property === '$transaction') {
           // Nested transactions are separately inventoried; they are not a helper call.
         } else if (EXTERNAL_TARGET_PATTERN.test(target)) {
           analysis.externalCalls.push({ target, awaited, origin });
@@ -578,18 +627,18 @@ function analyzeCallback({ callback, ownerNode, source, checker }) {
         } else {
           const declaration =
             resolveLocalCallDeclaration(nodeSource, child) ??
-            resolveCallDeclaration(checker, child);
+            resolveCallDeclaration(checker, child, sourceRoot);
           if (declaration) {
             const declarationSource = declaration.getSourceFile();
-            const implementation =
-              ts.isMethodDeclaration(declaration) || ts.isFunctionDeclaration(declaration)
-                ? declaration
-                : ts.isVariableDeclaration(declaration) && declaration.initializer && ts.isFunctionLike(declaration.initializer)
-                  ? declaration.initializer
-                  : null;
+            const implementation = functionImplementation(declaration);
             if (implementation?.body) {
               analysis.resolvedHelpers.push(`${normalized(path.relative(ROOT, declarationSource.fileName))}#${declarationName(declaration) ?? property}`);
-              visitTree(implementation.body, target, false);
+              visitTree(
+                implementation,
+                target,
+                false,
+                bindCallbackArguments(checker, implementation, child, sourceRoot),
+              );
             } else if (!PURE_CALL_ROOTS.has(root) && awaited) {
               analysis.unresolvedCalls.push({ target, origin, reason: 'repository declaration has no resolvable implementation body' });
             }
@@ -600,7 +649,7 @@ function analyzeCallback({ callback, ownerNode, source, checker }) {
       }
       ts.forEachChild(child, visit);
     };
-    ts.forEachChild(node, visit);
+    visit(node);
   }
   visitTree(callback, 'transaction-callback');
 
@@ -646,7 +695,7 @@ function scanDirectExternalWaitsOutsideTransactions(program, sourceRoot) {
   const evidence = [];
   for (const source of program.getSourceFiles()) {
     const absolute = path.resolve(source.fileName);
-    if (!absolute.startsWith(path.resolve(sourceRoot)) || absolute.endsWith('.spec.ts')) continue;
+    if (!isPathWithinDirectory(absolute, sourceRoot) || absolute.endsWith('.spec.ts')) continue;
     const visit = (node) => {
       if (
         ts.isCallExpression(node) &&
@@ -693,7 +742,7 @@ function inventoryTransactions(sourceRoot = path.join(ROOT, 'src')) {
         const ordinal = (ownerOrdinals.get(owner) ?? 0) + 1;
         ownerOrdinals.set(owner, ordinal);
         const callback = first ?? node;
-        const analysis = analyzeCallback({ callback, ownerNode: enclosingOwnerNode(node), source, checker });
+        const analysis = analyzeCallback({ callback, ownerNode: enclosingOwnerNode(node), source, checker, sourceRoot });
         const unresolved = analysis.unresolvedCalls.filter((item, index, all) =>
           all.findIndex((candidate) => candidate.target === item.target && candidate.reason === item.reason) === index,
         );
