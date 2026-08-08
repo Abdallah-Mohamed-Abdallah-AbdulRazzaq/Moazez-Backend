@@ -252,6 +252,22 @@ test('real harness uses immutable local images, empty replacement, and exact cle
   assert.match(wrapper, /network_ownership_mismatch/u);
   assert.match(wrapper, /owned_resource_cleanup_incomplete/u);
   assert.match(
+    wrapper,
+    /node_modules[\s\S]*?prisma[\s\S]*?build[\s\S]*?index\.js/u,
+  );
+  assert.match(
+    wrapper,
+    /spawnSync\(\s*process\.execPath,[\s\S]*?'generate'[\s\S]*?'--schema'[\s\S]*?schema\.prisma/u,
+  );
+  assert.match(wrapper, /timeout: PRISMA_GENERATE_TIMEOUT_MS/u);
+  assert.match(wrapper, /maxBuffer: 8 \* 1024 \* 1024/u);
+  assert.match(wrapper, /prd3_g03_prisma_client_generation_failed/u);
+  assert.ok(
+    wrapper.indexOf('generatePrismaClient(prismaCli, databaseUrl)') <
+      wrapper.indexOf('const testRun = spawnSync'),
+  );
+  assert.doesNotMatch(wrapper, /--forceExit/u);
+  assert.match(
     integration,
     /expect\(redisAdmin\(\['DBSIZE'\], true\)\)\.toBe\('0'\)/u,
   );
@@ -421,12 +437,14 @@ test('schema, migrations, dependencies, lockfile, and public API stay unchanged'
 
 test('changed paths stay inside the bounded G03 implementation', () => {
   const allowed = [
+    '.github/workflows/learning-media-integrity.yml',
     'adr/ADR-0009-',
     'docs/production-readiness/phase-0/02-',
     'docs/production-readiness/phase-0/03-',
     'docs/production-readiness/phase-0/05-',
     'docs/production-readiness/phase-3/06-',
     'package.json',
+    'scripts/ci/prd3-g02-redis-topology-recovery.cjs',
     'scripts/ci/prd3-g03-',
     'scripts/tests/prd3-g02-redis-topology-recovery.test.cjs',
     'scripts/tests/prd3-g03-',
@@ -452,7 +470,8 @@ test('changed executable and evidence files contain no real secret or unsafe she
   const paths = changedPaths().filter(
     (entry) =>
       /\.(?:ts|cjs|md|json)$/u.test(entry) &&
-      entry !== 'scripts/tests/prd3-g03-critical-queue-recovery.test.cjs',
+      entry !== 'scripts/tests/prd3-g03-critical-queue-recovery.test.cjs' &&
+      entry !== 'scripts/ci/prd3-g02-redis-topology-recovery.cjs',
   );
   const forbidden = [
     /(?:redis|rediss|postgresql):\/\/[^\s'"`]+/iu,

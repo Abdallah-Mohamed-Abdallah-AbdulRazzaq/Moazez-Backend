@@ -11,6 +11,7 @@ const RUN_LABEL = 'com.moazez.evidence.run';
 const ROLE_LABEL = 'com.moazez.evidence.redis-role';
 const REDIS_IMAGE_REFERENCE = 'redis:7-alpine';
 const COMMAND_TIMEOUT_MS = 30_000;
+const PRISMA_GENERATE_TIMEOUT_MS = 2 * 60_000;
 const TEST_TIMEOUT_MS = 10 * 60_000;
 
 const resources = {
@@ -30,6 +31,13 @@ let primaryFailure = null;
 let cleanupResult = null;
 
 try {
+  const prismaGenerationDatabaseUrl = [
+    'postgresql',
+    '://g02_prisma_generate:g02_prisma_generate@127.0.0.1:1/',
+    'g02_prisma_generate?schema=public',
+  ].join('');
+  generatePrismaClient(prismaGenerationDatabaseUrl);
+
   const imageId = docker([
     'image',
     'inspect',
@@ -67,7 +75,6 @@ try {
       '--config',
       './test/jest-e2e.json',
       '--runInBand',
-      '--forceExit',
       '--runTestsByPath',
       'test/integration/prd3-g02-redis-topology-recovery.integration.spec.ts',
     ],
@@ -121,6 +128,41 @@ if (primaryFailure) {
     `PRD3-G02 final verifier failed: ${safeErrorMessage(primaryFailure)}\n`,
   );
   process.exitCode = 1;
+}
+
+function generatePrismaClient(databaseUrl) {
+  const prismaCli = path.join(
+    process.cwd(),
+    'node_modules',
+    'prisma',
+    'build',
+    'index.js',
+  );
+  const generationRun = spawnSync(
+    process.execPath,
+    [
+      prismaCli,
+      'generate',
+      '--schema',
+      path.join('prisma', 'schema.prisma'),
+    ],
+    {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      timeout: PRISMA_GENERATE_TIMEOUT_MS,
+      killSignal: 'SIGTERM',
+      maxBuffer: 8 * 1024 * 1024,
+      env: { ...process.env, DATABASE_URL: databaseUrl },
+    },
+  );
+  if (generationRun.error) {
+    throw new Error('prd3_g02_prisma_client_generation_execution_failed', {
+      cause: generationRun.error,
+    });
+  }
+  if (generationRun.status !== 0) {
+    throw new Error('prd3_g02_prisma_client_generation_failed');
+  }
 }
 
 function createNetwork(resource) {

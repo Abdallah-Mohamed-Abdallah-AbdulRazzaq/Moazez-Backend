@@ -96,6 +96,22 @@ test('real evidence harness locks two instances, budgets, outages, and cleanup',
   assert.match(wrapper, /assertContainerOwnership/u);
   assert.match(wrapper, /assertNetworkOwnership/u);
   assert.match(wrapper, /residualContainers/u);
+  assert.match(
+    wrapper,
+    /node_modules[\s\S]*?prisma[\s\S]*?build[\s\S]*?index\.js/u,
+  );
+  assert.match(
+    wrapper,
+    /spawnSync\(\s*process\.execPath,[\s\S]*?'generate'[\s\S]*?'--schema'[\s\S]*?schema\.prisma/u,
+  );
+  assert.match(wrapper, /timeout: PRISMA_GENERATE_TIMEOUT_MS/u);
+  assert.match(wrapper, /maxBuffer: 8 \* 1024 \* 1024/u);
+  assert.match(wrapper, /prd3_g02_prisma_client_generation_failed/u);
+  assert.ok(
+    wrapper.indexOf('generatePrismaClient(prismaGenerationDatabaseUrl)') <
+      wrapper.indexOf('const testRun = spawnSync'),
+  );
+  assert.doesNotMatch(wrapper, /--forceExit/u);
   assert.match(integration, /EXPECTED_QUEUE_STEADY_MAXIMUM = 36/u);
   assert.match(integration, /EXPECTED_REALTIME_STEADY_MAXIMUM = 14/u);
   assert.match(integration, /QUEUE_GOVERNED_MAXIMUM = 40/u);
@@ -127,6 +143,24 @@ test('real evidence harness locks two instances, budgets, outages, and cleanup',
   );
   assert.doesNotMatch(integration, /failedSchedulerRegistrationReplayed/u);
   assert.match(integration, /processInstancesReplaced: 0/u);
+});
+
+test('Learning Media lifecycle fixture uses current isolated Redis test variables', () => {
+  const workflow = read('.github/workflows/learning-media-integrity.yml');
+  const lifecycleStep =
+    /- name: BullMQ graceful shutdown and stalled-job recovery[\s\S]*?(?=\n      - name:)/u.exec(
+      workflow,
+    )?.[0] ?? '';
+
+  assert.match(
+    lifecycleStep,
+    /TEST_QUEUE_REDIS_URL:\s*redis:\/\/127\.0\.0\.1:6379/u,
+  );
+  assert.match(
+    lifecycleStep,
+    /TEST_REALTIME_REDIS_URL:\s*redis:\/\/127\.0\.0\.1:6379/u,
+  );
+  assert.doesNotMatch(lifecycleStep, /^\s*TEST_REDIS_URL:/mu);
 });
 
 test('legacy REDIS_URL has no executable fallback reference', () => {
@@ -184,9 +218,11 @@ test('changed paths stay within the authorized G02 categories', () => {
     'scripts/ci/health-probe-runtime.sh',
     'scripts/ci/prd3-g01-b2-',
     'scripts/ci/prd3-g02-',
+    'scripts/ci/prd3-g03-critical-queue-recovery.cjs',
     'scripts/tests/prd1-g07-',
     'scripts/tests/prd3-g01-b2-',
     'scripts/tests/prd3-g02-',
+    'scripts/tests/prd3-g03-critical-queue-recovery.test.cjs',
     'src/config/',
     'src/infrastructure/push/firebase/tests/',
     'src/infrastructure/queue/',

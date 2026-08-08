@@ -310,7 +310,8 @@ jobs:
         run: npm run test:learning-media
       - name: BullMQ graceful shutdown and stalled-job recovery
         env:
-          TEST_REDIS_URL: redis://127.0.0.1:6379
+          TEST_QUEUE_REDIS_URL: redis://127.0.0.1:6379
+          TEST_REALTIME_REDIS_URL: redis://127.0.0.1:6379
         run: >-
           npx jest --config ./test/jest-e2e.json --runInBand --runTestsByPath
           test/integration/bullmq-shutdown-lifecycle.integration.spec.ts

@@ -10,6 +10,7 @@ const RUN_LABEL = 'com.moazez.evidence.run';
 const GATE_LABEL = 'com.moazez.evidence.gate';
 const ROLE_LABEL = 'com.moazez.evidence.role';
 const NETWORK = `moazez-prd3-g03-net-${RUN_ID}`;
+const PRISMA_GENERATE_TIMEOUT_MS = 2 * 60_000;
 const claimedPorts = new Set();
 const resources = {
   queue: {
@@ -88,6 +89,7 @@ try {
     'build',
     'index.js',
   );
+  generatePrismaClient(prismaCli, databaseUrl);
   const migrationRun = spawnSync(
     process.execPath,
     [prismaCli, 'migrate', 'deploy'],
@@ -121,7 +123,6 @@ try {
       '--config',
       './test/jest-e2e.json',
       '--runInBand',
-      '--forceExit',
       '--runTestsByPath',
       'test/integration/prd3-g03-critical-queue-recovery.integration.spec.ts',
     ],
@@ -172,6 +173,34 @@ if (primaryFailure) {
     `PRD3-G03 real verifier failed: ${safeMessage(primaryFailure)}\n`,
   );
   process.exitCode = 1;
+}
+
+function generatePrismaClient(prismaCli, databaseUrl) {
+  const generationRun = spawnSync(
+    process.execPath,
+    [
+      prismaCli,
+      'generate',
+      '--schema',
+      path.join('prisma', 'schema.prisma'),
+    ],
+    {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      timeout: PRISMA_GENERATE_TIMEOUT_MS,
+      killSignal: 'SIGTERM',
+      maxBuffer: 8 * 1024 * 1024,
+      env: { ...process.env, DATABASE_URL: databaseUrl },
+    },
+  );
+  if (generationRun.error) {
+    throw new Error('prd3_g03_prisma_client_generation_execution_failed', {
+      cause: generationRun.error,
+    });
+  }
+  if (generationRun.status !== 0) {
+    throw new Error('prd3_g03_prisma_client_generation_failed');
+  }
 }
 
 function startQueue(imageId) {
