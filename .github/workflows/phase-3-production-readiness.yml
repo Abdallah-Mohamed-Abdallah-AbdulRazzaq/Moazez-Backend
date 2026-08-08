@@ -21,7 +21,6 @@ jobs:
     timeout-minutes: 240
     env:
       EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-      PRD3_G06_EVIDENCE_DIR: ${{ runner.temp }}/prd3-g06
 
     steps:
       - name: Check out exact candidate SHA
@@ -53,6 +52,8 @@ jobs:
 
       - name: Run exact-candidate Phase 3 gate
         run: npm run verify:prd3-g06-final
+        env:
+          PRD3_G06_EVIDENCE_DIR: ${{ runner.temp }}/prd3-g06
 
       - name: Upload sanitized Phase 3 evidence
         if: always()
