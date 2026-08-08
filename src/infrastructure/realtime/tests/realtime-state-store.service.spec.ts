@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import IORedis from 'ioredis';
+import { EventEmitter } from 'node:events';
 import type { Env } from '../../../config/env.validation';
 import { RealtimeStateStoreService } from '../realtime-state-store.service';
 
@@ -27,6 +28,9 @@ type RedisDouble = {
   disconnect: jest.Mock<void, []>;
   eval: jest.Mock<Promise<unknown>, unknown[]>;
   on: jest.Mock<RedisDouble, [string, () => void]>;
+  once: jest.Mock<RedisDouble, [string, () => void]>;
+  off: jest.Mock<RedisDouble, [string, () => void]>;
+  emit: (event: string) => boolean;
   ping: jest.Mock<Promise<string>, []>;
   quit: jest.Mock<Promise<string>, []>;
   multi: jest.Mock<RedisTransactionDouble, []>;
@@ -86,6 +90,7 @@ describe('RealtimeStateStoreService recovery lifecycle', () => {
         enableOfflineQueue: false,
         autoResendUnfulfilledCommands: false,
         connectTimeout: 1000,
+        disconnectTimeout: 1000,
         commandTimeout: 1000,
       }),
     );
@@ -817,6 +822,61 @@ describe('RealtimeStateStoreService recovery lifecycle', () => {
     await service.onModuleDestroy();
   });
 
+  it('awaits terminal close for a force-retired owned client during shutdown', async () => {
+    let retiredClient: RedisDouble;
+    retiredClient = createRedisDouble({
+      disconnect: jest.fn(() => {
+        retiredClient.status = 'end';
+      }),
+    });
+    nextClientFactory = () => retiredClient;
+    const service = createService();
+    await service.checkReadiness();
+    retiredClient.ping.mockRejectedValueOnce(new Error('redis unavailable'));
+
+    await expect(service.checkReadiness()).rejects.toThrow(
+      'realtime_state_redis_unavailable',
+    );
+    expect(retiredClient.disconnect).toHaveBeenCalledTimes(1);
+
+    const shutdownSettled = jest.fn();
+    const shutdown = service.onModuleDestroy().then(shutdownSettled);
+    await flushPromises();
+    expect(shutdownSettled).not.toHaveBeenCalled();
+
+    retiredClient.emit('close');
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(retiredClient.off).toHaveBeenCalledWith(
+      'close',
+      expect.any(Function),
+    );
+    expect(retiredClient.off).toHaveBeenCalledWith('end', expect.any(Function));
+  });
+
+  it('does not treat graceful QUIT settlement as terminal connection closure', async () => {
+    const gracefulQuit = deferred<string>();
+    const activeClient = createRedisDouble({
+      quit: jest.fn(() => gracefulQuit.promise),
+    });
+    nextClientFactory = () => activeClient;
+    const service = createService();
+    await service.checkReadiness();
+
+    const shutdownSettled = jest.fn();
+    const shutdown = service.onModuleDestroy().then(shutdownSettled);
+    await waitForMockCall(activeClient.quit);
+    activeClient.status = 'end';
+    gracefulQuit.resolve('OK');
+    await flushPromises();
+    expect(shutdownSettled).not.toHaveBeenCalled();
+
+    activeClient.emit('end');
+    await expect(shutdown).resolves.toBeUndefined();
+    expect(activeClient.disconnect).not.toHaveBeenCalled();
+    expect(activeClient.off).toHaveBeenCalledWith('close', expect.any(Function));
+    expect(activeClient.off).toHaveBeenCalledWith('end', expect.any(Function));
+  });
+
   it('cannot transition from destroying back to ready during replacement', async () => {
     jest.useFakeTimers();
     const oldQuit = deferred<string>();
@@ -1155,6 +1215,7 @@ function typingMemoryUsage(localTyping: LocalTypingMemory): {
 function createRedisDouble(
   overrides: Partial<RedisDouble> = {},
 ): RedisDouble {
+  const events = new EventEmitter();
   const client: RedisDouble = {
     status: 'wait',
     connect: jest.fn(async () => {
@@ -1162,12 +1223,28 @@ function createRedisDouble(
     }),
     disconnect: jest.fn(() => {
       client.status = 'end';
+      events.emit('close');
+      events.emit('end');
     }),
     eval: jest.fn().mockResolvedValue([1, 1]),
-    on: jest.fn(),
+    on: jest.fn((event, listener) => {
+      events.on(event, listener);
+      return client;
+    }),
+    once: jest.fn((event, listener) => {
+      events.once(event, listener);
+      return client;
+    }),
+    off: jest.fn((event, listener) => {
+      events.off(event, listener);
+      return client;
+    }),
+    emit: (event) => events.emit(event),
     ping: jest.fn().mockResolvedValue('PONG'),
     quit: jest.fn(async () => {
       client.status = 'end';
+      events.emit('close');
+      events.emit('end');
       return 'OK';
     }),
     multi: jest.fn(() => createTransactionDouble()),

@@ -29,6 +29,7 @@ const QUEUE_GOVERNED_MAXIMUM = 40;
 const REALTIME_GOVERNED_MAXIMUM = 30;
 const EXPECTED_QUEUE_STEADY_MAXIMUM = 36;
 const EXPECTED_REALTIME_STEADY_MAXIMUM = 14;
+const REDIS_SAMPLER_CLOSE_TIMEOUT_MS = 400;
 const CORE_QUEUE_NAMES = Object.freeze(
   Array.from({ length: 6 }, (_, index) => `prd3-g02-core-${index}`),
 );
@@ -674,7 +675,8 @@ type ConnectionSample = {
 class RedisConnectionSampler {
   private readonly admin: IORedis;
   private timer?: NodeJS.Timeout;
-  private sampling = false;
+  private inFlightSample?: Promise<void>;
+  private closePromise?: Promise<void>;
   stage = 'initializing';
 
   constructor(
@@ -688,6 +690,7 @@ class RedisConnectionSampler {
       maxRetriesPerRequest: 0,
       connectTimeout: 400,
       commandTimeout: 400,
+      disconnectTimeout: REDIS_SAMPLER_CLOSE_TIMEOUT_MS,
       retryStrategy: (attempt) => Math.min(attempt * 50, 500),
     });
     this.admin.on('error', () => undefined);
@@ -719,19 +722,30 @@ class RedisConnectionSampler {
     return clients.length - administrative.length;
   }
 
-  async close(): Promise<void> {
-    this.stop();
-    if (this.admin.status === 'end') return;
-    try {
-      await this.admin.quit();
-    } catch {
-      this.admin.disconnect();
-    }
+  close(): Promise<void> {
+    this.closePromise ??= this.closeOnce();
+    return this.closePromise;
   }
 
-  private async sample(): Promise<void> {
-    if (this.sampling || this.admin.status !== 'ready') return;
-    this.sampling = true;
+  private async closeOnce(): Promise<void> {
+    this.stop();
+    await this.inFlightSample;
+    await closeSamplerRedisClient(this.admin);
+  }
+
+  private sample(): Promise<void> {
+    if (this.inFlightSample) return this.inFlightSample;
+    if (this.admin.status !== 'ready') return Promise.resolve();
+
+    const execution = this.sampleOnce();
+    this.inFlightSample = execution;
+    void execution.finally(() => {
+      if (this.inFlightSample === execution) this.inFlightSample = undefined;
+    });
+    return execution;
+  }
+
+  private async sampleOnce(): Promise<void> {
     try {
       const clientList = await this.admin.client('LIST');
       const clients = clientList.split('\n').filter((line) => line.trim());
@@ -745,9 +759,86 @@ class RedisConnectionSampler {
       });
     } catch {
       // Outage samples are unavailable by definition; recovery sampling resumes.
-    } finally {
-      this.sampling = false;
     }
+  }
+}
+
+type SamplerRedisCloseSettlement = 'fulfilled' | 'rejected' | 'timed_out';
+type SamplerRedisTerminalSettlement = 'ended' | 'timed_out';
+
+async function closeSamplerRedisClient(redis: IORedis): Promise<void> {
+  if (redis.status === 'end') return;
+
+  const terminal = observeSamplerRedisEnd(redis);
+  const closeResult = await settleSamplerRedisClose(
+    Promise.resolve().then(() => redis.quit()),
+  );
+  if (closeResult !== 'fulfilled' && redis.status !== 'end') {
+    redis.disconnect();
+  }
+
+  const terminalResult = await terminal;
+  if (terminalResult === 'timed_out' && redis.status !== 'end') {
+    const forcedTerminal = observeSamplerRedisEnd(redis);
+    redis.disconnect();
+    await forcedTerminal;
+  }
+}
+
+function observeSamplerRedisEnd(
+  redis: IORedis,
+): Promise<SamplerRedisTerminalSettlement> {
+  if (redis.status === 'end') return Promise.resolve('ended');
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    const settle = (result: SamplerRedisTerminalSettlement): void => {
+      if (settled) return;
+      settled = true;
+      redis.off('end', onEnd);
+      if (timer) clearTimeout(timer);
+      resolve(result);
+    };
+    const onEnd = (): void => settle('ended');
+
+    redis.once('end', onEnd);
+    if (redis.status === 'end') {
+      settle('ended');
+      return;
+    }
+
+    timer = setTimeout(
+      () => settle('timed_out'),
+      REDIS_SAMPLER_CLOSE_TIMEOUT_MS,
+    );
+    timer.unref();
+  });
+}
+
+async function settleSamplerRedisClose(
+  operation: Promise<unknown>,
+): Promise<SamplerRedisCloseSettlement> {
+  let timer: NodeJS.Timeout | undefined;
+  const observed = operation.then<
+    SamplerRedisCloseSettlement,
+    SamplerRedisCloseSettlement
+  >(
+    () => 'fulfilled',
+    () => 'rejected',
+  );
+  const deadline = new Promise<SamplerRedisCloseSettlement>((resolve) => {
+    timer = setTimeout(
+      () => resolve('timed_out'),
+      REDIS_SAMPLER_CLOSE_TIMEOUT_MS,
+    );
+    timer.unref();
+  });
+
+  try {
+    return await Promise.race([observed, deadline]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
