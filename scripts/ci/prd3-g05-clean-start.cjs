@@ -25,6 +25,8 @@ const ROLE_LABEL = 'com.moazez.prd3-g05.role';
 const DATABASE_CONTAINER = `moazez-prd3-g05-db-${RUN_ID}`;
 const DATABASE_NAME = `g05_clean_${RUN_ID}`;
 const TEMPORARY_PREFIX = 'moazez-prd3-g05-';
+const MAX_MIGRATION_FAILURE_OUTPUT_BYTES = 64 * 1024;
+const MIGRATION_RESULT_CODE_PATTERN = /^[a-z][a-z0-9_]{0,127}$/u;
 const VERIFICATION_MODES = Object.freeze({
   CANDIDATE: 'candidate',
   REGRESSION: 'regression',
@@ -118,6 +120,8 @@ function command(file, args, options = {}) {
     const error = new Error(options.label ?? 'bounded command failed');
     error.code = options.errorCode ?? 'bounded_command_failed';
     error.status = result.status;
+    error.stdout = result.stdout ?? '';
+    error.stderr = result.stderr ?? '';
     throw error;
   }
   return {
@@ -256,7 +260,7 @@ function runFocusedTests() {
   const tests = Number(output.match(/# tests (\d+)/u)?.[1]);
   const failed = Number(output.match(/# fail (\d+)/u)?.[1]);
   const skipped = Number(output.match(/# skipped (\d+)/u)?.[1]);
-  assert.equal(tests, 17);
+  assert.equal(tests, 21);
   assert.equal(failed, 0);
   assert.equal(skipped, 0);
   return { tests, passed: tests, failed, skipped };
@@ -460,6 +464,35 @@ function parseJsonLines(output) {
     .map((line) => JSON.parse(line));
 }
 
+function governedMigrationFailureCode(error) {
+  const boundedOutput = `${String(error?.stdout ?? '').slice(
+    -MAX_MIGRATION_FAILURE_OUTPUT_BYTES,
+  )}\n${String(error?.stderr ?? '').slice(-MAX_MIGRATION_FAILURE_OUTPUT_BYTES)}`;
+  let resultCode;
+  for (const line of boundedOutput.split(/\r?\n/u)) {
+    try {
+      const event = JSON.parse(line);
+      if (
+        event?.event === 'migration.job.result' &&
+        event?.status === 'migration_failed' &&
+        typeof event?.code === 'string' &&
+        MIGRATION_RESULT_CODE_PATTERN.test(event.code)
+      ) {
+        resultCode = event.code;
+      }
+    } catch {
+      // Ignore non-JSON child diagnostics and fail closed below when no result exists.
+    }
+  }
+  return resultCode ?? 'migration_result_unavailable';
+}
+
+function governedMigrationFailure(error) {
+  const failure = new Error(governedMigrationFailureCode(error));
+  failure.code = 'governed_fresh_migration_failed';
+  return failure;
+}
+
 function runGovernedFreshMigration() {
   const executionId = `g05-${RUN_ID}-fresh`;
   const url = databaseUrl();
@@ -480,13 +513,18 @@ function runGovernedFreshMigration() {
     MIGRATION_JOB_DATA_AUTHORITY: `DISPOSABLE_NA:${executionId}`,
   };
   delete environment.SEED_DEMO_DATA;
-  const result = command(process.execPath, [MIGRATION_RUNNER_PATH], {
-    env: environment,
-    timeoutMs: 5 * 60_000,
-    maxBuffer: 8 * 1024 * 1024,
-    label: 'existing G04 governed migration runner failed',
-    errorCode: 'governed_fresh_migration_failed',
-  });
+  let result;
+  try {
+    result = command(process.execPath, [MIGRATION_RUNNER_PATH], {
+      env: environment,
+      timeoutMs: 5 * 60_000,
+      maxBuffer: 8 * 1024 * 1024,
+      label: 'existing G04 governed migration runner failed',
+      errorCode: 'governed_fresh_migration_failed',
+    });
+  } catch (error) {
+    throw governedMigrationFailure(error);
+  }
   const combined = `${result.stdout}\n${result.stderr}`;
   for (const sensitive of [url, syntheticSecrets.migration]) {
     assert.ok(!combined.includes(sensitive), 'migration output exposed synthetic material');
@@ -787,9 +825,13 @@ module.exports = {
   BASE_SHA,
   EXPECTED_CHANGED_PATHS,
   VERIFICATION_MODES,
+  command,
+  governedMigrationFailure,
+  governedMigrationFailureCode,
   inspectRepositoryState,
   isProtectedRegressionPath,
   readChangedPaths,
   resolveVerificationMode,
+  runGovernedFreshMigration,
   validateRepositoryState,
 };

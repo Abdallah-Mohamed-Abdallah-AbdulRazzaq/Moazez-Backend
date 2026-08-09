@@ -9,7 +9,11 @@ const {
   BASE_SHA,
   EXPECTED_CHANGED_PATHS,
   VERIFICATION_MODES,
+  command,
+  governedMigrationFailure,
+  governedMigrationFailureCode,
   resolveVerificationMode,
+  runGovernedFreshMigration,
   validateRepositoryState,
 } = require('../ci/prd3-g05-clean-start.cjs');
 
@@ -119,6 +123,85 @@ test('G05 verification mode parsing permits only candidate default or --regressi
     assert.throws(() => resolveVerificationMode([option]), /unknown verification mode/u);
   }
   assert.throws(() => resolveVerificationMode(['--regression', '--force']));
+});
+
+test('bounded command retains child output on failure and preserves success results', () => {
+  const success = command(process.execPath, [
+    '-e',
+    "process.stdout.write('success-out'); process.stderr.write('success-err');",
+  ]);
+  assert.deepEqual(success, {
+    status: 0,
+    stdout: 'success-out',
+    stderr: 'success-err',
+  });
+
+  assert.throws(
+    () =>
+      command(process.execPath, [
+        '-e',
+        "process.stdout.write('failure-out'); process.stderr.write('failure-err'); process.exitCode = 7;",
+      ]),
+    (error) => {
+      assert.equal(error.status, 7);
+      assert.equal(error.stdout, 'failure-out');
+      assert.equal(error.stderr, 'failure-err');
+      return true;
+    },
+  );
+});
+
+test('structured governed migration failure exposes only its exact safe code', () => {
+  const databaseUrl =
+    'postgresql://moazez_migration:migration-credential@127.0.0.1:5432/moazez';
+  const childError = Object.assign(new Error('child failed'), {
+    stdout: `${databaseUrl}\n${JSON.stringify({
+      event: 'migration.job.result',
+      status: 'migration_failed',
+      code: 'migration_deploy_failed',
+    })}\n`,
+    stderr: 'migration-credential',
+  });
+
+  assert.equal(governedMigrationFailureCode(childError), 'migration_deploy_failed');
+  const failure = governedMigrationFailure(childError);
+  assert.equal(failure.code, 'governed_fresh_migration_failed');
+  assert.equal(failure.message, 'migration_deploy_failed');
+  assert.doesNotMatch(`${failure.code}:${failure.message}`, /postgresql:|migration-credential/u);
+});
+
+test('malformed or unsafe governed migration output remains fail-closed', () => {
+  for (const childError of [
+    { stdout: 'not-json', stderr: 'migration-credential' },
+    {
+      stdout: JSON.stringify({
+        event: 'migration.job.result',
+        status: 'migration_failed',
+        code: 'postgresql://user:password@database.invalid/app',
+      }),
+      stderr: '',
+    },
+  ]) {
+    assert.equal(governedMigrationFailureCode(childError), 'migration_result_unavailable');
+    const failure = governedMigrationFailure(childError);
+    assert.equal(failure.code, 'governed_fresh_migration_failed');
+    assert.equal(failure.message, 'migration_result_unavailable');
+    assert.doesNotMatch(`${failure.code}:${failure.message}`, /password|credential|postgresql:/u);
+  }
+});
+
+test('governed migration command remains single-attempt and bounded', () => {
+  const commandSource = command.toString();
+  assert.match(commandSource, /timeout:\s*options\.timeoutMs\s*\?\?\s*120_000/u);
+  assert.match(commandSource, /maxBuffer:\s*options\.maxBuffer\s*\?\?\s*32 \* 1024 \* 1024/u);
+  assert.match(commandSource, /shell:\s*false/u);
+
+  const migrationSource = runGovernedFreshMigration.toString();
+  assert.equal(migrationSource.match(/\bcommand\(/gu)?.length, 1);
+  assert.match(migrationSource, /timeoutMs:\s*5 \* 60_000/u);
+  assert.match(migrationSource, /maxBuffer:\s*8 \* 1024 \* 1024/u);
+  assert.doesNotMatch(migrationSource, /retry|allowFailure/iu);
+  assert.match(migrationSource, /catch \(error\) \{\s*throw governedMigrationFailure\(error\);/u);
 });
 
 test('G05 regression mode accepts a descendant and rejects non-descendant or staged state', () => {
