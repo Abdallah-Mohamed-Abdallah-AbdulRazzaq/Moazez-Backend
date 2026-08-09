@@ -792,8 +792,16 @@ describe('learning media cleanup and BullMQ integration', () => {
     const queue = bull.getQueue(LEARNING_MEDIA_CLEANUP_QUEUE);
     const deadline = Date.now() + 45_000;
     while (Date.now() < deadline) {
-      const job = await queue.getJob(jobId);
-      if (job && (await job.getState()) === expectedState) return job;
+      const observedJob = await queue.getJob(jobId);
+      if (observedJob && (await observedJob.getState()) === expectedState) {
+        const settledJob = await queue.getJob(jobId);
+        if (settledJob && (await settledJob.getState()) === expectedState) {
+          const terminalJob = await queue.getJob(jobId);
+          if (terminalJob && (await terminalJob.getState()) === expectedState) {
+            return terminalJob;
+          }
+        }
+      }
       await new Promise<void>((resolve) => setTimeout(resolve, 50));
     }
     throw new Error(`cleanup job ${jobId} did not reach ${expectedState}`);
