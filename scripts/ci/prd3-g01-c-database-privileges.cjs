@@ -526,25 +526,43 @@ function makeDatabaseUrl(context, login, credential, parameters = {}) {
   return url.toString();
 }
 
-function waitForPostgres(context) {
-  const deadline = Date.now() + 60_000;
-  while (Date.now() < deadline) {
-    const result = spawnSync(
-      'docker',
-      [
-        'exec',
-        context.containerName,
-        'pg_isready',
-        '-q',
-        '-U',
-        context.fixtureOwnerLogin,
-        '-d',
-        context.databaseName,
-      ],
-      { windowsHide: true, encoding: 'utf8', timeout: 5_000 },
-    );
+function postgresReadinessProbe(context, execute = spawnSync) {
+  return execute(
+    'docker',
+    [
+      'exec',
+      context.containerName,
+      'pg_isready',
+      '-q',
+      '-h',
+      '127.0.0.1',
+      '-U',
+      context.fixtureOwnerLogin,
+      '-d',
+      context.databaseName,
+    ],
+    {
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: 5_000,
+      maxBuffer: 1024 * 1024,
+      shell: false,
+    },
+  );
+}
+
+function waitForPostgres(context, options = {}) {
+  const now = options.now ?? Date.now;
+  const probe = options.probe ?? postgresReadinessProbe;
+  const poll =
+    options.poll ??
+    ((milliseconds) =>
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds));
+  const deadline = now() + 60_000;
+  while (now() < deadline) {
+    const result = probe(context);
     if (result.status === 0) return;
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+    poll(250);
   }
   throw new Error('disposable PostgreSQL did not become ready');
 }
@@ -652,8 +670,12 @@ function createFixture(dockerEvidence, imageId) {
   return context;
 }
 
-function initializeManagedAdministrator(context) {
-  executePsqlWithVariables(
+function initializeManagedAdministrator(context, operations = {}) {
+  const executeFixtureSetup =
+    operations.executePsqlWithVariables ?? executePsqlWithVariables;
+  const inspectAs = operations.queryScalarAs ?? queryScalarAs;
+  const inspect = operations.queryScalar ?? queryScalar;
+  executeFixtureSetup(
     context,
     context.fixtureOwnerLogin,
     context.fixtureOwnerCredential,
@@ -668,7 +690,7 @@ function initializeManagedAdministrator(context) {
     },
   );
   assert.equal(
-    queryScalarAs(
+    inspectAs(
       context,
       context.fixtureOwnerLogin,
       context.fixtureOwnerCredential,
@@ -680,7 +702,7 @@ function initializeManagedAdministrator(context) {
     't',
   );
   assert.equal(
-    queryScalarAs(
+    inspectAs(
       context,
       context.fixtureOwnerLogin,
       context.fixtureOwnerCredential,
@@ -695,7 +717,7 @@ function initializeManagedAdministrator(context) {
     '0',
   );
   assert.equal(
-    queryScalar(
+    inspect(
       context,
       `SELECT database_owner.rolname = ${sqlLiteral(MANAGED_ADMIN_LOGIN)}
          AND schema_owner.rolname = ${sqlLiteral(MANAGED_ADMIN_LOGIN)}
@@ -1944,10 +1966,13 @@ module.exports = {
   VERIFICATION_MODES,
   assertCleanup,
   createPassingSummaryForTests,
+  initializeManagedAdministrator,
   inspectRepositoryState,
   isProtectedRegressionPath,
+  postgresReadinessProbe,
   readChangedPaths,
   resolveVerificationMode,
   validateRepositoryState,
   validateSummary,
+  waitForPostgres,
 };

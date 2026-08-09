@@ -15,9 +15,12 @@ const {
   VERIFICATION_MODES,
   assertCleanup,
   createPassingSummaryForTests,
+  initializeManagedAdministrator,
+  postgresReadinessProbe,
   resolveVerificationMode,
   validateRepositoryState,
   validateSummary,
+  waitForPostgres,
 } = require('../ci/prd3-g01-c-database-privileges.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
@@ -61,6 +64,129 @@ const ROLE_CREDENTIAL_VARIABLES = Object.freeze({
   moazez_core_worker: 'core_worker_role_credential',
   moazez_media_worker: 'media_worker_role_credential',
   moazez_migration: 'migration_role_credential',
+});
+
+function readinessContext() {
+  return {
+    containerName: 'moazez-prd3-g01-c-db-fixture',
+    fixtureOwnerLogin: 'moazez_fixture_owner',
+    fixtureOwnerCredential: 'synthetic-fixture-credential',
+    adminCredential: 'synthetic-admin-credential',
+    databaseName: 'moazez_prd3_fixture',
+  };
+}
+
+test('PostgreSQL readiness probe targets the exact fixture over TCP loopback', () => {
+  const context = readinessContext();
+  let invocation;
+  const result = postgresReadinessProbe(context, (file, args, options) => {
+    invocation = { file, args, options };
+    return { status: 0 };
+  });
+
+  assert.equal(result.status, 0);
+  assert.deepEqual(invocation, {
+    file: 'docker',
+    args: [
+      'exec',
+      context.containerName,
+      'pg_isready',
+      '-q',
+      '-h',
+      '127.0.0.1',
+      '-U',
+      context.fixtureOwnerLogin,
+      '-d',
+      context.databaseName,
+    ],
+    options: {
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: 5_000,
+      maxBuffer: 1024 * 1024,
+      shell: false,
+    },
+  });
+  assert.equal(invocation.args.filter((argument) => argument === '-h').length, 1);
+  assert.doesNotMatch(
+    JSON.stringify(invocation),
+    /synthetic-fixture-credential|synthetic-admin-credential|postgres(?:ql)?:\/\//u,
+  );
+});
+
+test('readiness polling repeats failed TCP probes at 250 ms and returns on success', () => {
+  const context = readinessContext();
+  let currentTime = 0;
+  let probeCount = 0;
+  const pollDurations = [];
+
+  assert.equal(
+    waitForPostgres(context, {
+      now: () => currentTime,
+      probe: (receivedContext) => {
+        assert.equal(receivedContext, context);
+        probeCount += 1;
+        return { status: probeCount === 3 ? 0 : 1 };
+      },
+      poll: (milliseconds) => {
+        pollDurations.push(milliseconds);
+        currentTime += milliseconds;
+      },
+    }),
+    undefined,
+  );
+  assert.equal(probeCount, 3);
+  assert.deepEqual(pollDurations, [250, 250]);
+});
+
+test('readiness polling fails closed at the preserved 60-second deadline', () => {
+  const context = readinessContext();
+  let currentTime = 0;
+  let probeCount = 0;
+
+  assert.throws(
+    () =>
+      waitForPostgres(context, {
+        now: () => currentTime,
+        probe: () => {
+          probeCount += 1;
+          return { status: 1 };
+        },
+        poll: (milliseconds) => {
+          assert.equal(milliseconds, 250);
+          currentTime += milliseconds;
+        },
+      }),
+    (error) => {
+      assert.equal(error.message, 'disposable PostgreSQL did not become ready');
+      assert.doesNotMatch(
+        error.message,
+        /synthetic-fixture-credential|synthetic-admin-credential|postgres(?:ql)?:\/\//u,
+      );
+      return true;
+    },
+  );
+  assert.equal(currentTime, 60_000);
+  assert.equal(probeCount, 60_000 / 250);
+});
+
+test('managed administrator initialization executes its first SQL setup exactly once', () => {
+  const context = readinessContext();
+  let setupCount = 0;
+  const fixtureOwnerInspections = ['t', '0'];
+
+  assert.equal(
+    initializeManagedAdministrator(context, {
+      executePsqlWithVariables: () => {
+        setupCount += 1;
+      },
+      queryScalarAs: () => fixtureOwnerInspections.shift(),
+      queryScalar: () => 't',
+    }),
+    true,
+  );
+  assert.equal(setupCount, 1);
+  assert.deepEqual(fixtureOwnerInspections, []);
 });
 
 test('defines exactly the four approved PostgreSQL login identities', () => {
