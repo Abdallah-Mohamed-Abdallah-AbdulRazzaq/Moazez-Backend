@@ -21,11 +21,12 @@ and recorded next steps below formed the immutable historical snapshot. Phase
 `main`. The Phase 3 amendment does not backdate later approvals or
 implementation evidence into PR #46.
 
-Current-state note: Phase 1 and Phase 2 are complete, Phase 3 is active, and
-PRD3-G01 is `BASELINE_ONLY`. The authoritative Phase 1 closeout documents and
-`phase-2/02-runtime-role-separation-closeout.md` supersede present-tense
-pre-implementation language without changing any historical PR number, SHA,
-run, validation count, or date.
+Current-state note: Phase 1 and Phase 2 are complete. Phase 3 remains active
+through draft PR #64; the acceptance matrix records PRD3-G01 as `COMPLETE`,
+while implementation merge and Phase 3 closeout remain separate gates. The
+authoritative Phase 1/2 closeout documents and current Phase 3 evidence
+supersede present-tense pre-implementation language without changing any
+historical PR number, SHA, run, validation count, or date.
 
 ## Historical Phase 0B owner approval record
 
@@ -89,6 +90,47 @@ load-tested capacity. PRD3-G01 is `BASELINE_ONLY`; saturation and recovery,
 database-privilege proof, real Cloud SQL failover, exact-candidate CI, merge,
 and post-merge closeout remain outstanding.
 
+## Phase 4/5A governance amendment — 2026-08-09
+
+At `2026-08-09T15:20:43+03:00`, Abdallah approved PRD0-Q005, PRD0-Q008,
+PRD0-Q018, PRD0-Q019, and PRD0-Q044 through PRD0-Q048 in the owner roles
+recorded in the disposition register.
+
+The authoritative unique rows now contain 28 approved and 20 pending
+owner-question dispositions. The production-decision summary now contains
+30 `LOCKED_FROM_APPROVED_CONTEXT`, 22 `OWNER_DECISION_REQUIRED`, and 1
+`PROPOSED_RECOMMENDATION`. The amendment corrects stale prior written
+counters; it does not rewrite historical approvals.
+
+The amendment locks:
+
+- production-only `moazez-production` and non-production
+  `moazez-nonprod-91001421934`, with local development/CI and no DR;
+- GCS production in `me-central2` with MinIO retained locally/in tests/CI;
+- distinct API/Core/Media/Migration/Maintenance/deployer/signer identities;
+- dedicated keyless per-project GCS signers with project-local bucket scope
+  and a one-hour absolute TTL ceiling;
+- zero source buckets, objects, and provider URLs, with Q045/Q046
+  `N/A_WITH_EVIDENCE` and mandatory reopen on discovery;
+- four private buckets with UBLA, PAP, exact Q022 CORS, and Learning Media
+  staging/final prefixes in each project-local private bucket;
+- versioning, seven-day Soft Delete, Terraform `prevent_destroy`, no Bucket
+  Lock, and no automatic transition/deletion lifecycle rule in Phase 5A.
+
+ADR-0006 now accepts D009, D019, D049–D053 in addition to its previously
+accepted D022 and D029. New ADR-0015 accepts D017 and D018 while keeping
+D020, D021, and D023 pending. D010 remains a proposed engineering
+recommendation; the provider approval does not silently accept its exact port
+surface.
+
+The owner blocker is removed from PRD4-G01, PRD5A-G05, PRD5A-G06, and
+PRD9-G02, whose statuses become `NOT_STARTED`, not complete. Remaining
+owner-blocked gates and all implementation, real-provider, CI, merge, and
+launch gates are unchanged.
+
+This amendment records governance only. It creates no project, bucket,
+service account, IAM binding, Terraform state, object, database, deployment,
+or production traffic.
 ## Historical Phase 0B pending decision groups
 
 - **Learning Media transition:** PRD0-D008 / PRD0-Q009. Completion remains
