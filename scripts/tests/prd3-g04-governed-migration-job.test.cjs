@@ -374,6 +374,66 @@ test('builds a deterministic manifest without timestamps, machine paths, URLs, o
   assert.doesNotMatch(first, /createdAt|generatedAt|E:\\|C:\\|postgres(?:ql)?:\/\/|DATABASE_URL|credential/iu);
 });
 
+test('committed default manifest verifies against the current repository artifacts', () => {
+  assert.deepEqual(verifyManifest(), buildManifest());
+});
+
+test('Git attributes enforce LF for every migration manifest input and output', () => {
+  const manifest = buildManifest();
+  const governedPaths = [
+    manifest.prismaSchema.path,
+    manifest.prismaConfig.path,
+    ...manifest.migrations.map((migration) => migration.path),
+    'config/deployment/migration-artifact-manifest.json',
+  ];
+  const result = spawnSync('git', ['check-attr', 'text', 'eol', '--', ...governedPaths], {
+    cwd: REPOSITORY_ROOT,
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 10_000,
+    maxBuffer: 1024 * 1024,
+    shell: false,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(
+    result.stdout.trim().split(/\r?\n/u),
+    governedPaths.flatMap((governedPath) => [
+      `${governedPath}: text: set`,
+      `${governedPath}: eol: lf`,
+    ]),
+  );
+});
+
+test('rejects a manifest generated from CRLF migration artifacts against LF bytes', () => {
+  withCopiedMigrationWorkspace((workspace) => {
+    const lfManifest = buildManifest(workspace);
+    const governedInputPaths = [
+      lfManifest.prismaSchema.path,
+      lfManifest.prismaConfig.path,
+      ...lfManifest.migrations.map((migration) => migration.path),
+    ];
+    for (const relativePath of governedInputPaths) {
+      const filePath = path.join(workspace, ...relativePath.split('/'));
+      const lfContent = fs.readFileSync(filePath, 'utf8').replace(/\r\n|\r/gu, '\n');
+      fs.writeFileSync(filePath, lfContent.replace(/\n/gu, '\r\n'), 'utf8');
+    }
+    const crlfManifest = buildManifest(workspace);
+    assert.notDeepEqual(crlfManifest, lfManifest);
+    const manifestPath = path.join(workspace, 'migration-artifact-manifest.json');
+    fs.writeFileSync(manifestPath, serializeManifest(crlfManifest), 'utf8');
+
+    for (const relativePath of governedInputPaths) {
+      const filePath = path.join(workspace, ...relativePath.split('/'));
+      const lfContent = fs.readFileSync(filePath, 'utf8').replace(/\r\n|\r/gu, '\n');
+      fs.writeFileSync(filePath, lfContent, 'utf8');
+    }
+    assert.throws(
+      () => verifyManifest(manifestPath, workspace),
+      MigrationManifestError,
+    );
+  });
+});
+
 test('orders and hashes all seven canonical migrations', () => {
   const manifest = buildManifest();
   assert.equal(manifest.migrations.length, 7);
