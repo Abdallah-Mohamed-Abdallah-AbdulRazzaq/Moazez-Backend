@@ -11,6 +11,11 @@ const { isDeepStrictEqual } = require('node:util');
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const REQUIRED_NODE_VERSION = 'v22.23.1';
 const SUMMARY_FILE_NAME = 'prd3-g06-summary.json';
+const PRISMA_SCHEMA_DATABASE_URL =
+  'postgresql://prd3_schema:prd3_schema@127.0.0.1:1/prd3_schema?schema=public';
+const PRISMA_SCHEMA_ENVIRONMENT = Object.freeze({
+  DATABASE_URL: PRISMA_SCHEMA_DATABASE_URL,
+});
 const ALLOWED_STAGE_STATUSES = Object.freeze(['PASS', 'FAIL', 'BLOCKED']);
 const FAILURE_CLASSIFICATIONS = Object.freeze([
   'PRODUCT_DEFECT',
@@ -30,19 +35,25 @@ const FAILURE_CLASSIFICATIONS = Object.freeze([
 const STAGE_PLAN = Object.freeze([
   stage('G01-A', 'npm', ['run', 'verify:prd3-g01-a']),
   stage('G01-B3', 'npm', ['run', 'verify:prd3-g01-b3-tests']),
+  stage('PRISMA_VALIDATE', 'npx', ['prisma', 'validate'], PRISMA_SCHEMA_ENVIRONMENT),
+  stage('PRISMA_GENERATE', 'npx', ['prisma', 'generate'], PRISMA_SCHEMA_ENVIRONMENT),
   stage('G01-C', 'npm', ['run', 'verify:prd3-g01-c-final', '--', '--regression']),
   stage('G02', 'npm', ['run', 'verify:prd3-g02-final']),
   stage('G03', 'npm', ['run', 'verify:prd3-g03-final']),
   stage('G04', 'npm', ['run', 'verify:prd3-g04-final', '--', '--regression']),
   stage('G05', 'npm', ['run', 'verify:prd3-g05-final', '--', '--regression']),
-  stage('PRISMA_VALIDATE', 'npx', ['prisma', 'validate']),
-  stage('PRISMA_GENERATE', 'npx', ['prisma', 'generate']),
   stage('BUILD', 'npm', ['run', 'build']),
   stage('DIFF_CHECK', 'git', ['diff', '--check']),
 ]);
 
-function stage(id, executable, args) {
-  return Object.freeze({ id, executable, args: Object.freeze([...args]), required: true });
+function stage(id, executable, args, environment = {}) {
+  return Object.freeze({
+    id,
+    executable,
+    args: Object.freeze([...args]),
+    environment: Object.freeze({ ...environment }),
+    required: true,
+  });
 }
 
 function resolveSummaryPath(environment = process.env) {
@@ -88,6 +99,13 @@ function childEnvironment(environment = process.env) {
         ),
     ),
   );
+}
+
+function stageEnvironment(stageDefinition, environment = process.env) {
+  return {
+    ...childEnvironment(environment),
+    ...(stageDefinition.environment ?? {}),
+  };
 }
 
 function resolveStageInvocation(stageDefinition, options = {}) {
@@ -141,7 +159,7 @@ function executeFixedStage(stageDefinition, options = {}) {
   const result = spawnSync(invocation.executable, invocation.args, {
     cwd: options.repositoryRoot ?? REPOSITORY_ROOT,
     encoding: 'utf8',
-    env: childEnvironment(environment),
+    env: stageEnvironment(stageDefinition, environment),
     maxBuffer: 64 * 1024 * 1024,
     shell: false,
     timeout: options.timeoutMs ?? 45 * 60 * 1000,
@@ -581,6 +599,7 @@ module.exports = {
   resolveSummaryPath,
   runStagePlan,
   sanitizeJson,
+  stageEnvironment,
   executeFixedStage,
   validateExactCandidateState,
   validateGovernanceSources,

@@ -19,6 +19,7 @@ const {
   resolveSummaryPath,
   runStagePlan,
   sanitizeJson,
+  stageEnvironment,
   validateExactCandidateState,
   validateGovernanceSources,
   validateSummary,
@@ -31,16 +32,22 @@ const read = (relativePath) =>
 const EXPECTED_STAGES = Object.freeze([
   ['G01-A', 'npm', ['run', 'verify:prd3-g01-a']],
   ['G01-B3', 'npm', ['run', 'verify:prd3-g01-b3-tests']],
+  ['PRISMA_VALIDATE', 'npx', ['prisma', 'validate']],
+  ['PRISMA_GENERATE', 'npx', ['prisma', 'generate']],
   ['G01-C', 'npm', ['run', 'verify:prd3-g01-c-final', '--', '--regression']],
   ['G02', 'npm', ['run', 'verify:prd3-g02-final']],
   ['G03', 'npm', ['run', 'verify:prd3-g03-final']],
   ['G04', 'npm', ['run', 'verify:prd3-g04-final', '--', '--regression']],
   ['G05', 'npm', ['run', 'verify:prd3-g05-final', '--', '--regression']],
-  ['PRISMA_VALIDATE', 'npx', ['prisma', 'validate']],
-  ['PRISMA_GENERATE', 'npx', ['prisma', 'generate']],
   ['BUILD', 'npm', ['run', 'build']],
   ['DIFF_CHECK', 'git', ['diff', '--check']],
 ]);
+const PRISMA_CLIENT_CONSUMER_SOURCES = Object.freeze({
+  'G01-C': 'scripts/ci/prd3-g01-c-database-privileges.cjs',
+  G05: 'scripts/ci/prd3-g05-clean-start.cjs',
+});
+const APPROVED_PRISMA_SCHEMA_DATABASE_URL =
+  'postgresql://prd3_schema:prd3_schema@127.0.0.1:1/prd3_schema?schema=public';
 const PHASE3_FIXTURE_IMAGES = Object.freeze([
   'postgres:16-alpine',
   'redis:7-alpine',
@@ -158,6 +165,23 @@ test('stage plan fixes every executable and argument array exactly', () => {
     EXPECTED_STAGES,
   );
   assert.ok(STAGE_PLAN.every((entry) => entry.required));
+});
+
+test('Prisma validation and generation precede every known Prisma Client consumer', () => {
+  const validateIndex = STAGE_PLAN.findIndex((entry) => entry.id === 'PRISMA_VALIDATE');
+  const generateIndex = STAGE_PLAN.findIndex((entry) => entry.id === 'PRISMA_GENERATE');
+
+  assert.equal(validateIndex, 2);
+  assert.equal(generateIndex, 3);
+  assert.ok(validateIndex < generateIndex);
+
+  for (const [stageId, relativePath] of Object.entries(
+    PRISMA_CLIENT_CONSUMER_SOURCES,
+  )) {
+    const consumerIndex = STAGE_PLAN.findIndex((entry) => entry.id === stageId);
+    assert.match(read(relativePath), /require\(['"]@prisma\/client['"]\)/u);
+    assert.ok(generateIndex < consumerIndex, `${stageId} must run after Prisma generate`);
+  }
 });
 
 test('G01-C, G04, and G05 use explicit portable regression mode', () => {
@@ -497,6 +521,40 @@ test('child environment excludes inherited secret-bearing values', () => {
     PATH: '/usr/bin',
     npm_execpath: '/portable/node_modules/npm/bin/npm-cli.js',
   });
+});
+
+test('only Prisma schema stages receive the synthetic database URL', () => {
+  const inheritedEnvironment = {
+    PATH: '/usr/bin',
+    npm_execpath: '/portable/node_modules/npm/bin/npm-cli.js',
+    DATABASE_URL: 'postgresql://real-secret.example/database',
+  };
+
+  for (const stageId of ['PRISMA_VALIDATE', 'PRISMA_GENERATE']) {
+    const environment = stageEnvironment(
+      STAGE_PLAN.find((entry) => entry.id === stageId),
+      inheritedEnvironment,
+    );
+    assert.equal(environment.DATABASE_URL, APPROVED_PRISMA_SCHEMA_DATABASE_URL);
+    assert.equal(environment.PATH, inheritedEnvironment.PATH);
+    assert.equal(environment.npm_execpath, inheritedEnvironment.npm_execpath);
+    assert.doesNotMatch(environment.DATABASE_URL, /real-secret/u);
+  }
+
+  for (const stageDefinition of STAGE_PLAN.filter(
+    (entry) => !['PRISMA_VALIDATE', 'PRISMA_GENERATE'].includes(entry.id),
+  )) {
+    const environment = stageEnvironment(stageDefinition, inheritedEnvironment);
+    assert.equal(environment.DATABASE_URL, undefined);
+    assert.equal(environment.PATH, inheritedEnvironment.PATH);
+    assert.equal(environment.npm_execpath, inheritedEnvironment.npm_execpath);
+  }
+});
+
+test('stage environment overrides are excluded from G06 evidence summaries', () => {
+  const summary = validSummary();
+  assert.ok(summary.stages.every((entry) => !Object.hasOwn(entry, 'environment')));
+  assert.doesNotMatch(JSON.stringify(summary), /DATABASE_URL|prd3_schema/u);
 });
 
 test('summary output path honors PRD3_G06_EVIDENCE_DIR', () => {
