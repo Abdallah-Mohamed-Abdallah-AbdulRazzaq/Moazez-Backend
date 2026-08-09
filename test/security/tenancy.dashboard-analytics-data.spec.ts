@@ -1017,22 +1017,62 @@ describe('Dashboard analytics data tenancy/security contracts', () => {
 
   it('isolates both Communication aggregates and returns no message or announcement content', async () => {
     const useCase = analyticsDataUseCase();
-    for (const chartKey of [
-      'communication.message_volume',
-      'communication.announcement_status',
-    ]) {
+    const chartQueries = [
+      // Keep the message window tied to the fixed fixture timestamp so it cannot expire with wall-clock time.
+      [
+        'communication.message_volume',
+        {
+          range: 'custom' as const,
+          granularity: 'day' as const,
+          dateFrom: '2026-07-10',
+          dateTo: '2026-07-10',
+        },
+      ],
+      ['communication.announcement_status', {}],
+    ] as const;
+
+    for (const [chartKey, query] of chartQueries) {
       const schoolAResponse = await withSchoolScope(schoolAId, () =>
         useCase.execute(chartKey, {
+          ...query,
           schoolId: schoolBId,
           organizationId,
         } as any),
       );
       const schoolBResponse = await withSchoolScope(schoolBId, () =>
-        useCase.execute(chartKey, {}),
+        useCase.execute(chartKey, query),
       );
 
-      expect(schoolAResponse.data.empty).toBe(true);
-      expect(schoolBResponse.data.empty).toBe(false);
+      if (chartKey === 'communication.message_volume') {
+        expect(schoolAResponse).toMatchObject({
+          data: { empty: true, totals: { messages: 0 } },
+        });
+        expect(schoolBResponse).toMatchObject({
+          data: { empty: false, totals: { messages: 1 } },
+          meta: {
+            query: {
+              appliedFilters: expect.arrayContaining([
+                'range',
+                'granularity',
+                'dateFrom',
+                'dateTo',
+              ]),
+              resolvedWindow: {
+                startCivilDate: '2026-07-10',
+                endCivilDate: '2026-07-10',
+              },
+            },
+          },
+        });
+      } else {
+        expect(schoolAResponse).toMatchObject({
+          data: { empty: true, totals: { scheduled: 0 } },
+        });
+        expect(schoolBResponse).toMatchObject({
+          data: { empty: false, totals: { scheduled: 1 } },
+        });
+      }
+
       for (const response of [schoolAResponse, schoolBResponse]) {
         const serialized = JSON.stringify(response);
         expect(serialized).not.toContain(marker);
