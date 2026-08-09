@@ -126,7 +126,8 @@ async function main() {
 
   const targets = [
     parseServiceTarget(env, 'DATABASE_URL', 'PostgreSQL', 5432),
-    parseServiceTarget(env, 'REDIS_URL', 'Redis', 6379),
+    parseServiceTarget(env, 'QUEUE_REDIS_URL', 'Queue Redis', 6379),
+    parseServiceTarget(env, 'REALTIME_REDIS_URL', 'Realtime Redis', 6379),
     parseServiceTarget(env, 'STORAGE_ENDPOINT', 'MinIO', 9000),
   ];
 
@@ -159,7 +160,7 @@ async function main() {
   }
 
   console.log(
-    'Local verification preflight OK: .env is ready and PostgreSQL, Redis, and MinIO are reachable.',
+    'Local verification preflight OK: .env is ready and PostgreSQL, Queue Redis, Realtime Redis, and MinIO are reachable.',
   );
 }
 

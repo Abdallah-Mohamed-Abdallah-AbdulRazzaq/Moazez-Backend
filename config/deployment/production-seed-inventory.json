@@ -1,0 +1,71 @@
+{
+  "inventoryVersion": 1,
+  "environment": "production",
+  "approvedSeedSourceCount": 2,
+  "approvedSeedSources": [
+    {
+      "path": "prisma/seeds/01-permissions.seed.ts",
+      "export": "seedPermissions",
+      "classification": "deterministic-authorization-reference-data",
+      "reason": "permissions = deterministic authorization reference data",
+      "allowedModels": [
+        "Permission"
+      ]
+    },
+    {
+      "path": "prisma/seeds/02-system-roles.seed.ts",
+      "export": "seedSystemRoles",
+      "classification": "deterministic-rbac-reference-data",
+      "reason": "system roles = deterministic RBAC reference data",
+      "allowedModels": [
+        "Role",
+        "RolePermission"
+      ]
+    }
+  ],
+  "prohibitedSeedSources": [
+    {
+      "path": "prisma/seeds/03-platform-admin.seed.ts",
+      "reason": "Current implementation creates a development bootstrap user with fixed development credentials and is not production-safe."
+    },
+    {
+      "path": "prisma/seeds/04-demo-org.seed.ts",
+      "reason": "Demo organization, school, and user data."
+    },
+    {
+      "path": "prisma/seeds/05-demo-academics.seed.ts",
+      "reason": "Demo academic and business data."
+    }
+  ],
+  "prohibitedProductionExecutionPaths": [
+    {
+      "value": "npm run seed",
+      "reason": "The generic seed pipeline invokes seedPlatformAdmin even when demo-data mode is disabled."
+    },
+    {
+      "value": "prisma db seed",
+      "reason": "The configured generic seed pipeline invokes prisma/seeds/index.ts."
+    },
+    {
+      "value": "prisma/seeds/index.ts",
+      "reason": "The generic seed index invokes seedPlatformAdmin even when demo-data mode is disabled."
+    },
+    {
+      "value": "SEED_DEMO_DATA=true",
+      "reason": "Production bootstrap must never enable development demo-data seeding."
+    }
+  ],
+  "mustNotCreateModels": [
+    "User",
+    "Organization",
+    "School"
+  ],
+  "mustNotCreateHistory": [
+    "student/business history",
+    "communication history",
+    "file/object history",
+    "academic/demo history"
+  ],
+  "initialProductionPlatformAdminProvisioning": "PHASE_8_SEPARATE_SECURE_BOOTSTRAP_CONCERN",
+  "initialProductionPlatformAdminPolicy": "Initial secure Production Platform Admin provisioning must not use the current fixed development credential seed."
+}

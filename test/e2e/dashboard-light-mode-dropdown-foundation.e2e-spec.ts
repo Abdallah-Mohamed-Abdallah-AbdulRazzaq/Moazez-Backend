@@ -25,6 +25,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
+import { RealtimeGateway } from '../../src/infrastructure/realtime/realtime.gateway';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'DashboardLightMode123!';
@@ -522,6 +523,8 @@ describe('DASHBOARD-LIGHT-MODE-DROPDOWN-1A foundation (e2e)', () => {
     })
       .overrideProvider(BullmqService)
       .useValue(bullmqServiceMock)
+      .overrideProvider(RealtimeGateway)
+      .useValue(createNoopRealtimeGateway())
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -1266,6 +1269,17 @@ function createNoopBullmqService(
       on: workerOn,
       close: jest.fn().mockResolvedValue(undefined),
     }),
+    onModuleDestroy: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function createNoopRealtimeGateway(): Pick<
+  RealtimeGateway,
+  'checkReadiness' | 'disconnectSocketsForShutdown' | 'onModuleDestroy'
+> {
+  return {
+    checkReadiness: jest.fn().mockResolvedValue(undefined),
+    disconnectSocketsForShutdown: jest.fn().mockResolvedValue(undefined),
     onModuleDestroy: jest.fn().mockResolvedValue(undefined),
   };
 }

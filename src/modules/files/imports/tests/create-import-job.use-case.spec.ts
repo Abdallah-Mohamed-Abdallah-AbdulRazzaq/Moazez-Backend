@@ -14,7 +14,9 @@ import { CreateImportJobUseCase } from '../application/create-import-job.use-cas
 import { ImportJobsRepository } from '../infrastructure/import-jobs.repository';
 
 describe('CreateImportJobUseCase', () => {
-  let storageService: jest.Mocked<Pick<StorageService, 'saveObject' | 'deleteObject'>>;
+  let storageService: jest.Mocked<
+    Pick<StorageService, 'saveObject' | 'deleteObject'>
+  >;
   let registerFileMetadataUseCase: jest.Mocked<
     Pick<RegisterFileMetadataUseCase, 'execute'>
   >;
@@ -117,7 +119,10 @@ describe('CreateImportJobUseCase', () => {
     bullmqService.addJob.mockResolvedValue({ id: 'job-1' } as never);
 
     const response = await runInImportsScope(() =>
-      useCase.execute({ type: 'students_basic', file: undefined }, buildCsvFile()),
+      useCase.execute(
+        { type: 'students_basic', file: undefined },
+        buildCsvFile(),
+      ),
     );
 
     expect(response).toEqual({
@@ -148,14 +153,21 @@ describe('CreateImportJobUseCase', () => {
       'files-imports',
       'validate-import',
       { importJobId: 'job-1' },
-      { jobId: 'job-1' },
+      {
+        jobId: 'job-1',
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+      },
     );
   });
 
   it('rejects unsupported import types', async () => {
     await expect(
       runInImportsScope(() =>
-        useCase.execute({ type: 'admissions_full', file: undefined }, buildCsvFile()),
+        useCase.execute(
+          { type: 'admissions_full', file: undefined },
+          buildCsvFile(),
+        ),
       ),
     ).rejects.toBeInstanceOf(ValidationDomainException);
 

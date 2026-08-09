@@ -70,6 +70,8 @@ test('special integration fixtures route to the required topology', () => {
   assert.equal(routeIntegrationFile('test/integration/teacher-reality-classifier-closeout.integration.spec.ts'), 'teacher-closeout');
   assert.equal(routeIntegrationFile('test/integration/membership-ended-at-constraint.integration.spec.ts'), 'teacher-closeout');
   assert.equal(routeIntegrationFile('test/integration/reinforcement-proof-persistence.integration.spec.ts'), 'g06');
+  assert.equal(routeIntegrationFile('test/integration/prd3-g02-redis-topology-recovery.integration.spec.ts'), 'prd3-g02');
+  assert.equal(routeIntegrationFile('test/integration/prd3-g03-critical-queue-recovery.integration.spec.ts'), 'prd3-g03');
   assert.equal(routeIntegrationFile('test/integration/learning-media-storage.integration.spec.ts'), 'general');
   const fixture = createFixture('abc-123');
   assert.match(fixture.databaseNames.g06, /^g06_[a-z0-9_]+$/u);
@@ -96,8 +98,31 @@ test('src integration specs use the default Jest project instead of the E2E conf
   const stage = stages.find((candidate) => candidate.id === 'integration_src');
   assert.equal(stage.files.length, 4);
   assert.equal(stage.jest.config, undefined);
-  assert.equal(context.inventory.integrationFiles, 27);
   assert.equal(context.inventory.integrationRoutes.src, 4);
+  assert.equal(
+    context.inventory.integrationFiles,
+    Object.values(context.inventory.integrationRoutes).reduce(
+      (total, routeCount) => total + routeCount,
+      0,
+    ),
+  );
+  const g02Stage = stages.find((candidate) => candidate.id === 'integration_prd3_g02');
+  const g03Stage = stages.find((candidate) => candidate.id === 'integration_prd3_g03');
+  assert.deepEqual(g02Stage.files, [
+    'test/integration/prd3-g02-redis-topology-recovery.integration.spec.ts',
+  ]);
+  assert.equal(g02Stage.runner, 'host-node');
+  assert.equal(g02Stage.script, 'scripts/ci/prd3-g02-redis-topology-recovery.cjs');
+  assert.deepEqual(g03Stage.files, [
+    'test/integration/prd3-g03-critical-queue-recovery.integration.spec.ts',
+  ]);
+  assert.equal(g03Stage.runner, 'host-node');
+  assert.equal(g03Stage.script, 'scripts/ci/prd3-g03-critical-queue-recovery.cjs');
+  const generalFiles = stages
+    .filter((candidate) => candidate.id.startsWith('integration_general_'))
+    .flatMap((candidate) => candidate.files);
+  assert.ok(!generalFiles.includes(g02Stage.files[0]));
+  assert.ok(!generalFiles.includes(g03Stage.files[0]));
 });
 
 test('cleanup runs once after success and is idempotent', async () => {
@@ -135,7 +160,7 @@ test('machine summary redacts credentials and fixture URLs', () => {
   const fixture = createFixture('redaction');
   const summary = redactJson({
     url: fixture.environment.DATABASE_URL,
-    redis: fixture.environment.REDIS_URL,
+    redis: fixture.environment.QUEUE_REDIS_URL,
     credential: fixture.storageSecretKey,
   }, fixture.sensitiveValues);
   const serialized = JSON.stringify(summary);

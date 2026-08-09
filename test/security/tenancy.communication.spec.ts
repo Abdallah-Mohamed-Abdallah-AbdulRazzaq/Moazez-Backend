@@ -37,7 +37,6 @@ import { AppModule } from '../../src/app.module';
 import { BullmqService } from '../../src/infrastructure/queue/bullmq.service';
 import { REALTIME_SERVER_EVENTS } from '../../src/infrastructure/realtime/realtime-event-names';
 import { RealtimePublisherService } from '../../src/infrastructure/realtime/realtime-publisher.service';
-import { CoreWorkerRuntimeModule } from '../../src/runtime/core-worker/core-worker-runtime.module';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'Communication123!';
@@ -4078,10 +4077,19 @@ describe('Communication announcement tenancy isolation (security)', () => {
     );
     await app.init();
 
-    coreWorker = await Test.createTestingModule({
-      imports: [CoreWorkerRuntimeModule],
-    }).compile();
-    await coreWorker.init();
+    const originalRuntimeRole = process.env.DATABASE_RUNTIME_ROLE;
+    process.env.DATABASE_RUNTIME_ROLE = 'core-worker';
+    try {
+      const { CoreWorkerRuntimeModule } = require(
+        '../../src/runtime/core-worker/core-worker-runtime.module'
+      ) as typeof import('../../src/runtime/core-worker/core-worker-runtime.module');
+      coreWorker = await Test.createTestingModule({
+        imports: [CoreWorkerRuntimeModule],
+      }).compile();
+      await coreWorker.init();
+    } finally {
+      restoreEnvironmentValue('DATABASE_RUNTIME_ROLE', originalRuntimeRole);
+    }
   });
 
   afterAll(async () => {
@@ -5049,6 +5057,14 @@ describe('Communication announcement tenancy isolation (security)', () => {
     });
   }
 });
+
+function restoreEnvironmentValue(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
+}
 
 describe('Communication notification tenancy isolation (security)', () => {
   let app: INestApplication<App>;

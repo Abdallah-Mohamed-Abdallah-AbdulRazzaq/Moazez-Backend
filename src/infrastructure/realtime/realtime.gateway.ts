@@ -425,7 +425,9 @@ export class RealtimeGateway
   private async configureRedisAdapter(
     server: Server | Namespace,
   ): Promise<boolean> {
-    const redisUrl = this.configService.get('REDIS_URL', { infer: true });
+    const redisUrl = this.configService.get('REALTIME_REDIS_URL', {
+      infer: true,
+    });
     if (!redisUrl) {
       this.logger.warn({
         event: 'realtime.redis_adapter.unavailable',

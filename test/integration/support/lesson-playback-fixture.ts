@@ -545,37 +545,21 @@ export function deferred<T>(): Deferred<T> {
   return { promise, resolve, reject };
 }
 
-export function buildObserverDatabaseUrl(label: string): string {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error(`DATABASE_URL is required for ${label}`);
-  }
-  let url: URL;
-  try {
-    url = new URL(databaseUrl);
-  } catch {
-    throw new Error(`DATABASE_URL is malformed for ${label}`);
-  }
-  url.searchParams.set('connection_limit', '1');
-  url.searchParams.set('pool_timeout', '10');
-  return url.toString();
-}
-
-export async function waitUntilAnyBackendIsBlocked(
-  observer: PrismaClient,
+export async function expectPromiseToRemainPending(
+  operation: Promise<unknown>,
 ): Promise<void> {
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    const rows = await observer.$queryRaw<Array<{ blockedCount: bigint }>>`
-      SELECT COUNT(*)::bigint AS "blockedCount"
-      FROM pg_stat_activity
-      WHERE datname = current_database()
-        AND cardinality(pg_blocking_pids(pid)) > 0
-    `;
-    if ((rows[0]?.blockedCount ?? BigInt(0)) > BigInt(0)) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
+  const state = await Promise.race([
+    operation.then(
+      () => 'settled',
+      () => 'settled',
+    ),
+    new Promise<'pending'>((resolve) =>
+      setTimeout(() => resolve('pending'), 100),
+    ),
+  ]);
+  if (state !== 'pending') {
+    throw new Error('Expected playback operation to remain pending');
   }
-  throw new Error('Expected PostgreSQL playback race wait was not observed');
 }
 
 async function createUser(

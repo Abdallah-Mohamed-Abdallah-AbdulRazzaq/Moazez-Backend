@@ -2,10 +2,15 @@ import { Injectable } from '@nestjs/common';
 import {
   CommunicationNotificationDeliveryChannel,
   CommunicationNotificationDeliveryStatus,
+  OrganizationStatus,
   Prisma,
+  SchoolStatus,
+  UserStatus,
+  UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import { COMMUNICATION_PUSH_NOTIFICATION_PROVIDER } from '../domain/communication-notification-generation-domain';
+import { COMMUNICATION_PUSH_RECOVERY_WINDOW_EXPIRED_CODE } from '../domain/communication-notification-generation-domain';
 
 const PUSH_DELIVERY_FOR_PROCESSING_ARGS =
   Prisma.validator<Prisma.CommunicationNotificationDeliveryDefaultArgs>()({
@@ -16,6 +21,7 @@ const PUSH_DELIVERY_FOR_PROCESSING_ARGS =
       channel: true,
       status: true,
       provider: true,
+      createdAt: true,
       notification: {
         select: {
           id: true,
@@ -42,6 +48,28 @@ export type CommunicationPushDeliveryForProcessing =
   Prisma.CommunicationNotificationDeliveryGetPayload<
     typeof PUSH_DELIVERY_FOR_PROCESSING_ARGS
   >;
+
+export interface CommunicationPushAttemptRecord {
+  deviceTokenId: string;
+  status: CommunicationNotificationDeliveryStatus;
+  errorCode: string | null;
+  providerMessageId: string | null;
+}
+
+export interface CommunicationPushRecoveryCandidate {
+  id: string;
+  notificationId: string;
+  schoolId: string;
+  organizationId: string;
+  actorUserId: string | null;
+  actorUserType: UserType | null;
+  ineligibilityCode:
+    | 'push/tenant-ineligible'
+    | 'push/recipient-ineligible'
+    | 'push/source-ineligible'
+    | null;
+  createdAt: Date;
+}
 
 export interface RecordPushAttemptResultInput {
   schoolId: string;
@@ -105,6 +133,124 @@ export class CommunicationNotificationPushRepository {
         provider: COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
       })),
       skipDuplicates: true,
+    });
+  }
+
+  listAttemptsForDelivery(
+    deliveryId: string,
+  ): Promise<CommunicationPushAttemptRecord[]> {
+    return this.scopedPrisma.communicationNotificationPushAttempt.findMany({
+      where: { deliveryId },
+      select: {
+        deviceTokenId: true,
+        status: true,
+        errorCode: true,
+        providerMessageId: true,
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  async listPushRecoveryCandidates(input: {
+    windowStartedAt: Date;
+    expired: boolean;
+    afterId?: string;
+    take: number;
+  }): Promise<CommunicationPushRecoveryCandidate[]> {
+    const rows = await this.prisma.communicationNotificationDelivery.findMany({
+      where: {
+        channel: CommunicationNotificationDeliveryChannel.PUSH,
+        status: {
+          in: [
+            CommunicationNotificationDeliveryStatus.PENDING,
+            CommunicationNotificationDeliveryStatus.FAILED,
+          ],
+        },
+        OR: [
+          { errorCode: null },
+          {
+            errorCode: {
+              notIn: [
+                COMMUNICATION_PUSH_RECOVERY_WINDOW_EXPIRED_CODE,
+                'push/permanent-attempts-failed',
+                'push/source-ineligible',
+                'push/tenant-ineligible',
+                'push/recipient-ineligible',
+              ],
+            },
+          },
+        ],
+        createdAt: input.expired
+          ? { lte: input.windowStartedAt }
+          : { gt: input.windowStartedAt },
+      },
+      select: {
+        id: true,
+        notificationId: true,
+        schoolId: true,
+        createdAt: true,
+        school: {
+          select: {
+            organizationId: true,
+            status: true,
+            deletedAt: true,
+            organization: { select: { status: true, deletedAt: true } },
+          },
+        },
+        notification: {
+          select: {
+            actorUser: {
+              select: {
+                id: true,
+                userType: true,
+                status: true,
+                deletedAt: true,
+              },
+            },
+            recipientUser: {
+              select: {
+                id: true,
+                userType: true,
+                status: true,
+                deletedAt: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { id: 'asc' },
+      ...(input.afterId ? { cursor: { id: input.afterId }, skip: 1 } : {}),
+      take: input.take,
+    });
+
+    return rows.map((row) => {
+      const actor =
+        row.notification.actorUser?.status === UserStatus.ACTIVE &&
+        row.notification.actorUser.deletedAt === null
+          ? row.notification.actorUser
+          : null;
+      const tenantIneligible =
+        row.school.status !== SchoolStatus.ACTIVE ||
+        row.school.deletedAt !== null ||
+        row.school.organization.status !== OrganizationStatus.ACTIVE ||
+        row.school.organization.deletedAt !== null;
+      const recipientIneligible =
+        row.notification.recipientUser.status !== UserStatus.ACTIVE ||
+        row.notification.recipientUser.deletedAt !== null;
+      return {
+        id: row.id,
+        notificationId: row.notificationId,
+        schoolId: row.schoolId,
+        organizationId: row.school.organizationId,
+        actorUserId: actor?.id ?? null,
+        actorUserType: actor?.userType ?? null,
+        ineligibilityCode: tenantIneligible
+          ? 'push/tenant-ineligible'
+          : recipientIneligible
+            ? 'push/recipient-ineligible'
+            : null,
+        createdAt: row.createdAt,
+      };
     });
   }
 

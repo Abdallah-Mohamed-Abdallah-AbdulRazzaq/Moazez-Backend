@@ -10,12 +10,301 @@ if [[ "$#" -ne 1 ]]; then
 fi
 
 case "$SCENARIO" in
-  startup | redis-recovery | storage-recovery | realtime-reconciliation | graceful-shutdown | forced-timeout) ;;
+  startup | redis-recovery | storage-recovery | realtime-reconciliation | graceful-shutdown | forced-timeout | database-recovery) ;;
   *)
     printf 'health-runtime: unsupported scenario\n' >&2
     exit 64
     ;;
 esac
+
+if [[ "$SCENARIO" == 'database-recovery' ]]; then
+  require_b2_value() {
+    local name="$1"
+    if [[ -z "${!name:-}" ]]; then
+      printf 'health-runtime: required B2 field is absent\n' >&2
+      return 64
+    fi
+  }
+
+  require_b2_bounded_integer() {
+    local name="$1"
+    local minimum="$2"
+    local maximum="$3"
+    local value="${!name:-}"
+    if [[ ! "$value" =~ ^[1-9][0-9]*$ ]] ||
+      (( value < minimum || value > maximum )); then
+      printf 'health-runtime: bounded B2 integer is invalid\n' >&2
+      return 64
+    fi
+  }
+
+  validate_b2_compiled_database_policy() {
+    node - \
+      "$B2_DATABASE_RUNTIME_ROLE" \
+      "$B2_DATABASE_CONNECTION_LIMIT" \
+      "$B2_DATABASE_POOL_TIMEOUT_SECONDS" \
+      "$B2_DATABASE_CONNECT_TIMEOUT_SECONDS" <<'NODE'
+const path = require('node:path');
+
+try {
+  const role = process.argv[2];
+  const requested = {
+    connectionLimit: Number(process.argv[3]),
+    poolTimeoutSeconds: Number(process.argv[4]),
+    connectTimeoutSeconds: Number(process.argv[5]),
+  };
+  const policy = require(
+    path.resolve(
+      process.cwd(),
+      'dist/infrastructure/database/database-runtime.policy.js',
+    ),
+  );
+  const defaults = policy.resolveDatabaseRuntimeSettings(role);
+  const validated = policy.resolveDatabaseRuntimeSettings(role, requested);
+  for (const field of [
+    'connectionLimit',
+    'poolTimeoutSeconds',
+    'connectTimeoutSeconds',
+  ]) {
+    if (validated[field] !== defaults[field]) {
+      throw new Error('mismatch');
+    }
+  }
+} catch {
+  process.stderr.write('B2 compiled database policy validation failed\n');
+  process.exitCode = 1;
+}
+NODE
+  }
+
+  b2_container_for_role() {
+    case "$1" in
+      api) printf '%s' "${B2_API_CONTAINER_NAME:-}" ;;
+      core-worker) printf '%s' "${B2_CORE_WORKER_CONTAINER_NAME:-}" ;;
+      media-worker) printf '%s' "${B2_MEDIA_WORKER_CONTAINER_NAME:-}" ;;
+      *) return 64 ;;
+    esac
+  }
+
+  b2_launch_runtime() {
+    local role="${B2_ROLE:-}"
+    local container
+    local command=()
+
+    container="$(b2_container_for_role "$role")"
+    require_b2_value B2_RUNTIME_IMAGE_ID
+    require_b2_value B2_NETWORK_NAME
+    require_b2_value B2_GATE_LABEL
+    require_b2_value B2_RUN_LABEL
+    require_b2_value B2_DATABASE_RUNTIME_ROLE
+    require_b2_value B2_DATABASE_CONNECTION_LIMIT
+    require_b2_value B2_DATABASE_POOL_TIMEOUT_SECONDS
+    require_b2_value B2_DATABASE_CONNECT_TIMEOUT_SECONDS
+    require_b2_value DATABASE_URL
+    require_b2_value QUEUE_REDIS_URL
+    if [[ "$role" == 'api' || "$role" == 'core-worker' ]]; then
+      require_b2_value REALTIME_REDIS_URL
+    fi
+    require_b2_value STORAGE_ENDPOINT
+    require_b2_value STORAGE_ACCESS_KEY
+    require_b2_value STORAGE_SECRET_KEY
+    require_b2_value STORAGE_BUCKET
+    require_b2_value STORAGE_PUBLIC_BUCKET
+    require_b2_value JWT_ACCESS_SECRET
+    require_b2_value JWT_REFRESH_SECRET
+    require_b2_value SETTINGS_SECRET_ENCRYPTION_KEY
+    if [[ -z "$container" ]]; then
+      printf 'health-runtime: B2 runtime container is invalid\n' >&2
+      return 64
+    fi
+    if [[ "$B2_DATABASE_RUNTIME_ROLE" != "$role" ]]; then
+      printf 'health-runtime: B2 database runtime role is mismatched\n' >&2
+      return 64
+    fi
+    require_b2_bounded_integer B2_DATABASE_CONNECTION_LIMIT 1 64
+    require_b2_bounded_integer B2_DATABASE_POOL_TIMEOUT_SECONDS 1 120
+    require_b2_bounded_integer B2_DATABASE_CONNECT_TIMEOUT_SECONDS 1 120
+    validate_b2_compiled_database_policy
+
+    case "$role" in
+      api) ;;
+      core-worker)
+        command=(node dist/core-worker)
+        ;;
+      media-worker)
+        command=(node dist/media-worker)
+        ;;
+      *)
+        printf 'health-runtime: B2 runtime role is invalid\n' >&2
+        return 64
+        ;;
+    esac
+
+    local args=(
+      run --detach --pull=never --restart=no
+      --name "$container"
+      --network "$B2_NETWORK_NAME"
+      --label "com.moazez.evidence.gate=$B2_GATE_LABEL"
+      --label "com.moazez.evidence.run=$B2_RUN_LABEL"
+      --tmpfs /tmp:rw,noexec,nosuid,size=67108864
+      --env NODE_ENV=test
+      --env APP_PORT=3000
+      --env APP_PROBE_PORT=9090
+      --env APP_URL=http://127.0.0.1:3000
+      --env DATABASE_URL
+      --env "DATABASE_RUNTIME_ROLE=$B2_DATABASE_RUNTIME_ROLE"
+      --env "DATABASE_CONNECTION_LIMIT=$B2_DATABASE_CONNECTION_LIMIT"
+      --env "DATABASE_POOL_TIMEOUT_SECONDS=$B2_DATABASE_POOL_TIMEOUT_SECONDS"
+      --env "DATABASE_CONNECT_TIMEOUT_SECONDS=$B2_DATABASE_CONNECT_TIMEOUT_SECONDS"
+      --env QUEUE_REDIS_URL
+      --env APP_CORS_ORIGINS=https://schools.moazez.invalid
+      --env SWAGGER_ENABLED=false
+      --env APP_SHUTDOWN_TIMEOUT_MS=15000
+      --env JWT_ACCESS_SECRET
+      --env JWT_REFRESH_SECRET
+      --env JWT_ACCESS_TTL=15m
+      --env JWT_REFRESH_TTL=7d
+      --env SETTINGS_SECRET_ENCRYPTION_KEY
+      --env STORAGE_PROVIDER=minio
+      --env STORAGE_ENDPOINT
+      --env STORAGE_ACCESS_KEY
+      --env STORAGE_SECRET_KEY
+      --env STORAGE_BUCKET
+      --env STORAGE_PUBLIC_BUCKET
+      --env STORAGE_CORS_ORIGINS=http://127.0.0.1:3001
+      --env FCM_ENABLED=false
+      --env FCM_DRY_RUN=true
+      --env LOG_LEVEL=info
+    )
+    if [[ "$role" == 'api' || "$role" == 'core-worker' ]]; then
+      args+=(--env REALTIME_REDIS_URL)
+    fi
+    if [[ "$role" == 'api' ]]; then
+      args+=(--env MEDIA_RUNTIME_ENFORCE_IN_TEST=true)
+    fi
+    args+=("$B2_RUNTIME_IMAGE_ID")
+    args+=("${command[@]}")
+
+    docker "${args[@]}" >/dev/null
+    printf '{"launched":true,"role":"%s"}\n' "$role"
+  }
+
+  b2_observe_probe() {
+    local role="${B2_ROLE:-}"
+    local kind="${B2_PROBE_KIND:-}"
+    local container
+
+    container="$(b2_container_for_role "$role")"
+    case "$kind" in
+      startup | liveness | readiness | public-health) ;;
+      *)
+        printf 'health-runtime: B2 probe kind is invalid\n' >&2
+        return 64
+        ;;
+    esac
+
+    docker exec --interactive "$container" node - "$role" "$kind" <<'NODE'
+void (async () => {
+  const role = process.argv[2];
+  const kind = process.argv[3];
+  const isPublic = kind === 'public-health';
+  const url = isPublic
+    ? 'http://127.0.0.1:3000/api/v1/health'
+    : `http://127.0.0.1:9090/internal/probes/${role}/${kind}`;
+  const started = process.hrtime.bigint();
+  const response = await fetch(url, { signal: AbortSignal.timeout(2500) });
+  const text = await response.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error('probe_response_is_not_json');
+  }
+  process.stdout.write(JSON.stringify({
+    role,
+    kind,
+    statusCode: response.status,
+    contentType: response.headers.get('content-type'),
+    cacheControl: response.headers.get('cache-control'),
+    body,
+    elapsedMs: Math.round(Number(process.hrtime.bigint() - started) / 1e6)
+  }));
+})().catch(() => {
+  process.stderr.write('health-runtime: B2 probe observation failed\n');
+  process.exitCode = 1;
+});
+NODE
+  }
+
+  b2_readiness_burst() {
+    local role="${B2_ROLE:-}"
+    local container
+    container="$(b2_container_for_role "$role")"
+    docker exec --interactive "$container" node - "$role" <<'NODE'
+void (async () => {
+  const role = process.argv[2];
+  const count = 10;
+  const url = `http://127.0.0.1:9090/internal/probes/${role}/readiness`;
+  const calls = Array.from({ length: count }, async () => {
+    const started = process.hrtime.bigint();
+    const response = await fetch(url, { signal: AbortSignal.timeout(2500) });
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      throw new Error('probe_response_is_not_json');
+    }
+    return {
+      statusCode: response.status,
+      body,
+      elapsedMs: Math.round(Number(process.hrtime.bigint() - started) / 1e6)
+    };
+  });
+  process.stdout.write(JSON.stringify({ role, kind: 'readiness', results: await Promise.all(calls) }));
+})().catch(() => {
+  process.stderr.write('health-runtime: B2 readiness burst failed\n');
+  process.exitCode = 1;
+});
+NODE
+  }
+
+  b2_provision_storage() {
+    require_b2_value B2_API_CONTAINER_NAME
+    docker exec --interactive "$B2_API_CONTAINER_NAME" node - <<'NODE'
+const { Client } = require('minio');
+void (async () => {
+  const endpoint = new URL(process.env.STORAGE_ENDPOINT);
+  const client = new Client({
+    endPoint: endpoint.hostname,
+    port: Number(endpoint.port || 80),
+    useSSL: endpoint.protocol === 'https:',
+    accessKey: process.env.STORAGE_ACCESS_KEY,
+    secretKey: process.env.STORAGE_SECRET_KEY
+  });
+  for (const bucket of [process.env.STORAGE_BUCKET, process.env.STORAGE_PUBLIC_BUCKET]) {
+    if (!(await client.bucketExists(bucket))) await client.makeBucket(bucket);
+  }
+  process.stdout.write('{"storageProvisioned":true}');
+})().catch(() => {
+  process.stderr.write('health-runtime: B2 storage provisioning failed\n');
+  process.exitCode = 1;
+});
+NODE
+  }
+
+  case "${B2_ACTION:-}" in
+    launch-runtime) b2_launch_runtime ;;
+    observe-probe) b2_observe_probe ;;
+    readiness-burst) b2_readiness_burst ;;
+    provision-storage) b2_provision_storage ;;
+    *)
+      printf 'health-runtime: unsupported B2 action\n' >&2
+      exit 64
+      ;;
+  esac
+  exit "$?"
+fi
 
 sanitize_resource_component() {
   printf '%s' "$1" |
@@ -62,7 +351,8 @@ safe_output() {
       "JWT_REFRESH_SECRET",
       "SETTINGS_SECRET_ENCRYPTION_KEY",
       "DATABASE_URL",
-      "REDIS_URL"
+      "QUEUE_REDIS_URL",
+      "REALTIME_REDIS_URL"
     ];
     const values = [...new Set(
       sensitiveNames
@@ -213,11 +503,18 @@ start_runtime() {
     --network "$PROBE_NETWORK" \
     --add-host host.docker.internal:host-gateway \
     --publish "127.0.0.1::${PUBLIC_CONTAINER_PORT}" \
+    --env NODE_ENV=test \
+    --env MEDIA_RUNTIME_ENFORCE_IN_TEST=true \
     --env APP_PORT="$PUBLIC_CONTAINER_PORT" \
     --env APP_PROBE_PORT="$MANAGEMENT_CONTAINER_PORT" \
     --env APP_URL="${APP_URL:-http://127.0.0.1:${PUBLIC_CONTAINER_PORT}}" \
     --env DATABASE_URL="$runtime_database_url" \
-    --env REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
+    --env DATABASE_RUNTIME_ROLE=api \
+    --env DATABASE_CONNECTION_LIMIT=5 \
+    --env DATABASE_POOL_TIMEOUT_SECONDS=5 \
+    --env DATABASE_CONNECT_TIMEOUT_SECONDS=5 \
+    --env QUEUE_REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
+    --env REALTIME_REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
     --env APP_CORS_ORIGINS="${APP_CORS_ORIGINS:-https://schools.moazez.cloud,https://admin.moazez.cloud}" \
     --env SWAGGER_ENABLED=false \
     --env APP_SHUTDOWN_TIMEOUT_MS=15000 \
@@ -254,18 +551,41 @@ start_application_context_runtime() {
   local entrypoint="$3"
   local runtime_database_url
   local runtime_storage_endpoint
+  local database_connection_limit
+  local database_pool_timeout_seconds
 
   runtime_database_url="${DATABASE_URL/127.0.0.1/host.docker.internal}"
   runtime_storage_endpoint="${STORAGE_ENDPOINT/127.0.0.1/host.docker.internal}"
 
+  case "$role" in
+    core-worker)
+      database_connection_limit=6
+      database_pool_timeout_seconds=10
+      ;;
+    media-worker)
+      database_connection_limit=3
+      database_pool_timeout_seconds=10
+      ;;
+    *)
+      fail_scenario "contract=database-runtime-role observed=unsupported-role"
+      return 1
+      ;;
+  esac
+
   docker run --detach --name "$container" \
     --network "$PROBE_NETWORK" \
     --add-host host.docker.internal:host-gateway \
+    --env NODE_ENV=test \
     --env APP_PROBE_PORT="$MANAGEMENT_CONTAINER_PORT" \
     --env APP_SHUTDOWN_TIMEOUT_MS=15000 \
     --env APP_URL="${APP_URL:-http://127.0.0.1:${PUBLIC_CONTAINER_PORT}}" \
     --env DATABASE_URL="$runtime_database_url" \
-    --env REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
+    --env DATABASE_RUNTIME_ROLE="$role" \
+    --env DATABASE_CONNECTION_LIMIT="$database_connection_limit" \
+    --env DATABASE_POOL_TIMEOUT_SECONDS="$database_pool_timeout_seconds" \
+    --env DATABASE_CONNECT_TIMEOUT_SECONDS=5 \
+    --env QUEUE_REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
+    --env REALTIME_REDIS_URL="redis://${REDIS_CONTAINER}:6379" \
     --env SETTINGS_SECRET_ENCRYPTION_KEY \
     --env STORAGE_PROVIDER \
     --env STORAGE_ENDPOINT="$runtime_storage_endpoint" \
@@ -306,6 +626,68 @@ start_common_runtime() {
     core-worker "$CORE_WORKER_CONTAINER" dist/core-worker
   start_application_context_runtime \
     media-worker "$MEDIA_WORKER_CONTAINER" dist/media-worker
+}
+
+assert_container_environment_value() {
+  local container="$1"
+  local field="$2"
+  local expected="$3"
+
+  if ! docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
+    "$container" | grep --fixed-strings --line-regexp --quiet \
+    -- "${field}=${expected}"; then
+    fail_scenario "contract=runtime-environment runtime=${container} field=${field} observed=unexpected"
+    return 1
+  fi
+}
+
+assert_container_environment_absent() {
+  local container="$1"
+  local field="$2"
+
+  if docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
+    "$container" | grep --extended-regexp --quiet -- "^${field}="; then
+    fail_scenario "contract=runtime-environment runtime=${container} field=${field} observed=unexpectedly-present"
+    return 1
+  fi
+}
+
+assert_startup_runtime_environment_contract() {
+  assert_container_environment_value "$APP_CONTAINER" NODE_ENV test
+  assert_container_environment_value \
+    "$APP_CONTAINER" MEDIA_RUNTIME_ENFORCE_IN_TEST true
+  assert_container_environment_value \
+    "$APP_CONTAINER" DATABASE_RUNTIME_ROLE api
+  assert_container_environment_value \
+    "$APP_CONTAINER" DATABASE_CONNECTION_LIMIT 5
+  assert_container_environment_value \
+    "$APP_CONTAINER" DATABASE_POOL_TIMEOUT_SECONDS 5
+  assert_container_environment_value \
+    "$APP_CONTAINER" DATABASE_CONNECT_TIMEOUT_SECONDS 5
+
+  assert_container_environment_value "$CORE_WORKER_CONTAINER" NODE_ENV test
+  assert_container_environment_value \
+    "$CORE_WORKER_CONTAINER" DATABASE_RUNTIME_ROLE core-worker
+  assert_container_environment_value \
+    "$CORE_WORKER_CONTAINER" DATABASE_CONNECTION_LIMIT 6
+  assert_container_environment_value \
+    "$CORE_WORKER_CONTAINER" DATABASE_POOL_TIMEOUT_SECONDS 10
+  assert_container_environment_value \
+    "$CORE_WORKER_CONTAINER" DATABASE_CONNECT_TIMEOUT_SECONDS 5
+  assert_container_environment_absent \
+    "$CORE_WORKER_CONTAINER" MEDIA_RUNTIME_ENFORCE_IN_TEST
+
+  assert_container_environment_value "$MEDIA_WORKER_CONTAINER" NODE_ENV test
+  assert_container_environment_value \
+    "$MEDIA_WORKER_CONTAINER" DATABASE_RUNTIME_ROLE media-worker
+  assert_container_environment_value \
+    "$MEDIA_WORKER_CONTAINER" DATABASE_CONNECTION_LIMIT 3
+  assert_container_environment_value \
+    "$MEDIA_WORKER_CONTAINER" DATABASE_POOL_TIMEOUT_SECONDS 10
+  assert_container_environment_value \
+    "$MEDIA_WORKER_CONTAINER" DATABASE_CONNECT_TIMEOUT_SECONDS 5
+  assert_container_environment_absent \
+    "$MEDIA_WORKER_CONTAINER" MEDIA_RUNTIME_ENFORCE_IN_TEST
 }
 
 runtime_container_for_role() {
@@ -651,6 +1033,9 @@ wait_for_minio() {
 scenario_startup() {
   EXPECTED_TRANSITION='canonical image -> public health -> isolated internal probes healthy'
   start_common_runtime
+  assert_startup_runtime_environment_contract
+  printf 'api_media_runtime_verification=enforced-in-test\n' \
+    >>"$ARTIFACT_DIR/scenario.txt"
   assert_public_health_contract
 
   if [[ -z "$(docker port "$APP_CONTAINER" "${PUBLIC_CONTAINER_PORT}/tcp")" ]]; then
@@ -810,7 +1195,7 @@ scenario_realtime_reconciliation() {
 
   timeout 45s docker run --name "$APP_CONTAINER" --interactive \
     --network "$PROBE_NETWORK" \
-    --env "TARGET_REDIS_URL=redis://${REDIS_CONTAINER}:6379" \
+    --env "TARGET_REALTIME_REDIS_URL=redis://${REDIS_CONTAINER}:6379" \
     --entrypoint node "$RUNTIME_IMAGE" - <<'NODE'
 const { randomUUID } = require('node:crypto');
 const { createConnection, createServer } = require('node:net');
@@ -830,7 +1215,7 @@ const schoolId = `school-${suffix}`;
 const userId = `user-${suffix}`;
 const conversationId = `conversation-${suffix}`;
 const expiredConversationId = `expired-${suffix}`;
-const targetUrl = process.env.TARGET_REDIS_URL;
+const targetUrl = process.env.TARGET_REALTIME_REDIS_URL;
 const proxyPort = 16379;
 const sockets = new Set();
 let proxy;
@@ -887,7 +1272,10 @@ const expiredTypingUsers =
 void (async () => {
   const admin = new IORedis(targetUrl, { maxRetriesPerRequest: 1 });
   const stateStore = new RealtimeStateStoreService(
-    new ConfigService({ REDIS_URL: `redis://127.0.0.1:${proxyPort}` })
+    new ConfigService({
+      NODE_ENV: 'test',
+      REALTIME_REDIS_URL: `redis://127.0.0.1:${proxyPort}`
+    })
   );
   try {
     await startProxy();

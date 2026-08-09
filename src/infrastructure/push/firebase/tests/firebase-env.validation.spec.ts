@@ -104,7 +104,8 @@ function baseEnv(
   const values: Record<string, string | undefined> = {
     APP_URL: 'http://localhost:3000',
     DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/moazez',
-    REDIS_URL: 'redis://localhost:6379',
+    QUEUE_REDIS_URL: 'redis://localhost:6379',
+    REALTIME_REDIS_URL: 'redis://localhost:6379',
     JWT_ACCESS_SECRET: 'access-secret-for-tests',
     JWT_REFRESH_SECRET: 'refresh-secret-for-tests',
     JWT_ACCESS_TTL: '15m',

@@ -521,6 +521,7 @@ describe('learning media upload foundation', () => {
     const session = buildSession();
     session.status = FileUploadSessionStatus.FAILED;
     const addJob = jest.fn().mockResolvedValue(undefined);
+    const getQueueReadiness = mockCleanupQueueReadiness();
     let processor:
       | ((job: {
           name: string;
@@ -529,6 +530,7 @@ describe('learning media upload foundation', () => {
       | undefined;
     const queue = {
       addJob,
+      getQueueReadiness,
       getQueue: jest.fn().mockReturnValue({
         getJob: jest.fn().mockResolvedValue(null),
       }),
@@ -554,6 +556,9 @@ describe('learning media upload foundation', () => {
     await cleanup.onModuleInit();
     await processor?.({ name: 'discover', data: {} });
 
+    expect(getQueueReadiness).toHaveBeenCalledWith(
+      LEARNING_MEDIA_CLEANUP_QUEUE,
+    );
     expect(addJob).toHaveBeenNthCalledWith(
       1,
       LEARNING_MEDIA_CLEANUP_QUEUE,
@@ -572,6 +577,7 @@ describe('learning media upload foundation', () => {
     async (state) => {
       const session = buildSession();
       const addJob = jest.fn().mockResolvedValue(undefined);
+      const getQueueReadiness = mockCleanupQueueReadiness();
       const remove = jest.fn().mockResolvedValue(0);
       const getState = jest.fn().mockResolvedValue(state);
       const queue = {
@@ -590,6 +596,7 @@ describe('learning media upload foundation', () => {
       const cleanup = new LearningMediaCleanupService(
         {
           addJob,
+          getQueueReadiness,
           getQueue: jest.fn().mockReturnValue(queue),
         } as unknown as BullmqService,
         repository as unknown as LearningMediaRepository,
@@ -597,6 +604,9 @@ describe('learning media upload foundation', () => {
       );
 
       await expect(cleanup.discoverAndEnqueue()).resolves.toBe(0);
+      expect(getQueueReadiness).toHaveBeenCalledWith(
+        LEARNING_MEDIA_CLEANUP_QUEUE,
+      );
       expect(remove).not.toHaveBeenCalled();
       expect(addJob).not.toHaveBeenCalled();
     },
@@ -611,6 +621,7 @@ describe('learning media upload foundation', () => {
         'finalization-recovery',
       );
       const addJob = jest.fn().mockResolvedValue(undefined);
+      const getQueueReadiness = mockCleanupQueueReadiness();
       const existing = { getState: jest.fn().mockResolvedValue(state) };
       const remove = jest.fn().mockResolvedValue(1);
       const redis = {
@@ -639,6 +650,7 @@ describe('learning media upload foundation', () => {
       const cleanup = new LearningMediaCleanupService(
         {
           addJob,
+          getQueueReadiness,
           getQueue: jest.fn().mockReturnValue(queue),
         } as unknown as BullmqService,
         repository as unknown as LearningMediaRepository,
@@ -646,6 +658,9 @@ describe('learning media upload foundation', () => {
       );
 
       await expect(cleanup.discoverAndEnqueue()).resolves.toBe(1);
+      expect(getQueueReadiness).toHaveBeenCalledWith(
+        LEARNING_MEDIA_CLEANUP_QUEUE,
+      );
       expect(remove).toHaveBeenCalledWith(jobId);
       expect(addJob).toHaveBeenCalledWith(
         LEARNING_MEDIA_CLEANUP_QUEUE,
@@ -678,6 +693,19 @@ describe('learning media upload foundation', () => {
     );
   });
 });
+
+function mockCleanupQueueReadiness() {
+  return jest.fn().mockResolvedValue({
+    name: LEARNING_MEDIA_CLEANUP_QUEUE,
+    status: 'ok',
+    counts: {
+      waiting: 0,
+      active: 0,
+      delayed: 0,
+      failed: 0,
+    },
+  });
+}
 
 function buildSession(): FileUploadSession {
   return {

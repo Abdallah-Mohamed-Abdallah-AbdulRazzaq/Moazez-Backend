@@ -568,9 +568,10 @@ describe('DISMISSAL-DELIVERY-1B pickup delegate verification (e2e)', () => {
     });
 
     const validToken = await getPickupRecipientToken(adminAToken, requestId);
+    const tamperedToken = makeNonCanonicalPickupRecipientToken(validToken);
     await expectFailedDeliveryWithoutSideEffects({
       requestId,
-      body: { pickupRecipientToken: `${validToken.slice(0, -2)}xx` },
+      body: { pickupRecipientToken: tamperedToken },
       expectedStatus: 422,
       expectedCode: 'dismissal.delivery.invalid_pickup_recipient',
     });
@@ -1071,4 +1072,28 @@ function makeExpiredPickupRecipientToken(token: string): string {
     .digest('base64url');
 
   return `${expiredBody}.${signature}`;
+}
+
+function makeNonCanonicalPickupRecipientToken(token: string): string {
+  const [body, signature] = token.split('.');
+  const alphabet =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const lastCharacter = signature.at(-1);
+  const lastCharacterIndex = lastCharacter
+    ? alphabet.indexOf(lastCharacter)
+    : -1;
+
+  if (lastCharacterIndex < 0 || (lastCharacterIndex & 0b11) !== 0) {
+    throw new Error(
+      'Expected a canonical unpadded SHA-256 Base64URL signature',
+    );
+  }
+
+  const aliasedSignature = `${signature.slice(0, -1)}${alphabet[lastCharacterIndex + 1]}`;
+  expect(aliasedSignature).not.toBe(signature);
+  expect(Buffer.from(aliasedSignature, 'base64url')).toEqual(
+    Buffer.from(signature, 'base64url'),
+  );
+
+  return `${body}.${aliasedSignature}`;
 }

@@ -27,7 +27,6 @@ import {
   MAX_DISMISSAL_EXPIRY_BATCH_SIZE,
 } from '../../src/modules/dismissal/requests/infrastructure/dismissal-requests-expiry.repository';
 import { CORE_WORKER_CONSUMER_PROVIDERS } from '../../src/runtime/core-worker/core-worker-consumers.module';
-import { CoreWorkerRuntimeModule } from '../../src/runtime/core-worker/core-worker-runtime.module';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'DismissalOpsAudit123!';
@@ -129,14 +128,23 @@ describe('DISMISSAL-OPERATIONS-AUDIT-1A production hardening (e2e)', () => {
     );
     await app.init();
 
-    const coreWorkerBuilder = Test.createTestingModule({
-      imports: [CoreWorkerRuntimeModule],
-    });
-    for (const consumerProvider of CORE_WORKER_CONSUMER_PROVIDERS) {
-      coreWorkerBuilder.overrideProvider(consumerProvider).useValue({});
+    const originalRuntimeRole = process.env.DATABASE_RUNTIME_ROLE;
+    process.env.DATABASE_RUNTIME_ROLE = 'core-worker';
+    try {
+      const { CoreWorkerRuntimeModule } = require(
+        '../../src/runtime/core-worker/core-worker-runtime.module'
+      ) as typeof import('../../src/runtime/core-worker/core-worker-runtime.module');
+      const coreWorkerBuilder = Test.createTestingModule({
+        imports: [CoreWorkerRuntimeModule],
+      });
+      for (const consumerProvider of CORE_WORKER_CONSUMER_PROVIDERS) {
+        coreWorkerBuilder.overrideProvider(consumerProvider).useValue({});
+      }
+      coreWorker = await coreWorkerBuilder.compile();
+      await coreWorker.init();
+    } finally {
+      restoreEnvironmentValue('DATABASE_RUNTIME_ROLE', originalRuntimeRole);
     }
-    coreWorker = await coreWorkerBuilder.compile();
-    await coreWorker.init();
 
     expireUseCase = coreWorker.get(ExpireDismissalRequestsUseCase);
     expiryRepository = coreWorker.get(DismissalRequestsExpiryRepository);
@@ -747,6 +755,14 @@ describe('DISMISSAL-OPERATIONS-AUDIT-1A production hardening (e2e)', () => {
     });
   }
 });
+
+function restoreEnvironmentValue(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
+}
 
 function minutesBefore(now: Date, minutes: number): Date {
   return new Date(now.getTime() - minutes * 60_000);

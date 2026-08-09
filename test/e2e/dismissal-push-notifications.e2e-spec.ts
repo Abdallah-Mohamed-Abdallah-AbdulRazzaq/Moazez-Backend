@@ -28,7 +28,6 @@ import { CommunicationNotificationPushDeliveryService } from '../../src/modules/
 import { CommunicationNotificationPushQueueService } from '../../src/modules/communication/application/communication-notification-push-queue.service';
 import { ExpireDismissalRequestsUseCase } from '../../src/modules/dismissal/requests/application/expire-dismissal-requests.use-case';
 import { CORE_WORKER_CONSUMER_PROVIDERS } from '../../src/runtime/core-worker/core-worker-consumers.module';
-import { CoreWorkerRuntimeModule } from '../../src/runtime/core-worker/core-worker-runtime.module';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'DismissalPush123!';
@@ -225,18 +224,27 @@ describe('DISMISSAL-NOTIFICATIONS-1B push delivery and device tokens (e2e)', () 
     );
     await app.init();
 
-    const coreWorkerBuilder = Test.createTestingModule({
-      imports: [CoreWorkerRuntimeModule],
-    })
-      .overrideProvider(CommunicationNotificationPushQueueService)
-      .useValue(pushQueue)
-      .overrideProvider(FirebasePushProvider)
-      .useValue(firebasePushProvider);
-    for (const consumerProvider of CORE_WORKER_CONSUMER_PROVIDERS) {
-      coreWorkerBuilder.overrideProvider(consumerProvider).useValue({});
+    const originalRuntimeRole = process.env.DATABASE_RUNTIME_ROLE;
+    process.env.DATABASE_RUNTIME_ROLE = 'core-worker';
+    try {
+      const { CoreWorkerRuntimeModule } = require(
+        '../../src/runtime/core-worker/core-worker-runtime.module'
+      ) as typeof import('../../src/runtime/core-worker/core-worker-runtime.module');
+      const coreWorkerBuilder = Test.createTestingModule({
+        imports: [CoreWorkerRuntimeModule],
+      })
+        .overrideProvider(CommunicationNotificationPushQueueService)
+        .useValue(pushQueue)
+        .overrideProvider(FirebasePushProvider)
+        .useValue(firebasePushProvider);
+      for (const consumerProvider of CORE_WORKER_CONSUMER_PROVIDERS) {
+        coreWorkerBuilder.overrideProvider(consumerProvider).useValue({});
+      }
+      coreWorker = await coreWorkerBuilder.compile();
+      await coreWorker.init();
+    } finally {
+      restoreEnvironmentValue('DATABASE_RUNTIME_ROLE', originalRuntimeRole);
     }
-    coreWorker = await coreWorkerBuilder.compile();
-    await coreWorker.init();
 
     pushDeliveryService = coreWorker.get(
       CommunicationNotificationPushDeliveryService,
@@ -1077,6 +1085,14 @@ describe('DISMISSAL-NOTIFICATIONS-1B push delivery and device tokens (e2e)', () 
     return response.body.accessToken as string;
   }
 });
+
+function restoreEnvironmentValue(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
+}
 
 function sentPushResult() {
   return {

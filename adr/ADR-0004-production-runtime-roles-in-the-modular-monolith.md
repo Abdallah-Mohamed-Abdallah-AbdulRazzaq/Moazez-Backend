@@ -14,11 +14,11 @@ Accepted — 2026-07-27
 
 ## Context
 
-Moazez remains one modular-monolith repository and one domain model, but the
-current `AppModule` process starts HTTP, WebSocket, BullMQ consumers, repeat
-registrations, and maintenance behavior together. That coupling gives API
-autoscaling the permissions and resource profile of every worker and makes
-scheduler ownership implicit.
+Moazez remains one modular-monolith repository and one domain model. At the
+2026-07-27 Phase 0B closeout, the `AppModule` process started HTTP, WebSocket,
+BullMQ consumers, repeat registrations, and maintenance behavior together.
+That historical coupling gave API autoscaling the permissions and resource
+profile of every worker and made scheduler ownership implicit.
 
 Capacity question PRD0-Q003 is not a prerequisite for approving the logical
 role boundary. It remains required before final sizing, pool, concurrency,
@@ -64,15 +64,16 @@ microservice decomposition is approved.
 This ADR is the sole authoritative owner of PRD0-D004 through PRD0-D007.
 Other ADRs may reference these role boundaries but must not redefine them.
 
-## Current implementation gap
+## Implementation status
 
-The baseline still has one `NestFactory` entrypoint and one current
-`AppModule` graph. Runtime worker providers and repeat registrations initialize
-inside that graph, and the API is not yet a producer-only composition root.
-Top-level shutdown-hook and role-specific lifecycle proof are also absent.
-Learning Media verification remains synchronous in the HTTP completion
-request. Acceptance of this ADR is not evidence that runtime separation has
-been implemented.
+At the 2026-07-27 Phase 0B closeout, the baseline had one `NestFactory`
+entrypoint and one coupled `AppModule` graph, and acceptance of this ADR was
+not implementation evidence. Phase 2 subsequently implemented and closed the
+approved boundary: API owns 0 consumers/0 repeats, Core Worker 6/0, Media
+Worker 1/0, and Maintenance Scheduler 0/3. API remains the sole HTTP and
+Socket.IO owner, and Learning Media verification remains synchronous HTTP 200.
+The authoritative current evidence is
+`docs/production-readiness/phase-2/02-runtime-role-separation-closeout.md`.
 
 ## Consequences
 

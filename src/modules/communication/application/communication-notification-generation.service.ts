@@ -231,7 +231,7 @@ export class CommunicationNotificationGenerationService {
     await this.enqueuePushDeliveriesSafely({
       schoolId: input.schoolId,
       organizationId: input.organizationId,
-      actorUserId: message.senderUserId ?? input.actorUserId ?? '',
+      actorUserId: message.senderUserId ?? input.actorUserId,
       actorUserType: input.actorUserType,
       pushDeliveries,
     });
@@ -246,13 +246,12 @@ export class CommunicationNotificationGenerationService {
   private async enqueuePushDeliveriesSafely(input: {
     schoolId: string;
     organizationId: string;
-    actorUserId: string;
+    actorUserId: string | null;
     actorUserType: CommunicationAnnouncementNotificationGenerationJobData['actorUserType'];
     pushDeliveries: CommunicationGeneratedPushDeliveryRecord[];
   }): Promise<void> {
     if (!this.communicationNotificationPushQueueService) return;
     if (input.pushDeliveries.length === 0) return;
-    if (!input.actorUserId) return;
     const pushQueueService = this.communicationNotificationPushQueueService;
 
     await Promise.all(

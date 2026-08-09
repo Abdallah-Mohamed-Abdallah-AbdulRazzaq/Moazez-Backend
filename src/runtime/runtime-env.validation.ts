@@ -1,4 +1,13 @@
 import { z } from 'zod';
+import {
+  assertDatabaseFreeRuntimeEnvironment,
+  createDatabaseRuntimeEnvironmentShape,
+  refineDatabaseRuntimeEnvironment,
+} from '../infrastructure/database/database-runtime-env.validation';
+import {
+  redisUrlSchema,
+  refineRedisEndpointSeparation,
+} from '../config/redis-env.validation';
 
 const booleanFromString = z
   .enum(['true', 'false'])
@@ -20,14 +29,9 @@ const managementShape = {
   NODE_ENV: z
     .enum(['development', 'test', 'staging', 'production'])
     .default('development'),
-  REDIS_URL: z.string().url(),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
     .default('info'),
-};
-
-const persistenceShape = {
-  DATABASE_URL: z.string().url(),
 };
 
 const storageShape = {
@@ -42,7 +46,9 @@ const storageShape = {
 const coreWorkerSchema = z
   .object({
     ...managementShape,
-    ...persistenceShape,
+    QUEUE_REDIS_URL: redisUrlSchema,
+    REALTIME_REDIS_URL: redisUrlSchema,
+    ...createDatabaseRuntimeEnvironmentShape('core-worker'),
     ...storageShape,
     APP_URL: z.string().url(),
     SETTINGS_SECRET_ENCRYPTION_KEY: z.string().optional(),
@@ -54,6 +60,9 @@ const coreWorkerSchema = z
     FIREBASE_PRIVATE_KEY: optionalNonEmptyString,
   })
   .superRefine((env, context) => {
+    refineDatabaseRuntimeEnvironment(env, context);
+    refineRedisEndpointSeparation(env, context);
+
     const firebaseFields = [
       env.FIREBASE_PROJECT_ID,
       env.FIREBASE_CLIENT_EMAIL,
@@ -75,24 +84,39 @@ const coreWorkerSchema = z
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['FCM_ENABLED'],
-        message: 'Enabled Firebase delivery requires exactly one credential strategy',
+        message:
+          'Enabled Firebase delivery requires exactly one credential strategy',
       });
     }
   });
 
-const mediaWorkerSchema = z.object({
-  ...managementShape,
-  ...persistenceShape,
-  ...storageShape,
-});
+const mediaWorkerSchema = z
+  .object({
+    ...managementShape,
+    QUEUE_REDIS_URL: redisUrlSchema,
+    ...createDatabaseRuntimeEnvironmentShape('media-worker'),
+    ...storageShape,
+  })
+  .superRefine((env, context) => {
+    refineDatabaseRuntimeEnvironment(env, context);
+  });
 
-const maintenanceSchedulerSchema = z.object(managementShape);
+const maintenanceSchedulerSchema = z.object({
+  ...managementShape,
+  QUEUE_REDIS_URL: redisUrlSchema,
+});
 
 export const validateCoreWorkerEnv = createValidator(coreWorkerSchema);
 export const validateMediaWorkerEnv = createValidator(mediaWorkerSchema);
-export const validateMaintenanceSchedulerEnv = createValidator(
+const validateMaintenanceSchedulerShape = createValidator(
   maintenanceSchedulerSchema,
 );
+export const validateMaintenanceSchedulerEnv = (
+  raw: Record<string, unknown>,
+) => {
+  assertDatabaseFreeRuntimeEnvironment(raw, 'Maintenance Scheduler');
+  return validateMaintenanceSchedulerShape(raw);
+};
 
 function createValidator<TSchema extends z.ZodTypeAny>(schema: TSchema) {
   return (raw: Record<string, unknown>): z.output<TSchema> => {

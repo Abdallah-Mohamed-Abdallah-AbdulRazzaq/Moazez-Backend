@@ -36,7 +36,6 @@ import {
   COMMUNICATION_NOTIFICATION_QUEUE_NAME,
   COMMUNICATION_PUSH_NOTIFICATION_PROVIDER,
 } from '../../src/modules/communication/domain/communication-notification-generation-domain';
-import { CoreWorkerRuntimeModule } from '../../src/runtime/core-worker/core-worker-runtime.module';
 
 const GLOBAL_PREFIX = '/api/v1';
 const DEMO_ADMIN_EMAIL = 'admin@academy.moazez.dev';
@@ -144,10 +143,19 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
     await app.init();
 
     storageService = app.get(StorageService);
-    coreWorker = await Test.createTestingModule({
-      imports: [CoreWorkerRuntimeModule],
-    }).compile();
-    await coreWorker.init();
+    const originalRuntimeRole = process.env.DATABASE_RUNTIME_ROLE;
+    process.env.DATABASE_RUNTIME_ROLE = 'core-worker';
+    try {
+      const { CoreWorkerRuntimeModule } = require(
+        '../../src/runtime/core-worker/core-worker-runtime.module'
+      ) as typeof import('../../src/runtime/core-worker/core-worker-runtime.module');
+      coreWorker = await Test.createTestingModule({
+        imports: [CoreWorkerRuntimeModule],
+      }).compile();
+      await coreWorker.init();
+    } finally {
+      restoreEnvironmentValue('DATABASE_RUNTIME_ROLE', originalRuntimeRole);
+    }
   });
 
   afterAll(async () => {
@@ -1072,3 +1080,11 @@ describe('Sprint 6C Realtime + Announcements + Notifications closeout flow (e2e)
     }
   }
 });
+
+function restoreEnvironmentValue(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
+}

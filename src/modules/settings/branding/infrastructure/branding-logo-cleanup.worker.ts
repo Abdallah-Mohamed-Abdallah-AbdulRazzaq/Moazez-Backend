@@ -61,6 +61,8 @@ export class BrandingLogoCleanupWorker implements OnModuleInit {
     }
     if (job.name === BRANDING_LOGO_RECONCILE_JOB) {
       await this.processCleanup.reconcile();
+      return;
     }
+    throw new Error('branding_logo_cleanup_job_unknown');
   }
 }

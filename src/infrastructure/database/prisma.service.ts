@@ -1,13 +1,21 @@
 import {
+  Inject,
   Injectable,
   Logger,
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
+import {
+  PRISMA_CLIENT_OPTIONS,
+  type PrismaClientRuntimeOptions,
+} from './prisma-client-options.provider';
 import { schoolScopeExtension } from './school-scope.extension';
 
 type ExtendedClient = ReturnType<PrismaClient['$extends']>;
+const DIRECT_CONSTRUCTION_OPTIONS: Prisma.PrismaClientOptions = Object.freeze(
+  {},
+);
 
 @Injectable()
 export class PrismaService
@@ -17,6 +25,13 @@ export class PrismaService
   private readonly logger = new Logger(PrismaService.name);
   private _scoped?: ExtendedClient;
   private disconnectPromise: Promise<void> | null = null;
+
+  constructor(
+    @Inject(PRISMA_CLIENT_OPTIONS)
+    options: PrismaClientRuntimeOptions = DIRECT_CONSTRUCTION_OPTIONS,
+  ) {
+    super(options);
+  }
 
   /**
    * Scoped client with the schoolScope extension applied. Use this for all

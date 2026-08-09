@@ -87,7 +87,9 @@ export function normalizeImportJobReport(
     return fallback;
   }
 
-  const summary = isRecord(job.reportJson.summary) ? job.reportJson.summary : {};
+  const summary = isRecord(job.reportJson.summary)
+    ? job.reportJson.summary
+    : {};
   const file = isRecord(job.reportJson.file) ? job.reportJson.file : {};
 
   return {
@@ -97,7 +99,9 @@ export function normalizeImportJobReport(
         : fallback.status,
     summary: {
       rowCount:
-        typeof summary.rowCount === 'number' ? summary.rowCount : fallback.summary.rowCount,
+        typeof summary.rowCount === 'number'
+          ? summary.rowCount
+          : fallback.summary.rowCount,
       warningCount:
         typeof summary.warningCount === 'number'
           ? summary.warningCount
@@ -117,9 +121,13 @@ export function normalizeImportJobReport(
           ? file.originalName
           : fallback.file.originalName,
       mimeType:
-        typeof file.mimeType === 'string' ? file.mimeType : fallback.file.mimeType,
+        typeof file.mimeType === 'string'
+          ? file.mimeType
+          : fallback.file.mimeType,
       sizeBytes:
-        typeof file.sizeBytes === 'string' ? file.sizeBytes : fallback.file.sizeBytes,
+        typeof file.sizeBytes === 'string'
+          ? file.sizeBytes
+          : fallback.file.sizeBytes,
     },
     rowCount:
       typeof job.reportJson.rowCount === 'number'
@@ -142,6 +150,32 @@ export function toImportJobReportJson(
   report: ImportJobReportData,
 ): Prisma.InputJsonValue {
   return report as unknown as Prisma.InputJsonValue;
+}
+
+export function toImportJobRecoveryReportJson(
+  report: ImportJobReportData,
+  recovery: { classification: 'retryable' | 'terminal'; code: string },
+): Prisma.InputJsonValue {
+  return {
+    ...report,
+    recovery,
+  } as unknown as Prisma.InputJsonValue;
+}
+
+export function readImportJobRecovery(
+  value: unknown,
+): { classification: 'retryable' | 'terminal'; code: string } | null {
+  if (!isRecord(value) || !isRecord(value.recovery)) return null;
+  const classification = value.recovery.classification;
+  const code = value.recovery.code;
+  if (
+    (classification !== 'retryable' && classification !== 'terminal') ||
+    typeof code !== 'string' ||
+    code.length === 0
+  ) {
+    return null;
+  }
+  return { classification, code };
 }
 
 export function getImportJobReportFile(
@@ -187,5 +221,7 @@ function isRecord(value: unknown): value is Record<string, any> {
 }
 
 function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === 'string')
+  );
 }

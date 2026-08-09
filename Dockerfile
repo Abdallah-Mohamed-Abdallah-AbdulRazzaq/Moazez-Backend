@@ -14,8 +14,13 @@ RUN npm ci
 FROM dependencies AS build
 COPY prisma ./prisma
 COPY prisma.config.ts tsconfig.json tsconfig.build.json nest-cli.json ./
+COPY config/deployment ./config/deployment
+COPY scripts/migrations ./scripts/migrations
+COPY scripts/release ./scripts/release
 COPY src ./src
-RUN DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build npx prisma generate \
+RUN node scripts/migrations/migration-artifact-manifest.cjs build \
+      --output config/deployment/migration-artifact-manifest.json \
+  && DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build npx prisma generate \
   && NODE_OPTIONS=--max-old-space-size=3072 npm run build
 
 FROM base AS production-dependencies
@@ -42,6 +47,9 @@ ENV NODE_ENV=production \
 WORKDIR /app
 COPY --chown=node:node --from=production-dependencies /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/dist ./dist
+COPY --chown=node:node --from=build /app/config/deployment ./config/deployment
+COPY --chown=node:node --from=build /app/scripts/migrations ./scripts/migrations
+COPY --chown=node:node --from=build /app/scripts/release ./scripts/release
 COPY --chown=node:node prisma ./prisma
 COPY --chown=node:node prisma.config.ts package.json ./
 COPY --chown=node:node scripts/media-runtime-contract.cjs scripts/verify-media-runtime.cjs ./scripts/

@@ -10,26 +10,33 @@ import {
   AppDeviceTokenRepository,
   AppDeviceTokenSenderRecord,
 } from '../../app-device-tokens/infrastructure/app-device-token.repository';
+import { FirebasePushProvider } from '../../../infrastructure/push/firebase/firebase-push.provider';
 import {
   FirebasePushBatchItemResult,
   FirebasePushErrorCode,
   FirebasePushSkippedReason,
 } from '../../../infrastructure/push/firebase/firebase-push.types';
-import { FirebasePushProvider } from '../../../infrastructure/push/firebase/firebase-push.provider';
-import { CommunicationNotificationPushPayloadBuilder } from './communication-notification-push-payload.builder';
+import {
+  COMMUNICATION_NOTIFICATION_RECOVERY_WINDOW_MS,
+  COMMUNICATION_PUSH_RECOVERY_WINDOW_EXPIRED_CODE,
+  isRetryableCommunicationPushErrorCode,
+} from '../domain/communication-notification-generation-domain';
 import {
   CommunicationNotificationPushRepository,
+  CommunicationPushAttemptRecord,
   CommunicationPushDeliveryForProcessing,
 } from '../infrastructure/communication-notification-push.repository';
+import { CommunicationNotificationPushPayloadBuilder } from './communication-notification-push-payload.builder';
 
 const NO_ACTIVE_TOKENS_CODE = 'push/no-active-device-tokens';
 const ALREADY_SENT_CODE = 'push/already-sent';
 const DELIVERY_NOT_FOUND_CODE = 'push/delivery-not-found';
 const TOKEN_DECRYPT_FAILED_CODE = 'push/token-decrypt-failed';
+const RETRYABLE_ATTEMPTS_REMAIN_CODE = 'push/retryable-attempts-remain';
 
 export interface CommunicationPushDeliveryProcessingResult {
   deliveryId: string;
-  status: 'sent' | 'failed' | 'skipped';
+  status: 'pending' | 'sent' | 'failed' | 'skipped';
   sentCount: number;
   failedCount: number;
   skippedCount: number;
@@ -54,33 +61,29 @@ export class CommunicationNotificationPushDeliveryService {
   async processDelivery(input: {
     schoolId: string;
     deliveryId: string;
+    now?: Date;
   }): Promise<CommunicationPushDeliveryProcessingResult> {
-    const now = new Date();
+    const now = input.now ?? new Date();
     const delivery =
       await this.pushRepository.findCurrentSchoolPushDeliveryForProcessing(
         input.deliveryId,
       );
 
     if (!delivery || delivery.schoolId !== input.schoolId) {
-      return {
-        deliveryId: input.deliveryId,
-        status: 'skipped',
-        sentCount: 0,
-        failedCount: 0,
-        skippedCount: 0,
-        skippedReason: DELIVERY_NOT_FOUND_CODE,
-      };
+      return skippedResult(input.deliveryId, DELIVERY_NOT_FOUND_CODE);
     }
-
     if (delivery.status === CommunicationNotificationDeliveryStatus.SENT) {
-      return {
+      return skippedResult(delivery.id, ALREADY_SENT_CODE);
+    }
+    if (
+      delivery.createdAt.getTime() <=
+      now.getTime() - COMMUNICATION_NOTIFICATION_RECOVERY_WINDOW_MS
+    ) {
+      return this.expireRecoveryWindow({
+        schoolId: delivery.schoolId,
         deliveryId: delivery.id,
-        status: 'skipped',
-        sentCount: 0,
-        failedCount: 0,
-        skippedCount: 0,
-        skippedReason: ALREADY_SENT_CODE,
-      };
+        now,
+      });
     }
 
     const activeDeviceTokens =
@@ -90,7 +93,16 @@ export class CommunicationNotificationPushDeliveryService {
         appSurface: resolveDeliveryTokenSurface(delivery.notification),
       });
 
-    if (activeDeviceTokens.length === 0) {
+    await this.pushRepository.ensurePendingAttempts({
+      schoolId: delivery.schoolId,
+      deliveryId: delivery.id,
+      deviceTokenIds: activeDeviceTokens.map((token) => token.id),
+    });
+
+    const attempts = await this.pushRepository.listAttemptsForDelivery(
+      delivery.id,
+    );
+    if (activeDeviceTokens.length === 0 && attempts.length === 0) {
       await this.pushRepository.updateDeliveryStatus({
         schoolId: delivery.schoolId,
         deliveryId: delivery.id,
@@ -98,44 +110,32 @@ export class CommunicationNotificationPushDeliveryService {
         attemptedAt: now,
         errorCode: NO_ACTIVE_TOKENS_CODE,
         errorMessage: 'No active device tokens',
-        metadata: {
-          sentCount: 0,
-          failedCount: 0,
-          skippedCount: 0,
-        },
+        metadata: { sentCount: 0, failedCount: 0, skippedCount: 0 },
       });
-
-      return {
-        deliveryId: delivery.id,
-        status: 'skipped',
-        sentCount: 0,
-        failedCount: 0,
-        skippedCount: 0,
-        skippedReason: NO_ACTIVE_TOKENS_CODE,
-      };
+      return skippedResult(delivery.id, NO_ACTIVE_TOKENS_CODE);
     }
 
-    await this.pushRepository.ensurePendingAttempts({
-      schoolId: delivery.schoolId,
-      deliveryId: delivery.id,
-      deviceTokenIds: activeDeviceTokens.map((token) => token.id),
+    const attemptsByTokenId = new Map(
+      attempts.map((attempt) => [attempt.deviceTokenId, attempt]),
+    );
+    const eligibleTokens = activeDeviceTokens.filter((token) => {
+      const attempt = attemptsByTokenId.get(token.id);
+      return (
+        !attempt ||
+        attempt.status === CommunicationNotificationDeliveryStatus.PENDING ||
+        (attempt.status === CommunicationNotificationDeliveryStatus.FAILED &&
+          isRetryableCommunicationPushErrorCode(attempt.errorCode))
+      );
     });
 
     const decryptedItems: DecryptedTokenItem[] = [];
-    let failedCount = 0;
-    let skippedCount = 0;
-    let firstSkippedErrorCode: string | null = null;
-
-    for (const deviceToken of activeDeviceTokens) {
+    for (const deviceToken of eligibleTokens) {
       try {
         decryptedItems.push({
           deviceToken,
-          token: this.appDeviceTokenCrypto.decrypt(
-            deviceToken.tokenCiphertext,
-          ),
+          token: this.appDeviceTokenCrypto.decrypt(deviceToken.tokenCiphertext),
         });
       } catch {
-        failedCount += 1;
         await this.pushRepository.recordAttemptResult({
           schoolId: delivery.schoolId,
           deliveryId: delivery.id,
@@ -156,7 +156,6 @@ export class CommunicationNotificationPushDeliveryService {
       }
     }
 
-    let sentCount = 0;
     if (decryptedItems.length > 0) {
       const payload = this.payloadBuilder.build(delivery.notification);
       const result = await this.firebasePushProvider.sendBatch({
@@ -177,7 +176,6 @@ export class CommunicationNotificationPushDeliveryService {
         if (!item) continue;
 
         if (itemResult.status === 'sent') {
-          sentCount += 1;
           await this.pushRepository.recordAttemptResult({
             schoolId: delivery.schoolId,
             deliveryId: delivery.id,
@@ -191,12 +189,10 @@ export class CommunicationNotificationPushDeliveryService {
         }
 
         if (itemResult.status === 'skipped') {
-          skippedCount += 1;
           const skippedErrorCode = mapSkippedReasonToErrorCode(
             itemResult.skippedReason,
             itemResult.errorCode,
           );
-          firstSkippedErrorCode ??= skippedErrorCode;
           await this.pushRepository.recordAttemptResult({
             schoolId: delivery.schoolId,
             deliveryId: delivery.id,
@@ -210,7 +206,6 @@ export class CommunicationNotificationPushDeliveryService {
           continue;
         }
 
-        failedCount += 1;
         const errorCode = itemResult.errorCode ?? 'fcm/unknown';
         await this.pushRepository.recordAttemptResult({
           schoolId: delivery.schoolId,
@@ -232,46 +227,216 @@ export class CommunicationNotificationPushDeliveryService {
       }
     }
 
-    const deliveryStatus = resolveDeliveryStatus({
-      sentCount,
-      failedCount,
-      skippedCount,
+    const aggregate = resolveAttemptAggregate(
+      await this.pushRepository.listAttemptsForDelivery(delivery.id),
+    );
+    await this.persistAggregate(delivery, aggregate, now);
+
+    if (aggregate.retryableCount > 0) {
+      throw new Error('communication_push_retryable_failure');
+    }
+
+    return presentAggregate(delivery.id, aggregate);
+  }
+
+  async expireRecoveryWindow(input: {
+    schoolId: string;
+    deliveryId: string;
+    now?: Date;
+  }): Promise<CommunicationPushDeliveryProcessingResult> {
+    return this.terminalizeRecovery({
+      ...input,
+      errorCode: COMMUNICATION_PUSH_RECOVERY_WINDOW_EXPIRED_CODE,
+      errorMessage: 'Push recovery window expired',
     });
+  }
+
+  async terminalizeRecovery(input: {
+    schoolId: string;
+    deliveryId: string;
+    errorCode: string;
+    errorMessage: string;
+    now?: Date;
+  }): Promise<CommunicationPushDeliveryProcessingResult> {
+    const now = input.now ?? new Date();
+    const attempts = await this.pushRepository.listAttemptsForDelivery(
+      input.deliveryId,
+    );
+    for (const attempt of attempts) {
+      if (
+        attempt.status !== CommunicationNotificationDeliveryStatus.PENDING &&
+        !(
+          attempt.status === CommunicationNotificationDeliveryStatus.FAILED &&
+          isRetryableCommunicationPushErrorCode(attempt.errorCode)
+        )
+      ) {
+        continue;
+      }
+      await this.pushRepository.recordAttemptResult({
+        schoolId: input.schoolId,
+        deliveryId: input.deliveryId,
+        deviceTokenId: attempt.deviceTokenId,
+        status: CommunicationNotificationDeliveryStatus.FAILED,
+        errorCode: input.errorCode,
+        errorMessage: input.errorMessage,
+        attemptedAt: now,
+        failedAt: now,
+      });
+    }
+
+    const aggregate = resolveAttemptAggregate(
+      await this.pushRepository.listAttemptsForDelivery(input.deliveryId),
+    );
+    const status =
+      aggregate.sentCount > 0
+        ? CommunicationNotificationDeliveryStatus.SENT
+        : aggregate.skippedCount > 0 && aggregate.failedCount === 0
+          ? CommunicationNotificationDeliveryStatus.SKIPPED
+          : CommunicationNotificationDeliveryStatus.FAILED;
+    await this.pushRepository.updateDeliveryStatus({
+      schoolId: input.schoolId,
+      deliveryId: input.deliveryId,
+      status,
+      attemptedAt: now,
+      sentAt:
+        status === CommunicationNotificationDeliveryStatus.SENT ? now : null,
+      failedAt:
+        status === CommunicationNotificationDeliveryStatus.FAILED ? now : null,
+      errorCode:
+        status === CommunicationNotificationDeliveryStatus.FAILED
+          ? input.errorCode
+          : null,
+      errorMessage: null,
+      metadata: aggregateMetadata(aggregate),
+    });
+
+    return presentAggregate(input.deliveryId, { ...aggregate, status });
+  }
+
+  private async persistAggregate(
+    delivery: CommunicationPushDeliveryForProcessing,
+    aggregate: AttemptAggregate,
+    now: Date,
+  ): Promise<void> {
     await this.pushRepository.updateDeliveryStatus({
       schoolId: delivery.schoolId,
       deliveryId: delivery.id,
-      status: deliveryStatus,
+      status: aggregate.status,
       attemptedAt: now,
       sentAt:
-        deliveryStatus === CommunicationNotificationDeliveryStatus.SENT
+        aggregate.status === CommunicationNotificationDeliveryStatus.SENT
           ? now
           : null,
       failedAt:
-        deliveryStatus === CommunicationNotificationDeliveryStatus.FAILED
+        aggregate.status === CommunicationNotificationDeliveryStatus.FAILED
           ? now
           : null,
       errorCode:
-        deliveryStatus === CommunicationNotificationDeliveryStatus.SKIPPED
-          ? resolveSkippedDeliveryCode(skippedCount, firstSkippedErrorCode)
-          : deliveryStatus === CommunicationNotificationDeliveryStatus.FAILED
-            ? resolveFailedDeliveryCode(failedCount)
-            : null,
+        aggregate.status === CommunicationNotificationDeliveryStatus.PENDING
+          ? RETRYABLE_ATTEMPTS_REMAIN_CODE
+          : aggregate.status === CommunicationNotificationDeliveryStatus.SKIPPED
+            ? 'push/all-skipped'
+            : aggregate.status ===
+                CommunicationNotificationDeliveryStatus.FAILED
+              ? 'push/permanent-attempts-failed'
+              : null,
       errorMessage: null,
-      metadata: {
-        sentCount,
-        failedCount,
-        skippedCount,
-      },
+      metadata: aggregateMetadata(aggregate),
     });
-
-    return {
-      deliveryId: delivery.id,
-      status: presentProcessingStatus(deliveryStatus),
-      sentCount,
-      failedCount,
-      skippedCount,
-    };
   }
+}
+
+interface AttemptAggregate {
+  status: CommunicationNotificationDeliveryStatus;
+  sentCount: number;
+  failedCount: number;
+  skippedCount: number;
+  retryableCount: number;
+}
+
+function resolveAttemptAggregate(
+  attempts: CommunicationPushAttemptRecord[],
+): AttemptAggregate {
+  const sentCount = attempts.filter(
+    (attempt) =>
+      attempt.status === CommunicationNotificationDeliveryStatus.SENT,
+  ).length;
+  const failedAttempts = attempts.filter(
+    (attempt) =>
+      attempt.status === CommunicationNotificationDeliveryStatus.FAILED,
+  );
+  const failedCount = failedAttempts.length;
+  const skippedCount = attempts.filter(
+    (attempt) =>
+      attempt.status === CommunicationNotificationDeliveryStatus.SKIPPED,
+  ).length;
+  const retryableCount = attempts.filter(
+    (attempt) =>
+      attempt.status === CommunicationNotificationDeliveryStatus.PENDING ||
+      (attempt.status === CommunicationNotificationDeliveryStatus.FAILED &&
+        isRetryableCommunicationPushErrorCode(attempt.errorCode)),
+  ).length;
+  const permanentFailureCount =
+    failedCount -
+    failedAttempts.filter((attempt) =>
+      isRetryableCommunicationPushErrorCode(attempt.errorCode),
+    ).length;
+
+  let status: CommunicationNotificationDeliveryStatus;
+  if (retryableCount > 0) {
+    status = CommunicationNotificationDeliveryStatus.PENDING;
+  } else if (sentCount > 0) {
+    status = CommunicationNotificationDeliveryStatus.SENT;
+  } else if (permanentFailureCount === 0 && skippedCount === attempts.length) {
+    status = CommunicationNotificationDeliveryStatus.SKIPPED;
+  } else {
+    status = CommunicationNotificationDeliveryStatus.FAILED;
+  }
+
+  return { status, sentCount, failedCount, skippedCount, retryableCount };
+}
+
+function aggregateMetadata(aggregate: AttemptAggregate) {
+  return {
+    sentCount: aggregate.sentCount,
+    failedCount: aggregate.failedCount,
+    skippedCount: aggregate.skippedCount,
+    retryableCount: aggregate.retryableCount,
+  };
+}
+
+function presentAggregate(
+  deliveryId: string,
+  aggregate: AttemptAggregate,
+): CommunicationPushDeliveryProcessingResult {
+  return {
+    deliveryId,
+    status:
+      aggregate.status === CommunicationNotificationDeliveryStatus.PENDING
+        ? 'pending'
+        : aggregate.status === CommunicationNotificationDeliveryStatus.SENT
+          ? 'sent'
+          : aggregate.status === CommunicationNotificationDeliveryStatus.FAILED
+            ? 'failed'
+            : 'skipped',
+    sentCount: aggregate.sentCount,
+    failedCount: aggregate.failedCount,
+    skippedCount: aggregate.skippedCount,
+  };
+}
+
+function skippedResult(
+  deliveryId: string,
+  skippedReason: string,
+): CommunicationPushDeliveryProcessingResult {
+  return {
+    deliveryId,
+    status: 'skipped',
+    sentCount: 0,
+    failedCount: 0,
+    skippedCount: 0,
+    skippedReason,
+  };
 }
 
 function normalizeProviderItemResults(input: {
@@ -301,41 +466,6 @@ function mapSkippedReasonToErrorCode(
   return `push/${skippedReason.replace(/_/g, '-')}`;
 }
 
-function resolveDeliveryStatus(input: {
-  sentCount: number;
-  failedCount: number;
-  skippedCount: number;
-}): CommunicationNotificationDeliveryStatus {
-  if (input.sentCount > 0) return CommunicationNotificationDeliveryStatus.SENT;
-  if (input.failedCount > 0) {
-    return CommunicationNotificationDeliveryStatus.FAILED;
-  }
-  return CommunicationNotificationDeliveryStatus.SKIPPED;
-}
-
-function resolveSkippedDeliveryCode(
-  skippedCount: number,
-  firstSkippedErrorCode: string | null,
-): string | null {
-  return skippedCount > 0
-    ? (firstSkippedErrorCode ?? 'push/all-skipped')
-    : NO_ACTIVE_TOKENS_CODE;
-}
-
-function resolveFailedDeliveryCode(failedCount: number): string | null {
-  return failedCount > 0 ? 'push/all-failed' : null;
-}
-
-function presentProcessingStatus(
-  status: CommunicationNotificationDeliveryStatus,
-): CommunicationPushDeliveryProcessingResult['status'] {
-  if (status === CommunicationNotificationDeliveryStatus.SENT) return 'sent';
-  if (status === CommunicationNotificationDeliveryStatus.FAILED) {
-    return 'failed';
-  }
-  return 'skipped';
-}
-
 function isInvalidOrUnregisteredTokenError(errorCode: string): boolean {
   return (
     errorCode === 'fcm/registration-token-not-registered' ||
@@ -347,18 +477,16 @@ function resolveDeliveryTokenSurface(
   notification: CommunicationPushDeliveryForProcessing['notification'],
 ): AppDeviceTokenSurface | undefined {
   if (
-    notification.sourceModule !== CommunicationNotificationSourceModule.DISMISSAL
+    notification.sourceModule !==
+    CommunicationNotificationSourceModule.DISMISSAL
   ) {
     return undefined;
   }
-
   if (notification.recipientUser.userType === UserType.PARENT) {
     return AppDeviceTokenSurface.PARENT;
   }
-
   if (notification.recipientUser.userType === UserType.DISMISSAL_STAFF) {
     return AppDeviceTokenSurface.DISMISSAL_STAFF;
   }
-
   return undefined;
 }

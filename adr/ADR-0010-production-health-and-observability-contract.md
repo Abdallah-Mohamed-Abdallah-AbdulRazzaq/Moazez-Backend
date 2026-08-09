@@ -15,11 +15,11 @@ Accepted for PRD0-D024 and PRD0-D035 only — 2026-07-27
 
 ## Context
 
-The current public health endpoint returns a detailed aggregate report and
-normally uses HTTP 200 even when degraded. It does not provide separate
-startup, liveness, and readiness semantics. The public root is a development
-greeting. Full telemetry, SLOs, paging, retention, and cost have no owner
-approval.
+At the 2026-07-27 Phase 0B closeout, the public health endpoint returned a
+detailed aggregate report and normally used HTTP 200 even when degraded. It
+did not provide separate startup, liveness, and readiness semantics, and the
+public root was a development greeting. Full telemetry, SLOs, paging,
+retention, and cost still have no owner approval.
 
 Production orchestration needs a minimum role-specific contract before routing
 or restarting processes, while detailed observability remains a later Phase 7
@@ -64,14 +64,33 @@ release cycle.
 This ADR is the sole authoritative owner of PRD0-D024, PRD0-D025, and
 PRD0-D035. Acceptance does not extend to PRD0-D025.
 
-## Current implementation gap
+## Implementation status
 
-The baseline exposes one public health route with detailed dependency checks,
-no protected role-specific probe set, and a public development greeting. The
-current root graph also has no production role selector. Structured telemetry,
-complete metrics, worker heartbeats, dashboards, SLOs, alerts, traces, paging,
-and approved retention/budget are absent or governance-only. These accepted
-contracts are not yet implemented.
+At the 2026-07-27 Phase 0B closeout, the baseline exposed one detailed public
+health route, no protected role-specific probe set, and a development root
+greeting. Phase 1 subsequently implemented and closed the minimum public
+identity/health and role-specific startup, liveness, and readiness contracts;
+Phase 2 implemented the production runtime composition roots. Structured
+telemetry, complete metrics, worker heartbeats, dashboards, SLOs, alerts,
+traces, paging, and approved retention/budget remain Phase 7 work because
+PRD0-D025 is still pending.
+
+PRD3-G01-B2-R1 now supplies local disposable evidence for the established
+database-health contract. Across two independent canonical-runtime runs, a
+steady-state PostgreSQL stall made API, Core Worker, and Media Worker readiness
+return 503 within the bounded probe window while startup and process-local
+liveness stayed 200; the API public compatibility health response also stayed
+200. The same runtime processes recovered readiness after two cycles and after
+forced destruction of their Prisma backend sessions. Duplicate unavailable
+fingerprints were bounded and paired with recovered events. A fresh runtime
+with PostgreSQL unavailable failed closed during Prisma initialization. The
+canonical final command correlated every probe with its requested role and
+kind, verified response version against the in-image package, executed the
+29-mode proof matrix, and proved interruption-safe publication and two-phase
+tracked observer cleanup. The pre-review B2 record is superseded. The
+measured record is
+`docs/production-readiness/phase-3/02-database-outage-readiness-and-reconnect-evidence.md`.
+This local evidence does not select SLOs or prove provider behavior.
 
 ## Consequences
 

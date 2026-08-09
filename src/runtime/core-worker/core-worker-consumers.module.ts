@@ -6,10 +6,12 @@ import { StorageModule } from '../../infrastructure/storage/storage.module';
 import { AppDeviceTokenCrypto } from '../../modules/app-device-tokens/domain/app-device-token-crypto';
 import { AppDeviceTokenRepository } from '../../modules/app-device-tokens/infrastructure/app-device-token.repository';
 import { CommunicationNotificationGenerationService } from '../../modules/communication/application/communication-notification-generation.service';
+import { CommunicationNotificationReconciliationService } from '../../modules/communication/application/communication-notification-reconciliation.service';
 import { CommunicationNotificationPreferenceService } from '../../modules/communication/application/communication-notification-preference.service';
 import { CommunicationNotificationPushDeliveryService } from '../../modules/communication/application/communication-notification-push-delivery.service';
 import { CommunicationNotificationPushPayloadBuilder } from '../../modules/communication/application/communication-notification-push-payload.builder';
 import { CommunicationNotificationPushQueueService } from '../../modules/communication/application/communication-notification-push-queue.service';
+import { CommunicationNotificationPushReconciliationService } from '../../modules/communication/application/communication-notification-push-reconciliation.service';
 import { CommunicationRealtimeEventsService } from '../../modules/communication/application/communication-realtime-events.service';
 import { CommunicationNotificationGenerationRepository } from '../../modules/communication/infrastructure/communication-notification-generation.repository';
 import { CommunicationNotificationGenerationWorker } from '../../modules/communication/infrastructure/communication-notification-generation.worker';
@@ -24,6 +26,7 @@ import { ExpireDismissalRequestsUseCase } from '../../modules/dismissal/requests
 import { DismissalRequestsExpiryRepository } from '../../modules/dismissal/requests/infrastructure/dismissal-requests-expiry.repository';
 import { DismissalRequestExpiryWorker } from '../../modules/dismissal/requests/worker/dismissal-request-expiry.worker';
 import { ProcessImportValidationUseCase } from '../../modules/files/imports/application/process-import-validation.use-case';
+import { ImportValidationReconciliationService } from '../../modules/files/imports/application/import-validation-reconciliation.service';
 import { ImportJobsRepository } from '../../modules/files/imports/infrastructure/import-jobs.repository';
 import { ImportValidationWorker } from '../../modules/files/imports/infrastructure/import-validation.worker';
 import { AuthRepository } from '../../modules/iam/auth/infrastructure/auth.repository';
@@ -34,6 +37,7 @@ import { ResolveSchoolLogoUrlService } from '../../modules/settings/branding/app
 import { BrandingLogoCleanupWorker } from '../../modules/settings/branding/infrastructure/branding-logo-cleanup.worker';
 import { BrandingRepository } from '../../modules/settings/branding/infrastructure/branding.repository';
 import { ProcessEmailDeliveryRecipientUseCase } from '../../modules/settings/email/delivery/application/process-email-delivery-recipient.use-case';
+import { SchoolEmailDeliveryReconciliationService } from '../../modules/settings/email/delivery/application/school-email-delivery-reconciliation.service';
 import { SchoolEmailRendererService } from '../../modules/settings/email/delivery/application/school-email-renderer.service';
 import { EmailDeliveryRepository } from '../../modules/settings/email/delivery/infrastructure/email-delivery.repository';
 import { SchoolEmailDeliveryWorker } from '../../modules/settings/email/delivery/infrastructure/school-email-delivery.worker';
@@ -59,10 +63,12 @@ const CORE_WORKER_SUPPORT_PROVIDERS: Provider[] = [
   CommunicationNotificationPreferenceRepository,
   CommunicationNotificationPushRepository,
   CommunicationNotificationGenerationService,
+  CommunicationNotificationReconciliationService,
   CommunicationNotificationPreferenceService,
   CommunicationNotificationPushDeliveryService,
   CommunicationNotificationPushPayloadBuilder,
   CommunicationNotificationPushQueueService,
+  CommunicationNotificationPushReconciliationService,
   CommunicationRealtimeEventsService,
   EmailDeliveryRepository,
   EmailSettingsRepository,
@@ -76,8 +82,10 @@ const CORE_WORKER_SUPPORT_PROVIDERS: Provider[] = [
     useClass: NodemailerEmailTransport,
   },
   ProcessEmailDeliveryRecipientUseCase,
+  SchoolEmailDeliveryReconciliationService,
   ImportJobsRepository,
   ProcessImportValidationUseCase,
+  ImportValidationReconciliationService,
   DismissalRequestsExpiryRepository,
   DismissalRealtimeRepository,
   DismissalRealtimeEventsService,

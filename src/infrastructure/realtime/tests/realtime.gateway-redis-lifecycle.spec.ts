@@ -276,7 +276,13 @@ describe('RealtimeGateway Redis command ownership', () => {
     MockedIORedis.mockImplementation(
       () => publisher as unknown as IORedis,
     );
-    const gateway = createGateway('redis://synthetic:synthetic@redis:6379');
+    const configGet = jest.fn(
+      () => 'redis://synthetic:synthetic@redis:6379',
+    );
+    const gateway = createGateway(
+      'redis://synthetic:synthetic@redis:6379',
+      configGet,
+    );
     const internals = gatewayInternals(gateway);
     const server = {
       adapter: jest.fn(),
@@ -316,6 +322,10 @@ describe('RealtimeGateway Redis command ownership', () => {
     expect(subscriber.connect).toHaveBeenCalledTimes(1);
     expect(publisher.ping).toHaveBeenCalledTimes(1);
     expect(subscriber.ping).toHaveBeenCalledTimes(1);
+    expect(configGet).toHaveBeenCalledWith('REALTIME_REDIS_URL', {
+      infer: true,
+    });
+    expect(configGet).not.toHaveBeenCalledWith('REDIS_URL', expect.anything());
 
     await gateway.onModuleDestroy();
     expect(publisher.quit).toHaveBeenCalledTimes(1);
@@ -323,13 +333,16 @@ describe('RealtimeGateway Redis command ownership', () => {
   });
 });
 
-function createGateway(redisUrl?: string): RealtimeGateway {
+function createGateway(
+  redisUrl?: string,
+  configGet = jest.fn(() => redisUrl),
+): RealtimeGateway {
   return new RealtimeGateway(
     {} as RealtimeAuthService,
     {} as RealtimeCommunicationAccessService,
     {} as RealtimePublisherService,
     {
-      get: jest.fn(() => redisUrl),
+      get: configGet,
     } as unknown as ConfigService<Env, true>,
     {} as RealtimePresenceService,
     {} as RealtimeTypingService,

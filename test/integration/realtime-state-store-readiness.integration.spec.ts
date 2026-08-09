@@ -22,7 +22,7 @@ import type { TemporaryDiskProbe } from '../../src/modules/health/temporary-disk
 jest.setTimeout(45_000);
 
 describe('Realtime state-store fallback reconciliation', () => {
-  const redisUrl = process.env.TEST_REDIS_URL;
+  const redisUrl = process.env.TEST_REALTIME_REDIS_URL;
 
   (redisUrl ? it : it.skip)(
     'restores presence and unexpired typing before API readiness recovers',
@@ -36,6 +36,7 @@ describe('Realtime state-store fallback reconciliation', () => {
       const target = new URL(redisUrl as string);
       const admin = new IORedis(redisUrl as string, {
         maxRetriesPerRequest: 1,
+        disconnectTimeout: 1_000,
       });
       await expect(admin.ping()).resolves.toBe('PONG');
 
@@ -45,7 +46,7 @@ describe('Realtime state-store fallback reconciliation', () => {
       );
       const port = await proxy.listen();
       const config = new ConfigService<Env, true>({
-        REDIS_URL: `redis://127.0.0.1:${port}`,
+        REALTIME_REDIS_URL: `redis://127.0.0.1:${port}`,
       });
       const stateStore = new RealtimeStateStoreService(config);
       const probes = createProbeService(stateStore);
@@ -161,7 +162,7 @@ describe('Realtime state-store fallback reconciliation', () => {
         await stateStore.onModuleDestroy();
         await proxy.stop();
         await deleteTestKeys(admin, suffix);
-        await admin.quit();
+        await closeTestRedisClient(admin);
       }
 
       expect(proxy.openSocketCount()).toBe(0);
@@ -179,6 +180,7 @@ describe('Realtime state-store fallback reconciliation', () => {
       const target = new URL(redisUrl as string);
       const admin = new IORedis(redisUrl as string, {
         maxRetriesPerRequest: 1,
+        disconnectTimeout: 1_000,
       });
       await admin.call(
         'ACL',
@@ -197,7 +199,7 @@ describe('Realtime state-store fallback reconciliation', () => {
       const port = await proxy.listen();
       const stateStore = new RealtimeStateStoreService(
         new ConfigService<Env, true>({
-          REDIS_URL: `redis://${aclUser}:${encodeURIComponent(
+          REALTIME_REDIS_URL: `redis://${aclUser}:${encodeURIComponent(
             aclPassword,
           )}@127.0.0.1:${port}`,
         }),
@@ -233,7 +235,7 @@ describe('Realtime state-store fallback reconciliation', () => {
         await proxy.stop();
         await deleteTestKeys(admin, suffix);
         await admin.call('ACL', 'DELUSER', aclUser);
-        await admin.quit();
+        await closeTestRedisClient(admin);
       }
 
       expect(proxy.openSocketCount()).toBe(0);
@@ -251,7 +253,7 @@ describe('Realtime state-store fallback reconciliation', () => {
       const port = await proxy.listen();
       const stateStore = new RealtimeStateStoreService(
         new ConfigService<Env, true>({
-          REDIS_URL: `redis://127.0.0.1:${port}`,
+          REALTIME_REDIS_URL: `redis://127.0.0.1:${port}`,
         }),
       );
       const probes = createProbeService(stateStore);
@@ -285,6 +287,7 @@ describe('Realtime state-store fallback reconciliation', () => {
 class RedisProxy {
   private server: Server | null = null;
   private readonly sockets = new Set<Socket>();
+  private readonly closePairs = new Set<() => Promise<void>>();
   private suspended = false;
 
   constructor(
@@ -299,10 +302,39 @@ class RedisProxy {
           host: this.targetHost,
           port: this.targetPort,
         });
-        this.track(incoming);
-        this.track(outgoing);
+        const incomingClosed = waitForSocketClose(incoming);
+        const outgoingClosed = waitForSocketClose(outgoing);
+        let closePromise: Promise<void> | null = null;
+        const closePair = (): Promise<void> => {
+          if (closePromise) return closePromise;
+          incoming.unpipe(outgoing);
+          outgoing.unpipe(incoming);
+          incoming.destroy();
+          outgoing.destroy();
+          closePromise = Promise.all([incomingClosed, outgoingClosed]).then(() => {
+            this.sockets.delete(incoming);
+            this.sockets.delete(outgoing);
+            this.closePairs.delete(closePair);
+          });
+          return closePromise;
+        };
+        const closeOnLifecycle = (): void => {
+          void closePair();
+        };
+
+        this.closePairs.add(closePair);
+        this.sockets.add(incoming);
+        this.sockets.add(outgoing);
+        incoming.on('error', closeOnLifecycle);
+        outgoing.on('error', closeOnLifecycle);
+        incoming.on('close', closeOnLifecycle);
+        outgoing.on('close', closeOnLifecycle);
         incoming.pipe(outgoing);
         outgoing.pipe(incoming);
+        if (this.suspended) {
+          incoming.pause();
+          outgoing.pause();
+        }
       });
       this.server = server;
       server.once('error', reject);
@@ -329,25 +361,63 @@ class RedisProxy {
   }
 
   async stop(): Promise<void> {
-    for (const socket of this.sockets) socket.destroy();
-    this.sockets.clear();
     const server = this.server;
     this.server = null;
-    if (!server) return;
-    await new Promise<void>((resolve, reject) => {
-      server.close((error) => (error ? reject(error) : resolve()));
-    });
+    const serverClose = server
+      ? new Promise<void>((resolve, reject) => {
+          server.close((error) => (error ? reject(error) : resolve()));
+        })
+      : Promise.resolve();
+    const pairCloses = [...this.closePairs].map((closePair) => closePair());
+    await Promise.all([serverClose, ...pairCloses]);
   }
 
   openSocketCount(): number {
     return this.sockets.size;
   }
+}
 
-  private track(socket: Socket): void {
-    this.sockets.add(socket);
-    if (this.suspended) socket.pause();
-    socket.once('close', () => this.sockets.delete(socket));
-  }
+function waitForSocketClose(socket: Socket): Promise<void> {
+  if (socket.closed) return Promise.resolve();
+  return new Promise((resolve) => socket.once('close', resolve));
+}
+
+async function closeTestRedisClient(redis: IORedis): Promise<void> {
+  if (redis.status === 'end') return;
+  const terminal = observeTestRedisTerminalClose(redis);
+  redis.disconnect();
+  if ((await terminal) === 'timed_out') redis.disconnect();
+}
+
+function observeTestRedisTerminalClose(
+  redis: IORedis,
+): Promise<'closed' | 'timed_out'> {
+  if (redis.status === 'end') return Promise.resolve('closed');
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeout: NodeJS.Timeout | undefined;
+    const settle = (result: 'closed' | 'timed_out'): void => {
+      if (settled) return;
+      settled = true;
+      redis.off('close', onClose);
+      redis.off('end', onEnd);
+      if (timeout) clearTimeout(timeout);
+      resolve(result);
+    };
+    const onClose = (): void => {
+      if (redis.status === 'end') settle('closed');
+    };
+    const onEnd = (): void => settle('closed');
+
+    redis.on('close', onClose);
+    redis.once('end', onEnd);
+    if (redis.status === 'end') {
+      settle('closed');
+      return;
+    }
+    timeout = setTimeout(() => settle('timed_out'), 1_000);
+    timeout.unref();
+  });
 }
 
 function createProbeService(

@@ -16,11 +16,12 @@ Accepted for PRD0-D037 only — 2026-07-27
 
 ## Context
 
-Moazez centralizes substantial object operations and most managed file
-metadata, but upload, verification, authorization, replacement, retention, and
-physical lifecycle policies remain feature-specific. Reinforcement currently
-requires a private student-owned file for non-`NONE` proof types but does not
-enforce the selected proof type against declared and detected content.
+At the 2026-07-27 Phase 0B closeout, Moazez centralized substantial object
+operations and most managed file metadata, but upload, verification,
+authorization, replacement, retention, and physical lifecycle policies were
+feature-specific. Reinforcement required a private student-owned file for
+non-`NONE` proof types but did not enforce the selected proof type against
+declared and detected content.
 
 The owner has approved only the Reinforcement proof-type MIME policy. Generic
 file security, Parent uploads, malware handling, purpose classification,
@@ -71,13 +72,13 @@ client compatibility evidence are required.
 This ADR is the sole authoritative owner of PRD0-D036 through PRD0-D048.
 Acceptance applies only to PRD0-D037.
 
-## Current implementation gap
+## Implementation status
 
-Current Reinforcement flows verify organization, school, uploader, private
-visibility, and the non-`NONE` file requirement, but do not enforce this MIME
-matrix against both declared and detected content. Negative cross-type
-coverage is therefore not complete. No source or test implementation is
-performed by this ADR.
+At the 2026-07-27 Phase 0B closeout, Reinforcement flows did not enforce the
+approved MIME matrix against both declared and detected content. Phase 1
+PRD1-G06 subsequently implemented and closed that focused policy, including
+organization, school, uploader, private visibility, negative cross-type
+coverage, failure atomicity, and compatible rejection behavior.
 
 The wider file platform still lacks a universal detected-content policy,
 universal malware scanning, approved retention/reference graph, and approved

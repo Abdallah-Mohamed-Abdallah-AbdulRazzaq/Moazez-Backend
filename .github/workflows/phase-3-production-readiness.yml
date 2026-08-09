@@ -1,0 +1,90 @@
+name: Phase 3 Production Readiness Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-3-production-readiness-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  phase-3-production-readiness:
+    name: Exact-candidate Phase 3 gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - name: Check out exact candidate SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact checked-out SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$EXPECTED_SHA" ]]; then
+            echo "Exact candidate SHA mismatch." >&2
+            exit 1
+          fi
+          echo "Phase 3 expected SHA: $EXPECTED_SHA"
+          echo "Phase 3 tested SHA:   $actual_sha"
+
+      - name: Preload Phase 3 disposable fixture images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker version --format '{{.Server.Version}}' >/dev/null
+
+          images=(
+            'postgres:16-alpine'
+            'redis:7-alpine'
+            'minio/minio:RELEASE.2025-09-07T16-13-09Z'
+          )
+
+          for image in "${images[@]}"; do
+            docker pull "$image"
+            image_id="$(docker image inspect "$image" --format '{{.Id}}')"
+
+            if [[ ! "$image_id" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+              echo "Invalid local fixture image identity for: $image" >&2
+              exit 1
+            fi
+
+            echo "Phase 3 fixture image ready: $image"
+          done
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.1'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run exact-candidate Phase 3 gate
+        run: npm run verify:prd3-g06-final
+        env:
+          PRD3_G06_EVIDENCE_DIR: ${{ runner.temp }}/prd3-g06
+
+      - name: Upload sanitized Phase 3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-3-regression-summary-${{ github.run_id }}
+          path: ${{ runner.temp }}/prd3-g06/prd3-g06-summary.json
+          if-no-files-found: error
+          retention-days: 30

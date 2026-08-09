@@ -23,7 +23,10 @@ import { EmailSettingsRepository } from '../../infrastructure/email-settings.rep
 import { ProcessEmailDeliveryRecipientUseCase } from '../application/process-email-delivery-recipient.use-case';
 import { SchoolEmailRendererService } from '../application/school-email-renderer.service';
 import { EmailDeliveryRepository } from '../infrastructure/email-delivery.repository';
-import { SchoolEmailTransport } from '../transport/email-transport';
+import {
+  SchoolEmailTransport,
+  SchoolEmailTransportFailure,
+} from '../transport/email-transport';
 
 describe('ProcessEmailDeliveryRecipientUseCase', () => {
   function runScoped<T>(fn: () => Promise<T>): Promise<T> {
@@ -71,6 +74,7 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
     batchStatus?: SchoolEmailDeliveryBatchStatus;
     credentialMode?: string;
     metadata?: Record<string, unknown> | null;
+    failureReason?: string | null;
   }) {
     return {
       id: 'recipient-1',
@@ -84,7 +88,7 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
       attempts: 0,
       lastAttemptAt: null,
       sentAt: null,
-      failureReason: null,
+      failureReason: overrides?.failureReason ?? null,
       skippedReason: null,
       metadata: overrides?.metadata ?? null,
       createdAt: now,
@@ -281,6 +285,7 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
     );
     expect(mocks.transport.sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
+        messageId: '<school-email-delivery.batch-1.recipient-1@moazez.invalid>',
         toEmail: 'contact@example.com',
         html: expect.stringContaining('MZ-'),
       }),
@@ -297,6 +302,8 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
     ).toHaveBeenCalledWith(
       'recipient-1',
       expect.objectContaining({
+        stableMessageId:
+          '<school-email-delivery.batch-1.recipient-1@moazez.invalid>',
         pendingCredential: expect.objectContaining({
           encryptedTemporaryPassword: expect.stringMatching(/^encrypted:MZ-/),
         }),
@@ -314,6 +321,41 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
       .mockRejectedValue(new Error('smtp temporary failure MZ-LEAK-1234'));
     const mocks = buildUseCase(recipient(), { sendEmail });
 
+    await runScoped(() =>
+      mocks.useCase.execute({
+        schoolId: 'school-1',
+        organizationId: 'org-1',
+        batchId: 'batch-1',
+        recipientId: 'recipient-1',
+        actorUserId: 'actor-1',
+        actorUserType: UserType.SCHOOL_USER,
+      }),
+    );
+
+    expect(
+      mocks.credentialsRepository.updateUserCredential,
+    ).not.toHaveBeenCalled();
+    expect(mocks.authRepository.revokeUserSessions).not.toHaveBeenCalled();
+    expect(mocks.deliveryRepository.markRecipientFailed).toHaveBeenCalledWith({
+      recipientId: 'recipient-1',
+      failureReason: 'recovery_outcome_unknown',
+    });
+    expect(JSON.stringify(mocks.updatedMetadata)).toContain(
+      'encryptedTemporaryPassword',
+    );
+    expect(JSON.stringify(mocks.updatedMetadata)).not.toMatch(/"MZ-/);
+  });
+
+  it('classifies a proven pre-provider transport failure without outcome_unknown', async () => {
+    const sendEmail = jest.fn().mockRejectedValue(
+      new SchoolEmailTransportFailure(
+        'PRE_PROVIDER_ATTEMPT',
+        'transport_construction_failed',
+        true,
+      ),
+    );
+    const mocks = buildUseCase(recipient(), { sendEmail });
+
     await expect(
       runScoped(() =>
         mocks.useCase.execute({
@@ -325,31 +367,25 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
           actorUserType: UserType.SCHOOL_USER,
         }),
       ),
-    ).rejects.toThrow('smtp temporary failure [redacted]');
-
-    expect(
-      mocks.credentialsRepository.updateUserCredential,
-    ).not.toHaveBeenCalled();
-    expect(mocks.authRepository.revokeUserSessions).not.toHaveBeenCalled();
+    ).rejects.toThrow('school_email_delivery_retryable_failure');
     expect(mocks.deliveryRepository.markRecipientFailed).toHaveBeenCalledWith({
       recipientId: 'recipient-1',
-      failureReason: 'smtp temporary failure [redacted]',
+      failureReason: 'recovery_retryable:pre_provider_failure',
     });
-    expect(JSON.stringify(mocks.updatedMetadata)).toContain(
-      'encryptedTemporaryPassword',
-    );
-    expect(JSON.stringify(mocks.updatedMetadata)).not.toMatch(/"MZ-/);
   });
 
-  it('reuses the same pending temporary password on retry', async () => {
-    const firstSend = jest
-      .fn()
-      .mockRejectedValue(new Error('smtp temporary failure'));
-    const firstRun = buildUseCase(recipient(), { sendEmail: firstSend });
+  it('classifies a known provider rejection as terminal', async () => {
+    const mocks = buildUseCase(recipient(), {
+      sendEmail: jest.fn().mockResolvedValue({
+        providerMessageId: 'provider-rejected',
+        accepted: [],
+        rejected: ['contact@example.com'],
+      }),
+    });
 
     await expect(
       runScoped(() =>
-        firstRun.useCase.execute({
+        mocks.useCase.execute({
           schoolId: 'school-1',
           organizationId: 'org-1',
           batchId: 'batch-1',
@@ -358,7 +394,29 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
           actorUserType: UserType.SCHOOL_USER,
         }),
       ),
-    ).rejects.toThrow('smtp temporary failure');
+    ).resolves.toBeUndefined();
+    expect(mocks.deliveryRepository.markRecipientFailed).toHaveBeenCalledWith({
+      recipientId: 'recipient-1',
+      failureReason: 'recovery_terminal:provider_rejected',
+    });
+  });
+
+  it('reuses the same pending temporary password on retry', async () => {
+    const firstSend = jest
+      .fn()
+      .mockRejectedValue(new Error('smtp temporary failure'));
+    const firstRun = buildUseCase(recipient(), { sendEmail: firstSend });
+
+    await runScoped(() =>
+      firstRun.useCase.execute({
+        schoolId: 'school-1',
+        organizationId: 'org-1',
+        batchId: 'batch-1',
+        recipientId: 'recipient-1',
+        actorUserId: 'actor-1',
+        actorUserType: UserType.SCHOOL_USER,
+      }),
+    );
 
     const firstHtml = firstSend.mock.calls[0][0].html as string;
     const firstTemporaryPassword = firstHtml.match(/MZ-[A-Z0-9-]+/)?.[0];
@@ -366,7 +424,8 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
 
     const retryRecipient = recipient({
       status: SchoolEmailDeliveryRecipientStatus.FAILED,
-      metadata: firstRun.updatedMetadata[0] as Record<string, unknown>,
+      failureReason: 'recovery_retryable:transport_unavailable',
+      metadata: firstRun.updatedMetadata.at(-1) as Record<string, unknown>,
     });
     const retrySend = jest.fn().mockResolvedValue({
       providerMessageId: 'provider-2',
@@ -399,23 +458,25 @@ describe('ProcessEmailDeliveryRecipientUseCase', () => {
       membershipRecord: membership('existing-hash'),
     });
 
-    await expect(
-      runScoped(() =>
-        mocks.useCase.execute({
-          schoolId: 'school-1',
-          organizationId: 'org-1',
-          batchId: 'batch-1',
-          recipientId: 'recipient-1',
-          actorUserId: 'actor-1',
-          actorUserType: UserType.SCHOOL_USER,
-        }),
-      ),
-    ).rejects.toThrow('credential_recipient_already_has_password');
+    await runScoped(() =>
+      mocks.useCase.execute({
+        schoolId: 'school-1',
+        organizationId: 'org-1',
+        batchId: 'batch-1',
+        recipientId: 'recipient-1',
+        actorUserId: 'actor-1',
+        actorUserType: UserType.SCHOOL_USER,
+      }),
+    );
 
     expect(mocks.transport.sendEmail).not.toHaveBeenCalled();
     expect(
       mocks.credentialsRepository.updateUserCredential,
     ).not.toHaveBeenCalled();
+    expect(mocks.deliveryRepository.markRecipientFailed).toHaveBeenCalledWith({
+      recipientId: 'recipient-1',
+      failureReason: 'recovery_terminal:invalid_recipient_input',
+    });
   });
 
   it('revokes sessions after successful regenerate delivery', async () => {

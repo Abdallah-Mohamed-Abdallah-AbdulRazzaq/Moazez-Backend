@@ -1,0 +1,4 @@
+prisma/schema.prisma text eol=lf
+prisma.config.ts text eol=lf
+prisma/migrations/** text eol=lf
+config/deployment/migration-artifact-manifest.json text eol=lf

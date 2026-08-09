@@ -3,9 +3,7 @@ import { randomUUID } from 'crypto';
 import { Job, Queue } from 'bullmq';
 import { BullmqService } from '../../../../infrastructure/queue/bullmq.service';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
-import {
-  LEARNING_MEDIA_STALE_CLAIM_MS,
-} from '../domain/learning-media.constants';
+import { LEARNING_MEDIA_STALE_CLAIM_MS } from '../domain/learning-media.constants';
 import {
   LEARNING_MEDIA_CLEANUP_QUEUE,
   LEARNING_MEDIA_DISCOVERY_JOB_NAME,
@@ -44,6 +42,12 @@ export class LearningMediaCleanupService implements OnModuleInit {
         }
         if (job.name === 'cleanup') {
           const data = job.data as CleanupJobData;
+          if (
+            typeof data.uploadId !== 'string' ||
+            !['staging', 'final', 'finalization-recovery'].includes(data.target)
+          ) {
+            throw new Error('learning_media_cleanup_job_invalid');
+          }
           return this.cleanUpload(data.uploadId, data.target);
         }
         throw new Error('learning_media_cleanup_job_unknown');
@@ -58,6 +62,7 @@ export class LearningMediaCleanupService implements OnModuleInit {
       now,
       staleBefore,
     );
+    await this.queue.getQueueReadiness(LEARNING_MEDIA_CLEANUP_QUEUE);
     const queue = this.queue.getQueue(LEARNING_MEDIA_CLEANUP_QUEUE);
     let enqueued = 0;
     for (const candidate of candidates) {

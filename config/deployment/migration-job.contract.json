@@ -1,0 +1,23 @@
+{
+  "contractVersion": 1,
+  "runtimeContract": "cloud-run-job-or-approved-equivalent",
+  "artifactPolicy": "same-immutable-application-image",
+  "artifactDigestAuthority": "release-orchestrator",
+  "manualRerunRequiresNewExecutionId": true,
+  "manualRerunRequiresNewApprovalReference": true,
+  "governanceReferencesBindExecutionId": true,
+  "executionIdUniquenessAuthority": "release-orchestrator",
+  "command": [
+    "node",
+    "scripts/migrations/run-governed-migration-job.cjs"
+  ],
+  "databaseIdentity": "moazez_migration",
+  "databaseSchema": "public",
+  "databaseConnectionAllowance": 2,
+  "tasks": 1,
+  "parallelism": 1,
+  "maxRetries": 0,
+  "timeoutSeconds": 1200,
+  "seedsAllowed": false,
+  "applicationBootstrapAllowed": false
+}

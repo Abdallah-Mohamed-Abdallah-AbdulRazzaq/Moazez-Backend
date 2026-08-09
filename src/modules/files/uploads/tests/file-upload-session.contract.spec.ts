@@ -117,8 +117,10 @@ describe('learning media upload foundation contract', () => {
   it('requires explicit non-wildcard CORS origins outside local/test runtime', () => {
     const base = {
       APP_URL: 'https://api.example.test',
-      DATABASE_URL: 'postgresql://user:pass@example.test/db',
-      REDIS_URL: 'redis://example.test:6379',
+      DATABASE_URL:
+        'postgresql://test:test@127.0.0.1:5432/test?sslmode=require',
+      QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
+      REALTIME_REDIS_URL: 'redis://127.0.0.1:6380',
       JWT_ACCESS_SECRET: 'access-secret-at-least-sixteen',
       JWT_REFRESH_SECRET: 'refresh-secret-at-least-sixteen',
       JWT_ACCESS_TTL: '15m',

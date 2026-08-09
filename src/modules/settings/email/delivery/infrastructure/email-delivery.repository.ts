@@ -8,8 +8,13 @@ import {
   SchoolEmailDeliveryRecipientStatus,
   SchoolEmailDeliveryRecipientType,
   SchoolEmailTemplateKey,
+  OrganizationStatus,
+  SchoolStatus,
+  UserStatus,
+  UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../../../../infrastructure/database/prisma.service';
+import { SCHOOL_EMAIL_RETRYABLE_REASON_PREFIX } from '../domain/email-delivery.constants';
 
 const RECIPIENT_WITH_BATCH_ARGS =
   Prisma.validator<Prisma.SchoolEmailDeliveryRecipientDefaultArgs>()({
@@ -31,6 +36,21 @@ export interface CreateDeliveryRecipientData {
   status: SchoolEmailDeliveryRecipientStatus;
   skippedReason?: string | null;
   metadata?: Prisma.InputJsonValue | typeof Prisma.JsonNull;
+}
+
+export interface SchoolEmailRecoveryCandidate {
+  id: string;
+  batchId: string;
+  schoolId: string;
+  organizationId: string;
+  actorUserId: string | null;
+  actorUserType: UserType | null;
+  ineligibilityReason:
+    | 'recovery_terminal:source_ineligible'
+    | 'recovery_terminal:tenant_ineligible'
+    | null;
+  status: SchoolEmailDeliveryRecipientStatus;
+  createdAt: Date;
 }
 
 @Injectable()
@@ -209,14 +229,22 @@ export class EmailDeliveryRepository {
       await this.scopedPrisma.schoolEmailDeliveryRecipient.updateMany({
         where: {
           id: recipientId,
-          status: {
-            in: [
-              SchoolEmailDeliveryRecipientStatus.PENDING,
-              SchoolEmailDeliveryRecipientStatus.QUEUED,
-              SchoolEmailDeliveryRecipientStatus.SENDING,
-              SchoolEmailDeliveryRecipientStatus.FAILED,
-            ],
-          },
+          OR: [
+            {
+              status: {
+                in: [
+                  SchoolEmailDeliveryRecipientStatus.PENDING,
+                  SchoolEmailDeliveryRecipientStatus.QUEUED,
+                ],
+              },
+            },
+            {
+              status: SchoolEmailDeliveryRecipientStatus.FAILED,
+              failureReason: {
+                startsWith: SCHOOL_EMAIL_RETRYABLE_REASON_PREFIX,
+              },
+            },
+          ],
         },
         data: {
           status: SchoolEmailDeliveryRecipientStatus.SENDING,
@@ -227,6 +255,129 @@ export class EmailDeliveryRepository {
       });
 
     return result.count === 1;
+  }
+
+  async listRecoveryCandidates(input: {
+    windowStartedAt: Date;
+    expired: boolean;
+    afterId?: string;
+    take: number;
+  }): Promise<SchoolEmailRecoveryCandidate[]> {
+    const rows = await this.prisma.schoolEmailDeliveryRecipient.findMany({
+      where: {
+        createdAt: input.expired
+          ? { lte: input.windowStartedAt }
+          : { gt: input.windowStartedAt },
+        OR: [
+          {
+            status: {
+              in: [
+                SchoolEmailDeliveryRecipientStatus.QUEUED,
+                SchoolEmailDeliveryRecipientStatus.PENDING,
+              ],
+            },
+          },
+          {
+            status: SchoolEmailDeliveryRecipientStatus.FAILED,
+            failureReason: { startsWith: SCHOOL_EMAIL_RETRYABLE_REASON_PREFIX },
+          },
+        ],
+        batch: { status: { not: SchoolEmailDeliveryBatchStatus.CANCELLED } },
+      },
+      select: {
+        id: true,
+        batchId: true,
+        schoolId: true,
+        status: true,
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            userType: true,
+            status: true,
+            deletedAt: true,
+          },
+        },
+        batch: { select: { createdByUserId: true } },
+        school: {
+          select: {
+            organizationId: true,
+            status: true,
+            deletedAt: true,
+            organization: { select: { status: true, deletedAt: true } },
+          },
+        },
+      },
+      orderBy: { id: 'asc' },
+      ...(input.afterId ? { cursor: { id: input.afterId }, skip: 1 } : {}),
+      take: input.take,
+    });
+    const creatorIds = rows.flatMap((row) =>
+      row.batch.createdByUserId ? [row.batch.createdByUserId] : [],
+    );
+    const creators = await this.prisma.user.findMany({
+      where: {
+        id: { in: creatorIds },
+        status: UserStatus.ACTIVE,
+        deletedAt: null,
+      },
+      select: { id: true, userType: true },
+    });
+    const creatorsById = new Map(creators.map((user) => [user.id, user]));
+
+    return rows.map((row) => {
+      const actor =
+        (row.batch.createdByUserId
+          ? creatorsById.get(row.batch.createdByUserId)
+          : null) ?? null;
+      const tenantIneligible =
+        row.school.status !== SchoolStatus.ACTIVE ||
+        row.school.deletedAt !== null ||
+        row.school.organization.status !== OrganizationStatus.ACTIVE ||
+        row.school.organization.deletedAt !== null;
+      const recipientSourceIneligible =
+        row.user !== null &&
+        (row.user.status !== UserStatus.ACTIVE || row.user.deletedAt !== null);
+      return {
+        id: row.id,
+        batchId: row.batchId,
+        schoolId: row.schoolId,
+        organizationId: row.school.organizationId,
+        actorUserId: actor?.id ?? null,
+        actorUserType: actor?.userType ?? null,
+        ineligibilityReason: tenantIneligible
+          ? 'recovery_terminal:tenant_ineligible'
+          : recipientSourceIneligible
+            ? 'recovery_terminal:source_ineligible'
+            : null,
+        status: row.status,
+        createdAt: row.createdAt,
+      };
+    });
+  }
+
+  async listStaleSendingRecoveryCandidates(input: {
+    staleBefore: Date;
+    take: number;
+  }): Promise<SchoolEmailRecoveryCandidate[]> {
+    const rows = await this.prisma.schoolEmailDeliveryRecipient.findMany({
+      where: {
+        status: SchoolEmailDeliveryRecipientStatus.SENDING,
+        lastAttemptAt: { lte: input.staleBefore },
+        batch: { status: { not: SchoolEmailDeliveryBatchStatus.CANCELLED } },
+      },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+      take: input.take,
+    });
+    if (rows.length === 0) return [];
+
+    const ids = rows.map((row) => row.id);
+    const all = await this.listRecoveryContextByIds(ids);
+    return ids.flatMap((id) => {
+      const candidate = all.get(id);
+      return candidate ? [candidate] : [];
+    });
   }
 
   async updateRecipientMetadata(
@@ -388,6 +539,85 @@ export class EmailDeliveryRepository {
     return this.scopedPrisma.schoolEmailDeliveryBatch.findFirstOrThrow({
       where: { id: batchId },
     });
+  }
+
+  private async listRecoveryContextByIds(
+    ids: string[],
+  ): Promise<Map<string, SchoolEmailRecoveryCandidate>> {
+    const rows = await this.prisma.schoolEmailDeliveryRecipient.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        batchId: true,
+        schoolId: true,
+        status: true,
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            userType: true,
+            status: true,
+            deletedAt: true,
+          },
+        },
+        batch: { select: { createdByUserId: true } },
+        school: {
+          select: {
+            organizationId: true,
+            status: true,
+            deletedAt: true,
+            organization: { select: { status: true, deletedAt: true } },
+          },
+        },
+      },
+    });
+    const creatorIds = rows.flatMap((row) =>
+      row.batch.createdByUserId ? [row.batch.createdByUserId] : [],
+    );
+    const creators = await this.prisma.user.findMany({
+      where: {
+        id: { in: creatorIds },
+        status: UserStatus.ACTIVE,
+        deletedAt: null,
+      },
+      select: { id: true, userType: true },
+    });
+    const creatorsById = new Map(creators.map((user) => [user.id, user]));
+
+    return new Map(
+      rows.map((row) => {
+        const actor =
+          (row.batch.createdByUserId
+            ? creatorsById.get(row.batch.createdByUserId)
+            : null) ?? null;
+        const tenantIneligible =
+          row.school.status !== SchoolStatus.ACTIVE ||
+          row.school.deletedAt !== null ||
+          row.school.organization.status !== OrganizationStatus.ACTIVE ||
+          row.school.organization.deletedAt !== null;
+        const recipientSourceIneligible =
+          row.user !== null &&
+          (row.user.status !== UserStatus.ACTIVE || row.user.deletedAt !== null);
+        return [
+          row.id,
+          {
+            id: row.id,
+            batchId: row.batchId,
+            schoolId: row.schoolId,
+            organizationId: row.school.organizationId,
+            actorUserId: actor?.id ?? null,
+            actorUserType: actor?.userType ?? null,
+            ineligibilityReason: tenantIneligible
+              ? 'recovery_terminal:tenant_ineligible'
+              : recipientSourceIneligible
+                ? 'recovery_terminal:source_ineligible'
+                : null,
+            status: row.status,
+            createdAt: row.createdAt,
+          },
+        ];
+      }),
+    );
   }
 
   private countRecipients(

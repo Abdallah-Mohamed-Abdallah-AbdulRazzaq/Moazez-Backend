@@ -5,7 +5,6 @@ import request from 'supertest';
 import type { App } from 'supertest/types';
 import { AppModule } from '../../src/app.module';
 import { StorageService } from '../../src/infrastructure/storage/storage.service';
-import { CoreWorkerRuntimeModule } from '../../src/runtime/core-worker/core-worker-runtime.module';
 
 const GLOBAL_PREFIX = '/api/v1';
 
@@ -105,10 +104,19 @@ describe('Files imports skeleton flow (e2e)', () => {
     await app.init();
 
     storageService = app.get(StorageService);
-    coreWorker = await Test.createTestingModule({
-      imports: [CoreWorkerRuntimeModule],
-    }).compile();
-    await coreWorker.init();
+    const originalRuntimeRole = process.env.DATABASE_RUNTIME_ROLE;
+    process.env.DATABASE_RUNTIME_ROLE = 'core-worker';
+    try {
+      const { CoreWorkerRuntimeModule } = require(
+        '../../src/runtime/core-worker/core-worker-runtime.module'
+      ) as typeof import('../../src/runtime/core-worker/core-worker-runtime.module');
+      coreWorker = await Test.createTestingModule({
+        imports: [CoreWorkerRuntimeModule],
+      }).compile();
+      await coreWorker.init();
+    } finally {
+      restoreEnvironmentValue('DATABASE_RUNTIME_ROLE', originalRuntimeRole);
+    }
     attachmentCountBefore = await prisma.attachment.count();
   });
 
@@ -314,3 +322,11 @@ describe('Files imports skeleton flow (e2e)', () => {
     expect(attachmentCountAfter).toBe(attachmentCountBefore);
   });
 });
+
+function restoreEnvironmentValue(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
+}

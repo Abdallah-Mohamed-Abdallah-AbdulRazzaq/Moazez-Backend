@@ -25,7 +25,6 @@ import { REALTIME_SERVER_EVENTS } from '../../src/infrastructure/realtime/realti
 import { RealtimePublisherService } from '../../src/infrastructure/realtime/realtime-publisher.service';
 import { ExpireDismissalRequestsUseCase } from '../../src/modules/dismissal/requests/application/expire-dismissal-requests.use-case';
 import { CORE_WORKER_CONSUMER_PROVIDERS } from '../../src/runtime/core-worker/core-worker-consumers.module';
-import { CoreWorkerRuntimeModule } from '../../src/runtime/core-worker/core-worker-runtime.module';
 
 const GLOBAL_PREFIX = '/api/v1';
 const PASSWORD = 'DismissalExpiryE2E123!';
@@ -129,14 +128,23 @@ describe('DISMISSAL-EXPIRY-1A request expiration worker (e2e)', () => {
     );
     await app.init();
 
-    const coreWorkerBuilder = Test.createTestingModule({
-      imports: [CoreWorkerRuntimeModule],
-    });
-    for (const consumerProvider of CORE_WORKER_CONSUMER_PROVIDERS) {
-      coreWorkerBuilder.overrideProvider(consumerProvider).useValue({});
+    const originalRuntimeRole = process.env.DATABASE_RUNTIME_ROLE;
+    process.env.DATABASE_RUNTIME_ROLE = 'core-worker';
+    try {
+      const { CoreWorkerRuntimeModule } = require(
+        '../../src/runtime/core-worker/core-worker-runtime.module'
+      ) as typeof import('../../src/runtime/core-worker/core-worker-runtime.module');
+      const coreWorkerBuilder = Test.createTestingModule({
+        imports: [CoreWorkerRuntimeModule],
+      });
+      for (const consumerProvider of CORE_WORKER_CONSUMER_PROVIDERS) {
+        coreWorkerBuilder.overrideProvider(consumerProvider).useValue({});
+      }
+      coreWorker = await coreWorkerBuilder.compile();
+      await coreWorker.init();
+    } finally {
+      restoreEnvironmentValue('DATABASE_RUNTIME_ROLE', originalRuntimeRole);
     }
-    coreWorker = await coreWorkerBuilder.compile();
-    await coreWorker.init();
 
     expireUseCase = coreWorker.get(ExpireDismissalRequestsUseCase);
     adminToken = await login(admin.email);
@@ -951,6 +959,14 @@ describe('DISMISSAL-EXPIRY-1A request expiration worker (e2e)', () => {
     ).toBe(true);
   }
 });
+
+function restoreEnvironmentValue(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
+}
 
 function minutesBefore(now: Date, minutes: number): Date {
   return new Date(now.getTime() - minutes * 60_000);

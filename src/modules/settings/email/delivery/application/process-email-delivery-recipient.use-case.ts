@@ -8,6 +8,7 @@ import {
   SchoolEmailDeliveryRecipientStatus,
   SchoolEmailTemplateKey,
 } from '@prisma/client';
+import { DomainException } from '../../../../../common/exceptions/domain-exception';
 import { PasswordService } from '../../../../iam/auth/domain/password.service';
 import { AuthRepository } from '../../../../iam/auth/infrastructure/auth.repository';
 import { generateTemporaryPassword } from '../../../users/credentials/domain/credential-password.policy';
@@ -19,10 +20,20 @@ import {
 import { EmailSecretCrypto } from '../../domain/email-secret-crypto';
 import { EmailSettingsRepository } from '../../infrastructure/email-settings.repository';
 import { SCHOOL_EMAIL_TRANSPORT } from '../transport/email-transport';
-import type { SchoolEmailTransport } from '../transport/email-transport';
+import {
+  SchoolEmailTransportFailure,
+  type SchoolEmailTransport,
+} from '../transport/email-transport';
 import { CredentialDeliveryModeValue } from '../dto/email-delivery.dto';
 import { EmailDeliveryRepository } from '../infrastructure/email-delivery.repository';
-import { SchoolEmailDeliveryRecipientJobData } from '../domain/email-delivery.constants';
+import {
+  buildSchoolEmailMessageId,
+  isRetryableSchoolEmailFailureReason,
+  SCHOOL_EMAIL_OUTCOME_UNKNOWN_REASON,
+  SCHOOL_EMAIL_RETRYABLE_REASON_PREFIX,
+  SCHOOL_EMAIL_TERMINAL_REASON_PREFIX,
+  SchoolEmailDeliveryRecipientJobData,
+} from '../domain/email-delivery.constants';
 import { SchoolEmailRendererService } from './school-email-renderer.service';
 
 @Injectable()
@@ -40,16 +51,30 @@ export class ProcessEmailDeliveryRecipientUseCase {
   ) {}
 
   async execute(data: SchoolEmailDeliveryRecipientJobData): Promise<void> {
-    const recipient =
-      await this.deliveryRepository.findRecipientForProcessing(
-        data.recipientId,
-      );
+    const recipient = await this.deliveryRepository.findRecipientForProcessing(
+      data.recipientId,
+    );
     if (!recipient) return;
 
     if (
       recipient.status === SchoolEmailDeliveryRecipientStatus.SENT ||
       recipient.status === SchoolEmailDeliveryRecipientStatus.SKIPPED ||
       recipient.status === SchoolEmailDeliveryRecipientStatus.CANCELLED
+    ) {
+      return;
+    }
+
+    if (recipient.status === SchoolEmailDeliveryRecipientStatus.SENDING) {
+      await this.deliveryRepository.markRecipientFailed({
+        recipientId: recipient.id,
+        failureReason: SCHOOL_EMAIL_OUTCOME_UNKNOWN_REASON,
+      });
+      await this.deliveryRepository.refreshBatchStatus(recipient.batchId);
+      return;
+    }
+    if (
+      recipient.status === SchoolEmailDeliveryRecipientStatus.FAILED &&
+      !isRetryableSchoolEmailFailureReason(recipient.failureReason)
     ) {
       return;
     }
@@ -72,14 +97,39 @@ export class ProcessEmailDeliveryRecipientUseCase {
 
     await this.deliveryRepository.markBatchProcessing(recipient.batchId, now);
 
+    let transportEntered = false;
     try {
       const connection = await this.resolveActiveConnection();
+      const messageId = buildSchoolEmailMessageId({
+        batchId: recipient.batchId,
+        recipientId: recipient.id,
+      });
+      const recipientMetadata = {
+        ...(jsonRecordOrNull(recipient.metadata) ?? {}),
+        stableMessageId: messageId,
+      } satisfies Prisma.InputJsonObject;
+      await this.deliveryRepository.updateRecipientMetadata(
+        recipient.id,
+        recipientMetadata,
+      );
+      const recipientWithMessageIdentity = {
+        ...recipient,
+        metadata: recipientMetadata,
+      };
       const rendered =
         recipient.batch.kind === SchoolEmailDeliveryKind.CREDENTIAL_DELIVERY
-          ? await this.renderCredentialRecipient(recipient.batch, recipient)
-          : await this.renderCampaignRecipient(recipient.batch, recipient);
+          ? await this.renderCredentialRecipient(
+              recipient.batch,
+              recipientWithMessageIdentity,
+            )
+          : await this.renderCampaignRecipient(
+              recipient.batch,
+              recipientWithMessageIdentity,
+            );
 
+      transportEntered = true;
       const result = await this.emailTransport.sendEmail({
+        messageId,
         fromName: connection.fromName,
         fromEmail: connection.fromEmail,
         replyToEmail: connection.replyToEmail,
@@ -89,6 +139,16 @@ export class ProcessEmailDeliveryRecipientUseCase {
         text: rendered.text,
         connection,
       });
+      if (
+        (result.accepted?.length ?? 0) === 0 &&
+        (result.rejected?.length ?? 0) > 0
+      ) {
+        throw new SchoolEmailTransportFailure(
+          'KNOWN_PROVIDER_REJECTION',
+          'provider_rejected_recipient',
+          false,
+        );
+      }
 
       if (rendered.credentialToApply) {
         const passwordHash = await this.passwordService.hash(
@@ -110,6 +170,7 @@ export class ProcessEmailDeliveryRecipientUseCase {
         recipientId: recipient.id,
         sentAt: new Date(),
         metadata: {
+          ...recipientMetadata,
           providerMessageId: result.providerMessageId ?? null,
           acceptedCount: result.accepted?.length ?? 0,
           rejectedCount: result.rejected?.length ?? 0,
@@ -117,13 +178,29 @@ export class ProcessEmailDeliveryRecipientUseCase {
       });
       await this.deliveryRepository.refreshBatchStatus(recipient.batchId);
     } catch (error) {
-      const reason = safeFailureReason(error);
+      const transportFailure =
+        error instanceof SchoolEmailTransportFailure ? error : null;
+      if (
+        transportFailure?.phase === 'AMBIGUOUS_AFTER_PROVIDER_ATTEMPT' ||
+        (transportEntered && !transportFailure)
+      ) {
+        await this.deliveryRepository.markRecipientFailed({
+          recipientId: recipient.id,
+          failureReason: SCHOOL_EMAIL_OUTCOME_UNKNOWN_REASON,
+        });
+        await this.deliveryRepository.refreshBatchStatus(recipient.batchId);
+        return;
+      }
+
+      const failure = classifyPreProviderFailure(error);
       await this.deliveryRepository.markRecipientFailed({
         recipientId: recipient.id,
-        failureReason: reason,
+        failureReason: failure.reason,
       });
       await this.deliveryRepository.refreshBatchStatus(recipient.batchId);
-      throw new Error(reason);
+      if (failure.retryable) {
+        throw new Error('school_email_delivery_retryable_failure');
+      }
     }
   }
 
@@ -177,7 +254,8 @@ export class ProcessEmailDeliveryRecipientUseCase {
 
     const rendered = await this.renderer.renderCredentialEmail({
       schoolId: batch.schoolId,
-      templateKey: batch.templateKey ?? SchoolEmailTemplateKey.ACCOUNT_CREDENTIALS,
+      templateKey:
+        batch.templateKey ?? SchoolEmailTemplateKey.ACCOUNT_CREDENTIALS,
       user: {
         fullName:
           `${membership.user.firstName} ${membership.user.lastName}`.trim() ||
@@ -366,7 +444,9 @@ function readCampaignContent(batch: SchoolEmailDeliveryBatch): {
   };
 }
 
-function jsonRecordOrNull(value: Prisma.JsonValue | null): Record<string, unknown> | null {
+function jsonRecordOrNull(
+  value: Prisma.JsonValue | null,
+): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
@@ -376,12 +456,55 @@ function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-function safeFailureReason(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message
-      .replace(/MZ-[A-Z0-9-]+/g, '[redacted]')
-      .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]');
+function classifyPreProviderFailure(
+  error: unknown,
+): { reason: string; retryable: boolean } {
+  if (
+    error instanceof SchoolEmailTransportFailure &&
+    error.phase === 'KNOWN_PROVIDER_REJECTION'
+  ) {
+    return {
+      reason: `${SCHOOL_EMAIL_TERMINAL_REASON_PREFIX}provider_rejected`,
+      retryable: false,
+    };
   }
 
-  return 'delivery_failed';
+  if (
+    error instanceof SchoolEmailTransportFailure &&
+    error.phase === 'PRE_PROVIDER_ATTEMPT'
+  ) {
+    return {
+      reason: error.retryable
+        ? `${SCHOOL_EMAIL_RETRYABLE_REASON_PREFIX}pre_provider_failure`
+        : `${SCHOOL_EMAIL_TERMINAL_REASON_PREFIX}pre_provider_rejected`,
+      retryable: error.retryable,
+    };
+  }
+
+  const code = error instanceof DomainException ? error.code : null;
+  if (
+    code === 'settings.email.connection_missing' ||
+    code === 'settings.email.delivery_connection_inactive'
+  ) {
+    return {
+      reason: `${SCHOOL_EMAIL_RETRYABLE_REASON_PREFIX}connection_unavailable`,
+      retryable: true,
+    };
+  }
+
+  const message = error instanceof Error ? error.message : '';
+  if (
+    message.startsWith('credential_recipient_') ||
+    message === 'campaign_content_missing'
+  ) {
+    return {
+      reason: `${SCHOOL_EMAIL_TERMINAL_REASON_PREFIX}invalid_recipient_input`,
+      retryable: false,
+    };
+  }
+
+  return {
+    reason: `${SCHOOL_EMAIL_RETRYABLE_REASON_PREFIX}pre_provider_failure`,
+    retryable: true,
+  };
 }

@@ -124,6 +124,54 @@ prisma migrate deploy
 No deployment process generates, edits, resolves, or manually executes
 migration SQL.
 
+## Governed Migration Job
+
+PRD0-Q026 option A and
+`adr/ADR-0007-migration-job-and-deployment-ordering.md` establish one
+standalone Migration Job as the only deployed schema-mutation path. The job:
+
+- uses the same immutable final application image digest as API, Core Worker,
+  Media Worker, and Maintenance Scheduler;
+- runs only as `moazez_migration`, with connection allowance 2, one task,
+  parallelism 1, zero automatic retries, and a 20-minute timeout;
+- requires exactly one `schema=public` database URL parameter and rejects
+  `options` or `search_path` overrides before manifest or database access;
+- verifies the embedded schema/config/migration SHA-256 manifest before Prisma
+  or database access;
+- executes, in order, `prisma validate`, `prisma migrate deploy`,
+  `prisma migrate status`, and a read-only post-deploy drift diff;
+- executes no seed and never bootstraps Nest or a runtime role.
+
+The runner validates the artifact digest format; it does not independently
+discover a registry digest. The release orchestrator supplies the immutable
+digest and Phase 8 binds it to every runtime promotion. The local G04 harness
+proves that the exact same built image ID is used for the Migration Job and
+the default runtime command.
+
+The runner enforces that approval, backup, and data-authority references are
+bound to the current execution ID. Global uniqueness of execution IDs and
+issuance of a genuinely new manual approval are deployment-orchestrator
+responsibilities wired in Phase 8.
+
+The runtime command is fixed to:
+
+```text
+node scripts/migrations/run-governed-migration-job.cjs
+```
+
+The job does not accept arbitrary Prisma arguments. `prisma db push`,
+`prisma db execute`, `prisma migrate reset`, `prisma migrate resolve`,
+`prisma migrate dev`, direct SQL, down migrations, and application-startup
+migrations are prohibited in the job.
+
+The blocking release order is artifact/checksum preflight, backup and data-
+authority checkpoint, Migration Job, status and zero-drift verification, Core
+Worker, Media Worker, API with traffic still unpromoted, Maintenance Scheduler,
+protected readiness/smoke, and only then later-policy traffic promotion. The
+first failure stops every later callback. Recovery is a compatible forward-fix
+migration or an approved isolated restore; automatic schema rollback is never
+performed.
+
 ## PostgreSQL-specific SQL
 
 Partial indexes, `CHECK` constraints, expression indexes, extensions, triggers,

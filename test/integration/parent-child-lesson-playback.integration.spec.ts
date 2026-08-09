@@ -3,7 +3,6 @@ import {
   LessonPlanStatus,
   MembershipStatus,
   Prisma,
-  PrismaClient,
   StudentEnrollmentStatus,
   StudentStatus,
   UserStatus,
@@ -17,13 +16,12 @@ import type {
   ParentAppContext,
 } from '../../src/modules/parent-app/shared/parent-app.types';
 import {
-  buildObserverDatabaseUrl,
   cleanupPlaybackFixture,
   createPlaybackFixture,
   deferred,
+  expectPromiseToRemainPending,
   type PlaybackFixture,
   runInActorScope,
-  waitUntilAnyBackendIsBlocked,
 } from './support/lesson-playback-fixture';
 
 jest.setTimeout(120_000);
@@ -36,9 +34,6 @@ type MutationCase = {
 
 describe('Parent child lesson playback PostgreSQL boundary', () => {
   const prisma = new PrismaService();
-  const observer = new PrismaClient({
-    datasourceUrl: buildObserverDatabaseUrl('Parent playback tests'),
-  });
   const storage = {
     createDownloadUrl: jest.fn().mockResolvedValue({
       url: 'https://storage.invalid/parent-playback',
@@ -54,7 +49,6 @@ describe('Parent child lesson playback PostgreSQL boundary', () => {
 
   beforeAll(async () => {
     await prisma.$connect();
-    await observer.$connect();
     fixture = await createPlaybackFixture(prisma, 'parent-playback');
   });
 
@@ -62,11 +56,7 @@ describe('Parent child lesson playback PostgreSQL boundary', () => {
     try {
       await cleanupPlaybackFixture(prisma, fixture);
     } finally {
-      try {
-        await observer.$disconnect();
-      } finally {
-        await prisma.$disconnect();
-      }
+      await prisma.$disconnect();
     }
   });
 
@@ -136,7 +126,7 @@ describe('Parent child lesson playback PostgreSQL boundary', () => {
       try {
         await mutationHeld.promise;
         playback = play(fixture.publishedContentItemId);
-        await waitUntilAnyBackendIsBlocked(observer);
+        await expectPromiseToRemainPending(playback);
         releaseMutation.resolve();
         await mutation;
         await expect(playback).resolves.toBeNull();
@@ -150,7 +140,7 @@ describe('Parent child lesson playback PostgreSQL boundary', () => {
   );
 
   it.each(parentMutationCases())(
-    'holds $label until protected signing completes',
+    'withholds the capability when $label changes during signing',
     async ({ mutate, restore }) => {
       const signingStarted = deferred<void>();
       const releaseSigning = deferred<void>();
@@ -173,14 +163,10 @@ describe('Parent child lesson playback PostgreSQL boundary', () => {
         });
 
       try {
-        await waitUntilAnyBackendIsBlocked(observer);
-        expect(mutationSettled).toBe(false);
-        releaseSigning.resolve();
-        await expect(playback).resolves.toMatchObject({
-          mimeType: 'video/mp4',
-          disposition: 'inline',
-        });
         await mutation;
+        expect(mutationSettled).toBe(true);
+        releaseSigning.resolve();
+        await expect(playback).resolves.toBeNull();
         expect(storage.createDownloadUrl).toHaveBeenCalledTimes(1);
         await expect(play(fixture.publishedContentItemId)).resolves.toBeNull();
       } finally {
