@@ -41,6 +41,26 @@ const EXPECTED_STAGES = Object.freeze([
   ['BUILD', 'npm', ['run', 'build']],
   ['DIFF_CHECK', 'git', ['diff', '--check']],
 ]);
+const PHASE3_FIXTURE_IMAGES = Object.freeze([
+  'postgres:16-alpine',
+  'redis:7-alpine',
+  'minio/minio:RELEASE.2025-09-07T16-13-09Z',
+]);
+const PHASE3_FIXTURE_IMAGE_SOURCES = Object.freeze({
+  'postgres:16-alpine': Object.freeze([
+    'scripts/ci/prd3-g01-c-database-privileges.cjs',
+    'scripts/ci/prd3-g03-critical-queue-recovery.cjs',
+    'scripts/ci/prd3-g04-governed-migration-job.cjs',
+    'scripts/ci/prd3-g05-clean-start.cjs',
+  ]),
+  'redis:7-alpine': Object.freeze([
+    'scripts/ci/prd3-g02-redis-topology-recovery.cjs',
+    'scripts/ci/prd3-g03-critical-queue-recovery.cjs',
+  ]),
+  'minio/minio:RELEASE.2025-09-07T16-13-09Z': Object.freeze([
+    'scripts/ci/prd3-g03-critical-queue-recovery.cjs',
+  ]),
+});
 
 function repositoryState(overrides = {}) {
   return {
@@ -554,3 +574,42 @@ test('workflow is exact-SHA Ubuntu verification with no alias or path simulation
   assert.doesNotMatch(workflow, /git (?:switch|checkout -b|branch chore\/production-readiness)/iu);
   assert.doesNotMatch(workflow, /C:\\Users\\Abdal|process\.execPath|ln -s|mklink/iu);
 });
+
+test('workflow preloads every verifier-owned Phase 3 fixture image before the exact gate', () => {
+  const workflow = read('.github/workflows/phase-3-production-readiness.yml');
+  const preloadStepName = '- name: Preload Phase 3 disposable fixture images';
+  const gateStepName = '- name: Run exact-candidate Phase 3 gate';
+  assert.equal(workflow.split(preloadStepName).length - 1, 1);
+
+  const preloadStart = workflow.indexOf(preloadStepName);
+  const gateStart = workflow.indexOf(gateStepName);
+  assert.ok(preloadStart >= 0 && gateStart > preloadStart);
+
+  const nextStep = workflow.indexOf('\n      - name:', preloadStart + preloadStepName.length);
+  assert.ok(nextStep > preloadStart && nextStep <= gateStart);
+  const preloadStep = workflow.slice(preloadStart, nextStep);
+  assert.match(preloadStep, /\n\s+shell: bash\s*\n/u);
+  assert.match(preloadStep, /\n\s+set -euo pipefail\s*\n/u);
+  assert.match(preloadStep, /docker version --format '\{\{\.Server\.Version\}\}' >\/dev\/null/u);
+  assert.match(preloadStep, /docker pull "\$image"/u);
+  assert.match(preloadStep, /docker image inspect "\$image" --format '\{\{\.Id\}\}'/u);
+  assert.match(preloadStep, /\^sha256:\[a-f0-9\]\{64\}\$/u);
+
+  const imageArray = preloadStep.match(/images=\(\s*\n(?<entries>[\s\S]*?)\n\s*\)/u);
+  assert.ok(imageArray?.groups?.entries);
+  const declaredImages = [...imageArray.groups.entries.matchAll(/^\s*'([^']+)'\s*$/gmu)]
+    .map((match) => match[1]);
+  assert.deepEqual(declaredImages, PHASE3_FIXTURE_IMAGES);
+
+  const gateEnd = workflow.indexOf('\n      - name:', gateStart + gateStepName.length);
+  const gateStep = workflow.slice(gateStart, gateEnd);
+  assert.match(gateStep, /^- name: Run exact-candidate Phase 3 gate\s*\n\s+run: npm run verify:prd3-g06-final\s*$/mu);
+
+  for (const [image, sources] of Object.entries(PHASE3_FIXTURE_IMAGE_SOURCES)) {
+    for (const source of sources) assert.match(read(source), new RegExp(escapeRegExp(image), 'u'));
+  }
+});
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}

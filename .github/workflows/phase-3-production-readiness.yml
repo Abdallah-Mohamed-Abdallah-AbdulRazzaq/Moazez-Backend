@@ -41,6 +41,31 @@ jobs:
           echo "Phase 3 expected SHA: $EXPECTED_SHA"
           echo "Phase 3 tested SHA:   $actual_sha"
 
+      - name: Preload Phase 3 disposable fixture images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker version --format '{{.Server.Version}}' >/dev/null
+
+          images=(
+            'postgres:16-alpine'
+            'redis:7-alpine'
+            'minio/minio:RELEASE.2025-09-07T16-13-09Z'
+          )
+
+          for image in "${images[@]}"; do
+            docker pull "$image"
+            image_id="$(docker image inspect "$image" --format '{{.Id}}')"
+
+            if [[ ! "$image_id" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+              echo "Invalid local fixture image identity for: $image" >&2
+              exit 1
+            fi
+
+            echo "Phase 3 fixture image ready: $image"
+          done
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
