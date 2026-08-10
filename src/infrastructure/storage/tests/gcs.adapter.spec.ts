@@ -1,10 +1,12 @@
 import { type Storage } from '@google-cloud/storage';
 import { ConfigService } from '@nestjs/config';
-import { GoogleAuth, Impersonated } from 'google-auth-library';
+import { type GoogleAuth } from 'google-auth-library';
 import { PassThrough, Readable } from 'node:stream';
 import {
   DefaultGcsClientFactory,
+  GCS_READINESS_REQUEST_TIMEOUT_MS,
   GcsAdapter,
+  IamCredentialsGcsSigningAuth,
   type GcsClientFactory,
 } from '../gcs.adapter';
 import { ObjectStorageError } from '../object-storage.errors';
@@ -304,30 +306,117 @@ describe('GcsAdapter keyless signed capabilities', () => {
 });
 
 describe('DefaultGcsClientFactory keyless authentication', () => {
-  it('builds the signing Storage client with an impersonated target and no key material', async () => {
-    const getClient = jest
-      .spyOn(GoogleAuth.prototype, 'getClient')
-      .mockResolvedValue({} as never);
+  it('keeps GCS readiness bounded at the cold-start-safe deadline without retries', () => {
     const factory = new DefaultGcsClientFactory();
+    const readinessClient = factory.createReadinessClient(
+      'moazez-test-project',
+    ) as Storage & {
+      retryOptions: {
+        autoRetry: boolean;
+        totalTimeout: number;
+      };
+      timeout: number;
+    };
 
-    let signingClient: Storage;
-    try {
-      signingClient = await factory.createSigningClient({
-        projectId: 'moazez-test-project',
-        signerServiceAccount:
-          'moazez-gcs-signer@moazez-test-project.iam.gserviceaccount.com',
-      });
-    } finally {
-      getClient.mockRestore();
-    }
-
-    const signer = await signingClient.authClient.getClient();
-    expect(signer).toBeInstanceOf(Impersonated);
-    expect((signer as Impersonated).getTargetPrincipal()).toBe(
-      'moazez-gcs-signer@moazez-test-project.iam.gserviceaccount.com',
+    expect(GCS_READINESS_REQUEST_TIMEOUT_MS).toBe(5_000);
+    expect(readinessClient.timeout).toBe(5_000);
+    expect(readinessClient.retryOptions).toEqual(
+      expect.objectContaining({
+        autoRetry: false,
+        totalTimeout: 5,
+      }),
     );
-    expect(signer).not.toHaveProperty('key');
-    expect(signer).not.toHaveProperty('keyFile');
+  });
+
+  it('delegates V4 GET and PUT signing to the exact IAM Credentials signBlob resource', async () => {
+    const signerServiceAccount =
+      'moazez-gcs-signer@moazez-test-project.iam.gserviceaccount.com';
+    const remoteSignature = Buffer.from('google-managed-signature', 'utf8');
+    const request = jest.fn().mockResolvedValue({
+      data: { signedBlob: remoteSignature.toString('base64') },
+    });
+    const getClient = jest.fn().mockResolvedValue({ request });
+    const factory = new DefaultGcsClientFactory(
+      () => ({ getClient }) as unknown as Pick<GoogleAuth, 'getClient'>,
+    );
+    const signingClient = await factory.createSigningClient({
+      projectId: 'moazez-test-project',
+      signerServiceAccount,
+    });
+
+    expect(getClient).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+    expect(signingClient.authClient).toBeInstanceOf(
+      IamCredentialsGcsSigningAuth,
+    );
+
+    const expires = new Date(Date.now() + 10 * 60 * 1_000);
+    const [putUrl] = await signingClient
+      .bucket('private-bucket')
+      .file('staging/upload.bin')
+      .getSignedUrl({ version: 'v4', action: 'write', expires });
+    const [getUrl] = await signingClient
+      .bucket('private-bucket')
+      .file('final/download.bin')
+      .getSignedUrl({ version: 'v4', action: 'read', expires });
+
+    expect(getClient).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenCalledTimes(2);
+    for (const [requestOptions] of request.mock.calls) {
+      expect(requestOptions.method).toBe('POST');
+      expect(decodeURIComponent(new URL(requestOptions.url).pathname)).toBe(
+        `/v1/projects/-/serviceAccounts/${signerServiceAccount}:signBlob`,
+      );
+      expect(requestOptions).not.toHaveProperty('headers');
+      expect(requestOptions).not.toHaveProperty('key');
+      expect(requestOptions).not.toHaveProperty('keyFile');
+      expect(
+        Buffer.from(requestOptions.data.payload, 'base64').toString('utf8'),
+      ).toMatch(/^GOOG4-RSA-SHA256\n/u);
+    }
+    for (const signedUrl of [putUrl, getUrl]) {
+      const url = new URL(signedUrl);
+      expect(url.searchParams.get('X-Goog-Credential')).toMatch(
+        new RegExp(`^${signerServiceAccount.replaceAll('.', '\\.')}/`, 'u'),
+      );
+      expect(url.searchParams.get('X-Goog-Signature')).toBe(
+        remoteSignature.toString('hex'),
+      );
+    }
+  });
+
+  it('normalizes IAM Credentials signing failures without exposing provider details', async () => {
+    const request = jest.fn().mockRejectedValue({
+      response: { status: 403 },
+      message: 'Authorization: Bearer synthetic-provider-value',
+    });
+    const getClient = jest.fn().mockResolvedValue({ request });
+    const factory = new DefaultGcsClientFactory(
+      () => ({ getClient }) as unknown as Pick<GoogleAuth, 'getClient'>,
+    );
+    const values: Record<string, string> = {
+      GCP_PROJECT_ID: 'moazez-test-project',
+      GCS_SIGNING_SERVICE_ACCOUNT:
+        'moazez-gcs-signer@moazez-test-project.iam.gserviceaccount.com',
+    };
+    const adapter = new GcsAdapter(
+      {
+        getOrThrow: jest.fn((key: string) => values[key]),
+      } as unknown as ConfigService,
+      factory,
+      () => new Date(),
+    );
+
+    const failure = await adapter
+      .createSignedPutUrl({
+        bucket: 'private-bucket',
+        objectKey: 'staging/upload.bin',
+        expiresInSeconds: 3_600,
+      })
+      .catch((error: unknown) => error);
+
+    expect(failure).toEqual(new ObjectStorageError('permission_denied'));
+    expect(JSON.stringify(failure)).not.toMatch(/Bearer|Authorization/u);
   });
 });
 

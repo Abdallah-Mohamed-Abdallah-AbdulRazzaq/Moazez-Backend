@@ -7,6 +7,16 @@ import {
   normalizeObjectStorageReadStream,
 } from '../object-storage.errors';
 
+const { FetchError } = require('node-fetch') as {
+  FetchError: new (
+    message: string,
+    type: string,
+  ) => Error & {
+    code?: string;
+    type: string;
+  };
+};
+
 describe('provider-neutral object storage errors', () => {
   it('maps MinIO and GCS absence to the same stable classification', () => {
     const minio = normalizeMinioStorageError({
@@ -77,6 +87,32 @@ describe('provider-neutral object storage errors', () => {
         errors: [{ reason: 'rateLimitExceeded' }],
       }),
     ).toEqual(new ObjectStorageError('rate_quota'));
+  });
+
+  it.each(['request-timeout', 'body-timeout'])(
+    'classifies the installed GCS %s FetchError as transient',
+    (type) => {
+      const error = new FetchError(
+        'network timeout at: https://storage.invalid/redacted',
+        type,
+      );
+
+      expect(error.name).toBe('FetchError');
+      expect(error.type).toBe(type);
+      expect(error.code).toBeUndefined();
+      expect(normalizeGcsStorageError(error)).toEqual(
+        new ObjectStorageError('transient'),
+      );
+    },
+  );
+
+  it('keeps unrelated GCS errors unknown', () => {
+    expect(
+      normalizeGcsStorageError({
+        name: 'UnrelatedError',
+        type: 'unrelated',
+      }),
+    ).toEqual(new ObjectStorageError('unknown'));
   });
 
   it.each([

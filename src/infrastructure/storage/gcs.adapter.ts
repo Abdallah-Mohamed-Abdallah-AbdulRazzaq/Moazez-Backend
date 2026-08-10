@@ -1,11 +1,7 @@
-import {
-  Storage,
-  type FileMetadata,
-  type StorageOptions,
-} from '@google-cloud/storage';
+import { Storage, type FileMetadata } from '@google-cloud/storage';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleAuth, Impersonated } from 'google-auth-library';
+import { GoogleAuth } from 'google-auth-library';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import {
@@ -24,10 +20,56 @@ import {
   type ObjectStorageStat,
 } from './object-storage.port';
 
-export const GCS_READINESS_REQUEST_TIMEOUT_MS = 500;
+export const GCS_READINESS_REQUEST_TIMEOUT_MS = 5_000;
 
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
-const STORAGE_SCOPE = 'https://www.googleapis.com/auth/devstorage.read_write';
+const IAM_CREDENTIALS_SIGN_BLOB_ENDPOINT =
+  'https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts';
+
+type GcsSourceAuth = Pick<GoogleAuth, 'getClient'>;
+
+interface IamCredentialsSignBlobResponse {
+  signedBlob?: string;
+}
+
+interface StorageV4SigningAuth {
+  getCredentials(): Promise<{ client_email: string }>;
+  sign(blobToSign: string): Promise<string>;
+}
+
+export class IamCredentialsGcsSigningAuth implements StorageV4SigningAuth {
+  constructor(
+    private readonly sourceAuth: GcsSourceAuth,
+    private readonly signerServiceAccount: string,
+  ) {}
+
+  async getCredentials(): Promise<{ client_email: string }> {
+    return { client_email: this.signerServiceAccount };
+  }
+
+  async sign(blobToSign: string): Promise<string> {
+    try {
+      const sourceClient = await this.sourceAuth.getClient();
+      const response =
+        await sourceClient.request<IamCredentialsSignBlobResponse>({
+          method: 'POST',
+          url: `${IAM_CREDENTIALS_SIGN_BLOB_ENDPOINT}/${encodeURIComponent(
+            this.signerServiceAccount,
+          )}:signBlob`,
+          data: {
+            payload: Buffer.from(blobToSign, 'utf8').toString('base64'),
+          },
+        });
+      const signedBlob = response.data?.signedBlob;
+      if (typeof signedBlob !== 'string' || signedBlob.length === 0) {
+        throw new ObjectStorageError('unknown');
+      }
+      return signedBlob;
+    } catch (error) {
+      throw normalizeGcsStorageError(error);
+    }
+  }
+}
 
 export interface GcsClientFactory {
   createRuntimeClient(projectId: string): Storage;
@@ -39,6 +81,11 @@ export interface GcsClientFactory {
 }
 
 export class DefaultGcsClientFactory implements GcsClientFactory {
+  constructor(
+    private readonly createSourceAuth: () => GcsSourceAuth = () =>
+      new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] }),
+  ) {}
+
   createRuntimeClient(projectId: string): Storage {
     return new Storage({ projectId });
   }
@@ -59,19 +106,18 @@ export class DefaultGcsClientFactory implements GcsClientFactory {
     projectId: string;
     signerServiceAccount: string;
   }): Promise<Storage> {
-    const sourceAuth = new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] });
-    const sourceClient = await sourceAuth.getClient();
-    const signer = new Impersonated({
-      sourceClient,
-      targetPrincipal: input.signerServiceAccount,
-      targetScopes: [STORAGE_SCOPE],
-      lifetime: 3_600,
-    });
+    const signingClient = new Storage({ projectId: input.projectId });
+    const signingAuth = new IamCredentialsGcsSigningAuth(
+      this.createSourceAuth(),
+      input.signerServiceAccount,
+    );
 
-    return new Storage({
-      projectId: input.projectId,
-      authClient: signer as unknown as StorageOptions['authClient'],
-    });
+    // This client is signing-only. Storage's URL signer deliberately accepts
+    // this narrow getCredentials/sign surface and retains V4 canonicalization.
+    (
+      signingClient as unknown as { authClient: StorageV4SigningAuth }
+    ).authClient = signingAuth;
+    return signingClient;
   }
 }
 
@@ -236,7 +282,7 @@ export class GcsAdapter implements ObjectStoragePort {
         });
       return { url, expiresAt };
     } catch (error) {
-      throw normalizeGcsStorageError(error);
+      throw normalizeGcsSignedUrlError(error);
     }
   }
 
@@ -266,7 +312,7 @@ export class GcsAdapter implements ObjectStoragePort {
         });
       return { url, expiresAt };
     } catch (error) {
-      throw normalizeGcsStorageError(error);
+      throw normalizeGcsSignedUrlError(error);
     }
   }
 
@@ -300,6 +346,26 @@ export class GcsAdapter implements ObjectStoragePort {
   private expiryFromNow(expiresInSeconds: number): Date {
     return new Date(this.now().getTime() + expiresInSeconds * 1_000);
   }
+}
+
+function normalizeGcsSignedUrlError(error: unknown): ObjectStorageError {
+  if (error instanceof Error) {
+    switch (error.message) {
+      case 'object_storage_not_found':
+        return new ObjectStorageError('not_found');
+      case 'object_storage_permission_denied':
+        return new ObjectStorageError('permission_denied');
+      case 'object_storage_precondition_conflict':
+        return new ObjectStorageError('precondition_conflict');
+      case 'object_storage_transient_failure':
+        return new ObjectStorageError('transient');
+      case 'object_storage_rate_quota_failure':
+        return new ObjectStorageError('rate_quota');
+      case 'object_storage_provider_failure':
+        return new ObjectStorageError('unknown');
+    }
+  }
+  return normalizeGcsStorageError(error);
 }
 
 function toReadable(body: ObjectStoragePutInput['body']): Readable {

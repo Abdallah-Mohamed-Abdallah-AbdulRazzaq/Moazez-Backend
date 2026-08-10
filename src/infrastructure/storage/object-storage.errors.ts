@@ -69,7 +69,7 @@ function normalizeObjectStorageError(
   const kind =
     provider === 'minio'
       ? classifyMinioError(code, status)
-      : classifyGcsError(code, status);
+      : classifyGcsError(code, status, readErrorType(error));
 
   return new ObjectStorageError(kind);
 }
@@ -128,6 +128,7 @@ function classifyMinioError(
 function classifyGcsError(
   code: string,
   status: number | null,
+  type: string,
 ): ObjectStorageErrorKind {
   const numericCode = Number(code);
   const resolvedStatus =
@@ -156,6 +157,7 @@ function classifyGcsError(
     return 'precondition_conflict';
   }
   if (
+    ['request-timeout', 'body-timeout'].includes(type) ||
     resolvedStatus === 408 ||
     (resolvedStatus !== null && resolvedStatus >= 500) ||
     ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN'].includes(code)
@@ -163,6 +165,11 @@ function classifyGcsError(
     return 'transient';
   }
   return 'unknown';
+}
+
+function readErrorType(error: unknown): string {
+  const type = readRecordField(error, 'type');
+  return typeof type === 'string' ? type : '';
 }
 
 function readErrorCode(error: unknown): string {
