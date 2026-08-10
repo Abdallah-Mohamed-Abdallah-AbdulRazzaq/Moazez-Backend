@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { FileVisibility } from '@prisma/client';
 import { BullmqService } from '../../../../infrastructure/queue/bullmq.service';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
+import { ObjectStorageError } from '../../../../infrastructure/storage/object-storage.errors';
 import { BrandingLogoCleanupQueueService } from '../application/branding-logo-cleanup-queue.service';
 import { ProcessBrandingLogoCleanupUseCase } from '../application/process-branding-logo-cleanup.use-case';
 import { BrandingRepository } from '../infrastructure/branding.repository';
@@ -159,7 +160,7 @@ describe('branding logo cleanup and reconciliation', () => {
           lastModified: old,
         },
       ],
-      nextStartAfter: null,
+      nextCursor: null,
     });
     const cleanupQueue = {
       enqueueCleanup: jest.fn().mockResolvedValue(undefined),
@@ -230,7 +231,7 @@ describe('branding logo cleanup and reconciliation', () => {
       findKnownStorageLocations: jest.fn().mockResolvedValue(new Set()),
     } as unknown as BrandingRepository;
     const storage = createStorage();
-    const notFound = Object.assign(new Error('missing'), { code: 'NoSuchKey' });
+    const notFound = new ObjectStorageError('not_found');
     storage.deleteObject.mockRejectedValueOnce(notFound);
     storage.statObject.mockRejectedValue(notFound);
     const cleanupQueue = {
@@ -313,8 +314,8 @@ describe('branding logo cleanup and reconciliation', () => {
     } as unknown as BrandingRepository;
     const storage = createStorage();
     storage.listObjectsPage
-      .mockResolvedValueOnce({ objects: [], nextStartAfter: 'opaque-cursor' })
-      .mockResolvedValueOnce({ objects: [], nextStartAfter: null });
+      .mockResolvedValueOnce({ objects: [], nextCursor: 'opaque-cursor' })
+      .mockResolvedValueOnce({ objects: [], nextCursor: null });
     const process = new ProcessBrandingLogoCleanupUseCase(repository, storage, {
       enqueueCleanup: jest.fn(),
     } as unknown as BrandingLogoCleanupQueueService);
@@ -324,7 +325,7 @@ describe('branding logo cleanup and reconciliation', () => {
     expect(storage.listObjectsPage).toHaveBeenCalledTimes(2);
     expect(storage.listObjectsPage).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ startAfter: 'opaque-cursor', limit: 100 }),
+      expect.objectContaining({ cursor: 'opaque-cursor', limit: 100 }),
     );
   });
 });
@@ -336,7 +337,7 @@ function createStorage() {
     statObject: jest.fn().mockResolvedValue({ size: 10 }),
     listObjectsPage: jest
       .fn()
-      .mockResolvedValue({ objects: [], nextStartAfter: null }),
+      .mockResolvedValue({ objects: [], nextCursor: null }),
   } as unknown as jest.Mocked<
     Pick<
       StorageService,

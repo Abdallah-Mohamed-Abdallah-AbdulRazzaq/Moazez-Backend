@@ -125,9 +125,10 @@ describe('learning media upload foundation contract', () => {
       JWT_REFRESH_SECRET: 'refresh-secret-at-least-sixteen',
       JWT_ACCESS_TTL: '15m',
       JWT_REFRESH_TTL: '7d',
-      STORAGE_ENDPOINT: 'https://storage.example.test',
-      STORAGE_ACCESS_KEY: 'access',
-      STORAGE_SECRET_KEY: 'secret',
+      STORAGE_PROVIDER: 'gcs',
+      GCP_PROJECT_ID: 'moazez-test-project',
+      GCS_SIGNING_SERVICE_ACCOUNT:
+        'moazez-gcs-signer@moazez-test-project.iam.gserviceaccount.com',
       STORAGE_BUCKET: 'private',
       STORAGE_PUBLIC_BUCKET: 'public',
     };

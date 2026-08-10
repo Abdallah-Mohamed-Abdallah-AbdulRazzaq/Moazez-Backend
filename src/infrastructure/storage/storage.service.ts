@@ -1,18 +1,19 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { FileVisibility } from '@prisma/client';
 import { Readable } from 'node:stream';
 import {
-  MinioAdapter,
-  type PresignedGetCapability,
-  type PresignedPutCapability,
-} from './minio.adapter';
+  OBJECT_STORAGE_PORT,
+  type ObjectStoragePort,
+  type ObjectStorageSignedCapability,
+} from './object-storage.port';
 import type { SignedGetDisposition } from './signed-url.service';
 import { SignedUrlService } from './signed-url.service';
 
 @Injectable()
 export class StorageService {
   constructor(
-    private readonly minioAdapter: MinioAdapter,
+    @Inject(OBJECT_STORAGE_PORT)
+    private readonly objectStorage: ObjectStoragePort,
     private readonly signedUrlService: SignedUrlService,
   ) {}
 
@@ -31,7 +32,7 @@ export class StorageService {
         input.visibility ?? FileVisibility.PRIVATE,
       );
 
-    const result = await this.minioAdapter.putObject({
+    const result = await this.objectStorage.putObject({
       bucket,
       objectKey: input.objectKey,
       body: input.body,
@@ -47,7 +48,7 @@ export class StorageService {
   }
 
   deleteObject(input: { bucket: string; objectKey: string }): Promise<void> {
-    return this.minioAdapter.removeObject(input);
+    return this.objectStorage.deleteObject(input);
   }
 
   createDownloadUrl(input: {
@@ -58,7 +59,7 @@ export class StorageService {
     disposition?: SignedGetDisposition;
     contentType?: string;
     downloadFileName?: string | null;
-  }): Promise<PresignedGetCapability> {
+  }): Promise<ObjectStorageSignedCapability> {
     return this.signedUrlService.createDownloadUrl(input);
   }
 
@@ -66,20 +67,20 @@ export class StorageService {
     bucket: string;
     objectKey: string;
     expiresInSeconds: number;
-  }): Promise<PresignedPutCapability> {
-    return this.minioAdapter.createPresignedPutUrl(input);
+  }): Promise<ObjectStorageSignedCapability> {
+    return this.objectStorage.createSignedPutUrl(input);
   }
 
   statObject(input: { bucket: string; objectKey: string }) {
-    return this.minioAdapter.statObject(input);
+    return this.objectStorage.statObject(input);
   }
 
   getObject(input: { bucket: string; objectKey: string }) {
-    return this.minioAdapter.getObject(input);
+    return this.objectStorage.getObject(input);
   }
 
   objectExists(input: { bucket: string; objectKey: string }): Promise<boolean> {
-    return this.minioAdapter.objectExists(input);
+    return this.objectStorage.objectExists(input);
   }
 
   async deleteObjectAndConfirmAbsent(input: {
@@ -97,10 +98,10 @@ export class StorageService {
   listObjectsPage(input: {
     bucket: string;
     prefix: string;
-    startAfter?: string;
+    cursor?: string;
     limit: number;
   }) {
-    return this.minioAdapter.listObjectsPage(input);
+    return this.objectStorage.listObjectsPage(input);
   }
 
   resolveBucket(visibility: FileVisibility): string {
@@ -116,8 +117,8 @@ export class StorageService {
     );
 
     const bucketResults = await Promise.allSettled([
-      this.minioAdapter.bucketExistsForReadiness(privateBucket),
-      this.minioAdapter.bucketExistsForReadiness(publicBucket),
+      this.objectStorage.isBucketAvailable(privateBucket),
+      this.objectStorage.isBucketAvailable(publicBucket),
     ]);
 
     if (

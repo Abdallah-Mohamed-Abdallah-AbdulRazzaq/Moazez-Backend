@@ -1,6 +1,7 @@
 import { ReinforcementProofType } from '@prisma/client';
 import { Readable } from 'node:stream';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
+import { ObjectStorageError } from '../../../../infrastructure/storage/object-storage.errors';
 import { ReinforcementProofContentVerifierService } from '../application/reinforcement-proof-content-verifier.service';
 import {
   detectReinforcementProofMime,
@@ -217,7 +218,7 @@ describe('reinforcement proof content verification', () => {
     const body = buildPngHeader();
     const { verifier, storage } = createVerifier(body);
     storage.statObject.mockRejectedValueOnce(
-      Object.assign(new Error('missing'), { code: 'NoSuchKey' }),
+      new ObjectStorageError('not_found'),
     );
 
     await expect(

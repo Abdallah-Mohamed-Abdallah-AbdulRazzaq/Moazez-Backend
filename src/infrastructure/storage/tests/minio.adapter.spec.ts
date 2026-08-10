@@ -16,7 +16,7 @@ import {
 } from '../minio.adapter';
 
 describe('MinioAdapter bounded object listing', () => {
-  it('stops after one look-ahead item and returns a continuation key', async () => {
+  it('stops after one look-ahead item and returns an opaque continuation cursor', async () => {
     const adapter = createAdapter([
       object('schools/a'),
       object('schools/b'),
@@ -24,23 +24,37 @@ describe('MinioAdapter bounded object listing', () => {
       object('schools/d'),
     ]);
 
-    await expect(
-      adapter.listObjectsPage({
-        bucket: 'private-bucket',
-        prefix: 'schools/',
-        startAfter: 'schools/previous',
-        limit: 2,
-      }),
-    ).resolves.toEqual({
-      objects: [resultObject('schools/a'), resultObject('schools/b')],
-      nextStartAfter: 'schools/b',
+    const firstPage = await adapter.listObjectsPage({
+      bucket: 'private-bucket',
+      prefix: 'schools/',
+      limit: 2,
     });
+
+    expect(firstPage.objects).toEqual([
+      resultObject('schools/a'),
+      resultObject('schools/b'),
+    ]);
+    expect(typeof firstPage.nextCursor).toBe('string');
+    expect(firstPage.nextCursor).not.toContain('schools/b');
 
     expect(clientOf(adapter).listObjectsV2).toHaveBeenCalledWith(
       'private-bucket',
       'schools/',
       true,
-      'schools/previous',
+      undefined,
+    );
+
+    await adapter.listObjectsPage({
+      bucket: 'private-bucket',
+      prefix: 'schools/',
+      cursor: firstPage.nextCursor ?? undefined,
+      limit: 2,
+    });
+    expect(clientOf(adapter).listObjectsV2).toHaveBeenLastCalledWith(
+      'private-bucket',
+      'schools/',
+      true,
+      'schools/b',
     );
   });
 
@@ -55,8 +69,155 @@ describe('MinioAdapter bounded object listing', () => {
       }),
     ).resolves.toEqual({
       objects: [resultObject('schools/a')],
-      nextStartAfter: null,
+      nextCursor: null,
     });
+  });
+
+  it('rejects provider-specific or malformed continuation values', async () => {
+    const adapter = createAdapter([]);
+
+    await expect(
+      adapter.listObjectsPage({
+        bucket: 'private-bucket',
+        prefix: 'schools/',
+        cursor: 'schools/provider-specific-key',
+        limit: 100,
+      }),
+    ).rejects.toThrow('storage_list_cursor_invalid');
+  });
+});
+
+describe('MinioAdapter provider-neutral regression', () => {
+  it('preserves put, stat, stream, delete, exists, and local bucket creation', async () => {
+    const adapter = createAdapter([]);
+    const client = productClientOf(adapter);
+    client.bucketExists = jest.fn().mockResolvedValue(false);
+    client.makeBucket = jest.fn().mockResolvedValue(undefined);
+    client.putObject = jest
+      .fn()
+      .mockResolvedValue({ etag: 'etag-1', versionId: 'version-1' });
+    client.statObject = jest.fn().mockResolvedValue({
+      size: 4,
+      etag: 'etag-1',
+      versionId: 'version-1',
+      lastModified: new Date('2026-08-10T10:00:00.000Z'),
+      metaData: { 'content-type': 'text/plain; charset=utf-8', owner: 'one' },
+    });
+    client.getObject = jest.fn().mockResolvedValue(Readable.from(['body']));
+    client.removeObject = jest.fn().mockResolvedValue(undefined);
+
+    await expect(
+      adapter.putObject({
+        bucket: 'private-bucket',
+        objectKey: 'object.txt',
+        body: 'body',
+        contentType: 'text/plain',
+      }),
+    ).resolves.toEqual({
+      etag: 'etag-1',
+      generation: null,
+      version: 'version-1',
+    });
+    expect(client.makeBucket).toHaveBeenCalledWith('private-bucket');
+    expect(client.putObject).toHaveBeenCalledWith(
+      'private-bucket',
+      'object.txt',
+      'body',
+      4,
+      { 'Content-Type': 'text/plain' },
+    );
+
+    await expect(
+      adapter.statObject({
+        bucket: 'private-bucket',
+        objectKey: 'object.txt',
+      }),
+    ).resolves.toEqual({
+      size: 4,
+      etag: 'etag-1',
+      contentType: 'text/plain',
+      metadata: { owner: 'one' },
+      lastModified: new Date('2026-08-10T10:00:00.000Z'),
+      generation: null,
+      version: 'version-1',
+    });
+    client.statObject.mockRejectedValueOnce({ code: 'NoSuchKey' });
+    await expect(
+      adapter.statObject({
+        bucket: 'private-bucket',
+        objectKey: 'missing.txt',
+      }),
+    ).rejects.toMatchObject({ kind: 'not_found' });
+
+    const stream = await adapter.getObject({
+      bucket: 'private-bucket',
+      objectKey: 'object.txt',
+    });
+    await expect(readAll(stream)).resolves.toBe('body');
+
+    await expect(
+      adapter.deleteObject({
+        bucket: 'private-bucket',
+        objectKey: 'object.txt',
+      }),
+    ).resolves.toBeUndefined();
+    expect(client.removeObject).toHaveBeenCalledWith(
+      'private-bucket',
+      'object.txt',
+    );
+
+    client.statObject.mockRejectedValueOnce({ code: 'NoSuchKey' });
+    await expect(
+      adapter.objectExists({
+        bucket: 'private-bucket',
+        objectKey: 'missing.txt',
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('preserves signed PUT and signed GET behavior behind semantic overrides', async () => {
+    const adapter = createAdapter([]);
+    const client = productClientOf(adapter);
+    client.bucketExists = jest.fn().mockResolvedValue(true);
+    client.presignedPutObject = jest
+      .fn()
+      .mockResolvedValue(
+        'https://storage.invalid/object?X-Amz-Date=20260810T120000Z&X-Amz-Expires=3600',
+      );
+    client.presignedGetObject = jest
+      .fn()
+      .mockResolvedValue(
+        'https://storage.invalid/object?X-Amz-Date=20260810T120000Z&X-Amz-Expires=300',
+      );
+
+    await expect(
+      adapter.createSignedPutUrl({
+        bucket: 'private-bucket',
+        objectKey: 'staging/upload',
+        expiresInSeconds: 3_600,
+      }),
+    ).resolves.toEqual({
+      url: 'https://storage.invalid/object?X-Amz-Date=20260810T120000Z&X-Amz-Expires=3600',
+      expiresAt: new Date('2026-08-10T13:00:00.000Z'),
+    });
+    await adapter.createSignedGetUrl({
+      bucket: 'private-bucket',
+      objectKey: 'final/video.mp4',
+      expiresInSeconds: 300,
+      overrides: {
+        contentType: 'video/mp4',
+        contentDisposition: 'inline',
+      },
+    });
+    expect(client.presignedGetObject).toHaveBeenCalledWith(
+      'private-bucket',
+      'final/video.mp4',
+      300,
+      {
+        'response-content-type': 'video/mp4',
+        'response-content-disposition': 'inline',
+      },
+    );
   });
 });
 
@@ -67,13 +228,15 @@ describe('MinioAdapter readiness transport', () => {
     client.bucketExists = jest.fn().mockResolvedValue(true);
     readinessClient.bucketExists = jest.fn().mockResolvedValue(true);
 
-    await expect(adapter.bucketExists('product-bucket')).resolves.toBe(true);
+    await expect(
+      adapter.ensureBucketExists('product-bucket'),
+    ).resolves.toBeUndefined();
     expect(client.bucketExists).toHaveBeenCalledWith('product-bucket');
     expect(readinessClient.bucketExists).not.toHaveBeenCalled();
 
-    await expect(
-      adapter.bucketExistsForReadiness('readiness-bucket'),
-    ).resolves.toBe(true);
+    await expect(adapter.isBucketAvailable('readiness-bucket')).resolves.toBe(
+      true,
+    );
     expect(readinessClient.bucketExists).toHaveBeenCalledWith(
       'readiness-bucket',
     );
@@ -126,9 +289,9 @@ describe('MinioAdapter readiness transport', () => {
       const startedAt = Date.now();
 
       await expect(
-        adapter.bucketExistsForReadiness('private-bucket'),
+        adapter.isBucketAvailable('private-bucket'),
       ).rejects.toMatchObject({
-        code: 'storage_readiness_timeout',
+        kind: 'transient',
       });
 
       const elapsedMs = Date.now() - startedAt;
@@ -149,9 +312,9 @@ describe('MinioAdapter readiness transport', () => {
       const requestCountAfterOutage = requestCount;
       mode = 'ready';
 
-      await expect(
-        adapter.bucketExistsForReadiness('private-bucket'),
-      ).resolves.toBe(true);
+      await expect(adapter.isBucketAvailable('private-bucket')).resolves.toBe(
+        true,
+      );
 
       expect(requestCount).toBeGreaterThan(requestCountAfterOutage);
       await waitFor(() => sockets.size === 0);
@@ -226,6 +389,23 @@ function clientsOf(adapter: MinioAdapter) {
   };
 }
 
+function productClientOf(adapter: MinioAdapter) {
+  return (
+    adapter as unknown as {
+      client: {
+        bucketExists: jest.Mock;
+        makeBucket: jest.Mock;
+        putObject: jest.Mock;
+        statObject: jest.Mock;
+        getObject: jest.Mock;
+        removeObject: jest.Mock;
+        presignedPutObject: jest.Mock;
+        presignedGetObject: jest.Mock;
+      };
+    }
+  ).client;
+}
+
 function respondAsMinio(
   method: string,
   url: string,
@@ -298,4 +478,18 @@ function resultObject(objectKey: string) {
     size: 10,
     lastModified: new Date('2026-07-16T00:00:00.000Z'),
   };
+}
+
+async function readAll(stream: Readable): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream as AsyncIterable<unknown>) {
+    chunks.push(toBuffer(chunk));
+  }
+  return Buffer.concat(chunks).toString();
+}
+
+function toBuffer(chunk: unknown): Buffer {
+  if (typeof chunk === 'string') return Buffer.from(chunk);
+  if (chunk instanceof Uint8Array) return Buffer.from(chunk);
+  throw new TypeError('unexpected_stream_chunk');
 }

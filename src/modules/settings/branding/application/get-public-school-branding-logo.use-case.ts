@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PassThrough, Readable } from 'node:stream';
+import { isObjectStorageNotFoundError } from '../../../../infrastructure/storage/object-storage.errors';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import {
   PublicBrandingLogoNotFoundException,
   PublicBrandingLogoServiceUnavailableException,
-  isStorageObjectNotFound,
 } from '../domain/branding-logo.errors';
 import type { PublicBrandingLogoStream } from '../domain/branding-logo.types';
 import { ResolveSchoolLogoUrlService } from './resolve-school-logo-url.service';
@@ -34,10 +34,9 @@ export class GetPublicSchoolBrandingLogoUseCase {
       this.handleStorageFailure(error);
     }
 
-    const storedMimeType = this.readStoredContentType(stat.metaData);
     if (
       stat.size !== Number(file.sizeBytes) ||
-      storedMimeType !== file.mimeType
+      stat.contentType !== file.mimeType
     ) {
       throw new PublicBrandingLogoNotFoundException();
     }
@@ -64,24 +63,11 @@ export class GetPublicSchoolBrandingLogoUseCase {
   }
 
   private handleStorageFailure(error: unknown): never {
-    if (isStorageObjectNotFound(error)) {
+    if (isObjectStorageNotFoundError(error)) {
       throw new PublicBrandingLogoNotFoundException();
     }
     this.logger.error({ event: 'branding.logo.public.storage_unavailable' });
     throw new PublicBrandingLogoServiceUnavailableException(error);
-  }
-
-  private readStoredContentType(metadata: unknown): string | null {
-    if (!metadata || typeof metadata !== 'object') return null;
-    for (const [key, value] of Object.entries(
-      metadata as Record<string, unknown>,
-    )) {
-      if (key.toLowerCase() !== 'content-type' || typeof value !== 'string') {
-        continue;
-      }
-      return value.split(';', 1)[0].trim().toLowerCase();
-    }
-    return null;
   }
 
   private async createByteIntegrityStream(

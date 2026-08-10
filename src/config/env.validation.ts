@@ -5,6 +5,10 @@ import {
   refineDatabaseRuntimeEnvironment,
 } from '../infrastructure/database/database-runtime-env.validation';
 import {
+  refineStorageEnvironment,
+  storageEnvironmentShape,
+} from '../infrastructure/storage/storage-env.validation';
+import {
   redisUrlSchema,
   refineRedisEndpointSeparation,
 } from './redis-env.validation';
@@ -45,12 +49,7 @@ export const envSchema = z
     JWT_ACCESS_TTL: z.string().min(1),
     JWT_REFRESH_TTL: z.string().min(1),
 
-    STORAGE_PROVIDER: z.enum(['minio', 's3']).default('minio'),
-    STORAGE_ENDPOINT: z.string().url(),
-    STORAGE_ACCESS_KEY: z.string().min(1),
-    STORAGE_SECRET_KEY: z.string().min(1),
-    STORAGE_BUCKET: z.string().min(1),
-    STORAGE_PUBLIC_BUCKET: z.string().min(1),
+    ...storageEnvironmentShape,
     STORAGE_CORS_ORIGINS: z
       .string()
       .trim()
@@ -91,6 +90,7 @@ export const envSchema = z
   .superRefine((env, ctx) => {
     refineDatabaseRuntimeEnvironment(env, ctx);
     refineRedisEndpointSeparation(env, ctx);
+    refineStorageEnvironment(env, ctx, { requireSigner: true });
 
     try {
       parseApplicationCorsOrigins(env.NODE_ENV, env.APP_CORS_ORIGINS);

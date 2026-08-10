@@ -1,24 +1,23 @@
 import { FileVisibility } from '@prisma/client';
-import { MinioAdapter } from '../minio.adapter';
+import type { ObjectStoragePort } from '../object-storage.port';
 import { SignedUrlService } from '../signed-url.service';
 import { StorageService } from '../storage.service';
 
 describe('StorageService readiness', () => {
   it('resolves when both configured buckets are available', async () => {
-    const { service, minioAdapter } = createService();
-    minioAdapter.bucketExistsForReadiness.mockResolvedValue(true);
+    const { service, objectStorage } = createService();
+    objectStorage.isBucketAvailable.mockResolvedValue(true);
 
     await expect(service.checkReadiness()).resolves.toBeUndefined();
 
-    expect(minioAdapter.bucketExistsForReadiness).toHaveBeenNthCalledWith(
+    expect(objectStorage.isBucketAvailable).toHaveBeenNthCalledWith(
       1,
       'private-bucket',
     );
-    expect(minioAdapter.bucketExistsForReadiness).toHaveBeenNthCalledWith(
+    expect(objectStorage.isBucketAvailable).toHaveBeenNthCalledWith(
       2,
       'public-bucket',
     );
-    expect(minioAdapter.bucketExists).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -27,8 +26,8 @@ describe('StorageService readiness', () => {
   ])(
     'rejects when a configured bucket is missing',
     async (privateExists, publicExists) => {
-      const { service, minioAdapter } = createService();
-      minioAdapter.bucketExistsForReadiness
+      const { service, objectStorage } = createService();
+      objectStorage.isBucketAvailable
         .mockResolvedValueOnce(privateExists)
         .mockResolvedValueOnce(publicExists);
 
@@ -39,8 +38,8 @@ describe('StorageService readiness', () => {
   );
 
   it('maps provider rejection to the stable storage error', async () => {
-    const { service, minioAdapter } = createService();
-    minioAdapter.bucketExistsForReadiness
+    const { service, objectStorage } = createService();
+    objectStorage.isBucketAvailable
       .mockRejectedValueOnce(new Error('provider-secret-detail'))
       .mockResolvedValueOnce(true);
 
@@ -50,10 +49,10 @@ describe('StorageService readiness', () => {
   });
 
   it('waits for both readiness operations to settle after one rejects', async () => {
-    const { service, minioAdapter } = createService();
+    const { service, objectStorage } = createService();
     const privateBucket = deferred<boolean>();
     const publicBucket = deferred<boolean>();
-    minioAdapter.bucketExistsForReadiness
+    objectStorage.isBucketAvailable
       .mockReturnValueOnce(privateBucket.promise)
       .mockReturnValueOnce(publicBucket.promise);
 
@@ -78,14 +77,14 @@ describe('StorageService readiness', () => {
   });
 
   it('starts two fresh provider operations after prior settlement', async () => {
-    const { service, minioAdapter } = createService();
-    minioAdapter.bucketExistsForReadiness.mockResolvedValue(true);
+    const { service, objectStorage } = createService();
+    objectStorage.isBucketAvailable.mockResolvedValue(true);
 
     await service.checkReadiness();
     await service.checkReadiness();
 
-    expect(minioAdapter.bucketExistsForReadiness).toHaveBeenCalledTimes(4);
-    expect(minioAdapter.bucketExistsForReadiness.mock.calls).toEqual([
+    expect(objectStorage.isBucketAvailable).toHaveBeenCalledTimes(4);
+    expect(objectStorage.isBucketAvailable.mock.calls).toEqual([
       ['private-bucket'],
       ['public-bucket'],
       ['private-bucket'],
@@ -97,8 +96,8 @@ describe('StorageService readiness', () => {
     const consoleError = jest
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
-    const { service, minioAdapter } = createService();
-    minioAdapter.bucketExistsForReadiness
+    const { service, objectStorage } = createService();
+    objectStorage.isBucketAvailable
       .mockRejectedValueOnce(
         new Error('http://secret-endpoint/private-bucket?credential=secret'),
       )
@@ -120,18 +119,41 @@ describe('StorageService readiness', () => {
       consoleError.mockRestore();
     }
   });
+  it('preserves saveObject bucket resolution and caller-facing result', async () => {
+    const { service, objectStorage } = createService();
+    objectStorage.putObject.mockResolvedValue({
+      etag: 'etag-1',
+      generation: '17',
+      version: null,
+    });
+
+    await expect(
+      service.saveObject({
+        objectKey: 'files/report.pdf',
+        body: Buffer.from('report'),
+        contentType: 'application/pdf',
+      }),
+    ).resolves.toEqual({ bucket: 'private-bucket', etag: 'etag-1' });
+
+    expect(objectStorage.putObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bucket: 'private-bucket',
+        objectKey: 'files/report.pdf',
+      }),
+    );
+  });
 });
 
 function createService(): {
   service: StorageService;
-  minioAdapter: {
-    bucketExists: jest.Mock<Promise<boolean>, [string]>;
-    bucketExistsForReadiness: jest.Mock<Promise<boolean>, [string]>;
+  objectStorage: {
+    isBucketAvailable: jest.Mock<Promise<boolean>, [string]>;
+    putObject: jest.Mock;
   };
 } {
-  const minioAdapter = {
-    bucketExists: jest.fn<Promise<boolean>, [string]>(),
-    bucketExistsForReadiness: jest.fn<Promise<boolean>, [string]>(),
+  const objectStorage = {
+    isBucketAvailable: jest.fn<Promise<boolean>, [string]>(),
+    putObject: jest.fn(),
   };
   const signedUrlService = {
     resolveBucket: jest.fn((visibility: FileVisibility) =>
@@ -139,10 +161,10 @@ function createService(): {
     ),
   };
   const service = new StorageService(
-    minioAdapter as unknown as MinioAdapter,
+    objectStorage as unknown as ObjectStoragePort,
     signedUrlService as unknown as SignedUrlService,
   );
-  return { service, minioAdapter };
+  return { service, objectStorage };
 }
 
 function deferred<T>(): {

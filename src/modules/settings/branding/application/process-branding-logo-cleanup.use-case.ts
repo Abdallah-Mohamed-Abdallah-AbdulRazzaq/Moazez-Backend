@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FileVisibility } from '@prisma/client';
+import { isObjectStorageNotFoundError } from '../../../../infrastructure/storage/object-storage.errors';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import {
   BRANDING_LOGO_MAX_SIZE_BYTES,
@@ -8,7 +9,6 @@ import {
   brandingLogoObjectPrefix,
   isBrandingLogoMimeType,
 } from '../domain/branding-logo.constants';
-import { isStorageObjectNotFound } from '../domain/branding-logo.errors';
 import {
   BrandingLogoCleanupCursor,
   CleanupBrandingLogoFile,
@@ -39,7 +39,7 @@ export class ProcessBrandingLogoCleanupUseCase {
         objectKey: file.objectKey,
       });
     } catch (error: unknown) {
-      if (isStorageObjectNotFound(error)) return;
+      if (isObjectStorageNotFoundError(error)) return;
       throw error;
     }
   }
@@ -66,7 +66,7 @@ export class ProcessBrandingLogoCleanupUseCase {
             objectKey: file.objectKey,
           });
         } catch (error: unknown) {
-          if (isStorageObjectNotFound(error)) {
+          if (isObjectStorageNotFoundError(error)) {
             missingObjects += 1;
             continue;
           }
@@ -96,7 +96,7 @@ export class ProcessBrandingLogoCleanupUseCase {
     const privateBucket = this.storageService.resolveBucket(
       FileVisibility.PRIVATE,
     );
-    let objectStartAfter: string | undefined;
+    let objectCursor: string | undefined;
     let objectPages = 0;
     let scannedObjects = 0;
     let removedOrphans = 0;
@@ -104,7 +104,7 @@ export class ProcessBrandingLogoCleanupUseCase {
       const page = await this.storageService.listObjectsPage({
         bucket: privateBucket,
         prefix: 'schools/',
-        startAfter: objectStartAfter,
+        cursor: objectCursor,
         limit: BRANDING_LOGO_RECONCILIATION_BATCH_SIZE,
       });
       objectPages += 1;
@@ -132,12 +132,12 @@ export class ProcessBrandingLogoCleanupUseCase {
           });
           removedOrphans += 1;
         } catch (error: unknown) {
-          if (!isStorageObjectNotFound(error)) throw error;
+          if (!isObjectStorageNotFoundError(error)) throw error;
         }
       }
 
-      objectStartAfter = page.nextStartAfter ?? undefined;
-    } while (objectStartAfter);
+      objectCursor = page.nextCursor ?? undefined;
+    } while (objectCursor);
 
     this.logger.log({
       event: 'branding.logo.cleanup.reconciled',

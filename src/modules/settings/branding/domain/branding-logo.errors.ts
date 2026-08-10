@@ -68,14 +68,3 @@ export class PublicBrandingLogoServiceUnavailableException extends DomainExcepti
     });
   }
 }
-
-export function isStorageObjectNotFound(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const value = error as { code?: unknown; statusCode?: unknown };
-  return (
-    value.statusCode === HttpStatus.NOT_FOUND ||
-    value.code === 'NoSuchKey' ||
-    value.code === 'NoSuchObject' ||
-    value.code === 'NotFound'
-  );
-}

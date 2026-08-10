@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ImportJobStatus } from '@prisma/client';
+import { isObjectStorageNotFoundError } from '../../../../infrastructure/storage/object-storage.errors';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import {
   buildCompletedImportJobReport,
@@ -73,7 +74,7 @@ export class ProcessImportValidationUseCase {
         reportJson: toImportJobReportJson(buildCompletedImportJobReport(file)),
       });
     } catch (error) {
-      if (isStorageObjectMissing(error)) {
+      if (isObjectStorageNotFoundError(error)) {
         await this.persistTerminalFailure(
           claimed,
           FILES_IMPORT_TERMINAL_OBJECT_MISSING_CODE,
@@ -113,14 +114,4 @@ export class ProcessImportValidationUseCase {
       ),
     });
   }
-}
-
-function isStorageObjectMissing(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) return false;
-  const value = error as { code?: unknown; statusCode?: unknown };
-  const code = typeof value.code === 'string' ? value.code : '';
-  return (
-    ['NoSuchKey', 'NoSuchObject', 'NotFound'].includes(code) ||
-    value.statusCode === 404
-  );
 }

@@ -77,6 +77,11 @@ describe('runtime role database environment validation', () => {
           NODE_ENV: 'staging',
           DATABASE_URL:
             'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
+          STORAGE_PROVIDER: 'gcs',
+          STORAGE_ENDPOINT: undefined,
+          STORAGE_ACCESS_KEY: undefined,
+          STORAGE_SECRET_KEY: undefined,
+          GCP_PROJECT_ID: 'moazez-nonprod-project',
         }),
       ),
     ).not.toThrow();
@@ -127,9 +132,7 @@ describe('runtime role database environment validation', () => {
 
     expect(media.QUEUE_REDIS_URL).toBe('redis://127.0.0.1:6379');
     expect(media).not.toHaveProperty('REALTIME_REDIS_URL');
-    expect(scheduler.QUEUE_REDIS_URL).toBe(
-      'rediss://queue-cache.invalid:6379',
-    );
+    expect(scheduler.QUEUE_REDIS_URL).toBe('rediss://queue-cache.invalid:6379');
     expect(scheduler).not.toHaveProperty('REALTIME_REDIS_URL');
   });
 
@@ -153,6 +156,88 @@ describe('runtime role database environment validation', () => {
       QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
       REALTIME_REDIS_URL: 'redis://127.0.0.1:6379',
     });
+  });
+
+  it('accepts Core and Media GCS object access without signer configuration', () => {
+    const core = validateCoreWorkerEnv(
+      coreEnvironment({
+        NODE_ENV: 'staging',
+        DATABASE_URL:
+          'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
+        QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379',
+        REALTIME_REDIS_URL: 'rediss://realtime-cache.invalid:6379',
+        STORAGE_PROVIDER: 'gcs',
+        STORAGE_ENDPOINT: undefined,
+        STORAGE_ACCESS_KEY: undefined,
+        STORAGE_SECRET_KEY: undefined,
+        GCP_PROJECT_ID: 'moazez-nonprod-project',
+      }),
+    );
+    const media = validateMediaWorkerEnv(
+      mediaEnvironment({
+        NODE_ENV: 'production',
+        DATABASE_URL:
+          'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
+        STORAGE_PROVIDER: 'gcs',
+        STORAGE_ENDPOINT: undefined,
+        STORAGE_ACCESS_KEY: undefined,
+        STORAGE_SECRET_KEY: undefined,
+        GCP_PROJECT_ID: 'moazez-nonprod-project',
+      }),
+    );
+
+    expect(core.STORAGE_PROVIDER).toBe('gcs');
+    expect(media.STORAGE_PROVIDER).toBe('gcs');
+    expect(core.GCS_SIGNING_SERVICE_ACCOUNT).toBeUndefined();
+    expect(media.GCS_SIGNING_SERVICE_ACCOUNT).toBeUndefined();
+  });
+
+  it.each([
+    ['staging', 'minio'],
+    ['staging', 's3'],
+    ['production', 'minio'],
+    ['production', 's3'],
+  ])(
+    'requires GCS for worker storage in %s and rejects %s',
+    (nodeEnvironment, storageProvider) => {
+      const databaseUrl =
+        'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require';
+      expect(() =>
+        validateMediaWorkerEnv(
+          mediaEnvironment({
+            NODE_ENV: nodeEnvironment,
+            DATABASE_URL: databaseUrl,
+            STORAGE_PROVIDER: storageProvider,
+          }),
+        ),
+      ).toThrow(/STORAGE_PROVIDER must be gcs/u);
+    },
+  );
+
+  it('requires a GCS project for workers but never a signing principal', () => {
+    expect(() =>
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          STORAGE_PROVIDER: 'gcs',
+          STORAGE_ENDPOINT: undefined,
+          STORAGE_ACCESS_KEY: undefined,
+          STORAGE_SECRET_KEY: undefined,
+        }),
+      ),
+    ).toThrow(/GCP_PROJECT_ID/u);
+  });
+
+  it('keeps Maintenance Scheduler storage-free', () => {
+    const scheduler = validateMaintenanceSchedulerEnv({
+      QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
+      STORAGE_PROVIDER: 'gcs',
+      GCP_PROJECT_ID: 'ignored-storage-project',
+      GCS_SIGNING_SERVICE_ACCOUNT: 'ignored-signer@example.invalid',
+    });
+
+    expect(scheduler).not.toHaveProperty('STORAGE_PROVIDER');
+    expect(scheduler).not.toHaveProperty('GCP_PROJECT_ID');
+    expect(scheduler).not.toHaveProperty('GCS_SIGNING_SERVICE_ACCOUNT');
   });
 });
 

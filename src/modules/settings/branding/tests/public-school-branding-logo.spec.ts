@@ -8,6 +8,7 @@ import {
   runWithRequestContext,
 } from '../../../../common/context/request-context';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
+import { ObjectStorageError } from '../../../../infrastructure/storage/object-storage.errors';
 import { GetPublicSchoolBrandingLogoUseCase } from '../application/get-public-school-branding-logo.use-case';
 import { ResolveSchoolLogoUrlService } from '../application/resolve-school-logo-url.service';
 import { PublicSchoolBrandingController } from '../controller/public-school-branding.controller';
@@ -211,7 +212,7 @@ describe('public school branding logo delivery', () => {
     });
 
     const absent = createPublicUseCase({
-      statError: Object.assign(new Error('absent'), { code: 'NoSuchKey' }),
+      statError: new ObjectStorageError('not_found'),
     });
     await expect(absent.useCase.execute(SCHOOL_ID)).rejects.toMatchObject({
       code: 'not_found',
@@ -221,6 +222,15 @@ describe('public school branding logo delivery', () => {
     await expect(mismatch.useCase.execute(SCHOOL_ID)).rejects.toMatchObject({
       code: 'not_found',
     });
+
+    const mimeMismatch = createPublicUseCase({
+      storedContentType: 'image/jpeg',
+    });
+    await expect(mimeMismatch.useCase.execute(SCHOOL_ID)).rejects.toMatchObject(
+      {
+        code: 'not_found',
+      },
+    );
   });
 
   it('distinguishes operational storage failure and stream initialization failure', async () => {
@@ -374,6 +384,7 @@ function createPublicUseCase(options?: {
   eligible?: boolean;
   statError?: Error;
   storedSize?: number;
+  storedContentType?: string | null;
   fileSize?: number;
   stream?: Readable;
   mimeType?: 'image/png' | 'image/jpeg';
@@ -394,7 +405,7 @@ function createPublicUseCase(options?: {
       ? jest.fn().mockRejectedValue(options.statError)
       : jest.fn().mockResolvedValue({
           size: options?.storedSize ?? 11,
-          metaData: { 'content-type': mimeType },
+          contentType: options?.storedContentType ?? mimeType,
         }),
     getObject: jest
       .fn()

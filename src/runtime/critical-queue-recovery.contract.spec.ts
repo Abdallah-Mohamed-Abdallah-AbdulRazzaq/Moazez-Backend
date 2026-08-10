@@ -29,6 +29,7 @@ import { ImportJobsRepository } from '../modules/files/imports/infrastructure/im
 import { BullmqService } from '../infrastructure/queue/bullmq.service';
 import { PrismaService } from '../infrastructure/database/prisma.service';
 import { StorageService } from '../infrastructure/storage/storage.service';
+import { ObjectStorageError } from '../infrastructure/storage/object-storage.errors';
 import { getRequestContext } from '../common/context/request-context';
 import { SchoolEmailDeliveryReconciliationService } from '../modules/settings/email/delivery/application/school-email-delivery-reconciliation.service';
 import { EmailDeliveryRepository } from '../modules/settings/email/delivery/infrastructure/email-delivery.repository';
@@ -607,7 +608,9 @@ describe('import validation retry and terminal policy', () => {
     const record = importRecord({ status: ImportJobStatus.PENDING });
     const repository = importRepositoryMock(record);
     const storage = {
-      statObject: jest.fn().mockRejectedValue({ code: 'NoSuchKey' }),
+      statObject: jest
+        .fn()
+        .mockRejectedValue(new ObjectStorageError('not_found')),
     } as unknown as StorageService;
     const service = new ProcessImportValidationUseCase(repository, storage);
 
