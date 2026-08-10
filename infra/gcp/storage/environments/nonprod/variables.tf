@@ -8,4 +8,3 @@ variable "project_id" {
     error_message = "The nonprod root is locked to moazez-nonprod-91001421934."
   }
 }
-

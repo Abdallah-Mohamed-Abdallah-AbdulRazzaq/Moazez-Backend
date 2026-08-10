@@ -8,4 +8,3 @@ variable "project_id" {
     error_message = "The production root is locked to moazez-production."
   }
 }
-

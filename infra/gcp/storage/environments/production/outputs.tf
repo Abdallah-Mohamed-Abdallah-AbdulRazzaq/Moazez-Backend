@@ -29,4 +29,3 @@ output "gcs_signer_service_account_email" {
 output "iac_deployer_service_account_email" {
   value = module.storage_environment.iac_deployer_service_account_email
 }
-

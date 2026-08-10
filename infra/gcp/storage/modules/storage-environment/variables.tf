@@ -20,4 +20,3 @@ variable "project_id" {
     error_message = "project_id must be one of the two Owner-approved projects."
   }
 }
-

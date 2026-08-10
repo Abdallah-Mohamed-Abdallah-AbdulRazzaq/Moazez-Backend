@@ -4,4 +4,3 @@ module "storage_environment" {
   environment = "nonprod"
   project_id  = var.project_id
 }
-

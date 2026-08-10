@@ -4,4 +4,3 @@
 **/*.tfplan
 **/crash.log
 **/crash.*.log
-
