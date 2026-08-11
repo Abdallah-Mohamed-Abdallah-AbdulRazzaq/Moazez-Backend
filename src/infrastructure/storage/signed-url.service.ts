@@ -1,7 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileVisibility } from '@prisma/client';
-import { MinioAdapter, type PresignedGetCapability } from './minio.adapter';
+import {
+  OBJECT_STORAGE_PORT,
+  type ObjectStoragePort,
+  type ObjectStorageSignedCapability,
+  type ObjectStorageSignedGetOverrides,
+} from './object-storage.port';
 
 const DEFAULT_SIGNED_URL_TTL_SECONDS = 15 * 60;
 
@@ -10,7 +15,8 @@ export type SignedGetDisposition = 'attachment' | 'inline' | 'none';
 @Injectable()
 export class SignedUrlService {
   constructor(
-    private readonly minioAdapter: MinioAdapter,
+    @Inject(OBJECT_STORAGE_PORT)
+    private readonly objectStorage: ObjectStoragePort,
     private readonly configService: ConfigService,
   ) {}
 
@@ -22,17 +28,17 @@ export class SignedUrlService {
     disposition?: SignedGetDisposition;
     contentType?: string;
     downloadFileName?: string | null;
-  }): Promise<PresignedGetCapability> {
+  }): Promise<ObjectStorageSignedCapability> {
     const bucket =
       input.bucket ??
       this.resolveBucket(input.visibility ?? FileVisibility.PRIVATE);
 
-    return this.minioAdapter.createPresignedGetUrl({
+    return this.objectStorage.createSignedGetUrl({
       bucket,
       objectKey: input.objectKey,
       expiresInSeconds:
         input.expiresInSeconds ?? DEFAULT_SIGNED_URL_TTL_SECONDS,
-      responseHeaders: this.buildResponseHeaders({
+      overrides: this.buildOverrides({
         disposition: input.disposition ?? 'attachment',
         contentType: input.contentType,
         downloadFileName: input.downloadFileName,
@@ -46,32 +52,31 @@ export class SignedUrlService {
       : this.configService.getOrThrow<string>('STORAGE_BUCKET');
   }
 
-  private buildResponseHeaders(input: {
+  private buildOverrides(input: {
     disposition: SignedGetDisposition;
     contentType?: string;
     downloadFileName?: string | null;
-  }): Record<string, string> | undefined {
-    const headers: Record<string, string> = {};
+  }): ObjectStorageSignedGetOverrides | undefined {
+    const overrides: ObjectStorageSignedGetOverrides = {};
 
     if (input.contentType) {
-      headers['response-content-type'] = input.contentType;
+      overrides.contentType = input.contentType;
     }
 
     if (input.disposition === 'inline') {
-      headers['response-content-disposition'] = 'inline';
+      overrides.contentDisposition = 'inline';
     }
 
     if (input.disposition === 'attachment') {
-      headers['response-content-disposition'] = 'attachment';
+      overrides.contentDisposition = 'attachment';
       if (input.downloadFileName) {
         const sanitized = input.downloadFileName.replace(/["\r\n]/g, '').trim();
         if (sanitized.length > 0) {
-          headers['response-content-disposition'] =
-            `attachment; filename="${sanitized}"`;
+          overrides.contentDisposition = `attachment; filename="${sanitized}"`;
         }
       }
     }
 
-    return Object.keys(headers).length === 0 ? undefined : headers;
+    return Object.keys(overrides).length === 0 ? undefined : overrides;
   }
 }

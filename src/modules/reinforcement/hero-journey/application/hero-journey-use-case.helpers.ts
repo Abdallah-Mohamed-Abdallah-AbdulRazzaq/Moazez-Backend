@@ -1,12 +1,9 @@
-import {
-  AuditOutcome,
-  HeroMissionStatus,
-  Prisma,
-} from '@prisma/client';
+import { AuditOutcome, HeroMissionStatus, Prisma } from '@prisma/client';
 import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../../../../common/exceptions/domain-exception';
+import { classifyPersistedUrl } from '../../../../infrastructure/storage/provider-url.policy';
 import { FilesNotFoundException } from '../../../files/uploads/domain/file-upload.exceptions';
 import { ReinforcementScope } from '../../reinforcement-context';
 import {
@@ -54,13 +51,15 @@ export function normalizeMissionListFilters(
   query: ListHeroMissionsQueryDto,
 ): ListHeroMissionsFilters {
   return {
-    ...(query.academicYearId ?? query.yearId
+    ...((query.academicYearId ?? query.yearId)
       ? { academicYearId: query.academicYearId ?? query.yearId }
       : {}),
     ...(query.termId ? { termId: query.termId } : {}),
     ...(query.stageId ? { stageId: query.stageId } : {}),
     ...(query.subjectId ? { subjectId: query.subjectId } : {}),
-    ...(query.status ? { status: normalizeHeroMissionStatus(query.status) } : {}),
+    ...(query.status
+      ? { status: normalizeHeroMissionStatus(query.status) }
+      : {}),
     ...(query.search ? { search: query.search } : {}),
     includeArchived: query.includeArchived ?? false,
     includeDeleted: query.includeDeleted ?? false,
@@ -192,7 +191,7 @@ export function buildCreateBadgeData(params: {
     nameAr,
     descriptionEn: normalizeNullableText(params.command.descriptionEn),
     descriptionAr: normalizeNullableText(params.command.descriptionAr),
-    assetPath: normalizeNullableText(params.command.assetPath),
+    assetPath: normalizeHeroBadgeAssetPath(params.command.assetPath),
     fileId: params.command.fileId ?? null,
     sortOrder: params.command.sortOrder ?? 0,
     isActive: params.command.isActive ?? true,
@@ -226,13 +225,20 @@ export function buildUpdateBadgeData(params: {
     data.descriptionAr = normalizeNullableText(params.command.descriptionAr);
   }
   if (hasOwn(params.command, 'assetPath')) {
-    data.assetPath = normalizeNullableText(params.command.assetPath);
+    data.assetPath = normalizeHeroBadgeAssetPath(params.command.assetPath);
   }
-  if (hasOwn(params.command, 'fileId')) data.fileId = params.command.fileId ?? null;
-  if (params.command.sortOrder !== undefined && params.command.sortOrder !== null) {
+  if (hasOwn(params.command, 'fileId'))
+    data.fileId = params.command.fileId ?? null;
+  if (
+    params.command.sortOrder !== undefined &&
+    params.command.sortOrder !== null
+  ) {
     data.sortOrder = params.command.sortOrder;
   }
-  if (params.command.isActive !== undefined && params.command.isActive !== null) {
+  if (
+    params.command.isActive !== undefined &&
+    params.command.isActive !== null
+  ) {
     data.isActive = params.command.isActive;
   }
   if (hasOwn(params.command, 'metadata')) {
@@ -240,6 +246,25 @@ export function buildUpdateBadgeData(params: {
   }
 
   return data;
+}
+
+function normalizeHeroBadgeAssetPath(
+  value: string | null | undefined,
+): string | null {
+  const normalized = normalizeNullableText(value);
+  if (!normalized) return null;
+
+  const classification = classifyPersistedUrl(normalized).classification;
+  if (
+    classification === 'gcs_provider_url' ||
+    classification === 's3_compatible_provider_url'
+  ) {
+    throw new ValidationDomainException(
+      'Hero badge asset path cannot use an object-storage provider URL',
+      { field: 'assetPath', reasonCode: 'storage_provider_url_forbidden' },
+    );
+  }
+  return normalized;
 }
 
 export async function buildCreateMissionInput(params: {
@@ -287,7 +312,9 @@ export async function buildCreateMissionInput(params: {
       titleAr,
       briefEn: normalizeNullableText(params.command.briefEn),
       briefAr: normalizeNullableText(params.command.briefAr),
-      requiredLevel: assertRequiredLevelValid(params.command.requiredLevel ?? 1),
+      requiredLevel: assertRequiredLevelValid(
+        params.command.requiredLevel ?? 1,
+      ),
       rewardXp: assertRewardXpValid(params.command.rewardXp ?? 0),
       badgeRewardId: params.command.badgeRewardId ?? null,
       status: HeroMissionStatus.DRAFT,
@@ -315,7 +342,10 @@ export async function buildUpdateMissionInput(params: {
     params.existing.academicYearId;
   const nextTermId = params.command.termId ?? params.existing.termId;
 
-  if (hasOwn(params.command, 'academicYearId') || hasOwn(params.command, 'yearId')) {
+  if (
+    hasOwn(params.command, 'academicYearId') ||
+    hasOwn(params.command, 'yearId')
+  ) {
     data.academicYearId = nextAcademicYearId;
   }
   if (hasOwn(params.command, 'termId')) data.termId = nextTermId;
@@ -327,7 +357,9 @@ export async function buildUpdateMissionInput(params: {
     data.linkedAssessmentId = params.command.linkedAssessmentId ?? null;
   }
   if (hasOwn(params.command, 'linkedLessonRef')) {
-    data.linkedLessonRef = normalizeNullableText(params.command.linkedLessonRef);
+    data.linkedLessonRef = normalizeNullableText(
+      params.command.linkedLessonRef,
+    );
   }
 
   const nextTitleEn = hasOwn(params.command, 'titleEn')
@@ -361,7 +393,10 @@ export async function buildUpdateMissionInput(params: {
   if (hasOwn(params.command, 'positionY')) {
     data.positionY = params.command.positionY ?? null;
   }
-  if (params.command.sortOrder !== undefined && params.command.sortOrder !== null) {
+  if (
+    params.command.sortOrder !== undefined &&
+    params.command.sortOrder !== null
+  ) {
     data.sortOrder = params.command.sortOrder;
   }
   if (hasOwn(params.command, 'metadata')) {

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileVisibility } from '@prisma/client';
+import { BrandingLegacyLogoValueRejectedException } from '../domain/branding-logo.errors';
 import {
   BRANDING_LOGO_MAX_SIZE_BYTES,
   brandingLogoObjectPrefix,
@@ -11,7 +12,7 @@ import {
   EligibleBrandingLogoFile,
   ManagedBrandingLogoFile,
 } from '../domain/branding-logo.types';
-import { toSafeLegacyBrandingLogoUrl } from '../domain/legacy-branding-logo-url';
+import { classifyPersistedUrl } from '../../../../infrastructure/storage/provider-url.policy';
 import {
   BrandingLogoResolutionRecord,
   BrandingRepository,
@@ -84,13 +85,19 @@ export class ResolveSchoolLogoUrlService {
     const managed = this.toEligibleManagedFile(record);
     if (managed) return this.buildManagedLogoUrl(record.id, managed.id);
 
-    const legacy = toSafeLegacyBrandingLogoUrl(
-      record.schoolProfile?.logoUrl ?? null,
-    );
-    if (legacy) {
+    const legacy = classifyPersistedUrl(record.schoolProfile?.logoUrl ?? null);
+    if (legacy.classification === 'absent') return null;
+    if (legacy.classification === 'external_https') {
       this.logger.log({ event: 'branding.logo.legacy_fallback_used' });
+      return legacy.normalizedValue as string;
     }
-    return legacy;
+
+    const provider =
+      legacy.classification === 'gcs_provider_url' ||
+      legacy.classification === 's3_compatible_provider_url';
+    throw new BrandingLegacyLogoValueRejectedException(
+      provider ? 'provider_url_requires_review' : 'unsafe_legacy_url',
+    );
   }
 
   private toEligibleManagedFile(
@@ -123,7 +130,10 @@ export class ResolveSchoolLogoUrlService {
       this.configService.get<string>('NODE_ENV') ?? 'development';
     if (environment !== 'staging' && environment !== 'production') return;
 
-    if (!toSafeLegacyBrandingLogoUrl(appUrl.toString())) {
+    if (
+      classifyPersistedUrl(appUrl.toString()).classification !==
+      'external_https'
+    ) {
       throw new Error('invalid_external_app_url');
     }
   }

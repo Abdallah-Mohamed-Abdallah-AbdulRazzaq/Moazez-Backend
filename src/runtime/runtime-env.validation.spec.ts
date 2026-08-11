@@ -77,6 +77,11 @@ describe('runtime role database environment validation', () => {
           NODE_ENV: 'staging',
           DATABASE_URL:
             'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
+          STORAGE_PROVIDER: 'gcs',
+          STORAGE_ENDPOINT: undefined,
+          STORAGE_ACCESS_KEY: undefined,
+          STORAGE_SECRET_KEY: undefined,
+          GCP_PROJECT_ID: 'moazez-nonprod-project',
         }),
       ),
     ).not.toThrow();
@@ -127,9 +132,7 @@ describe('runtime role database environment validation', () => {
 
     expect(media.QUEUE_REDIS_URL).toBe('redis://127.0.0.1:6379');
     expect(media).not.toHaveProperty('REALTIME_REDIS_URL');
-    expect(scheduler.QUEUE_REDIS_URL).toBe(
-      'rediss://queue-cache.invalid:6379',
-    );
+    expect(scheduler.QUEUE_REDIS_URL).toBe('rediss://queue-cache.invalid:6379');
     expect(scheduler).not.toHaveProperty('REALTIME_REDIS_URL');
   });
 
@@ -153,6 +156,145 @@ describe('runtime role database environment validation', () => {
       QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
       REALTIME_REDIS_URL: 'redis://127.0.0.1:6379',
     });
+  });
+
+  it('accepts Core and Media GCS object access without signer configuration', () => {
+    const core = validateCoreWorkerEnv(
+      coreEnvironment({
+        NODE_ENV: 'staging',
+        DATABASE_URL:
+          'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
+        QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379',
+        REALTIME_REDIS_URL: 'rediss://realtime-cache.invalid:6379',
+        STORAGE_PROVIDER: 'gcs',
+        STORAGE_ENDPOINT: undefined,
+        STORAGE_ACCESS_KEY: undefined,
+        STORAGE_SECRET_KEY: undefined,
+        GCP_PROJECT_ID: 'moazez-nonprod-project',
+      }),
+    );
+    const media = validateMediaWorkerEnv(
+      mediaEnvironment({
+        NODE_ENV: 'production',
+        DATABASE_URL:
+          'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
+        STORAGE_PROVIDER: 'gcs',
+        STORAGE_ENDPOINT: undefined,
+        STORAGE_ACCESS_KEY: undefined,
+        STORAGE_SECRET_KEY: undefined,
+        GCP_PROJECT_ID: 'moazez-nonprod-project',
+      }),
+    );
+
+    expect(core.STORAGE_PROVIDER).toBe('gcs');
+    expect(media.STORAGE_PROVIDER).toBe('gcs');
+    expect(core.GCS_SIGNING_SERVICE_ACCOUNT).toBeUndefined();
+    expect(media.GCS_SIGNING_SERVICE_ACCOUNT).toBeUndefined();
+  });
+
+  it.each([
+    ['core', 'staging'],
+    ['core', 'production'],
+    ['media', 'staging'],
+    ['media', 'production'],
+  ] as const)(
+    'accepts %s Worker GCS without signer configuration in %s',
+    (role, nodeEnvironment) => {
+      const overrides = secureWorkerStorageOverrides(nodeEnvironment);
+      const env =
+        role === 'core'
+          ? validateCoreWorkerEnv(coreEnvironment(overrides))
+          : validateMediaWorkerEnv(mediaEnvironment(overrides));
+
+      expect(env.STORAGE_PROVIDER).toBe('gcs');
+      expect(env.GCP_PROJECT_ID).toBe(`moazez-${nodeEnvironment}`);
+      expect(env.GCS_SIGNING_SERVICE_ACCOUNT).toBeUndefined();
+    },
+  );
+
+  it.each([
+    ['core', 'staging', 'minio'],
+    ['core', 'staging', 's3'],
+    ['core', 'production', 'minio'],
+    ['core', 'production', 's3'],
+    ['media', 'staging', 'minio'],
+    ['media', 'staging', 's3'],
+    ['media', 'production', 'minio'],
+    ['media', 'production', 's3'],
+  ])(
+    'requires GCS for %s Worker storage in %s and rejects %s',
+    (role, nodeEnvironment, storageProvider) => {
+      const overrides = {
+        ...secureWorkerStorageOverrides(nodeEnvironment),
+        STORAGE_PROVIDER: storageProvider,
+        STORAGE_ENDPOINT: 'http://127.0.0.1:9000',
+        STORAGE_ACCESS_KEY: 'runtime-access',
+        STORAGE_SECRET_KEY: 'runtime-value',
+      };
+      expect(() =>
+        role === 'core'
+          ? validateCoreWorkerEnv(coreEnvironment(overrides))
+          : validateMediaWorkerEnv(mediaEnvironment(overrides)),
+      ).toThrow(/STORAGE_PROVIDER must be gcs/u);
+    },
+  );
+
+  it.each([
+    ['core', 'minio'],
+    ['core', 's3'],
+    ['media', 'minio'],
+    ['media', 's3'],
+  ])('retains local/test %s Worker compatibility with %s', (role, provider) => {
+    const env =
+      role === 'core'
+        ? validateCoreWorkerEnv(coreEnvironment({ STORAGE_PROVIDER: provider }))
+        : validateMediaWorkerEnv(
+            mediaEnvironment({ STORAGE_PROVIDER: provider }),
+          );
+    expect(env.STORAGE_PROVIDER).toBe(provider);
+  });
+
+  it.each(['core', 'media'])(
+    'fails %s Worker closed for unsupported or implicit production provider',
+    (role) => {
+      const secure = secureWorkerStorageOverrides('production');
+      const validator =
+        role === 'core' ? validateCoreWorkerEnv : validateMediaWorkerEnv;
+      const environment = role === 'core' ? coreEnvironment : mediaEnvironment;
+
+      expect(() =>
+        validator(environment({ ...secure, STORAGE_PROVIDER: 'unsupported' })),
+      ).toThrow(/STORAGE_PROVIDER/u);
+      expect(() =>
+        validator(environment({ ...secure, STORAGE_PROVIDER: undefined })),
+      ).toThrow(/STORAGE_PROVIDER must be gcs/u);
+    },
+  );
+
+  it('requires a GCS project for workers but never a signing principal', () => {
+    expect(() =>
+      validateCoreWorkerEnv(
+        coreEnvironment({
+          STORAGE_PROVIDER: 'gcs',
+          STORAGE_ENDPOINT: undefined,
+          STORAGE_ACCESS_KEY: undefined,
+          STORAGE_SECRET_KEY: undefined,
+        }),
+      ),
+    ).toThrow(/GCP_PROJECT_ID/u);
+  });
+
+  it('keeps Maintenance Scheduler storage-free', () => {
+    const scheduler = validateMaintenanceSchedulerEnv({
+      QUEUE_REDIS_URL: 'redis://127.0.0.1:6379',
+      STORAGE_PROVIDER: 'gcs',
+      GCP_PROJECT_ID: 'ignored-storage-project',
+      GCS_SIGNING_SERVICE_ACCOUNT: 'ignored-signer@example.invalid',
+    });
+
+    expect(scheduler).not.toHaveProperty('STORAGE_PROVIDER');
+    expect(scheduler).not.toHaveProperty('GCP_PROJECT_ID');
+    expect(scheduler).not.toHaveProperty('GCS_SIGNING_SERVICE_ACCOUNT');
   });
 });
 
@@ -198,4 +340,23 @@ function compact(
   return Object.fromEntries(
     Object.entries(values).filter(([, value]) => value !== undefined),
   ) as Record<string, string>;
+}
+
+function secureWorkerStorageOverrides(
+  nodeEnvironment: string,
+): Record<string, string | undefined> {
+  return {
+    NODE_ENV: nodeEnvironment,
+    APP_URL: `https://worker.${nodeEnvironment}.example.org`,
+    DATABASE_URL:
+      'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
+    QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379/0',
+    REALTIME_REDIS_URL: 'rediss://realtime-cache.invalid:6380/0',
+    STORAGE_PROVIDER: 'gcs',
+    STORAGE_ENDPOINT: undefined,
+    STORAGE_ACCESS_KEY: undefined,
+    STORAGE_SECRET_KEY: undefined,
+    GCP_PROJECT_ID: `moazez-${nodeEnvironment}`,
+    GCS_SIGNING_SERVICE_ACCOUNT: undefined,
+  };
 }

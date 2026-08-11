@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ConfigService } from '@nestjs/config';
-import { load } from 'js-yaml';
 import { MediaRuntimeStartupGuard } from '../application/media-runtime-startup.guard';
 import { validateEnv } from '../../../../config/env.validation';
 
@@ -125,9 +124,10 @@ describe('learning media upload foundation contract', () => {
       JWT_REFRESH_SECRET: 'refresh-secret-at-least-sixteen',
       JWT_ACCESS_TTL: '15m',
       JWT_REFRESH_TTL: '7d',
-      STORAGE_ENDPOINT: 'https://storage.example.test',
-      STORAGE_ACCESS_KEY: 'access',
-      STORAGE_SECRET_KEY: 'secret',
+      STORAGE_PROVIDER: 'gcs',
+      GCP_PROJECT_ID: 'moazez-test-project',
+      GCS_SIGNING_SERVICE_ACCOUNT:
+        'moazez-gcs-signer@moazez-test-project.iam.gserviceaccount.com',
       STORAGE_BUCKET: 'private',
       STORAGE_PUBLIC_BUCKET: 'public',
     };
@@ -162,30 +162,23 @@ describe('learning media upload foundation contract', () => {
 
   it('runs every affected learning-media and Lesson Content invariant in CI', () => {
     const workflow = readFileSync(
-      join(root, '.github/workflows/learning-media-integrity.yml'),
+      join(root, '.github/workflows/ci.yml'),
+      'utf8',
+    );
+    const shardRunner = readFileSync(
+      join(root, 'scripts/ci/run-ci-shard.cjs'),
       'utf8',
     );
     const harness = readFileSync(
       join(root, 'scripts/ci/health-probe-runtime.sh'),
       'utf8',
     );
-    const parsedWorkflow = load(workflow) as {
-      jobs: {
-        'learning-media-integrity': {
-          env: Record<string, string>;
-          steps: Array<{
-            id?: string;
-            name?: string;
-            run?: string;
-            uses?: string;
-            if?: string;
-            'continue-on-error'?: boolean;
-          }>;
-        };
+    const planner = require(join(root, 'scripts/ci/plan-ci.cjs')) as {
+      classifyTestFile(relativePath: string): {
+        execution: string;
+        profile: string;
       };
     };
-    const job = parsedWorkflow.jobs['learning-media-integrity'];
-    const steps = job.steps;
 
     for (const requiredPath of [
       'test/integration/learning-media-upload.integration.spec.ts',
@@ -211,104 +204,43 @@ describe('learning media upload foundation contract', () => {
       'test/e2e/teacher-app-lesson-preparation.e2e-spec.ts',
       'test/security/tenancy.teacher-app-lesson-preparation.spec.ts',
     ]) {
-      expect(workflow).toContain(requiredPath);
+      expect(planner.classifyTestFile(requiredPath).execution).toBe(
+        'pull-request',
+      );
     }
-    expect(
-      steps.filter((step) => step.name === 'Verify ffprobe runtime contract'),
-    ).toHaveLength(1);
-
-    const minioStartSteps = steps.filter(
-      (step) => step.name === 'Start exact MinIO release',
+    expect(workflow).toContain('regression_matrix:');
+    expect(workflow).toContain('node scripts/ci/run-ci-shard.cjs');
+    expect(workflow).toContain("node-version: '22.23.1'");
+    expect(shardRunner).toContain(
+      "const POSTGRES_IMAGE = 'postgres:16-alpine'",
     );
-    expect(minioStartSteps).toHaveLength(1);
-    expect(minioStartSteps[0].run).toContain(
-      '--env MINIO_ROOT_USER="$STORAGE_ACCESS_KEY"',
+    expect(shardRunner).toContain("const REDIS_IMAGE = 'redis:7-alpine'");
+    expect(shardRunner).toContain(
+      "const MINIO_IMAGE = 'minio/minio:RELEASE.2025-09-07T16-13-09Z'",
     );
-    expect(minioStartSteps[0].run).toContain(
-      '--env MINIO_ROOT_PASSWORD="$STORAGE_SECRET_KEY"',
-    );
-    expect(minioStartSteps[0].run?.match(/MINIO_ROOT_USER=/gu)).toHaveLength(1);
-    expect(
-      minioStartSteps[0].run?.match(/MINIO_ROOT_PASSWORD=/gu),
-    ).toHaveLength(1);
-
-    const waitForMinioIndex = steps.findIndex(
-      (step) => step.name === 'Wait for MinIO',
-    );
-    const provisionStepIndexes = steps.flatMap((step, index) =>
-      step.name === 'Provision required MinIO buckets' ? [index] : [],
-    );
-    const startupScenarioIndex = steps.findIndex(
-      (step) => step.id === 'health_runtime_startup',
-    );
-    expect(waitForMinioIndex).toBeGreaterThanOrEqual(0);
-    expect(provisionStepIndexes).toHaveLength(1);
-    expect(waitForMinioIndex).toBeLessThan(provisionStepIndexes[0]);
-    expect(provisionStepIndexes[0]).toBeLessThan(startupScenarioIndex);
-
-    const provisionRun = steps[provisionStepIndexes[0]].run ?? '';
-    expect(provisionRun).toContain("require('minio')");
-    expect(provisionRun).toContain('process.env.STORAGE_BUCKET');
-    expect(provisionRun).toContain('process.env.STORAGE_PUBLIC_BUCKET');
-    expect(provisionRun).toContain('process.env.STORAGE_ACCESS_KEY');
-    expect(provisionRun).toContain('process.env.STORAGE_SECRET_KEY');
-    expect(provisionRun).toContain('client.bucketExists(bucket)');
-    expect(provisionRun).toContain('client.makeBucket(bucket)');
-    expect(provisionRun.indexOf('client.bucketExists(bucket)')).toBeLessThan(
-      provisionRun.indexOf('client.makeBucket(bucket)'),
-    );
+    expect(shardRunner).toContain('scripts/verify-media-runtime.cjs');
+    expect(shardRunner).toContain('async function provisionBuckets');
+    expect(shardRunner).toContain('client.bucketExists(bucket)');
+    expect(shardRunner).toContain('client.makeBucket(bucket)');
 
     const scenarios = [
-      ['health_runtime_startup', 'startup'],
-      ['health_runtime_redis_recovery', 'redis-recovery'],
-      ['health_runtime_storage_recovery', 'storage-recovery'],
-      ['health_runtime_realtime_reconciliation', 'realtime-reconciliation'],
-      ['health_runtime_graceful_shutdown', 'graceful-shutdown'],
-      ['health_runtime_forced_timeout', 'forced-timeout'],
-    ] as const;
-    for (const [id, scenario] of scenarios) {
-      const scenarioSteps = steps.filter((step) => step.id === id);
-      expect(scenarioSteps).toHaveLength(1);
-      expect(scenarioSteps[0]).toMatchObject({
-        'continue-on-error': true,
-        run: `bash scripts/ci/health-probe-runtime.sh ${scenario}`,
-      });
+      'startup',
+      'redis-recovery',
+      'storage-recovery',
+      'realtime-reconciliation',
+      'graceful-shutdown',
+      'forced-timeout',
+    ];
+    for (const scenario of scenarios) {
+      expect(shardRunner).toContain(`'${scenario}'`);
     }
-
-    expect(
-      steps.filter((step) => step.name === 'Health runtime scenario summary'),
-    ).toEqual([expect.objectContaining({ if: 'always()' })]);
-    expect(
-      steps.filter((step) => step.name === 'Upload health runtime diagnostics'),
-    ).toEqual([
-      expect.objectContaining({
-        if: 'always()',
-        uses: 'actions/upload-artifact@v4',
-      }),
-    ]);
-    expect(
-      steps.filter(
-        (step) => step.name === 'Clean up learning media containers',
-      ),
-    ).toEqual([expect.objectContaining({ if: 'always()' })]);
-    expect(
-      steps.some(
-        (step) =>
-          step.name === 'Verify application startup with pinned ffprobe',
-      ),
-    ).toBe(false);
 
     const dispatchedScenarios = Array.from(
       harness.matchAll(/^  ([a-z-]+)\) scenario_[a-z_]+ ;;/gmu),
       (match) => match[1],
     );
-    expect(dispatchedScenarios).toEqual(
-      scenarios.map(([, scenario]) => scenario),
-    );
-    expect(workflow).toContain('STORAGE_CORS_ORIGINS');
-    expect(workflow).toContain('postgres:16-alpine');
-    expect(workflow).toContain('redis:7-alpine');
-    expect(workflow).toContain('npm run db:migrations:check');
-    expect(workflow).toContain('npm run db:migrations:status');
+    expect(dispatchedScenarios).toEqual(scenarios);
+    expect(shardRunner).toContain("'scripts/check-migration-governance.cjs'");
+    expect(shardRunner).toContain("args: ['prisma', 'migrate', 'status']");
   });
 });

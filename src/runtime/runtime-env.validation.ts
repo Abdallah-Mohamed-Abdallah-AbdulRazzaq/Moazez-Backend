@@ -8,6 +8,10 @@ import {
   redisUrlSchema,
   refineRedisEndpointSeparation,
 } from '../config/redis-env.validation';
+import {
+  refineStorageEnvironment,
+  storageEnvironmentShape,
+} from '../infrastructure/storage/storage-env.validation';
 
 const booleanFromString = z
   .enum(['true', 'false'])
@@ -34,22 +38,13 @@ const managementShape = {
     .default('info'),
 };
 
-const storageShape = {
-  STORAGE_PROVIDER: z.enum(['minio', 's3']).default('minio'),
-  STORAGE_ENDPOINT: z.string().url(),
-  STORAGE_ACCESS_KEY: z.string().min(1),
-  STORAGE_SECRET_KEY: z.string().min(1),
-  STORAGE_BUCKET: z.string().min(1),
-  STORAGE_PUBLIC_BUCKET: z.string().min(1),
-};
-
 const coreWorkerSchema = z
   .object({
     ...managementShape,
     QUEUE_REDIS_URL: redisUrlSchema,
     REALTIME_REDIS_URL: redisUrlSchema,
     ...createDatabaseRuntimeEnvironmentShape('core-worker'),
-    ...storageShape,
+    ...storageEnvironmentShape,
     APP_URL: z.string().url(),
     SETTINGS_SECRET_ENCRYPTION_KEY: z.string().optional(),
     FCM_ENABLED: booleanFromString.default('false'),
@@ -62,6 +57,7 @@ const coreWorkerSchema = z
   .superRefine((env, context) => {
     refineDatabaseRuntimeEnvironment(env, context);
     refineRedisEndpointSeparation(env, context);
+    refineStorageEnvironment(env, context, { requireSigner: false });
 
     const firebaseFields = [
       env.FIREBASE_PROJECT_ID,
@@ -95,10 +91,11 @@ const mediaWorkerSchema = z
     ...managementShape,
     QUEUE_REDIS_URL: redisUrlSchema,
     ...createDatabaseRuntimeEnvironmentShape('media-worker'),
-    ...storageShape,
+    ...storageEnvironmentShape,
   })
   .superRefine((env, context) => {
     refineDatabaseRuntimeEnvironment(env, context);
+    refineStorageEnvironment(env, context, { requireSigner: false });
   });
 
 const maintenanceSchedulerSchema = z.object({
@@ -118,8 +115,10 @@ export const validateMaintenanceSchedulerEnv = (
   return validateMaintenanceSchedulerShape(raw);
 };
 
-function createValidator<TSchema extends z.ZodTypeAny>(schema: TSchema) {
-  return (raw: Record<string, unknown>): z.output<TSchema> => {
+function createValidator<TOutput, TDefinition extends z.ZodTypeDef, TInput>(
+  schema: z.ZodType<TOutput, TDefinition, TInput>,
+) {
+  return (raw: Record<string, unknown>): TOutput => {
     const parsed = schema.safeParse(raw);
     if (parsed.success) return parsed.data;
     const formatted = parsed.error.issues

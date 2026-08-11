@@ -1274,7 +1274,7 @@ describe('Teacher App tenancy isolation (security)', () => {
       data: {
         schoolId: schoolAId,
         schoolName: `${testSuffix} Academy`,
-        logoUrl: 'raw-storage-logo-should-not-be-returned',
+        logoUrl: null,
       },
     });
 

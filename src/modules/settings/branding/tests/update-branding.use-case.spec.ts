@@ -112,6 +112,9 @@ describe('UpdateBrandingUseCase', () => {
           city: 'Cairo',
         }),
       );
+      const persisted = (brandingRepository.upsert as jest.Mock).mock
+        .calls[0][2];
+      expect(persisted).not.toHaveProperty('logoUrl');
       expect(authRepository.createAuditLog).toHaveBeenCalledWith(
         expect.objectContaining({
           actorId: 'user-1',
@@ -125,6 +128,46 @@ describe('UpdateBrandingUseCase', () => {
       expect(result.latitude).toBe(30.1);
       expect(result.longitude).toBe(31.2);
       expect(result.logoUrl).toContain('https://api.example.com/');
+    });
+  });
+
+  it('cannot create a legacy raw logoUrl through the branding write use case', async () => {
+    const brandingRepository = {
+      upsert: jest.fn().mockResolvedValue({
+        id: 'profile-1',
+        schoolId: 'school-1',
+        schoolName: 'School',
+        logoUrl: null,
+      }),
+    } as unknown as BrandingRepository;
+    const useCase = new UpdateBrandingUseCase(
+      brandingRepository,
+      { createAuditLog: jest.fn() } as unknown as AuthRepository,
+      {
+        resolveForSchool: jest.fn().mockResolvedValue(null),
+      } as unknown as ResolveSchoolLogoUrlService,
+    );
+
+    await runWithRequestContext(createRequestContext(), async () => {
+      setActor({ id: 'user-1', userType: UserType.SCHOOL_USER });
+      setActiveMembership({
+        membershipId: 'membership-1',
+        organizationId: 'org-1',
+        schoolId: 'school-1',
+        roleId: 'role-1',
+        permissions: ['settings.branding.manage'],
+      });
+
+      await useCase.execute({
+        schoolName: 'School',
+        logoUrl: 'https://cdn.example.com/new-legacy-logo.png',
+      } as never);
+
+      expect(brandingRepository.upsert).toHaveBeenCalledWith(
+        'school-1',
+        'user-1',
+        expect.not.objectContaining({ logoUrl: expect.anything() }),
+      );
     });
   });
 });

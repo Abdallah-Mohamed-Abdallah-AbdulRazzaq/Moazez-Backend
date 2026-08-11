@@ -243,6 +243,141 @@ describe('bootstrap environment validation', () => {
       validateEnv(productionEnv({ APP_CORS_ORIGINS: origins })),
     ).toThrow(/APP_CORS_ORIGINS/u);
   });
+
+  it.each(['minio', 's3'])(
+    'accepts %s as the MinIO-compatible provider in development and test',
+    (provider) => {
+      expect(
+        validateEnv(baseEnv({ STORAGE_PROVIDER: provider })).STORAGE_PROVIDER,
+      ).toBe(provider);
+    },
+  );
+
+  it.each([
+    'STORAGE_ENDPOINT',
+    'STORAGE_ACCESS_KEY',
+    'STORAGE_SECRET_KEY',
+    'STORAGE_BUCKET',
+    'STORAGE_PUBLIC_BUCKET',
+  ])('requires MinIO-compatible field %s', (field) => {
+    expect(() => validateEnv(baseEnv({ [field]: undefined }))).toThrow(
+      new RegExp(field, 'u'),
+    );
+  });
+
+  it('accepts API GCS with ADC configuration and no static storage credentials', () => {
+    const env = validateEnv(
+      baseEnv({
+        STORAGE_PROVIDER: 'gcs',
+        STORAGE_ENDPOINT: undefined,
+        STORAGE_ACCESS_KEY: undefined,
+        STORAGE_SECRET_KEY: undefined,
+        GCP_PROJECT_ID: 'moazez-test-project',
+        GCS_SIGNING_SERVICE_ACCOUNT:
+          'moazez-gcs-signer@moazez-test-project.iam.gserviceaccount.com',
+      }),
+    );
+
+    expect(env).toMatchObject({
+      STORAGE_PROVIDER: 'gcs',
+      GCP_PROJECT_ID: 'moazez-test-project',
+    });
+    expect(env.STORAGE_ENDPOINT).toBeUndefined();
+    expect(env.STORAGE_ACCESS_KEY).toBeUndefined();
+    expect(env.STORAGE_SECRET_KEY).toBeUndefined();
+  });
+
+  it.each(['staging', 'production'])(
+    'accepts API GCS with a signing principal in %s',
+    (nodeEnvironment) => {
+      const env = validateEnv(
+        productionEnv({
+          NODE_ENV: nodeEnvironment,
+          APP_CORS_ORIGINS:
+            nodeEnvironment === 'production'
+              ? APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(',')
+              : APPROVED_STAGING_APPLICATION_ORIGINS.join(','),
+          GCP_PROJECT_ID: `moazez-${nodeEnvironment}`,
+          GCS_SIGNING_SERVICE_ACCOUNT: `moazez-gcs-signer@moazez-${nodeEnvironment}.iam.gserviceaccount.com`,
+        }),
+      );
+
+      expect(env).toMatchObject({
+        NODE_ENV: nodeEnvironment,
+        STORAGE_PROVIDER: 'gcs',
+        GCP_PROJECT_ID: `moazez-${nodeEnvironment}`,
+      });
+      expect(env.GCS_SIGNING_SERVICE_ACCOUNT).toContain('moazez-gcs-signer@');
+    },
+  );
+
+  it.each([
+    ['minio', 'staging'],
+    ['s3', 'staging'],
+    ['minio', 'production'],
+    ['s3', 'production'],
+  ])(
+    'rejects storage provider %s in %s',
+    (storageProvider, nodeEnvironment) => {
+      expect(() =>
+        validateEnv(
+          baseEnv({
+            NODE_ENV: nodeEnvironment,
+            APP_CORS_ORIGINS:
+              nodeEnvironment === 'production'
+                ? APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(',')
+                : APPROVED_STAGING_APPLICATION_ORIGINS.join(','),
+            STORAGE_CORS_ORIGINS: 'https://schools.moazez.cloud',
+            DATABASE_URL:
+              'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
+            QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379/0',
+            REALTIME_REDIS_URL: 'rediss://realtime-cache.invalid:6379/0',
+            STORAGE_PROVIDER: storageProvider,
+          }),
+        ),
+      ).toThrow(/STORAGE_PROVIDER must be gcs/u);
+    },
+  );
+
+  it('requires the GCS project and API signing principal', () => {
+    expect(() =>
+      validateEnv(
+        baseEnv({
+          STORAGE_PROVIDER: 'gcs',
+          STORAGE_ENDPOINT: undefined,
+          STORAGE_ACCESS_KEY: undefined,
+          STORAGE_SECRET_KEY: undefined,
+          GCS_SIGNING_SERVICE_ACCOUNT:
+            'moazez-gcs-signer@test.iam.gserviceaccount.com',
+        }),
+      ),
+    ).toThrow(/GCP_PROJECT_ID/u);
+
+    expect(() =>
+      validateEnv(
+        baseEnv({
+          STORAGE_PROVIDER: 'gcs',
+          STORAGE_ENDPOINT: undefined,
+          STORAGE_ACCESS_KEY: undefined,
+          STORAGE_SECRET_KEY: undefined,
+          GCP_PROJECT_ID: 'moazez-test-project',
+        }),
+      ),
+    ).toThrow(/GCS_SIGNING_SERVICE_ACCOUNT/u);
+  });
+
+  it('fails closed for an unsupported provider and for production default fallback', () => {
+    expect(() =>
+      validateEnv(baseEnv({ STORAGE_PROVIDER: 'unsupported' })),
+    ).toThrow(/STORAGE_PROVIDER/u);
+    expect(() =>
+      validateEnv(
+        productionEnv({
+          STORAGE_PROVIDER: undefined,
+        }),
+      ),
+    ).toThrow(/STORAGE_PROVIDER must be gcs/u);
+  });
 });
 
 function productionEnv(
@@ -252,6 +387,13 @@ function productionEnv(
     NODE_ENV: 'production',
     APP_CORS_ORIGINS: APPROVED_PRODUCTION_APPLICATION_ORIGINS.join(','),
     STORAGE_CORS_ORIGINS: 'https://schools.moazez.cloud',
+    STORAGE_PROVIDER: 'gcs',
+    STORAGE_ENDPOINT: undefined,
+    STORAGE_ACCESS_KEY: undefined,
+    STORAGE_SECRET_KEY: undefined,
+    GCP_PROJECT_ID: 'moazez-production',
+    GCS_SIGNING_SERVICE_ACCOUNT:
+      'moazez-gcs-signer@moazez-production.iam.gserviceaccount.com',
     DATABASE_URL:
       'postgresql://runtime-user:runtime-value@database.internal/moazez?sslmode=require',
     QUEUE_REDIS_URL: 'rediss://queue-cache.invalid:6379/0',

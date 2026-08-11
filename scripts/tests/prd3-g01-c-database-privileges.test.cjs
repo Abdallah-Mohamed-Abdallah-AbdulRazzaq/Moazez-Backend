@@ -5,6 +5,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const {
+  CI_PARENT_RUN_ID_PATTERN,
+  resolveCiParentRunId,
+} = require('../ci/ci-parent-run-id.cjs');
+const {
   BASE_SHA,
   EXPECTED_CHANGED_PATHS,
   NEGATIVE_CHECK_NAMES,
@@ -15,7 +19,9 @@ const {
   VERIFICATION_MODES,
   assertCleanup,
   createPassingSummaryForTests,
+  focusedTestEnvironment,
   initializeManagedAdministrator,
+  inspectRepositoryState,
   postgresReadinessProbe,
   resolveVerificationMode,
   validateRepositoryState,
@@ -24,11 +30,66 @@ const {
 } = require('../ci/prd3-g01-c-database-privileges.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
+const historicalTest = process.env.PRD3_CURRENT_CI === '1' ? test.skip : test;
 const read = (relativePath) =>
   fs.readFileSync(path.join(REPOSITORY_ROOT, relativePath), 'utf8');
 const bootstrapSql = read('scripts/database/prd3-g01-c-role-bootstrap.sql');
 const grantsSql = read('scripts/database/prd3-g01-c-runtime-grants.sql');
 const verifier = read('scripts/ci/prd3-g01-c-database-privileges.cjs');
+
+test('parent CI run ID accepts only exact lowercase hex and preserves random fallback', () => {
+  const accepted = ['00000000000000', 'abcdef01234567'];
+  for (const value of accepted) {
+    let fallbackCalled = false;
+    assert.equal(
+      resolveCiParentRunId(value, () => {
+        fallbackCalled = true;
+        return 'fallback';
+      }),
+      value,
+    );
+    assert.equal(fallbackCalled, false);
+    assert.match(value, CI_PARENT_RUN_ID_PATTERN);
+  }
+
+  for (const value of [
+    '',
+    'abcdef0123456',
+    'abcdef012345678',
+    'ABCDEF01234567',
+    'abcdef-1234567',
+    'gggggggggggggg',
+    ' abcdef01234567',
+    null,
+  ]) {
+    assert.throws(
+      () => resolveCiParentRunId(value, () => 'fallback'),
+      /exactly 14 lowercase hexadecimal/u,
+    );
+  }
+
+  let fallbackCalls = 0;
+  assert.equal(
+    resolveCiParentRunId(undefined, () => {
+      fallbackCalls += 1;
+      return '0123456789abcdef0123';
+    }),
+    '0123456789abcdef0123',
+  );
+  assert.equal(fallbackCalls, 1);
+  assert.match(
+    verifier,
+    /resolveCiParentRunId\(\s*process\.env\.MOAZEZ_CI_PARENT_RUN_ID/u,
+  );
+  assert.match(
+    verifier,
+    /function createFixture\([\s\S]*?const runId = RUN_ID;/u,
+  );
+  assert.match(
+    verifier,
+    /const OWNERSHIP_LABEL = 'com\.moazez\.prd3-g01-c\.run'/u,
+  );
+});
 const executableBootstrapSql = bootstrapSql
   .replace(/\/\*[\s\S]*?\*\//gu, '')
   .replace(/--[^\r\n]*/gu, '');
@@ -107,7 +168,10 @@ test('PostgreSQL readiness probe targets the exact fixture over TCP loopback', (
       shell: false,
     },
   });
-  assert.equal(invocation.args.filter((argument) => argument === '-h').length, 1);
+  assert.equal(
+    invocation.args.filter((argument) => argument === '-h').length,
+    1,
+  );
   assert.doesNotMatch(
     JSON.stringify(invocation),
     /synthetic-fixture-credential|synthetic-admin-credential|postgres(?:ql)?:\/\//u,
@@ -198,7 +262,10 @@ test('defines exactly the four approved PostgreSQL login identities', () => {
   ]);
   for (const role of POSTGRESQL_ROLES) {
     assert.match(bootstrapSql, new RegExp(`\\('${role}'\\)`, 'u'));
-    assert.match(bootstrapSql, new RegExp(`ALTER ROLE ${role}\\s+PASSWORD`, 'u'));
+    assert.match(
+      bootstrapSql,
+      new RegExp(`ALTER ROLE ${role}\\s+PASSWORD`, 'u'),
+    );
   }
 });
 
@@ -221,7 +288,10 @@ test('requires the exact non-administrative role attributes through a fail-close
     'NOT required_role.rolbypassrls',
     'required_role.rolinherit',
   ]) {
-    assert.ok(bootstrapSql.includes(predicate), `missing catalog predicate: ${predicate}`);
+    assert.ok(
+      bootstrapSql.includes(predicate),
+      `missing catalog predicate: ${predicate}`,
+    );
   }
   assert.match(bootstrapSql, /required database role attributes are unsafe/u);
 });
@@ -238,7 +308,8 @@ test('creates only missing LOGIN shells using PostgreSQL administrative defaults
 });
 
 test('uses one password-only ALTER ROLE statement per exact identity', () => {
-  const alterations = executableBootstrapSql.match(/ALTER\s+ROLE\s+[\s\S]*?;/giu) ?? [];
+  const alterations =
+    executableBootstrapSql.match(/ALTER\s+ROLE\s+[\s\S]*?;/giu) ?? [];
   assert.equal(alterations.length, POSTGRESQL_ROLES.length);
   for (const [role, variable] of Object.entries(ROLE_CREDENTIAL_VARIABLES)) {
     assert.match(
@@ -247,7 +318,10 @@ test('uses one password-only ALTER ROLE statement per exact identity', () => {
     );
   }
   for (const alteration of alterations) {
-    assert.doesNotMatch(alteration, /\bWITH\b|\bLOGIN\b|\b(?:NO)?SUPERUSER\b|\b(?:NO)?CREATEDB\b|\b(?:NO)?CREATEROLE\b|\b(?:NO)?REPLICATION\b|\b(?:NO)?BYPASSRLS\b|\b(?:NO)?INHERIT\b/iu);
+    assert.doesNotMatch(
+      alteration,
+      /\bWITH\b|\bLOGIN\b|\b(?:NO)?SUPERUSER\b|\b(?:NO)?CREATEDB\b|\b(?:NO)?CREATEROLE\b|\b(?:NO)?REPLICATION\b|\b(?:NO)?BYPASSRLS\b|\b(?:NO)?INHERIT\b/iu,
+    );
   }
 });
 
@@ -260,11 +334,17 @@ test('bootstrap SQL accepts variables and contains no literal role credential', 
 });
 
 test('runtime grants SQL contains no credential or connection coordinate', () => {
-  assert.doesNotMatch(grantsSql, /PASSWORD|credential|postgres(?:ql)?:\/\/|127\.0\.0\.1|localhost/iu);
+  assert.doesNotMatch(
+    grantsSql,
+    /PASSWORD|credential|postgres(?:ql)?:\/\/|127\.0\.0\.1|localhost/iu,
+  );
 });
 
 test('neither SQL policy uses GRANT ALL', () => {
-  assert.doesNotMatch(`${bootstrapSql}\n${grantsSql}`, /GRANT\s+ALL(?:\s+PRIVILEGES)?/iu);
+  assert.doesNotMatch(
+    `${bootstrapSql}\n${grantsSql}`,
+    /GRANT\s+ALL(?:\s+PRIVILEGES)?/iu,
+  );
 });
 
 test('runtime table DML grant set is exactly SELECT INSERT UPDATE DELETE', () => {
@@ -283,9 +363,18 @@ test('runtime DDL and ownership grants are absent', () => {
     grantsSql,
     /GRANT\s+(?:CREATE|TRUNCATE|REFERENCES|TRIGGER|OWNERSHIP)|WITH\s+GRANT\s+OPTION/iu,
   );
-  assert.match(grantsSql, /REVOKE ALL PRIVILEGES ON SCHEMA public FROM[\s\S]*?GRANT USAGE ON SCHEMA public TO/u);
-  assert.doesNotMatch(grantsSql, /REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM\s+PUBLIC/u);
-  assert.match(grantsSql, /ALTER DEFAULT PRIVILEGES[\s\S]*?REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC/u);
+  assert.match(
+    grantsSql,
+    /REVOKE ALL PRIVILEGES ON SCHEMA public FROM[\s\S]*?GRANT USAGE ON SCHEMA public TO/u,
+  );
+  assert.doesNotMatch(
+    grantsSql,
+    /REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM\s+PUBLIC/u,
+  );
+  assert.match(
+    grantsSql,
+    /ALTER DEFAULT PRIVILEGES[\s\S]*?REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC/u,
+  );
 });
 
 test('runtime access to _prisma_migrations is explicitly revoked', () => {
@@ -305,7 +394,10 @@ test('migration-owned default table privileges are exact', () => {
 });
 
 test('current and default sequence privileges are USAGE and SELECT only', () => {
-  assert.match(grantsSql, /GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public/u);
+  assert.match(
+    grantsSql,
+    /GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public/u,
+  );
   assert.match(
     grantsSql,
     /ALTER DEFAULT PRIVILEGES FOR ROLE moazez_migration IN SCHEMA public[\s\S]*?GRANT USAGE, SELECT ON SEQUENCES/u,
@@ -326,17 +418,29 @@ test('PUBLIC schema CREATE and unnecessary database privileges are revoked', () 
 
 test('Cloud SQL system and Moazez cross-role memberships fail closed', () => {
   assert.match(bootstrapSql, /system_role\.rolname = 'cloudsqlsuperuser'/u);
-  assert.match(bootstrapSql, /pg_catalog\.pg_has_role\(member_role\.oid, system_role\.oid, 'MEMBER'\)/u);
+  assert.match(
+    bootstrapSql,
+    /pg_catalog\.pg_has_role\(member_role\.oid, system_role\.oid, 'MEMBER'\)/u,
+  );
   assert.match(bootstrapSql, /member_role\.oid <> granted_role\.oid/u);
-  assert.match(bootstrapSql, /pg_catalog\.pg_has_role\(member_role\.oid, granted_role\.oid, 'MEMBER'\)/u);
+  assert.match(
+    bootstrapSql,
+    /pg_catalog\.pg_has_role\(member_role\.oid, granted_role\.oid, 'MEMBER'\)/u,
+  );
   assert.match(bootstrapSql, /required database role memberships are unsafe/u);
-  assert.doesNotMatch(bootstrapSql, /REVOKE\s+moazez_[a-z_]+\s+FROM\s+moazez_/iu);
+  assert.doesNotMatch(
+    bootstrapSql,
+    /REVOKE\s+moazez_[a-z_]+\s+FROM\s+moazez_/iu,
+  );
   assert.match(verifier, /pg_catalog\.pg_auth_members/u);
   assert.match(verifier, /verifyAllSetRoleDenials/u);
 });
 
 test('live verifier executes bootstrap through a managed-admin-like non-superuser', () => {
-  assert.match(verifier, /MANAGED_ADMIN_LOGIN = 'moazez_cloudsql_admin_fixture'/u);
+  assert.match(
+    verifier,
+    /MANAGED_ADMIN_LOGIN = 'moazez_cloudsql_admin_fixture'/u,
+  );
   assert.match(
     verifier,
     /LOGIN NOSUPERUSER CREATEDB CREATEROLE NOREPLICATION NOBYPASSRLS INHERIT/u,
@@ -353,16 +457,27 @@ test('live verifier rehearses unsafe attributes and both membership boundaries',
   assert.match(verifier, /rehearseCloudSqlSystemMembership/u);
   assert.match(verifier, /GRANT moazez_migration TO moazez_api/u);
   assert.match(verifier, /rehearseCrossRoleMembership/u);
-  assert.match(verifier, /SQL policy failure output exposed synthetic credential material/u);
+  assert.match(
+    verifier,
+    /SQL policy failure output exposed synthetic credential material/u,
+  );
 });
 
 test('production runtimes retain one DATABASE_URL deployment contract', () => {
-  const databaseValidation = read('src/infrastructure/database/database-runtime-env.validation.ts');
-  const provider = read('src/infrastructure/database/prisma-client-options.provider.ts');
+  const databaseValidation = read(
+    'src/infrastructure/database/database-runtime-env.validation.ts',
+  );
+  const provider = read(
+    'src/infrastructure/database/prisma-client-options.provider.ts',
+  );
   assert.match(databaseValidation, /'DATABASE_URL'/u);
   assert.match(databaseValidation, /'DATABASE_RUNTIME_ROLE'/u);
   assert.match(provider, /getOrThrow<string>\('DATABASE_URL'\)/u);
-  assert.deepEqual(Object.keys(RUNTIME_ROLES), ['api', 'core-worker', 'media-worker']);
+  assert.deepEqual(Object.keys(RUNTIME_ROLES), [
+    'api',
+    'core-worker',
+    'media-worker',
+  ]);
 });
 
 test('no role-specific database URL variable is introduced', () => {
@@ -381,21 +496,44 @@ test('no role-specific database URL variable is introduced', () => {
 
 test('Maintenance Scheduler remains database-free in validation and composition', () => {
   const validation = read('src/runtime/runtime-env.validation.ts');
-  const moduleSource = read('src/runtime/maintenance-scheduler/maintenance-scheduler-runtime.module.ts');
-  assert.match(validation, /assertDatabaseFreeRuntimeEnvironment\(raw, 'Maintenance Scheduler'\)/u);
-  assert.doesNotMatch(moduleSource, /PrismaModule|PrismaService|DATABASE_URL|DATABASE_RUNTIME_ROLE/u);
+  const moduleSource = read(
+    'src/runtime/maintenance-scheduler/maintenance-scheduler-runtime.module.ts',
+  );
+  assert.match(
+    validation,
+    /assertDatabaseFreeRuntimeEnvironment\(raw, 'Maintenance Scheduler'\)/u,
+  );
+  assert.doesNotMatch(
+    moduleSource,
+    /PrismaModule|PrismaService|DATABASE_URL|DATABASE_RUNTIME_ROLE/u,
+  );
   assert.match(moduleSource, /MaintenanceSchedulesModule/u);
 });
 
 test('negative runtime matrix is exact and complete', () => {
   assert.deepEqual(NEGATIVE_CHECK_NAMES, [
-    'create_table', 'alter_table', 'drop_table', 'truncate_table', 'create_index',
-    'create_schema', 'create_extension', 'create_function', 'grant_object_privileges',
-    'revoke_object_privileges', 'alter_object_owner', 'create_role', 'alter_role',
-    'drop_role', 'create_database', 'set_role_migration', 'set_role_other_runtime',
-    'read_prisma_migrations', 'modify_prisma_migrations',
+    'create_table',
+    'alter_table',
+    'drop_table',
+    'truncate_table',
+    'create_index',
+    'create_schema',
+    'create_extension',
+    'create_function',
+    'grant_object_privileges',
+    'revoke_object_privileges',
+    'alter_object_owner',
+    'create_role',
+    'alter_role',
+    'drop_role',
+    'create_database',
+    'set_role_migration',
+    'set_role_other_runtime',
+    'read_prisma_migrations',
+    'modify_prisma_migrations',
   ]);
-  for (const check of NEGATIVE_CHECK_NAMES) assert.match(verifier, new RegExp(`'${check}'`, 'u'));
+  for (const check of NEGATIVE_CHECK_NAMES)
+    assert.match(verifier, new RegExp(`'${check}'`, 'u'));
 });
 
 test('positive runtime matrix is exact and complete', () => {
@@ -410,10 +548,19 @@ test('positive runtime matrix is exact and complete', () => {
 });
 
 test('cleanup rejects any residual owned resource or database session', () => {
-  assert.equal(assertCleanup({ containers: 0, networks: 0, sessions: 0 }), undefined);
-  assert.throws(() => assertCleanup({ containers: 1, networks: 0, sessions: 0 }));
-  assert.throws(() => assertCleanup({ containers: 0, networks: 1, sessions: 0 }));
-  assert.throws(() => assertCleanup({ containers: 0, networks: 0, sessions: 1 }));
+  assert.equal(
+    assertCleanup({ containers: 0, networks: 0, sessions: 0 }),
+    undefined,
+  );
+  assert.throws(() =>
+    assertCleanup({ containers: 1, networks: 0, sessions: 0 }),
+  );
+  assert.throws(() =>
+    assertCleanup({ containers: 0, networks: 1, sessions: 0 }),
+  );
+  assert.throws(() =>
+    assertCleanup({ containers: 0, networks: 0, sessions: 1 }),
+  );
 });
 
 test('final summary rejects a missing or failed permission check', () => {
@@ -430,62 +577,105 @@ test('final summary rejects a missing or failed permission check', () => {
   assert.throws(() => validateSummary(missingBootstrapGuard));
 });
 
-test('working-tree scope is exactly the four C1 authorized paths', () => {
-  assert.equal(EXPECTED_CHANGED_PATHS.length, 4);
-  assert.deepEqual(EXPECTED_CHANGED_PATHS, [
-    'docs/production-readiness/phase-3/04-database-identities-and-least-privilege-evidence.md',
-    'scripts/ci/prd3-g01-c-database-privileges.cjs',
-    'scripts/database/prd3-g01-c-role-bootstrap.sql',
-    'scripts/tests/prd3-g01-c-database-privileges.test.cjs',
-  ]);
-  assert.equal(
-    validateRepositoryState(
-      repositoryState({ head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] }),
-      VERIFICATION_MODES.CANDIDATE,
-    ),
-    true,
-  );
-  assert.throws(() =>
-    validateRepositoryState(repositoryState(), VERIFICATION_MODES.CANDIDATE),
-  );
-  assert.throws(() =>
-    validateRepositoryState(
-      repositoryState({ head: BASE_SHA, changedPaths: EXPECTED_CHANGED_PATHS.slice(1) }),
-      VERIFICATION_MODES.CANDIDATE,
-    ),
-  );
-  for (const override of [
-    { branch: 'main', head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] },
-    { nodeVersion: 'v22.22.0', head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] },
-    {
-      nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
-      head: BASE_SHA,
-      changedPaths: [...EXPECTED_CHANGED_PATHS],
-    },
-  ]) {
+historicalTest(
+  'working-tree scope is exactly the four C1 authorized paths',
+  () => {
+    assert.equal(EXPECTED_CHANGED_PATHS.length, 4);
+    assert.deepEqual(EXPECTED_CHANGED_PATHS, [
+      'docs/production-readiness/phase-3/04-database-identities-and-least-privilege-evidence.md',
+      'scripts/ci/prd3-g01-c-database-privileges.cjs',
+      'scripts/database/prd3-g01-c-role-bootstrap.sql',
+      'scripts/tests/prd3-g01-c-database-privileges.test.cjs',
+    ]);
+    assert.equal(
+      validateRepositoryState(
+        repositoryState({
+          head: BASE_SHA,
+          changedPaths: [...EXPECTED_CHANGED_PATHS],
+        }),
+        VERIFICATION_MODES.CANDIDATE,
+      ),
+      true,
+    );
+    assert.throws(() =>
+      validateRepositoryState(repositoryState(), VERIFICATION_MODES.CANDIDATE),
+    );
     assert.throws(() =>
       validateRepositoryState(
-        repositoryState(override),
+        repositoryState({
+          head: BASE_SHA,
+          changedPaths: EXPECTED_CHANGED_PATHS.slice(1),
+        }),
         VERIFICATION_MODES.CANDIDATE,
       ),
     );
-  }
+    for (const override of [
+      {
+        branch: 'main',
+        head: BASE_SHA,
+        changedPaths: [...EXPECTED_CHANGED_PATHS],
+      },
+      {
+        nodeVersion: 'v22.22.0',
+        head: BASE_SHA,
+        changedPaths: [...EXPECTED_CHANGED_PATHS],
+      },
+      {
+        nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
+        head: BASE_SHA,
+        changedPaths: [...EXPECTED_CHANGED_PATHS],
+      },
+    ]) {
+      assert.throws(() =>
+        validateRepositoryState(
+          repositoryState(override),
+          VERIFICATION_MODES.CANDIDATE,
+        ),
+      );
+    }
+  },
+);
+
+historicalTest('verifier is locked to the C1 baseline', () => {
+  assert.match(
+    verifier,
+    /BASE_SHA = '6e73da066beb79ba59284a7b96260134c0b38df5'/u,
+  );
+  assert.doesNotMatch(
+    verifier,
+    /BASE_SHA = '1816a3294be92ac177b6a5e906199a33d9c1912a'/u,
+  );
 });
 
-test('verifier is locked to the C1 baseline and proves password rotation idempotency', () => {
-  assert.match(verifier, /BASE_SHA = '6e73da066beb79ba59284a7b96260134c0b38df5'/u);
+test('verifier preserves password rotation idempotency', () => {
   assert.match(verifier, /verifyCredentialRotation/u);
-  assert.match(verifier, /assert\.deepEqual\(secondRoleCatalog, firstRoleCatalog\)/u);
-  assert.doesNotMatch(verifier, /BASE_SHA = '1816a3294be92ac177b6a5e906199a33d9c1912a'/u);
+  assert.match(
+    verifier,
+    /assert\.deepEqual\(secondRoleCatalog, firstRoleCatalog\)/u,
+  );
 });
 
-test('verification mode parsing preserves candidate default and explicit regression only', () => {
+test('verification mode parsing preserves historical modes and adds explicit current CI', () => {
   assert.equal(resolveVerificationMode([]), VERIFICATION_MODES.CANDIDATE);
-  assert.equal(resolveVerificationMode(['--regression']), VERIFICATION_MODES.REGRESSION);
+  assert.equal(
+    resolveVerificationMode(['--regression']),
+    VERIFICATION_MODES.REGRESSION,
+  );
+  assert.equal(
+    resolveVerificationMode(['--current-ci']),
+    VERIFICATION_MODES.CURRENT_CI,
+  );
   for (const option of [
-    '--skip-preflight', '--force', '--current', '--ignore-scope', '--anything-else',
+    '--skip-preflight',
+    '--force',
+    '--current',
+    '--ignore-scope',
+    '--anything-else',
   ]) {
-    assert.throws(() => resolveVerificationMode([option]), /unknown verification mode/u);
+    assert.throws(
+      () => resolveVerificationMode([option]),
+      /unknown verification mode/u,
+    );
   }
   assert.throws(
     () => resolveVerificationMode(['--regression', '--force']),
@@ -493,75 +683,131 @@ test('verification mode parsing preserves candidate default and explicit regress
   );
 });
 
-test('regression mode accepts a descendant and rejects non-descendant or staged state', () => {
-  for (const branch of ['main', 'HEAD']) {
-    assert.equal(
-      validateRepositoryState(
-        repositoryState({
-          branch,
-          nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
-          platform: 'linux',
-        }),
-        VERIFICATION_MODES.REGRESSION,
-      ),
-      true,
-    );
-  }
-  assert.throws(() =>
+test('current CI mode runs durable contracts without historical repository assertions', () => {
+  assert.equal(
     validateRepositoryState(
-      repositoryState({ nodeVersion: 'v22.22.0' }),
-      VERIFICATION_MODES.REGRESSION,
+      repositoryState({
+        branch: 'feature/current-ci',
+        head: 'f'.repeat(40),
+        nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
+        platform: 'linux',
+        changedPaths: ['.github/workflows/ci.yml', 'src/main.ts'],
+        historicalBaseIsAncestor: false,
+        dependencyChanged: true,
+        devDependencyChanged: true,
+      }),
+      VERIFICATION_MODES.CURRENT_CI,
     ),
-  );
-  assert.throws(() =>
-    validateRepositoryState(
-      repositoryState({ historicalBaseIsAncestor: false }),
-      VERIFICATION_MODES.REGRESSION,
-    ),
+    true,
   );
   assert.throws(() =>
     validateRepositoryState(
       repositoryState({ indexClean: false }),
-      VERIFICATION_MODES.REGRESSION,
+      VERIFICATION_MODES.CURRENT_CI,
     ),
+  );
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ nodeVersion: 'v22.22.0' }),
+      VERIFICATION_MODES.CURRENT_CI,
+    ),
+  );
+  const historicalEnvironment = { PATH: 'synthetic', PRD3_CURRENT_CI: '1' };
+  assert.deepEqual(
+    focusedTestEnvironment(VERIFICATION_MODES.CANDIDATE, historicalEnvironment),
+    { PATH: 'synthetic' },
+  );
+  assert.deepEqual(
+    focusedTestEnvironment(
+      VERIFICATION_MODES.CURRENT_CI,
+      historicalEnvironment,
+    ),
+    historicalEnvironment,
+  );
+  assert.deepEqual(
+    Object.keys(inspectRepositoryState(VERIFICATION_MODES.CURRENT_CI)).sort(),
+    ['indexClean', 'nodeDirectory', 'nodeVersion', 'platform'],
   );
 });
 
-test('regression mode rejects every protected production and release-contract scope', () => {
-  for (const changedPath of [
-    'src/main.ts',
-    'prisma/schema.prisma',
-    'prisma/migrations/20260101000000_fixture/migration.sql',
-    'prisma/seeds/01-permissions.seed.ts',
-    'package-lock.json',
-    'Dockerfile',
-    '.github/workflows/fixture.yml',
-    'config/deployment/fixture.json',
-    'adr/ADR-9999-fixture.md',
-    'scripts/database/fixture.sql',
-    'scripts/migrations/fixture.cjs',
-    'scripts/release/fixture.cjs',
-  ]) {
+historicalTest(
+  'regression mode accepts a descendant and rejects non-descendant or staged state',
+  () => {
+    for (const branch of ['main', 'HEAD']) {
+      assert.equal(
+        validateRepositoryState(
+          repositoryState({
+            branch,
+            nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
+            platform: 'linux',
+          }),
+          VERIFICATION_MODES.REGRESSION,
+        ),
+        true,
+      );
+    }
     assert.throws(() =>
       validateRepositoryState(
-        repositoryState({ changedPaths: [changedPath] }),
+        repositoryState({ nodeVersion: 'v22.22.0' }),
         VERIFICATION_MODES.REGRESSION,
       ),
     );
-  }
-});
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ historicalBaseIsAncestor: false }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ indexClean: false }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+  },
+);
 
-test('regression mode rejects dependency or devDependency drift', () => {
-  assert.throws(() =>
-    validateRepositoryState(
-      repositoryState({ dependencyChanged: true }),
-      VERIFICATION_MODES.REGRESSION,
-    ),
-  );
-  assert.throws(() =>
-    validateRepositoryState(
-      repositoryState({ devDependencyChanged: true }),
-      VERIFICATION_MODES.REGRESSION,
-    ),
-  );
-});
+historicalTest(
+  'regression mode rejects every protected production and release-contract scope',
+  () => {
+    for (const changedPath of [
+      'src/main.ts',
+      'prisma/schema.prisma',
+      'prisma/migrations/20260101000000_fixture/migration.sql',
+      'prisma/seeds/01-permissions.seed.ts',
+      'package-lock.json',
+      'Dockerfile',
+      '.github/workflows/fixture.yml',
+      'config/deployment/fixture.json',
+      'adr/ADR-9999-fixture.md',
+      'scripts/database/fixture.sql',
+      'scripts/migrations/fixture.cjs',
+      'scripts/release/fixture.cjs',
+    ]) {
+      assert.throws(() =>
+        validateRepositoryState(
+          repositoryState({ changedPaths: [changedPath] }),
+          VERIFICATION_MODES.REGRESSION,
+        ),
+      );
+    }
+  },
+);
+
+historicalTest(
+  'regression mode rejects dependency or devDependency drift',
+  () => {
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ dependencyChanged: true }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ devDependencyChanged: true }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+  },
+);

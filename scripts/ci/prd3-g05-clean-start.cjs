@@ -8,6 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { isDeepStrictEqual } = require('node:util');
+const { resolveCiParentRunId } = require('./ci-parent-run-id.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_SHA = '10be00c51eba72bbdfe9591eb0e00399402100ef';
@@ -18,7 +19,9 @@ const REQUIRED_NODE_DIRECTORY = path.normalize(
 );
 const POSTGRES_IMAGE = 'postgres:16-alpine';
 const GATE = 'PRD3-G05';
-const RUN_ID = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
+const RUN_ID = resolveCiParentRunId(process.env.MOAZEZ_CI_PARENT_RUN_ID, () =>
+  crypto.randomUUID().replaceAll('-', '').slice(0, 16),
+);
 const RUN_LABEL = 'com.moazez.prd3-g05.run';
 const GATE_LABEL = 'com.moazez.prd3-g05.gate';
 const ROLE_LABEL = 'com.moazez.prd3-g05.role';
@@ -30,7 +33,10 @@ const MIGRATION_RESULT_CODE_PATTERN = /^[a-z][a-z0-9_]{0,127}$/u;
 const VERIFICATION_MODES = Object.freeze({
   CANDIDATE: 'candidate',
   REGRESSION: 'regression',
+  CURRENT_CI: 'current-ci',
 });
+const FOCUSED_TEST_COUNT = 22;
+const CURRENT_CI_SKIPPED_TEST_COUNT = 8;
 const ROLE_BOOTSTRAP_PATH = path.join(
   REPOSITORY_ROOT,
   'scripts',
@@ -148,8 +154,8 @@ function git(args, options = {}) {
 }
 
 function readChangedPaths() {
-  return git(['status', '--short', '--untracked-files=all']).stdout
-    .split(/\r?\n/u)
+  return git(['status', '--short', '--untracked-files=all'])
+    .stdout.split(/\r?\n/u)
     .filter(Boolean)
     .map((line) => line.slice(3).replaceAll('\\', '/'))
     .sort();
@@ -160,23 +166,40 @@ function resolveVerificationMode(args = []) {
   if (args.length === 1 && args[0] === '--regression') {
     return VERIFICATION_MODES.REGRESSION;
   }
-  throw new Error('unknown verification mode; expected no argument or --regression');
+  if (args.length === 1 && args[0] === '--current-ci') {
+    return VERIFICATION_MODES.CURRENT_CI;
+  }
+  throw new Error(
+    'unknown verification mode; expected no argument, --regression, or --current-ci',
+  );
 }
 
 function isProtectedRegressionPath(changedPath) {
   const normalized = changedPath.replaceAll('\\', '/');
   return (
     REGRESSION_PROTECTED_PATHS.includes(normalized) ||
-    REGRESSION_PROTECTED_PREFIXES.some((prefix) => normalized.startsWith(prefix)) ||
-    /(?:^|\/)(?:[^/]+\.tf|[^/]*terraform[^/]*|cloudbuild[^/]*)$/iu.test(normalized)
+    REGRESSION_PROTECTED_PREFIXES.some((prefix) =>
+      normalized.startsWith(prefix),
+    ) ||
+    /(?:^|\/)(?:[^/]+\.tf|[^/]*terraform[^/]*|cloudbuild[^/]*)$/iu.test(
+      normalized,
+    )
   );
 }
 
 function validateRepositoryState(state, mode) {
-  assert.ok(Object.values(VERIFICATION_MODES).includes(mode), 'unknown verification mode');
+  assert.ok(
+    Object.values(VERIFICATION_MODES).includes(mode),
+    'unknown verification mode',
+  );
   assert.equal(state.nodeVersion, REQUIRED_NODE_VERSION);
   assert.equal(state.indexClean, true, 'the real Git index must remain clean');
-  assert.equal(state.dependencyChanged, false, 'dependency drift is not permitted');
+  if (mode === VERIFICATION_MODES.CURRENT_CI) return true;
+  assert.equal(
+    state.dependencyChanged,
+    false,
+    'dependency drift is not permitted',
+  );
   assert.equal(
     state.devDependencyChanged,
     false,
@@ -189,7 +212,10 @@ function validateRepositoryState(state, mode) {
       REQUIRED_NODE_DIRECTORY.toLowerCase(),
     );
     assert.equal(state.head, BASE_SHA);
-    assert.deepEqual([...state.changedPaths].sort(), [...EXPECTED_CHANGED_PATHS].sort());
+    assert.deepEqual(
+      [...state.changedPaths].sort(),
+      [...EXPECTED_CHANGED_PATHS].sort(),
+    );
   } else {
     assert.equal(
       state.historicalBaseIsAncestor,
@@ -205,7 +231,19 @@ function validateRepositoryState(state, mode) {
   return true;
 }
 
-function inspectRepositoryState() {
+function inspectRepositoryState(mode = VERIFICATION_MODES.CANDIDATE) {
+  const cached = spawnSync('git', ['diff', '--cached', '--quiet'], {
+    cwd: REPOSITORY_ROOT,
+    windowsHide: true,
+  });
+  const currentState = {
+    nodeVersion: process.version,
+    nodeDirectory: path.dirname(path.resolve(process.execPath)),
+    platform: process.platform,
+    indexClean: cached.status === 0,
+  };
+  if (mode === VERIFICATION_MODES.CURRENT_CI) return currentState;
+
   const ancestor = spawnSync(
     'git',
     ['merge-base', '--is-ancestor', BASE_SHA, 'HEAD'],
@@ -214,21 +252,14 @@ function inspectRepositoryState() {
   if (ancestor.error || ![0, 1].includes(ancestor.status)) {
     throw new Error('historical baseline ancestry inspection failed');
   }
-  const cached = spawnSync('git', ['diff', '--cached', '--quiet'], {
-    cwd: REPOSITORY_ROOT,
-    windowsHide: true,
-  });
   const headPackage = JSON.parse(git(['show', 'HEAD:package.json']).stdout);
   const workingPackage = JSON.parse(
     fs.readFileSync(path.join(REPOSITORY_ROOT, 'package.json'), 'utf8'),
   );
   return {
+    ...currentState,
     branch: git(['branch', '--show-current']).stdout.trim(),
     head: git(['rev-parse', 'HEAD']).stdout.trim(),
-    nodeVersion: process.version,
-    nodeDirectory: path.dirname(path.resolve(process.execPath)),
-    platform: process.platform,
-    indexClean: cached.status === 0,
     changedPaths: readChangedPaths(),
     historicalBaseIsAncestor: ancestor.status === 0,
     dependencyChanged: !isDeepStrictEqual(
@@ -243,15 +274,26 @@ function inspectRepositoryState() {
 }
 
 function assertRepositoryPreflight(mode = VERIFICATION_MODES.CANDIDATE) {
-  validateRepositoryState(inspectRepositoryState(), mode);
+  validateRepositoryState(inspectRepositoryState(mode), mode);
 }
 
 function assertProtectedScope(mode = VERIFICATION_MODES.CANDIDATE) {
-  validateRepositoryState(inspectRepositoryState(), mode);
+  validateRepositoryState(inspectRepositoryState(mode), mode);
 }
 
-function runFocusedTests() {
+function focusedTestEnvironment(mode, environment = process.env) {
+  const focusedEnvironment = { ...environment };
+  if (mode === VERIFICATION_MODES.CURRENT_CI) {
+    focusedEnvironment.PRD3_CURRENT_CI = '1';
+  } else {
+    delete focusedEnvironment.PRD3_CURRENT_CI;
+  }
+  return focusedEnvironment;
+}
+
+function runFocusedTests(mode = VERIFICATION_MODES.CANDIDATE) {
   const result = command(process.execPath, ['--test', FOCUSED_TEST_PATH], {
+    env: focusedTestEnvironment(mode),
     timeoutMs: 180_000,
     label: 'focused G05 test suite failed',
     errorCode: 'focused_g05_tests_failed',
@@ -260,10 +302,12 @@ function runFocusedTests() {
   const tests = Number(output.match(/# tests (\d+)/u)?.[1]);
   const failed = Number(output.match(/# fail (\d+)/u)?.[1]);
   const skipped = Number(output.match(/# skipped (\d+)/u)?.[1]);
-  assert.equal(tests, 21);
+  const expectedSkipped =
+    mode === VERIFICATION_MODES.CURRENT_CI ? CURRENT_CI_SKIPPED_TEST_COUNT : 0;
+  assert.equal(tests, FOCUSED_TEST_COUNT);
   assert.equal(failed, 0);
-  assert.equal(skipped, 0);
-  return { tests, passed: tests, failed, skipped };
+  assert.equal(skipped, expectedSkipped);
+  return { tests, passed: tests - skipped, failed, skipped };
 }
 
 async function allocateLoopbackPort() {
@@ -293,7 +337,11 @@ function verifyLocalDocker() {
   if (!endpoint?.startsWith('npipe://') && !endpoint?.startsWith('unix://')) {
     throw new Error('non_local_docker_endpoint_rejected');
   }
-  const serverVersion = docker(['version', '--format', '{{.Server.Version}}']).stdout.trim();
+  const serverVersion = docker([
+    'version',
+    '--format',
+    '{{.Server.Version}}',
+  ]).stdout.trim();
   assert.ok(serverVersion.length > 0);
   postgresImageId = docker([
     'image',
@@ -303,7 +351,11 @@ function verifyLocalDocker() {
     '{{.Id}}',
   ]).stdout.trim();
   assert.match(postgresImageId, /^sha256:[a-f0-9]{64}$/u);
-  return { endpointTransport: endpoint.split(':', 1)[0], serverVersion, postgresImageId };
+  return {
+    endpointTransport: endpoint.split(':', 1)[0],
+    serverVersion,
+    postgresImageId,
+  };
 }
 
 function ownershipLabels() {
@@ -360,7 +412,9 @@ function createDatabaseContainer() {
   }
   assert.ok(Date.now() < deadline, 'postgresql_startup_timeout');
 
-  const inspection = JSON.parse(docker(['container', 'inspect', DATABASE_CONTAINER]).stdout)[0];
+  const inspection = JSON.parse(
+    docker(['container', 'inspect', DATABASE_CONTAINER]).stdout,
+  )[0];
   assert.equal(inspection.Name, `/${DATABASE_CONTAINER}`);
   assert.equal(inspection.Config.Labels[RUN_LABEL], RUN_ID);
   assert.equal(inspection.Config.Labels[GATE_LABEL], GATE);
@@ -370,7 +424,11 @@ function createDatabaseContainer() {
     '127.0.0.1',
   );
   assert.ok(inspection.HostConfig.Tmpfs['/var/lib/postgresql/data']);
-  assert.ok(inspection.Mounts.every((mount) => mount.Type !== 'volume' && mount.Type !== 'bind'));
+  assert.ok(
+    inspection.Mounts.every(
+      (mount) => mount.Type !== 'volume' && mount.Type !== 'bind',
+    ),
+  );
 }
 
 function psql(login, databaseName, credential, sql, options = {}) {
@@ -405,11 +463,20 @@ function psql(login, databaseName, credential, sql, options = {}) {
 }
 
 function adminSql(databaseName, sql, options = {}) {
-  return psql('postgres', databaseName, syntheticSecrets.postgres, sql, options);
+  return psql(
+    'postgres',
+    databaseName,
+    syntheticSecrets.postgres,
+    sql,
+    options,
+  );
 }
 
 function queryScalar(databaseName, sql) {
-  return adminSql(databaseName, `${sql.replace(/;?\s*$/u, '')};\n`).stdout.trim();
+  return adminSql(
+    databaseName,
+    `${sql.replace(/;?\s*$/u, '')};\n`,
+  ).stdout.trim();
 }
 
 function createFixtureDatabase() {
@@ -527,13 +594,21 @@ function runGovernedFreshMigration() {
   }
   const combined = `${result.stdout}\n${result.stderr}`;
   for (const sensitive of [url, syntheticSecrets.migration]) {
-    assert.ok(!combined.includes(sensitive), 'migration output exposed synthetic material');
+    assert.ok(
+      !combined.includes(sensitive),
+      'migration output exposed synthetic material',
+    );
   }
   const events = parseJsonLines(result.stdout);
-  const final = events.findLast((event) => event.event === 'migration.job.result');
+  const final = events.findLast(
+    (event) => event.event === 'migration.job.result',
+  );
   const succeededStages = new Set(
     events
-      .filter((event) => event.event === 'migration.job.stage' && event.status === 'succeeded')
+      .filter(
+        (event) =>
+          event.event === 'migration.job.stage' && event.status === 'succeeded',
+      )
       .map((event) => event.stage),
   );
   assert.equal(final?.status, 'migration_applied');
@@ -567,7 +642,7 @@ function runApprovedReferenceSeeds() {
     '    approvedFunctionExecutions += 1;',
     '    await seedSystemRoles(prisma);',
     '    approvedFunctionExecutions += 1;',
-    "    process.stdout.write(`\\nG05_SEED_RESULT=${JSON.stringify({ approvedFunctionExecutions, platformAdminExecutions: 0, demoSeedExecutions: 0 })}\\n`);",
+    '    process.stdout.write(`\\nG05_SEED_RESULT=${JSON.stringify({ approvedFunctionExecutions, platformAdminExecutions: 0, demoSeedExecutions: 0 })}\\n`);',
     '  } finally {',
     '    await prisma.$disconnect();',
     '  }',
@@ -586,7 +661,9 @@ function runApprovedReferenceSeeds() {
       errorCode: 'approved_reference_seed_failed',
     },
   );
-  assert.ok(!`${result.stdout}\n${result.stderr}`.includes(syntheticSecrets.migration));
+  assert.ok(
+    !`${result.stdout}\n${result.stderr}`.includes(syntheticSecrets.migration),
+  );
   const match = result.stdout.match(/G05_SEED_RESULT=(\{[^\r\n]+\})/u);
   assert.ok(match, 'approved seed result marker missing');
   const execution = JSON.parse(match[1]);
@@ -609,9 +686,14 @@ function inspectAllTableCounts() {
   for (const tableName of tableNames) {
     assert.match(tableName, /^[a-z0-9_]+$/u);
     counts[tableName] = Number(
-      queryScalar(DATABASE_NAME, `SELECT count(*) FROM public.\"${tableName}\"`),
+      queryScalar(
+        DATABASE_NAME,
+        `SELECT count(*) FROM public.\"${tableName}\"`,
+      ),
     );
-    assert.ok(Number.isSafeInteger(counts[tableName]) && counts[tableName] >= 0);
+    assert.ok(
+      Number.isSafeInteger(counts[tableName]) && counts[tableName] >= 0,
+    );
   }
   return counts;
 }
@@ -619,13 +701,20 @@ function inspectAllTableCounts() {
 function provePostSeedRowScope() {
   const counts = inspectAllTableCounts();
   const nonzeroApplicationTables = Object.entries(counts)
-    .filter(([tableName, count]) => tableName !== '_prisma_migrations' && count > 0)
+    .filter(
+      ([tableName, count]) => tableName !== '_prisma_migrations' && count > 0,
+    )
     .map(([tableName]) => tableName)
     .sort();
-  assert.deepEqual(nonzeroApplicationTables, [...ALLOWED_NONZERO_APPLICATION_TABLES]);
+  assert.deepEqual(nonzeroApplicationTables, [
+    ...ALLOWED_NONZERO_APPLICATION_TABLES,
+  ]);
   const permissionCount = counts.permissions ?? 0;
   const systemRoleCount = Number(
-    queryScalar(DATABASE_NAME, 'SELECT count(*) FROM public.roles WHERE is_system = true'),
+    queryScalar(
+      DATABASE_NAME,
+      'SELECT count(*) FROM public.roles WHERE is_system = true',
+    ),
   );
   const rolePermissionCount = counts.role_permissions ?? 0;
   const userCount = counts.users ?? 0;
@@ -662,7 +751,9 @@ function provePostSeedRowScope() {
 function cleanupOwnedResources() {
   if (databaseCreated) {
     const inspection = JSON.parse(
-      docker(['container', 'inspect', DATABASE_CONTAINER], { allowFailure: false }).stdout,
+      docker(['container', 'inspect', DATABASE_CONTAINER], {
+        allowFailure: false,
+      }).stdout,
     )[0];
     assert.equal(inspection.Name, `/${DATABASE_CONTAINER}`);
     assert.equal(inspection.Config.Labels[RUN_LABEL], RUN_ID);
@@ -794,7 +885,7 @@ async function main() {
   try {
     assertRepositoryPreflight(mode);
     assertProtectedScope(mode);
-    const focusedTests = runFocusedTests();
+    const focusedTests = runFocusedTests(mode);
     summary = await runLiveEvidence();
     summary.focusedTests = focusedTests;
     assertRepositoryPreflight(mode);
@@ -815,7 +906,9 @@ async function main() {
 
 if (require.main === module) {
   main().catch((error) => {
-    process.stderr.write(`PRD3-G05 final verification failed: ${safeMessage(error)}\n`);
+    process.stderr.write(
+      `PRD3-G05 final verification failed: ${safeMessage(error)}\n`,
+    );
     process.exitCode = 1;
   });
 }
@@ -823,9 +916,12 @@ if (require.main === module) {
 module.exports = {
   ALLOWED_NONZERO_APPLICATION_TABLES,
   BASE_SHA,
+  CURRENT_CI_SKIPPED_TEST_COUNT,
   EXPECTED_CHANGED_PATHS,
+  FOCUSED_TEST_COUNT,
   VERIFICATION_MODES,
   command,
+  focusedTestEnvironment,
   governedMigrationFailure,
   governedMigrationFailureCode,
   inspectRepositoryState,

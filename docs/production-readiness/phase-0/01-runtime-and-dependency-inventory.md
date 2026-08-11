@@ -179,7 +179,7 @@ are bounded connection/request/health timeouts, not scheduled work
 | Health | DB check executes `SELECT 1` with a one-second health timeout. | Connectivity is checked, not pool saturation, replica health, migration compatibility, or transaction latency. | EVD-046 |
 
 The nine explicit script sites are:
-`scripts/audits/classify-school-branding-logo-values.ts`,
+`scripts/audits/pre-real-data-provider-url-audit.ts`,
 `scripts/backfill-teacher-profiles-1a.cjs`,
 `scripts/classify-legacy-learning-media.cjs`,
 `scripts/classify-teacher-directory-reality-0a.cjs`,

@@ -9,15 +9,11 @@ const {
   NODE_ENGINE,
   NODE_IMAGE,
   NODE_VERSION,
+  WORKFLOWS,
   verifyRuntimePolicy,
 } = require('../verify-runtime-policy.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
-const WORKFLOWS = [
-  '.github/workflows/migration-integrity.yml',
-  '.github/workflows/learning-content-integrity.yml',
-  '.github/workflows/learning-media-integrity.yml',
-];
 
 test('the repository satisfies the supported runtime policy', () => {
   const result = verifyRuntimePolicy(REPOSITORY_ROOT);

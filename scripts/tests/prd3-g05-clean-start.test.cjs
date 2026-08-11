@@ -7,17 +7,22 @@ const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const {
   BASE_SHA,
+  CURRENT_CI_SKIPPED_TEST_COUNT,
   EXPECTED_CHANGED_PATHS,
+  FOCUSED_TEST_COUNT,
   VERIFICATION_MODES,
   command,
+  focusedTestEnvironment,
   governedMigrationFailure,
   governedMigrationFailureCode,
+  inspectRepositoryState,
   resolveVerificationMode,
   runGovernedFreshMigration,
   validateRepositoryState,
 } = require('../ci/prd3-g05-clean-start.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
+const historicalTest = process.env.PRD3_CURRENT_CI === '1' ? test.skip : test;
 const MAINTENANCE_CHANGED_PATHS = Object.freeze([
   'scripts/ci/prd3-g01-c-database-privileges.cjs',
   'scripts/tests/prd3-g01-c-database-privileges.test.cjs',
@@ -66,63 +71,161 @@ function repositoryState(overrides = {}) {
   };
 }
 
-test('G05 historical candidate contract retains its exact baseline and ten paths', () => {
-  assert.equal(BASE_SHA, '10be00c51eba72bbdfe9591eb0e00399402100ef');
-  assert.deepEqual(EXPECTED_CHANGED_PATHS, [
-    'adr/ADR-0006-production-data-source-object-storage-and-signed-capability-boundary.md',
-    'config/deployment/production-data-branch.contract.json',
-    'config/deployment/production-seed-inventory.json',
-    'docs/production-readiness/phase-0/02-production-decision-register.md',
-    'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md',
-    'docs/production-readiness/phase-0/05-owner-decision-disposition-register.md',
-    'docs/production-readiness/phase-3/08-clean-start-production-data-evidence.md',
-    'package.json',
-    'scripts/ci/prd3-g05-clean-start.cjs',
-    'scripts/tests/prd3-g05-clean-start.test.cjs',
-  ]);
+historicalTest(
+  'G05 historical candidate contract retains its exact baseline and ten paths',
+  () => {
+    assert.equal(BASE_SHA, '10be00c51eba72bbdfe9591eb0e00399402100ef');
+    assert.deepEqual(EXPECTED_CHANGED_PATHS, [
+      'adr/ADR-0006-production-data-source-object-storage-and-signed-capability-boundary.md',
+      'config/deployment/production-data-branch.contract.json',
+      'config/deployment/production-seed-inventory.json',
+      'docs/production-readiness/phase-0/02-production-decision-register.md',
+      'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md',
+      'docs/production-readiness/phase-0/05-owner-decision-disposition-register.md',
+      'docs/production-readiness/phase-3/08-clean-start-production-data-evidence.md',
+      'package.json',
+      'scripts/ci/prd3-g05-clean-start.cjs',
+      'scripts/tests/prd3-g05-clean-start.test.cjs',
+    ]);
+    assert.equal(
+      validateRepositoryState(
+        repositoryState({
+          head: BASE_SHA,
+          changedPaths: [...EXPECTED_CHANGED_PATHS],
+        }),
+        VERIFICATION_MODES.CANDIDATE,
+      ),
+      true,
+    );
+    assert.throws(() =>
+      validateRepositoryState(repositoryState(), VERIFICATION_MODES.CANDIDATE),
+    );
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({
+          head: BASE_SHA,
+          changedPaths: EXPECTED_CHANGED_PATHS.slice(1),
+        }),
+        VERIFICATION_MODES.CANDIDATE,
+      ),
+    );
+    for (const override of [
+      {
+        branch: 'main',
+        head: BASE_SHA,
+        changedPaths: [...EXPECTED_CHANGED_PATHS],
+      },
+      {
+        nodeVersion: 'v22.22.0',
+        head: BASE_SHA,
+        changedPaths: [...EXPECTED_CHANGED_PATHS],
+      },
+      {
+        nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
+        head: BASE_SHA,
+        changedPaths: [...EXPECTED_CHANGED_PATHS],
+      },
+    ]) {
+      assert.throws(() =>
+        validateRepositoryState(
+          repositoryState(override),
+          VERIFICATION_MODES.CANDIDATE,
+        ),
+      );
+    }
+  },
+);
+
+test('G05 verification mode parsing preserves historical modes and adds current CI', () => {
+  assert.equal(resolveVerificationMode([]), VERIFICATION_MODES.CANDIDATE);
+  assert.equal(
+    resolveVerificationMode(['--regression']),
+    VERIFICATION_MODES.REGRESSION,
+  );
+  assert.equal(
+    resolveVerificationMode(['--current-ci']),
+    VERIFICATION_MODES.CURRENT_CI,
+  );
+  for (const option of [
+    '--skip-preflight',
+    '--force',
+    '--current',
+    '--ignore-scope',
+    '--anything-else',
+  ]) {
+    assert.throws(
+      () => resolveVerificationMode([option]),
+      /unknown verification mode/u,
+    );
+  }
+  assert.throws(() => resolveVerificationMode(['--regression', '--force']));
+});
+
+test('G05 current CI mode runs clean-start behavior without historical snapshots', () => {
+  const harnessSource = read('scripts/ci/prd3-g05-clean-start.cjs');
   assert.equal(
     validateRepositoryState(
-      repositoryState({ head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] }),
-      VERIFICATION_MODES.CANDIDATE,
+      repositoryState({
+        branch: 'feature/current-ci',
+        head: 'f'.repeat(40),
+        nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
+        platform: 'linux',
+        changedPaths: [
+          '.github/workflows/ci.yml',
+          'adr/ADR-0006-production-data-source-object-storage-and-signed-capability-boundary.md',
+          'package.json',
+        ],
+        historicalBaseIsAncestor: false,
+        dependencyChanged: true,
+        devDependencyChanged: true,
+      }),
+      VERIFICATION_MODES.CURRENT_CI,
     ),
     true,
   );
   assert.throws(() =>
-    validateRepositoryState(repositoryState(), VERIFICATION_MODES.CANDIDATE),
+    validateRepositoryState(
+      repositoryState({ indexClean: false }),
+      VERIFICATION_MODES.CURRENT_CI,
+    ),
   );
   assert.throws(() =>
     validateRepositoryState(
-      repositoryState({ head: BASE_SHA, changedPaths: EXPECTED_CHANGED_PATHS.slice(1) }),
-      VERIFICATION_MODES.CANDIDATE,
+      repositoryState({ nodeVersion: 'v22.22.0' }),
+      VERIFICATION_MODES.CURRENT_CI,
     ),
   );
-  for (const override of [
-    { branch: 'main', head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] },
-    { nodeVersion: 'v22.22.0', head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] },
+  const environment = {
+    SENTINEL: 'preserved',
+    PRD3_CURRENT_CI: 'ambient-value',
+  };
+  assert.deepEqual(
+    focusedTestEnvironment(VERIFICATION_MODES.CURRENT_CI, environment),
     {
-      nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
-      head: BASE_SHA,
-      changedPaths: [...EXPECTED_CHANGED_PATHS],
+      SENTINEL: 'preserved',
+      PRD3_CURRENT_CI: '1',
     },
-  ]) {
-    assert.throws(() =>
-      validateRepositoryState(
-        repositoryState(override),
-        VERIFICATION_MODES.CANDIDATE,
-      ),
-    );
-  }
-});
-
-test('G05 verification mode parsing permits only candidate default or --regression', () => {
-  assert.equal(resolveVerificationMode([]), VERIFICATION_MODES.CANDIDATE);
-  assert.equal(resolveVerificationMode(['--regression']), VERIFICATION_MODES.REGRESSION);
-  for (const option of [
-    '--skip-preflight', '--force', '--current', '--ignore-scope', '--anything-else',
-  ]) {
-    assert.throws(() => resolveVerificationMode([option]), /unknown verification mode/u);
-  }
-  assert.throws(() => resolveVerificationMode(['--regression', '--force']));
+  );
+  assert.deepEqual(
+    focusedTestEnvironment(VERIFICATION_MODES.REGRESSION, environment),
+    {
+      SENTINEL: 'preserved',
+    },
+  );
+  assert.deepEqual(
+    Object.keys(inspectRepositoryState(VERIFICATION_MODES.CURRENT_CI)).sort(),
+    ['indexClean', 'nodeDirectory', 'nodeVersion', 'platform'],
+  );
+  assert.equal(FOCUSED_TEST_COUNT, 22);
+  assert.equal(CURRENT_CI_SKIPPED_TEST_COUNT, 8);
+  assert.match(
+    harnessSource,
+    /resolveCiParentRunId\(\s*process\.env\.MOAZEZ_CI_PARENT_RUN_ID/u,
+  );
+  assert.match(
+    harnessSource,
+    /const RUN_LABEL = 'com\.moazez\.prd3-g05\.run'/u,
+  );
 });
 
 test('bounded command retains child output on failure and preserves success results', () => {
@@ -163,11 +266,17 @@ test('structured governed migration failure exposes only its exact safe code', (
     stderr: 'migration-credential',
   });
 
-  assert.equal(governedMigrationFailureCode(childError), 'migration_deploy_failed');
+  assert.equal(
+    governedMigrationFailureCode(childError),
+    'migration_deploy_failed',
+  );
   const failure = governedMigrationFailure(childError);
   assert.equal(failure.code, 'governed_fresh_migration_failed');
   assert.equal(failure.message, 'migration_deploy_failed');
-  assert.doesNotMatch(`${failure.code}:${failure.message}`, /postgresql:|migration-credential/u);
+  assert.doesNotMatch(
+    `${failure.code}:${failure.message}`,
+    /postgresql:|migration-credential/u,
+  );
 });
 
 test('malformed or unsafe governed migration output remains fail-closed', () => {
@@ -182,18 +291,30 @@ test('malformed or unsafe governed migration output remains fail-closed', () => 
       stderr: '',
     },
   ]) {
-    assert.equal(governedMigrationFailureCode(childError), 'migration_result_unavailable');
+    assert.equal(
+      governedMigrationFailureCode(childError),
+      'migration_result_unavailable',
+    );
     const failure = governedMigrationFailure(childError);
     assert.equal(failure.code, 'governed_fresh_migration_failed');
     assert.equal(failure.message, 'migration_result_unavailable');
-    assert.doesNotMatch(`${failure.code}:${failure.message}`, /password|credential|postgresql:/u);
+    assert.doesNotMatch(
+      `${failure.code}:${failure.message}`,
+      /password|credential|postgresql:/u,
+    );
   }
 });
 
 test('governed migration command remains single-attempt and bounded', () => {
   const commandSource = command.toString();
-  assert.match(commandSource, /timeout:\s*options\.timeoutMs\s*\?\?\s*120_000/u);
-  assert.match(commandSource, /maxBuffer:\s*options\.maxBuffer\s*\?\?\s*32 \* 1024 \* 1024/u);
+  assert.match(
+    commandSource,
+    /timeout:\s*options\.timeoutMs\s*\?\?\s*120_000/u,
+  );
+  assert.match(
+    commandSource,
+    /maxBuffer:\s*options\.maxBuffer\s*\?\?\s*32 \* 1024 \* 1024/u,
+  );
   assert.match(commandSource, /shell:\s*false/u);
 
   const migrationSource = runGovernedFreshMigration.toString();
@@ -201,85 +322,99 @@ test('governed migration command remains single-attempt and bounded', () => {
   assert.match(migrationSource, /timeoutMs:\s*5 \* 60_000/u);
   assert.match(migrationSource, /maxBuffer:\s*8 \* 1024 \* 1024/u);
   assert.doesNotMatch(migrationSource, /retry|allowFailure/iu);
-  assert.match(migrationSource, /catch \(error\) \{\s*throw governedMigrationFailure\(error\);/u);
-});
-
-test('G05 regression mode accepts a descendant and rejects non-descendant or staged state', () => {
-  for (const branch of ['main', 'HEAD']) {
-    assert.equal(
-      validateRepositoryState(
-        repositoryState({
-          branch,
-          nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
-          platform: 'linux',
-        }),
-        VERIFICATION_MODES.REGRESSION,
-      ),
-      true,
-    );
-  }
-  assert.throws(() =>
-    validateRepositoryState(
-      repositoryState({ nodeVersion: 'v22.22.0' }),
-      VERIFICATION_MODES.REGRESSION,
-    ),
-  );
-  assert.throws(() =>
-    validateRepositoryState(
-      repositoryState({ historicalBaseIsAncestor: false }),
-      VERIFICATION_MODES.REGRESSION,
-    ),
-  );
-  assert.throws(() =>
-    validateRepositoryState(
-      repositoryState({ indexClean: false }),
-      VERIFICATION_MODES.REGRESSION,
-    ),
+  assert.match(
+    migrationSource,
+    /catch \(error\) \{\s*throw governedMigrationFailure\(error\);/u,
   );
 });
 
-test('G05 regression mode rejects protected source, schema, migration, seed, and release drift', () => {
-  for (const changedPath of [
-    'src/main.ts',
-    'prisma/schema.prisma',
-    'prisma/migrations/20260101000000_fixture/migration.sql',
-    'prisma/seeds/01-permissions.seed.ts',
-    'package-lock.json',
-    'Dockerfile',
-    '.github/workflows/fixture.yml',
-    'config/deployment/fixture.json',
-    'adr/ADR-9999-fixture.md',
-    'scripts/database/fixture.sql',
-    'scripts/migrations/fixture.cjs',
-    'scripts/release/fixture.cjs',
-    'terraform/main.tf',
-  ]) {
+historicalTest(
+  'G05 regression mode accepts a descendant and rejects non-descendant or staged state',
+  () => {
+    for (const branch of ['main', 'HEAD']) {
+      assert.equal(
+        validateRepositoryState(
+          repositoryState({
+            branch,
+            nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
+            platform: 'linux',
+          }),
+          VERIFICATION_MODES.REGRESSION,
+        ),
+        true,
+      );
+    }
     assert.throws(() =>
       validateRepositoryState(
-        repositoryState({ changedPaths: [changedPath] }),
+        repositoryState({ nodeVersion: 'v22.22.0' }),
         VERIFICATION_MODES.REGRESSION,
       ),
     );
-  }
-});
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ historicalBaseIsAncestor: false }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ indexClean: false }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+  },
+);
 
-test('G05 regression mode rejects dependency or devDependency drift', () => {
-  assert.throws(() =>
-    validateRepositoryState(
-      repositoryState({ dependencyChanged: true }),
-      VERIFICATION_MODES.REGRESSION,
-    ),
-  );
-  assert.throws(() =>
-    validateRepositoryState(
-      repositoryState({ devDependencyChanged: true }),
-      VERIFICATION_MODES.REGRESSION,
-    ),
-  );
-});
+historicalTest(
+  'G05 regression mode rejects protected source, schema, migration, seed, and release drift',
+  () => {
+    for (const changedPath of [
+      'src/main.ts',
+      'prisma/schema.prisma',
+      'prisma/migrations/20260101000000_fixture/migration.sql',
+      'prisma/seeds/01-permissions.seed.ts',
+      'package-lock.json',
+      'Dockerfile',
+      '.github/workflows/fixture.yml',
+      'config/deployment/fixture.json',
+      'adr/ADR-9999-fixture.md',
+      'scripts/database/fixture.sql',
+      'scripts/migrations/fixture.cjs',
+      'scripts/release/fixture.cjs',
+      'terraform/main.tf',
+    ]) {
+      assert.throws(() =>
+        validateRepositoryState(
+          repositoryState({ changedPaths: [changedPath] }),
+          VERIFICATION_MODES.REGRESSION,
+        ),
+      );
+    }
+  },
+);
+
+historicalTest(
+  'G05 regression mode rejects dependency or devDependency drift',
+  () => {
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ dependencyChanged: true }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ devDependencyChanged: true }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+  },
+);
 
 test('Q004 clean-start contract locks the exact approved decision', () => {
-  const contract = readJson('config/deployment/production-data-branch.contract.json');
+  const contract = readJson(
+    'config/deployment/production-data-branch.contract.json',
+  );
   assert.equal(contract.contractVersion, 1);
   assert.equal(contract.decision, 'PRD0-Q004');
   assert.equal(contract.decisionId, 'PRD0-D029');
@@ -295,14 +430,19 @@ test('Q004 clean-start contract locks the exact approved decision', () => {
 });
 
 test('zero-source counts are owner/data-authority attestation, not a cloud scan', () => {
-  const contract = readJson('config/deployment/production-data-branch.contract.json');
+  const contract = readJson(
+    'config/deployment/production-data-branch.contract.json',
+  );
   assert.equal(contract.authoritativePostgresqlSourceCount, 0);
   assert.equal(contract.authoritativeObjectSourceCount, 0);
   assert.equal(
     contract.sourceCountEvidence.classification,
     'OWNER_DATA_AUTHORITY_ATTESTATION',
   );
-  assert.equal(contract.sourceCountEvidence.externalCloudAccountsScanned, false);
+  assert.equal(
+    contract.sourceCountEvidence.externalCloudAccountsScanned,
+    false,
+  );
   assert.match(
     contract.sourceCountEvidence.statement,
     /no real authoritative Production PostgreSQL database/u,
@@ -310,15 +450,22 @@ test('zero-source counts are owner/data-authority attestation, not a cloud scan'
 });
 
 test('Redis copy is prohibited and later data discovery must reopen Q004/D029', () => {
-  const contract = readJson('config/deployment/production-data-branch.contract.json');
+  const contract = readJson(
+    'config/deployment/production-data-branch.contract.json',
+  );
   assert.equal(contract.redisCopyAllowed, false);
   assert.equal(contract.redisRecoveryPolicy, 'persisted-truth-reconciliation');
   assert.equal(contract.reopenOnDataDiscovery, true);
-  assert.match(contract.reopenRule, /automatically reopens PRD0-Q004 \/ PRD0-D029/u);
+  assert.match(
+    contract.reopenRule,
+    /automatically reopens PRD0-Q004 \/ PRD0-D029/u,
+  );
 });
 
 test('exactly the two deterministic reference seed sources are approved', () => {
-  const inventory = readJson('config/deployment/production-seed-inventory.json');
+  const inventory = readJson(
+    'config/deployment/production-seed-inventory.json',
+  );
   assert.equal(inventory.approvedSeedSourceCount, 2);
   assert.deepEqual(
     inventory.approvedSeedSources.map((entry) => [entry.path, entry.export]),
@@ -328,13 +475,17 @@ test('exactly the two deterministic reference seed sources are approved', () => 
     ],
   );
   assert.deepEqual(
-    inventory.approvedSeedSources.flatMap((entry) => entry.allowedModels).sort(),
+    inventory.approvedSeedSources
+      .flatMap((entry) => entry.allowedModels)
+      .sort(),
     ['Permission', 'Role', 'RolePermission'],
   );
 });
 
 test('platform-admin, demo seeds, generic index, and demo mode are prohibited', () => {
-  const inventory = readJson('config/deployment/production-seed-inventory.json');
+  const inventory = readJson(
+    'config/deployment/production-seed-inventory.json',
+  );
   assert.deepEqual(
     inventory.prohibitedSeedSources.map((entry) => entry.path),
     [
@@ -345,14 +496,28 @@ test('platform-admin, demo seeds, generic index, and demo mode are prohibited', 
   );
   assert.deepEqual(
     inventory.prohibitedProductionExecutionPaths.map((entry) => entry.value),
-    ['npm run seed', 'prisma db seed', 'prisma/seeds/index.ts', 'SEED_DEMO_DATA=true'],
+    [
+      'npm run seed',
+      'prisma db seed',
+      'prisma/seeds/index.ts',
+      'SEED_DEMO_DATA=true',
+    ],
   );
-  assert.deepEqual(inventory.mustNotCreateModels, ['User', 'Organization', 'School']);
-  assert.match(inventory.initialProductionPlatformAdminProvisioning, /^PHASE_8_/u);
+  assert.deepEqual(inventory.mustNotCreateModels, [
+    'User',
+    'Organization',
+    'School',
+  ]);
+  assert.match(
+    inventory.initialProductionPlatformAdminProvisioning,
+    /^PHASE_8_/u,
+  );
 });
 
 test('every current TypeScript seed file has an exact classification', () => {
-  const inventory = readJson('config/deployment/production-seed-inventory.json');
+  const inventory = readJson(
+    'config/deployment/production-seed-inventory.json',
+  );
   const discovered = fs
     .readdirSync(repositoryPath('prisma/seeds'), { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
@@ -363,7 +528,9 @@ test('every current TypeScript seed file has an exact classification', () => {
     ...inventory.prohibitedSeedSources.map((entry) => entry.path),
     ...inventory.prohibitedProductionExecutionPaths
       .map((entry) => entry.value)
-      .filter((value) => value.startsWith('prisma/seeds/') && value.endsWith('.ts')),
+      .filter(
+        (value) => value.startsWith('prisma/seeds/') && value.endsWith('.ts'),
+      ),
   ].sort();
   assert.deepEqual(classified, discovered);
   assert.equal(new Set(classified).size, classified.length);
@@ -388,45 +555,72 @@ test('approved seed modules export only the approved entrypoints and no business
   assert.match(platformAdmin, /development|dev/iu);
 });
 
-test('ADR-0006 remains D029 owner while unrelated decisions stay pending', () => {
-  const adr = read(
-    'adr/ADR-0006-production-data-source-object-storage-and-signed-capability-boundary.md',
-  );
-  assert.match(adr, /PRD0-D029=LOCKED_FROM_APPROVED_CONTEXT/u);
-  assert.match(adr, /PRD0-Q004=APPROVED/u);
-  assert.match(adr, /branch=CLEAN_START/u);
-  assert.match(adr, /sole authoritative owner[\s\S]*PRD0-D029/u);
-  for (const decision of ['D009', 'D019', 'D049', 'D050', 'D051', 'D052', 'D053']) {
-    assert.match(adr, new RegExp(`PRD0-${decision}.*Pending`, 'u'));
-  }
-  assert.match(adr, /PRD0-D010.*Proposed recommendation, not accepted/u);
-  const normalizedAdr = adr.replace(/\s+/gu, ' ');
-  for (const nonAuthorization of [
-    'GCS provider selection',
-    'bucket topology',
-    'object lifecycle',
-    'signing IAM',
-    'source deletion',
-    'physical cleanup',
-    'future real-data destruction',
-  ]) {
-    assert.ok(normalizedAdr.includes(nonAuthorization));
-  }
-});
+historicalTest(
+  'ADR-0006 remains D029 owner while unrelated decisions stay pending',
+  () => {
+    const adr = read(
+      'adr/ADR-0006-production-data-source-object-storage-and-signed-capability-boundary.md',
+    );
+    assert.match(adr, /PRD0-D029=LOCKED_FROM_APPROVED_CONTEXT/u);
+    assert.match(adr, /PRD0-Q004=APPROVED/u);
+    assert.match(adr, /branch=CLEAN_START/u);
+    assert.match(adr, /sole authoritative owner[\s\S]*PRD0-D029/u);
+    for (const decision of [
+      'D009',
+      'D019',
+      'D049',
+      'D050',
+      'D051',
+      'D052',
+      'D053',
+    ]) {
+      assert.match(adr, new RegExp(`PRD0-${decision}.*Pending`, 'u'));
+    }
+    assert.match(adr, /PRD0-D010.*Proposed recommendation, not accepted/u);
+    const normalizedAdr = adr.replace(/\s+/gu, ' ');
+    for (const nonAuthorization of [
+      'GCS provider selection',
+      'bucket topology',
+      'object lifecycle',
+      'signing IAM',
+      'source deletion',
+      'physical cleanup',
+      'future real-data destruction',
+    ]) {
+      assert.ok(normalizedAdr.includes(nonAuthorization));
+    }
+  },
+);
 
-test('live decision, acceptance, and disposition registers agree on G05', () => {
-  const decision = read('docs/production-readiness/phase-0/02-production-decision-register.md');
-  const matrix = read('docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md');
-  const dispositions = read(
-    'docs/production-readiness/phase-0/05-owner-decision-disposition-register.md',
-  );
-  assert.match(decision, /PRD0-D029.*LOCKED_FROM_APPROVED_CONTEXT/u);
-  assert.match(matrix, /PRD3-G05.*IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE/u);
-  assert.match(matrix, /PRD3-G06.*NOT_STARTED/u);
-  assert.match(dispositions, /PRD0-Q004 \| APPROVED/u);
-  assert.match(dispositions, /evidence_classification=OWNER_DATA_AUTHORITY_ATTESTATION/u);
-  assert.match(dispositions, /snapshot was exactly 10 approved and 38 pending/u);
-});
+historicalTest(
+  'live decision, acceptance, and disposition registers agree on G05',
+  () => {
+    const decision = read(
+      'docs/production-readiness/phase-0/02-production-decision-register.md',
+    );
+    const matrix = read(
+      'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md',
+    );
+    const dispositions = read(
+      'docs/production-readiness/phase-0/05-owner-decision-disposition-register.md',
+    );
+    assert.match(decision, /PRD0-D029.*LOCKED_FROM_APPROVED_CONTEXT/u);
+    assert.match(
+      matrix,
+      /PRD3-G05.*IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE/u,
+    );
+    assert.match(matrix, /PRD3-G06.*NOT_STARTED/u);
+    assert.match(dispositions, /PRD0-Q004 \| APPROVED/u);
+    assert.match(
+      dispositions,
+      /evidence_classification=OWNER_DATA_AUTHORITY_ATTESTATION/u,
+    );
+    assert.match(
+      dispositions,
+      /snapshot was exactly 10 approved and 38 pending/u,
+    );
+  },
+);
 
 test('package exposes only the two focused G05 verification scripts', () => {
   const packageJson = readJson('package.json');
@@ -440,44 +634,58 @@ test('package exposes only the two focused G05 verification scripts', () => {
   );
 });
 
-test('schema, migrations, seeds, dependencies, lockfile, and real index are unchanged', () => {
-  const protectedDiff = git([
-    'diff',
-    '--quiet',
-    'HEAD',
-    '--',
-    'prisma/schema.prisma',
-    'prisma/migrations',
-    'prisma/seeds',
-    'package-lock.json',
-    'src',
-    'Dockerfile',
-    '.github',
-  ]);
-  assert.equal(protectedDiff.status, 0);
-  assert.equal(git(['diff', '--cached', '--quiet']).status, 0);
-  const baselinePackage = JSON.parse(git(['show', 'HEAD:package.json']).stdout);
-  const candidatePackage = readJson('package.json');
-  assert.deepEqual(candidatePackage.dependencies, baselinePackage.dependencies);
-  assert.deepEqual(candidatePackage.devDependencies, baselinePackage.devDependencies);
-});
+historicalTest(
+  'schema, migrations, seeds, dependencies, lockfile, and real index are unchanged',
+  () => {
+    const protectedDiff = git([
+      'diff',
+      '--quiet',
+      'HEAD',
+      '--',
+      'prisma/schema.prisma',
+      'prisma/migrations',
+      'prisma/seeds',
+      'package-lock.json',
+      'src',
+      'Dockerfile',
+      '.github',
+    ]);
+    assert.equal(protectedDiff.status, 0);
+    assert.equal(git(['diff', '--cached', '--quiet']).status, 0);
+    const baselinePackage = JSON.parse(
+      git(['show', 'HEAD:package.json']).stdout,
+    );
+    const candidatePackage = readJson('package.json');
+    assert.deepEqual(
+      candidatePackage.dependencies,
+      baselinePackage.dependencies,
+    );
+    assert.deepEqual(
+      candidatePackage.devDependencies,
+      baselinePackage.devDependencies,
+    );
+  },
+);
 
-test('G05 evidence and repository scope are complete and bounded', () => {
-  const evidence = read(
-    'docs/production-readiness/phase-3/08-clean-start-production-data-evidence.md',
-  );
-  for (const required of [
-    'No external production source was scanned',
-    'No production or staging database was accessed',
-    'No production object storage was accessed',
-    'No cloud resources were accessed',
-    'Q004/D029 reopens before cutover',
-    'Phase 8 bootstrap concern',
-    'PRD3-G05=IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
-  ]) {
-    assert.ok(evidence.includes(required));
-  }
-});
+historicalTest(
+  'G05 evidence and repository scope are complete and bounded',
+  () => {
+    const evidence = read(
+      'docs/production-readiness/phase-3/08-clean-start-production-data-evidence.md',
+    );
+    for (const required of [
+      'No external production source was scanned',
+      'No production or staging database was accessed',
+      'No production object storage was accessed',
+      'No cloud resources were accessed',
+      'Q004/D029 reopens before cutover',
+      'Phase 8 bootstrap concern',
+      'PRD3-G05=IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
+    ]) {
+      assert.ok(evidence.includes(required));
+    }
+  },
+);
 
 module.exports = {
   BASE_SHA,

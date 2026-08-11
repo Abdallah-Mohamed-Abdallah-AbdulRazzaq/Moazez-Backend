@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for PRD0-D037 only — 2026-07-27
+Accepted for PRD0-D037, PRD0-D046, and PRD0-D047 — amended 2026-08-11
 
 ## Approval authority
 
@@ -11,8 +11,11 @@ Accepted for PRD0-D037 only — 2026-07-27
 - Timezone: Africa/Cairo
 - Approval capacities for the accepted decision: product, architecture,
   security
-- Accepted owner question: PRD0-Q032
-- Pending owner questions: PRD0-Q031, PRD0-Q033–PRD0-Q043
+- Accepted owner questions: PRD0-Q032, PRD0-Q041, PRD0-Q042
+- Storage-policy amendment approver: Abdallah
+- Storage-policy amendment date: 2026-08-11
+- Storage-policy amendment timezone: Africa/Cairo
+- Pending owner questions: PRD0-Q031, PRD0-Q033–PRD0-Q040, PRD0-Q043
 
 ## Context
 
@@ -23,10 +26,11 @@ feature-specific. Reinforcement required a private student-owned file for
 non-`NONE` proof types but did not enforce the selected proof type against
 declared and detected content.
 
-The owner has approved only the Reinforcement proof-type MIME policy. Generic
-file security, Parent uploads, malware handling, purpose classification,
-retention, legal holds, deletion, reconciliation, direct URL remediation, and
-multipart production controls remain pending.
+The owner approved the Reinforcement proof-type MIME policy and, on 2026-08-11,
+the exact Grade MEDIA and branding URL policies below. Generic file security,
+Parent uploads, malware handling, purpose classification, retention, legal
+holds, deletion, reconciliation ownership, and multipart production controls
+remain pending.
 
 ## Decision
 
@@ -51,6 +55,19 @@ organization, school, student-uploader, private-visibility, authorization, and
 download controls remain mandatory. Negative cross-type tests and existing
 client compatibility evidence are required.
 
+Grade MEDIA new writes use option D: `mediaUrl` may be absent/null where the
+existing contract allows it or may be an ordinary external HTTPS URL. Direct
+GCS/Google Cloud Storage/MinIO/S3-compatible provider URLs, provider schemes,
+HTTP, and malformed/unsafe URLs are rejected. The compatibility window is
+`NONE`; historical reads are not rewritten or silently migrated.
+
+Branding new writes remain managed `File`-backed only. Reads prefer an eligible
+managed File, allow an already-persisted safe ordinary external HTTPS value as
+read-only compatibility, allow null, and fail closed on provider or
+unsafe/malformed legacy values. A discovered provider URL is a cutover blocker
+requiring explicit inventory/review. No current write path may create a legacy
+raw `logoUrl`.
+
 ## Owned production decisions
 
 | Decision | Owning question | Decision-level status |
@@ -65,12 +82,12 @@ client compatibility evidence are required.
 | PRD0-D043 | PRD0-Q038 | Pending |
 | PRD0-D044 | PRD0-Q039 | Pending |
 | PRD0-D045 | PRD0-Q040 | Pending |
-| PRD0-D046 | PRD0-Q041 | Pending |
-| PRD0-D047 | PRD0-Q042 | Pending |
+| PRD0-D046 | PRD0-Q041 | Accepted |
+| PRD0-D047 | PRD0-Q042 | Accepted |
 | PRD0-D048 | PRD0-Q043 | Pending |
 
 This ADR is the sole authoritative owner of PRD0-D036 through PRD0-D048.
-Acceptance applies only to PRD0-D037.
+Acceptance applies to PRD0-D037, PRD0-D046, and PRD0-D047 only.
 
 ## Implementation status
 
@@ -83,6 +100,13 @@ coverage, failure atomicity, and compatible rejection behavior.
 The wider file platform still lacks a universal detected-content policy,
 universal malware scanning, approved retention/reference graph, and approved
 generalized destructive lifecycle.
+
+Batch 3 implements D046/D047 at the application/source boundary with one
+provider-URL classifier, centralized Grade create/update normalization,
+managed-only branding writes, fail-closed legacy branding reads, narrow guards
+on other discovered persistence surfaces, and a read-only pre-real-data audit.
+This source implementation does not itself prove production row counts or
+authorize real data.
 
 ## Consequences
 
@@ -144,7 +168,7 @@ owning question.
 
 ## Deferred owned decisions
 
-PRD0-D036 and PRD0-D038 through PRD0-D048 remain pending. This ADR does not
+PRD0-D036, PRD0-D038 through PRD0-D045, and PRD0-D048 remain pending. This ADR does not
 approve:
 
 - a Parent messaging upload contract;
@@ -154,8 +178,6 @@ approve:
 - retention authority or periods;
 - admissions, audit, or legal holds;
 - physical deletion or orphan cleanup;
-- Grade MEDIA URL migration;
-- legacy branding URL migration;
 - multipart production limits;
 - any generalized file lifecycle.
 

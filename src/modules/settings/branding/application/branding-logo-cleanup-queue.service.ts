@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FileVisibility } from '@prisma/client';
 import { BullmqService } from '../../../../infrastructure/queue/bullmq.service';
+import { isObjectStorageNotFoundError } from '../../../../infrastructure/storage/object-storage.errors';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import {
   BRANDING_LOGO_CLEANUP_JOB,
@@ -9,7 +10,6 @@ import {
   brandingLogoObjectPrefix,
   isBrandingLogoMimeType,
 } from '../domain/branding-logo.constants';
-import { isStorageObjectNotFound } from '../domain/branding-logo.errors';
 import { ManagedBrandingLogoFile } from '../domain/branding-logo.types';
 
 @Injectable()
@@ -31,7 +31,7 @@ export class BrandingLogoCleanupQueueService {
         objectKey: file.objectKey,
       });
     } catch (error: unknown) {
-      if (isStorageObjectNotFound(error)) return;
+      if (isObjectStorageNotFoundError(error)) return;
       this.logger.warn({ event: 'branding.logo.cleanup.retry_scheduled' });
       try {
         await this.enqueueCleanup(file.id);

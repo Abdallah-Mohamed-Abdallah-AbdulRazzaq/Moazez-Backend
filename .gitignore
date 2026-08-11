@@ -7,3 +7,4 @@ coverage/
 .DS_Store
 .claude/
 sprint*-diff.txt
+/artifacts/production-readiness/phase-5a/

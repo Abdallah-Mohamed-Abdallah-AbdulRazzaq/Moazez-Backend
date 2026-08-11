@@ -3,9 +3,12 @@
 const { randomUUID } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
+const { resolveCiParentRunId } = require('./ci-parent-run-id.cjs');
 
 const GATE_LABEL = 'PRD3-G02';
-const RUN_ID = randomUUID().replaceAll('-', '').slice(0, 20);
+const RUN_ID = resolveCiParentRunId(process.env.MOAZEZ_CI_PARENT_RUN_ID, () =>
+  randomUUID().replaceAll('-', '').slice(0, 20),
+);
 const OWNERSHIP_LABEL = 'com.moazez.evidence.gate';
 const RUN_LABEL = 'com.moazez.evidence.run';
 const ROLE_LABEL = 'com.moazez.evidence.redis-role';
@@ -140,12 +143,7 @@ function generatePrismaClient(databaseUrl) {
   );
   const generationRun = spawnSync(
     process.execPath,
-    [
-      prismaCli,
-      'generate',
-      '--schema',
-      path.join('prisma', 'schema.prisma'),
-    ],
+    [prismaCli, 'generate', '--schema', path.join('prisma', 'schema.prisma')],
     {
       cwd: process.cwd(),
       encoding: 'utf8',

@@ -18,10 +18,15 @@ Current amendments: four Phase 3 owner approvals were added on 2026-08-04
 (Africa/Cairo) under PRD3-G01-A. Abdallah additionally approved PRD0-Q012 and
 PRD0-Q013 at `2026-08-06T05:56:00+03:00` for PRD3-G02 and PRD0-Q017 at
 `2026-08-06T10:30:34+03:00` for PRD3-G03. Abdallah approved PRD0-Q004 option A
-as approver and data authority at `2026-08-07T04:46:00+03:00` for PRD3-G05.
-The Phase 0B
-document-control values above remain the historical 2026-07-27 closeout
-record.
+as approver and data authority at `2026-08-07T04:46:00+03:00` for PRD3-G05
+and PRD0-Q026 option A at `2026-08-07T00:22:00+03:00` for PRD3-G04.
+Abdallah approved PRD0-Q005, PRD0-Q008, PRD0-Q018, PRD0-Q019, and
+PRD0-Q044–PRD0-Q048 at `2026-08-09T15:20:43+03:00` for the Phase 4/5A cloud
+and GCS governance boundary. The Phase 0B document-control values above remain
+the historical 2026-07-27 closeout record. On 2026-08-11 (Africa/Cairo),
+Abdallah approved PRD0-Q041 and PRD0-Q042 for the final storage application
+cutover source candidate. This amendment does not rewrite the historical Phase
+0B facts or authorize production data, uploads, traffic, or launch.
 
 ## Authority statement
 
@@ -36,17 +41,27 @@ provisional Phase 3 database baseline. On 2026-08-06 Abdallah approved Q012 and
 Q013 for the split Redis topology and outage policy and Q017 option A for the
 critical-queue persisted-truth recovery policy. On 2026-08-07 Abdallah
 approved Q004 option A, `CLEAN_START`, on the explicit owner/data-authority
-zero-source attestation and mandatory reopen-on-discovery rule. Every question not named
-in the current approved set below remains pending. A pending disposition does
-not select its recommended default, cannot unblock its dependent phase, and
-authorizes no implementation or cloud provisioning through silence.
+zero-source attestation and mandatory reopen-on-discovery rule, and approved
+Q026 option A for the governed Migration Job. On 2026-08-09 Abdallah approved
+the separate production/non-production project boundary, GCS production with
+MinIO local/test, per-role service accounts, dedicated per-project signers,
+the zero-object clean-start branch, private bucket topology, and the seven-day
+GCS recovery baseline recorded in Q005, Q008, Q018, Q019, and Q044–Q048.
+On 2026-08-11 Abdallah approved Q041 option D and the Q042 managed/read-only
+compatibility policy exactly as recorded in the register below.
+Every question not named in the current approved set below remains pending.
+A pending disposition does not select its recommended default, cannot unblock
+its dependent phase, and authorizes no implementation or cloud provisioning
+through silence.
 
 ## Post-merge closeout note
 
 PR #46 merged the ten approved answers, and those answers remain binding. The
-other 38 answers were pending at that historical closeout. The seven Phase 3
-approvals plus the later Q004 approval reduce the current pending set to 30
-without changing the PR #46 evidence. Silence selects no recommendation.
+other 38 answers were pending at that historical closeout. The nine
+post-Phase-0B approvals through 2026-08-07, the nine 2026-08-09 approvals, and
+the two 2026-08-11 storage-policy approvals reduce the current pending set to
+18 without changing the PR #46 evidence.
+Silence selects no recommendation.
 Authoritative Phase 0B post-merge evidence remains in
 `07-phase-0b-post-merge-closeout.md`.
 
@@ -60,10 +75,10 @@ Each row is the sole disposition entry for that question.
 | PRD0-Q002 | APPROVED | `PRD0-Q002: option=A; api=HTTP and WebSocket entrypoints, controllers, authentication, authorization, realtime connections, queue producers, and synchronous Learning Media completion until the separately approved Phase 6 transition; core=communication notification generation, communication push delivery, school email delivery, import validation, dismissal-expiry consumption, and branding-cleanup consumption; media=Learning Media cleanup consumption and future asynchronous verification only after Phase 6 approval; migration=governed prisma migrate deploy only with no runtime DDL; maintenance=singular registration or invocation of dismissal expiry, Learning Media discovery, branding reconciliation, and future schedules; approver=Abdallah` |
 | PRD0-Q003 | APPROVED | `PRD0-Q003: option=B; tenants=10; users=25000; peak_rps=200; websockets=5000; queue_jobs_per_min={communication-notifications:60,communication-notification-push:1000,school-email-delivery:300,files-imports:10,dismissal-request-expiry:5,learning-media-cleanup:50,settings-branding-logo-cleanup:10}; media_concurrency=4; upload_p95_mib=25; upload_max_mib=200; growth_12m=3x; approver=Abdallah` |
 | PRD0-Q004 | APPROVED | `PRD0-Q004: option=A; production_data_branch=CLEAN_START; persisted_postgresql_migration=N/A_WITH_EVIDENCE; object_migration=N/A_WITH_EVIDENCE_FOR_CURRENT_PRODUCTION_SOURCE; redis_migration=PROHIBITED_AS_COPY_SOURCE; redis_recovery=drain/reconcile/re-enqueue from persisted truth and rebuild ephemeral realtime state; authoritative_postgresql_source_count=0; authoritative_object_source_count=0; evidence_classification=OWNER_DATA_AUTHORITY_ATTESTATION; reopen_on_data_discovery=YES; approver=Abdallah; data_authority=Abdallah; approved_at=2026-08-07T04:46:00+03:00` |
-| PRD0-Q005 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 4/5A/8 provisioning,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
+| PRD0-Q005 | APPROVED | `PRD0-Q005: option=A; projects=production:moazez-production,staging:moazez-nonprod-91001421934,cloud_test:moazez-nonprod-91001421934,development:LOCAL_ONLY,ci:LOCAL_MINIO,dr:NONE; billing_owner=Abdallah; org_policy_owner=Abdallah` |
 | PRD0-Q006 | APPROVED | `PRD0-Q006: option=A; primary_region=me-central2; dr_region=NONE; residency_constraint=Initial production data and primary managed services remain in Saudi Arabia; cross-region DR requires separate residency approval; approver=Abdallah` |
 | PRD0-Q007 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 3 implementation,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q008 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5A,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
+| PRD0-Q008 | APPROVED | `PRD0-Q008: option=A; prod_provider=GCS; local_provider=MinIO; test_provider=MinIO; bucket_region=me-central2; approver=Abdallah` |
 | PRD0-Q009 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 6,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q010 | APPROVED | `PRD0-Q010: option=A; exceptions=NONE; approver=Abdallah` |
 | PRD0-Q011 | APPROVED | `PRD0-Q011: option=A; dismissal_owner=Maintenance Scheduler invokes idempotent command and Core Worker consumes; media_owner=Maintenance Scheduler invokes discovery and Media Worker consumes cleanup; branding_owner=Maintenance Scheduler invokes reconciliation and Core Worker consumes cleanup; approver=Abdallah` |
@@ -73,8 +88,8 @@ Each row is the sole disposition entry for that question.
 | PRD0-Q015 | APPROVED | `PRD0-Q015: api=min:1,max:4,concurrency:40; core=min:1,max:2,concurrency:1 per assigned consumer; media=min:1,max:2,concurrency:1; approver=Abdallah` |
 | PRD0-Q016 | PENDING | `PENDING(owner=Abdallah,deadline=before final Phase 3 and Phase 6 capacity acceptance,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q017 | APPROVED | `PRD0-Q017: option=A; critical_queues=communication-notifications,communication-notification-push,school-email-delivery,files-imports,dismissal-request-expiry,learning-media-cleanup,settings-branding-logo-cleanup; source_of_truth=PostgreSQL domain rows,object-storage existence or absence,approved deterministic job builders,current application policy; redis_copy=NONE; manual_replay=requires Abdallah as Operations and Release Owner plus audit and tenant/source scope and exclusion of known-success side effects; push_replay=non-SENT attempts only; email_outcome_unknown=never automatic; approver=Abdallah; approval_capacities=Operations Owner,Release Owner,Architecture Owner; approved_at=2026-08-06T10:30:34+03:00`                              |
-| PRD0-Q018 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 4,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q019 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 4/5A,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
+| PRD0-Q018 | APPROVED | `PRD0-Q018: option=A; identities=api:moazez-api-runtime,core:moazez-core-worker,media:moazez-media-worker,migration:moazez-migration-job,maintenance:moazez-maintenance-scheduler,deployer:moazez-iac-deployer,signed_url:moazez-gcs-signer; security_approver=Abdallah` |
+| PRD0-Q019 | APPROVED | `PRD0-Q019: option=A; signer=prod:moazez-gcs-signer@moazez-production.iam.gserviceaccount.com,staging:moazez-gcs-signer@moazez-nonprod-91001421934.iam.gserviceaccount.com; allowed_buckets=moazez-production-91001421934-private,moazez-production-91001421934-published,moazez-nonprod-91001421934-private,moazez-nonprod-91001421934-published; max_ttl=1h; approver=Abdallah` |
 | PRD0-Q020 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 4,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q021 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 4,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q022 | APPROVED | `PRD0-Q022: prod_origins=https://schools.moazez.cloud,https://admin.moazez.cloud; staging_origins=https://staging-schools.moazez.cloud,https://staging-admin.moazez.cloud; credentials=YES; websocket=YES; storage_direct=YES; approver=Abdallah` |
@@ -96,37 +111,42 @@ Each row is the sole disposition entry for that question.
 | PRD0-Q038 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5B retention and hold approval,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q039 | PENDING | `PENDING(owner=Abdallah,deadline=before any Phase 5B destructive-cleanup decision,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
 | PRD0-Q040 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5B report-only reconciliation,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q041 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5B direct-URL remediation,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q042 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5A inventory and Phase 5B remediation,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
+| PRD0-Q041 | APPROVED | `PRD0-Q041: option=D; allowlist=HTTPS external URLs only, with all direct GCS/Google Cloud Storage/MinIO/S3-compatible provider URLs forbidden for new writes; compatibility_window=NONE; legacy_owner=Abdallah; approver=Abdallah` |
+| PRD0-Q042 | APPROVED | `PRD0-Q042: managed=ALLOW managed File-backed branding for new writes and reads; external_https=READ_ONLY compatibility only where an already-persisted safe HTTPS value exists, with no new legacy URL writes; provider_url=BLOCK_NEW and treat any discovered legacy provider URL as a cutover blocker requiring explicit inventory/review; unsafe=REJECT; null=ALLOW; approver=Abdallah` |
 | PRD0-Q043 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5B load acceptance,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q044 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5A object-migration branch selection,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q045 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5A object migration or clean-start evidence closeout,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q046 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5A object-migration verification,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q047 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5A provisioning,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
-| PRD0-Q048 | PENDING | `PENDING(owner=Abdallah,deadline=before Phase 5A infrastructure and Phase 5B retention alignment,constraint=All dependent phases remain blocked; the recommended default is not selected; silence authorizes no implementation or cloud provisioning)` |
+| PRD0-Q044 | APPROVED | `PRD0-Q044: option=A; source_buckets=NONE; source_object_count=0; provider_url_count=0; data_owner=Abdallah; approver=Abdallah` |
+| PRD0-Q045 | APPROVED | `PRD0-Q045: mode=N/A_WITH_EVIDENCE; read_only=N/A; delta=N/A; cutback_authority=N/A; approver=Abdallah` |
+| PRD0-Q046 | APPROVED | `PRD0-Q046: mode=N/A_WITH_EVIDENCE; sample=N/A; mismatch=N/A; approver=Abdallah` |
+| PRD0-Q047 | APPROVED | `PRD0-Q047: buckets=prod_private:moazez-production-91001421934-private,prod_published:moazez-production-91001421934-published,staging_private:moazez-nonprod-91001421934-private,staging_published:moazez-nonprod-91001421934-published; region=me-central2; public_policy=ALL_BUCKETS_PRIVATE+UBLA_ENABLED+PAP_ENFORCED+NO_ANONYMOUS_ACCESS; cors=Q022_EXACT_HTTPS_ORIGINS_ONLY; signer=moazez-gcs-signer-per-project; iac_owner=Abdallah; approver=Abdallah; learning_media=PRIVATE_BUCKET_PREFIXES(staging,final)` |
+| PRD0-Q048 | APPROVED | `PRD0-Q048: versioning=ENABLED_FOR_ALL_BUCKETS; lifecycle=NO_AUTOMATIC_TRANSITION_OR_DELETION_RULES_DURING_PHASE_5A; deletion_protection=SOFT_DELETE_7_DAYS+TERRAFORM_PREVENT_DESTROY+BUCKET_LOCK_DISABLED; recovery_window=7_DAYS_SOFT_DELETE; cost_owner=Abdallah; approver=Abdallah` |
 
 ## Disposition totals
 
 | Disposition | Count |
 | --- | ---: |
 | Total | 48 |
-| APPROVED | 18 |
-| PENDING | 30 |
+| APPROVED | 30 |
+| PENDING | 18 |
 | Omitted | 0 |
 | Duplicated | 0 |
 
 The current approved IDs are exactly PRD0-Q001, PRD0-Q002, PRD0-Q003,
-PRD0-Q004, PRD0-Q006, PRD0-Q010, PRD0-Q011, PRD0-Q012, PRD0-Q013, PRD0-Q014,
-PRD0-Q015, PRD0-Q017, PRD0-Q022,
-PRD0-Q024, PRD0-Q028, PRD0-Q029, PRD0-Q030, and PRD0-Q032. The Phase 0B
-snapshot was exactly 10 approved and 38 pending; the Phase 3 amendments add
-Q003, Q006, Q012, Q013, Q014, Q015, Q017, and Q004. All other PRD0-Q001 through
-PRD0-Q048 entries are explicitly pending as shown.
+PRD0-Q004, PRD0-Q005, PRD0-Q006, PRD0-Q008, PRD0-Q010, PRD0-Q011, PRD0-Q012,
+PRD0-Q013, PRD0-Q014, PRD0-Q015, PRD0-Q017, PRD0-Q018, PRD0-Q019, PRD0-Q022,
+PRD0-Q024, PRD0-Q026, PRD0-Q028, PRD0-Q029, PRD0-Q030, PRD0-Q032, PRD0-Q041,
+PRD0-Q042, PRD0-Q044, PRD0-Q045, PRD0-Q046, PRD0-Q047, and PRD0-Q048. The Phase 0B snapshot was
+exactly 10 approved and 38 pending; later amendments through 2026-08-07 added
+Q003, Q004, Q006, Q012, Q013, Q014, Q015, Q017, and Q026, and the 2026-08-09
+amendment added Q005, Q008, Q018, Q019, and Q044–Q048. The 2026-08-11
+amendment added Q041 and Q042. All other PRD0-Q001
+through PRD0-Q048 entries are explicitly pending as shown.
 
 ## Scope and non-authorization
 
-This register records owner authority and pending constraints only. It does not
-claim that accepted behavior is implemented, that a pending recommendation was
-selected, that Phase 0B is complete, or that Phase 1 may start. It authorizes
-no source, schema, migration, dependency, Docker, CI, database, Redis, object
-storage, or cloud change.
+This register records owner authority and pending constraints. It does not
+claim that accepted behavior is implemented or that a pending recommendation
+was selected. The storage approvals unblock only their gated design and
+implementation work; every cloud mutation still requires reviewed IaC,
+least-privilege IAM, phase evidence, and the applicable release gate. This
+documentation amendment performs no source, schema, migration, dependency,
+Docker, CI, database, Redis, object-storage, or cloud mutation.

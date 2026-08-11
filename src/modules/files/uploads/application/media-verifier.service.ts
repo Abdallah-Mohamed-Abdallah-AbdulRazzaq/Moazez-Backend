@@ -8,6 +8,7 @@ import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { isObjectStorageNotFoundError } from '../../../../infrastructure/storage/object-storage.errors';
 import { StorageService } from '../../../../infrastructure/storage/storage.service';
 import {
   learningMediaMaximumSizeBytes,
@@ -164,7 +165,7 @@ export class MediaVerifierService {
         objectKey: input.sourceObjectKey,
       });
     } catch (error) {
-      if (isNotFoundStorageError(error)) {
+      if (isObjectStorageNotFoundError(error)) {
         throw new MediaVerificationError('object_not_found');
       }
       throw new MediaInfrastructureError('storage_read_failed');
@@ -261,7 +262,7 @@ export class MediaVerifierService {
       );
     } catch (error) {
       if (error instanceof MediaVerificationError) throw error;
-      if (isNotFoundStorageError(error)) {
+      if (isObjectStorageNotFoundError(error)) {
         throw new MediaVerificationError('object_not_found');
       }
       throw new MediaInfrastructureError('storage_read_failed');
@@ -564,14 +565,6 @@ function validateImageDimensions(width: number, height: number): void {
   if (width <= 0 || height <= 0 || width > 20_000 || height > 20_000) {
     throw new MediaVerificationError('invalid_dimensions');
   }
-}
-
-function isNotFoundStorageError(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null || !('code' in error))
-    return false;
-  return ['NoSuchKey', 'NoSuchObject', 'NotFound'].includes(
-    String((error as { code: unknown }).code),
-  );
 }
 
 function isProbeReason(

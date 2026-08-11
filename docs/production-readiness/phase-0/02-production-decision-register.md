@@ -27,17 +27,17 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D006 | BullMQ consumers prohibited in target API | LOCKED_FROM_APPROVED_CONTEXT | D005 | approved zero-consumer target API through Q010 |
 | PRD0-D007 | Repeatable/scheduled ownership | LOCKED_FROM_APPROVED_CONTEXT | D005 | approved singular Maintenance Scheduler invocation and assigned consumers through Q011 |
 | PRD0-D008 | Learning Media completion transition | OWNER_DECISION_REQUIRED | D002, D005 | keep synchronous through Phase 5A/5B; approve Learning Media-only submit/status transition in Phase 6 |
-| PRD0-D009 | GCS production and MinIO local/test | OWNER_DECISION_REQUIRED | D004 | GCS in production; MinIO retained locally/CI |
-| PRD0-D010 | Storage abstraction boundary | PROPOSED_RECOMMENDATION | D009 | incremental `ObjectStoragePort` with MinIO/GCS adapters and normalized errors/types; no giant catalog rewrite prerequisite |
+| PRD0-D009 | GCS production and MinIO local/test | LOCKED_FROM_APPROVED_CONTEXT | D004 | Q008 option A: GCS production in `me-central2`; MinIO remains local/test/CI |
+| PRD0-D010 | Storage abstraction boundary | LOCKED_FROM_APPROVED_CONTEXT | D009 | Owner-accepted `ObjectStoragePort`; `MinioAdapter`/`GcsAdapter`; exact operation/normalization surface; no API/schema/media-contract change |
 | PRD0-D011 | Cloud SQL region and HA | LOCKED_FROM_APPROVED_CONTEXT | D004 | approved Saudi `me-central2` regional-HA baseline; no cross-region DR without separate residency approval |
 | PRD0-D012 | Cloud SQL role pool budgets | LOCKED_FROM_APPROVED_CONTEXT | D005, D011 | approved bounded API/Core/Media pools within a 100-connection governed budget |
 | PRD0-D013 | Redis shared versus separated workloads | OWNER_DECISION_REQUIRED | D005 | separate queue and realtime production instances |
 | PRD0-D014 | Redis production fallback | OWNER_DECISION_REQUIRED | D013 | fail readiness/realtime, never silent in-memory multi-instance mode |
 | PRD0-D015 | Critical job recovery/reconciliation | LOCKED_FROM_APPROVED_CONTEXT | D005–D007, D013 | approved persisted-truth recovery for the seven existing queues through Q017 and ADR-0009 |
 | PRD0-D016 | Worker capacity/autoscaling | OWNER_DECISION_REQUIRED | D012–D015 | fixed bounded minimum first; external scale only from measured lag |
-| PRD0-D017 | GCP project/environment separation | OWNER_DECISION_REQUIRED | D004 | separate prod and non-prod projects |
-| PRD0-D018 | Service-account boundaries | OWNER_DECISION_REQUIRED | D005, D017 | identity per runtime/job role |
-| PRD0-D019 | GCS signed-URL identity | OWNER_DECISION_REQUIRED | D009, D018 | dedicated signing identity with bucket-limited access |
+| PRD0-D017 | GCP project/environment separation | LOCKED_FROM_APPROVED_CONTEXT | D004 | Q005 option A: production-only `moazez-production`; staging/cloud test `moazez-nonprod-91001421934`; local development/CI |
+| PRD0-D018 | Service-account boundaries | LOCKED_FROM_APPROVED_CONTEXT | D005, D017 | Q018 option A: separate per-project API/Core/Media/Migration/Maintenance/deployer/signer identities |
+| PRD0-D019 | GCS signed-URL identity | LOCKED_FROM_APPROVED_CONTEXT | D009, D018 | Q019 option A: dedicated per-project keyless signer, own-project bucket limits, maximum TTL one hour |
 | PRD0-D020 | Secret Manager pinning/rotation | OWNER_DECISION_REQUIRED | D017, D018 | explicit versions for release, staged rotation |
 | PRD0-D021 | Encryption key separation/key-ID envelope | OWNER_DECISION_REQUIRED | D020 | separate key families and key ID with multi-key decrypt |
 | PRD0-D022 | Frontend origins and production CORS | LOCKED_FROM_APPROVED_CONTEXT | D002, D009, D017 | approved exact production/staging HTTPS origins and credential/WebSocket/direct-storage requirements through Q022 |
@@ -64,18 +64,18 @@ No recommendation is represented as owner approval. Evidence IDs resolve to
 | PRD0-D043 | Admissions/audit/legal hold | OWNER_DECISION_REQUIRED | D041–D042 | superseded evidence retention and hold precedence |
 | PRD0-D044 | Physical deletion approval/enablement | OWNER_DECISION_REQUIRED | D041–D043 | report-only first; destructive production deletion separately enabled |
 | PRD0-D045 | Orphan-candidate reconciliation ownership | OWNER_DECISION_REQUIRED | D041 | named owner, review cadence, false-positive disposition |
-| PRD0-D046 | Grade MEDIA URL policy | OWNER_DECISION_REQUIRED | D002, D029, D038 | managed `fileId`, approved external HTTPS, compatibility window, or block new provider URLs |
-| PRD0-D047 | Legacy branding URL treatment | OWNER_DECISION_REQUIRED | D029, D038 | classify managed/external/provider/unsafe/null without removing safe fallback prematurely |
+| PRD0-D046 | Grade MEDIA URL policy | LOCKED_FROM_APPROVED_CONTEXT | D002, D029, D038 | Q041 option D: ordinary external HTTPS only for new writes; provider/HTTP/malformed blocked; no compatibility window |
+| PRD0-D047 | Legacy branding URL treatment | LOCKED_FROM_APPROVED_CONTEXT | D029, D038 | Q042: managed File writes/reads; safe external HTTPS read-only legacy compatibility; provider/unsafe fail closed; null allowed |
 | PRD0-D048 | Multipart edge limits and upload concurrency | OWNER_DECISION_REQUIRED | D030–D031, D038 | route/edge caps, instance memory/concurrency, rate limits, large-file direct PUT |
-| PRD0-D049 | Object-preservation branch | OWNER_DECISION_REQUIRED | D029 | apply D029 clean-start `N/A_WITH_EVIDENCE` or migration inventory/copy/reconcile branch |
-| PRD0-D050 | Source MinIO read-only rollback window | OWNER_DECISION_REQUIRED | D049 | duration, freeze/delta policy, cutback authority, deletion prohibition |
-| PRD0-D051 | Missing-checksum verification | OWNER_DECISION_REQUIRED | D049 | full or sampled hashing and mismatch disposition for legacy objects |
-| PRD0-D052 | Storage bucket/privacy topology | OWNER_DECISION_REQUIRED | D009, D017–D019 | staging/final/private/public buckets, region, IAM, CORS, signer limits |
-| PRD0-D053 | GCS versioning/lifecycle/deletion protection | OWNER_DECISION_REQUIRED | D042, D044, D052 | versioning, lifecycle rules, retention locks, deletion protection, recovery cost |
+| PRD0-D049 | Object-preservation branch | LOCKED_FROM_APPROVED_CONTEXT | D029 | Q044 option A: clean-start object branch; zero source buckets, objects, and provider URLs |
+| PRD0-D050 | Source MinIO read-only rollback window | LOCKED_FROM_APPROVED_CONTEXT | D049 | Q045: `N/A_WITH_EVIDENCE` for the zero-source branch |
+| PRD0-D051 | Missing-checksum verification | LOCKED_FROM_APPROVED_CONTEXT | D049 | Q046: `N/A_WITH_EVIDENCE` for the zero-object branch |
+| PRD0-D052 | Storage bucket/privacy topology | LOCKED_FROM_APPROVED_CONTEXT | D009, D017–D019 | Q047: four private per-project buckets in `me-central2`; UBLA, PAP, exact Q022 CORS, private Learning Media prefixes |
+| PRD0-D053 | GCS versioning/lifecycle/deletion protection | LOCKED_FROM_APPROVED_CONTEXT | D042, D044, D052 | Q048: versioning, seven-day Soft Delete, Terraform `prevent_destroy`, no Bucket Lock or Phase 5A automatic transition/deletion |
 
-Current status totals after the Phase 3 approvals recorded on 2026-08-04
-(Africa/Cairo): 18 `LOCKED_FROM_APPROVED_CONTEXT`, 34
-`OWNER_DECISION_REQUIRED`, 1 `PROPOSED_RECOMMENDATION`, 0
+Current status totals after the 2026-08-11 Q041/Q042 amendment: 33
+`LOCKED_FROM_APPROVED_CONTEXT`, 20 `OWNER_DECISION_REQUIRED`, 0
+`PROPOSED_RECOMMENDATION`, 0
 `DEFERRED_WITH_CONSTRAINT`, and 0 `REJECTED`. The Phase 0B closeout snapshot on
 2026-07-27 correctly recorded 14 locked, 38 owner-required, and 1 proposed at
 that time; these current totals are an additive governance amendment, not a
@@ -83,10 +83,10 @@ rewrite of that historical evidence.
 
 At the 2026-07-27 Phase 0B closeout, the implementation evidence in this
 register described the then-current coupled runtime and pre-Phase-1 baseline.
-Current state: Phase 1 and Phase 2 are complete, Phase 3 is active, and the
-authoritative Phase 1 and Phase 2 closeout documents supersede present-tense
-baseline-gap language without changing the historical EVD records, approvals,
-dates, PR numbers, SHAs, or validation counts.
+Current state: Phase 1, Phase 2, and Phase 3 are complete. The authoritative
+phase closeout documents supersede present-tense baseline-gap language without
+changing historical EVD records, approvals, dates, PR numbers, SHAs, or
+validation counts. Phase 4 and Phase 5A are not complete.
 
 ## Detailed decision records
 
@@ -254,39 +254,49 @@ dates, PR numbers, SHAs, or validation counts.
 
 ### PRD0-D009 — Use GCS in production and retain MinIO locally/in CI
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; current MinIO concrete
-  binding/static keys and GCS blast radius are EVD-036–EVD-039.
-- **Options / recommendation:** MinIO everywhere; GCS everywhere; GCS production
-  plus MinIO local/test. Recommend the hybrid.
-- **Reasoning / alternatives:** local GCS-only raises test friction; operating
-  production MinIO adds an avoidable stateful service.
-- **Impacts:** no intended HTTP/schema change; object migration/verification may
-  be required. Replace static keys with service identity.
-- **Operations / rollback:** when PRD0-Q004 requires migration, use
-  inventory/copy/checksum/cutback and retain source objects through the recovery
-  window. A verified clean start uses `N/A_WITH_EVIDENCE`. Both branches still
-  require real-GCS IAM/signed URL/CORS/Range/provider-error tests.
-- **Phase / approval / reopen:** Phase 5A; owner approval missing. Reopen if
-  regulatory, cost, portability, or real provider evidence changes.
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q008 option A
+  was approved by Abdallah at `2026-08-09T15:20:43+03:00`. EVD-036–EVD-039
+  remain the implementation baseline and do not prove GCS parity.
+- **Approved decision:** production uses GCS in `me-central2`; local
+  development, tests, and CI retain MinIO. Production MinIO is not an approved
+  fallback.
+- **Reasoning / alternatives:** the split avoids operating production MinIO
+  while keeping deterministic local/CI coverage.
+- **Impacts:** no public API, DTO, Prisma schema, migration, `File.id`, or
+  Learning Media completion change is approved. Static MinIO keys are not a
+  production GCS credential strategy.
+- **Operations / rollback:** the approved clean-start branch uses
+  `N/A_WITH_EVIDENCE`; any later source discovery reopens D029/D049–D051. Real
+  GCS IAM, signed URL, CORS, Range, generation, and provider-error evidence
+  remain mandatory before release.
+- **Phase / approval / reopen:** Phase 5A. Reopen for residency, regulatory,
+  cost, portability, or provider evidence that invalidates this mapping.
 
 ### PRD0-D010 — Introduce a provider-neutral storage boundary
 
-- **Status / evidence:** `PROPOSED_RECOMMENDATION`; EVD-036–EVD-038 show
-  MinIO-derived capability types in `StorageService` and provider error-code
-  interpretation outside the adapter. X-Amz expiry parsing is correctly
-  contained in the concrete `MinioAdapter`.
-- **Options / recommendation:** branch in callers; replace concrete adapter
-  only; define provider-neutral port/types/errors and adapters. Recommend the
-  last.
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; the Owner accepted the
+  exact architecture boundary on 2026-08-10. The fresh Batch 0 inventory
+  replaces the historical consumer count but confirms MinIO-derived types and
+  provider error interpretation outside the adapter.
+- **Accepted boundary:** `ObjectStoragePort` with `MinioAdapter` and
+  `GcsAdapter`.
+- **Accepted operations:** save/put, get/stream, stat, delete, exists,
+  paginated list, signed PUT, signed GET, and readiness.
+- **Accepted normalization:** provider-neutral object metadata/types, signed
+  capabilities, not-found behavior, and storage/provider error classification
+  where application code depends on it.
+- **Compatibility lock:**
+  `NO_API_SCHEMA_MIGRATION_OR_LEARNING_MEDIA_CONTRACT_CHANGE`; Learning Media
+  remains synchronous HTTP 200 and no new storage lifecycle is authorized.
 - **Reasoning / alternatives:** caller branching is rejected; a shallow adapter
-  swap does not normalize leaked capability types or out-of-adapter error
-  semantics. Each concrete adapter may retain its own URL parsing.
-- **Impacts:** no public/schema/data impact by itself; security centralizes
-  signed capability policy.
-- **Operations / rollback:** contract tests run against both adapters; select
-  prior adapter/config without caller changes.
-- **Phase / approval / reopen:** Phase 5A; engineering proposal, not owner
-  approval. Reopen if existing port can be proven provider-neutral by tests.
+  swap would not normalize leaked capability types or out-of-adapter error
+  semantics. Concrete adapters may retain internal provider URL parsing.
+- **Operations / rollback:** one contract suite runs against both adapters;
+  adapter/config selection changes without caller changes.
+- **Phase / approval / reopen:** the Owner-directed fast path permits local
+  port/adapter implementation before full Phase 4 closeout. Reopen only for a
+  proposed change to this exact operation, normalization, or compatibility
+  boundary.
 
 ### PRD0-D011 — Select Cloud SQL region and HA topology
 
@@ -415,50 +425,60 @@ dates, PR numbers, SHAs, or validation counts.
 
 ### PRD0-D017 — Separate GCP projects/environments
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; no GCP configuration/IaC is
-  present (EVD-059).
-- **Options / recommendation:** one project; folders with shared project;
-  separate prod and non-prod projects. Recommend separate projects and billing/
-  policy boundaries.
-- **Reasoning / alternatives:** one project increases accidental mutation and
-  IAM/quota blast radius.
-- **Impacts:** no API/schema; data promotion is prohibited—promote artifacts and
-  migrations, not production data. Separate identities/secrets.
-- **Operations / rollback:** environment-specific IaC state and immutable
-  artifact digest; project rollback is resource-level, not config copying.
-- **Phase / approval / reopen:** Phase 4; organization, billing, region, naming
-  approval missing. Reopen for organization policy constraints.
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q005 option A
+  was approved by Abdallah at `2026-08-09T15:20:43+03:00`; owning ADR ADR-0015.
+- **Approved decision:** `moazez-production` is production-only.
+  `moazez-nonprod-91001421934` owns staging and isolated cloud tests.
+  Development is `LOCAL_ONLY`, CI storage is `LOCAL_MINIO`, and DR is `NONE`.
+- **Reasoning / alternatives:** the project boundary limits accidental
+  production mutation, IAM/quota blast radius, and data mixing.
+- **Impacts:** artifacts and governed migrations may be promoted; production
+  school data must not be copied into non-production. Projects keep separate
+  identities, buckets, policies, billing visibility, and IaC state.
+- **Operations / rollback:** a project name is an approved target, not proof
+  that the project or any resource exists. Provisioning and rollback remain
+  reviewed IaC operations.
+- **Phase / approval / reopen:** Phase 4/5A/8. Reopen for organization-policy,
+  residency, billing, or approved DR changes.
 
 ### PRD0-D018 — Bound service accounts by runtime
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; current static credentials
-  and coupled graph cannot express least privilege (EVD-012, EVD-051–EVD-055).
-- **Options / recommendation:** one runtime identity; identity per environment;
-  identity per API/Core/Media/Migration/Maintenance/deployer role. Recommend the
-  last.
-- **Reasoning / alternatives:** a shared identity inherits DDL, provider,
-  signing, and deletion blast radius.
-- **Impacts:** no contract/schema; credential-free workload identity preferred.
-- **Operations / rollback:** version IAM with IaC, test denied actions, and keep
-  rollback identity permissions compatible with prior artifact only.
-- **Phase / approval / reopen:** Phase 4; missing owner/security approval.
-  Reopen only if platform limits identity count, retaining least privilege.
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q018 option A
+  was approved by Abdallah as security approver at
+  `2026-08-09T15:20:43+03:00`; owning ADR ADR-0015.
+- **Approved decision:** each cloud project has distinct identities named
+  `moazez-api-runtime`, `moazez-core-worker`, `moazez-media-worker`,
+  `moazez-migration-job`, `moazez-maintenance-scheduler`,
+  `moazez-iac-deployer`, and `moazez-gcs-signer`.
+- **Reasoning / alternatives:** a shared identity would combine DDL, object,
+  signing, provider, schedule, and deploy blast radii.
+- **Impacts:** no API/schema change. Runtime permissions must be granted from
+  exact role responsibilities and denied by default; identities are not
+  cross-project production/non-production credentials.
+- **Operations / rollback:** IAM is versioned in IaC and tested with positive
+  and negative access cases. Long-lived downloaded service-account keys are
+  not an approved deployment mechanism.
+- **Phase / approval / reopen:** Phase 4 and Phase 5A. Reopen only if the
+  platform cannot support the identity count while retaining least privilege.
 
 ### PRD0-D019 — Choose signed-URL identity
 
-- **Status / evidence:** `OWNER_DECISION_REQUIRED`; current signing uses static
-  MinIO keys and AWS query parsing (EVD-036–EVD-037).
-- **Options / recommendation:** API broad storage identity; dedicated signer;
-  signing service. Recommend dedicated signing-capable service account used by
-  API/authorized worker with bucket/object-prefix limits.
-- **Reasoning / alternatives:** broad object-admin API rights are rejected.
-  Separate signing service is deferred unless scale/policy justifies it.
-- **Impacts:** preserve signed upload/download/playback contracts; no schema.
-  Capability TTL/content headers and audit are security-sensitive.
-- **Operations / rollback:** rotate signer while accepting old URLs until TTL
-  expires; prior signer retained only for bounded rollback.
-- **Phase / approval / reopen:** Phase 4 identity and Phase 5A storage; missing IAM choice. Reopen if
-  GCS signing mechanism/platform constraints require delegation.
+- **Status / evidence:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q019 option A
+  was approved by Abdallah at `2026-08-09T15:20:43+03:00`; owning ADR ADR-0006.
+- **Approved decision:** production uses
+  `moazez-gcs-signer@moazez-production.iam.gserviceaccount.com`; staging uses
+  `moazez-gcs-signer@moazez-nonprod-91001421934.iam.gserviceaccount.com`.
+  Each signer is limited to its own project's approved private and published
+  buckets. Signed capabilities have an absolute maximum TTL of one hour.
+- **Reasoning / alternatives:** dedicated keyless signing separates capability
+  creation from broad object administration. A broad API storage-admin
+  identity and downloaded private keys are rejected.
+- **Impacts:** existing signed upload/download/playback contracts, headers,
+  authorization, and shorter TTLs remain. No schema change.
+- **Operations / rollback:** use workload identity/ADC plus audited `signBlob`;
+  retain an old signer only through existing capability TTL.
+- **Phase / approval / reopen:** Phase 4 identity and Phase 5A storage. Reopen
+  if platform signing limits or measured quota/latency require another design.
 
 ### PRD0-D020 — Pin and rotate Secret Manager versions
 
@@ -825,9 +845,84 @@ dates, PR numbers, SHAs, or validation counts.
   broader regression ownership. Reopen for a new proof type, supported MIME, detector
   policy, or approved client-compatibility change.
 
-All other records in the following table remain
-`OWNER_DECISION_REQUIRED`. The recommendation column in the summary is advice
-only; silence selects nothing.
+### PRD0-D046 — Block provider URLs from Grade MEDIA writes
+
+- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q041 option D
+  approved by Abdallah on 2026-08-11 (Africa/Cairo); owning ADR ADR-0013.
+- **Decision:** new `mediaUrl` writes allow only ordinary external HTTPS, plus
+  absent/null where already allowed. Direct GCS/Google Cloud Storage/MinIO/
+  S3-compatible URLs, `gs://`, `s3://`, HTTP, and malformed/unsafe URLs are
+  blocked. `compatibility_window=NONE`.
+- **Compatibility / reopen:** preserve DTO and historical read shapes; perform
+  no schema migration or silent rewrite. Reopen only through an explicit owner
+  amendment to Q041.
+
+### PRD0-D047 — Govern branding logo writes and legacy reads
+
+- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q042 approved by
+  Abdallah on 2026-08-11 (Africa/Cairo); owning ADR ADR-0013.
+- **Decision:** new writes remain managed File-backed only. Reads allow an
+  eligible managed File, an already-persisted safe ordinary external HTTPS URL
+  as read-only compatibility, or null. Provider and unsafe/malformed legacy
+  values fail closed; provider discovery blocks cutover pending inventory and
+  review.
+- **Compatibility / reopen:** no server-side external fetch, raw legacy write,
+  schema migration, or signed/provider URL exposure. Reopen only through an
+  explicit owner amendment to Q042.
+
+### PRD0-D049 — Lock the zero-object clean-start branch
+
+- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q044 option A
+  approved by Abdallah as data owner and approver at
+  `2026-08-09T15:20:43+03:00`; owning ADR ADR-0006.
+- **Decision:** source buckets `NONE`, source object count `0`, and provider URL
+  count `0`. Phase 5A must publish signed `N/A_WITH_EVIDENCE` rather than claim
+  that absence was inferred.
+- **Reopen:** any later-discovered object source or provider URL requiring
+  preservation reopens D029 and D049–D051 before cutover.
+
+### PRD0-D050 — Mark the source read-only window N/A with evidence
+
+- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q045 approved
+  at `2026-08-09T15:20:43+03:00`; owning ADR ADR-0006.
+- **Decision:** read-only duration, delta policy, and cutback authority are
+  `N/A` only for the signed zero-source branch. This is not permission to
+  delete a later-discovered source.
+- **Reopen:** discovery of a source changes this decision to a migration branch
+  requiring freeze/delta, retained source, and cutback authority.
+
+### PRD0-D051 — Mark missing-checksum migration handling N/A with evidence
+
+- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q046 approved
+  at `2026-08-09T15:20:43+03:00`; owning ADR ADR-0006.
+- **Decision:** checksum sampling and mismatch handling are `N/A` only because
+  the approved source-object count is zero. Newly discovered legacy objects
+  require an approved full/sampled/other policy before migration.
+
+### PRD0-D052 — Lock the private bucket topology
+
+- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q047 approved
+  at `2026-08-09T15:20:43+03:00`; owning ADR ADR-0006.
+- **Decision:** production and non-production each receive a `private` and a
+  `published` bucket in `me-central2`. Every bucket remains private with
+  Uniform Bucket-Level Access, Public Access Prevention, no anonymous access,
+  exact Q022 HTTPS CORS origins, per-project signing, and IaC ownership.
+- **Learning Media:** staging and final objects remain prefixes inside the
+  private bucket; no third bucket or HTTP contract change is approved.
+
+### PRD0-D053 — Lock the Phase 5A recovery baseline
+
+- **Status / authority:** `LOCKED_FROM_APPROVED_CONTEXT`; PRD0-Q048 approved
+  at `2026-08-09T15:20:43+03:00`; owning ADR ADR-0006.
+- **Decision:** enable versioning on all four buckets, configure seven-day GCS
+  Soft Delete, set Terraform `prevent_destroy`, keep Bucket Lock disabled, and
+  add no automatic transition or deletion lifecycle rule in Phase 5A.
+- **Boundary:** pending D041–D044 still block business retention, physical
+  deletion, and destructive cleanup. Versioning can retain noncurrent versions
+  beyond seven days until a later cost/retention policy is approved.
+
+The records in the following table remain `OWNER_DECISION_REQUIRED`. The
+recommendation column in the summary is advice only; silence selects nothing.
 
 | Decisions | Evidence and decision boundary | Required by / reopen condition |
 |---|---|---|
@@ -838,12 +933,7 @@ only; silence selects nothing.
 | PRD0-D041–PRD0-D043 Retention and holds | Decide policy authority, feature periods, superseded admissions evidence, legal/audit hold precedence, and deletion eligibility. | before any destructive cleanup; reopen on law/product policy |
 | PRD0-D044 Physical deletion | Report-only first. Decide approval roles, enable flag, retry/audit/recovery, and whether cleanup remains deferred under a cost constraint. | destructive cleanup remains separately blocked after Phase 5B foundation |
 | PRD0-D045 Reconciliation ownership | Name producer/reviewer, cadence, inventory retention, false-positive disposition, and escalation. | Phase 5B report-only gate; reopen on reference graph change |
-| PRD0-D046 Grade MEDIA URLs | Choose managed File, approved external HTTPS, compatibility window, or disable new direct provider URLs while retaining approved legacy reads. | Phase 5B; row remediation conditional on PRD0-Q004 |
-| PRD0-D047 Branding legacy URLs | Classify managed File, approved HTTPS, legacy provider, invalid/unsafe, and null; retain current safe fallback until migration/retirement approval. | Phase 5A inventory / Phase 5B policy |
 | PRD0-D048 Multipart controls | Approve edge/app route limits, memory, Cloud Run concurrency, simultaneous upload budget, rates, and large-file direct PUT threshold. | provisional capacity input; close with Phase 5B load evidence |
-| PRD0-D049–PRD0-D051 Object migration | PRD0-D029 owns clean-start versus migration. These records define object proof, read-only source window, and checksum-absence handling without redefining D029. | Phase 5A; reopen on source inventory/cutover change |
-| PRD0-D052 Bucket topology | Decide staging/final/private/public topology, region, CORS, signer/IAM boundaries, and IaC ownership. Runtime request paths may not create production buckets. | Phase 5A before provisioning |
-| PRD0-D053 Versioning/lifecycle/protection | Decide GCS versioning, lifecycle rules, deletion protection/retention lock, recovery, and cost. This does not authorize business-object deletion. | Phase 5A infrastructure / Phase 5B retention alignment |
 
 ## Canonical delivery-phase ownership
 
@@ -864,6 +954,23 @@ complete.
 | Phase 8 — Terraform, CI/CD, and Production-Equivalent Staging | IaC, artifact, deploy order, staging, release-candidate full gate | PRD0-D026–PRD0-D032 |
 | Phase 9 — Failure Drills, Progressive Launch, and Final Closeout | failure/migration drills, launch, rollback/forward-fix, final evidence | approved objectives and all prior blocking gates |
 
+### Owner-directed storage fast-path amendment
+
+The 2026-08-10 Owner direction changes ordering only:
+
+1. the Batch 0 storage inventory and D010 boundary proceed from the formally
+   closed Phase 3 baseline;
+2. provider-neutral port/adapters may be implemented before full Phase 4
+   closeout;
+3. real GCS provisioning/signing/proof requires only the storage-critical
+   accepted D017–D019 project, workload-identity, and signer prerequisites;
+4. D020 Secret Manager/JWT/provider-secret rotation, D021 SMTP/device-token
+   crypto, and full Phase 4 regression/closeout remain later work;
+5. Phase 4 and Phase 5A remain incomplete, Phase 5B is not started, and no
+   production traffic or real production data is authorized.
+
+No unrelated future launch or production gate is weakened.
+
 ## ADR ownership sequence
 
 The ownership map remains authoritative as amended by the Phase 3 approvals on
@@ -878,16 +985,16 @@ does not accept a pending decision.
 |---|---|---|---|
 | ADR-0004 | Production Runtime Roles in the Modular Monolith | owns D004–D007 | created and accepted through Q001, Q002, Q010, and Q011; Q003 is not a logical-boundary prerequisite |
 | ADR-0005 | Cloud SQL Runtime Connections and Database Role Boundary | owns D011–D012, D030–D031 | created and accepted through the Phase 3 approvals for Q003, Q006, Q014, and Q015; sizing remains provisional pending PRD3-G01-B/C/D evidence |
-| ADR-0006 | Production Data Source, Object Storage, and Signed Capability Boundary | owns D009–D010, D019, D022, D029, D049–D053 | created; accepts D022/Q022 only; all other owned decisions remain pending or proposed |
+| ADR-0006 | Production Data Source, Object Storage, and Signed Capability Boundary | owns D009–D010, D019, D022, D029, D049–D053 | accepts D009/Q008, D010/direct Owner architecture acceptance, D019/Q019, D022/Q022, D029/Q004, and D049–D053/Q044–Q048 |
 | ADR-0007 | Migration Job and Deployment Ordering | owns D026–D027 | created and accepted through Q026 option A at `2026-08-07T00:22:00+03:00` |
 | ADR-0008 | Redis Workload Isolation and Failure Policy                            | owns D013–D014                              | created and accepted through Q012 and Q013                                                                                                    |
 | ADR-0009 | Critical Job Recovery and Reconciliation                               | owns D015                                   | created and accepted through Q017; PRD3-G03 implementation evidence recorded                                                                  |
 | ADR-0010 | Production Health and Observability Contract | owns D024–D025, D035 | created; accepts D024/Q024 and D035/Q030; D025/Q025 remains pending |
 | ADR-0011 | Artifact, Runtime Version, Staging, and Promotion | owns D032–D034 | created; accepts D033/Q028 and D034/Q029; D032/Q027 remains pending |
 | ADR-0012 | Capacity, Backup, RTO/RPO, and Recovery Objectives | owns D016, D028 | reserved; autoscaling and backup/RTO/RPO answers remain pending |
-| ADR-0013 | File Security, Retention, and Reference-Aware Lifecycle | owns D036–D048 | created; accepts D037/Q032 only; all other owned decisions remain pending |
+| ADR-0013 | File Security, Retention, and Reference-Aware Lifecycle | owns D036–D048 | accepts D037/Q032, D046/Q041, and D047/Q042; other owned decisions remain pending |
 | ADR-0014 | Learning Media Asynchronous Completion Compatibility | owns D008 | reserved; Q009 remains pending |
-| ADR-0015 | GCP Environment, Workload Identity, Secrets, and Crypto                | owns D017–D021, D023                        | reserved; project/IAM/secret/key answers remain pending                                                                                       |
+| ADR-0015 | GCP Environment, Workload Identity, Secrets, and Crypto | owns D017–D021, D023 | created; accepts D017/Q005 and D018/Q018; D020/Q020, D021/Q021, and D023/Q023 remain pending |
 
 Each listed major decision has exactly one owning ADR. Other ADRs may cite the
 owning record but must not redefine it, especially for capacity and
@@ -895,11 +1002,15 @@ backup/RTO/RPO policy.
 
 ## Decision closure rule
 
-The Phase 0B closeout recorded ten approved decision changes on 2026-07-27.
-Phase 3 added four approvals (Q003, Q006, Q014, and Q015) on 2026-08-04,
-Q012 and Q013 on 2026-08-06 at `05:56:00+03:00`, and Q017 on 2026-08-06 at
-`10:30:34+03:00`, for seventeen approved owner-question dispositions in the
-current register. All remaining `OWNER_DECISION_REQUIRED` entries stay open
-until the owner supplies exact answers, impacts are reconciled, and their
-owning ADRs are approved. Absence of an answer does not select the recommended
-default or authorize implementation.
+The Phase 0B closeout recorded ten approved owner-question dispositions on
+2026-07-27. Later amendments through 2026-08-07 added Q003, Q004, Q006, Q012,
+Q013, Q014, Q015, Q017, and Q026. The 2026-08-09 cloud/storage amendment added
+Q005, Q008, Q018, Q019, and Q044–Q048. The 2026-08-11 amendment added Q041
+and Q042, for 30 approved and 18 pending owner-question dispositions in the
+current register.
+
+D009, D010, D017–D019, D046–D047, and D049–D053 are now
+`LOCKED_FROM_APPROVED_CONTEXT`. D020, D021, D023, D041–D045, D048, and every other
+`OWNER_DECISION_REQUIRED` record remain open until exact owner answers, impact
+reconciliation, and owning-ADR acceptance are recorded. Absence of an answer
+does not select a recommendation or authorize implementation.

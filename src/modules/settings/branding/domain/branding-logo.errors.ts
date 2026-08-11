@@ -69,13 +69,16 @@ export class PublicBrandingLogoServiceUnavailableException extends DomainExcepti
   }
 }
 
-export function isStorageObjectNotFound(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const value = error as { code?: unknown; statusCode?: unknown };
-  return (
-    value.statusCode === HttpStatus.NOT_FOUND ||
-    value.code === 'NoSuchKey' ||
-    value.code === 'NoSuchObject' ||
-    value.code === 'NotFound'
-  );
+export class BrandingLegacyLogoValueRejectedException extends DomainException {
+  constructor(
+    reasonCode: 'provider_url_requires_review' | 'unsafe_legacy_url',
+  ) {
+    super({
+      code: 'settings.branding.logo.legacy_value_rejected',
+      message:
+        'The persisted school logo value is not an accepted branding source',
+      httpStatus: HttpStatus.UNPROCESSABLE_ENTITY,
+      details: { field: 'logoUrl', reasonCode },
+    });
+  }
 }

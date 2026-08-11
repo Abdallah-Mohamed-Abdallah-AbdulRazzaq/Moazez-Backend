@@ -9,9 +9,33 @@ import {
 } from 'node:http';
 import { Agent as HttpsAgent, request as httpsRequest } from 'node:https';
 import { Readable } from 'node:stream';
-import { BucketItem, BucketItemStat, Client } from 'minio';
+import { type BucketItem, type BucketItemStat, Client } from 'minio';
+import {
+  normalizeMinioStorageError,
+  normalizeObjectStorageReadStream,
+} from './object-storage.errors';
+import {
+  assertSignedUrlTtl,
+  type ObjectStorageListPage,
+  type ObjectStoragePort,
+  type ObjectStoragePutInput,
+  type ObjectStoragePutResult,
+  type ObjectStorageSignedCapability,
+  type ObjectStorageSignedGetOverrides,
+  type ObjectStorageStat,
+} from './object-storage.port';
 
 export const STORAGE_READINESS_REQUEST_TIMEOUT_MS = 500;
+
+const MINIO_STANDARD_METADATA_KEYS = new Set([
+  'content-type',
+  'cache-control',
+  'content-encoding',
+  'content-disposition',
+  'content-language',
+  'if-none-match',
+  'if-match',
+]);
 
 const STORAGE_READINESS_TIMEOUT_CODE = 'storage_readiness_timeout';
 
@@ -24,40 +48,8 @@ class StorageReadinessTimeoutError extends Error {
   }
 }
 
-type PutObjectInput = {
-  bucket: string;
-  objectKey: string;
-  body: Buffer | string | Readable;
-  sizeBytes?: number;
-  contentType?: string;
-  metadata?: Record<string, string>;
-};
-
-type PresignedGetUrlInput = {
-  bucket: string;
-  objectKey: string;
-  expiresInSeconds: number;
-  responseHeaders?: Record<string, string>;
-};
-
-type PresignedPutUrlInput = {
-  bucket: string;
-  objectKey: string;
-  expiresInSeconds: number;
-};
-
-export type PresignedPutCapability = {
-  url: string;
-  expiresAt: Date;
-};
-
-export type PresignedGetCapability = {
-  url: string;
-  expiresAt: Date;
-};
-
 @Injectable()
-export class MinioAdapter {
+export class MinioAdapter implements ObjectStoragePort {
   private readonly client: Client;
   private readonly readinessClient: Client;
 
@@ -109,30 +101,27 @@ export class MinioAdapter {
   }
 
   async ensureBucketExists(bucket: string): Promise<void> {
-    const exists = await this.client.bucketExists(bucket);
-    if (!exists) {
-      await this.client.makeBucket(bucket);
+    try {
+      const exists = await this.client.bucketExists(bucket);
+      if (!exists) {
+        await this.client.makeBucket(bucket);
+      }
+    } catch (error) {
+      throw normalizeMinioStorageError(error);
     }
   }
 
-  bucketExists(bucket: string): Promise<boolean> {
-    return this.client.bucketExists(bucket);
-  }
-
-  bucketExistsForReadiness(bucket: string): Promise<boolean> {
-    return this.readinessClient.bucketExists(bucket);
+  async isBucketAvailable(bucket: string): Promise<boolean> {
+    try {
+      return await this.readinessClient.bucketExists(bucket);
+    } catch (error) {
+      throw normalizeMinioStorageError(error);
+    }
   }
 
   async putObject(
-    input: PutObjectInput,
-  ): Promise<{ etag: string; versionId?: string }> {
-    await this.ensureBucketExists(input.bucket);
-
-    const metadata = {
-      ...(input.contentType ? { 'Content-Type': input.contentType } : {}),
-      ...(input.metadata ?? {}),
-    };
-
+    input: ObjectStoragePutInput,
+  ): Promise<ObjectStoragePutResult> {
     const size =
       input.body instanceof Readable
         ? input.sizeBytes
@@ -143,60 +132,100 @@ export class MinioAdapter {
       throw new Error('storage_object_size_required');
     }
 
-    const uploaded = await this.client.putObject(
-      input.bucket,
-      input.objectKey,
-      input.body,
-      size,
-      metadata,
-    );
+    await this.ensureBucketExists(input.bucket);
 
-    return {
-      etag: uploaded.etag,
-      versionId: uploaded.versionId ?? undefined,
+    const metadata = {
+      ...(input.contentType ? { 'Content-Type': input.contentType } : {}),
+      ...(input.metadata ?? {}),
     };
+
+    try {
+      const uploaded = await this.client.putObject(
+        input.bucket,
+        input.objectKey,
+        input.body,
+        size,
+        metadata,
+      );
+
+      return {
+        etag: uploaded.etag,
+        generation: null,
+        version: uploaded.versionId ?? null,
+      };
+    } catch (error) {
+      throw normalizeMinioStorageError(error);
+    }
   }
 
-  async removeObject(input: {
+  async deleteObject(input: {
     bucket: string;
     objectKey: string;
   }): Promise<void> {
-    await this.client.removeObject(input.bucket, input.objectKey);
+    try {
+      await this.client.removeObject(input.bucket, input.objectKey);
+    } catch (error) {
+      throw normalizeMinioStorageError(error);
+    }
   }
 
-  statObject(input: {
+  async statObject(input: {
     bucket: string;
     objectKey: string;
-  }): Promise<BucketItemStat> {
-    return this.client.statObject(input.bucket, input.objectKey);
+  }): Promise<ObjectStorageStat> {
+    try {
+      return normalizeMinioStat(
+        await this.client.statObject(input.bucket, input.objectKey),
+      );
+    } catch (error) {
+      throw normalizeMinioStorageError(error);
+    }
   }
 
-  getObject(input: { bucket: string; objectKey: string }): Promise<Readable> {
-    return this.client.getObject(input.bucket, input.objectKey);
+  async getObject(input: {
+    bucket: string;
+    objectKey: string;
+  }): Promise<Readable> {
+    try {
+      const source = await this.client.getObject(input.bucket, input.objectKey);
+      return normalizeObjectStorageReadStream(source, 'minio');
+    } catch (error) {
+      throw normalizeMinioStorageError(error);
+    }
   }
 
   listObjectsPage(input: {
     bucket: string;
     prefix: string;
-    startAfter?: string;
+    cursor?: string;
     limit: number;
-  }): Promise<{
-    objects: Array<{ objectKey: string; size: number; lastModified: Date }>;
-    nextStartAfter: string | null;
-  }> {
-    return new Promise((resolve, reject) => {
-      const objects: Array<{
-        objectKey: string;
-        size: number;
-        lastModified: Date;
-      }> = [];
-      let settled = false;
-      const stream = this.client.listObjectsV2(
-        input.bucket,
-        input.prefix,
-        true,
-        input.startAfter,
+  }): Promise<ObjectStorageListPage> {
+    let startAfter: string | undefined;
+    try {
+      startAfter = input.cursor ? decodeMinioCursor(input.cursor) : undefined;
+    } catch (error) {
+      return Promise.reject(
+        error instanceof Error
+          ? error
+          : new Error('storage_list_cursor_invalid'),
       );
+    }
+
+    return new Promise((resolve, reject) => {
+      const objects: ObjectStorageListPage['objects'] = [];
+      let settled = false;
+      let stream: Readable;
+      try {
+        stream = this.client.listObjectsV2(
+          input.bucket,
+          input.prefix,
+          true,
+          startAfter,
+        );
+      } catch (error) {
+        reject(normalizeMinioStorageError(error));
+        return;
+      }
 
       stream.on('data', (item: BucketItem) => {
         if (settled || !item.name) return;
@@ -213,42 +242,77 @@ export class MinioAdapter {
         stream.destroy();
         resolve({
           objects,
-          nextStartAfter: objects[objects.length - 1]?.objectKey ?? null,
+          nextCursor: encodeMinioCursor(
+            objects[objects.length - 1]?.objectKey ?? '',
+          ),
         });
       });
       stream.on('error', (error) => {
-        if (!settled) reject(error);
+        if (!settled) reject(normalizeMinioStorageError(error));
       });
       stream.on('end', () => {
         if (settled) return;
         settled = true;
-        resolve({ objects, nextStartAfter: null });
+        resolve({ objects, nextCursor: null });
       });
     });
   }
 
-  async createPresignedGetUrl(
-    input: PresignedGetUrlInput,
-  ): Promise<PresignedGetCapability> {
-    const url = await this.client.presignedGetObject(
-      input.bucket,
-      input.objectKey,
-      input.expiresInSeconds,
-      input.responseHeaders,
-    );
-    return { url, expiresAt: parsePresignedGetExpiry(url) };
+  async createSignedGetUrl(input: {
+    bucket: string;
+    objectKey: string;
+    expiresInSeconds: number;
+    overrides?: ObjectStorageSignedGetOverrides;
+  }): Promise<ObjectStorageSignedCapability> {
+    assertSignedUrlTtl(input.expiresInSeconds);
+    try {
+      const url = await this.client.presignedGetObject(
+        input.bucket,
+        input.objectKey,
+        input.expiresInSeconds,
+        toMinioResponseHeaders(input.overrides),
+      );
+      return {
+        url,
+        expiresAt: parsePresignedExpiry(url, 'storage_signed_get'),
+      };
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.startsWith('storage_signed_')
+      ) {
+        throw error;
+      }
+      throw normalizeMinioStorageError(error);
+    }
   }
 
-  async createPresignedPutUrl(
-    input: PresignedPutUrlInput,
-  ): Promise<PresignedPutCapability> {
+  async createSignedPutUrl(input: {
+    bucket: string;
+    objectKey: string;
+    expiresInSeconds: number;
+  }): Promise<ObjectStorageSignedCapability> {
+    assertSignedUrlTtl(input.expiresInSeconds);
     await this.ensureBucketExists(input.bucket);
-    const url = await this.client.presignedPutObject(
-      input.bucket,
-      input.objectKey,
-      input.expiresInSeconds,
-    );
-    return { url, expiresAt: parsePresignedPutExpiry(url) };
+    try {
+      const url = await this.client.presignedPutObject(
+        input.bucket,
+        input.objectKey,
+        input.expiresInSeconds,
+      );
+      return {
+        url,
+        expiresAt: parsePresignedExpiry(url, 'storage_signed_put'),
+      };
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.startsWith('storage_signed_')
+      ) {
+        throw error;
+      }
+      throw normalizeMinioStorageError(error);
+    }
   }
 
   async objectExists(input: {
@@ -259,12 +323,92 @@ export class MinioAdapter {
       await this.client.statObject(input.bucket, input.objectKey);
       return true;
     } catch (error) {
-      const code = isStorageError(error) ? String(error.code) : '';
-      if (['NoSuchKey', 'NoSuchObject', 'NotFound'].includes(code)) {
-        return false;
-      }
-      throw error;
+      const normalized = normalizeMinioStorageError(error);
+      if (normalized.kind === 'not_found') return false;
+      throw normalized;
     }
+  }
+}
+
+function normalizeMinioStat(stat: BucketItemStat): ObjectStorageStat {
+  const rawMetadata = normalizeStringMetadata(stat.metaData);
+  const contentType = findContentType(rawMetadata);
+  const metadata = Object.fromEntries(
+    Object.entries(rawMetadata).filter(([key]) => {
+      const normalizedKey = key.toLowerCase();
+      return (
+        !MINIO_STANDARD_METADATA_KEYS.has(normalizedKey) &&
+        !normalizedKey.startsWith('x-amz-')
+      );
+    }),
+  );
+  return {
+    size: stat.size,
+    etag: stat.etag || null,
+    contentType,
+    metadata,
+    lastModified: stat.lastModified ?? null,
+    generation: null,
+    version: stat.versionId ?? null,
+  };
+}
+
+function normalizeStringMetadata(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    ),
+  );
+}
+
+function findContentType(metadata: Record<string, string>): string | null {
+  for (const [key, value] of Object.entries(metadata)) {
+    if (key.toLowerCase() === 'content-type') {
+      return value.split(';', 1)[0].trim().toLowerCase();
+    }
+  }
+  return null;
+}
+
+function toMinioResponseHeaders(
+  overrides: ObjectStorageSignedGetOverrides | undefined,
+): Record<string, string> | undefined {
+  if (!overrides) return undefined;
+  const responseHeaders: Record<string, string> = {};
+  if (overrides.contentType) {
+    responseHeaders['response-content-type'] = overrides.contentType;
+  }
+  if (overrides.contentDisposition) {
+    responseHeaders['response-content-disposition'] =
+      overrides.contentDisposition;
+  }
+  return Object.keys(responseHeaders).length > 0 ? responseHeaders : undefined;
+}
+
+function encodeMinioCursor(objectKey: string): string {
+  return Buffer.from(
+    JSON.stringify({ version: 1, provider: 'minio', after: objectKey }),
+    'utf8',
+  ).toString('base64url');
+}
+
+function decodeMinioCursor(cursor: string): string {
+  try {
+    const decoded = JSON.parse(
+      Buffer.from(cursor, 'base64url').toString('utf8'),
+    ) as { version?: unknown; provider?: unknown; after?: unknown };
+    if (
+      decoded.version !== 1 ||
+      decoded.provider !== 'minio' ||
+      typeof decoded.after !== 'string' ||
+      decoded.after.length === 0
+    ) {
+      throw new Error('invalid');
+    }
+    return decoded.after;
+  } catch {
+    throw new Error('storage_list_cursor_invalid');
   }
 }
 
@@ -293,18 +437,6 @@ function createReadinessTransport(
       return request;
     }) as typeof httpRequest,
   };
-}
-
-function isStorageError(error: unknown): error is { code: unknown } {
-  return typeof error === 'object' && error !== null && 'code' in error;
-}
-
-function parsePresignedPutExpiry(value: string): Date {
-  return parsePresignedExpiry(value, 'storage_presigned_put');
-}
-
-function parsePresignedGetExpiry(value: string): Date {
-  return parsePresignedExpiry(value, 'storage_presigned_get');
 }
 
 function parsePresignedExpiry(value: string, errorPrefix: string): Date {

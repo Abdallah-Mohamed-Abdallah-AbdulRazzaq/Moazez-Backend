@@ -1,18 +1,19 @@
 import { ConfigService } from '@nestjs/config';
 import { FileVisibility } from '@prisma/client';
 import { MinioAdapter } from '../minio.adapter';
+import type { ObjectStoragePort } from '../object-storage.port';
 import { SignedUrlService } from '../signed-url.service';
 
 describe('SignedUrlService', () => {
   it('creates an inline signed GET capability without filename exposure', async () => {
-    const createPresignedGetUrl = jest.fn().mockResolvedValue({
+    const createSignedGetUrl = jest.fn().mockResolvedValue({
       url: 'https://storage.invalid/object?X-Amz-Date=20260723T120000Z&X-Amz-Expires=300',
       expiresAt: new Date('2026-07-23T12:05:00.000Z'),
     });
-    const minioAdapter = {
-      createPresignedGetUrl,
-    } as unknown as jest.Mocked<MinioAdapter>;
-    const service = new SignedUrlService(minioAdapter, config());
+    const objectStorage = {
+      createSignedGetUrl,
+    } as unknown as ObjectStoragePort;
+    const service = new SignedUrlService(objectStorage, config());
 
     await expect(
       service.createDownloadUrl({
@@ -28,26 +29,26 @@ describe('SignedUrlService', () => {
       expiresAt: new Date('2026-07-23T12:05:00.000Z'),
     });
 
-    expect(createPresignedGetUrl).toHaveBeenCalledWith({
+    expect(createSignedGetUrl).toHaveBeenCalledWith({
       bucket: 'private-bucket',
       objectKey: 'final/video.mp4',
       expiresInSeconds: 300,
-      responseHeaders: {
-        'response-content-disposition': 'inline',
-        'response-content-type': 'video/mp4',
+      overrides: {
+        contentDisposition: 'inline',
+        contentType: 'video/mp4',
       },
     });
   });
 
   it('preserves attachment filename sanitization for existing callers', async () => {
-    const createPresignedGetUrl = jest.fn().mockResolvedValue({
+    const createSignedGetUrl = jest.fn().mockResolvedValue({
       url: 'https://storage.invalid/object',
       expiresAt: new Date('2026-07-23T12:15:00.000Z'),
     });
-    const minioAdapter = {
-      createPresignedGetUrl,
-    } as unknown as jest.Mocked<MinioAdapter>;
-    const service = new SignedUrlService(minioAdapter, config());
+    const objectStorage = {
+      createSignedGetUrl,
+    } as unknown as ObjectStoragePort;
+    const service = new SignedUrlService(objectStorage, config());
 
     await service.createDownloadUrl({
       objectKey: 'files/doc.pdf',
@@ -55,23 +56,24 @@ describe('SignedUrlService', () => {
       downloadFileName: ' report"\r\n.pdf ',
     });
 
-    expect(createPresignedGetUrl).toHaveBeenCalledWith(
+    expect(createSignedGetUrl).toHaveBeenCalledWith(
       expect.objectContaining({
         bucket: 'private-bucket',
-        responseHeaders: {
-          'response-content-disposition': 'attachment; filename="report.pdf"',
+        expiresInSeconds: 900,
+        overrides: {
+          contentDisposition: 'attachment; filename="report.pdf"',
         },
       }),
     );
   });
 
   it('supports no disposition override while retaining an explicit content type', async () => {
-    const createPresignedGetUrl = jest.fn().mockResolvedValue({
+    const createSignedGetUrl = jest.fn().mockResolvedValue({
       url: 'https://storage.invalid/object',
       expiresAt: new Date('2026-07-23T12:15:00.000Z'),
     });
     const service = new SignedUrlService(
-      { createPresignedGetUrl } as unknown as MinioAdapter,
+      { createSignedGetUrl } as unknown as ObjectStoragePort,
       config(),
     );
 
@@ -81,22 +83,22 @@ describe('SignedUrlService', () => {
       contentType: 'application/pdf',
     });
 
-    expect(createPresignedGetUrl).toHaveBeenCalledWith(
+    expect(createSignedGetUrl).toHaveBeenCalledWith(
       expect.objectContaining({
-        responseHeaders: {
-          'response-content-type': 'application/pdf',
+        overrides: {
+          contentType: 'application/pdf',
         },
       }),
     );
   });
 
   it('emits attachment even when no filename is supplied', async () => {
-    const createPresignedGetUrl = jest.fn().mockResolvedValue({
+    const createSignedGetUrl = jest.fn().mockResolvedValue({
       url: 'https://storage.invalid/object',
       expiresAt: new Date('2026-07-23T12:15:00.000Z'),
     });
     const service = new SignedUrlService(
-      { createPresignedGetUrl } as unknown as MinioAdapter,
+      { createSignedGetUrl } as unknown as ObjectStoragePort,
       config(),
     );
 
@@ -105,10 +107,10 @@ describe('SignedUrlService', () => {
       disposition: 'attachment',
     });
 
-    expect(createPresignedGetUrl).toHaveBeenCalledWith(
+    expect(createSignedGetUrl).toHaveBeenCalledWith(
       expect.objectContaining({
-        responseHeaders: {
-          'response-content-disposition': 'attachment',
+        overrides: {
+          contentDisposition: 'attachment',
         },
       }),
     );
@@ -135,7 +137,7 @@ describe('MinioAdapter signed GET expiry', () => {
       );
 
     await expect(
-      adapter.createPresignedGetUrl({
+      adapter.createSignedGetUrl({
         bucket: 'private-bucket',
         objectKey: 'final/video.mp4',
         expiresInSeconds: 300,
@@ -162,12 +164,12 @@ describe('MinioAdapter signed GET expiry', () => {
       jest.spyOn(client.client, 'presignedGetObject').mockResolvedValue(url);
 
       await expect(
-        adapter.createPresignedGetUrl({
+        adapter.createSignedGetUrl({
           bucket: 'private-bucket',
           objectKey: 'final/video.mp4',
           expiresInSeconds: 300,
         }),
-      ).rejects.toThrow(/^storage_presigned_get_expiry_/u);
+      ).rejects.toThrow(/^storage_signed_get_expiry_/u);
     },
   );
 });

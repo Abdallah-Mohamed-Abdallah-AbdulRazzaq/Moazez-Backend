@@ -166,7 +166,7 @@ src/modules/settings/email/delivery/tests/email-delivery.use-cases.spec.ts
 src/modules/settings/email/delivery/tests/process-email-delivery-recipient.use-case.spec.ts
 test/e2e/identity-credentials-email-final-closeout.e2e-spec.ts
 
-scripts/audits/classify-school-branding-logo-values.ts
+scripts/audits/pre-real-data-provider-url-audit.ts
 docs/sprint-school-branding-logo-asset-1x-implementation-closeout.md
 
 test/e2e/communication-security-contract.e2e-spec.ts

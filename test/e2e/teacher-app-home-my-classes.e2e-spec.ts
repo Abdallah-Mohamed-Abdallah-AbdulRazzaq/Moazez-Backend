@@ -167,7 +167,7 @@ describe('Sprint 7B Teacher Home + My Classes closeout flow (e2e)', () => {
       data: {
         schoolId: schoolAId,
         schoolName: `Sprint 7B Academy ${suffix}`,
-        logoUrl: `raw-storage-logo-${suffix}`,
+        logoUrl: null,
       },
     });
 
