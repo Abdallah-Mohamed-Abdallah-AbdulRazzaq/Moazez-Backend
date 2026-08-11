@@ -7,11 +7,7 @@ const NODE_VERSION = '22.23.1';
 const NODE_ENGINE = '>=22.23.1 <23';
 const NODE_IMAGE =
   'node:22.23.1-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3';
-const WORKFLOWS = [
-  '.github/workflows/migration-integrity.yml',
-  '.github/workflows/learning-content-integrity.yml',
-  '.github/workflows/learning-media-integrity.yml',
-];
+const WORKFLOWS = ['.github/workflows/ci.yml'];
 
 function verifyRuntimePolicy(rootDirectory = path.resolve(__dirname, '..')) {
   const failures = [];
@@ -217,6 +213,7 @@ module.exports = {
   NODE_ENGINE,
   NODE_IMAGE,
   NODE_VERSION,
+  WORKFLOWS,
   parseSetupNodeVersions,
   verifyRuntimePolicy,
 };

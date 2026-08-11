@@ -225,13 +225,18 @@ describe('Lesson content publication lifecycle contract', () => {
     expect(repository).toContain('FROM "lesson_content_items"');
   });
 
-  it('removes identifiers from not-found details and adds focused CI', () => {
+  it('removes identifiers from not-found details and adds focused central CI', () => {
     const exceptions = read(
       'src/modules/academics/curriculum/domain/lesson-content.exceptions.ts',
     );
-    const workflow = readIfPresent(
-      '.github/workflows/learning-content-integrity.yml',
-    );
+    const workflow = read('.github/workflows/ci.yml');
+    const shardRunner = read('scripts/ci/run-ci-shard.cjs');
+    const planner = require(join(ROOT, 'scripts/ci/plan-ci.cjs')) as {
+      classifyTestFile(relativePath: string): {
+        execution: string;
+        profile: string;
+      };
+    };
 
     expect(exceptions).toContain(
       'export class LessonContentNotFoundException extends DomainException',
@@ -242,29 +247,42 @@ describe('Lesson content publication lifecycle contract', () => {
     expect(exceptions).not.toMatch(
       /LessonContent(NotFound|FileNotFound)Exception[\s\S]{0,120}constructor\(details/u,
     );
-    expect(workflow).toContain('name: Learning Content Integrity');
+    expect(
+      planner.classifyTestFile(
+        'src/modules/academics/curriculum/tests/lesson-content-publication.contract.spec.ts',
+      ),
+    ).toMatchObject({ execution: 'pull-request', profile: 'unit' });
+    for (const requiredPath of [
+      'test/integration/lesson-content-publication-constraint.integration.spec.ts',
+      'test/integration/lesson-content-publication-atomicity.integration.spec.ts',
+      'test/integration/lesson-content-publication-read-adapters.spec.ts',
+      'test/e2e/academics-lesson-content-foundation.e2e-spec.ts',
+      'test/security/tenancy.academics-lesson-content.spec.ts',
+    ]) {
+      expect(planner.classifyTestFile(requiredPath).execution).toBe(
+        'pull-request',
+      );
+    }
+    expect(workflow).toContain('name: CI');
     expect(workflow).toContain("node-version: '22.23.1'");
-    expect(workflow).toContain('postgres:16-alpine');
-    expect(workflow).toContain('name: Check migration governance');
-    expect(workflow).toContain('run: npm run db:migrations:check');
-    expect(workflow).toContain('name: Confirm migration status');
-    expect(workflow).toContain('run: npm run db:migrations:status');
-    expect(workflow.indexOf('name: Check migration governance')).toBeLessThan(
-      workflow.indexOf('name: Validate Prisma schema'),
-    );
-    expect(workflow.indexOf('name: Deploy existing migrations')).toBeLessThan(
-      workflow.indexOf('name: Confirm migration status'),
-    );
+    expect(workflow).toContain('regression_matrix:');
+    expect(workflow).toContain('node scripts/ci/run-ci-shard.cjs');
     expect(workflow).toContain('fetch-depth: 0');
     expect(workflow).toContain('github.event.pull_request.base.sha');
     expect(workflow).toContain('github.event.before');
-    expect(workflow).toContain('github.event.repository.default_branch');
-    expect(workflow).toContain('git fetch --force --tags origin');
-    expect(workflow).toContain('MIGRATION_BASE_REF=$base_commit');
     expect(workflow).toContain(
-      'src/modules/academics/curriculum/tests/curriculum.use-case.spec.ts',
+      'ref: ${{ github.event.pull_request.head.sha || github.sha }}',
     );
-    expect(workflow).not.toContain('ffprobe');
+    expect(shardRunner).toContain(
+      "const POSTGRES_IMAGE = 'postgres:16-alpine'",
+    );
+    expect(shardRunner).toContain("'scripts/check-migration-governance.cjs'");
+    expect(shardRunner).toContain("args: ['prisma', 'validate']");
+    expect(shardRunner).toContain("args: ['prisma', 'migrate', 'deploy']");
+    expect(shardRunner).toContain("args: ['prisma', 'migrate', 'status']");
+    expect(
+      shardRunner.indexOf("'scripts/check-migration-governance.cjs'"),
+    ).toBeLessThan(shardRunner.indexOf("args: ['prisma', 'validate']"));
   });
 
   it('gates Student/Parent to PUBLISHED and Teacher to DRAFT or PUBLISHED', () => {

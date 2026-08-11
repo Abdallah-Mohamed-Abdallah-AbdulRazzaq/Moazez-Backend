@@ -2,6 +2,9 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const {
+  validateHistoricalPhase3Certification,
+} = require('./prd3-g06-phase3-regression.cjs');
 
 const ACTIVE_GATE_STATUSES = new Set([
   'BASELINE_ONLY',
@@ -49,6 +52,14 @@ const Q041_APPROVED_ANSWER =
   'PRD0-Q041: option=D; allowlist=HTTPS external URLs only, with all direct GCS/Google Cloud Storage/MinIO/S3-compatible provider URLs forbidden for new writes; compatibility_window=NONE; legacy_owner=Abdallah; approver=Abdallah';
 const Q042_APPROVED_ANSWER =
   'PRD0-Q042: managed=ALLOW managed File-backed branding for new writes and reads; external_https=READ_ONLY compatibility only where an already-persisted safe HTTPS value exists, with no new legacy URL writes; provider_url=BLOCK_NEW and treat any discovered legacy provider URL as a cutover blocker requiring explicit inventory/review; unsafe=REJECT; null=ALLOW; approver=Abdallah';
+const PHASE_3_GATE_IDS = Object.freeze([
+  'PRD3-G01',
+  'PRD3-G02',
+  'PRD3-G03',
+  'PRD3-G04',
+  'PRD3-G05',
+  'PRD3-G06',
+]);
 
 function parseAcceptanceMatrix(matrixText) {
   const gates = new Map();
@@ -140,9 +151,10 @@ function validateProductionReadinessGovernance(matrixText, phase2CloseoutText) {
     }
   }
 
-  const phase3DatabaseGate = gates.get('PRD3-G01');
-  if (phase3DatabaseGate?.status !== 'COMPLETE') {
-    problems.push('PRD3-G01 must be COMPLETE');
+  for (const gateId of PHASE_3_GATE_IDS) {
+    if (gates.get(gateId)?.status !== 'COMPLETE') {
+      problems.push(`${gateId} must be COMPLETE`);
+    }
   }
 
   if (problems.length > 0) {
@@ -154,6 +166,79 @@ function validateProductionReadinessGovernance(matrixText, phase2CloseoutText) {
   return Object.freeze({
     authoritativeCompleted: Object.freeze([...authoritativeCompleted].sort()),
     gateCount: gates.size,
+  });
+}
+
+function countExactLine(source, expectedLine) {
+  return source.split(/\r?\n/gu).filter((line) => line === expectedLine).length;
+}
+
+function validateCurrentPhase3Governance(
+  matrixText,
+  phase3CloseoutText,
+  certification,
+) {
+  const historical = validateHistoricalPhase3Certification(
+    certification,
+    phase3CloseoutText,
+  );
+  const problems = [];
+  const gates = parseAcceptanceMatrix(matrixText);
+
+  for (const gateId of PHASE_3_GATE_IDS) {
+    const gate = gates.get(gateId);
+    if (!gate) {
+      problems.push(`Acceptance matrix is missing ${gateId}`);
+    } else if (gate.status !== 'COMPLETE') {
+      problems.push(`${gateId} must remain COMPLETE, not ${gate.status}`);
+    }
+    const exactAssignment = `${gateId}=${certification.gateStatuses[gateId]}`;
+    if (countExactLine(matrixText, exactAssignment) !== 1) {
+      problems.push(
+        `Acceptance matrix must contain exactly one ${exactAssignment}`,
+      );
+    }
+  }
+
+  const phaseAssignment = `PHASE_3=${certification.gateStatuses.PHASE_3}`;
+  if (countExactLine(matrixText, phaseAssignment) !== 1) {
+    problems.push(
+      `Acceptance matrix must contain exactly one ${phaseAssignment}`,
+    );
+  }
+
+  const providerDebt = certification.deferredDebts.providerCleanup;
+  const providerDebtAssignment = `PRD3-G01-PROVIDER-CLEANUP=${providerDebt.status}`;
+  if (countExactLine(matrixText, providerDebtAssignment) !== 1) {
+    problems.push(`Acceptance matrix must preserve ${providerDebtAssignment}`);
+  }
+
+  const verificationDebt =
+    certification.deferredDebts.postMergeUniversalVerification;
+  const verificationDebtSentence =
+    `Post-merge Universal run \`${verificationDebt.runId}\` ${verificationDebt.result} ` +
+    `is separate Owner-accepted deferred, non-blocking, ${verificationDebt.classification} ` +
+    'post-merge verification debt and is not a failure of the accepted exact-candidate G06 evidence.';
+  if (matrixText.split(verificationDebtSentence).length - 1 !== 1) {
+    problems.push(
+      'Acceptance matrix must preserve the exact Owner-deferred, non-blocking, UNCLASSIFIED post-merge Universal debt',
+    );
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      `Current Phase 3 governance validation failed:\n- ${problems.join('\n- ')}`,
+    );
+  }
+
+  return Object.freeze({
+    phase3Completed: Object.freeze([...PHASE_3_GATE_IDS]),
+    phase3GateCount: PHASE_3_GATE_IDS.length,
+    phase3State: historical.phase3State,
+    phase3ProviderCleanupDebtState: providerDebt.status,
+    phase3PostMergeUniversalVerificationDebtState: verificationDebt.status,
+    phase3PostMergeUniversalVerificationClassification:
+      verificationDebt.classification,
   });
 }
 
@@ -293,6 +378,18 @@ function validateRepository(repositoryRoot) {
   );
   const read = (...segments) =>
     fs.readFileSync(path.join(repositoryRoot, ...segments), 'utf8');
+  const phase3 = validateCurrentPhase3Governance(
+    fs.readFileSync(matrixPath, 'utf8'),
+    read('docs', 'production-readiness', 'phase-3', '10-phase-3-closeout.md'),
+    JSON.parse(
+      read(
+        'docs',
+        'production-readiness',
+        'phase-3',
+        'phase-3-certification.json',
+      ),
+    ),
+  );
   const storageCutover = validateStorageCutoverGovernance({
     matrix: fs.readFileSync(matrixPath, 'utf8'),
     disposition: read(
@@ -326,6 +423,7 @@ function validateRepository(repositoryRoot) {
   });
   return Object.freeze({
     ...governance,
+    ...phase3,
     storageCutoverCheckCount: storageCutover.checkCount,
   });
 }
@@ -333,12 +431,13 @@ function validateRepository(repositoryRoot) {
 if (require.main === module) {
   const result = validateRepository(path.resolve(__dirname, '..', '..'));
   process.stdout.write(
-    `Production-readiness governance verified: gates=${result.gateCount} storageCutoverChecks=${result.storageCutoverCheckCount}\n`,
+    `Production-readiness governance verified: gates=${result.gateCount} phase3Gates=${result.phase3GateCount} storageCutoverChecks=${result.storageCutoverCheckCount}\n`,
   );
 }
 
 module.exports = {
   parseAcceptanceMatrix,
+  validateCurrentPhase3Governance,
   validateProductionReadinessGovernance,
   validateStorageCutoverGovernance,
   validateRepository,

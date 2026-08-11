@@ -8,11 +8,14 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const { isDeepStrictEqual } = require('node:util');
+const { resolveCiParentRunId } = require('./ci-parent-run-id.cjs');
 const {
   RELEASE_STAGE_IDS,
   runGovernedReleaseSequence,
 } = require('../release/governed-release-gate.cjs');
-const { buildManifest } = require('../migrations/migration-artifact-manifest.cjs');
+const {
+  buildManifest,
+} = require('../migrations/migration-artifact-manifest.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_SHA = '3c2f6ad6b31001b37aa6b2962767de163474856d';
@@ -23,7 +26,9 @@ const REQUIRED_NODE_DIRECTORY = path.normalize(
 );
 const POSTGRES_IMAGE = 'postgres:16-alpine';
 const GATE = 'PRD3-G04';
-const RUN_ID = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
+const RUN_ID = resolveCiParentRunId(process.env.MOAZEZ_CI_PARENT_RUN_ID, () =>
+  crypto.randomUUID().replaceAll('-', '').slice(0, 16),
+);
 const RUN_LABEL = 'com.moazez.prd3-g04.run';
 const GATE_LABEL = 'com.moazez.prd3-g04.gate';
 const ROLE_LABEL = 'com.moazez.prd3-g04.role';
@@ -34,6 +39,7 @@ const TEMPORARY_PREFIX = 'moazez-prd3-g04-';
 const VERIFICATION_MODES = Object.freeze({
   CANDIDATE: 'candidate',
   REGRESSION: 'regression',
+  CURRENT_CI: 'current-ci',
 });
 const ROLE_BOOTSTRAP_PATH = path.join(
   REPOSITORY_ROOT,
@@ -93,13 +99,28 @@ const RUNTIME_ROLES = Object.freeze({
   'media-worker': 'moazez_media_worker',
 });
 const DDL_DENIALS = Object.freeze([
-  Object.freeze({ name: 'create_table', sql: 'CREATE TABLE public.g04_runtime_denied (id integer)' }),
-  Object.freeze({ name: 'alter_table', sql: 'ALTER TABLE public.users ADD COLUMN g04_runtime_denied integer' }),
+  Object.freeze({
+    name: 'create_table',
+    sql: 'CREATE TABLE public.g04_runtime_denied (id integer)',
+  }),
+  Object.freeze({
+    name: 'alter_table',
+    sql: 'ALTER TABLE public.users ADD COLUMN g04_runtime_denied integer',
+  }),
   Object.freeze({ name: 'drop_table', sql: 'DROP TABLE public.users' }),
-  Object.freeze({ name: 'create_schema', sql: 'CREATE SCHEMA g04_runtime_denied' }),
+  Object.freeze({
+    name: 'create_schema',
+    sql: 'CREATE SCHEMA g04_runtime_denied',
+  }),
   Object.freeze({ name: 'create_role', sql: 'CREATE ROLE g04_runtime_denied' }),
-  Object.freeze({ name: 'grant_role', sql: 'GRANT moazez_migration TO moazez_api' }),
-  Object.freeze({ name: 'read_prisma_migrations', sql: 'SELECT count(*) FROM public._prisma_migrations' }),
+  Object.freeze({
+    name: 'grant_role',
+    sql: 'GRANT moazez_migration TO moazez_api',
+  }),
+  Object.freeze({
+    name: 'read_prisma_migrations',
+    sql: 'SELECT count(*) FROM public._prisma_migrations',
+  }),
 ]);
 
 const syntheticSecrets = Object.freeze({
@@ -174,8 +195,8 @@ function git(args, options = {}) {
 }
 
 function readChangedPaths() {
-  return git(['status', '--short', '--untracked-files=all']).stdout
-    .split(/\r?\n/u)
+  return git(['status', '--short', '--untracked-files=all'])
+    .stdout.split(/\r?\n/u)
     .filter(Boolean)
     .map((line) => line.slice(3).replaceAll('\\', '/'))
     .sort();
@@ -186,23 +207,40 @@ function resolveVerificationMode(args = []) {
   if (args.length === 1 && args[0] === '--regression') {
     return VERIFICATION_MODES.REGRESSION;
   }
-  throw new Error('unknown verification mode; expected no argument or --regression');
+  if (args.length === 1 && args[0] === '--current-ci') {
+    return VERIFICATION_MODES.CURRENT_CI;
+  }
+  throw new Error(
+    'unknown verification mode; expected no argument, --regression, or --current-ci',
+  );
 }
 
 function isProtectedRegressionPath(changedPath) {
   const normalized = changedPath.replaceAll('\\', '/');
   return (
     REGRESSION_PROTECTED_PATHS.includes(normalized) ||
-    REGRESSION_PROTECTED_PREFIXES.some((prefix) => normalized.startsWith(prefix)) ||
-    /(?:^|\/)(?:[^/]+\.tf|[^/]*terraform[^/]*|cloudbuild[^/]*)$/iu.test(normalized)
+    REGRESSION_PROTECTED_PREFIXES.some((prefix) =>
+      normalized.startsWith(prefix),
+    ) ||
+    /(?:^|\/)(?:[^/]+\.tf|[^/]*terraform[^/]*|cloudbuild[^/]*)$/iu.test(
+      normalized,
+    )
   );
 }
 
 function validateRepositoryState(state, mode) {
-  assert.ok(Object.values(VERIFICATION_MODES).includes(mode), 'unknown verification mode');
+  assert.ok(
+    Object.values(VERIFICATION_MODES).includes(mode),
+    'unknown verification mode',
+  );
   assert.equal(state.nodeVersion, REQUIRED_NODE_VERSION);
   assert.equal(state.indexClean, true, 'the real Git index must remain clean');
-  assert.equal(state.dependencyChanged, false, 'dependency drift is not permitted');
+  if (mode === VERIFICATION_MODES.CURRENT_CI) return true;
+  assert.equal(
+    state.dependencyChanged,
+    false,
+    'dependency drift is not permitted',
+  );
   assert.equal(
     state.devDependencyChanged,
     false,
@@ -215,7 +253,10 @@ function validateRepositoryState(state, mode) {
       REQUIRED_NODE_DIRECTORY.toLowerCase(),
     );
     assert.equal(state.head, BASE_SHA);
-    assert.deepEqual([...state.changedPaths].sort(), [...EXPECTED_CHANGED_PATHS].sort());
+    assert.deepEqual(
+      [...state.changedPaths].sort(),
+      [...EXPECTED_CHANGED_PATHS].sort(),
+    );
   } else {
     assert.equal(
       state.historicalBaseIsAncestor,
@@ -231,7 +272,19 @@ function validateRepositoryState(state, mode) {
   return true;
 }
 
-function inspectRepositoryState() {
+function inspectRepositoryState(mode = VERIFICATION_MODES.CANDIDATE) {
+  const cached = spawnSync('git', ['diff', '--cached', '--quiet'], {
+    cwd: REPOSITORY_ROOT,
+    windowsHide: true,
+  });
+  const currentState = {
+    nodeVersion: process.version,
+    nodeDirectory: path.dirname(path.resolve(process.execPath)),
+    platform: process.platform,
+    indexClean: cached.status === 0,
+  };
+  if (mode === VERIFICATION_MODES.CURRENT_CI) return currentState;
+
   const ancestor = spawnSync(
     'git',
     ['merge-base', '--is-ancestor', BASE_SHA, 'HEAD'],
@@ -240,21 +293,14 @@ function inspectRepositoryState() {
   if (ancestor.error || ![0, 1].includes(ancestor.status)) {
     throw new Error('historical baseline ancestry inspection failed');
   }
-  const cached = spawnSync('git', ['diff', '--cached', '--quiet'], {
-    cwd: REPOSITORY_ROOT,
-    windowsHide: true,
-  });
   const headPackage = JSON.parse(git(['show', 'HEAD:package.json']).stdout);
   const workingPackage = JSON.parse(
     fs.readFileSync(path.join(REPOSITORY_ROOT, 'package.json'), 'utf8'),
   );
   return {
+    ...currentState,
     branch: git(['branch', '--show-current']).stdout.trim(),
     head: git(['rev-parse', 'HEAD']).stdout.trim(),
-    nodeVersion: process.version,
-    nodeDirectory: path.dirname(path.resolve(process.execPath)),
-    platform: process.platform,
-    indexClean: cached.status === 0,
     changedPaths: readChangedPaths(),
     historicalBaseIsAncestor: ancestor.status === 0,
     dependencyChanged: !isDeepStrictEqual(
@@ -269,20 +315,40 @@ function inspectRepositoryState() {
 }
 
 function assertRepositoryPreflight(mode = VERIFICATION_MODES.CANDIDATE) {
-  validateRepositoryState(inspectRepositoryState(), mode);
+  validateRepositoryState(inspectRepositoryState(mode), mode);
 }
 
 function assertProtectedScope(mode = VERIFICATION_MODES.CANDIDATE) {
-  validateRepositoryState(inspectRepositoryState(), mode);
+  validateRepositoryState(inspectRepositoryState(mode), mode);
+}
+
+function focusedTestEnvironment(mode, environment = process.env) {
+  const focusedEnvironment = { ...environment };
+  if (mode === VERIFICATION_MODES.CURRENT_CI) {
+    focusedEnvironment.PRD3_CURRENT_CI = '1';
+  } else {
+    delete focusedEnvironment.PRD3_CURRENT_CI;
+  }
+  return focusedEnvironment;
 }
 
 function assertStaticSecurity() {
   const runner = fs.readFileSync(
-    path.join(REPOSITORY_ROOT, 'scripts', 'migrations', 'run-governed-migration-job.cjs'),
+    path.join(
+      REPOSITORY_ROOT,
+      'scripts',
+      'migrations',
+      'run-governed-migration-job.cjs',
+    ),
     'utf8',
   );
   const manifest = fs.readFileSync(
-    path.join(REPOSITORY_ROOT, 'scripts', 'migrations', 'migration-artifact-manifest.cjs'),
+    path.join(
+      REPOSITORY_ROOT,
+      'scripts',
+      'migrations',
+      'migration-artifact-manifest.cjs',
+    ),
     'utf8',
   );
   const executablePackageScript = JSON.parse(
@@ -305,12 +371,21 @@ function assertStaticSecurity() {
     'migrate resolve',
     'db seed',
   ]) {
-    assert.ok(!runner.includes(forbidden), `runner contains forbidden executable: ${forbidden}`);
+    assert.ok(
+      !runner.includes(forbidden),
+      `runner contains forbidden executable: ${forbidden}`,
+    );
   }
   assert.match(runner, /shell: false/u);
   assert.doesNotMatch(runner, /shell:\s*true/u);
-  assert.doesNotMatch(`${runner}\n${manifest}`, /readFileSync\([^\n]*\.env|dotenv/u);
-  const dockerIgnore = fs.readFileSync(path.join(REPOSITORY_ROOT, '.dockerignore'), 'utf8');
+  assert.doesNotMatch(
+    `${runner}\n${manifest}`,
+    /readFileSync\([^\n]*\.env|dotenv/u,
+  );
+  const dockerIgnore = fs.readFileSync(
+    path.join(REPOSITORY_ROOT, '.dockerignore'),
+    'utf8',
+  );
   assert.match(dockerIgnore, /^\.env$/mu);
   assert.match(dockerIgnore, /^\.env\.\*$/mu);
 }
@@ -342,13 +417,23 @@ function verifyLocalDocker() {
   if (!endpoint?.startsWith('npipe://') && !endpoint?.startsWith('unix://')) {
     throw new Error('non_local_docker_endpoint_rejected');
   }
-  const serverVersion = docker(['version', '--format', '{{.Server.Version}}']).stdout.trim();
+  const serverVersion = docker([
+    'version',
+    '--format',
+    '{{.Server.Version}}',
+  ]).stdout.trim();
   assert.ok(serverVersion.length > 0);
   return { endpointTransport: endpoint.split(':', 1)[0], serverVersion };
 }
 
 function inspectLocalImage(reference) {
-  const imageId = docker(['image', 'inspect', reference, '--format', '{{.Id}}']).stdout.trim();
+  const imageId = docker([
+    'image',
+    'inspect',
+    reference,
+    '--format',
+    '{{.Id}}',
+  ]).stdout.trim();
   assert.match(imageId, /^sha256:[a-f0-9]{64}$/u);
   return imageId;
 }
@@ -479,11 +564,20 @@ function psql(login, databaseName, credential, sql, options = {}) {
 }
 
 function adminSql(databaseName, sql, options = {}) {
-  return psql('postgres', databaseName, syntheticSecrets.postgres, sql, options);
+  return psql(
+    'postgres',
+    databaseName,
+    syntheticSecrets.postgres,
+    sql,
+    options,
+  );
 }
 
 function queryScalar(databaseName, sql) {
-  return adminSql(databaseName, `${sql.replace(/;?\s*$/u, '')};\n`).stdout.trim();
+  return adminSql(
+    databaseName,
+    `${sql.replace(/;?\s*$/u, '')};\n`,
+  ).stdout.trim();
 }
 
 function createFixtureDatabase(databaseName) {
@@ -673,7 +767,9 @@ async function spawnJobContainer(args, monitorDatabaseName) {
     });
   });
   const timeout = setTimeout(() => {
-    docker(['rm', '--force', args[args.indexOf('--name') + 1]], { allowFailure: true });
+    docker(['rm', '--force', args[args.indexOf('--name') + 1]], {
+      allowFailure: true,
+    });
   }, 5 * 60_000);
   timeout.unref();
 
@@ -685,7 +781,8 @@ async function spawnJobContainer(args, monitorDatabaseName) {
           "SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE datname = current_database() AND usename = 'moazez_migration'",
         ),
       );
-      if (Number.isInteger(observed)) maximumConnections = Math.max(maximumConnections, observed);
+      if (Number.isInteger(observed))
+        maximumConnections = Math.max(maximumConnections, observed);
     } catch {
       // A startup race is expected before the job opens its first connection.
     }
@@ -712,9 +809,9 @@ async function runMigrationJob(databaseName, options = {}) {
   const environment = options.environment ?? 'disposable';
   const backupCheckpoint =
     options.backupCheckpoint ?? `DISPOSABLE_NA:${executionId}`;
-  const dataAuthority =
-    options.dataAuthority ?? `DISPOSABLE_NA:${executionId}`;
-  const approvalRef = options.approvalRef ?? `SYNTHETIC_APPROVAL:${executionId}`;
+  const dataAuthority = options.dataAuthority ?? `DISPOSABLE_NA:${executionId}`;
+  const approvalRef =
+    options.approvalRef ?? `SYNTHETIC_APPROVAL:${executionId}`;
   const jobDatabaseUrl = options.databaseUrl ?? databaseUrl(databaseName);
   const containerName = `moazez-prd3-g04-job-${RUN_ID}-${executionCounter}`;
   const args = [
@@ -746,7 +843,10 @@ async function runMigrationJob(databaseName, options = {}) {
     'node',
     'scripts/migrations/run-governed-migration-job.cjs',
   ];
-  const result = await spawnJobContainer(args, options.monitorConnections ? databaseName : null);
+  const result = await spawnJobContainer(
+    args,
+    options.monitorConnections ? databaseName : null,
+  );
   const events = parseJsonLines(result.stdout);
   const combined = `${result.stdout}\n${result.stderr}`;
   for (const sensitive of [
@@ -761,7 +861,10 @@ async function runMigrationJob(databaseName, options = {}) {
     backupCheckpoint,
     dataAuthority,
   ]) {
-    assert.ok(!combined.includes(sensitive), 'migration output exposed synthetic sensitive material');
+    assert.ok(
+      !combined.includes(sensitive),
+      'migration output exposed synthetic sensitive material',
+    );
   }
   return { ...result, events, executionId };
 }
@@ -784,9 +887,12 @@ function countDatabaseCommandStarts(job) {
     (event) =>
       event.event === 'migration.job.stage' &&
       event.status === 'started' &&
-      ['prisma-validate', 'migrate-deploy', 'migrate-status', 'migrate-diff'].includes(
-        event.stage,
-      ),
+      [
+        'prisma-validate',
+        'migrate-deploy',
+        'migrate-status',
+        'migrate-diff',
+      ].includes(event.stage),
   ).length;
 }
 
@@ -841,7 +947,11 @@ function verifyRuntimeDdlDenials(databaseName) {
         `${denial.sql};\n`,
         { allowFailure: true },
       );
-      assert.notEqual(result.status, 0, `${runtime} unexpectedly passed ${denial.name}`);
+      assert.notEqual(
+        result.status,
+        0,
+        `${runtime} unexpectedly passed ${denial.name}`,
+      );
       assert.match(`${result.stdout}\n${result.stderr}`, /42501/u);
       results[runtime][denial.name] = true;
     }
@@ -871,7 +981,8 @@ async function releaseFailureMatrix() {
         stage,
         async () => {
           calls.push(stage);
-          if (stage === failureStage) throw new Error('synthetic release failure');
+          if (stage === failureStage)
+            throw new Error('synthetic release failure');
         },
       ]),
     );
@@ -880,8 +991,10 @@ async function releaseFailureMatrix() {
     assert.deepEqual(calls, RELEASE_STAGE_IDS.slice(0, failureIndex + 1));
     matrix[failureStage] = {
       callbacks: calls.length,
-      runtimePromotions: calls.filter((stage) => runtimeStages.has(stage)).length,
-      trafficPromotions: calls.filter((stage) => stage === 'traffic-promotion').length,
+      runtimePromotions: calls.filter((stage) => runtimeStages.has(stage))
+        .length,
+      trafficPromotions: calls.filter((stage) => stage === 'traffic-promotion')
+        .length,
       laterCallbacks: 0,
     };
   }
@@ -914,7 +1027,10 @@ function inspectFinalImage() {
   return {
     imageId: applicationImageId,
     defaultCommand: inspection.Config.Cmd,
-    migrationCommand: ['node', 'scripts/migrations/run-governed-migration-job.cjs'],
+    migrationCommand: [
+      'node',
+      'scripts/migrations/run-governed-migration-job.cjs',
+    ],
     user: inspection.Config.User,
     buildCount: 1,
     runtimeCommandsPresent: 4,
@@ -926,7 +1042,9 @@ function cleanupOwnedResources() {
   const containerIds = docker(
     ['ps', '--all', '--quiet', '--filter', `label=${RUN_LABEL}=${RUN_ID}`],
     { allowFailure: true },
-  ).stdout.split(/\r?\n/u).filter(Boolean);
+  )
+    .stdout.split(/\r?\n/u)
+    .filter(Boolean);
   for (const containerId of containerIds) {
     docker(['rm', '--force', containerId], { allowFailure: true });
   }
@@ -935,7 +1053,9 @@ function cleanupOwnedResources() {
   const networkIds = docker(
     ['network', 'ls', '--quiet', '--filter', `label=${RUN_LABEL}=${RUN_ID}`],
     { allowFailure: true },
-  ).stdout.split(/\r?\n/u).filter(Boolean);
+  )
+    .stdout.split(/\r?\n/u)
+    .filter(Boolean);
   for (const networkId of networkIds) {
     docker(['network', 'rm', networkId], { allowFailure: true });
   }
@@ -944,7 +1064,9 @@ function cleanupOwnedResources() {
   const imageIds = docker(
     ['image', 'ls', '--quiet', '--filter', `label=${RUN_LABEL}=${RUN_ID}`],
     { allowFailure: true },
-  ).stdout.split(/\r?\n/u).filter(Boolean);
+  )
+    .stdout.split(/\r?\n/u)
+    .filter(Boolean);
   for (const imageId of [...new Set(imageIds)]) {
     docker(['image', 'rm', '--force', imageId], { allowFailure: true });
   }
@@ -1005,7 +1127,10 @@ async function runLiveEvidence() {
   const freshDatabase = `g04_fresh_${RUN_ID}`;
   createFixtureDatabase(freshDatabase);
   const schemaGuard = await runMigrationJob(freshDatabase, {
-    databaseUrl: databaseUrl(freshDatabase).replace('schema=public', 'schema=private'),
+    databaseUrl: databaseUrl(freshDatabase).replace(
+      'schema=public',
+      'schema=private',
+    ),
   });
   assert.notEqual(schemaGuard.exitCode, 0);
   assert.equal(
@@ -1015,7 +1140,9 @@ async function runLiveEvidence() {
   assert.equal(countDatabaseCommandStarts(schemaGuard), 0);
   assert.ok(!stageStarted(schemaGuard, 'manifest-verification'));
 
-  const fresh = await runMigrationJob(freshDatabase, { monitorConnections: true });
+  const fresh = await runMigrationJob(freshDatabase, {
+    monitorConnections: true,
+  });
   assert.equal(fresh.exitCode, 0);
   assert.equal(resultEvent(fresh)?.status, 'migration_applied');
   assert.equal(countDatabaseCommandStarts(fresh), 4);
@@ -1158,7 +1285,10 @@ async function runLiveEvidence() {
     releaseMatrix['migration-status-and-drift-verification'].runtimePromotions,
     0,
   );
-  assert.equal(releaseMatrix['protected-readiness-and-smoke'].trafficPromotions, 0);
+  assert.equal(
+    releaseMatrix['protected-readiness-and-smoke'].trafficPromotions,
+    0,
+  );
 
   return {
     status: 'PASS',
@@ -1185,7 +1315,10 @@ async function runLiveEvidence() {
     schemaGuard: {
       code: resultEvent(schemaGuard)?.code,
       databaseCommandCount: countDatabaseCommandStarts(schemaGuard),
-      manifestVerificationStarted: stageStarted(schemaGuard, 'manifest-verification'),
+      manifestVerificationStarted: stageStarted(
+        schemaGuard,
+        'manifest-verification',
+      ),
     },
     fresh: {
       result: resultEvent(fresh)?.status,
@@ -1246,8 +1379,9 @@ async function runLiveEvidence() {
   };
 }
 
-function runLocalChecks() {
+function runLocalChecks(mode = VERIFICATION_MODES.CANDIDATE) {
   command(process.execPath, ['--test', FOCUSED_TEST_PATH], {
+    env: focusedTestEnvironment(mode),
     timeoutMs: 180_000,
     label: 'focused G04 test suite failed',
     errorCode: 'focused_g04_tests_failed',
@@ -1283,7 +1417,7 @@ async function main() {
     assertRepositoryPreflight(mode);
     assertProtectedScope(mode);
     assertStaticSecurity();
-    runLocalChecks();
+    runLocalChecks(mode);
     assertRepositoryPreflight(mode);
     summary = await runLiveEvidence();
     assertRepositoryPreflight(mode);
@@ -1305,7 +1439,9 @@ async function main() {
 
 if (require.main === module) {
   main().catch((error) => {
-    process.stderr.write(`PRD3-G04 final verification failed: ${safeMessage(error)}\n`);
+    process.stderr.write(
+      `PRD3-G04 final verification failed: ${safeMessage(error)}\n`,
+    );
     process.exitCode = 1;
   });
 }
@@ -1314,6 +1450,7 @@ module.exports = {
   BASE_SHA,
   DDL_DENIALS,
   EXPECTED_CHANGED_PATHS,
+  focusedTestEnvironment,
   RUNTIME_ROLES,
   VERIFICATION_MODES,
   inspectRepositoryState,

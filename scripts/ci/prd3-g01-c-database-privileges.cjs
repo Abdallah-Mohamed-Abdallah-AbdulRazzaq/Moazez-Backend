@@ -7,6 +7,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { isDeepStrictEqual } = require('node:util');
 const { PrismaClient } = require('@prisma/client');
+const { resolveCiParentRunId } = require('./ci-parent-run-id.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const BASE_SHA = '6e73da066beb79ba59284a7b96260134c0b38df5';
@@ -17,9 +18,13 @@ const REQUIRED_NODE_DIRECTORY = path.normalize(
 );
 const POSTGRES_IMAGE = 'postgres:16-alpine';
 const OWNERSHIP_LABEL = 'com.moazez.prd3-g01-c.run';
+const RUN_ID = resolveCiParentRunId(process.env.MOAZEZ_CI_PARENT_RUN_ID, () =>
+  crypto.randomUUID().replaceAll('-', '').slice(0, 20),
+);
 const VERIFICATION_MODES = Object.freeze({
   CANDIDATE: 'candidate',
   REGRESSION: 'regression',
+  CURRENT_CI: 'current-ci',
 });
 
 const EXPECTED_CHANGED_PATHS = Object.freeze([
@@ -196,22 +201,37 @@ function resolveVerificationMode(args = []) {
   if (args.length === 1 && args[0] === '--regression') {
     return VERIFICATION_MODES.REGRESSION;
   }
-  throw new Error('unknown verification mode; expected no argument or --regression');
+  if (args.length === 1 && args[0] === '--current-ci') {
+    return VERIFICATION_MODES.CURRENT_CI;
+  }
+  throw new Error(
+    'unknown verification mode; expected no argument, --regression, or --current-ci',
+  );
 }
 
 function isProtectedRegressionPath(changedPath) {
   const normalized = changedPath.replaceAll('\\', '/');
   return (
     REGRESSION_PROTECTED_PATHS.includes(normalized) ||
-    REGRESSION_PROTECTED_PREFIXES.some((prefix) => normalized.startsWith(prefix))
+    REGRESSION_PROTECTED_PREFIXES.some((prefix) =>
+      normalized.startsWith(prefix),
+    )
   );
 }
 
 function validateRepositoryState(state, mode) {
-  assert.ok(Object.values(VERIFICATION_MODES).includes(mode), 'unknown verification mode');
+  assert.ok(
+    Object.values(VERIFICATION_MODES).includes(mode),
+    'unknown verification mode',
+  );
   assert.equal(state.nodeVersion, REQUIRED_NODE_VERSION);
   assert.equal(state.indexClean, true, 'the real index must remain clean');
-  assert.equal(state.dependencyChanged, false, 'dependency drift is not permitted');
+  if (mode === VERIFICATION_MODES.CURRENT_CI) return true;
+  assert.equal(
+    state.dependencyChanged,
+    false,
+    'dependency drift is not permitted',
+  );
   assert.equal(
     state.devDependencyChanged,
     false,
@@ -224,20 +244,41 @@ function validateRepositoryState(state, mode) {
       REQUIRED_NODE_DIRECTORY.toLowerCase(),
     );
     assert.equal(state.head, BASE_SHA);
-    assert.deepEqual([...state.changedPaths].sort(), [...EXPECTED_CHANGED_PATHS].sort());
+    assert.deepEqual(
+      [...state.changedPaths].sort(),
+      [...EXPECTED_CHANGED_PATHS].sort(),
+    );
   } else {
     assert.equal(
       state.historicalBaseIsAncestor,
       true,
       'historical BASE_SHA must be an ancestor of HEAD',
     );
-    const protectedChanges = state.changedPaths.filter(isProtectedRegressionPath);
-    assert.deepEqual(protectedChanges, [], 'protected repository scope changed');
+    const protectedChanges = state.changedPaths.filter(
+      isProtectedRegressionPath,
+    );
+    assert.deepEqual(
+      protectedChanges,
+      [],
+      'protected repository scope changed',
+    );
   }
   return true;
 }
 
-function inspectRepositoryState() {
+function inspectRepositoryState(mode = VERIFICATION_MODES.CANDIDATE) {
+  const cached = spawnSync('git', ['diff', '--cached', '--quiet'], {
+    cwd: REPOSITORY_ROOT,
+    windowsHide: true,
+  });
+  const currentState = {
+    nodeVersion: process.version,
+    nodeDirectory: path.dirname(path.resolve(process.execPath)),
+    platform: process.platform,
+    indexClean: cached.status === 0,
+  };
+  if (mode === VERIFICATION_MODES.CURRENT_CI) return currentState;
+
   const ancestor = spawnSync(
     'git',
     ['merge-base', '--is-ancestor', BASE_SHA, 'HEAD'],
@@ -246,21 +287,14 @@ function inspectRepositoryState() {
   if (ancestor.error || ![0, 1].includes(ancestor.status)) {
     throw new Error('historical baseline ancestry inspection failed');
   }
-  const cached = spawnSync('git', ['diff', '--cached', '--quiet'], {
-    cwd: REPOSITORY_ROOT,
-    windowsHide: true,
-  });
   const headPackage = JSON.parse(git(['show', 'HEAD:package.json']));
   const workingPackage = JSON.parse(
     fs.readFileSync(path.join(REPOSITORY_ROOT, 'package.json'), 'utf8'),
   );
   return {
+    ...currentState,
     branch: git(['branch', '--show-current']),
     head: git(['rev-parse', 'HEAD']),
-    nodeVersion: process.version,
-    nodeDirectory: path.dirname(path.resolve(process.execPath)),
-    platform: process.platform,
-    indexClean: cached.status === 0,
     changedPaths: readChangedPaths(),
     historicalBaseIsAncestor: ancestor.status === 0,
     dependencyChanged: !isDeepStrictEqual(
@@ -275,7 +309,17 @@ function inspectRepositoryState() {
 }
 
 function assertRepositoryPreflight(mode = VERIFICATION_MODES.CANDIDATE) {
-  validateRepositoryState(inspectRepositoryState(), mode);
+  validateRepositoryState(inspectRepositoryState(mode), mode);
+}
+
+function focusedTestEnvironment(mode, environment = process.env) {
+  const focusedEnvironment = { ...environment };
+  if (mode === VERIFICATION_MODES.CURRENT_CI) {
+    focusedEnvironment.PRD3_CURRENT_CI = '1';
+  } else {
+    delete focusedEnvironment.PRD3_CURRENT_CI;
+  }
+  return focusedEnvironment;
 }
 
 function readChangedPaths() {
@@ -395,7 +439,12 @@ function applySqlPolicy(context, sqlPath, variables, identity) {
   }
 }
 
-function applySqlPolicyExpectedFailure(context, sqlPath, variables, expectedError) {
+function applySqlPolicyExpectedFailure(
+  context,
+  sqlPath,
+  variables,
+  expectedError,
+) {
   const result = runSqlPolicy(context, sqlPath, variables);
   if (result.error || result.status === 0) {
     throw new Error('unsafe SQL policy rehearsal did not fail closed');
@@ -403,24 +452,27 @@ function applySqlPolicyExpectedFailure(context, sqlPath, variables, expectedErro
   const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
   for (const credential of context.credentialValues) {
     if (output.includes(credential)) {
-      throw new Error('SQL policy failure output exposed synthetic credential material');
+      throw new Error(
+        'SQL policy failure output exposed synthetic credential material',
+      );
     }
   }
   if (!expectedError.test(output)) {
-    throw new Error('SQL policy failure did not report the expected sanitized guard');
+    throw new Error(
+      'SQL policy failure did not report the expected sanitized guard',
+    );
   }
   return true;
 }
 
 function queryScalarAs(context, login, credential, sql, databaseName) {
   return docker(
-    psqlArgs(
-      context,
-      login,
-      databaseName ?? context.databaseName,
-      credential,
-      ['-A', '-t', '-c', sql],
-    ),
+    psqlArgs(context, login, databaseName ?? context.databaseName, credential, [
+      '-A',
+      '-t',
+      '-c',
+      sql,
+    ]),
     { label: 'catalog assertion' },
   ).stdout.trim();
 }
@@ -436,13 +488,12 @@ function queryScalar(context, sql) {
 
 function executePsql(context, login, credential, sql, databaseName) {
   docker(
-    psqlArgs(
-      context,
-      login,
-      databaseName ?? context.databaseName,
-      credential,
-      ['-v', 'ON_ERROR_STOP=1', '-f', '-'],
-    ),
+    psqlArgs(context, login, databaseName ?? context.databaseName, credential, [
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-f',
+      '-',
+    ]),
     { input: sql, label: 'bounded PostgreSQL assertion' },
   );
 }
@@ -460,13 +511,13 @@ function executePsqlWithVariables(
     `${name}=${value}`,
   ]);
   docker(
-    psqlArgs(
-      context,
-      login,
-      databaseName ?? context.databaseName,
-      credential,
-      [...variableArgs, '-v', 'ON_ERROR_STOP=1', '-f', '-'],
-    ),
+    psqlArgs(context, login, databaseName ?? context.databaseName, credential, [
+      ...variableArgs,
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-f',
+      '-',
+    ]),
     { input: sql, label: 'bounded PostgreSQL fixture setup' },
   );
 }
@@ -484,7 +535,9 @@ function runPrisma(context, args, label) {
     const safeCategory = `${result.stdout ?? ''}\n${result.stderr ?? ''}`
       .split(/\r?\n/u)
       .map((line) => redactFixtureValues(context, line.trim()))
-      .filter((line) => /^(?:Error:|ERROR:|P\d{4}|Database error code:)/u.test(line))
+      .filter((line) =>
+        /^(?:Error:|ERROR:|P\d{4}|Database error code:)/u.test(line),
+      )
       .slice(0, 5)
       .join(' | ');
     throw new Error(
@@ -505,7 +558,9 @@ function redactFixtureValues(context, value) {
     context.migrationUrl,
     ...context.credentialValues,
     ...POSTGRESQL_ROLES,
-  ].filter((candidate) => typeof candidate === 'string' && candidate.length > 0)) {
+  ].filter(
+    (candidate) => typeof candidate === 'string' && candidate.length > 0,
+  )) {
     redacted = redacted.replaceAll(sensitive, '[redacted]');
   }
   return redacted
@@ -557,7 +612,12 @@ function waitForPostgres(context, options = {}) {
   const poll =
     options.poll ??
     ((milliseconds) =>
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds));
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        milliseconds,
+      ));
   const deadline = now() + 60_000;
   while (now() < deadline) {
     const result = probe(context);
@@ -568,7 +628,7 @@ function waitForPostgres(context, options = {}) {
 }
 
 function createFixture(dockerEvidence, imageId) {
-  const runId = crypto.randomUUID().replaceAll('-', '').slice(0, 20);
+  const runId = RUN_ID;
   const fixtureOwnerCredential = syntheticCredential();
   const adminCredential = syntheticCredential();
   const credentials = {
@@ -757,13 +817,12 @@ function verifyCredentialRotation(context, previousCredentials) {
     executePsql(context, role, context.credentials[role], 'SELECT 1;');
     commandExpectedFailure(
       'docker',
-      psqlArgs(
-        context,
-        role,
-        context.databaseName,
-        previousCredentials[role],
-        ['-v', 'ON_ERROR_STOP=1', '-c', 'SELECT 1'],
-      ),
+      psqlArgs(context, role, context.databaseName, previousCredentials[role], [
+        '-v',
+        'ON_ERROR_STOP=1',
+        '-c',
+        'SELECT 1',
+      ]),
       { label: 'retired synthetic database credential' },
     );
   }
@@ -825,13 +884,12 @@ function assertCredentialStillActive(context, role, credential) {
 function assertCredentialRejected(context, role, credential) {
   commandExpectedFailure(
     'docker',
-    psqlArgs(
-      context,
-      role,
-      context.databaseName,
-      credential,
-      ['-v', 'ON_ERROR_STOP=1', '-c', 'SELECT 1'],
-    ),
+    psqlArgs(context, role, context.databaseName, credential, [
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-c',
+      'SELECT 1',
+    ]),
     { label: 'rejected synthetic rehearsal credential' },
   );
 }
@@ -1051,7 +1109,9 @@ function verifyOwnershipAndPrivileges(context) {
        JOIN pg_catalog.pg_namespace namespace ON namespace.oid = class.relnamespace
        JOIN pg_catalog.pg_roles owner ON owner.oid = class.relowner
        WHERE namespace.nspname = 'public'
-         AND owner.rolname = ANY (ARRAY[${Object.values(RUNTIME_ROLES).map((role) => sqlLiteral(role.login)).join(',')}])`,
+         AND owner.rolname = ANY (ARRAY[${Object.values(RUNTIME_ROLES)
+           .map((role) => sqlLiteral(role.login))
+           .join(',')}])`,
     ),
     '0',
   );
@@ -1203,7 +1263,10 @@ function verifyDefaultPrivilegesWithControlledDdl(context) {
     context.credentials.moazez_migration,
     `DROP TABLE public.${tableName};`,
   );
-  assert.equal(queryScalar(context, `SELECT to_regclass('public.${tableName}') IS NULL`), 't');
+  assert.equal(
+    queryScalar(context, `SELECT to_regclass('public.${tableName}') IS NULL`),
+    't',
+  );
 }
 
 async function seedSyntheticFixture(context) {
@@ -1245,7 +1308,12 @@ async function seedSyntheticFixture(context) {
     select: { id: true },
   });
   await disconnectTrackedClient(context, client);
-  return { organizationId: organization.id, schoolId: school.id, userId: user.id, fileId: file.id };
+  return {
+    organizationId: organization.id,
+    schoolId: school.id,
+    userId: user.id,
+    fileId: file.id,
+  };
 }
 
 async function verifyRuntimePositive(context, runtimeRole, fixture) {
@@ -1267,7 +1335,9 @@ async function verifyRuntimePositive(context, runtimeRole, fixture) {
   process.env.DATABASE_RUNTIME_ROLE = runtimeRole;
   const client = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
   context.trackedClients.add(client);
-  const checks = Object.fromEntries(POSITIVE_CHECK_NAMES.map((name) => [name, false]));
+  const checks = Object.fromEntries(
+    POSITIVE_CHECK_NAMES.map((name) => [name, false]),
+  );
   try {
     await client.$connect();
     checks.connection = true;
@@ -1287,7 +1357,12 @@ async function verifyRuntimePositive(context, runtimeRole, fixture) {
     checks.representative_read = true;
     await runRepresentativeDml(client, runtimeRole, fixture, context.runId);
     checks.insert_update_delete = true;
-    await verifyRepresentativeRollback(client, runtimeRole, fixture, context.runId);
+    await verifyRepresentativeRollback(
+      client,
+      runtimeRole,
+      fixture,
+      context.runId,
+    );
     checks.transaction_rollback = true;
     const ownership = await client.$queryRawUnsafe(
       `SELECT count(*)::int AS count
@@ -1313,7 +1388,10 @@ async function runRepresentativeDml(client, runtimeRole, fixture, runId) {
         data: { name: 'G01C API DML', slug: `g01c-api-${runId}-${suffix}` },
         select: { id: true },
       });
-      await transaction.organization.update({ where: { id: row.id }, data: { name: 'G01C API updated' } });
+      await transaction.organization.update({
+        where: { id: row.id },
+        data: { name: 'G01C API updated' },
+      });
       await transaction.organization.delete({ where: { id: row.id } });
       return;
     }
@@ -1327,7 +1405,10 @@ async function runRepresentativeDml(client, runtimeRole, fixture, runId) {
         },
         select: { id: true },
       });
-      await transaction.importJob.update({ where: { id: row.id }, data: { status: 'PROCESSING' } });
+      await transaction.importJob.update({
+        where: { id: row.id },
+        data: { status: 'PROCESSING' },
+      });
       await transaction.importJob.delete({ where: { id: row.id } });
       return;
     }
@@ -1355,14 +1436,21 @@ async function runRepresentativeDml(client, runtimeRole, fixture, runId) {
       where: { id: row.id },
       data: {
         status: 'UPLOADING',
-        latestUploadUrlExpiresAt: new Date(createdAt.getTime() + 10 * 60 * 1000),
+        latestUploadUrlExpiresAt: new Date(
+          createdAt.getTime() + 10 * 60 * 1000,
+        ),
       },
     });
     await transaction.fileUploadSession.delete({ where: { id: row.id } });
   });
 }
 
-async function verifyRepresentativeRollback(client, runtimeRole, fixture, runId) {
+async function verifyRepresentativeRollback(
+  client,
+  runtimeRole,
+  fixture,
+  runId,
+) {
   const rollbackId = crypto.randomUUID();
   let createdId;
   await assert.rejects(
@@ -1412,7 +1500,12 @@ async function verifyRepresentativeRollback(client, runtimeRole, fixture, runId)
     /G01C_EXPECTED_ROLLBACK/u,
   );
   assert.ok(createdId);
-  const model = runtimeRole === 'api' ? client.organization : runtimeRole === 'core-worker' ? client.importJob : client.fileUploadSession;
+  const model =
+    runtimeRole === 'api'
+      ? client.organization
+      : runtimeRole === 'core-worker'
+        ? client.importJob
+        : client.fileUploadSession;
   assert.equal(await model.count({ where: { id: createdId } }), 0);
 }
 
@@ -1466,27 +1559,65 @@ function securitySnapshot(context) {
 
 function negativeCases(context, role) {
   const suffix = `${context.runId.slice(0, 8)}_${role.login.replace('moazez_', '')}`;
-  const otherRuntime = Object.values(RUNTIME_ROLES).find((candidate) => candidate.login !== role.login);
+  const otherRuntime = Object.values(RUNTIME_ROLES).find(
+    (candidate) => candidate.login !== role.login,
+  );
   return [
-    ['create_table', `CREATE TABLE public.g01c_denied_table_${suffix} (id integer)`, true],
-    ['alter_table', `ALTER TABLE public.organizations ADD COLUMN g01c_denied_${suffix} text`, true],
+    [
+      'create_table',
+      `CREATE TABLE public.g01c_denied_table_${suffix} (id integer)`,
+      true,
+    ],
+    [
+      'alter_table',
+      `ALTER TABLE public.organizations ADD COLUMN g01c_denied_${suffix} text`,
+      true,
+    ],
     ['drop_table', 'DROP TABLE public.organizations', true],
     ['truncate_table', 'TRUNCATE TABLE public.organizations', true],
-    ['create_index', `CREATE INDEX g01c_denied_index_${suffix} ON public.organizations (name)`, true],
+    [
+      'create_index',
+      `CREATE INDEX g01c_denied_index_${suffix} ON public.organizations (name)`,
+      true,
+    ],
     ['create_schema', `CREATE SCHEMA g01c_denied_schema_${suffix}`, true],
     ['create_extension', 'CREATE EXTENSION pg_trgm', true],
-    ['create_function', `CREATE FUNCTION public.g01c_denied_function_${suffix}() RETURNS integer LANGUAGE sql AS 'SELECT 1'`, true],
-    ['grant_object_privileges', 'GRANT SELECT ON TABLE public.organizations TO moazez_migration', true],
-    ['revoke_object_privileges', `REVOKE SELECT ON TABLE public.organizations FROM ${role.login} GRANTED BY moazez_migration`, true],
-    ['alter_object_owner', `ALTER TABLE public.organizations OWNER TO ${role.login}`, true],
+    [
+      'create_function',
+      `CREATE FUNCTION public.g01c_denied_function_${suffix}() RETURNS integer LANGUAGE sql AS 'SELECT 1'`,
+      true,
+    ],
+    [
+      'grant_object_privileges',
+      'GRANT SELECT ON TABLE public.organizations TO moazez_migration',
+      true,
+    ],
+    [
+      'revoke_object_privileges',
+      `REVOKE SELECT ON TABLE public.organizations FROM ${role.login} GRANTED BY moazez_migration`,
+      true,
+    ],
+    [
+      'alter_object_owner',
+      `ALTER TABLE public.organizations OWNER TO ${role.login}`,
+      true,
+    ],
     ['create_role', `CREATE ROLE g01c_denied_role_${suffix}`, true],
     ['alter_role', 'ALTER ROLE moazez_migration WITH CREATEDB', true],
     ['drop_role', 'DROP ROLE moazez_migration', true],
     ['create_database', `CREATE DATABASE g01c_denied_db_${suffix}`, false],
     ['set_role_migration', 'SET ROLE moazez_migration', true],
     ['set_role_other_runtime', `SET ROLE ${otherRuntime.login}`, true],
-    ['read_prisma_migrations', 'SELECT count(*) FROM public._prisma_migrations', true],
-    ['modify_prisma_migrations', "UPDATE public._prisma_migrations SET logs = 'denied'", true],
+    [
+      'read_prisma_migrations',
+      'SELECT count(*) FROM public._prisma_migrations',
+      true,
+    ],
+    [
+      'modify_prisma_migrations',
+      "UPDATE public._prisma_migrations SET logs = 'denied'",
+      true,
+    ],
   ];
 }
 
@@ -1499,7 +1630,9 @@ function runExpectedSqlFailure(context, login, credential, sql, transactional) {
 
 function verifyRuntimeNegatives(context, runtimeRole) {
   const role = RUNTIME_ROLES[runtimeRole];
-  const checks = Object.fromEntries(NEGATIVE_CHECK_NAMES.map((name) => [name, false]));
+  const checks = Object.fromEntries(
+    NEGATIVE_CHECK_NAMES.map((name) => [name, false]),
+  );
   for (const [name, sql, transactional] of negativeCases(context, role)) {
     const before = securitySnapshot(context);
     runExpectedSqlFailure(
@@ -1509,7 +1642,11 @@ function verifyRuntimeNegatives(context, runtimeRole) {
       sql,
       transactional,
     );
-    assert.equal(securitySnapshot(context), before, `${runtimeRole}/${name} changed catalog state`);
+    assert.equal(
+      securitySnapshot(context),
+      before,
+      `${runtimeRole}/${name} changed catalog state`,
+    );
     checks[name] = true;
   }
   return checks;
@@ -1519,7 +1656,9 @@ function verifyAllSetRoleDenials(context) {
   const result = {};
   for (const source of Object.values(RUNTIME_ROLES)) {
     result[source.login] = {};
-    for (const target of POSTGRESQL_ROLES.filter((role) => role !== source.login)) {
+    for (const target of POSTGRESQL_ROLES.filter(
+      (role) => role !== source.login,
+    )) {
       const before = securitySnapshot(context);
       runExpectedSqlFailure(
         context,
@@ -1538,9 +1677,17 @@ function verifyAllSetRoleDenials(context) {
 function verifyMigrationAdministrativeBoundary(context) {
   const result = {};
   for (const [name, sql, transactional] of [
-    ['create_role', `CREATE ROLE g01c_migration_denied_${context.runId.slice(0, 8)}`, true],
+    [
+      'create_role',
+      `CREATE ROLE g01c_migration_denied_${context.runId.slice(0, 8)}`,
+      true,
+    ],
     ['alter_role', 'ALTER ROLE moazez_api WITH CREATEDB', true],
-    ['create_database', `CREATE DATABASE g01c_migration_denied_${context.runId.slice(0, 8)}`, false],
+    [
+      'create_database',
+      `CREATE DATABASE g01c_migration_denied_${context.runId.slice(0, 8)}`,
+      false,
+    ],
   ]) {
     const before = securitySnapshot(context);
     runExpectedSqlFailure(
@@ -1600,7 +1747,8 @@ async function disconnectAllClients(context) {
       failures.push(client);
     }
   }
-  if (failures.length > 0) throw new Error('tracked Prisma client disconnect failed');
+  if (failures.length > 0)
+    throw new Error('tracked Prisma client disconnect failed');
 }
 
 function dockerIds(args) {
@@ -1621,11 +1769,21 @@ function resourceExists(type, name) {
 
 function cleanupFixture(context) {
   if (!context) return { containers: 0, networks: 0, sessions: 0 };
-  if (context.containerCreated && resourceExists('container', context.containerName)) {
-    docker(['rm', '--force', context.containerName], { label: 'owned container cleanup' });
+  if (
+    context.containerCreated &&
+    resourceExists('container', context.containerName)
+  ) {
+    docker(['rm', '--force', context.containerName], {
+      label: 'owned container cleanup',
+    });
   }
-  if (context.networkCreated && resourceExists('network', context.networkName)) {
-    docker(['network', 'rm', context.networkName], { label: 'owned network cleanup' });
+  if (
+    context.networkCreated &&
+    resourceExists('network', context.networkName)
+  ) {
+    docker(['network', 'rm', context.networkName], {
+      label: 'owned network cleanup',
+    });
   }
   const containers = dockerIds([
     'ps',
@@ -1653,13 +1811,20 @@ function assertCleanup(cleanup) {
 }
 
 function createPassingSummaryForTests() {
-  const positive = Object.fromEntries(POSITIVE_CHECK_NAMES.map((name) => [name, true]));
-  const negative = Object.fromEntries(NEGATIVE_CHECK_NAMES.map((name) => [name, true]));
+  const positive = Object.fromEntries(
+    POSITIVE_CHECK_NAMES.map((name) => [name, true]),
+  );
+  const negative = Object.fromEntries(
+    NEGATIVE_CHECK_NAMES.map((name) => [name, true]),
+  );
   return {
     status: 'PASS',
     roles: [...POSTGRESQL_ROLES],
     runtimes: Object.fromEntries(
-      Object.keys(RUNTIME_ROLES).map((role) => [role, { positive: { ...positive }, negative: { ...negative } }]),
+      Object.keys(RUNTIME_ROLES).map((role) => [
+        role,
+        { positive: { ...positive }, negative: { ...negative } },
+      ]),
     ),
     bootstrap: {
       managedAdministrator: true,
@@ -1678,14 +1843,22 @@ function createPassingSummaryForTests() {
       status: true,
       secondDeploy: true,
       controlledDdl: true,
-      administrativeDenials: { create_role: true, alter_role: true, create_database: true },
+      administrativeDenials: {
+        create_role: true,
+        alter_role: true,
+        create_database: true,
+      },
       otherDatabaseDenied: true,
     },
     membershipChecks: true,
     setRoleDenials: Object.fromEntries(
       Object.values(RUNTIME_ROLES).map((source) => [
         source.login,
-        Object.fromEntries(POSTGRESQL_ROLES.filter((target) => target !== source.login).map((target) => [target, true])),
+        Object.fromEntries(
+          POSTGRESQL_ROLES.filter((target) => target !== source.login).map(
+            (target) => [target, true],
+          ),
+        ),
       ]),
     ),
     cleanup: { containers: 0, networks: 0, sessions: 0 },
@@ -1696,8 +1869,10 @@ function validateSummary(summary) {
   assert.equal(summary.status, 'PASS');
   assert.deepEqual([...summary.roles].sort(), [...POSTGRESQL_ROLES].sort());
   for (const runtimeRole of Object.keys(RUNTIME_ROLES)) {
-    for (const name of POSITIVE_CHECK_NAMES) assert.equal(summary.runtimes?.[runtimeRole]?.positive?.[name], true);
-    for (const name of NEGATIVE_CHECK_NAMES) assert.equal(summary.runtimes?.[runtimeRole]?.negative?.[name], true);
+    for (const name of POSITIVE_CHECK_NAMES)
+      assert.equal(summary.runtimes?.[runtimeRole]?.positive?.[name], true);
+    for (const name of NEGATIVE_CHECK_NAMES)
+      assert.equal(summary.runtimes?.[runtimeRole]?.negative?.[name], true);
   }
   for (const name of [
     'managedAdministrator',
@@ -1723,7 +1898,9 @@ function validateSummary(summary) {
   }
   assert.equal(summary.membershipChecks, true);
   for (const source of Object.values(RUNTIME_ROLES)) {
-    for (const target of POSTGRESQL_ROLES.filter((role) => role !== source.login)) {
+    for (const target of POSTGRESQL_ROLES.filter(
+      (role) => role !== source.login,
+    )) {
       assert.equal(summary.setRoleDenials?.[source.login]?.[target], true);
     }
   }
@@ -1788,11 +1965,26 @@ async function runLiveVerification() {
       { connection_limit: 2, application_name: 'moazez-migration' },
     );
 
-    const deployOutput = runPrisma(context, ['migrate', 'deploy'], 'Prisma migration deployment');
-    assert.match(deployOutput, /migrations? have been successfully applied|applied|No pending migrations/u);
-    const statusOutput = runPrisma(context, ['migrate', 'status'], 'Prisma migration status');
+    const deployOutput = runPrisma(
+      context,
+      ['migrate', 'deploy'],
+      'Prisma migration deployment',
+    );
+    assert.match(
+      deployOutput,
+      /migrations? have been successfully applied|applied|No pending migrations/u,
+    );
+    const statusOutput = runPrisma(
+      context,
+      ['migrate', 'status'],
+      'Prisma migration status',
+    );
     assert.match(statusOutput, /Database schema is up to date/u);
-    const secondDeployOutput = runPrisma(context, ['migrate', 'deploy'], 'second Prisma migration deployment');
+    const secondDeployOutput = runPrisma(
+      context,
+      ['migrate', 'deploy'],
+      'second Prisma migration deployment',
+    );
     assert.match(secondDeployOutput, /No pending migrations to apply/u);
 
     const fixtureOwner = {
@@ -1812,13 +2004,16 @@ async function runLiveVerification() {
       fixtureOwner,
     );
 
-    const postgresVersionNumber = Number(queryScalar(context, 'SHOW server_version_num'));
+    const postgresVersionNumber = Number(
+      queryScalar(context, 'SHOW server_version_num'),
+    );
     assert.equal(Math.trunc(postgresVersionNumber / 10_000), 16);
     verifyRoleCatalog(context);
     verifyMembershipCatalog(context);
     verifyOwnershipAndPrivileges(context);
     verifyDefaultPrivilegesWithControlledDdl(context);
-    const migrationAdministrativeDenials = verifyMigrationAdministrativeBoundary(context);
+    const migrationAdministrativeDenials =
+      verifyMigrationAdministrativeBoundary(context);
     verifyMigrationCannotAccessOtherDatabase(context);
 
     const fixture = await seedSyntheticFixture(context);
@@ -1848,7 +2043,8 @@ async function runLiveVerification() {
       nodeVersion: process.version,
       postgresMajor: 16,
       postgresVersionNumber,
-      fixtureTopology: 'unique labelled container + unique network + tmpfs + random 127.0.0.1 port + no volume',
+      fixtureTopology:
+        'unique labelled container + unique network + tmpfs + random 127.0.0.1 port + no volume',
       imageId,
       dockerEndpointTransport: dockerEvidence.endpointTransport,
       roles: [...POSTGRESQL_ROLES],
@@ -1887,7 +2083,10 @@ async function runLiveVerification() {
         failure ??= error;
       }
       try {
-        if (context.containerCreated && context.sessionsBeforeRemoval === null) {
+        if (
+          context.containerCreated &&
+          context.sessionsBeforeRemoval === null
+        ) {
           context.sessionsBeforeRemoval = Number(
             queryScalar(
               context,
@@ -1917,6 +2116,7 @@ async function main() {
   const mode = resolveVerificationMode(process.argv.slice(2));
   assertRepositoryPreflight(mode);
   command(process.execPath, ['--test', PURE_TEST_PATH], {
+    env: focusedTestEnvironment(mode),
     label: 'focused pure-test suite',
     timeoutMs: 180_000,
   });
@@ -1937,8 +2137,10 @@ async function main() {
         summary.bootstrap.cloudSqlSystemMembershipRejected,
       crossRoleMembershipRejected:
         summary.bootstrap.crossRoleMembershipRejected,
-      positiveChecks: POSITIVE_CHECK_NAMES.length * Object.keys(RUNTIME_ROLES).length,
-      negativeChecks: NEGATIVE_CHECK_NAMES.length * Object.keys(RUNTIME_ROLES).length,
+      positiveChecks:
+        POSITIVE_CHECK_NAMES.length * Object.keys(RUNTIME_ROLES).length,
+      negativeChecks:
+        NEGATIVE_CHECK_NAMES.length * Object.keys(RUNTIME_ROLES).length,
       setRoleDenials: Object.values(summary.setRoleDenials).reduce(
         (total, checks) => total + Object.keys(checks).length,
         0,
@@ -1966,6 +2168,7 @@ module.exports = {
   VERIFICATION_MODES,
   assertCleanup,
   createPassingSummaryForTests,
+  focusedTestEnvironment,
   initializeManagedAdministrator,
   inspectRepositoryState,
   isProtectedRegressionPath,

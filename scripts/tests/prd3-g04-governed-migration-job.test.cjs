@@ -30,17 +30,26 @@ const {
   BASE_SHA,
   EXPECTED_CHANGED_PATHS,
   VERIFICATION_MODES,
+  focusedTestEnvironment,
+  inspectRepositoryState,
   resolveVerificationMode,
   validateRepositoryState,
 } = require('../ci/prd3-g04-governed-migration-job.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
+const historicalTest = process.env.PRD3_CURRENT_CI === '1' ? test.skip : test;
 const read = (relativePath) =>
-  fs.readFileSync(path.join(REPOSITORY_ROOT, ...relativePath.split('/')), 'utf8');
+  fs.readFileSync(
+    path.join(REPOSITORY_ROOT, ...relativePath.split('/')),
+    'utf8',
+  );
 const json = (relativePath) => JSON.parse(read(relativePath));
 const runnerSource = read('scripts/migrations/run-governed-migration-job.cjs');
-const manifestSource = read('scripts/migrations/migration-artifact-manifest.cjs');
+const manifestSource = read(
+  'scripts/migrations/migration-artifact-manifest.cjs',
+);
 const releaseGateSource = read('scripts/release/governed-release-gate.cjs');
+const harnessSource = read('scripts/ci/prd3-g04-governed-migration-job.cjs');
 const MAINTENANCE_CHANGED_PATHS = Object.freeze([
   'scripts/ci/prd3-g01-c-database-privileges.cjs',
   'scripts/tests/prd3-g01-c-database-privileges.test.cjs',
@@ -83,7 +92,8 @@ function validEnvironment(overrides = {}) {
 }
 
 function productionEnvironment(overrides = {}) {
-  const executionId = overrides.MIGRATION_JOB_EXECUTION_ID ?? 'g04-production-001';
+  const executionId =
+    overrides.MIGRATION_JOB_EXECUTION_ID ?? 'g04-production-001';
   return validEnvironment({
     MIGRATION_JOB_EXECUTION_ID: executionId,
     MIGRATION_JOB_ENVIRONMENT: 'production',
@@ -101,7 +111,9 @@ function fakeManifest() {
   };
 }
 
-async function runWithFakePrisma(resultForStage = () => ({ exitCode: 0, stdout: '', stderr: '' })) {
+async function runWithFakePrisma(
+  resultForStage = () => ({ exitCode: 0, stdout: '', stderr: '' }),
+) {
   const calls = [];
   const events = [];
   const result = await runGovernedMigrationJob({
@@ -119,11 +131,17 @@ async function runWithFakePrisma(resultForStage = () => ({ exitCode: 0, stdout: 
 }
 
 function withCopiedMigrationWorkspace(callback) {
-  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'moazez-g04-manifest-'));
+  const temporaryRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'moazez-g04-manifest-'),
+  );
   try {
-    fs.cpSync(path.join(REPOSITORY_ROOT, 'prisma'), path.join(temporaryRoot, 'prisma'), {
-      recursive: true,
-    });
+    fs.cpSync(
+      path.join(REPOSITORY_ROOT, 'prisma'),
+      path.join(temporaryRoot, 'prisma'),
+      {
+        recursive: true,
+      },
+    );
     fs.copyFileSync(
       path.join(REPOSITORY_ROOT, 'prisma.config.ts'),
       path.join(temporaryRoot, 'prisma.config.ts'),
@@ -146,146 +164,237 @@ function makeOperations(failureStage, calls) {
   );
 }
 
-test('G04 historical candidate contract retains its exact baseline and 16 paths', () => {
-  assert.equal(BASE_SHA, '3c2f6ad6b31001b37aa6b2962767de163474856d');
-  assert.deepEqual(EXPECTED_CHANGED_PATHS, [
-    'Dockerfile',
-    'MIGRATION_GOVERNANCE.md',
-    'adr/ADR-0007-migration-job-and-deployment-ordering.md',
-    'config/deployment/migration-artifact-manifest.json',
-    'config/deployment/migration-job.contract.json',
-    'config/deployment/release-sequence.contract.json',
-    'docs/production-readiness/phase-0/02-production-decision-register.md',
-    'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md',
-    'docs/production-readiness/phase-0/05-owner-decision-disposition-register.md',
-    'docs/production-readiness/phase-3/07-governed-migration-job-evidence.md',
-    'package.json',
-    'scripts/ci/prd3-g04-governed-migration-job.cjs',
-    'scripts/migrations/migration-artifact-manifest.cjs',
-    'scripts/migrations/run-governed-migration-job.cjs',
-    'scripts/release/governed-release-gate.cjs',
-    'scripts/tests/prd3-g04-governed-migration-job.test.cjs',
-  ]);
-  assert.equal(
-    validateRepositoryState(
-      repositoryState({ head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] }),
-      VERIFICATION_MODES.CANDIDATE,
-    ),
-    true,
-  );
-  assert.throws(() =>
-    validateRepositoryState(repositoryState(), VERIFICATION_MODES.CANDIDATE),
-  );
-  assert.throws(() =>
-    validateRepositoryState(
-      repositoryState({ head: BASE_SHA, changedPaths: EXPECTED_CHANGED_PATHS.slice(1) }),
-      VERIFICATION_MODES.CANDIDATE,
-    ),
-  );
-  for (const override of [
-    { branch: 'main', head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] },
-    { nodeVersion: 'v22.22.0', head: BASE_SHA, changedPaths: [...EXPECTED_CHANGED_PATHS] },
-    {
-      nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
-      head: BASE_SHA,
-      changedPaths: [...EXPECTED_CHANGED_PATHS],
-    },
-  ]) {
+historicalTest(
+  'G04 historical candidate contract retains its exact baseline and 16 paths',
+  () => {
+    assert.equal(BASE_SHA, '3c2f6ad6b31001b37aa6b2962767de163474856d');
+    assert.deepEqual(EXPECTED_CHANGED_PATHS, [
+      'Dockerfile',
+      'MIGRATION_GOVERNANCE.md',
+      'adr/ADR-0007-migration-job-and-deployment-ordering.md',
+      'config/deployment/migration-artifact-manifest.json',
+      'config/deployment/migration-job.contract.json',
+      'config/deployment/release-sequence.contract.json',
+      'docs/production-readiness/phase-0/02-production-decision-register.md',
+      'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md',
+      'docs/production-readiness/phase-0/05-owner-decision-disposition-register.md',
+      'docs/production-readiness/phase-3/07-governed-migration-job-evidence.md',
+      'package.json',
+      'scripts/ci/prd3-g04-governed-migration-job.cjs',
+      'scripts/migrations/migration-artifact-manifest.cjs',
+      'scripts/migrations/run-governed-migration-job.cjs',
+      'scripts/release/governed-release-gate.cjs',
+      'scripts/tests/prd3-g04-governed-migration-job.test.cjs',
+    ]);
+    assert.equal(
+      validateRepositoryState(
+        repositoryState({
+          head: BASE_SHA,
+          changedPaths: [...EXPECTED_CHANGED_PATHS],
+        }),
+        VERIFICATION_MODES.CANDIDATE,
+      ),
+      true,
+    );
+    assert.throws(() =>
+      validateRepositoryState(repositoryState(), VERIFICATION_MODES.CANDIDATE),
+    );
     assert.throws(() =>
       validateRepositoryState(
-        repositoryState(override),
+        repositoryState({
+          head: BASE_SHA,
+          changedPaths: EXPECTED_CHANGED_PATHS.slice(1),
+        }),
         VERIFICATION_MODES.CANDIDATE,
       ),
     );
-  }
-});
+    for (const override of [
+      {
+        branch: 'main',
+        head: BASE_SHA,
+        changedPaths: [...EXPECTED_CHANGED_PATHS],
+      },
+      {
+        nodeVersion: 'v22.22.0',
+        head: BASE_SHA,
+        changedPaths: [...EXPECTED_CHANGED_PATHS],
+      },
+      {
+        nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
+        head: BASE_SHA,
+        changedPaths: [...EXPECTED_CHANGED_PATHS],
+      },
+    ]) {
+      assert.throws(() =>
+        validateRepositoryState(
+          repositoryState(override),
+          VERIFICATION_MODES.CANDIDATE,
+        ),
+      );
+    }
+  },
+);
 
-test('G04 verification mode parsing permits only candidate default or --regression', () => {
+test('G04 verification mode parsing preserves historical modes and adds current CI', () => {
   assert.equal(resolveVerificationMode([]), VERIFICATION_MODES.CANDIDATE);
-  assert.equal(resolveVerificationMode(['--regression']), VERIFICATION_MODES.REGRESSION);
+  assert.equal(
+    resolveVerificationMode(['--regression']),
+    VERIFICATION_MODES.REGRESSION,
+  );
+  assert.equal(
+    resolveVerificationMode(['--current-ci']),
+    VERIFICATION_MODES.CURRENT_CI,
+  );
   for (const option of [
-    '--skip-preflight', '--force', '--current', '--ignore-scope', '--anything-else',
+    '--skip-preflight',
+    '--force',
+    '--current',
+    '--ignore-scope',
+    '--anything-else',
   ]) {
-    assert.throws(() => resolveVerificationMode([option]), /unknown verification mode/u);
+    assert.throws(
+      () => resolveVerificationMode([option]),
+      /unknown verification mode/u,
+    );
   }
   assert.throws(() => resolveVerificationMode(['--regression', '--force']));
 });
 
-test('G04 regression mode accepts a descendant and rejects non-descendant or staged state', () => {
-  for (const branch of ['main', 'HEAD']) {
-    assert.equal(
-      validateRepositoryState(
-        repositoryState({
-          branch,
-          nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
-          platform: 'linux',
-        }),
-        VERIFICATION_MODES.REGRESSION,
-      ),
-      true,
-    );
-  }
-  assert.throws(() =>
+test('G04 current CI mode ignores historical scope while retaining runtime preflight', () => {
+  assert.equal(
     validateRepositoryState(
-      repositoryState({ nodeVersion: 'v22.22.0' }),
-      VERIFICATION_MODES.REGRESSION,
+      repositoryState({
+        branch: 'feature/current-ci',
+        head: 'f'.repeat(40),
+        nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
+        platform: 'linux',
+        changedPaths: [
+          '.github/workflows/ci.yml',
+          'config/deployment/migration-job.contract.json',
+          'scripts/migrations/run-governed-migration-job.cjs',
+        ],
+        historicalBaseIsAncestor: false,
+        dependencyChanged: true,
+        devDependencyChanged: true,
+      }),
+      VERIFICATION_MODES.CURRENT_CI,
     ),
-  );
-  assert.throws(() =>
-    validateRepositoryState(
-      repositoryState({ historicalBaseIsAncestor: false }),
-      VERIFICATION_MODES.REGRESSION,
-    ),
+    true,
   );
   assert.throws(() =>
     validateRepositoryState(
       repositoryState({ indexClean: false }),
-      VERIFICATION_MODES.REGRESSION,
+      VERIFICATION_MODES.CURRENT_CI,
     ),
+  );
+  assert.throws(() =>
+    validateRepositoryState(
+      repositoryState({ nodeVersion: 'v22.22.0' }),
+      VERIFICATION_MODES.CURRENT_CI,
+    ),
+  );
+  const historicalEnvironment = { PATH: 'synthetic', PRD3_CURRENT_CI: '1' };
+  assert.deepEqual(
+    focusedTestEnvironment(VERIFICATION_MODES.CANDIDATE, historicalEnvironment),
+    { PATH: 'synthetic' },
+  );
+  assert.deepEqual(
+    focusedTestEnvironment(
+      VERIFICATION_MODES.CURRENT_CI,
+      historicalEnvironment,
+    ),
+    historicalEnvironment,
+  );
+  assert.deepEqual(
+    Object.keys(inspectRepositoryState(VERIFICATION_MODES.CURRENT_CI)).sort(),
+    ['indexClean', 'nodeDirectory', 'nodeVersion', 'platform'],
   );
 });
 
-test('G04 regression mode rejects protected source, schema, migration, and release drift', () => {
-  for (const changedPath of [
-    'src/main.ts',
-    'prisma/schema.prisma',
-    'prisma/migrations/20260101000000_fixture/migration.sql',
-    'prisma/seeds/01-permissions.seed.ts',
-    'package-lock.json',
-    'Dockerfile',
-    '.github/workflows/fixture.yml',
-    'config/deployment/fixture.json',
-    'adr/ADR-9999-fixture.md',
-    'scripts/database/fixture.sql',
-    'scripts/migrations/fixture.cjs',
-    'scripts/release/fixture.cjs',
-    'terraform/main.tf',
-  ]) {
+historicalTest(
+  'G04 regression mode accepts a descendant and rejects non-descendant or staged state',
+  () => {
+    for (const branch of ['main', 'HEAD']) {
+      assert.equal(
+        validateRepositoryState(
+          repositoryState({
+            branch,
+            nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
+            platform: 'linux',
+          }),
+          VERIFICATION_MODES.REGRESSION,
+        ),
+        true,
+      );
+    }
     assert.throws(() =>
       validateRepositoryState(
-        repositoryState({ changedPaths: [changedPath] }),
+        repositoryState({ nodeVersion: 'v22.22.0' }),
         VERIFICATION_MODES.REGRESSION,
       ),
     );
-  }
-});
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ historicalBaseIsAncestor: false }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ indexClean: false }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+  },
+);
 
-test('G04 regression mode rejects dependency or devDependency drift', () => {
-  assert.throws(() =>
-    validateRepositoryState(
-      repositoryState({ dependencyChanged: true }),
-      VERIFICATION_MODES.REGRESSION,
-    ),
-  );
-  assert.throws(() =>
-    validateRepositoryState(
-      repositoryState({ devDependencyChanged: true }),
-      VERIFICATION_MODES.REGRESSION,
-    ),
-  );
-});
+historicalTest(
+  'G04 regression mode rejects protected source, schema, migration, and release drift',
+  () => {
+    for (const changedPath of [
+      'src/main.ts',
+      'prisma/schema.prisma',
+      'prisma/migrations/20260101000000_fixture/migration.sql',
+      'prisma/seeds/01-permissions.seed.ts',
+      'package-lock.json',
+      'Dockerfile',
+      '.github/workflows/fixture.yml',
+      'config/deployment/fixture.json',
+      'adr/ADR-9999-fixture.md',
+      'scripts/database/fixture.sql',
+      'scripts/migrations/fixture.cjs',
+      'scripts/release/fixture.cjs',
+      'terraform/main.tf',
+    ]) {
+      assert.throws(() =>
+        validateRepositoryState(
+          repositoryState({ changedPaths: [changedPath] }),
+          VERIFICATION_MODES.REGRESSION,
+        ),
+      );
+    }
+  },
+);
 
-test('records the exact approved PRD0-Q026 owner decision', () => {
+historicalTest(
+  'G04 regression mode rejects dependency or devDependency drift',
+  () => {
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ dependencyChanged: true }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+    assert.throws(() =>
+      validateRepositoryState(
+        repositoryState({ devDependencyChanged: true }),
+        VERIFICATION_MODES.REGRESSION,
+      ),
+    );
+  },
+);
+
+historicalTest('records the exact approved PRD0-Q026 owner decision', () => {
   const disposition = read(
     'docs/production-readiness/phase-0/05-owner-decision-disposition-register.md',
   );
@@ -295,43 +404,57 @@ test('records the exact approved PRD0-Q026 owner decision', () => {
   );
 });
 
-test('accepts ADR-0007 with D026-D027 ownership and preserves ADR-0010 health ownership', () => {
-  const adr = read('adr/ADR-0007-migration-job-and-deployment-ordering.md');
-  assert.match(adr, /## Status\s+Accepted/u);
-  assert.match(adr, /Owner: Abdallah/u);
-  assert.match(adr, /ApprovedAt: `2026-08-07T00:22:00\+03:00`/u);
-  assert.match(adr, /Owned decisions: PRD0-D026 and PRD0-D027/u);
-  assert.match(adr, /PRD0-Q026/u);
-  assert.match(adr, /PRD3-G04/u);
+historicalTest(
+  'accepts ADR-0007 with D026-D027 ownership and preserves ADR-0010 health ownership',
+  () => {
+    const adr = read('adr/ADR-0007-migration-job-and-deployment-ordering.md');
+    assert.match(adr, /## Status\s+Accepted/u);
+    assert.match(adr, /Owner: Abdallah/u);
+    assert.match(adr, /ApprovedAt: `2026-08-07T00:22:00\+03:00`/u);
+    assert.match(adr, /Owned decisions: PRD0-D026 and PRD0-D027/u);
+    assert.match(adr, /PRD0-Q026/u);
+    assert.match(adr, /PRD3-G04/u);
 
-  const healthAdr = read('adr/ADR-0010-production-health-and-observability-contract.md');
-  assert.match(healthAdr, /^# ADR-0010: Production Health and Observability Contract$/mu);
-  assert.doesNotMatch(healthAdr, /Migration Job|PRD0-D026|PRD0-D027/u);
-});
+    const healthAdr = read(
+      'adr/ADR-0010-production-health-and-observability-contract.md',
+    );
+    assert.match(
+      healthAdr,
+      /^# ADR-0010: Production Health and Observability Contract$/mu,
+    );
+    assert.doesNotMatch(healthAdr, /Migration Job|PRD0-D026|PRD0-D027/u);
+  },
+);
 
-test('has one unique file for every ADR numeric prefix and no duplicate G04 ADR-0010', () => {
-  const adrNames = fs
-    .readdirSync(path.join(REPOSITORY_ROOT, 'adr'))
-    .filter((name) => /^ADR-\d{4}.*\.md$/u.test(name));
-  const prefixes = adrNames.map((name) => name.match(/^ADR-(\d{4})/u)[1]);
-  assert.equal(new Set(prefixes).size, prefixes.length);
-  assert.deepEqual(
-    adrNames.filter((name) => name.startsWith('ADR-0010')),
-    ['ADR-0010-production-health-and-observability-contract.md'],
-  );
-});
+historicalTest(
+  'has one unique file for every ADR numeric prefix and no duplicate G04 ADR-0010',
+  () => {
+    const adrNames = fs
+      .readdirSync(path.join(REPOSITORY_ROOT, 'adr'))
+      .filter((name) => /^ADR-\d{4}.*\.md$/u.test(name));
+    const prefixes = adrNames.map((name) => name.match(/^ADR-(\d{4})/u)[1]);
+    assert.equal(new Set(prefixes).size, prefixes.length);
+    assert.deepEqual(
+      adrNames.filter((name) => name.startsWith('ADR-0010')),
+      ['ADR-0010-production-health-and-observability-contract.md'],
+    );
+  },
+);
 
-test('references ADR-0007 consistently in every G04 governance document', () => {
-  for (const documentPath of [
-    'MIGRATION_GOVERNANCE.md',
-    'docs/production-readiness/phase-0/02-production-decision-register.md',
-    'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md',
-    'docs/production-readiness/phase-3/07-governed-migration-job-evidence.md',
-  ]) {
-    const document = read(documentPath);
-    assert.match(document, /ADR-0007/u, documentPath);
-  }
-});
+historicalTest(
+  'references ADR-0007 consistently in every G04 governance document',
+  () => {
+    for (const documentPath of [
+      'MIGRATION_GOVERNANCE.md',
+      'docs/production-readiness/phase-0/02-production-decision-register.md',
+      'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md',
+      'docs/production-readiness/phase-3/07-governed-migration-job-evidence.md',
+    ]) {
+      const document = read(documentPath);
+      assert.match(document, /ADR-0007/u, documentPath);
+    }
+  },
+);
 
 test('locks every approved Migration Job contract value', () => {
   assert.deepEqual(json('config/deployment/migration-job.contract.json'), {
@@ -371,7 +494,10 @@ test('builds a deterministic manifest without timestamps, machine paths, URLs, o
   const first = serializeManifest(buildManifest());
   const second = serializeManifest(buildManifest());
   assert.equal(first, second);
-  assert.doesNotMatch(first, /createdAt|generatedAt|E:\\|C:\\|postgres(?:ql)?:\/\/|DATABASE_URL|credential/iu);
+  assert.doesNotMatch(
+    first,
+    /createdAt|generatedAt|E:\\|C:\\|postgres(?:ql)?:\/\/|DATABASE_URL|credential/iu,
+  );
 });
 
 test('committed default manifest verifies against the current repository artifacts', () => {
@@ -386,14 +512,18 @@ test('Git attributes enforce LF for every migration manifest input and output', 
     ...manifest.migrations.map((migration) => migration.path),
     'config/deployment/migration-artifact-manifest.json',
   ];
-  const result = spawnSync('git', ['check-attr', 'text', 'eol', '--', ...governedPaths], {
-    cwd: REPOSITORY_ROOT,
-    encoding: 'utf8',
-    windowsHide: true,
-    timeout: 10_000,
-    maxBuffer: 1024 * 1024,
-    shell: false,
-  });
+  const result = spawnSync(
+    'git',
+    ['check-attr', 'text', 'eol', '--', ...governedPaths],
+    {
+      cwd: REPOSITORY_ROOT,
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 10_000,
+      maxBuffer: 1024 * 1024,
+      shell: false,
+    },
+  );
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(
     result.stdout.trim().split(/\r?\n/u),
@@ -414,17 +544,24 @@ test('rejects a manifest generated from CRLF migration artifacts against LF byte
     ];
     for (const relativePath of governedInputPaths) {
       const filePath = path.join(workspace, ...relativePath.split('/'));
-      const lfContent = fs.readFileSync(filePath, 'utf8').replace(/\r\n|\r/gu, '\n');
+      const lfContent = fs
+        .readFileSync(filePath, 'utf8')
+        .replace(/\r\n|\r/gu, '\n');
       fs.writeFileSync(filePath, lfContent.replace(/\n/gu, '\r\n'), 'utf8');
     }
     const crlfManifest = buildManifest(workspace);
     assert.notDeepEqual(crlfManifest, lfManifest);
-    const manifestPath = path.join(workspace, 'migration-artifact-manifest.json');
+    const manifestPath = path.join(
+      workspace,
+      'migration-artifact-manifest.json',
+    );
     fs.writeFileSync(manifestPath, serializeManifest(crlfManifest), 'utf8');
 
     for (const relativePath of governedInputPaths) {
       const filePath = path.join(workspace, ...relativePath.split('/'));
-      const lfContent = fs.readFileSync(filePath, 'utf8').replace(/\r\n|\r/gu, '\n');
+      const lfContent = fs
+        .readFileSync(filePath, 'utf8')
+        .replace(/\r\n|\r/gu, '\n');
       fs.writeFileSync(filePath, lfContent, 'utf8');
     }
     assert.throws(
@@ -442,7 +579,11 @@ test('orders and hashes all seven canonical migrations', () => {
     [...manifest.migrationDirectories].sort(),
   );
   assert.match(manifest.aggregateMigrationChainSha256, /^[a-f0-9]{64}$/u);
-  assert.ok(manifest.migrations.every((migration) => /^[a-f0-9]{64}$/u.test(migration.sha256)));
+  assert.ok(
+    manifest.migrations.every((migration) =>
+      /^[a-f0-9]{64}$/u.test(migration.sha256),
+    ),
+  );
 });
 
 test('rejects an unexpected file in a migration directory', () => {
@@ -483,7 +624,10 @@ test('detects a one-byte migration artifact tamper', () => {
       path.join(workspace, ...manifest.migrations[0].path.split('/')),
       ' ',
     );
-    assert.throws(() => verifyManifest(manifestPath, workspace), MigrationManifestError);
+    assert.throws(
+      () => verifyManifest(manifestPath, workspace),
+      MigrationManifestError,
+    );
   });
 });
 
@@ -509,12 +653,19 @@ test('requires every environment-contract field', () => {
   for (const key of Object.keys(validEnvironment())) {
     const environment = validEnvironment();
     delete environment[key];
-    assert.throws(() => validateEnvironment(environment), MigrationJobError, key);
+    assert.throws(
+      () => validateEnvironment(environment),
+      MigrationJobError,
+      key,
+    );
   }
 });
 
 test('accepts only the migration identity, public schema, connection allowance two, and approved artifact format', () => {
-  assert.equal(validateEnvironment(validEnvironment()).databaseIdentity, 'moazez_migration');
+  assert.equal(
+    validateEnvironment(validEnvironment()).databaseIdentity,
+    'moazez_migration',
+  );
   assert.throws(() =>
     validateEnvironment(
       validEnvironment({
@@ -532,7 +683,9 @@ test('accepts only the migration identity, public schema, connection allowance t
     ),
   );
   assert.throws(() =>
-    validateEnvironment(validEnvironment({ MIGRATION_JOB_ARTIFACT_DIGEST: 'latest' })),
+    validateEnvironment(
+      validEnvironment({ MIGRATION_JOB_ARTIFACT_DIGEST: 'latest' }),
+    ),
   );
 });
 
@@ -548,32 +701,43 @@ test('rejects missing, empty, wrong, duplicate, and overridden public schemas', 
   let manifestCalls = 0;
   let databaseCalls = 0;
   for (const databaseUrl of invalidUrls) {
-    await assert.rejects(() => runGovernedMigrationJob({
-      environment: validEnvironment({ DATABASE_URL: databaseUrl }),
-      installSignalHandlers: false,
-      logger: () => {},
-      verifyManifest: () => {
-        manifestCalls += 1;
-      },
-      executePrisma: async () => {
-        databaseCalls += 1;
-      },
-    }), { code: 'migration_environment_contract_invalid' });
+    await assert.rejects(
+      () =>
+        runGovernedMigrationJob({
+          environment: validEnvironment({ DATABASE_URL: databaseUrl }),
+          installSignalHandlers: false,
+          logger: () => {},
+          verifyManifest: () => {
+            manifestCalls += 1;
+          },
+          executePrisma: async () => {
+            databaseCalls += 1;
+          },
+        }),
+      { code: 'migration_environment_contract_invalid' },
+    );
   }
   assert.equal(manifestCalls, 0);
   assert.equal(databaseCalls, 0);
 });
 
 test('requires every disposable governance reference to bind the execution id', () => {
-  assert.equal(validateEnvironment(validEnvironment()).environment, 'disposable');
+  assert.equal(
+    validateEnvironment(validEnvironment()).environment,
+    'disposable',
+  );
   assert.throws(() =>
     validateEnvironment(
-      validEnvironment({ MIGRATION_JOB_APPROVAL_REF: 'SYNTHETIC_APPROVAL:other' }),
+      validEnvironment({
+        MIGRATION_JOB_APPROVAL_REF: 'SYNTHETIC_APPROVAL:other',
+      }),
     ),
   );
   assert.throws(() =>
     validateEnvironment(
-      validEnvironment({ MIGRATION_JOB_BACKUP_CHECKPOINT: 'DISPOSABLE_NA:other' }),
+      validEnvironment({
+        MIGRATION_JOB_BACKUP_CHECKPOINT: 'DISPOSABLE_NA:other',
+      }),
     ),
   );
   assert.throws(() =>
@@ -584,9 +748,14 @@ test('requires every disposable governance reference to bind the execution id', 
 });
 
 test('requires staging and production governance references to bind the execution id', () => {
-  assert.equal(validateEnvironment(productionEnvironment()).environment, 'production');
   assert.equal(
-    validateEnvironment(productionEnvironment({ MIGRATION_JOB_ENVIRONMENT: 'staging' })).environment,
+    validateEnvironment(productionEnvironment()).environment,
+    'production',
+  );
+  assert.equal(
+    validateEnvironment(
+      productionEnvironment({ MIGRATION_JOB_ENVIRONMENT: 'staging' }),
+    ).environment,
     'staging',
   );
   for (const [key, value] of [
@@ -594,7 +763,9 @@ test('requires staging and production governance references to bind the executio
     ['MIGRATION_JOB_BACKUP_CHECKPOINT', 'BACKUP:other:backup-ticket'],
     ['MIGRATION_JOB_DATA_AUTHORITY', 'DATA_AUTHORITY:other:authority-ticket'],
   ]) {
-    assert.throws(() => validateEnvironment(productionEnvironment({ [key]: value })));
+    assert.throws(() =>
+      validateEnvironment(productionEnvironment({ [key]: value })),
+    );
   }
 });
 
@@ -604,46 +775,79 @@ test('rejects stale, cross-mode, empty, URL, credential, and connection-material
   });
   assert.throws(() =>
     validateEnvironment({
-      ...productionEnvironment({ MIGRATION_JOB_EXECUTION_ID: 'g04-execution-2' }),
+      ...productionEnvironment({
+        MIGRATION_JOB_EXECUTION_ID: 'g04-execution-2',
+      }),
       MIGRATION_JOB_APPROVAL_REF: firstExecution.MIGRATION_JOB_APPROVAL_REF,
     }),
   );
-  assert.throws(() => validateEnvironment(productionEnvironment({
-    MIGRATION_JOB_APPROVAL_REF: 'SYNTHETIC_APPROVAL:g04-production-001',
-  })));
-  assert.throws(() => validateEnvironment(validEnvironment({
-    MIGRATION_JOB_APPROVAL_REF: 'APPROVED:g04-unit-001:approval-ticket',
-  })));
-  for (const invalidOpaque of ['', 'https://approval.example/ref', 'user@host', 'DATABASE_URL=value']) {
-    assert.throws(() => validateEnvironment(productionEnvironment({
-      MIGRATION_JOB_APPROVAL_REF: `APPROVED:g04-production-001:${invalidOpaque}`,
-    })));
+  assert.throws(() =>
+    validateEnvironment(
+      productionEnvironment({
+        MIGRATION_JOB_APPROVAL_REF: 'SYNTHETIC_APPROVAL:g04-production-001',
+      }),
+    ),
+  );
+  assert.throws(() =>
+    validateEnvironment(
+      validEnvironment({
+        MIGRATION_JOB_APPROVAL_REF: 'APPROVED:g04-unit-001:approval-ticket',
+      }),
+    ),
+  );
+  for (const invalidOpaque of [
+    '',
+    'https://approval.example/ref',
+    'user@host',
+    'DATABASE_URL=value',
+  ]) {
+    assert.throws(() =>
+      validateEnvironment(
+        productionEnvironment({
+          MIGRATION_JOB_APPROVAL_REF: `APPROVED:g04-production-001:${invalidOpaque}`,
+        }),
+      ),
+    );
   }
 });
 
 test('rejects every mismatched governance reference before manifest or database access', async () => {
   const mismatches = [
-    validEnvironment({ MIGRATION_JOB_APPROVAL_REF: 'SYNTHETIC_APPROVAL:other' }),
-    validEnvironment({ MIGRATION_JOB_BACKUP_CHECKPOINT: 'DISPOSABLE_NA:other' }),
+    validEnvironment({
+      MIGRATION_JOB_APPROVAL_REF: 'SYNTHETIC_APPROVAL:other',
+    }),
+    validEnvironment({
+      MIGRATION_JOB_BACKUP_CHECKPOINT: 'DISPOSABLE_NA:other',
+    }),
     validEnvironment({ MIGRATION_JOB_DATA_AUTHORITY: 'DISPOSABLE_NA:other' }),
-    productionEnvironment({ MIGRATION_JOB_APPROVAL_REF: 'APPROVED:other:approval' }),
-    productionEnvironment({ MIGRATION_JOB_BACKUP_CHECKPOINT: 'BACKUP:other:backup' }),
-    productionEnvironment({ MIGRATION_JOB_DATA_AUTHORITY: 'DATA_AUTHORITY:other:data' }),
+    productionEnvironment({
+      MIGRATION_JOB_APPROVAL_REF: 'APPROVED:other:approval',
+    }),
+    productionEnvironment({
+      MIGRATION_JOB_BACKUP_CHECKPOINT: 'BACKUP:other:backup',
+    }),
+    productionEnvironment({
+      MIGRATION_JOB_DATA_AUTHORITY: 'DATA_AUTHORITY:other:data',
+    }),
   ];
   let manifestCalls = 0;
   let databaseCalls = 0;
   for (const environment of mismatches) {
-    await assert.rejects(() => runGovernedMigrationJob({
-      environment,
-      installSignalHandlers: false,
-      logger: () => {},
-      verifyManifest: () => {
-        manifestCalls += 1;
-      },
-      executePrisma: async () => {
-        databaseCalls += 1;
-      },
-    }), { code: 'migration_environment_contract_invalid' });
+    await assert.rejects(
+      () =>
+        runGovernedMigrationJob({
+          environment,
+          installSignalHandlers: false,
+          logger: () => {},
+          verifyManifest: () => {
+            manifestCalls += 1;
+          },
+          executePrisma: async () => {
+            databaseCalls += 1;
+          },
+        }),
+      { code: 'migration_environment_contract_invalid' },
+    );
   }
   assert.equal(manifestCalls, 0);
   assert.equal(databaseCalls, 0);
@@ -674,30 +878,42 @@ test('audits command-line argument rejection with one sanitized final event', as
   let manifestCalls = 0;
   let databaseCalls = 0;
   const rejectedArgument = 'anything-sensitive-cli-argument';
-  await assert.rejects(() => runnerMain([rejectedArgument], {
-    environment: validEnvironment(),
-    installSignalHandlers: false,
-    logger: (event) => events.push(event),
-    verifyManifest: () => {
-      manifestCalls += 1;
+  await assert.rejects(
+    () =>
+      runnerMain([rejectedArgument], {
+        environment: validEnvironment(),
+        installSignalHandlers: false,
+        logger: (event) => events.push(event),
+        verifyManifest: () => {
+          manifestCalls += 1;
+        },
+        executePrisma: async () => {
+          databaseCalls += 1;
+        },
+      }),
+    {
+      code: 'migration_environment_contract_invalid',
     },
-    executePrisma: async () => {
-      databaseCalls += 1;
-    },
-  }), {
-    code: 'migration_environment_contract_invalid',
-  });
+  );
   assert.equal(manifestCalls, 0);
   assert.equal(databaseCalls, 0);
-  assert.deepEqual(events, [{
-    event: 'migration.job.result',
-    status: 'migration_failed',
-    code: 'migration_environment_contract_invalid',
-  }]);
+  assert.deepEqual(events, [
+    {
+      event: 'migration.job.result',
+      status: 'migration_failed',
+      code: 'migration_environment_contract_invalid',
+    },
+  ]);
 
   const processResult = spawnSync(
     process.execPath,
-    [path.join(REPOSITORY_ROOT, 'scripts/migrations/run-governed-migration-job.cjs'), rejectedArgument],
+    [
+      path.join(
+        REPOSITORY_ROOT,
+        'scripts/migrations/run-governed-migration-job.cjs',
+      ),
+      rejectedArgument,
+    ],
     {
       cwd: REPOSITORY_ROOT,
       encoding: 'utf8',
@@ -707,7 +923,11 @@ test('audits command-line argument rejection with one sanitized final event', as
   );
   assert.notEqual(processResult.status, 0);
   const output = `${processResult.stdout}\n${processResult.stderr}`;
-  const outputEvents = processResult.stdout.trim().split(/\r?\n/u).filter(Boolean).map(JSON.parse);
+  const outputEvents = processResult.stdout
+    .trim()
+    .split(/\r?\n/u)
+    .filter(Boolean)
+    .map(JSON.parse);
   assert.deepEqual(outputEvents, events);
   assert.ok(!output.includes(rejectedArgument));
   for (const sensitive of [
@@ -724,21 +944,38 @@ test('audits command-line argument rejection with one sanitized final event', as
 
 test('emits exactly one final result event on normal success and failure', async () => {
   const successful = await runWithFakePrisma();
-  assert.equal(successful.events.filter((event) => event.event === 'migration.job.result').length, 1);
+  assert.equal(
+    successful.events.filter((event) => event.event === 'migration.job.result')
+      .length,
+    1,
+  );
 
   const failedEvents = [];
-  await assert.rejects(() => runGovernedMigrationJob({
-    environment: validEnvironment(),
-    installSignalHandlers: false,
-    logger: (event) => failedEvents.push(event),
-    verifyManifest: () => fakeManifest(),
-    executePrisma: async () => ({ exitCode: 1, stdout: '', stderr: 'synthetic' }),
-  }));
-  assert.equal(failedEvents.filter((event) => event.event === 'migration.job.result').length, 1);
+  await assert.rejects(() =>
+    runGovernedMigrationJob({
+      environment: validEnvironment(),
+      installSignalHandlers: false,
+      logger: (event) => failedEvents.push(event),
+      verifyManifest: () => fakeManifest(),
+      executePrisma: async () => ({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'synthetic',
+      }),
+    }),
+  );
+  assert.equal(
+    failedEvents.filter((event) => event.event === 'migration.job.result')
+      .length,
+    1,
+  );
 });
 
 test('uses direct child execution with shell disabled', () => {
-  assert.match(runnerSource, /spawnProcess\(process\.execPath, \[prismaCliPath, \.\.\.args\]/u);
+  assert.match(
+    runnerSource,
+    /spawnProcess\(process\.execPath, \[prismaCliPath, \.\.\.args\]/u,
+  );
   assert.match(runnerSource, /shell: false/u);
   assert.doesNotMatch(runnerSource, /execSync|execFileSync|shell:\s*true/iu);
 });
@@ -778,21 +1015,30 @@ test('reports the second fake deploy as migration_noop', async () => {
 
 test('classifies validation failure stably', () => {
   assert.equal(
-    classifyCommandFailure('prisma-validate', { exitCode: 1, stderr: 'synthetic' }),
+    classifyCommandFailure('prisma-validate', {
+      exitCode: 1,
+      stderr: 'synthetic',
+    }),
     'migration_validation_failed',
   );
 });
 
 test('classifies an ordinary deploy failure stably', () => {
   assert.equal(
-    classifyCommandFailure('migrate-deploy', { exitCode: 1, stderr: 'synthetic' }),
+    classifyCommandFailure('migrate-deploy', {
+      exitCode: 1,
+      stderr: 'synthetic',
+    }),
     'migration_deploy_failed',
   );
 });
 
 test('classifies P3009 as a hard stop', () => {
   assert.equal(
-    classifyCommandFailure('migrate-deploy', { exitCode: 1, stderr: 'Error: P3009' }),
+    classifyCommandFailure('migrate-deploy', {
+      exitCode: 1,
+      stderr: 'Error: P3009',
+    }),
     'migration_p3009_detected',
   );
 });
@@ -809,7 +1055,10 @@ test('classifies equivalent failed migration history as a hard stop', () => {
 
 test('classifies ordinary migration status failure stably', () => {
   assert.equal(
-    classifyCommandFailure('migrate-status', { exitCode: 1, stderr: 'synthetic' }),
+    classifyCommandFailure('migrate-status', {
+      exitCode: 1,
+      stderr: 'synthetic',
+    }),
     'migration_status_failed',
   );
 });
@@ -941,7 +1190,9 @@ test('redacts database URLs, user info, query strings, and control bytes', () =>
 
 test('executes successful release operations serially in exact order', async () => {
   const calls = [];
-  const result = await runGovernedReleaseSequence(makeOperations(undefined, calls));
+  const result = await runGovernedReleaseSequence(
+    makeOperations(undefined, calls),
+  );
   assert.equal(result.status, 'succeeded');
   assert.deepEqual(calls, RELEASE_STAGE_IDS);
   assert.equal(result.events.length, RELEASE_STAGE_IDS.length * 2);
@@ -980,7 +1231,9 @@ test('Core Worker failure prevents every later role and traffic callback', async
 test('API no-traffic success does not promote traffic before smoke succeeds', async () => {
   const calls = [];
   await assert.rejects(() =>
-    runGovernedReleaseSequence(makeOperations('protected-readiness-and-smoke', calls)),
+    runGovernedReleaseSequence(
+      makeOperations('protected-readiness-and-smoke', calls),
+    ),
   );
   assert.ok(calls.includes('api-no-traffic-promotion'));
   assert.ok(!calls.includes('traffic-promotion'));
@@ -988,10 +1241,16 @@ test('API no-traffic success does not promote traffic before smoke succeeds', as
 
 test('Docker retains one final image, API default command, migration override, and non-root user', () => {
   const dockerfile = read('Dockerfile');
-  assert.equal((dockerfile.match(/^FROM runtime AS final$/gmu) ?? []).length, 1);
+  assert.equal(
+    (dockerfile.match(/^FROM runtime AS final$/gmu) ?? []).length,
+    1,
+  );
   assert.match(dockerfile, /^USER node$/mu);
   assert.match(dockerfile, /^CMD \["node", "dist\/main\.js"\]$/mu);
-  assert.match(dockerfile, /\/app\/scripts\/migrations \.\/scripts\/migrations/u);
+  assert.match(
+    dockerfile,
+    /\/app\/scripts\/migrations \.\/scripts\/migrations/u,
+  );
   assert.match(dockerfile, /\/app\/config\/deployment \.\/config\/deployment/u);
   assert.doesNotMatch(dockerfile, /AS migration|migration-image/iu);
 });
@@ -999,39 +1258,75 @@ test('Docker retains one final image, API default command, migration override, a
 test('retains the accepted G01 DML-only runtime role policy and migration allowance', () => {
   const bootstrap = read('scripts/database/prd3-g01-c-role-bootstrap.sql');
   const grants = read('scripts/database/prd3-g01-c-runtime-grants.sql');
-  assert.match(bootstrap, /GRANT CONNECT, CREATE ON DATABASE .* TO moazez_migration/u);
+  assert.match(
+    bootstrap,
+    /GRANT CONNECT, CREATE ON DATABASE .* TO moazez_migration/u,
+  );
   assert.match(grants, /GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES/u);
-  assert.match(grants, /REVOKE ALL PRIVILEGES ON TABLE public\._prisma_migrations/u);
-  assert.doesNotMatch(grants, /GRANT\s+(?:CREATE|TRUNCATE|REFERENCES|TRIGGER|OWNERSHIP)/iu);
+  assert.match(
+    grants,
+    /REVOKE ALL PRIVILEGES ON TABLE public\._prisma_migrations/u,
+  );
+  assert.doesNotMatch(
+    grants,
+    /GRANT\s+(?:CREATE|TRUNCATE|REFERENCES|TRIGGER|OWNERSHIP)/iu,
+  );
 });
 
-test('protects schema, migrations, dependencies, lockfile, APIs, and runtime ownership while covering final evidence', () => {
-  const protectedDiff = spawnSync(
-    'git',
-    [
-      'diff',
-      '--quiet',
-      'HEAD',
-      '--',
-      'prisma/schema.prisma',
-      'prisma/migrations',
-      'package-lock.json',
-      'src',
-    ],
-    { cwd: REPOSITORY_ROOT, windowsHide: true },
-  );
-  assert.equal(protectedDiff.status, 0);
-  const baselinePackage = JSON.parse(
-    spawnSync('git', ['show', 'HEAD:package.json'], {
-      cwd: REPOSITORY_ROOT,
-      encoding: 'utf8',
-      windowsHide: true,
-    }).stdout,
-  );
-  const candidatePackage = json('package.json');
-  assert.deepEqual(candidatePackage.dependencies, baselinePackage.dependencies);
-  assert.deepEqual(candidatePackage.devDependencies, baselinePackage.devDependencies);
+historicalTest(
+  'historical G04 scope protects schema, migrations, dependencies, lockfile, APIs, and runtime ownership',
+  () => {
+    const protectedDiff = spawnSync(
+      'git',
+      [
+        'diff',
+        '--quiet',
+        'HEAD',
+        '--',
+        'prisma/schema.prisma',
+        'prisma/migrations',
+        'package-lock.json',
+        'src',
+      ],
+      { cwd: REPOSITORY_ROOT, windowsHide: true },
+    );
+    assert.equal(protectedDiff.status, 0);
+    const baselinePackage = JSON.parse(
+      spawnSync('git', ['show', 'HEAD:package.json'], {
+        cwd: REPOSITORY_ROOT,
+        encoding: 'utf8',
+        windowsHide: true,
+      }).stdout,
+    );
+    const candidatePackage = json('package.json');
+    assert.deepEqual(
+      candidatePackage.dependencies,
+      baselinePackage.dependencies,
+    );
+    assert.deepEqual(
+      candidatePackage.devDependencies,
+      baselinePackage.devDependencies,
+    );
+  },
+);
+
+test('current G04 contract retains deterministic manifest and serial release enforcement', () => {
   assert.match(manifestSource, /fs\.lstatSync/u);
   assert.match(releaseGateSource, /for \(const stage of RELEASE_STAGE_IDS\)/u);
-  assert.ok(fs.existsSync(path.join(REPOSITORY_ROOT, 'scripts/ci/prd3-g04-governed-migration-job.cjs')));
+  assert.match(
+    harnessSource,
+    /resolveCiParentRunId\(\s*process\.env\.MOAZEZ_CI_PARENT_RUN_ID/u,
+  );
+  assert.match(
+    harnessSource,
+    /const RUN_LABEL = 'com\.moazez\.prd3-g04\.run'/u,
+  );
+  assert.ok(
+    fs.existsSync(
+      path.join(
+        REPOSITORY_ROOT,
+        'scripts/ci/prd3-g04-governed-migration-job.cjs',
+      ),
+    ),
+  );
 });

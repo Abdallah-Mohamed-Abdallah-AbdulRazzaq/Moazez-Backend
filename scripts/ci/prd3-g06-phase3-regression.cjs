@@ -31,13 +31,318 @@ const FAILURE_CLASSIFICATIONS = Object.freeze([
   'FLAKE',
   'UNCLASSIFIED',
 ]);
+const PHASE3_CERTIFICATION_RELATIVE_PATH = Object.freeze([
+  'docs',
+  'production-readiness',
+  'phase-3',
+  'phase-3-certification.json',
+]);
+const PHASE3_CLOSEOUT_RELATIVE_PATH = Object.freeze([
+  'docs',
+  'production-readiness',
+  'phase-3',
+  '10-phase-3-closeout.md',
+]);
+
+function deepFreeze(value) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value))
+    return value;
+  for (const entry of Object.values(value)) deepFreeze(entry);
+  return Object.freeze(value);
+}
+
+const EXPECTED_PHASE3_CERTIFICATION = deepFreeze({
+  schemaVersion: 1,
+  recordType: 'PHASE_3_HISTORICAL_CERTIFICATION',
+  sourceCloseout: 'docs/production-readiness/phase-3/10-phase-3-closeout.md',
+  gateStatuses: {
+    'PRD3-G01': 'COMPLETE',
+    'PRD3-G02': 'COMPLETE',
+    'PRD3-G03': 'COMPLETE',
+    'PRD3-G04': 'COMPLETE',
+    'PRD3-G05': 'COMPLETE',
+    'PRD3-G06': 'COMPLETE',
+    PHASE_3: 'COMPLETE',
+  },
+  candidate: {
+    sha: '7cb6123345b4f3ae7ca068162a72b9766df2f61a',
+    treeSha: '84ba9e1565664fdd608bf9762513f75e428afa64',
+    implementationPullRequest: 64,
+    acceptedRuns: [
+      {
+        workflow: 'Phase 3 Production Readiness Gate',
+        runId: '31335626732',
+        result: 'PASS',
+      },
+      {
+        workflow: 'Universal Regression Gate',
+        runId: '31335626733',
+        result: 'PASS',
+      },
+      {
+        workflow: 'Learning Media Integrity',
+        runId: '31335626741',
+        result: 'PASS',
+      },
+      {
+        workflow: 'Migration Integrity',
+        runId: '31335626750',
+        result: 'PASS',
+      },
+      {
+        workflow: 'School Email Delivery Integrity',
+        runId: '31335626760',
+        result: 'PASS',
+      },
+      {
+        workflow: 'Learning Content Integrity',
+        runId: '31335626772',
+        result: 'PASS',
+      },
+    ],
+    acceptedArtifacts: [
+      {
+        workflow: 'Phase 3 Production Readiness Gate',
+        runId: '31335626732',
+        artifactId: '9044367140',
+        name: 'phase-3-regression-summary-31335626732',
+        digest:
+          'sha256:82fe3a813229d64ec6eddd60b0c56534b3a9cb06b6da1af30bb997c72f0d7fb3',
+      },
+      {
+        workflow: 'Universal Regression Gate',
+        runId: '31335626733',
+        artifactId: '9044816985',
+        name: 'universal-regression-summary-31335626733',
+        digest:
+          'sha256:ce192d2cd289c93f006f7025a5891a5671ed1f4fff494b3796ea1711f54a2bb8',
+      },
+    ],
+  },
+  merge: {
+    sha: '84f06b3f33a4ebde0adff4295ef00832fc13e71f',
+    treeSha: '84ba9e1565664fdd608bf9762513f75e428afa64',
+    acceptedRuns: [
+      {
+        workflow: 'Phase 3 Production Readiness Gate',
+        runId: '31341994401',
+        result: 'PASS',
+      },
+      {
+        workflow: 'Learning Media Integrity',
+        runId: '31341994422',
+        result: 'PASS',
+      },
+      {
+        workflow: 'Migration Integrity',
+        runId: '31341994413',
+        result: 'PASS',
+      },
+      {
+        workflow: 'School Email Delivery Integrity',
+        runId: '31341994424',
+        result: 'PASS',
+      },
+      {
+        workflow: 'Learning Content Integrity',
+        runId: '31341994412',
+        result: 'PASS',
+      },
+    ],
+    acceptedArtifacts: [
+      {
+        workflow: 'Phase 3 Production Readiness Gate',
+        runId: '31341994401',
+        artifactId: '9046228928',
+        name: 'phase-3-regression-summary-31341994401',
+        digest:
+          'sha256:f33e5ddc8bd55ba840fec3dac6cf60b4f6ee5489e2621e994b4b175e0d96735d',
+      },
+    ],
+  },
+  deferredDebts: {
+    providerCleanup: {
+      record: 'PRD3_G01_PROVIDER_CLEANUP',
+      status: 'DEFERRED_NON_BLOCKING_PROVIDER_DEBT',
+    },
+    postMergeUniversalVerification: {
+      record: 'POST_MERGE_UNIVERSAL_VERIFICATION',
+      status: 'DEFERRED_NON_BLOCKING_UNCLASSIFIED_VERIFICATION_DEBT',
+      state: 'OPEN',
+      ownerDisposition: 'OWNER_ACCEPTED_DEFERRED_NON_BLOCKING',
+      acceptedOn: '2026-08-10',
+      timezone: 'Africa/Cairo',
+      classification: 'UNCLASSIFIED',
+      investigation: 'DEFERRED',
+      runId: '31341994408',
+      sha: '84f06b3f33a4ebde0adff4295ef00832fc13e71f',
+      result: 'FAIL',
+      artifactId: '9046807202',
+      artifactName: 'universal-regression-summary-31341994408',
+      artifactDigest:
+        'sha256:62f130053b7a2f43c4b196bfd9f93adc145fe1326aabbe84819ddc35deeadc95',
+      requiredResultRecords: 87,
+      skippedTests: 0,
+      failedTests: 1,
+      failedStage: 'e2e_13',
+      notClassifiedAs: [
+        'GITHUB_FAILURE',
+        'CI_FAILURE',
+        'JEST_FAILURE',
+        'FLAKE',
+        'TEST_DEFECT',
+        'PRODUCT_DEFECT',
+      ],
+    },
+  },
+});
+
+const PHASE3_CLOSEOUT_CONTRACT_TOKENS = Object.freeze([
+  [
+    'gate completion',
+    [
+      'PRD3_G01: COMPLETE',
+      'PRD3_G02: COMPLETE',
+      'PRD3_G03: COMPLETE',
+      'PRD3_G04: COMPLETE',
+      'PRD3_G05: COMPLETE',
+      'PRD3_G06: COMPLETE',
+      'PHASE_3: COMPLETE',
+    ].join('\n'),
+  ],
+  [
+    'debt status block',
+    [
+      'PRD3_G01_PROVIDER_CLEANUP: DEFERRED_NON_BLOCKING_PROVIDER_DEBT',
+      'POST_MERGE_UNIVERSAL_VERIFICATION: DEFERRED_NON_BLOCKING_UNCLASSIFIED_VERIFICATION_DEBT',
+    ].join('\n'),
+  ],
+  [
+    'implementation identity',
+    [
+      '- Final implementation candidate:',
+      '  `7cb6123345b4f3ae7ca068162a72b9766df2f61a`.',
+      '- Implementation PR: #64.',
+      '- Implementation merge SHA:',
+      '  `84f06b3f33a4ebde0adff4295ef00832fc13e71f`.',
+      '- The final candidate tree and implementation merge tree are identical:',
+      '  `84ba9e1565664fdd608bf9762513f75e428afa64`.',
+    ].join('\n'),
+  ],
+  [
+    'candidate run table',
+    [
+      '| Phase 3 Production Readiness Gate | `31335626732` | PASS |',
+      '| Universal Regression Gate | `31335626733` | PASS |',
+      '| Learning Media Integrity | `31335626741` | PASS |',
+      '| Migration Integrity | `31335626750` | PASS |',
+      '| School Email Delivery Integrity | `31335626760` | PASS |',
+      '| Learning Content Integrity | `31335626772` | PASS |',
+    ].join('\n'),
+  ],
+  [
+    'candidate Phase 3 artifact',
+    [
+      'The Phase 3 gate produced artifact ID `9044367140`, named',
+      '`phase-3-regression-summary-31335626732`, with digest',
+      '`sha256:82fe3a813229d64ec6eddd60b0c56534b3a9cb06b6da1af30bb997c72f0d7fb3`.',
+    ].join('\n'),
+  ],
+  [
+    'candidate Universal artifact',
+    [
+      'The accepted G06 evidence is Universal Regression run `31335626733`. It',
+      'produced artifact ID `9044816985`, named',
+      '`universal-regression-summary-31335626733`, with digest',
+      '`sha256:ce192d2cd289c93f006f7025a5891a5671ed1f4fff494b3796ea1711f54a2bb8`.',
+    ].join('\n'),
+  ],
+  [
+    'merge run table',
+    [
+      '| Phase 3 Production Readiness Gate | `31341994401` | PASS |',
+      '| Learning Media Integrity | `31341994422` | PASS |',
+      '| Migration Integrity | `31341994413` | PASS |',
+      '| School Email Delivery Integrity | `31341994424` | PASS |',
+      '| Learning Content Integrity | `31341994412` | PASS |',
+    ].join('\n'),
+  ],
+  [
+    'merge Phase 3 artifact',
+    [
+      'Phase 3 run `31341994401` produced artifact ID `9046228928`, named',
+      '`phase-3-regression-summary-31341994401`, with digest',
+      '`sha256:f33e5ddc8bd55ba840fec3dac6cf60b4f6ee5489e2621e994b4b175e0d96735d`.',
+    ].join('\n'),
+  ],
+  [
+    'deferred Universal evidence',
+    [
+      '| Workflow | Universal Regression Gate |',
+      '| Run | `31341994408` |',
+      '| SHA | `84f06b3f33a4ebde0adff4295ef00832fc13e71f` |',
+      '| Result | FAIL |',
+      '| Artifact ID | `9046807202` |',
+      '| Artifact name | `universal-regression-summary-31341994408` |',
+      '| Artifact digest | `sha256:62f130053b7a2f43c4b196bfd9f93adc145fe1326aabbe84819ddc35deeadc95` |',
+    ].join('\n'),
+  ],
+  [
+    'deferred Universal result counts',
+    [
+      'The machine-readable artifact records 87 required result records, 0 skipped',
+      'tests, and exactly 1 failed test. The failing stage is `e2e_13`, labeled',
+    ].join('\n'),
+  ],
+  [
+    'owner debt classification',
+    '> Owner-accepted deferred, non-blocking, UNCLASSIFIED post-merge verification debt.',
+  ],
+  [
+    'owner debt disposition',
+    [
+      'On 2026-08-10, Africa/Cairo, the Owner accepted deferring investigation and',
+      'rerun of this result.',
+    ].join('\n'),
+  ],
+  [
+    'prohibited debt reclassification',
+    [
+      'It is not classified as a GitHub failure, CI failure,',
+      'Jest failure, flake, test defect, or product defect. Root-cause classification',
+      'is intentionally deferred and remains `UNCLASSIFIED`.',
+    ].join('\n'),
+  ],
+  [
+    'provider debt preservation',
+    [
+      'PRD3-G01=COMPLETE',
+      'PRD3-G01-PROVIDER-CLEANUP=DEFERRED_NON_BLOCKING_PROVIDER_DEBT',
+    ].join('\n'),
+  ],
+]);
 
 const STAGE_PLAN = Object.freeze([
   stage('G01-A', 'npm', ['run', 'verify:prd3-g01-a']),
   stage('G01-B3', 'npm', ['run', 'verify:prd3-g01-b3-tests']),
-  stage('PRISMA_VALIDATE', 'npx', ['prisma', 'validate'], PRISMA_SCHEMA_ENVIRONMENT),
-  stage('PRISMA_GENERATE', 'npx', ['prisma', 'generate'], PRISMA_SCHEMA_ENVIRONMENT),
-  stage('G01-C', 'npm', ['run', 'verify:prd3-g01-c-final', '--', '--regression']),
+  stage(
+    'PRISMA_VALIDATE',
+    'npx',
+    ['prisma', 'validate'],
+    PRISMA_SCHEMA_ENVIRONMENT,
+  ),
+  stage(
+    'PRISMA_GENERATE',
+    'npx',
+    ['prisma', 'generate'],
+    PRISMA_SCHEMA_ENVIRONMENT,
+  ),
+  stage('G01-C', 'npm', [
+    'run',
+    'verify:prd3-g01-c-final',
+    '--',
+    '--regression',
+  ]),
   stage('G02', 'npm', ['run', 'verify:prd3-g02-final']),
   stage('G03', 'npm', ['run', 'verify:prd3-g03-final']),
   stage('G04', 'npm', ['run', 'verify:prd3-g04-final', '--', '--regression']),
@@ -65,7 +370,10 @@ function resolveSummaryPath(environment = process.env) {
 
 function redactText(value) {
   return String(value ?? '')
-    .replace(/\b(?:postgres(?:ql)?|redis|rediss):\/\/[^\s"'`]+/giu, '[REDACTED_URL]')
+    .replace(
+      /\b(?:postgres(?:ql)?|redis|rediss):\/\/[^\s"'`]+/giu,
+      '[REDACTED_URL]',
+    )
     .replace(
       /\b(DATABASE_URL|QUEUE_REDIS_URL|REALTIME_REDIS_URL)\b\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,}]+)/giu,
       '$1=[REDACTED]',
@@ -125,7 +433,11 @@ function resolveStageInvocation(stageDefinition, options = {}) {
   const platform = options.platform ?? process.platform;
   const pathImplementation = platform === 'win32' ? path.win32 : path.posix;
   const npmCliPath = npmExecPath.trim();
-  assert.equal(pathImplementation.isAbsolute(npmCliPath), true, 'npm_execpath must be absolute');
+  assert.equal(
+    pathImplementation.isAbsolute(npmCliPath),
+    true,
+    'npm_execpath must be absolute',
+  );
   assert.equal(
     pathImplementation.basename(npmCliPath),
     'npm-cli.js',
@@ -137,7 +449,10 @@ function resolveStageInvocation(stageDefinition, options = {}) {
   const cliPath =
     stageDefinition.executable === 'npm'
       ? npmCliPath
-      : pathImplementation.join(pathImplementation.dirname(npmCliPath), 'npx-cli.js');
+      : pathImplementation.join(
+          pathImplementation.dirname(npmCliPath),
+          'npx-cli.js',
+        );
   if (stageDefinition.executable === 'npx') {
     assert.equal(fileExists(cliPath), true, 'npx-cli.js does not exist');
   }
@@ -179,8 +494,10 @@ function classifyFailure(output, error) {
   if (/cleanup|teardown|owned .*remaining|resource leak/iu.test(text)) {
     return 'TEARDOWN_FAILURE';
   }
-  if (/permission denied|EACCES|EPERM/iu.test(text)) return 'PERMISSION_FAILURE';
-  if (/artifact|manifest|checksum|sha256/iu.test(text)) return 'ARTIFACT_FAILURE';
+  if (/permission denied|EACCES|EPERM/iu.test(text))
+    return 'PERMISSION_FAILURE';
+  if (/artifact|manifest|checksum|sha256/iu.test(text))
+    return 'ARTIFACT_FAILURE';
   if (/ENOENT|not recognized|not found|timed out|timeout/iu.test(text)) {
     return 'ENVIRONMENT_FAILURE';
   }
@@ -249,13 +566,14 @@ function runStagePlan(options = {}) {
       status,
       classification:
         status === 'FAIL'
-          ? execution.classification ?? classifyFailure(execution.output, execution.error)
+          ? (execution.classification ??
+            classifyFailure(execution.output, execution.error))
           : null,
     };
     if (status === 'FAIL') {
-      record.failure = redactText(execution.error || execution.output || 'stage failed').slice(
-        -8000,
-      );
+      record.failure = redactText(
+        execution.error || execution.output || 'stage failed',
+      ).slice(-8000);
       failed = stageDefinition.required;
     }
     records.push(record);
@@ -266,10 +584,12 @@ function runStagePlan(options = {}) {
 function deriveStageCounts(stages) {
   return {
     requiredStageCount: stages.filter((entry) => entry.required).length,
-    passedStageCount: stages.filter((entry) => entry.required && entry.status === 'PASS')
-      .length,
-    failedStageCount: stages.filter((entry) => entry.required && entry.status === 'FAIL')
-      .length,
+    passedStageCount: stages.filter(
+      (entry) => entry.required && entry.status === 'PASS',
+    ).length,
+    failedStageCount: stages.filter(
+      (entry) => entry.required && entry.status === 'FAIL',
+    ).length,
     blockedStageCount: stages.filter(
       (entry) => entry.required && entry.status === 'BLOCKED',
     ).length,
@@ -295,7 +615,10 @@ function runGit(args, options = {}) {
     shell: false,
     windowsHide: true,
   });
-  if (result.error || ![...(options.allowedStatuses ?? [0])].includes(result.status)) {
+  if (
+    result.error ||
+    ![...(options.allowedStatuses ?? [0])].includes(result.status)
+  ) {
     throw new Error(options.label ?? `git ${args[0]} failed`);
   }
   return result;
@@ -305,8 +628,8 @@ function changedPaths(repositoryRoot = REPOSITORY_ROOT) {
   return runGit(['status', '--porcelain=v1', '--untracked-files=all'], {
     repositoryRoot,
     label: 'working-tree inspection failed',
-  }).stdout
-    .split(/\r?\n/u)
+  })
+    .stdout.split(/\r?\n/u)
     .filter(Boolean)
     .map((line) => line.slice(3).replaceAll('\\', '/'))
     .sort();
@@ -317,7 +640,9 @@ function inspectRepositoryState(repositoryRoot = REPOSITORY_ROOT) {
     repositoryRoot,
     label: 'HEAD is not resolvable',
   }).stdout.trim();
-  const branch = runGit(['branch', '--show-current'], { repositoryRoot }).stdout.trim() || 'HEAD';
+  const branch =
+    runGit(['branch', '--show-current'], { repositoryRoot }).stdout.trim() ||
+    'HEAD';
   const index = runGit(['diff', '--cached', '--quiet'], {
     repositoryRoot,
     allowedStatuses: [0, 1],
@@ -341,7 +666,9 @@ function inspectRepositoryState(repositoryRoot = REPOSITORY_ROOT) {
     changedPaths: paths,
     productionSourceChanged: paths.some((entry) => entry.startsWith('src/')),
     prismaSchemaChanged: paths.includes('prisma/schema.prisma'),
-    migrationFilesChanged: paths.some((entry) => entry.startsWith('prisma/migrations/')),
+    migrationFilesChanged: paths.some((entry) =>
+      entry.startsWith('prisma/migrations/'),
+    ),
     seedSourceChanged: paths.some((entry) => entry.startsWith('prisma/seeds/')),
     dependencyChanged: !isDeepStrictEqual(
       currentPackage.dependencies,
@@ -356,68 +683,78 @@ function inspectRepositoryState(repositoryRoot = REPOSITORY_ROOT) {
 }
 
 function validateExactCandidateState(state) {
-  assert.match(state.headSha, /^[0-9a-f]{40}$/u, 'HEAD must resolve to a commit SHA');
+  assert.match(
+    state.headSha,
+    /^[0-9a-f]{40}$/u,
+    'HEAD must resolve to a commit SHA',
+  );
   assert.equal(state.nodeVersion, REQUIRED_NODE_VERSION, 'wrong Node version');
   assert.equal(state.indexClean, true, 'Git index must be clean');
   assert.equal(state.workingTreeClean, true, 'working tree must be clean');
-  assert.equal(state.dependencyChanged, false, 'dependency drift is not permitted');
-  assert.equal(state.devDependencyChanged, false, 'devDependency drift is not permitted');
+  assert.equal(
+    state.dependencyChanged,
+    false,
+    'dependency drift is not permitted',
+  );
+  assert.equal(
+    state.devDependencyChanged,
+    false,
+    'devDependency drift is not permitted',
+  );
   return true;
 }
 
-function exactAssignment(source, name, expected) {
-  const matches = source.match(new RegExp(`^${name}=${expected}$`, 'gmu')) ?? [];
-  assert.equal(matches.length, 1, `${name} governance state mismatch`);
+function normalizeLineEndings(source) {
+  return String(source).replace(/\r\n/gu, '\n');
 }
 
-function validateGovernanceSources(matrix, providerDisposition) {
-  exactAssignment(matrix, 'PRD3-G01', 'COMPLETE');
-  exactAssignment(
-    matrix,
-    'PRD3-G01-PROVIDER-CLEANUP',
-    'DEFERRED_NON_BLOCKING_PROVIDER_DEBT',
+function validateHistoricalPhase3Certification(certification, closeoutText) {
+  assert.deepEqual(
+    certification,
+    EXPECTED_PHASE3_CERTIFICATION,
+    'frozen Phase 3 certification record mismatch',
   );
-  for (const gate of ['PRD3-G02', 'PRD3-G03', 'PRD3-G04', 'PRD3-G05']) {
-    exactAssignment(matrix, gate, 'IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE');
+  const normalizedCloseout = normalizeLineEndings(closeoutText);
+  for (const [label, token] of PHASE3_CLOSEOUT_CONTRACT_TOKENS) {
+    assert.equal(
+      normalizedCloseout.includes(token),
+      true,
+      `Phase 3 closeout ${label} mismatch`,
+    );
   }
-  exactAssignment(matrix, 'PRD3-G06', 'NOT_STARTED');
-  exactAssignment(providerDisposition, 'NEW_CONSUMERS_ALLOWED', 'NO');
-  exactAssignment(providerDisposition, 'PRODUCTION_REUSE_ALLOWED', 'NO');
-  exactAssignment(providerDisposition, 'PHASE_3', 'ACTIVE');
-  exactAssignment(providerDisposition, 'PRODUCTION_TRAFFIC_ALLOWED', 'NO');
+
+  const postMergeDebt =
+    certification.deferredDebts.postMergeUniversalVerification;
   return {
     g01State: 'COMPLETE',
     g01ProviderCleanupDebtState: 'DEFERRED_NON_BLOCKING_PROVIDER_DEBT',
-    g02State: 'IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
-    g03State: 'IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
-    g04State: 'IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
-    g05State: 'IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
+    g02State: 'COMPLETE',
+    g03State: 'COMPLETE',
+    g04State: 'COMPLETE',
+    g05State: 'COMPLETE',
+    g06State: 'COMPLETE',
+    phase3State: 'COMPLETE',
+    historicalCertificationState: 'COMPLETE',
+    certifiedCandidateSha: certification.candidate.sha,
+    certifiedMergeSha: certification.merge.sha,
+    certifiedTreeSha: certification.candidate.treeSha,
+    postMergeUniversalVerificationDebtState: postMergeDebt.status,
+    postMergeUniversalVerificationClassification: postMergeDebt.classification,
   };
 }
 
 function readGovernance(repositoryRoot = REPOSITORY_ROOT) {
-  return validateGovernanceSources(
+  const certification = JSON.parse(
     fs.readFileSync(
-      path.join(
-        repositoryRoot,
-        'docs',
-        'production-readiness',
-        'phase-0',
-        '03-acceptance-and-risk-matrix.md',
-      ),
-      'utf8',
-    ),
-    fs.readFileSync(
-      path.join(
-        repositoryRoot,
-        'docs',
-        'production-readiness',
-        'phase-3',
-        '09-g01-provider-retention-disposition.md',
-      ),
+      path.join(repositoryRoot, ...PHASE3_CERTIFICATION_RELATIVE_PATH),
       'utf8',
     ),
   );
+  const closeout = fs.readFileSync(
+    path.join(repositoryRoot, ...PHASE3_CLOSEOUT_RELATIVE_PATH),
+    'utf8',
+  );
+  return validateHistoricalPhase3Certification(certification, closeout);
 }
 
 function baseSummary(state, governance, startedAt) {
@@ -442,7 +779,7 @@ function baseSummary(state, governance, startedAt) {
     seedSourceChanged: state.seedSourceChanged,
     dependencyChanged: state.dependencyChanged || state.devDependencyChanged,
     lockfileChanged: state.lockfileChanged,
-    cleanup: 'FAIL',
+    cleanup: 'NOT_REQUIRED',
     overall: 'FAIL',
     exitCode: 1,
     aborted: true,
@@ -452,7 +789,10 @@ function baseSummary(state, governance, startedAt) {
 
 function computeSummarySha256(summary) {
   const hashable = { ...sanitizeJson(summary), summarySha256: null };
-  return crypto.createHash('sha256').update(JSON.stringify(hashable)).digest('hex');
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify(hashable))
+    .digest('hex');
 }
 
 function validateSummary(summary, options = {}) {
@@ -460,14 +800,21 @@ function validateSummary(summary, options = {}) {
   assert.equal(summary.gate, 'PRD3-G06');
   assert.equal(summary.mode, 'exact-candidate');
   assert.match(summary.headSha, /^[0-9a-f]{40}$/u);
-  assert.equal(summary.stages.length, STAGE_PLAN.length, 'missing required stage');
+  assert.equal(
+    summary.stages.length,
+    STAGE_PLAN.length,
+    'missing required stage',
+  );
   for (const [index, requiredStage] of STAGE_PLAN.entries()) {
     const record = summary.stages[index];
     assert.equal(record.id, requiredStage.id, 'required stage order mismatch');
     assert.equal(record.executable, requiredStage.executable);
     assert.deepEqual(record.args, [...requiredStage.args]);
     assert.equal(record.required, true);
-    assert.ok(ALLOWED_STAGE_STATUSES.includes(record.status), 'invalid stage status');
+    assert.ok(
+      ALLOWED_STAGE_STATUSES.includes(record.status),
+      'invalid stage status',
+    );
     assert.ok(record.durationMs >= 0);
     if (record.status === 'PASS') assert.equal(record.exitCode, 0);
     if (record.status === 'FAIL') {
@@ -477,7 +824,9 @@ function validateSummary(summary, options = {}) {
     if (record.status === 'BLOCKED') assert.equal(record.exitCode, null);
   }
   const counts = deriveStageCounts(summary.stages);
-  for (const [key, value] of Object.entries(counts)) assert.equal(summary[key], value);
+  for (const [key, value] of Object.entries(counts))
+    assert.equal(summary[key], value);
+  assert.ok(['PASS', 'FAIL', 'NOT_REQUIRED'].includes(summary.cleanup));
   assert.ok(['PASS', 'FAIL'].includes(summary.overall));
   if (summary.overall === 'PASS') {
     assert.equal(deriveOverall(summary.stages, true), 'PASS');
@@ -486,6 +835,13 @@ function validateSummary(summary, options = {}) {
     assert.equal(summary.cleanup, 'PASS');
   } else {
     assert.equal(summary.exitCode, 1);
+    if (
+      summary.passedStageCount === 0 &&
+      summary.failedStageCount === 0 &&
+      summary.blockedStageCount === STAGE_PLAN.length
+    ) {
+      assert.equal(summary.cleanup, 'NOT_REQUIRED');
+    }
   }
   if (options.requireHash !== false) {
     assert.equal(summary.summarySha256, computeSummarySha256(summary));
@@ -499,13 +855,20 @@ function writeSummary(summaryPath, summary) {
   validateSummary(sanitized);
   fs.mkdirSync(path.dirname(summaryPath), { recursive: true });
   const temporaryPath = `${summaryPath}.${process.pid}.tmp`;
-  fs.writeFileSync(temporaryPath, `${JSON.stringify(sanitized, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(
+    temporaryPath,
+    `${JSON.stringify(sanitized, null, 2)}\n`,
+    'utf8',
+  );
   fs.renameSync(temporaryPath, summaryPath);
   return sanitized;
 }
 
 function finalizeSummary(summary, stages, finalState, finishedAt) {
-  const overall = deriveOverall(stages, finalState.workingTreeClean && finalState.indexClean);
+  const overall = deriveOverall(
+    stages,
+    finalState.workingTreeClean && finalState.indexClean,
+  );
   return {
     ...summary,
     finishedAt,
@@ -515,7 +878,8 @@ function finalizeSummary(summary, stages, finalState, finishedAt) {
     prismaSchemaChanged: finalState.prismaSchemaChanged,
     migrationFilesChanged: finalState.migrationFilesChanged,
     seedSourceChanged: finalState.seedSourceChanged,
-    dependencyChanged: finalState.dependencyChanged || finalState.devDependencyChanged,
+    dependencyChanged:
+      finalState.dependencyChanged || finalState.devDependencyChanged,
     lockfileChanged: finalState.lockfileChanged,
     cleanup: overall === 'PASS' ? 'PASS' : 'FAIL',
     overall,
@@ -540,7 +904,12 @@ function main() {
 
     const stages = runStagePlan();
     const finalState = inspectRepositoryState();
-    summary = finalizeSummary(summary, stages, finalState, new Date().toISOString());
+    summary = finalizeSummary(
+      summary,
+      stages,
+      finalState,
+      new Date().toISOString(),
+    );
   } catch (error) {
     const fallbackState = state ?? {
       headSha: '0000000000000000000000000000000000000000',
@@ -563,10 +932,20 @@ function main() {
       g03State: 'UNKNOWN',
       g04State: 'UNKNOWN',
       g05State: 'UNKNOWN',
+      g06State: 'UNKNOWN',
+      phase3State: 'UNKNOWN',
+      historicalCertificationState: 'UNKNOWN',
+      certifiedCandidateSha: 'UNKNOWN',
+      certifiedMergeSha: 'UNKNOWN',
+      certifiedTreeSha: 'UNKNOWN',
+      postMergeUniversalVerificationDebtState: 'UNKNOWN',
+      postMergeUniversalVerificationClassification: 'UNKNOWN',
     };
     summary = baseSummary(fallbackState, fallbackGovernance, startedAt);
     summary.finishedAt = new Date().toISOString();
-    summary.failure = redactText(error instanceof Error ? error.message : error);
+    summary.failure = redactText(
+      error instanceof Error ? error.message : error,
+    );
   }
 
   const written = writeSummary(summaryPath, summary);
@@ -580,7 +959,10 @@ if (require.main === module) process.exitCode = main();
 
 module.exports = {
   ALLOWED_STAGE_STATUSES,
+  EXPECTED_PHASE3_CERTIFICATION,
   FAILURE_CLASSIFICATIONS,
+  PHASE3_CERTIFICATION_RELATIVE_PATH,
+  PHASE3_CLOSEOUT_RELATIVE_PATH,
   REQUIRED_NODE_VERSION,
   STAGE_PLAN,
   baseSummary,
@@ -602,7 +984,8 @@ module.exports = {
   stageEnvironment,
   executeFixedStage,
   validateExactCandidateState,
-  validateGovernanceSources,
+  validateGovernanceSources: validateHistoricalPhase3Certification,
+  validateHistoricalPhase3Certification,
   validateSummary,
   writeSummary,
 };

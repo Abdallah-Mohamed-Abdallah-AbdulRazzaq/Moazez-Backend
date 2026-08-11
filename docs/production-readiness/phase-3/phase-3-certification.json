@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "recordType": "PHASE_3_HISTORICAL_CERTIFICATION",
+  "sourceCloseout": "docs/production-readiness/phase-3/10-phase-3-closeout.md",
+  "gateStatuses": {
+    "PRD3-G01": "COMPLETE",
+    "PRD3-G02": "COMPLETE",
+    "PRD3-G03": "COMPLETE",
+    "PRD3-G04": "COMPLETE",
+    "PRD3-G05": "COMPLETE",
+    "PRD3-G06": "COMPLETE",
+    "PHASE_3": "COMPLETE"
+  },
+  "candidate": {
+    "sha": "7cb6123345b4f3ae7ca068162a72b9766df2f61a",
+    "treeSha": "84ba9e1565664fdd608bf9762513f75e428afa64",
+    "implementationPullRequest": 64,
+    "acceptedRuns": [
+      {
+        "workflow": "Phase 3 Production Readiness Gate",
+        "runId": "31335626732",
+        "result": "PASS"
+      },
+      {
+        "workflow": "Universal Regression Gate",
+        "runId": "31335626733",
+        "result": "PASS"
+      },
+      {
+        "workflow": "Learning Media Integrity",
+        "runId": "31335626741",
+        "result": "PASS"
+      },
+      {
+        "workflow": "Migration Integrity",
+        "runId": "31335626750",
+        "result": "PASS"
+      },
+      {
+        "workflow": "School Email Delivery Integrity",
+        "runId": "31335626760",
+        "result": "PASS"
+      },
+      {
+        "workflow": "Learning Content Integrity",
+        "runId": "31335626772",
+        "result": "PASS"
+      }
+    ],
+    "acceptedArtifacts": [
+      {
+        "workflow": "Phase 3 Production Readiness Gate",
+        "runId": "31335626732",
+        "artifactId": "9044367140",
+        "name": "phase-3-regression-summary-31335626732",
+        "digest": "sha256:82fe3a813229d64ec6eddd60b0c56534b3a9cb06b6da1af30bb997c72f0d7fb3"
+      },
+      {
+        "workflow": "Universal Regression Gate",
+        "runId": "31335626733",
+        "artifactId": "9044816985",
+        "name": "universal-regression-summary-31335626733",
+        "digest": "sha256:ce192d2cd289c93f006f7025a5891a5671ed1f4fff494b3796ea1711f54a2bb8"
+      }
+    ]
+  },
+  "merge": {
+    "sha": "84f06b3f33a4ebde0adff4295ef00832fc13e71f",
+    "treeSha": "84ba9e1565664fdd608bf9762513f75e428afa64",
+    "acceptedRuns": [
+      {
+        "workflow": "Phase 3 Production Readiness Gate",
+        "runId": "31341994401",
+        "result": "PASS"
+      },
+      {
+        "workflow": "Learning Media Integrity",
+        "runId": "31341994422",
+        "result": "PASS"
+      },
+      {
+        "workflow": "Migration Integrity",
+        "runId": "31341994413",
+        "result": "PASS"
+      },
+      {
+        "workflow": "School Email Delivery Integrity",
+        "runId": "31341994424",
+        "result": "PASS"
+      },
+      {
+        "workflow": "Learning Content Integrity",
+        "runId": "31341994412",
+        "result": "PASS"
+      }
+    ],
+    "acceptedArtifacts": [
+      {
+        "workflow": "Phase 3 Production Readiness Gate",
+        "runId": "31341994401",
+        "artifactId": "9046228928",
+        "name": "phase-3-regression-summary-31341994401",
+        "digest": "sha256:f33e5ddc8bd55ba840fec3dac6cf60b4f6ee5489e2621e994b4b175e0d96735d"
+      }
+    ]
+  },
+  "deferredDebts": {
+    "providerCleanup": {
+      "record": "PRD3_G01_PROVIDER_CLEANUP",
+      "status": "DEFERRED_NON_BLOCKING_PROVIDER_DEBT"
+    },
+    "postMergeUniversalVerification": {
+      "record": "POST_MERGE_UNIVERSAL_VERIFICATION",
+      "status": "DEFERRED_NON_BLOCKING_UNCLASSIFIED_VERIFICATION_DEBT",
+      "state": "OPEN",
+      "ownerDisposition": "OWNER_ACCEPTED_DEFERRED_NON_BLOCKING",
+      "acceptedOn": "2026-08-10",
+      "timezone": "Africa/Cairo",
+      "classification": "UNCLASSIFIED",
+      "investigation": "DEFERRED",
+      "runId": "31341994408",
+      "sha": "84f06b3f33a4ebde0adff4295ef00832fc13e71f",
+      "result": "FAIL",
+      "artifactId": "9046807202",
+      "artifactName": "universal-regression-summary-31341994408",
+      "artifactDigest": "sha256:62f130053b7a2f43c4b196bfd9f93adc145fe1326aabbe84819ddc35deeadc95",
+      "requiredResultRecords": 87,
+      "skippedTests": 0,
+      "failedTests": 1,
+      "failedStage": "e2e_13",
+      "notClassifiedAs": [
+        "GITHUB_FAILURE",
+        "CI_FAILURE",
+        "JEST_FAILURE",
+        "FLAKE",
+        "TEST_DEFECT",
+        "PRODUCT_DEFECT"
+      ]
+    }
+  }
+}

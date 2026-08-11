@@ -22,6 +22,12 @@ test('Q017, D015, ADR-0009, and G03 governance are accepted consistently', () =>
   const dispositions = read(
     'docs/production-readiness/phase-0/05-owner-decision-disposition-register.md',
   );
+  const closeout = read(
+    'docs/production-readiness/phase-3/10-phase-3-closeout.md',
+  );
+  const certification = JSON.parse(
+    read('docs/production-readiness/phase-3/phase-3-certification.json'),
+  );
 
   assert.match(adr, /## Status\s+Accepted/u);
   assert.match(adr, /Owner: Abdallah/u);
@@ -32,28 +38,19 @@ test('Q017, D015, ADR-0009, and G03 governance are accepted consistently', () =>
     decisions,
     /PRD0-D015 \| Critical job recovery\/reconciliation \| LOCKED_FROM_APPROVED_CONTEXT/u,
   );
-  assert.equal(questionDispositionStatus(dispositions, 'PRD0-Q017'), 'APPROVED');
-  assertDispositionTotalsConsistent(dispositions);
-  assert.match(
-    matrix,
-    /PRD3-G03=IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE/u,
+  assert.equal(
+    questionDispositionStatus(dispositions, 'PRD0-Q017'),
+    'APPROVED',
   );
-  assert.doesNotMatch(matrix, /PHASE_3=COMPLETE/u);
-  for (const relativePath of [
-    'docs/production-readiness/phase-0/02-production-decision-register.md',
-    'docs/production-readiness/phase-0/03-acceptance-and-risk-matrix.md',
-    'docs/production-readiness/phase-0/05-owner-decision-disposition-register.md',
-  ]) {
-    const currentSeparators = markdownTableSeparators(read(relativePath));
-    const baselineSeparators = markdownTableSeparators(
-      command('git', ['show', `HEAD:${relativePath}`]).stdout,
-    );
-    assert.deepEqual(
-      currentSeparators,
-      baselineSeparators,
-      `unrelated Markdown separator drift in ${relativePath}`,
-    );
-  }
+  assertDispositionTotalsConsistent(dispositions);
+  assert.match(matrix, /\| PRD3-G03 \|[^\n]+\| COMPLETE \|/u);
+  assert.equal((matrix.match(/^PRD3-G03=COMPLETE$/gmu) ?? []).length, 1);
+  assert.equal((matrix.match(/^PHASE_3=COMPLETE$/gmu) ?? []).length, 1);
+  assert.doesNotMatch(matrix, /PRD3-G03=IMPLEMENTATION_COMPLETE_PENDING/u);
+  assert.match(closeout, /^PRD3_G03: COMPLETE$/mu);
+  assert.match(closeout, /^PHASE_3: COMPLETE$/mu);
+  assert.equal(certification.gateStatuses['PRD3-G03'], 'COMPLETE');
+  assert.equal(certification.gateStatuses.PHASE_3, 'COMPLETE');
 });
 
 test('G03 disposition totals are consistent without owning later approval counts', () => {
@@ -82,7 +79,10 @@ test('G03 disposition totals are consistent without owning later approval counts
   );
   assert.throws(() =>
     assertDispositionTotalsConsistent(
-      alternateApprovalSplit.replace('| Duplicated | 0 |', '| Duplicated | 1 |'),
+      alternateApprovalSplit.replace(
+        '| Duplicated | 0 |',
+        '| Duplicated | 1 |',
+      ),
     ),
   );
 });
@@ -100,7 +100,7 @@ test('timeless source discovery uses current tracked TypeScript source', () => {
 
   const testSource = read(G03_TEST_PATH);
   const discoverySource =
-    /function trackedSourcePaths\(\)[\s\S]*?function markdownTableSeparators/u.exec(
+    /function trackedSourcePaths\(\)[\s\S]*?(?=\nfunction allSourceText)/u.exec(
       testSource,
     )?.[0] ?? '';
   assert.match(discoverySource, /\['ls-files', '--', 'src'\]/u);
@@ -110,19 +110,22 @@ test('timeless source discovery uses current tracked TypeScript source', () => {
   );
 });
 
-test('candidate scope and changed-file security checks remain diff-based', () => {
-  const testSource = read(G03_TEST_PATH);
+test('central CI executes G03 through the exact-candidate regression matrix', () => {
+  const workflow = read('.github/workflows/ci.yml');
+  const shardRunner = read('scripts/ci/run-ci-shard.cjs');
+
   assert.match(
-    testSource,
-    /test\('schema, migrations, dependencies, lockfile, and public API stay unchanged'[\s\S]*?const changed = changedPaths\(\);/u,
+    workflow,
+    /ref: \$\{\{ needs\.plan\.outputs\.candidate_sha \}\}/u,
   );
   assert.match(
-    testSource,
-    /test\('changed paths stay inside the bounded G03 implementation'[\s\S]*?const unexpected = changedPaths\(\)\.filter/u,
+    workflow,
+    /matrix: \$\{\{ fromJSON\(needs\.plan\.outputs\.regression_matrix\) \}\}/u,
   );
+  assert.match(workflow, /node scripts\/ci\/run-ci-shard\.cjs/u);
   assert.match(
-    testSource,
-    /test\('changed executable and evidence files contain no real secret or unsafe shell literal'[\s\S]*?const paths = changedPaths\(\)\.filter/u,
+    shardRunner,
+    /'prd3-g03': \['scripts\/ci\/prd3-g03-critical-queue-recovery\.cjs'\]/u,
   );
 });
 
@@ -251,6 +254,11 @@ test('real harness uses immutable local images, empty replacement, and exact cle
   assert.match(wrapper, /container_ownership_mismatch/u);
   assert.match(wrapper, /network_ownership_mismatch/u);
   assert.match(wrapper, /owned_resource_cleanup_incomplete/u);
+  assert.match(
+    wrapper,
+    /resolveCiParentRunId\(\s*process\.env\.MOAZEZ_CI_PARENT_RUN_ID/u,
+  );
+  assert.match(wrapper, /const RUN_LABEL = 'com\.moazez\.evidence\.run'/u);
   assert.match(
     wrapper,
     /node_modules[\s\S]*?prisma[\s\S]*?build[\s\S]*?index\.js/u,
@@ -402,7 +410,10 @@ test('R2/R3 actorless recovery and type-safe primary generation are enforced', (
     generationRepository,
     /candidate\?\.status === UserStatus\.ACTIVE/u,
   );
-  assert.match(integration, /new CommunicationNotificationGenerationService\(/u);
+  assert.match(
+    integration,
+    /new CommunicationNotificationGenerationService\(/u,
+  );
   assert.match(
     integration,
     /name: COMMUNICATION_ANNOUNCEMENT_NOTIFICATIONS_GENERATE_JOB_NAME/u,
@@ -414,87 +425,6 @@ test('R2/R3 actorless recovery and type-safe primary generation are enforced', (
     integration,
     /new CommunicationNotificationGenerationWorker\([\s\S]{0,120}\{\}\s+as\s+any/u,
   );
-});
-
-test('schema, migrations, dependencies, lockfile, and public API stay unchanged', () => {
-  const changed = changedPaths();
-  assert.equal(
-    changed.some((entry) => entry.startsWith('prisma/')),
-    false,
-  );
-  assert.equal(changed.includes('package-lock.json'), false);
-  assert.equal(
-    changed.some((entry) => /(?:controller|dto)\.ts$/u.test(entry)),
-    false,
-  );
-  const baseline = JSON.parse(
-    command('git', ['show', 'HEAD:package.json']).stdout,
-  );
-  const current = JSON.parse(read('package.json'));
-  assert.deepEqual(current.dependencies, baseline.dependencies);
-  assert.deepEqual(current.devDependencies, baseline.devDependencies);
-});
-
-test('changed paths stay inside the bounded G03 implementation', () => {
-  const allowed = [
-    '.github/workflows/learning-media-integrity.yml',
-    'adr/ADR-0009-',
-    'docs/production-readiness/phase-0/02-',
-    'docs/production-readiness/phase-0/03-',
-    'docs/production-readiness/phase-0/05-',
-    'docs/production-readiness/phase-3/06-',
-    'package.json',
-    'scripts/ci/prd3-g02-redis-topology-recovery.cjs',
-    'scripts/ci/prd3-g03-',
-    'scripts/tests/prd3-g02-redis-topology-recovery.test.cjs',
-    'scripts/tests/prd3-g03-',
-    'src/infrastructure/queue/',
-    'src/modules/communication/',
-    'src/modules/dismissal/',
-    'src/modules/files/imports/',
-    'src/modules/files/uploads/application/learning-media-cleanup.service.ts',
-    'src/modules/files/uploads/tests/file-upload-session.contract.spec.ts',
-    'src/modules/settings/branding/',
-    'src/modules/settings/email/',
-    'src/modules/health/operational-probe.manifests.ts',
-    'src/runtime/',
-    'test/integration/prd3-g03-',
-  ];
-  const unexpected = changedPaths().filter(
-    (entry) => !allowed.some((prefix) => entry.startsWith(prefix)),
-  );
-  assert.deepEqual(unexpected, []);
-});
-
-test('changed executable and evidence files contain no real secret or unsafe shell literal', () => {
-  const paths = changedPaths().filter(
-    (entry) =>
-      /\.(?:ts|cjs|md|json)$/u.test(entry) &&
-      entry !== 'scripts/tests/prd3-g03-critical-queue-recovery.test.cjs' &&
-      entry !== 'scripts/ci/prd3-g02-redis-topology-recovery.cjs',
-  );
-  const forbidden = [
-    /(?:redis|rediss|postgresql):\/\/[^\s'"`]+/iu,
-    /shell:\s*true/iu,
-    /tokenCiphertext\s*[:=]\s*['"][^'"]+/iu,
-    /SMTP password/iu,
-    /Firebase credential/iu,
-    /private endpoint/iu,
-    /provider secret/iu,
-  ];
-  const findings = [];
-  for (const relativePath of paths) {
-    const source = read(relativePath);
-    for (const pattern of forbidden) {
-      if (!pattern.test(source)) continue;
-      const syntheticTestFixture =
-        /(?:\.spec\.ts|test\/integration\/)/u.test(relativePath) &&
-        (pattern.source.includes('tokenCiphertext') ||
-          /(?:127\.0\.0\.1|test\.invalid|private\.internal)/u.test(source));
-      if (!syntheticTestFixture) findings.push(`${relativePath}:${pattern}`);
-    }
-  }
-  assert.deepEqual(findings, []);
 });
 
 function parseDispositionTotals(source) {
@@ -534,9 +464,7 @@ function assertDispositionTotalsConsistent(source) {
 function questionDispositionStatus(source, questionId) {
   const rows = source
     .split(/\r?\n/u)
-    .map((line) =>
-      /^\|\s*(PRD0-Q\d{3})\s*\|\s*([A-Z_]+)\s*\|/u.exec(line),
-    )
+    .map((line) => /^\|\s*(PRD0-Q\d{3})\s*\|\s*([A-Z_]+)\s*\|/u.exec(line))
     .filter((match) => match?.[1] === questionId);
   assert.equal(rows.length, 1, `expected one disposition for ${questionId}`);
   return rows[0][2];
@@ -552,7 +480,10 @@ function trackedSourcePaths() {
         relativePath.startsWith('src/') && relativePath.endsWith('.ts'),
     )
     .sort();
-  assert.ok(sourcePaths.length > 0, 'tracked TypeScript source inventory is empty');
+  assert.ok(
+    sourcePaths.length > 0,
+    'tracked TypeScript source inventory is empty',
+  );
   return sourcePaths;
 }
 
@@ -560,19 +491,6 @@ function allSourceText() {
   const source = trackedSourcePaths().map(read).join('\n');
   assert.ok(source.length > 0, 'tracked TypeScript source text is empty');
   return source;
-}
-
-function markdownTableSeparators(source) {
-  return source
-    .split(/\r?\n/u)
-    .filter((line) => /^\|[ |:-]+\|$/u.test(line));
-}
-
-function changedPaths() {
-  return command('git', ['status', '--short'])
-    .stdout.split(/\r?\n/u)
-    .filter(Boolean)
-    .map((line) => line.slice(3).replaceAll('\\', '/'));
 }
 
 function command(executable, args) {

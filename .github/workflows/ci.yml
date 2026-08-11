@@ -1,0 +1,320 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: CI / Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      regression_matrix: ${{ steps.plan.outputs.regression_matrix || '{"include":[]}' }}
+      candidate_sha: ${{ steps.refs.outputs.candidate_sha }}
+      base_sha: ${{ steps.refs.outputs.base_sha }}
+      merge_base_sha: ${{ steps.plan.outputs.merge_base_sha }}
+      inventory_count: ${{ steps.plan.outputs.inventory_count }}
+      active_test_count: ${{ steps.plan.outputs.active_test_count }}
+      shard_count: ${{ steps.plan.outputs.shard_count }}
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up application Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.23.1'
+          cache: npm
+
+      - name: Resolve the exact candidate and comparison base
+        id: refs
+        shell: bash
+        env:
+          EVENT_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse --verify 'HEAD^{commit}')"
+          test "$candidate_sha" = "$EVENT_CANDIDATE_SHA"
+          case "$GITHUB_EVENT_NAME" in
+            pull_request)
+              base_sha="$PR_BASE_SHA"
+              ;;
+            push)
+              if [[ -n "$PUSH_BEFORE_SHA" && ! "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+                base_sha="$PUSH_BEFORE_SHA"
+              else
+                base_sha="$(git rev-parse --verify 'HEAD^{commit}^')"
+              fi
+              ;;
+            workflow_dispatch)
+              base_sha="$(git rev-parse --verify 'HEAD^{commit}^')"
+              ;;
+            *)
+              exit 64
+              ;;
+          esac
+          git cat-file -e "${base_sha}^{commit}"
+          printf 'candidate_sha=%s\nbase_sha=%s\n' "$candidate_sha" "$base_sha" >>"$GITHUB_OUTPUT"
+
+      - name: Build the deterministic test and impact plan
+        id: plan
+        env:
+          CI_CANDIDATE_SHA: ${{ steps.refs.outputs.candidate_sha }}
+          CI_BASE_SHA: ${{ steps.refs.outputs.base_sha }}
+        run: >-
+          node scripts/ci/plan-ci.cjs
+          --output artifacts/ci/plan/ci-plan.json
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload the immutable CI plan
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/ci/plan/ci-plan.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  preflight:
+    name: CI / Preflight
+    needs: plan
+    if: needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up application Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.23.1'
+          cache: npm
+
+      - name: Download the immutable CI plan
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ci-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/ci/plan
+
+      - name: Run deterministic preflight
+        env:
+          CI_CANDIDATE_SHA: ${{ needs.plan.outputs.candidate_sha }}
+          CI_BASE_SHA: ${{ needs.plan.outputs.base_sha }}
+        run: >-
+          node scripts/ci/run-ci-shard.cjs
+          --plan artifacts/ci/plan/ci-plan.json
+          --shard preflight
+          --evidence artifacts/ci/evidence/preflight.json
+
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-evidence-${{ github.run_id }}-${{ github.run_attempt }}-preflight
+          path: artifacts/ci/evidence/preflight.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  regression:
+    name: CI / ${{ matrix.label }}
+    needs: [plan, preflight]
+    if: needs.plan.result == 'success' && needs.preflight.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.jobTimeoutMinutes }}
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix: ${{ fromJSON(needs.plan.outputs.regression_matrix) }}
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up application Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.23.1'
+          cache: npm
+
+      - name: Download the immutable CI plan
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ci-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/ci/plan
+
+      - name: Run isolated regression shard
+        env:
+          CI_CANDIDATE_SHA: ${{ needs.plan.outputs.candidate_sha }}
+          CI_BASE_SHA: ${{ needs.plan.outputs.base_sha }}
+        run: >-
+          node scripts/ci/run-ci-shard.cjs
+          --plan artifacts/ci/plan/ci-plan.json
+          --shard "${{ matrix.id }}"
+          --evidence "artifacts/ci/evidence/${{ matrix.id }}.json"
+
+      - name: Upload shard evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}
+          path: artifacts/ci/evidence/${{ matrix.id }}.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload bounded health diagnostics
+        if: always() && matrix.profile == 'media-storage'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-health-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}
+          path: artifacts/health-probes/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  required:
+    name: CI / Required
+    needs: [plan, preflight, regression]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up application Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.23.1'
+          cache: npm
+
+      - name: Download the CI plan
+        id: download_plan
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ci-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/ci/aggregate/input
+
+      - name: Download all shard evidence
+        id: download_evidence
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ci-evidence-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: artifacts/ci/aggregate/evidence
+          merge-multiple: true
+
+      - name: Aggregate every required result
+        if: always()
+        env:
+          CI_NEEDS_JSON: ${{ toJSON(needs) }}
+          CI_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CI_BASE_SHA: ${{ needs.plan.outputs.base_sha }}
+        run: >-
+          node scripts/ci/aggregate-ci.cjs
+          --plan artifacts/ci/aggregate/input/ci-plan.json
+          --evidence-dir artifacts/ci/aggregate/evidence
+          --output artifacts/ci/aggregate/ci-required-summary.json
+
+      - name: Upload aggregate evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-required-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/ci/aggregate/ci-required-summary.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  blocking-aggregate-compatibility:
+    name: Blocking aggregate gate
+    needs: required
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          REQUIRED_RESULT: ${{ needs.required.result }}
+        run: test "$REQUIRED_RESULT" = success
+
+  phase3-compatibility:
+    name: Exact-candidate Phase 3 gate
+    needs: required
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          REQUIRED_RESULT: ${{ needs.required.result }}
+        run: test "$REQUIRED_RESULT" = success
+
+  learning-content-compatibility:
+    name: Lesson Content atomicity and visibility
+    needs: required
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          REQUIRED_RESULT: ${{ needs.required.result }}
+        run: test "$REQUIRED_RESULT" = success
+
+  learning-media-compatibility:
+    name: learning-media-integrity
+    needs: required
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          REQUIRED_RESULT: ${{ needs.required.result }}
+        run: test "$REQUIRED_RESULT" = success
+
+  migration-compatibility:
+    name: Fresh PostgreSQL replay
+    needs: required
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          REQUIRED_RESULT: ${{ needs.required.result }}
+        run: test "$REQUIRED_RESULT" = success
+
+  school-email-compatibility:
+    name: school-email-delivery-integrity
+    needs: required
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          REQUIRED_RESULT: ${{ needs.required.result }}
+        run: test "$REQUIRED_RESULT" = success

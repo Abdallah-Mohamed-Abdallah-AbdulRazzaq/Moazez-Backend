@@ -6,6 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   parseAcceptanceMatrix,
+  validateCurrentPhase3Governance,
   validateProductionReadinessGovernance,
   validateStorageCutoverGovernance,
   validateRepository,
@@ -26,10 +27,34 @@ const PHASE_2_CLOSEOUT_PATH = path.join(
   'phase-2',
   '02-runtime-role-separation-closeout.md',
 );
+const PHASE_3_CLOSEOUT_PATH = path.join(
+  REPOSITORY_ROOT,
+  'docs',
+  'production-readiness',
+  'phase-3',
+  '10-phase-3-closeout.md',
+);
+const PHASE_3_CERTIFICATION_PATH = path.join(
+  REPOSITORY_ROOT,
+  'docs',
+  'production-readiness',
+  'phase-3',
+  'phase-3-certification.json',
+);
 
 test('current production-readiness governance reconciles Phase 2 completion', () => {
   const result = validateRepository(REPOSITORY_ROOT);
   assert.ok(result.gateCount > 0);
+  assert.equal(result.phase3GateCount, 6);
+  assert.equal(result.phase3State, 'COMPLETE');
+  assert.equal(
+    result.phase3ProviderCleanupDebtState,
+    'DEFERRED_NON_BLOCKING_PROVIDER_DEBT',
+  );
+  assert.equal(
+    result.phase3PostMergeUniversalVerificationClassification,
+    'UNCLASSIFIED',
+  );
   assert.ok(result.storageCutoverCheckCount > 0);
   assert.deepEqual(
     result.authoritativeCompleted.filter((gate) => gate.startsWith('PRD2-')),
@@ -58,12 +83,102 @@ test('storage-cutover governance rejects premature real-data authorization', () 
   );
 });
 
-test('current PRD3-G01 lifecycle state is COMPLETE', () => {
+test('current PRD3-G01 through PRD3-G06 lifecycle states are COMPLETE', () => {
   const matrix = fs.readFileSync(MATRIX_PATH, 'utf8');
-  assert.equal(
-    parseAcceptanceMatrix(matrix).get('PRD3-G01')?.status,
-    'COMPLETE',
+  const gates = parseAcceptanceMatrix(matrix);
+  for (const gateId of [
+    'PRD3-G01',
+    'PRD3-G02',
+    'PRD3-G03',
+    'PRD3-G04',
+    'PRD3-G05',
+    'PRD3-G06',
+  ]) {
+    assert.equal(gates.get(gateId)?.status, 'COMPLETE', gateId);
+  }
+});
+
+test('current Phase 3 governance rejects regression to an intermediate state', () => {
+  const documents = phase3GovernanceDocuments();
+  const phase2Closeout = fs.readFileSync(PHASE_2_CLOSEOUT_PATH, 'utf8');
+  const regressed = documents.matrix.replace(
+    /^(\| PRD3-G04 \|[^\r\n]*?)\| COMPLETE \|/mu,
+    '$1| IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE |',
   );
+  assert.notEqual(regressed, documents.matrix);
+  assert.throws(
+    () =>
+      validateCurrentPhase3Governance(
+        regressed,
+        documents.closeout,
+        documents.certification,
+      ),
+    /PRD3-G04 must remain COMPLETE/u,
+  );
+  assert.throws(
+    () => validateProductionReadinessGovernance(regressed, phase2Closeout),
+    /PRD3-G04 must be COMPLETE/u,
+  );
+});
+
+test('current Phase 3 governance reconciles both preserved debts with closeout', () => {
+  const documents = phase3GovernanceDocuments();
+  const result = validateCurrentPhase3Governance(
+    documents.matrix,
+    documents.closeout,
+    documents.certification,
+  );
+  assert.equal(
+    result.phase3ProviderCleanupDebtState,
+    'DEFERRED_NON_BLOCKING_PROVIDER_DEBT',
+  );
+  assert.equal(
+    result.phase3PostMergeUniversalVerificationDebtState,
+    'DEFERRED_NON_BLOCKING_UNCLASSIFIED_VERIFICATION_DEBT',
+  );
+  assert.equal(
+    result.phase3PostMergeUniversalVerificationClassification,
+    'UNCLASSIFIED',
+  );
+
+  const providerDebtAltered = documents.matrix.replace(
+    'PRD3-G01-PROVIDER-CLEANUP=DEFERRED_NON_BLOCKING_PROVIDER_DEBT',
+    'PRD3-G01-PROVIDER-CLEANUP=RESOLVED',
+  );
+  assert.throws(
+    () =>
+      validateCurrentPhase3Governance(
+        providerDebtAltered,
+        documents.closeout,
+        documents.certification,
+      ),
+    /must preserve PRD3-G01-PROVIDER-CLEANUP/u,
+  );
+});
+
+test('current deferred Universal debt cannot be reclassified or resolved', () => {
+  const documents = phase3GovernanceDocuments();
+  for (const replacement of [
+    'FLAKE',
+    'PRODUCT_DEFECT',
+    'TEST_DEFECT',
+    'RESOLVED',
+  ]) {
+    const altered = documents.matrix.replace(
+      'UNCLASSIFIED post-merge verification debt',
+      `${replacement} post-merge verification debt`,
+    );
+    assert.notEqual(altered, documents.matrix);
+    assert.throws(
+      () =>
+        validateCurrentPhase3Governance(
+          altered,
+          documents.closeout,
+          documents.certification,
+        ),
+      /must preserve the exact Owner-deferred/u,
+    );
+  }
 });
 
 test('completed gate fails when its completed prerequisite regresses to NOT_STARTED', () => {
@@ -98,6 +213,16 @@ test('unknown gate status remains rejected', () => {
     /Governance gate PRD3-G01 has no parseable status\/prerequisite/u,
   );
 });
+
+function phase3GovernanceDocuments() {
+  return {
+    matrix: fs.readFileSync(MATRIX_PATH, 'utf8'),
+    closeout: fs.readFileSync(PHASE_3_CLOSEOUT_PATH, 'utf8'),
+    certification: JSON.parse(
+      fs.readFileSync(PHASE_3_CERTIFICATION_PATH, 'utf8'),
+    ),
+  };
+}
 
 function storageGovernanceDocuments() {
   const read = (...segments) =>

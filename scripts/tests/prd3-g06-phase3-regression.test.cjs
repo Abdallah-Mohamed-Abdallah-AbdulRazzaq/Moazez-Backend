@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const {
+  EXPECTED_PHASE3_CERTIFICATION,
   STAGE_PLAN,
   baseSummary,
   childEnvironment,
@@ -14,6 +15,7 @@ const {
   deriveStageCounts,
   executeFixedStage,
   finalizeSummary,
+  readGovernance,
   redactText,
   resolveStageInvocation,
   resolveSummaryPath,
@@ -21,13 +23,21 @@ const {
   sanitizeJson,
   stageEnvironment,
   validateExactCandidateState,
-  validateGovernanceSources,
+  validateHistoricalPhase3Certification,
   validateSummary,
 } = require('../ci/prd3-g06-phase3-regression.cjs');
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..', '..');
 const read = (relativePath) =>
-  fs.readFileSync(path.join(REPOSITORY_ROOT, ...relativePath.split('/')), 'utf8');
+  fs.readFileSync(
+    path.join(REPOSITORY_ROOT, ...relativePath.split('/')),
+    'utf8',
+  );
+const readJson = (relativePath) => JSON.parse(read(relativePath));
+const PHASE3_CLOSEOUT_PATH =
+  'docs/production-readiness/phase-3/10-phase-3-closeout.md';
+const PHASE3_CERTIFICATION_PATH =
+  'docs/production-readiness/phase-3/phase-3-certification.json';
 
 const EXPECTED_STAGES = Object.freeze([
   ['G01-A', 'npm', ['run', 'verify:prd3-g01-a']],
@@ -94,10 +104,19 @@ function governance() {
   return {
     g01State: 'COMPLETE',
     g01ProviderCleanupDebtState: 'DEFERRED_NON_BLOCKING_PROVIDER_DEBT',
-    g02State: 'IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
-    g03State: 'IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
-    g04State: 'IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
-    g05State: 'IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
+    g02State: 'COMPLETE',
+    g03State: 'COMPLETE',
+    g04State: 'COMPLETE',
+    g05State: 'COMPLETE',
+    g06State: 'COMPLETE',
+    phase3State: 'COMPLETE',
+    historicalCertificationState: 'COMPLETE',
+    certifiedCandidateSha: '7cb6123345b4f3ae7ca068162a72b9766df2f61a',
+    certifiedMergeSha: '84f06b3f33a4ebde0adff4295ef00832fc13e71f',
+    certifiedTreeSha: '84ba9e1565664fdd608bf9762513f75e428afa64',
+    postMergeUniversalVerificationDebtState:
+      'DEFERRED_NON_BLOCKING_UNCLASSIFIED_VERIFICATION_DEBT',
+    postMergeUniversalVerificationClassification: 'UNCLASSIFIED',
   };
 }
 
@@ -136,7 +155,9 @@ function simulatedLauncher(platform) {
   const npxCliPath = windows
     ? 'C:\\portable\\node_modules\\npm\\bin\\npx-cli.js'
     : '/portable/node_modules/npm/bin/npx-cli.js';
-  const nodeExecutable = windows ? 'C:\\portable\\node.exe' : '/portable/bin/node';
+  const nodeExecutable = windows
+    ? 'C:\\portable\\node.exe'
+    : '/portable/bin/node';
   const existingFiles = new Set([npmCliPath, npxCliPath]);
   return {
     npmCliPath,
@@ -168,8 +189,12 @@ test('stage plan fixes every executable and argument array exactly', () => {
 });
 
 test('Prisma validation and generation precede every known Prisma Client consumer', () => {
-  const validateIndex = STAGE_PLAN.findIndex((entry) => entry.id === 'PRISMA_VALIDATE');
-  const generateIndex = STAGE_PLAN.findIndex((entry) => entry.id === 'PRISMA_GENERATE');
+  const validateIndex = STAGE_PLAN.findIndex(
+    (entry) => entry.id === 'PRISMA_VALIDATE',
+  );
+  const generateIndex = STAGE_PLAN.findIndex(
+    (entry) => entry.id === 'PRISMA_GENERATE',
+  );
 
   assert.equal(validateIndex, 2);
   assert.equal(generateIndex, 3);
@@ -180,16 +205,19 @@ test('Prisma validation and generation precede every known Prisma Client consume
   )) {
     const consumerIndex = STAGE_PLAN.findIndex((entry) => entry.id === stageId);
     assert.match(read(relativePath), /require\(['"]@prisma\/client['"]\)/u);
-    assert.ok(generateIndex < consumerIndex, `${stageId} must run after Prisma generate`);
+    assert.ok(
+      generateIndex < consumerIndex,
+      `${stageId} must run after Prisma generate`,
+    );
   }
 });
 
 test('G01-C, G04, and G05 use explicit portable regression mode', () => {
   for (const id of ['G01-C', 'G04', 'G05']) {
-    assert.deepEqual(STAGE_PLAN.find((entry) => entry.id === id).args.slice(-2), [
-      '--',
-      '--regression',
-    ]);
+    assert.deepEqual(
+      STAGE_PLAN.find((entry) => entry.id === id).args.slice(-2),
+      ['--', '--regression'],
+    );
   }
 });
 
@@ -213,7 +241,10 @@ test('stage plan contains neither Universal Regression nor Google Cloud commands
 test('Windows npm resolves to Node plus the verified npm CLI entrypoint', () => {
   const simulation = simulatedLauncher('win32');
   assert.deepEqual(
-    resolveStageInvocation(launcherStage('npm', ['run', 'build']), simulation.options),
+    resolveStageInvocation(
+      launcherStage('npm', ['run', 'build']),
+      simulation.options,
+    ),
     {
       executable: simulation.nodeExecutable,
       args: [simulation.npmCliPath, 'run', 'build'],
@@ -236,10 +267,13 @@ test('Windows npx resolves to Node plus the sibling npx CLI entrypoint', () => {
 });
 
 test('git remains a direct fixed executable with its original arguments', () => {
-  assert.deepEqual(resolveStageInvocation(launcherStage('git', ['diff', '--check'])), {
-    executable: 'git',
-    args: ['diff', '--check'],
-  });
+  assert.deepEqual(
+    resolveStageInvocation(launcherStage('git', ['diff', '--check'])),
+    {
+      executable: 'git',
+      args: ['diff', '--check'],
+    },
+  );
 });
 
 test('Windows package-manager resolution never returns a shell or cmd launcher', () => {
@@ -260,14 +294,20 @@ test('Windows package-manager resolution never returns a shell or cmd launcher',
 test('Linux npm and npx also resolve through Node and JavaScript CLI entrypoints', () => {
   const simulation = simulatedLauncher('linux');
   assert.deepEqual(
-    resolveStageInvocation(launcherStage('npm', ['--version']), simulation.options),
+    resolveStageInvocation(
+      launcherStage('npm', ['--version']),
+      simulation.options,
+    ),
     {
       executable: simulation.nodeExecutable,
       args: [simulation.npmCliPath, '--version'],
     },
   );
   assert.deepEqual(
-    resolveStageInvocation(launcherStage('npx', ['--version']), simulation.options),
+    resolveStageInvocation(
+      launcherStage('npx', ['--version']),
+      simulation.options,
+    ),
     {
       executable: simulation.nodeExecutable,
       args: [simulation.npxCliPath, '--version'],
@@ -342,7 +382,12 @@ test('missing sibling npx CLI file fails closed', () => {
 
 test('launcher identity failure is classified as CI_SCRIPT_DEFECT and cannot pass', () => {
   const plan = [
-    { id: 'LAUNCHER_SMOKE', executable: 'npm', args: ['--version'], required: true },
+    {
+      id: 'LAUNCHER_SMOKE',
+      executable: 'npm',
+      args: ['--version'],
+      required: true,
+    },
   ];
   const stages = runStagePlan({
     plan,
@@ -380,7 +425,9 @@ test('all successful required stages produce PASS with recorded timings', () => 
   assert.ok(
     stages.every(
       (entry) =>
-        entry.status === 'PASS' && entry.exitCode === 0 && entry.durationMs === 7,
+        entry.status === 'PASS' &&
+        entry.exitCode === 0 &&
+        entry.durationMs === 7,
     ),
   );
   assert.deepEqual(deriveStageCounts(stages), {
@@ -394,7 +441,10 @@ test('all successful required stages produce PASS with recorded timings', () => 
 test('first required failure produces FAIL and blocks every later stage', () => {
   let calls = 0;
   const stages = runStagePlan({
-    executeStage: () => ({ exitCode: ++calls === 4 ? 1 : 0, output: 'fixture failed' }),
+    executeStage: () => ({
+      exitCode: ++calls === 4 ? 1 : 0,
+      output: 'fixture failed',
+    }),
     now: clock(),
   });
   assert.equal(deriveOverall(stages), 'FAIL');
@@ -413,7 +463,29 @@ test('missing required stage cannot validate or produce PASS', () => {
   const summary = validSummary();
   summary.stages.pop();
   assert.equal(deriveOverall(summary.stages), 'FAIL');
-  assert.throws(() => validateSummary(summary, { requireHash: false }), /missing required stage/u);
+  assert.throws(
+    () => validateSummary(summary, { requireHash: false }),
+    /missing required stage/u,
+  );
+});
+
+test('pre-stage initialization failure blocks all stages without cleanup debt', () => {
+  const summary = baseSummary(
+    repositoryState(),
+    governance(),
+    '2026-08-07T00:00:00.000Z',
+  );
+  assert.deepEqual(deriveStageCounts(summary.stages), {
+    requiredStageCount: 11,
+    passedStageCount: 0,
+    failedStageCount: 0,
+    blockedStageCount: 11,
+  });
+  assert.equal(summary.failedStageCount, 0);
+  assert.equal(summary.blockedStageCount, 11);
+  assert.equal(summary.cleanup, 'NOT_REQUIRED');
+  assert.equal(summary.overall, 'FAIL');
+  assert.equal(validateSummary(summary, { requireHash: false }), true);
 });
 
 test('invalid stage result is converted to a failing stage and never PASS', () => {
@@ -427,15 +499,24 @@ test('invalid stage result is converted to a failing stage and never PASS', () =
 });
 
 test('exact-candidate preflight accepts feature, main, and detached branch diagnostics', () => {
-  for (const branch of ['chore/production-readiness-3-cloud-sql', 'main', 'HEAD']) {
-    assert.equal(validateExactCandidateState(repositoryState({ branch })), true);
+  for (const branch of [
+    'chore/production-readiness-3-cloud-sql',
+    'main',
+    'HEAD',
+  ]) {
+    assert.equal(
+      validateExactCandidateState(repositoryState({ branch })),
+      true,
+    );
   }
 });
 
 test('exact-candidate preflight does not require a Windows Node directory', () => {
   assert.equal(
     validateExactCandidateState(
-      repositoryState({ nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin' }),
+      repositoryState({
+        nodeDirectory: '/opt/hostedtoolcache/node/22.23.1/x64/bin',
+      }),
     ),
     true,
   );
@@ -448,7 +529,9 @@ test('exact-candidate preflight rejects dirty working tree', () => {
 });
 
 test('exact-candidate preflight rejects staged index', () => {
-  assert.throws(() => validateExactCandidateState(repositoryState({ indexClean: false })));
+  assert.throws(() =>
+    validateExactCandidateState(repositoryState({ indexClean: false })),
+  );
 });
 
 test('exact-candidate preflight rejects wrong Node version', () => {
@@ -494,7 +577,10 @@ test('redaction removes PostgreSQL and Redis credential-bearing URLs', () => {
   const redacted = redactText(
     'postgresql://user:pass@db.invalid/app redis://user:pass@queue.invalid/0 rediss://cache.invalid/1',
   );
-  assert.doesNotMatch(redacted, /user:pass|db\.invalid|queue\.invalid|cache\.invalid/u);
+  assert.doesNotMatch(
+    redacted,
+    /user:pass|db\.invalid|queue\.invalid|cache\.invalid/u,
+  );
   assert.match(redacted, /\[REDACTED_URL\]/u);
 });
 
@@ -504,7 +590,9 @@ test('redaction removes URL variables and token/password-like values', () => {
   );
   assert.doesNotMatch(redacted, /=synthetic|: synthetic/u);
   assert.doesNotMatch(
-    JSON.stringify(sanitizeJson({ password: 'synthetic', nested: { token: 'synthetic' } })),
+    JSON.stringify(
+      sanitizeJson({ password: 'synthetic', nested: { token: 'synthetic' } }),
+    ),
     /synthetic/u,
   );
 });
@@ -553,7 +641,9 @@ test('only Prisma schema stages receive the synthetic database URL', () => {
 
 test('stage environment overrides are excluded from G06 evidence summaries', () => {
   const summary = validSummary();
-  assert.ok(summary.stages.every((entry) => !Object.hasOwn(entry, 'environment')));
+  assert.ok(
+    summary.stages.every((entry) => !Object.hasOwn(entry, 'environment')),
+  );
   assert.doesNotMatch(JSON.stringify(summary), /DATABASE_URL|prd3_schema/u);
 });
 
@@ -565,25 +655,169 @@ test('summary output path honors PRD3_G06_EVIDENCE_DIR', () => {
   );
 });
 
-test('governance guard accepts exact current state and rejects drift', () => {
-  const matrix = [
-    'PRD3-G01=COMPLETE',
-    'PRD3-G01-PROVIDER-CLEANUP=DEFERRED_NON_BLOCKING_PROVIDER_DEBT',
-    'PRD3-G02=IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
-    'PRD3-G03=IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
-    'PRD3-G04=IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
-    'PRD3-G05=IMPLEMENTATION_COMPLETE_PENDING_PR_AND_MERGE',
-    'PRD3-G06=NOT_STARTED',
-  ].join('\n');
-  const provider = [
-    'NEW_CONSUMERS_ALLOWED=NO',
-    'PRODUCTION_REUSE_ALLOWED=NO',
-    'PHASE_3=ACTIVE',
-    'PRODUCTION_TRAFFIC_ALLOWED=NO',
-  ].join('\n');
-  assert.deepEqual(validateGovernanceSources(matrix, provider), governance());
+test('historical certification validates the frozen record against the Phase 3 closeout', () => {
+  const certification = readJson(PHASE3_CERTIFICATION_PATH);
+  assert.deepEqual(certification, EXPECTED_PHASE3_CERTIFICATION);
+  assert.deepEqual(
+    validateHistoricalPhase3Certification(
+      certification,
+      read(PHASE3_CLOSEOUT_PATH),
+    ),
+    governance(),
+  );
+});
+
+test('current matrix evolution cannot false-red the historical certification', (t) => {
+  const temporaryRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'prd3-historical-certification-'),
+  );
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }));
+  const phase0Directory = path.join(
+    temporaryRoot,
+    'docs',
+    'production-readiness',
+    'phase-0',
+  );
+  const phase3Directory = path.join(
+    temporaryRoot,
+    'docs',
+    'production-readiness',
+    'phase-3',
+  );
+  fs.mkdirSync(phase0Directory, { recursive: true });
+  fs.mkdirSync(phase3Directory, { recursive: true });
+  fs.writeFileSync(
+    path.join(phase0Directory, '03-acceptance-and-risk-matrix.md'),
+    'PRD3-G02=FUTURE_CURRENT_STATE\n',
+    'utf8',
+  );
+  fs.writeFileSync(
+    path.join(phase3Directory, '09-g01-provider-retention-disposition.md'),
+    'PHASE_3=HISTORICAL_SNAPSHOT_NO_LONGER_CURRENT\n',
+    'utf8',
+  );
+  fs.writeFileSync(
+    path.join(phase3Directory, '10-phase-3-closeout.md'),
+    read(PHASE3_CLOSEOUT_PATH),
+    'utf8',
+  );
+  fs.writeFileSync(
+    path.join(phase3Directory, 'phase-3-certification.json'),
+    `${JSON.stringify(readJson(PHASE3_CERTIFICATION_PATH), null, 2)}\n`,
+    'utf8',
+  );
+
+  assert.deepEqual(readGovernance(temporaryRoot), governance());
+  const source = read('scripts/ci/prd3-g06-phase3-regression.cjs');
+  assert.doesNotMatch(
+    source,
+    /03-acceptance-and-risk-matrix|09-g01-provider-retention/iu,
+  );
+});
+
+test('every frozen SHA, run, artifact, digest, and debt field is immutable', () => {
+  const closeout = read(PHASE3_CLOSEOUT_PATH);
+  const immutablePaths = [
+    ['candidate', 'sha'],
+    ['candidate', 'treeSha'],
+    ['merge', 'sha'],
+    ['merge', 'treeSha'],
+    ...readJson(PHASE3_CERTIFICATION_PATH).candidate.acceptedRuns.flatMap(
+      (_entry, index) => [['candidate', 'acceptedRuns', index, 'runId']],
+    ),
+    ...readJson(PHASE3_CERTIFICATION_PATH).merge.acceptedRuns.flatMap(
+      (_entry, index) => [['merge', 'acceptedRuns', index, 'runId']],
+    ),
+    ...readJson(PHASE3_CERTIFICATION_PATH).candidate.acceptedArtifacts.flatMap(
+      (_entry, index) => [
+        ['candidate', 'acceptedArtifacts', index, 'runId'],
+        ['candidate', 'acceptedArtifacts', index, 'artifactId'],
+        ['candidate', 'acceptedArtifacts', index, 'name'],
+        ['candidate', 'acceptedArtifacts', index, 'digest'],
+      ],
+    ),
+    ...readJson(PHASE3_CERTIFICATION_PATH).merge.acceptedArtifacts.flatMap(
+      (_entry, index) => [
+        ['merge', 'acceptedArtifacts', index, 'runId'],
+        ['merge', 'acceptedArtifacts', index, 'artifactId'],
+        ['merge', 'acceptedArtifacts', index, 'name'],
+        ['merge', 'acceptedArtifacts', index, 'digest'],
+      ],
+    ),
+    ['deferredDebts', 'providerCleanup', 'record'],
+    ['deferredDebts', 'providerCleanup', 'status'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'record'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'status'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'state'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'ownerDisposition'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'acceptedOn'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'timezone'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'classification'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'investigation'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'runId'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'sha'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'result'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'artifactId'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'artifactName'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'artifactDigest'],
+    [
+      'deferredDebts',
+      'postMergeUniversalVerification',
+      'requiredResultRecords',
+    ],
+    ['deferredDebts', 'postMergeUniversalVerification', 'skippedTests'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'failedTests'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'failedStage'],
+    ['deferredDebts', 'postMergeUniversalVerification', 'notClassifiedAs', 0],
+  ];
+
+  for (const fieldPath of immutablePaths) {
+    const mutated = readJson(PHASE3_CERTIFICATION_PATH);
+    const parent = fieldPath
+      .slice(0, -1)
+      .reduce((value, key) => value[key], mutated);
+    const key = fieldPath.at(-1);
+    parent[key] = typeof parent[key] === 'number' ? parent[key] + 1 : 'MUTATED';
+    assert.throws(
+      () => validateHistoricalPhase3Certification(mutated, closeout),
+      /frozen Phase 3 certification record mismatch/u,
+      fieldPath.join('.'),
+    );
+  }
+});
+
+test('Owner-deferred Universal debt cannot become flake, product, test, or resolved', () => {
+  const closeout = read(PHASE3_CLOSEOUT_PATH);
+  for (const classification of ['FLAKE', 'PRODUCT_DEFECT', 'TEST_DEFECT']) {
+    const mutated = readJson(PHASE3_CERTIFICATION_PATH);
+    mutated.deferredDebts.postMergeUniversalVerification.classification =
+      classification;
+    assert.throws(() =>
+      validateHistoricalPhase3Certification(mutated, closeout),
+    );
+  }
+  const resolved = readJson(PHASE3_CERTIFICATION_PATH);
+  resolved.deferredDebts.postMergeUniversalVerification.state = 'RESOLVED';
+  resolved.deferredDebts.postMergeUniversalVerification.status = 'RESOLVED';
   assert.throws(() =>
-    validateGovernanceSources(matrix, provider.replace('NEW_CONSUMERS_ALLOWED=NO', 'NEW_CONSUMERS_ALLOWED=YES')),
+    validateHistoricalPhase3Certification(resolved, closeout),
+  );
+});
+
+test('historical certification fails when closeout evidence is altered', () => {
+  const closeout = read(PHASE3_CLOSEOUT_PATH);
+  const mutated = closeout.replace(
+    'sha256:f33e5ddc8bd55ba840fec3dac6cf60b4f6ee5489e2621e994b4b175e0d96735d',
+    `sha256:${'f'.repeat(64)}`,
+  );
+  assert.notEqual(mutated, closeout);
+  assert.throws(
+    () =>
+      validateHistoricalPhase3Certification(
+        readJson(PHASE3_CERTIFICATION_PATH),
+        mutated,
+      ),
+    /Phase 3 closeout merge Phase 3 artifact mismatch/u,
   );
 });
 
@@ -597,7 +831,10 @@ test('package exposes only the two minimal G06 commands and preserves Universal 
     packageJson.scripts['verify:prd3-g06-final'],
     'node scripts/ci/prd3-g06-phase3-regression.cjs',
   );
-  assert.equal(packageJson.scripts['test:regression'], 'node scripts/universal-regression.cjs');
+  assert.equal(
+    packageJson.scripts['test:regression'],
+    'node scripts/universal-regression.cjs',
+  );
 });
 
 test('orchestrator uses fixed spawnSync execution with shell disabled', () => {
@@ -611,60 +848,103 @@ test('orchestrator uses fixed spawnSync execution with shell disabled', () => {
   );
 });
 
-test('workflow is exact-SHA Ubuntu verification with no alias or path simulation', () => {
+test('workflow is a manual exact-SHA historical audit with immutable official actions', () => {
   const workflow = read('.github/workflows/phase-3-production-readiness.yml');
-  assert.match(workflow, /^name: Phase 3 Production Readiness Gate$/mu);
-  assert.match(workflow, /pull_request:/u);
-  assert.match(workflow, /push:\s*\n\s+branches:\s*\n\s+- main/u);
+  assert.match(workflow, /^name: Phase 3 Historical Certification Audit$/mu);
   assert.match(workflow, /workflow_dispatch:/u);
+  assert.doesNotMatch(workflow, /^\s+(?:pull_request|push):/gmu);
   assert.match(workflow, /runs-on: ubuntu-latest/u);
   assert.match(workflow, /node-version: '22\.23\.1'/u);
   assert.match(workflow, /fetch-depth: 0/u);
   assert.match(workflow, /run: npm ci/u);
-  assert.match(workflow, /github\.event\.pull_request\.head\.sha/u);
   assert.match(workflow, /github\.sha/u);
+  assert.doesNotMatch(workflow, /github\.event|pull_request/u);
   assert.match(workflow, /git rev-parse HEAD/u);
   assert.match(workflow, /npm run verify:prd3-g06-final/u);
   assert.match(workflow, /PRD3_G06_EVIDENCE_DIR/u);
   assert.match(workflow, /prd3-g06-summary\.json/u);
-  assert.match(workflow, /phase-3-regression-summary-\$\{\{ github\.run_id \}\}/u);
+  assert.match(
+    workflow,
+    /phase-3-historical-audit-summary-\$\{\{ github\.run_id \}\}/u,
+  );
+  assert.match(
+    workflow,
+    /actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\.0\.1/u,
+  );
+  assert.match(
+    workflow,
+    /actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7\.0\.0/u,
+  );
+  assert.match(
+    workflow,
+    /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7\.0\.1/u,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /actions\/(?:checkout|setup-node|upload-artifact)@v\d/iu,
+  );
   assert.doesNotMatch(workflow, /npm run test:regression|gcloud/iu);
-  assert.doesNotMatch(workflow, /git (?:switch|checkout -b|branch chore\/production-readiness)/iu);
-  assert.doesNotMatch(workflow, /C:\\Users\\Abdal|process\.execPath|ln -s|mklink/iu);
+  assert.doesNotMatch(
+    workflow,
+    /git (?:switch|checkout -b|branch chore\/production-readiness)/iu,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /C:\\Users\\Abdal|process\.execPath|ln -s|mklink/iu,
+  );
 });
 
 test('workflow preloads every verifier-owned Phase 3 fixture image before the exact gate', () => {
   const workflow = read('.github/workflows/phase-3-production-readiness.yml');
   const preloadStepName = '- name: Preload Phase 3 disposable fixture images';
-  const gateStepName = '- name: Run exact-candidate Phase 3 gate';
+  const gateStepName = '- name: Run historical Phase 3 certification audit';
   assert.equal(workflow.split(preloadStepName).length - 1, 1);
 
   const preloadStart = workflow.indexOf(preloadStepName);
   const gateStart = workflow.indexOf(gateStepName);
   assert.ok(preloadStart >= 0 && gateStart > preloadStart);
 
-  const nextStep = workflow.indexOf('\n      - name:', preloadStart + preloadStepName.length);
+  const nextStep = workflow.indexOf(
+    '\n      - name:',
+    preloadStart + preloadStepName.length,
+  );
   assert.ok(nextStep > preloadStart && nextStep <= gateStart);
   const preloadStep = workflow.slice(preloadStart, nextStep);
   assert.match(preloadStep, /\n\s+shell: bash\s*\n/u);
   assert.match(preloadStep, /\n\s+set -euo pipefail\s*\n/u);
-  assert.match(preloadStep, /docker version --format '\{\{\.Server\.Version\}\}' >\/dev\/null/u);
+  assert.match(
+    preloadStep,
+    /docker version --format '\{\{\.Server\.Version\}\}' >\/dev\/null/u,
+  );
   assert.match(preloadStep, /docker pull "\$image"/u);
-  assert.match(preloadStep, /docker image inspect "\$image" --format '\{\{\.Id\}\}'/u);
+  assert.match(
+    preloadStep,
+    /docker image inspect "\$image" --format '\{\{\.Id\}\}'/u,
+  );
   assert.match(preloadStep, /\^sha256:\[a-f0-9\]\{64\}\$/u);
 
-  const imageArray = preloadStep.match(/images=\(\s*\n(?<entries>[\s\S]*?)\n\s*\)/u);
+  const imageArray = preloadStep.match(
+    /images=\(\s*\n(?<entries>[\s\S]*?)\n\s*\)/u,
+  );
   assert.ok(imageArray?.groups?.entries);
-  const declaredImages = [...imageArray.groups.entries.matchAll(/^\s*'([^']+)'\s*$/gmu)]
-    .map((match) => match[1]);
+  const declaredImages = [
+    ...imageArray.groups.entries.matchAll(/^\s*'([^']+)'\s*$/gmu),
+  ].map((match) => match[1]);
   assert.deepEqual(declaredImages, PHASE3_FIXTURE_IMAGES);
 
-  const gateEnd = workflow.indexOf('\n      - name:', gateStart + gateStepName.length);
+  const gateEnd = workflow.indexOf(
+    '\n      - name:',
+    gateStart + gateStepName.length,
+  );
   const gateStep = workflow.slice(gateStart, gateEnd);
-  assert.match(gateStep, /^- name: Run exact-candidate Phase 3 gate\s*\n\s+run: npm run verify:prd3-g06-final\s*$/mu);
+  assert.match(
+    gateStep,
+    /^- name: Run historical Phase 3 certification audit\s*\n\s+run: npm run verify:prd3-g06-final\s*$/mu,
+  );
 
   for (const [image, sources] of Object.entries(PHASE3_FIXTURE_IMAGE_SOURCES)) {
-    for (const source of sources) assert.match(read(source), new RegExp(escapeRegExp(image), 'u'));
+    for (const source of sources)
+      assert.match(read(source), new RegExp(escapeRegExp(image), 'u'));
   }
 });
 

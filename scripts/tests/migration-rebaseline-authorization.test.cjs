@@ -17,7 +17,13 @@ const WORKFLOW_PATH = path.join(
   REPOSITORY_ROOT,
   '.github',
   'workflows',
-  'migration-integrity.yml',
+  'ci.yml',
+);
+const SHARD_RUNNER_PATH = path.join(
+  REPOSITORY_ROOT,
+  'scripts',
+  'ci',
+  'run-ci-shard.cjs',
 );
 
 function approvedMigrationRecord(overrides = {}) {
@@ -121,22 +127,33 @@ test('rejects a missing or empty baseline migration.sql', () => {
   }
 });
 
-test('workflow has no reusable manual boolean and always runs strict governance', () => {
+test('central CI has no manual bypass and always runs strict authorization', () => {
   const workflow = fs.readFileSync(WORKFLOW_PATH, 'utf8');
+  const shardRunner = fs.readFileSync(SHARD_RUNNER_PATH, 'utf8');
 
   assert.match(workflow, /^\s*workflow_dispatch:\s*$/m);
   assert.doesNotMatch(workflow, /rebaseline_approved|inputs\./i);
   assert.match(
     workflow,
-    /node scripts\/authorize-migration-rebaseline-0a\.cjs/,
+    /node scripts\/ci\/run-ci-shard\.cjs[\s\S]+--shard preflight/,
   );
-  assert.doesNotMatch(workflow, /MIGRATION_REBASELINE_APPROVED\s*:\s*['"]?1/i);
+  assert.doesNotMatch(
+    `${workflow}\n${shardRunner}`,
+    /MIGRATION_REBASELINE_APPROVED\s*:\s*['"]?1/i,
+  );
   assert.equal(
-    (workflow.match(/npm run db:migrations:check/g) ?? []).length,
+    (
+      shardRunner.match(/'scripts\/authorize-migration-rebaseline-0a\.cjs'/g) ??
+      []
+    ).length,
     1,
   );
   assert.match(
-    workflow,
-    /Evaluate MIGRATION-RECOVERY-0A one-time authorization[\s\S]+Check migration governance[\s\S]+npm run db:migrations:check/,
+    shardRunner,
+    /profile === 'migration-governance'[\s\S]+migration-rebaseline-authorization[\s\S]+'scripts\/authorize-migration-rebaseline-0a\.cjs'/,
+  );
+  assert.match(
+    shardRunner,
+    /current-governance[\s\S]+'scripts\/check-migration-governance\.cjs'/,
   );
 });
