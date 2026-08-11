@@ -52,6 +52,8 @@ const Q041_APPROVED_ANSWER =
   'PRD0-Q041: option=D; allowlist=HTTPS external URLs only, with all direct GCS/Google Cloud Storage/MinIO/S3-compatible provider URLs forbidden for new writes; compatibility_window=NONE; legacy_owner=Abdallah; approver=Abdallah';
 const Q042_APPROVED_ANSWER =
   'PRD0-Q042: managed=ALLOW managed File-backed branding for new writes and reads; external_https=READ_ONLY compatibility only where an already-persisted safe HTTPS value exists, with no new legacy URL writes; provider_url=BLOCK_NEW and treat any discovered legacy provider URL as a cutover blocker requiring explicit inventory/review; unsafe=REJECT; null=ALLOW; approver=Abdallah';
+const STORAGE_RELEASE_DECISION_PATH =
+  'docs/production-readiness/phase-5a/03-storage-cutover-release-decision.md';
 const PHASE_3_GATE_IDS = Object.freeze([
   'PRD3-G01',
   'PRD3-G02',
@@ -336,11 +338,50 @@ function validateStorageCutoverGovernance(documents) {
     documents.batch3Inventory,
     'UNRESOLVED_PROVIDER_URL_SURFACE=NONE',
   );
+  requireToken(
+    'Acceptance matrix',
+    documents.matrix,
+    STORAGE_RELEASE_DECISION_PATH.replace('docs/production-readiness/', ''),
+  );
+  requireToken(
+    'Batch 3 inventory',
+    documents.batch3Inventory,
+    STORAGE_RELEASE_DECISION_PATH,
+  );
+
+  for (const token of [
+    'approval_date=2026-08-11',
+    'timezone=Africa/Cairo',
+    'approver=Abdallah',
+    'GITHUB_CI_RUNTIME_VALIDATION=DEFERRED_NON_BLOCKING_OWNER_DECISION',
+    'GITHUB_CI_RUNTIME_DEFERRAL_REASON=GITHUB_ACTIONS_BILLING_LIMIT_EXHAUSTED',
+    'GITHUB_CI_RUN_RESULT=BLOCKED_BY_BILLING_BEFORE_RUNNER_ALLOCATION',
+    'GITHUB_CI_RUNTIME_PASS=NOT_CLAIMED',
+    'CI_ARCHITECTURE_SOURCE_REVIEW=PASS',
+    'GITHUB_CI_RUNTIME_FAILURE_CAUSED_BY_PRODUCT=NO',
+    'GITHUB_CI_RUNTIME_FAILURE_CAUSED_BY_TESTS=NO',
+    'GITHUB_CI_RUNTIME_FAILURE_CAUSED_BY_WORKFLOW=NOT_PROVEN',
+    'MANUAL_RELEASE_VERIFICATION_REQUIRED=YES',
+    'STORAGE_CUTOVER_READY_FOR_REAL_DATA=NO',
+    'REAL_DATA=FORBIDDEN',
+    'PRODUCTION_UPLOADS_ALLOWED=NO',
+    'PRODUCTION_TRAFFIC_ALLOWED=NO',
+    'PRODUCTION_LAUNCH_AUTHORIZED=NO',
+    '648af406a1e9ba1f36493df2e9abe67d6189d0a7',
+    'e49aacdb22986916ec83ca55008597883d4b4fbd',
+    '31480247411',
+  ]) {
+    requireToken('Storage release decision', documents.releaseDecision, token);
+  }
 
   checkCount += 1;
   const combined = Object.values(documents).join('\n');
   if (
     combined.includes('STORAGE_CUTOVER_READY_FOR_REAL_DATA=YES') ||
+    combined.includes('GITHUB_CI_RUNTIME_PASS=PASS') ||
+    combined.includes('PRODUCTION_UPLOADS_ALLOWED=YES') ||
+    combined.includes('PRODUCTION_TRAFFIC_ALLOWED=YES') ||
+    combined.includes('PRODUCTION_LAUNCH_AUTHORIZED=YES') ||
     documents.runbook.includes('PHASE_5A=COMPLETE') ||
     documents.runbook.includes('REAL_DATA_ALLOWED=YES')
   ) {
@@ -419,6 +460,12 @@ function validateRepository(repositoryRoot) {
       'production-readiness',
       'phase-5a',
       '02-storage-batch-3-source-cutover.md',
+    ),
+    releaseDecision: read(
+      'docs',
+      'production-readiness',
+      'phase-5a',
+      '03-storage-cutover-release-decision.md',
     ),
   });
   return Object.freeze({

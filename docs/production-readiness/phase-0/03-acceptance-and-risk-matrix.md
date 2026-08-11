@@ -67,6 +67,22 @@ production launch, traffic, uploads, or real data. The Batch 3 source candidate
 and the production read-only pre-real-data database audit still require Owner
 review and later release evidence.
 
+### 2026-08-11 Storage Cutover GitHub CI runtime deferral
+
+The authoritative release-governance decision is
+`phase-5a/03-storage-cutover-release-decision.md`. CI architecture rebuild
+`e49aacdb22986916ec83ca55008597883d4b4fbd` passed source review, but GitHub
+Actions run `31480247411` was blocked by the billing limit before runner
+allocation. No checkout, setup, planner, preflight, test, or regression shard
+executed, and no GitHub CI runtime pass is claimed.
+
+The Owner accepted this runtime-validation debt as a reopenable, non-blocking
+deferral while requiring manual release verification. The prior Universal
+Regression remains evidence only for Storage Batch 3 source checkpoint
+`648af406a1e9ba1f36493df2e9abe67d6189d0a7`; it did not run on the CI rebuild
+SHA. This disposition changes no Phase 5A gate status and does not authorize
+production uploads, traffic, launch, or real data.
+
 ### Phase 0B — Owner Decisions, ADR Lock, and Phase 0 Closeout
 
 At the 2026-07-27 Phase 0B closeout, PRD0B-G01 through PRD0B-G08 had completion

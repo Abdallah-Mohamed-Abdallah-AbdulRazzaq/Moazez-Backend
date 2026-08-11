@@ -83,6 +83,30 @@ test('storage-cutover governance rejects premature real-data authorization', () 
   );
 });
 
+test('storage-cutover governance rejects a claimed GitHub runtime pass', () => {
+  const documents = storageGovernanceDocuments();
+  documents.releaseDecision = documents.releaseDecision.replace(
+    'GITHUB_CI_RUNTIME_PASS=NOT_CLAIMED',
+    'GITHUB_CI_RUNTIME_PASS=PASS',
+  );
+  assert.throws(
+    () => validateStorageCutoverGovernance(documents),
+    /GITHUB_CI_RUNTIME_PASS=NOT_CLAIMED|prematurely authorizes/u,
+  );
+});
+
+test('storage-cutover release decision remains discoverable from the matrix', () => {
+  const documents = storageGovernanceDocuments();
+  documents.matrix = documents.matrix.replace(
+    'phase-5a/03-storage-cutover-release-decision.md',
+    'phase-5a/storage-release-decision-missing.md',
+  );
+  assert.throws(
+    () => validateStorageCutoverGovernance(documents),
+    /Acceptance matrix is missing: phase-5a\/03-storage-cutover-release-decision\.md/u,
+  );
+});
+
 test('current PRD3-G01 through PRD3-G06 lifecycle states are COMPLETE', () => {
   const matrix = fs.readFileSync(MATRIX_PATH, 'utf8');
   const gates = parseAcceptanceMatrix(matrix);
@@ -261,6 +285,12 @@ function storageGovernanceDocuments() {
       'production-readiness',
       'phase-5a',
       '02-storage-batch-3-source-cutover.md',
+    ),
+    releaseDecision: read(
+      'docs',
+      'production-readiness',
+      'phase-5a',
+      '03-storage-cutover-release-decision.md',
     ),
   };
 }

@@ -25,6 +25,26 @@ MinIO remains available only for development/test. Production feature code has
 zero direct `MinioAdapter`, `GcsAdapter`, MinIO SDK, or Google Storage SDK
 consumers.
 
+## Release-governance disposition
+
+The authoritative Storage Cutover release decision is
+`docs/production-readiness/phase-5a/03-storage-cutover-release-decision.md`.
+The final source checkpoint
+`648af406a1e9ba1f36493df2e9abe67d6189d0a7` owns the recorded passing
+Universal Regression evidence. The later
+`e49aacdb22986916ec83ca55008597883d4b4fbd` commit is the reviewed CI
+architecture rebuild; Universal Regression did not run on that SHA.
+
+GitHub Actions run `31480247411` received no runner because GitHub Actions
+billing capacity was exhausted. Its result is
+`BLOCKED_BY_BILLING_BEFORE_RUNNER_ALLOCATION`, not a CI pass or a product,
+test, orchestrator, workflow, or flake failure. The Owner deferred runtime
+validation as reopenable, non-blocking release debt and requires manual release
+verification. Production uploads, traffic, launch, and real data remain
+prohibited until the production read-only provider-URL audit, exact merged
+deployment, production smoke verification, and final Owner storage-cutover
+acceptance all complete.
+
 ## Provider URL persistence inventory
 
 One pure policy at
